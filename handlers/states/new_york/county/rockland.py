@@ -34,6 +34,8 @@ NOISY_LABELS = [
     "view results by election district",
     "summary by method",
     "download",
+    "vote method",
+    "voting method",
 ]
 
 def parse(page: Page, html_context: Optional[dict] = None):
@@ -91,12 +93,17 @@ def parse(page: Page, html_context: Optional[dict] = None):
 
     # Toggle Vote Method if available
     rprint("[cyan][INFO] Searching for vote method toggle...[/cyan]")
+    page.wait_for_selector("p-togglebutton", timeout=5000)
     toggled = click_vote_method_toggle(page, keywords=["Vote Method", "Voting Method", "Ballot Method"])
     if not toggled:
         rprint("[yellow][WARN] Vote method toggle not found. Some columns may be missing.[/yellow]")
-    toggled = click_vote_method_toggle(page, keywords=["Vote Method", "Voting Method", "Ballot Method"])
-    if not toggled:
-        rprint("[yellow][WARN] Vote method toggle not found. Some columns may be missing.[/yellow]")
+    page.wait_for_timeout(1000) # Allow time for toggle to settle
+    # Check for "No Results" message
+    if no_results > 0:
+        rprint("[red][ERROR] No results found on the page. Skipping further processing.[/red]")
+        return None, None, None, {"skipped": True}  
+    no_results = page.locator("text=No results").count()
+           
     # Scroll page to load dynamic precincts
     rprint("[cyan][INFO] Scrolling to load precincts...[/cyan]")
     autoscroll_until_stable(page)
@@ -156,3 +163,5 @@ def parse(page: Page, html_context: Optional[dict] = None):
 
     metadata["output_file"] = finalize_election_output(all_headers, precinct_data, metadata).get("csv_path")
     return  all_headers, precinct_data, race_title, metadata
+# End of file
+# ==============================================================================

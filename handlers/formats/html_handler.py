@@ -58,11 +58,12 @@ def parse(page: Page, html_context: Optional[dict] = None):
         state_filter_phrases = []
         resolved_handler = resolve_state_handler(html_context.get("url", html_context.get("source", "")))
         if resolved_handler and hasattr(resolved_handler, "NOISY_LABELS"):
-            state_filter_phrases = [phrase.lower() for phrase in resolved_handler.NOISY_LABELS]
+            state_filter_phrases += [phrase.lower() for phrase in resolved_handler.NOISY_LABELS]
         if html_context.get("state"):
             handler = get_state_handler(state_abbreviation=html_context["state"], county_name=html_context.get("county"))
             if handler and hasattr(handler, "NOISY_LABELS"):
-                state_filter_phrases = [phrase.lower() for phrase in handler.NOISY_LABELS]
+                state_filter_phrases += [phrase.lower() for phrase in handler.NOISY_LABELS]
+        log_debug(f"[DEBUG] NOISY_LABELS active: {state_filter_phrases}")      
         log_info(f"[INFO] Filtering {len(raw_detected)} races using state noise filters: {state_filter_phrases}")
         filter_types = html_context.get("filter_race_type", [])
         if isinstance(filter_types, str):
@@ -175,3 +176,4 @@ def parse(page: Page, html_context: Optional[dict] = None):
     }
 
     return race_title, headers, rows, metadata
+# End of file
