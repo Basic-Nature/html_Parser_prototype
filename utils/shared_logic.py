@@ -4,7 +4,9 @@
 ##While election website structures vary significantly by vendor or county/state implementation,
 ##many elements are consistent such as contest labeling, vote method naming, and tabular breakdowns.
 ##These helpers promote DRY principles and consistent behavior across handlers.
-
+from numpy import e
+from playwright.sync_api import Page, Error as PlaywrightError
+from typing import List, Dict
 from utils.shared_logger import log_info, log_debug, log_warning, log_error
 import re
 
@@ -15,6 +17,8 @@ COMMON_CONTEST_LABELS = [
     "Attorney General", "State Senate", "State House", "Supreme Court",
     "Ballot Measure", "Constitutional Amendment", "Referendum", "Proposition"
 ]
+# Common vote method labels
+# These are the most common vote method labels used in election reporting
 
 COMMON_VOTE_METHODS = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Total"
@@ -99,18 +103,65 @@ def click_vote_method_toggle(page, keywords=None):
     """
     if keywords is None:
         keywords = ["Vote Method", "Voting Details", "Show Breakdown", "Voting Method", "Ballot Method"]
-
+    log_info(f"[TOGGLE] Attempting to click vote method toggle with keywords: {keywords}")
+    try:
+        page.wait_for_timeout(1000)  # Allow time for elements to load
+    except Exception as e:
+        log_debug(f"[TOGGLE] Timeout waiting for elements: {e}")
+        return False
+    # Attempt to click the toggle button
+    # This is a generic approach; specific implementations may vary
     toggled = False
 
     # First: check standard button elements
     buttons = page.locator("button")
+    if buttons.count() == 0:
+        log_warning("[TOGGLE] No buttons found on the page.")
+        return False
+    log_info(f"[TOGGLE] Found {buttons.count()} buttons on the page.")
+    # Iterate through buttons to find a match
     for i in range(buttons.count()):
+        # Use nth(i) to access the button
+        # This is a workaround for Playwright's locator API
         btn = buttons.nth(i)
+        # Check if the button is visible and enabled
+        if not btn.is_visible() or not btn.is_enabled():
+            log_debug(f"[TOGGLE] Button {i} is not visible or enabled.")
+            continue
+        # Attempt to read the button's text
+        # This may fail if the button is not a standard text button
+        # or if it has complex inner HTML
+        # Use inner_text() to get the button's text
+        # and strip any leading/trailing whitespace
+        # Use try-except to handle potential errors
         try:
-            label = btn.inner_text().strip()
-            if any(k.lower() in label.lower() for k in keywords):
+            # Check if the button has an aria-label attribute
+            aria_label = btn.get_attribute("aria-label")
+            if aria_label and any(k.lower() in aria_label.lower() for k in keywords):
                 btn.scroll_into_view_if_needed()
                 btn.click()
+                page.wait_for_timeout(1000)
+                log_info(f"[TOGGLE] Button clicked via aria-label: '{aria_label}'")
+                toggled = True
+                break
+            # If no aria-label, use inner_text() to get the button's text
+            # and check if it contains any of the keywords
+            # This is a fallback in case the button doesn't have an aria-label
+            # or if the aria-label is not descriptive enough
+            # Use inner_text() to get the button's text
+            # and strip any leading/trailing whitespace
+            # Use try-except to handle potential errors
+            # Use inner_text() to get the button's text
+            # and strip any leading/trailing whitespace
+            label = btn.inner_text().strip()
+            if any(k.lower() in label.lower() for k in keywords):
+                btn.scroll_into_view_if_needed(
+                    timeout=5000  # Increase timeout for scrolling
+                )
+                btn.click()
+                # Wait for the page to settle after clicking
+                # This is important for dynamic pages where content may change
+                # or load new elements after clicking
                 page.wait_for_timeout(1000)
                 log_info(f"[TOGGLE] Button clicked: '{label}'")
                 toggled = True
@@ -121,22 +172,67 @@ def click_vote_method_toggle(page, keywords=None):
 
     # If not found, fallback to p-togglebutton detection
     if not toggled:
+        log_info("[TOGGLE] No standard button found. Checking for p-togglebutton elements.")
+        # Attempt to locate p-togglebutton elements
+        # This is a specific implementation for the Rockland County Board of Elections
+        # but may be applicable to other counties as well
         toggles = page.query_selector_all("p-togglebutton")
+        if toggles.count() == 0:
+            log_warning("[TOGGLE] No p-togglebutton elements found on the page.")
+            return False
+        log_info(f"[TOGGLE] Found {toggles.count()} p-togglebutton elements on the page.")
+        # Iterate through p-togglebutton elements to find a match
         for toggle in toggles:
+            # Check if the toggle is visible and enabled
+            if not toggle.is_visible() or not toggle.is_enabled():
+                log_debug("[TOGGLE] Toggle is not visible or enabled.")
+                continue
+            # Attempt to read the toggle's onlabel or aria-label
+            # This may fail if the toggle is not a standard text toggle
+            # or if it has complex inner HTML
+            # Use try-except to handle potential errors
+            # Use get_attribute() to get the toggle's onlabel or aria-label
+            # and check if it contains any of the keywords
+            # This is a fallback in case the toggle doesn't have an onlabel
+            # or if the onlabel is not descriptive enough
             try:
+                # Check if the toggle has an onlabel attribute
                 label = toggle.get_attribute("onlabel") or toggle.get_attribute("aria-label") or ""
-                if any(k.lower() in label.lower() for k in keywords):
+                if label and any(k.lower() in label.lower() for k in keywords):
                     toggle.scroll_into_view_if_needed()
                     toggle.click(force=True)
                     page.wait_for_timeout(1000)
+                    log_info(f"[TOGGLE] Custom toggle clicked: '{label}'")
+                    toggled = True
+                    break
+                # If no onlabel, use inner_text() to get the toggle's text
+                # and check if it contains any of the keywords
+                # This is a fallback in case the toggle doesn't have an onlabel
+                # or if the onlabel is not descriptive enough
+                if any(k.lower() in label.lower() for k in keywords):
+                    # Use inner_text() to get the toggle's text
+                    # and strip any leading/trailing whitespace
+                    toggle.scroll_into_view_if_needed()
+                    # This is important for dynamic pages where content may change
+                    # or load new elements after clicking
+                    toggle.click(force=True)
+                    # Wait for the page to settle after clicking
+                    # This is important for dynamic pages where content may change
+                    page.wait_for_timeout(1000)
+                    # Use inner_text() to get the toggle's text
+                    # and strip any leading/trailing whitespace
                     log_info(f"[TOGGLE] Custom toggle clicked via onlabel: '{label}'")
                     toggled = True
                     break
             except Exception as e:
+                # Handle potential errors when reading the toggle's attributes
+                # This may fail if the toggle is not a standard text toggle
                 log_debug(f"[TOGGLE] Fallback toggle failed: {e}")
                 continue
 
     if not toggled:
+        # If no toggle was found, log a warning
+        # This is important for dynamic pages where content may change
         log_warning("[TOGGLE] No matching toggle button found.")
     return toggled
 
@@ -145,7 +241,10 @@ def autoscroll_until_stable(page, max_stable_frames=5, step=3000, delay_ms=500):
     Continuously scrolls a Playwright page until its scroll height stabilizes.
     Useful for dynamic election websites where all precinct data is only visible after scrolling.
     """
+    log_info("[SCROLL] Starting auto-scroll until page height stabilizes...")
+    # Scroll to the top of the page first
     page.evaluate("window.scrollTo(0, 0)")
+    # Wait for a moment to allow the page to settle
     page.wait_for_timeout(delay_ms)
     stable = 0
     last_height = 0
@@ -159,6 +258,22 @@ def autoscroll_until_stable(page, max_stable_frames=5, step=3000, delay_ms=500):
         page.evaluate(f"window.scrollBy(0, {step})")
         page.wait_for_timeout(delay_ms)
     log_info("[SCROLL] Completed scrolling until page height stabilized.")
+def extract_precincts(page, precinct_col_index):
+    """
+    Extracts precinct names from a table based on the detected precinct column index.
+    """
+    precincts = []
+    try:
+        rows = page.query_selector_all("tbody tr")
+        for row in rows:
+            cells = row.query_selector_all("td")
+            if len(cells) > precinct_col_index:
+                precinct_name = cells[precinct_col_index].inner_text().strip()
+                if precinct_name and not any(char.isdigit() for char in precinct_name):
+                    precincts.append(precinct_name)
+    except Exception as e:
+        log_debug(f"[PRECINCT] Error extracting precincts: {e}")
+    return precincts
 
 def build_precinct_reporting_lookup(page, indicators=None):
     """
@@ -169,20 +284,76 @@ def build_precinct_reporting_lookup(page, indicators=None):
 
     lookup = {}
     panels = page.query_selector_all("div.p-panel-footer")
+    if not panels:
+        log_debug("[LOOKUP] No reporting panels found.")
+        return lookup
+    log_info(f"[LOOKUP] Found {len(panels)} reporting panels.")
+    # Iterate through each panel to extract title and reporting percentage
     for panel in panels:
+        # Attempt to find the closest parent panel element
+        # and extract the title and reporting percentage
         try:
             parent = panel.evaluate_handle("el => el.closest('p-panel')")
-            title_element = parent.query_selector("h1 span")
+            if not parent:
+                log_debug("[LOOKUP] No parent panel found.")
+                continue
+            # Extract the title from the closest parent panel
+            # and the reporting percentage from the current panel
+            title_element = None
+            for i in range(1, 25):  # Checks h1 through h24
+                if not title_element:
+                    title_element = parent.query_selector(f"h{i}")
             title = title_element.inner_text().strip() if title_element else None
+            # Extract the reporting percentage from the panel
+            # This assumes the reporting percentage is in a <span> element
             span = panel.query_selector("span")
+            if not span:
+                log_debug("[LOOKUP] No span found in reporting panel.")
+                continue
+            # Extract the text from the span and check for indicators
+            # If title is found, check for indicators in the text
+            # If title is not found, skip this panel
+            # Normalize the text for comparison
+            # This assumes the text is in lowercase and stripped of whitespace
             text = span.inner_text().strip().lower() if span else ""
+            if not text:
+                log_debug("[LOOKUP] No text found in reporting panel.")
+                continue
             if title:
+                title = title.lower()
+                # Check for indicators in the text
+                # If any indicator is found, set the percentage to 100%
+                # Otherwise, extract the percentage using regex
                 if any(indicator in text for indicator in indicators):
                     pct = "100.00%"
                 else:
                     match = re.search(r"([\d.]+%)", text)
-                    pct = match.group(1) if match else "0.00%"
+                    if match:
+                        pct = match.group(1)
+                    else:
+                        log_debug("[LOOKUP] No percentage found in reporting panel.")
+                        continue
+            else:
+                # If title is not found, extract the percentage using regex
+                match = re.search(r"([\d.]+%)", text)
+                if not match:
+                    log_debug("[LOOKUP] No percentage found in reporting panel.")
+                    continue
+                # If no title is found, set the percentage to 0.00%
+                # This assumes the text is in lowercase and stripped of whitespace
+                # This is a fallback in case the title is not found
+                # or if the title is not descriptive enough
+                pct = match.group(1) if match else "0.00%"
                 lookup[title.lower()] = pct
+            # Normalize the title for comparison
+            title = re.sub(r"\s+", " ", title).strip()
+            # Check if the title is already in the lookup
+            if title in lookup:
+                # If the title is already in the lookup, skip this panel
+                log_debug(f"[LOOKUP] Title '{title}' already exists in lookup.")
+                continue
+            # Add the title and percentage to the lookup
+            lookup[title] = pct
         except Exception as e:
             log_debug(f"[LOOKUP] Error parsing reporting panel: {e}")
             continue
@@ -203,13 +374,71 @@ def detect_precinct_headers(elements):
         This function is only for identification. It does not attempt to infer reporting percentages.
     """
     precincts = []
+    if not elements:
+        log_debug("[HEADER] No elements found for precinct header detection.")
+        return precincts
+    log_info(f"[HEADER] Found {len(elements)} elements for precinct header detection.")
+    # Iterate through each element to check for precinct headers
     for el in elements:
         try:
-            tag = el.evaluate("e => e.tagName").strip().upper()
-            if tag in ["H3", "STRONG", "B", "SPAN"]:
+            # Check if the element is visible and enabled
+            tag = el.evaluate("e => e.tagName").strip().lower()
+            header_tags = {f"h{i}" for i in range(1, 25)} # Supports h1 through h24
+            other_tags = {"strong", "b", "span"}
+            if tag in header_tags or tag in other_tags:
+                # Check if the tag is visible and enabled
+                if not el.is_visible() or not el.is_enabled():
+                    log_debug(f"[HEADER] Tag {tag} is not visible or enabled.")
+                    continue
+                # Attempt to read the tag's text
+                # This may fail if the tag is not a standard text tag
+                # or if it has complex inner HTML
+                # Use try-except to handle potential errors
+                # Use inner_text() to get the tag's text
+                # and strip any leading/trailing whitespace
                 label = el.inner_text().strip()
-                if any(k in label for k in COMMON_PRECINCT_HEADERS) or any(char.isdigit() for char in label):
+            # Check if the tag is one of the expected header types
+            # and if it contains any of the common precinct keywords
+            # This assumes the tag is in uppercase and stripped of whitespace
+            # This is a fallback in case the tag is not one of the expected header types
+            # or if the tag is not descriptive enough
+            # Use inner_text() to get the tag's text
+            # and strip any leading/trailing whitespace
+            # Use try-except to handle potential errors
+                if any(k in label for k in COMMON_PRECINCT_HEADERS) or any(char.isdigit() for char in label):       
+                    # If the label contains any of the common precinct keywords
+                    # or if the label contains any digits, add it to the precincts list
                     precincts.append(label)
+                else:
+                    # If the label does not contain any of the common precinct keywords
+                    # or if the label does not contain any digits, skip this tag
+                    log_debug(f"[HEADER] Label '{label}' does not match precinct keywords.")
+                    continue
+            else:
+                # If the tag is not one of the expected header types, skip this tag
+                log_debug(f"[HEADER] Tag '{tag}' is not a recognized header type.")
+                continue
+        except PlaywrightError as e:
+            log_debug(f"[HEADER] Failed to read tag: {e}")
+            continue
+        except AttributeError as e:
+            log_debug(f"[HEADER] Failed to read label: {e}")
+            continue
+        except TypeError as e:
+            log_debug(f"[HEADER] Failed to read label: {e}")
+            continue
+        except ValueError as e:
+            log_debug(f"[HEADER] Failed to read label: {e}")
+            continue
+        except KeyError as e:
+            log_debug(f"[HEADER] Failed to read label: {e}")
+            continue    
+        except IndexError as e:
+            log_debug(f"[HEADER] Failed to read label: {e}")
+            continue
+        except TimeoutError as e:
+            log_debug(f"[HEADER] Failed to read label: {e}")
+            continue
         except Exception as e:
             log_debug(f"[HEADER] Failed to evaluate tag or read label: {e}")
             continue
@@ -246,14 +475,270 @@ def parse_candidate_vote_table(table_element, current_precinct, method_names, re
             full_name = cells[0].inner_text().strip()
             name_parts = full_name.split()
             if len(name_parts) >= 3:
+                # Assuming the last part is the party and the rest is the candidate name
+                # This is a heuristic and may need adjustment based on actual data
                 candidate_name = " ".join(name_parts[1:-1])
                 party = name_parts[-1]
+                # Normalize candidate name and party
+                candidate_name = clean_candidate_name(candidate_name)
+                party = party.strip().upper()
+                # Create a canonical name for the candidate
+                # This is a heuristic and may need adjustment based on actual data
+                if party in ["DEM", "REP", "IND", "LIB", "GRE"]:
+                    # Assuming party is a 3-letter abbreviation
+                    # This is a heuristic and may need adjustment based on actual data
+                    party = party.title()
                 canonical = f"{candidate_name} ({party})"
+            elif len(name_parts) == 2:
+                # Assuming the last part is the party and the first part is the candidate name
+                # This is a heuristic and may need adjustment based on actual data
+                candidate_name = name_parts[0]
+                party = name_parts[1]
+                # Normalize candidate name and party
+                candidate_name = clean_candidate_name(candidate_name)
+                party = party.strip().upper()
+                # Create a canonical name for the candidate
+                # This is a heuristic and may need adjustment based on actual data
+                if party in ["DEM", "REP", "IND", "LIB", "GRE"]:
+                    # Assuming party is a 3-letter abbreviation
+                    # This is a heuristic and may need adjustment based on actual data
+                    party = party.title()
+                canonical = f"{candidate_name} ({party})"
+            elif len(name_parts) == 1:
+                # Assuming the candidate name is a single word
+                # This is a heuristic and may need adjustment based on actual data
+                candidate_name = name_parts[0]
+                party = ""
+                # Normalize candidate name and party
+                candidate_name = clean_candidate_name(candidate_name)
+                party = party.strip().upper()
+                # Create a canonical name for the candidate
+                # This is a heuristic and may need adjustment based on actual data
+                if party in ["DEM", "REP", "IND", "LIB", "GRE"]:
+                    # Assuming party is a 3-letter abbreviation
+                    # This is a heuristic and may need adjustment based on actual data
+                    party = party.title()
+                canonical = f"{candidate_name} ({party})"
+            elif len(name_parts) == 0:
+                # If no name parts are found, skip this row
+                log_debug("[TABLE] No name parts found for candidate.")
+                continue
+            elif len(name_parts) == 1 and not name_parts[0].isdigit():
+                # If only one name part is found and it's not a digit, use it as the candidate name
+                candidate_name = name_parts[0]
+                party = ""
+                # Normalize candidate name and party
+                candidate_name = clean_candidate_name(candidate_name)
+                party = party.strip().upper()
+                # Create a canonical name for the candidate
+                # This is a heuristic and may need adjustment based on actual data
+                if party in ["DEM", "REP", "IND", "LIB", "GRE"]:
+                    # Assuming party is a 3-letter abbreviation
+                    # This is a heuristic and may need adjustment based on actual data
+                    party = party.title()
+                canonical = f"{candidate_name} ({party})"
+            elif len(name_parts) == 1 and name_parts[0].isdigit():
+                # If only one name part is found and it's a digit, use it as the precinct name
+                # This is a heuristic and may need adjustment based on actual data
+                candidate_name = name_parts[0]
+                party = ""
+                # Normalize candidate name and party
+                candidate_name = clean_candidate_name(candidate_name)
+                party = party.strip().upper()
+                # Create a canonical name for the candidate
+                # This is a heuristic and may need adjustment based on actual data
+                if party in ["DEM", "REP", "IND", "LIB", "GRE"]:
+                    # Assuming party is a 3-letter abbreviation
+                    # This is a heuristic and may need adjustment based on actual data
+                    party = party.title()
+                canonical = f"{candidate_name} ({party})"
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total":
+                # If the first cell is "Total", skip this row
+                log_debug("[TABLE] Skipping 'Total' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes":
+                # If the first cell is "Total Votes", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots":
+                # If the first cell is "Total Ballots", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Cast":
+                # If the first cell is "Total Votes Cast", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Cast' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Cast":
+                # If the first cell is "Total Ballots Cast", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Cast' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Counted":
+                # If the first cell is "Total Votes Counted", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Counted' row.")
+                continue    
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Counted":
+                # If the first cell is "Total Ballots Counted", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Counted' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Remaining":
+                # If the first cell is "Total Votes Remaining", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Remaining' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Remaining":
+                # If the first cell is "Total Ballots Remaining", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Remaining' row.")
+                continue    
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Outstanding":
+                # If the first cell is "Total Votes Outstanding", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Outstanding' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Outstanding":
+                # If the first cell is "Total Ballots Outstanding", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Outstanding' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Uncounted":
+                # If the first cell is "Total Votes Uncounted", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Uncounted' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Uncounted":
+                # If the first cell is "Total Ballots Uncounted", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Uncounted' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Disputed":
+                # If the first cell is "Total Votes Disputed", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Disputed' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Disputed":
+                # If the first cell is "Total Ballots Disputed", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Disputed' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Invalid":
+                # If the first cell is "Total Votes Invalid", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Invalid' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Invalid":
+                # If the first cell is "Total Ballots Invalid", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Invalid' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Spoiled":
+                # If the first cell is "Total Votes Spoiled", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Spoiled' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Spoiled":
+                # If the first cell is "Total Ballots Spoiled", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Spoiled' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Rejected":
+                # If the first cell is "Total Votes Rejected", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Rejected' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Rejected":
+                # If the first cell is "Total Ballots Rejected", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Rejected' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Canceled":
+                # If the first cell is "Total Votes Canceled", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Canceled' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Canceled":
+                # If the first cell is "Total Ballots Canceled", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Canceled' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Disqualified":
+                # If the first cell is "Total Votes Disqualified", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Disqualified' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Disqualified":
+                # If the first cell is "Total Ballots Disqualified", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Disqualified' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Nullified":
+                # If the first cell is "Total Votes Nullified", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Nullified' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Nullified":
+                # If the first cell is "Total Ballots Nullified", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Nullified' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Votes Voided":
+                # If the first cell is "Total Votes Voided", skip this row
+                log_debug("[TABLE] Skipping 'Total Votes Voided' row.")
+                continue
+            elif len(name_parts) == 0 and cells[0].inner_text().strip() == "Total Ballots Voided":
+                # If the first cell is "Total Ballots Voided", skip this row
+                log_debug("[TABLE] Skipping 'Total Ballots Voided' row.")
+                continue
             else:
                 canonical = full_name
+            # Normalize the canonical name
+            canonical = re.sub(r"\s+", " ", canonical).strip()
+            # Check if the canonical name is already in the row
+            if canonical in row:
+                # If the canonical name is already in the row, skip this candidate
+                log_debug(f"[TABLE] Candidate '{canonical}' already exists in row.")
+                continue
+            # Add the canonical name to the row
+            row[canonical] = full_name  
+            # Extract the vote counts for each method
+            # This assumes the last cell is the total votes
+            # and the rest are the method votes
+            # This is a heuristic and may need adjustment based on actual data
+            # Use inner_text() to get the text from each cell
+            # and strip any leading/trailing whitespace
+            
 
             method_votes = [c.inner_text().strip() for c in cells[1:-1]]
+            # Check if the number of method votes matches the number of method names
+            if len(method_votes) != len(method_names):
+                log_debug(f"[TABLE] Number of method votes ({len(method_votes)}) does not match number of method names ({len(method_names)}).")
+                continue
+            # Extract the total votes from the last cell
+            # This assumes the last cell is the total votes
             total = cells[-1].inner_text().strip()
+            # Check if the total is a valid number
+            if not re.match(r"^\d+(\.\d+)?$", total.replace(",", "").replace("-", "")):
+                log_debug(f"[TABLE] Total '{total}' is not a valid number.")
+                continue
+            # Normalize the total votes
+            total = total.replace(",", "").replace("-", "0")
+            # Add the method votes and total to the row
+            # This assumes the method votes are in the same order as the method names
+            # This is a heuristic and may need adjustment based on actual data
+            for i, method in enumerate(method_names):   
+                # Check if the method is already in the row
+                if method in row:
+                    # If the method is already in the row, skip this candidate
+                    log_debug(f"[TABLE] Method '{method}' already exists in row.")
+                    continue
+                # Add the method vote to the row
+                # This assumes the method votes are in the same order as the method names
+                # This is a heuristic and may need adjustment based on actual data
+                vote = method_votes[i].replace(",", "").replace("-", "0")
+                # Check if the vote is a valid number
+                if not re.match(r"^\d+(\.\d+)?$", vote):
+                    log_debug(f"[TABLE] Vote '{vote}' is not a valid number.")
+                    continue
+                # Normalize the vote
+                vote = vote.replace(",", "").replace("-", "0")
+                # Add the method vote to the row
+                row[f"{canonical} - {method}"] = vote
+            # Add the total to the row
+            # This assumes the total is a valid number  
+            # This is a heuristic and may need adjustment based on actual data
+            # Check if the total is a valid number
+            if not re.match(r"^\d+(\.\d+)?$", total.replace(",", "").replace("-", "")):
+                log_debug(f"[TABLE] Total '{total}' is not a valid number.")
+                continue
+            # Normalize the total votes
+            total = total.replace(",", "").replace("-", "0")
+            # Add the total to the row
+            # This assumes the total is a valid number
+            # This is a heuristic and may need adjustment based on actual data
+            # Check if the total is already in the row  
+            if f"{canonical} - Total" in row:
+                # If the total is already in the row, skip this candidate
+                log_debug(f"[TABLE] Total '{total}' already exists in row.")
+                continue
 
             for method, vote in zip(method_names, method_votes):
                 row[f"{canonical} - {method}"] = vote
@@ -278,15 +763,151 @@ def calculate_grand_totals(rows):
     """
     totals = {}
     for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if "Precinct" in row:
+            continue
+        if "% Precincts Reporting" in row:
+            continue
+        if "Total" in row:
+            continue
+        if "Precincts Reporting" in row:
+            continue
+        if "Total Votes" in row:
+            continue
+        if "Total Ballots" in row:
+            continue
+        if "Total Votes Cast" in row:
+            continue
+        if "Total Ballots Cast" in row:
+            continue
+        if "Total Votes Counted" in row:
+            continue
+        if "Total Ballots Counted" in row:
+            continue
+        if "Total Votes Remaining" in row:
+            continue
+        if "Total Ballots Remaining" in row:
+            continue
+        if "Total Votes Outstanding" in row:
+            continue
+        if "Total Ballots Outstanding" in row:
+            continue
+        if "Total Votes Uncounted" in row:
+            continue
+        if "Total Ballots Uncounted" in row:
+            continue
+        if "Total Votes Disputed" in row:
+            continue
+        if "Total Ballots Disputed" in row:
+            continue
+        if "Total Votes Invalid" in row:
+            continue
+        if "Total Ballots Invalid" in row:
+            continue
+        if "Total Votes Spoiled" in row:
+            continue
+        if "Total Ballots Spoiled" in row:
+            continue
+        if "Total Votes Rejected" in row:
+            continue
+        if "Total Ballots Rejected" in row:
+            continue
+        if "Total Votes Canceled" in row:
+            continue
+        if "Total Ballots Canceled" in row:
+            continue        
+        if "Total Votes Disqualified" in row:
+            continue    
+        if "Total Ballots Disqualified" in row:
+            continue
+        if "Total Votes Nullified" in row:
+            continue
+        if "Total Ballots Nullified" in row:
+            continue
+        if "Total Votes Voided" in row:
+            continue
+        if "Total Ballots Voided" in row:
+            continue
         for k, v in row.items():
+            if not isinstance(v, str):
+                continue
+            if not v.strip():
+                continue
+            if not re.match(r"^\d+(\.\d+)?$", v.replace(",", "").replace("-", "")):
+                continue
             if k in ["Precinct", "% Precincts Reporting"]:
                 continue
             try:
                 totals[k] = totals.get(k, 0) + int(v.replace(",", "").replace("-", "0"))
+            except ValueError:
+                # Handle cases where the value cannot be converted to an integer
+                # This may happen if the value is not a number or is malformed
+                # In such cases, we can skip this value and continue processing
+                log_debug(f"[TOTALS] Failed to parse value '{v}' for key '{k}': {e}")
+                continue
+            except TypeError:
+                # Handle cases where the value is not a number or is malformed
+                # In such cases, we can skip this value and continue processing
+                log_debug(f"[TOTALS] Failed to parse value '{v}' for key '{k}': {e}")
+                continue
+            except AttributeError:
+                # Handle cases where the value is not a number or is malformed
+                # In such cases, we can skip this value and continue processing
+                log_debug(f"[TOTALS] Failed to parse value '{v}' for key '{k}': {e}")
+                continue
+            except KeyError:
+                # Handle cases where the key is not found in the dictionary
+                # In such cases, we can skip this value and continue processing
+                log_debug(f"[TOTALS] Failed to parse value '{v}' for key '{k}': {e}")
+                continue
+            except IndexError:
+                # Handle cases where the index is out of range
+                # In such cases, we can skip this value and continue processing
+                log_debug(f"[TOTALS] Failed to parse value '{v}' for key '{k}': {e}")
+                continue
+            except TimeoutError:
+                # Handle cases where the operation times out
+                # In such cases, we can skip this value and continue processing
+                log_debug(f"[TOTALS] Failed to parse value '{v}' for key '{k}': {e}")
+                continue
+    
             except:
                 continue
     totals["Precinct"] = "Grand Total"
+    totals["Total"] = sum(totals.values())
+    totals["Total"] = str(totals["Total"])
+    totals["% Precincts Reporting"] = "100.00%"
+    totals["Total Votes"] = totals.get("Total", 0)
+    totals["Total Ballots"] = totals.get("Total", 0)
+    totals["Total Votes Cast"] = totals.get("Total", 0)
+    totals["Total Ballots Cast"] = totals.get("Total", 0)
+    totals["Total Votes Counted"] = totals.get("Total", 0)
+    totals["Total Ballots Counted"] = totals.get("Total", 0)
+    totals["Total Votes Remaining"] = totals.get("Total", 0)
+    totals["Total Ballots Remaining"] = totals.get("Total", 0)
+    totals["Total Votes Outstanding"] = totals.get("Total", 0)
+    totals["Total Ballots Outstanding"] = totals.get("Total", 0)
+    totals["Total Votes Uncounted"] = totals.get("Total", 0)
+    totals["Total Ballots Uncounted"] = totals.get("Total", 0)
+    totals["Total Votes Disputed"] = totals.get("Total", 0)
+    totals["Total Ballots Disputed"] = totals.get("Total", 0)
+    totals["Total Votes Invalid"] = totals.get("Total", 0)
+    totals["Total Ballots Invalid"] = totals.get("Total", 0)
+    totals["Total Votes Spoiled"] = totals.get("Total", 0)
+    totals["Total Ballots Spoiled"] = totals.get("Total", 0)
+    totals["Total Votes Rejected"] = totals.get("Total", 0)
+    totals["Total Ballots Rejected"] = totals.get("Total", 0)
+    totals["Total Votes Canceled"] = totals.get("Total", 0)
+    totals["Total Ballots Canceled"] = totals.get("Total", 0)
+    totals["Total Votes Disqualified"] = totals.get("Total", 0)
+    totals["Total Ballots Disqualified"] = totals.get("Total", 0)
+    totals["Total Votes Nullified"] = totals.get("Total", 0)
+    totals["Total Ballots Nullified"] = totals.get("Total", 0)
+    totals["Total Votes Voided"] = totals.get("Total", 0)
+    totals["Total Ballots Voided"] = totals.get("Total", 0)   
     totals["% Precincts Reporting"] = ""
+  
     return totals
 
 

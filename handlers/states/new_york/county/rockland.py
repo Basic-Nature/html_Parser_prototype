@@ -7,6 +7,7 @@
 # ==============================================================================
 
 from playwright.sync_api import Page
+from handlers.formats import html_handler as fallback_html_handler
 from handlers.formats import json_handler
 from utils.output_utils import finalize_election_output
 from utils.shared_logger import logging
@@ -19,6 +20,7 @@ from utils.shared_logic import (
     calculate_grand_totals
 )
 import os
+import re
 from dotenv import load_dotenv
 from rich import print as rprint
 from tqdm import tqdm
@@ -39,11 +41,19 @@ NOISY_LABELS = [
 ]
 NOISY_LABEL_PATTERNS = [
     r"view results? by election district\\s*[:\\n]?$",
-    r"summary by method\\s*[:\\n]?$",
-    r"download\\s*[:\\n]?$",
+    r"proposal number",
+    r"proposition",
     r"^vote for \d+$"
 ]
-
+def is_noisy_label(label: str) -> bool:
+    """
+    Check if a label is considered noisy based on predefined patterns.
+    """
+    label = label.lower()
+    for pattern in NOISY_LABEL_PATTERNS:
+        if re.search(pattern, label):
+            return True
+    return any(noisy in label for noisy in NOISY_LABELS)
 def parse(page: Page, html_context: Optional[dict] = None):
     if html_context is None:
         html_context = {}
@@ -66,8 +76,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
        return None, None, None, {"skipped": True} 
     if not race_core:
         rprint("[yellow]No contest race selected. Re-launching contest list.[/yellow]")
-        from handlers.formats import html_handler
-        return html_handler.parse(page, html_context)
+        return fallback_html_handler.parse(page, html_context)
     if VERBOSE:
         rprint(f"[blue][DEBUG] Rockland handler received selected race: '{race_title}'[/blue]")
     

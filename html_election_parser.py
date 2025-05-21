@@ -21,7 +21,7 @@ from pathlib import Path
 from datetime import datetime
 from multiprocessing import Pool
 from typing import cast
-import json  # NEW: for optional metadata export
+
 # Third-party
 from dotenv import load_dotenv
 from rich.console import Console
@@ -35,7 +35,6 @@ from utils.download_utils import ensure_input_directory, ensure_output_directory
 from utils.format_router import detect_format_from_links, route_format_handler
 from utils.captcha_tools import handle_cloudflare_captcha
 from utils.html_scanner import scan_html_for_context
-from utils.output_utils import mark_url_processed
 from state_router import get_handler as get_state_handler
 from utils.shared_logger import rprint
 # Load settings from .env file
@@ -108,6 +107,15 @@ def load_processed_urls():
                 processed[url] = {"timestamp": timestamp, "status": status}
     return processed
 
+# Append a URL entry to .processed_urls to mark it as processed.
+# Includes a timestamp and success/failure status.
+def mark_url_processed(url, status="success"):
+    if not CACHE_PROCESSED_URLS:
+        return
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(CACHE_FILE, 'a') as f:
+        f.write(f"{url}|{timestamp}|{status}\n")
+
 # Display the list of available URLs and prompt the user to select some.
 # Supports entering indices, 'all', or nothing to cancel.
 def prompt_url_selection(urls):
@@ -132,7 +140,6 @@ def resolve_and_parse(page, context, url):
     state = context.get("state")
     county = context.get("county")
     handler = get_state_handler(state_abbreviation=state, county_name=county)
-    context["handler_module"] = handler.__name__ if handler else "html_handler"
     if handler and hasattr(handler, 'parse'):
         logging.info(f"[State Router] Matched — routing to {handler.__name__}")
         return handler.parse(page=page, html_context=context)
@@ -205,27 +212,9 @@ def process_url(target_url):
             )
             page.goto(target_url, timeout=60000)
             # Detect and resolve Cloudflare CAPTCHA if triggered
-            if os.getenv("DISABLE_CAPTCHA_CHECK", "false").lower() != "true":
-                if page.url.startswith("https://cf-challenge"):
-                    logging.info("[CAPTCHA] Cloudflare CAPTCHA detected. Attempting to resolve...")
-                    # Wait for the CAPTCHA to be solved or timeout
-                    page.set_default_timeout(TIMEOUT_SEC * 1000)
-                    try:
-                        page.wait_for_selector("div#cf-content", timeout=TIMEOUT_SEC * 1000)
-                    except Exception as e:
-                        logging.error(f"[CAPTCHA] Failed to resolve CAPTCHA: {e}")
-                        mark_url_processed(target_url, status="captcha_failed")
-                        return
-                else:
-                    logging.info("[CAPTCHA] No CAPTCHA detected.")
-                captcha_result = handle_cloudflare_captcha(p, page, target_url)
-                if captcha_result:
-                    logging.info("[CAPTCHA] CAPTCHA resolved successfully.")
-                    browser, context, page, user_agent = captcha_result
-                else:
-                    logging.error("[CAPTCHA] CAPTCHA resolution failed. Exiting.")
-                    mark_url_processed(target_url, status="captcha_failed")
-                    return
+            captcha_result = handle_cloudflare_captcha(p, page, target_url)
+            if captcha_result:
+                browser, context, page, user_agent = captcha_result
             # Scan the HTML page for embedded context such as state, county, and contest list
             html_context = scan_html_for_context(page)
             html_context["source_url"] = target_url
@@ -251,7 +240,6 @@ def process_url(target_url):
                           *_, metadata = result
                           if metadata.get("skipped"):
                               logging.info(f"[INFO] {fmt.upper()} parsing was intentionally skipped by user.")
-                              html_context["selected_races"] = file_context.get("selected_races", [])
                               continue # skip this format and move on 
                         if not isinstance(result, tuple) or len(result) != 4:
                             logging.error(f"[ERROR] Handler returned unexpected structure: expected 4 values, got {len(result) if isinstance(result, tuple) else 'non-tuple'}")
@@ -263,16 +251,6 @@ def process_url(target_url):
                                 logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
                             mark_url_processed(target_url, status="success")
                             return
-                        else:
-                            if isinstance(result, tuple) and len(result) == 4:
-                                *_, metadata = result
-                                if metadata.get("skipped") and local_file != "skip":
-                                    logging.warning(f"[WARN] Handler marked JSON as skipped despite user confirmation.")
-                            if local_file not in ("skip", None) and (not result or not all(result)):
-                                retry = input(f"[PROMPT] Parsing {fmt.upper()} failed. Do you want to try the HTML fallback? (y/n): ").strip().lower()
-                                if retry != "y":
-                                    mark_url_processed(target_url, status="fail")
-                                    continue
                     else:
                         logging.warning(f"[WARN] No handler found for format: {fmt}")
             # If multiple races are present and batch_mode is enabled, iterate through all
@@ -295,7 +273,6 @@ def process_url(target_url):
                             logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
                         else:
                             logging.warning("[WARN] No output file path returned from parser.")
-                        mark_url_processed(target_url, status="success", metadata=metadata)
                     else:
                         logging.warning(f"[Batch Mode] Incomplete data for: {race_title}")
                 mark_url_processed(target_url, status="success")
@@ -308,11 +285,11 @@ def process_url(target_url):
                     mark_url_processed(target_url, status="fail")
                     return
             else:
-                *_, metadata = result 
-                if metadata.get("skipped"):
-                      logging.info(f"[INFO] Handler intentionally skipped parsing. No fallback triggered again here.")
-                      mark_url_processed(target_url, status="skipped")
-                      return
+                if isinstance(result, tuple) and len(result) == 4:
+                     *_, metadata = result 
+                     if metadata.get("skipped"):
+                         logging.info(f"[INFO] Handler skipped parsing. Falling back to HTML.")
+                         result = resolve_and_parse(page, html_context, target_url)
             # Final result check: if all parts returned, log the outcome and mark URL
             if not result or not isinstance(result, tuple) or len(result) != 4:
                 logging.error("[ERROR] Handler returned unexpected structure: expected 4 values.")

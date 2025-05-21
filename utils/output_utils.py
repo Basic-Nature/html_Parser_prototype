@@ -11,6 +11,18 @@ from datetime import datetime
 from typing import Optional
 from utils.shared_logger import log_debug, log_info, log_warning, log_error
 
+def mark_url_processed(url):
+    """
+    Marks a URL as processed by creating a file with the URL's hash.
+    This prevents reprocessing of the same URL in future runs.
+    """
+    import hashlib
+    url_hash = hashlib.md5(url.encode()).hexdigest()
+    processed_file = os.path.join("processed_urls", f"{url_hash}.txt")
+    os.makedirs(os.path.dirname(processed_file), exist_ok=True)
+    with open(processed_file, "w") as f:
+        f.write(url)
+
 def format_timestamp():
     """Return timestamp in standardized YYYYMMDD_HHMMSS format."""
     return datetime.now().strftime("%Y%m%d_%H%M%S")

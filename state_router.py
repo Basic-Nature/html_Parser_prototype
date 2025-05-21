@@ -12,6 +12,11 @@ import importlib
 import json
 
 URL_HINT_OVERRIDES = {}
+# Load URL hint overrides from a JSON file if it exists
+# This file should contain a JSON object with key-value pairs of URL patterns and module paths
+# Example: {"pattern1": "module.path1", "pattern2": "module.path2"}
+# This allows for easy customization of URL routing without modifying the codebase. 
+# The file should be in the same directory as this script.
 try:
     with open("url_hint_overrides.txt", "r", encoding="utf-8") as f:
         URL_HINT_OVERRIDES = json.load(f)
@@ -114,6 +119,22 @@ def resolve_state_handler(url_or_text):
     to route to the appropriate handler module.
     """
     lower = url_or_text.lower()
+    # Check for known state identifiers in the URL or text
+    for state_abbr, state_key in STATE_MODULE_MAP.items():
+        if state_abbr in lower:
+            # Check if the state is a known abbreviation
+            if state_abbr in STATE_MODULE_MAP:
+                log_info(f"[INFO] [State Router] URL/text matched state '{state_abbr}' → {state_key}")
+                module_path = f"handlers.states.{state_key}"
+                module = import_handler(module_path)
+                if module:
+                    return module
+            module_path = f"handlers.states.{state_key}"
+            module = import_handler(module_path)
+            if module:
+                log_info(f"[INFO] [State Router] URL/text matched state '{state_abbr}' → {module_path}")
+                return module
+            
 
     for pattern, module_path in URL_HINT_OVERRIDES.items():
         if pattern in lower:
@@ -129,6 +150,10 @@ from difflib import get_close_matches
 
 # Fuzzy matching threshold (adjustable via .env)
 FUZZY_MATCH_CUTOFF = float(os.getenv("FUZZY_MATCH_CUTOFF", "0.7"))
+# Fallback to default if not set
+if FUZZY_MATCH_CUTOFF < 0.5 or FUZZY_MATCH_CUTOFF > 1.0:
+    log_warning(f"[Router] Invalid FUZZY_MATCH_CUTOFF value: {FUZZY_MATCH_CUTOFF}. Using default 0.7.")
+    FUZZY_MATCH_CUTOFF = 0.7
 
 def get_handler(state_abbreviation, county_name=None):
     """
@@ -145,6 +170,38 @@ def get_handler(state_abbreviation, county_name=None):
         return None
 
     normalized_state = state_abbreviation.strip().lower().replace(" ", "_")
+    # Check if the state is a known abbreviation
+    if normalized_state in STATE_MODULE_MAP:
+        log_info(f"[Router] State '{state_abbreviation}' is a known abbreviation.")
+        return STATE_MODULE_MAP[normalized_state]
+    # Check if the state is a known full name
+    if normalized_state in STATE_MODULE_MAP.values():
+        log_info(f"[Router] State '{state_abbreviation}' is a known full name.")
+        return normalized_state
+    # Check if the state is a known full name with spaces
+    if normalized_state in [name.replace("_", " ") for name in STATE_MODULE_MAP.values()]:
+        log_info(f"[Router] State '{state_abbreviation}' is a known full name with spaces.")
+        return normalized_state
+    # Check if the state is a known full name with dashes
+    if normalized_state in [name.replace("-", "_") for name in STATE_MODULE_MAP.values()]:
+        log_info(f"[Router] State '{state_abbreviation}' is a known full name with dashes.")
+        return normalized_state
+    # Check if the state is a known full name with underscores
+    if normalized_state in [name.replace("_", "-") for name in STATE_MODULE_MAP.values()]:
+        log_info(f"[Router] State '{state_abbreviation}' is a known full name with underscores.")
+        return normalized_state
+    # Check if the state is a known full name with periods
+    if normalized_state in [name.replace(".", "_") for name in STATE_MODULE_MAP.values()]:
+        log_info(f"[Router] State '{state_abbreviation}' is a known full name with periods.")
+        return normalized_state 
+    # Check if the state is a known full name with spaces and dashes
+    if normalized_state in [name.replace(" ", "-") for name in STATE_MODULE_MAP.values()]:
+        log_info(f"[Router] State '{state_abbreviation}' is a known full name with spaces and dashes.")
+        return normalized_state
+    # Check if the state is a known full name with spaces and underscores
+    if normalized_state in [name.replace(" ", "_") for name in STATE_MODULE_MAP.values()]:
+        log_info(f"[Router] State '{state_abbreviation}' is a known full name with spaces and underscores.")
+        return normalized_state
 
     # Fuzzy match to closest known state abbreviation if needed
     if normalized_state not in STATE_MODULE_MAP:
@@ -152,8 +209,18 @@ def get_handler(state_abbreviation, county_name=None):
         if close:
             log_info(f"[Router] Fuzzy matched state '{state_abbreviation}' → '{close[0]}'")
             normalized_state = close[0]
+        else:
+            log_warning(f"[Router] No close match found for state '{state_abbreviation}'")
+            return None
     state_key = STATE_MODULE_MAP.get(normalized_state, normalized_state)
     module_path = f"handlers.states.{state_key}"
+    log_debug(f"[DEBUG] Module path resolved to: {module_path}")
+    # Check if the module exists
+    try:
+        importlib.import_module(module_path)
+    except ModuleNotFoundError:
+        log_warning(f"[Router] Module '{module_path}' not found.")
+        return None
 
     # First check if a top-level state handler has a parse() function
     try:
@@ -211,6 +278,9 @@ def get_handler_from_context(context):
     """
     state = context.get("state")
     county = context.get("county")
+    if not state and not county:
+        log_warning("[Router] No state or county provided in context.")
+        return None
 
     if not state:
         filename = context.get("filename", "").lower()
@@ -237,3 +307,4 @@ def get_handler_from_context(context):
     else:
         log_warning("[Router] No handler could be resolved even via fallback.")
     return fallback
+# End of state_router.py
