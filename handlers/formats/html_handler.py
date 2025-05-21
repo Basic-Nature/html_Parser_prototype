@@ -224,4 +224,3 @@ def parse(page: Page, html_context: Optional[dict] = None):
 
     return race_title, headers, rows, metadata
 # End of file
-# ==============================================================
