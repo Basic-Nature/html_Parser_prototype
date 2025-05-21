@@ -37,6 +37,12 @@ NOISY_LABELS = [
     "vote method",
     "voting method",
 ]
+NOISY_LABEL_PATTERNS = [
+    r"view results? by.*district",
+    r"proposal number",
+    r"proposition",
+    r"^vote for \d+$"
+]
 
 def parse(page: Page, html_context: Optional[dict] = None):
     if html_context is None:
@@ -91,14 +97,18 @@ def parse(page: Page, html_context: Optional[dict] = None):
             if VERBOSE:
                 rprint(f"[yellow][WARN] Skipped a link due to error: {e}[/yellow]")
 
-    # Toggle Vote Method if available
-    rprint("[cyan][INFO] Searching for vote method toggle...[/cyan]")
-    page.wait_for_selector("p-togglebutton", timeout=5000)
+    # Toggle Vote Method if available — AFTER confirming we're on the precinct detail page
+    rprint("[cyan][INFO] Waiting for toggle to appear after contest view loads...[/cyan]")
+    try:
+        page.wait_for_selector("p-togglebutton", timeout=5000)
+    except Exception:
+        rprint("[yellow][WARN] Toggle button did not render within timeout. Proceeding anyway.[/yellow]")
     toggled = click_vote_method_toggle(page, keywords=["Vote Method", "Voting Method", "Ballot Method"])
     if not toggled:
         rprint("[yellow][WARN] Vote method toggle not found. Some columns may be missing.[/yellow]")
     page.wait_for_timeout(1000) # Allow time for toggle to settle
     # Check for "No Results" message
+    no_results = page.locator("text=No results").count()
     if no_results > 0:
         rprint("[red][ERROR] No results found on the page. Skipping further processing.[/red]")
         return None, None, None, {"skipped": True}  
@@ -164,4 +174,4 @@ def parse(page: Page, html_context: Optional[dict] = None):
     metadata["output_file"] = finalize_election_output(all_headers, precinct_data, metadata).get("csv_path")
     return  all_headers, precinct_data, race_title, metadata
 # End of file
-# ==============================================================================
+
