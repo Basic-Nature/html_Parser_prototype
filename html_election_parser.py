@@ -143,8 +143,15 @@ def resolve_and_parse(page, context, url):
     if handler and hasattr(handler, 'parse'):
         logging.info(f"[State Router] Matched — routing to {handler.__name__}")
         return handler.parse(page=page, html_context=context)
-
-    logging.info("No matching state handler found. Falling back to HTML handler...")
+    if handler and hasattr(handler, 'parse_fallback'):
+        logging.info(f"[State Router] Matched — routing to {handler.__name__} fallback")
+        return handler.parse_fallback(page=page, html_context=context)
+    if hasattr(html_handler, 'parse'):
+        logging.info("[State Router] No match — routing to HTML handler")
+        return html_handler.parse(page=page, html_context=context)
+    if hasattr(html_handler, 'parse_fallback'):
+        logging.info("[State Router] No match — routing to HTML handler fallback")
+        return html_handler.parse_fallback(page=page, html_context=context)
     return html_handler.parse(page=page, html_context=context)
 
 

@@ -40,11 +40,15 @@ NOISY_LABELS = [
     "voting method",
 ]
 NOISY_LABEL_PATTERNS = [
-    r"view results? by election district\\s*[:\\n]?$",
-    r"proposal number",
-    r"proposition",
+    r"view results? by election district\s*[:\n]?$",
+    r"summary by method\s*[:\n]?$",
+    r"download\s*[:\n]?$",
+    r"vote method\s*[:\n]?$",
+    r"voting method\s*[:\n]?$",
     r"^vote for \d+$"
 ]
+NOISY_LABELS = [label.lower() for label in NOISY_LABELS]
+
 def is_noisy_label(label: str) -> bool:
     """
     Check if a label is considered noisy based on predefined patterns.
@@ -53,7 +57,15 @@ def is_noisy_label(label: str) -> bool:
     for pattern in NOISY_LABEL_PATTERNS:
         if re.search(pattern, label):
             return True
+    # Check for exact matches with noisy labels
+    if label in NOISY_LABELS:
+        return True
+    # Check for any noisy label in the string
+    # This is a more lenient check, but it can be useful for certain cases
+        
+        
     return any(noisy in label for noisy in NOISY_LABELS)
+
 def parse(page: Page, html_context: Optional[dict] = None):
     if html_context is None:
         html_context = {}
@@ -69,8 +81,8 @@ def parse(page: Page, html_context: Optional[dict] = None):
         if VERBOSE:
             rprint("[green][INFO] JSON parse successful. Bypassing HTML and returning results.[/green]")
         return result
-    race_title = html_context.get("selected_race")
-    race_core = race_title.split("2024")[-1].strip().lower() if race_title else ""
+    contest_title = html_context.get("selected_race")
+    race_core = contest_title.split("2024")[-1].strip().lower() if contest_title else ""
     if "view results by election district" in race_core:
        rprint("[red]Selected entry is a navigation link, not a real contest. Skipping.[/red]")
        return None, None, None, {"skipped": True} 
@@ -78,7 +90,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
         rprint("[yellow]No contest race selected. Re-launching contest list.[/yellow]")
         return fallback_html_handler.parse(page, html_context)
     if VERBOSE:
-        rprint(f"[blue][DEBUG] Rockland handler received selected race: '{race_title}'[/blue]")
+        rprint(f"[blue][DEBUG] Rockland handler received selected race: '{contest_title}'[/blue]")
     
     page.wait_for_timeout(500)
     rprint("[cyan][INFO] Waiting for contest-specific page content...[/cyan]")
@@ -94,7 +106,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
             heading_text = section.inner_text().strip().lower() if section.is_visible() else ""
             link_text = (link.inner_text() or "").strip().lower()
             if race_core and (race_core in heading_text or race_core in link_text or heading_text.startswith(race_core) or link_text.startswith(race_core)):
-                rprint(f"[cyan][INFO] Matched contest link for: {race_title}[/cyan]")
+                rprint(f"[cyan][INFO] Matched contest link for: {contest_title}[/cyan]")
                 link.scroll_into_view_if_needed()
                 page.wait_for_timeout(500)
                 rprint(f"[cyan][INFO] URL before click: {page.url}[/cyan]")
@@ -106,7 +118,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
             if VERBOSE:
                 rprint(f"[yellow][WARN] Skipped a link due to error: {e}[/yellow]")
 
-    rprint(f"[magenta][DEBUG] race_title: {race_title} | race_core: {race_core}[/magenta]")
+    rprint(f"[magenta][DEBUG] contest_title: {contest_title} | race_core: {race_core}[/magenta]")
     # Toggle Vote Method if available — AFTER confirming we're on the precinct detail page
     rprint("[cyan][INFO] Waiting for toggle to appear after contest view loads...[/cyan]")
     try:
@@ -135,7 +147,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
     elements = page.query_selector_all('h3, strong, b, span, table')
     precinct_headers = detect_precinct_headers(elements)
     precinct_headers = [h for h in precinct_headers if "vote for" not in h.lower()]
-    precinct_data = []
+    data = []
     method_names = []
 
     estimated = len(precinct_headers)
@@ -156,19 +168,19 @@ def parse(page: Page, html_context: Optional[dict] = None):
         elif tag == "TABLE" and current_precinct:
             reporting_pct = locals().get("reporting_pct", "0.00%")
             row = parse_candidate_vote_table(el, current_precinct, method_names, reporting_pct)
-            precinct_data.append(row)
+            data.append(row)
             current_precinct = None
 
-    if not precinct_data:
+    if not data:
         rprint("[red][ERROR] No precinct data was parsed.[/red]")
         return None, None, None, {"skipped": True}
 
     # Compute and append grand totals row
-    grand_total = calculate_grand_totals(precinct_data)
-    precinct_data.append(grand_total)
+    grand_total = calculate_grand_totals(data)
+    data.append(grand_total)
 
     # Assemble headers from union of all rows
-    all_headers = sorted(set().union(*(row.keys() for row in precinct_data)))
+    headers = sorted(set().union(*(row.keys() for row in data)))
     progress.n = progress.total
     progress.refresh()
     progress.close()
@@ -176,12 +188,12 @@ def parse(page: Page, html_context: Optional[dict] = None):
     metadata = {
         "state": "NY",
         "county": "Rockland",
-        "race": race_title,
+        "race": contest_title,
         "source": page.url,
         "handler": "rockland"
     }
 
-    metadata["output_file"] = finalize_election_output(all_headers, precinct_data, metadata).get("csv_path")
-    return  all_headers, precinct_data, race_title, metadata
+    metadata["output_file"] = finalize_election_output(headers, data, metadata).get("csv_path")
+    return  headers, data, contest_title, metadata
 # End of file
 

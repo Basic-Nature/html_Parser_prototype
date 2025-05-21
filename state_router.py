@@ -4,7 +4,7 @@
 # Uses importlib for auto-resolution from folder structure.
 # Also used by JSON, CSV, and PDF format handlers.
 # ===============================================
-from utils.shared_logger import log_info, log_debug, log_warning
+from utils.shared_logger import logger
 import os
 import importlib
 
@@ -20,11 +20,11 @@ URL_HINT_OVERRIDES = {}
 try:
     with open("url_hint_overrides.txt", "r", encoding="utf-8") as f:
         URL_HINT_OVERRIDES = json.load(f)
-        log_info(f"[Router] Loaded URL_HINT_OVERRIDES with {len(URL_HINT_OVERRIDES)} entries.")
+        logger.info(f"[Router] Loaded URL_HINT_OVERRIDES with {len(URL_HINT_OVERRIDES)} entries.")
 except FileNotFoundError:
-    log_warning("[Router] url_hint_overrides.txt not found — using default empty mapping.")
+    logger.warning("[Router] url_hint_overrides.txt not found — using default empty mapping.")
 except Exception as e:
-    log_warning(f"[Router] Failed to load URL_HINT_OVERRIDES: {e}")
+    logger.warning(f"[Router] Failed to load URL_HINT_OVERRIDES: {e}")
 
 # Mapping of state abbreviations (modern and traditional) to folder module names
 STATE_MODULE_MAP = {
@@ -97,7 +97,7 @@ def import_handler(module_path):
             LOADED_HANDLERS[module_path] = module
         return LOADED_HANDLERS[module_path]
     except ModuleNotFoundError as e:
-        log_warning(f"[Router] Module not found: {module_path} — {e}")
+        logger.warning(f"[Router] Module not found: {module_path} — {e}")
         # Retry using closest matching submodule from parent package
         try:
             parent = module_path.rsplit(".", 1)[0]
@@ -107,10 +107,10 @@ def import_handler(module_path):
             close = get_close_matches(target_name, possibilities, n=1, cutoff=0.6)
             if close:
                 retry_path = f"{parent}.{close[0]}"
-                log_info(f"[Router] Retrying with closest match: {retry_path}")
+                logger.info(f"[Router] Retrying with closest match: {retry_path}")
                 return importlib.import_module(retry_path)
         except Exception as inner:
-            log_debug(f"[Router] Retry suggestion failed: {inner}")
+            logger.debug(f"[Router] Retry suggestion failed: {inner}")
         return None
 
 def resolve_state_handler(url_or_text):
@@ -124,7 +124,7 @@ def resolve_state_handler(url_or_text):
         if state_abbr in lower:
             # Check if the state is a known abbreviation
             if state_abbr in STATE_MODULE_MAP:
-                log_info(f"[INFO] [State Router] URL/text matched state '{state_abbr}' → {state_key}")
+                logger.info(f"[INFO] [State Router] URL/text matched state '{state_abbr}' → {state_key}")
                 module_path = f"handlers.states.{state_key}"
                 module = import_handler(module_path)
                 if module:
@@ -132,7 +132,7 @@ def resolve_state_handler(url_or_text):
             module_path = f"handlers.states.{state_key}"
             module = import_handler(module_path)
             if module:
-                log_info(f"[INFO] [State Router] URL/text matched state '{state_abbr}' → {module_path}")
+                logger.info(f"[INFO] [State Router] URL/text matched state '{state_abbr}' → {module_path}")
                 return module
             
 
@@ -140,10 +140,10 @@ def resolve_state_handler(url_or_text):
         if pattern in lower:
             module = import_handler(module_path)
             if module:
-                log_info(f"[INFO] [State Router] URL pattern '{pattern}' matched → {module_path}")
+                logger.info(f"[INFO] [State Router] URL pattern '{pattern}' matched → {module_path}")
                 return module
 
-    log_info("[INFO] [State Router] No matching state-specific handler found.")
+    logger.info("[INFO] [State Router] No matching state-specific handler found.")
     return None
 
 from difflib import get_close_matches
@@ -152,7 +152,7 @@ from difflib import get_close_matches
 FUZZY_MATCH_CUTOFF = float(os.getenv("FUZZY_MATCH_CUTOFF", "0.7"))
 # Fallback to default if not set
 if FUZZY_MATCH_CUTOFF < 0.5 or FUZZY_MATCH_CUTOFF > 1.0:
-    log_warning(f"[Router] Invalid FUZZY_MATCH_CUTOFF value: {FUZZY_MATCH_CUTOFF}. Using default 0.7.")
+    logger.warning(f"[Router] Invalid FUZZY_MATCH_CUTOFF value: {FUZZY_MATCH_CUTOFF}. Using default 0.7.")
     FUZZY_MATCH_CUTOFF = 0.7
 
 def get_handler(state_abbreviation, county_name=None):
@@ -166,102 +166,172 @@ def get_handler(state_abbreviation, county_name=None):
     Accepts state abbreviations and maps them to full folder names where needed.
     """
     if not state_abbreviation:
-        log_warning("[Router] Missing state_abbreviation — skipping handler resolution.")
+        logger.warning("[Router] Missing state_abbreviation — skipping handler resolution.")
         return None
 
     normalized_state = state_abbreviation.strip().lower().replace(" ", "_")
     # Check if the state is a known abbreviation
     if normalized_state in STATE_MODULE_MAP:
-        log_info(f"[Router] State '{state_abbreviation}' is a known abbreviation.")
-        return STATE_MODULE_MAP[normalized_state]
-    # Check if the state is a known full name
-    if normalized_state in STATE_MODULE_MAP.values():
-        log_info(f"[Router] State '{state_abbreviation}' is a known full name.")
-        return normalized_state
-    # Check if the state is a known full name with spaces
-    if normalized_state in [name.replace("_", " ") for name in STATE_MODULE_MAP.values()]:
-        log_info(f"[Router] State '{state_abbreviation}' is a known full name with spaces.")
-        return normalized_state
-    # Check if the state is a known full name with dashes
-    if normalized_state in [name.replace("-", "_") for name in STATE_MODULE_MAP.values()]:
-        log_info(f"[Router] State '{state_abbreviation}' is a known full name with dashes.")
-        return normalized_state
-    # Check if the state is a known full name with underscores
-    if normalized_state in [name.replace("_", "-") for name in STATE_MODULE_MAP.values()]:
-        log_info(f"[Router] State '{state_abbreviation}' is a known full name with underscores.")
-        return normalized_state
-    # Check if the state is a known full name with periods
-    if normalized_state in [name.replace(".", "_") for name in STATE_MODULE_MAP.values()]:
-        log_info(f"[Router] State '{state_abbreviation}' is a known full name with periods.")
-        return normalized_state 
-    # Check if the state is a known full name with spaces and dashes
-    if normalized_state in [name.replace(" ", "-") for name in STATE_MODULE_MAP.values()]:
-        log_info(f"[Router] State '{state_abbreviation}' is a known full name with spaces and dashes.")
-        return normalized_state
-    # Check if the state is a known full name with spaces and underscores
-    if normalized_state in [name.replace(" ", "_") for name in STATE_MODULE_MAP.values()]:
-        log_info(f"[Router] State '{state_abbreviation}' is a known full name with spaces and underscores.")
-        return normalized_state
+        logger.info(f"[Router] State '{state_abbreviation}' is a known abbreviation.")
+        state_key = STATE_MODULE_MAP[normalized_state]
+        module_path = f"handlers.states.{state_key}"
 
-    # Fuzzy match to closest known state abbreviation if needed
-    if normalized_state not in STATE_MODULE_MAP:
-        close = get_close_matches(normalized_state, STATE_MODULE_MAP.keys(), n=1, cutoff=FUZZY_MATCH_CUTOFF)
-        if close:
-            log_info(f"[Router] Fuzzy matched state '{state_abbreviation}' → '{close[0]}'")
-            normalized_state = close[0]
+        # --- COUNTY HANDLER PRIORITY ---
+        if county_name:
+            normalized_county = county_name.strip().lower().replace(" ", "_")
+            composite_path = f"{module_path}.county.{normalized_county}"
+            logger.debug(f"[DEBUG] Attempting county-level handler: {composite_path}")
+            module = import_handler(composite_path)
+            if module:
+                logger.info(f"[INFO] [State Router] Routed to handler for {state_key}_{normalized_county}")
+                return module
+
+        # --- STATE HANDLER FALLBACK ---
+        module = import_handler(module_path)
+        if module:
+            return module
         else:
-            log_warning(f"[Router] No close match found for state '{state_abbreviation}'")
+            logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
             return None
-    state_key = STATE_MODULE_MAP.get(normalized_state, normalized_state)
-    module_path = f"handlers.states.{state_key}"
-    log_debug(f"[DEBUG] Module path resolved to: {module_path}")
-    # Check if the module exists
-    try:
-        importlib.import_module(module_path)
-    except ModuleNotFoundError:
-        log_warning(f"[Router] Module '{module_path}' not found.")
-        return None
-
-    # First check if a top-level state handler has a parse() function
-    try:
-        state_module = import_handler(module_path)
-        if hasattr(state_module, "parse"):
-            if getattr(state_module, "county_mode", True) is False:
-                log_info(f"[Router] county_mode = False on {module_path}. Using flat state handler.")
-            log_info(f"[Router] Using top-level parse() from {module_path} — skipping county lookup.")
-            return state_module
-    except Exception as e:
-        log_debug(f"[Router] State-level parse() check failed: {e}")
-
     if county_name:
         normalized_county = county_name.strip().lower().replace(" ", "_")
         composite_path = f"{module_path}.county.{normalized_county}"
-        log_debug(f"[DEBUG] Attempting county-level handler: {composite_path}")
+        logger.debug(f"[DEBUG] Attempting county-level handler: {composite_path}")
 
         # Optional: validate known counties in the state package
         try:
             county_pkg = importlib.import_module(f"{module_path}.county")
             valid_counties = getattr(county_pkg, "__all__", dir(county_pkg))
             if normalized_county not in valid_counties and normalized_county not in composite_path:
-                log_warning(f"[Router] County '{normalized_county}' not found in declared modules for {state_key}")
+                logger.warning(f"[Router] County '{normalized_county}' not found in declared modules for {state_key}")
         except ModuleNotFoundError:
-            log_debug(f"[Router] No .county package found under {module_path}")
+            logger.debug(f"[Router] No .county package found under {module_path}")
         except Exception as inner:
-            log_debug(f"[Router] County validation error: {inner}")
+            logger.debug(f"[Router] County validation error: {inner}")
 
         module = import_handler(composite_path)
         if module:
-            log_info(f"[INFO] [State Router] Routed to handler for {state_key}_{normalized_county}")
+            logger.info(f"[INFO] [State Router] Routed to handler for {state_key}_{normalized_county}")
             return module
+    # First check if a top-level state handler has a parse() function
+    try:
+        state_module = import_handler(module_path)
+        if hasattr(state_module, "parse"):
+            if getattr(state_module, "county_mode", True) is False:
+                logger.info(f"[Router] county_mode = False on {module_path}. Using flat state handler.")
+            logger.info(f"[Router] Using top-level parse() from {module_path} — skipping county lookup.")
+            return state_module
+    except Exception as e:
+        logger.debug(f"[Router] State-level parse() check failed: {e}")
 
-    # Fallback to state-only handler
-    module = import_handler(module_path)
-    if module:
-        log_info(f"[INFO] [State Router] Routed to fallback state-level handler for '{state_key}'")
-        return module
+    # Check if the state is a known full name
+    if normalized_state in STATE_MODULE_MAP.values():
+        logger.info(f"[Router] State '{state_abbreviation}' is a known full name.")
+        state_key = STATE_MODULE_MAP[normalized_state]
+        module_path = f"handlers.states.{state_key}"
+        module = import_handler(module_path)
+        if module:
+            return module
+        else:
+            logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
+            return None
+    # Check if the state is a known full name with spaces
+    if normalized_state in [name.replace("_", " ") for name in STATE_MODULE_MAP.values()]:
+        logger.info(f"[Router] State '{state_abbreviation}' is a known full name with spaces.")
+        state_key = STATE_MODULE_MAP[normalized_state]
+        module_path = f"handlers.states.{state_key}"
+        module = import_handler(module_path)
+        if module:
+            return module
+        else:
+            logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
+            return None
+    # Check if the state is a known full name with dashes
+    if normalized_state in [name.replace("-", "_") for name in STATE_MODULE_MAP.values()]:
+        logger.info(f"[Router] State '{state_abbreviation}' is a known full name with dashes.")
+        state_key = STATE_MODULE_MAP[normalized_state]
+        module_path = f"handlers.states.{state_key}"
+        module = import_handler(module_path)
+        if module:
+            return module
+        else:
+            logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
+            return None
 
-    log_warning(f"[WARN] [State Router] No handler found for state '{state_key}' or county '{county_name}'")
-    return None
+    # Check if the state is a known full name with underscores
+    if normalized_state in [name.replace("_", "-") for name in STATE_MODULE_MAP.values()]:
+        logger.info(f"[Router] State '{state_abbreviation}' is a known full name with underscores.")
+        state_key = STATE_MODULE_MAP[normalized_state]
+        module_path = f"handlers.states.{state_key}"
+        module = import_handler(module_path)
+        if module:
+            return module
+        else:
+            logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
+            return None
+
+    # Check if the state is a known full name with periods
+    if normalized_state in [name.replace(".", "_") for name in STATE_MODULE_MAP.values()]:
+        logger.info(f"[Router] State '{state_abbreviation}' is a known full name with periods.")
+        state_key = STATE_MODULE_MAP[normalized_state]
+        module_path = f"handlers.states.{state_key}"
+        module = import_handler(module_path)
+        if module:
+            return module
+        else:
+            logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
+            return None
+ 
+    # Check if the state is a known full name with spaces and dashes
+    if normalized_state in [name.replace(" ", "-") for name in STATE_MODULE_MAP.values()]:
+        logger.info(f"[Router] State '{state_abbreviation}' is a known full name with spaces and dashes.")
+        state_key = STATE_MODULE_MAP[normalized_state]
+        module_path = f"handlers.states.{state_key}"
+        module = import_handler(module_path)
+        if module:
+            return module
+        else:
+            logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
+            return None
+
+    # Check if the state is a known full name with spaces and underscores
+    if normalized_state in [name.replace(" ", "_") for name in STATE_MODULE_MAP.values()]:
+        logger.info(f"[Router] State '{state_abbreviation}' is a known full name with spaces and underscores.")
+        state_key = STATE_MODULE_MAP[normalized_state]
+        module_path = f"handlers.states.{state_key}"
+        module = import_handler(module_path)
+        if module:
+            return module
+        else:
+            logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
+            return None
+
+    # Fuzzy match to closest known state abbreviation if needed
+    if normalized_state not in STATE_MODULE_MAP:
+        logger.info(f"[Router] State '{state_abbreviation}' Fuzzy match to closest known state abbreviation.")
+        state_key = STATE_MODULE_MAP[normalized_state]
+        module_path = f"handlers.states.{state_key}"
+        module = import_handler(module_path)
+        close = get_close_matches(normalized_state, STATE_MODULE_MAP.keys(), n=1, cutoff=FUZZY_MATCH_CUTOFF)
+        if close:
+            logger.info(f"[Router] Fuzzy matched state '{state_abbreviation}' → '{close[0]}'")
+            normalized_state = close[0]
+        if module:
+            return module
+        else:
+            logger.warning(f"[Router] No close match found for state '{state_abbreviation}'")
+            return None
+    state_key = STATE_MODULE_MAP.get(normalized_state, normalized_state)
+    module_path = f"handlers.states.{state_key}"
+    logger.debug(f"[DEBUG] Module path resolved to: {module_path}")
+    # Check if the module exists
+    try:
+        importlib.import_module(module_path)
+    except ModuleNotFoundError:
+        logger.warning(f"[Router] Module '{module_path}' not found.")
+        return None
+
+
 
 def get_handler_from_context(context):
     """
@@ -279,7 +349,7 @@ def get_handler_from_context(context):
     state = context.get("state")
     county = context.get("county")
     if not state and not county:
-        log_warning("[Router] No state or county provided in context.")
+        logger.warning("[Router] No state or county provided in context.")
         return None
 
     if not state:
@@ -289,22 +359,22 @@ def get_handler_from_context(context):
             if token in STATE_MODULE_MAP:
                 state = token
                 context["state"] = token
-                log_info(f"[Router] Inferred state '{state}' from filename: {filename}")
+                logger.info(f"[Router] Inferred state '{state}' from filename: {filename}")
                 break
-        log_warning("[Router] No state provided in context.")
+        logger.warning("[Router] No state provided in context.")
         return None
 
     handler = get_handler(state_abbreviation=state, county_name=county)
     if handler:
-        log_info(f"[Router] Handler resolved via get_handler for state '{state}' and county '{county}'")
+        logger.info(f"[Router] Handler resolved via get_handler for state '{state}' and county '{county}'")
         return handler
 
     # Fallback if fuzzy match + module lookup failed
     url_text = context.get("url", "") + " " + context.get("raw_text", "")
     fallback = resolve_state_handler(url_text)
     if fallback:
-        log_info("[Router] Fallback to resolve_state_handler succeeded.")
+        logger.info("[Router] Fallback to resolve_state_handler succeeded.")
     else:
-        log_warning("[Router] No handler could be resolved even via fallback.")
+        logger.warning("[Router] No handler could be resolved even via fallback.")
     return fallback
 # End of state_router.py

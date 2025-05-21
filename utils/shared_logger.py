@@ -16,13 +16,23 @@ level_mapping = {
     "CRITICAL": logging.CRITICAL
 }
 
+
 logging.basicConfig(
     level=level_mapping.get(LOG_LEVEL, logging.INFO),
     format='[%(levelname)s] %(message)s',
     handlers=[RichHandler()]
 )
 
+
 logger = logging.getLogger("smart_elections")
+# Set the logger to use the RichHandler for better formatting
+logger.setLevel(level_mapping.get(LOG_LEVEL, logging.INFO))
+# Set up a custom handler to use Rich for logging
+# Add a RichHandler to the logger
+# logger.addHandler(RichHandler())
+# Set the logger to use the RichHandler for better formatting
+# logger.setLevel(level_mapping.get(LOG_LEVEL, logging.INFO))
+
 
 # Shared logging functions
 
@@ -40,6 +50,8 @@ def log_error(msg):
 
 def log_critical(msg):
     logger.critical(msg)
+    
+    
 
 
 

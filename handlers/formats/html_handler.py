@@ -8,7 +8,7 @@
 from playwright.sync_api import Page
 from utils.shared_logic import normalize_text
 from state_router import get_handler as get_state_handler, resolve_state_handler
-from utils.shared_logger import log_info, log_debug, log_warning, log_error
+from utils.shared_logger import logger
 from rich import print as rprint
 from typing import Optional
 from utils.html_scanner import get_detected_races_from_context
@@ -18,15 +18,15 @@ import re
 # It handles race prompting, HTML table fallback extraction, and potential re-routing.
 
 def parse(page: Page, html_context: Optional[dict] = None):
-    log_info("[HTML Handler] Executing fallback HTML handler...")
+    logger.info("[HTML Handler] Executing fallback HTML handler...")
 
     # Early exit if format_router already completed the parse
     if html_context and html_context.get("format_handler_complete"):
-        log_info("[HTML Handler] Format handler previously completed parsing. Skipping HTML handler.")
+        logger.info("[HTML Handler] Format handler previously completed parsing. Skipping HTML handler.")
         return None, None, None, {"skipped": True}
     # Early exit if JSON source detected
     if html_context and html_context.get("json_source"):
-        log_info("[HTML Handler] JSON source detected. Skipping HTML handler.")
+        logger.info("[HTML Handler] JSON source detected. Skipping HTML handler.")
         return None, None, None, {"skipped": True}
     # STEP 1 — Extract or prompt contest race title centrally here
     if html_context is None:
@@ -56,31 +56,71 @@ def parse(page: Page, html_context: Optional[dict] = None):
 
         if len(all_types) > 1:
             formatted_options = ", ".join(all_types)
+            rprint(f"[bold #eb4f43]Available election types:[/bold #eb4f43] {formatted_options}")
             filter_type = input(f"[PROMPT] Filter to a specific election type? [Options: {formatted_options}] Leave blank for all: ").strip()
             if filter_type:
                 html_context["filter_race_type"] = [ftype.strip() for ftype in filter_type.split(",") if ftype.strip()]
 
         raw_detected = get_detected_races_from_context(html_context)
+        if not raw_detected:
+            rprint("[yellow]No contests detected. Skipping HTML parsing.[/yellow]")
+            return None, None, None, {"skipped": True}
+        rprint(f"[bold #eb4f43]Detected contests: {len(raw_detected)}[/bold #eb4f43]")
+        rprint(f"[dim]Detected contests: {len(raw_detected)}[/dim]")
         state_filter_phrases = []
+        # Initialize state_filter_phrases and state_regex_filters
+        # to store noisy labels and patterns
         state_regex_filters = []
 
         resolved_handler = resolve_state_handler(html_context.get("url", html_context.get("source", "")))
+        logger.debug(f"[DEBUG] resolved_handler: {resolved_handler}")
         if resolved_handler:
+            # Check if the handler has NOISY_LABELS or NOISY_LABEL_PATTERNS attributes
+            # and add them to the state_filter_phrases and state_regex_filters lists
             state_filter_phrases += getattr(resolved_handler, "NOISY_LABELS", [])
             state_regex_filters += getattr(resolved_handler, "NOISY_LABEL_PATTERNS", [])
-
+            logger.debug(f"[DEBUG] resolved_handler NOISY_LABELS: {getattr(resolved_handler, 'NOISY_LABELS', None)}")
+            logger.debug(f"[DEBUG] resolved_handler NOISY_LABEL_PATTERNS: {getattr(resolved_handler, 'NOISY_LABEL_PATTERNS', None)}")
+        logger.debug(f"[DEBUG] html_context['state']: {html_context.get('state')}")
+        logger.debug(f"[DEBUG] html_context['county']: {html_context.get('county')}")    
         if html_context.get("state"):
+            # If state is already set, use it to get the handler
+            # This is useful for state-specific filtering
             handler = get_state_handler(state_abbreviation=html_context["state"], county_name=html_context.get("county"))
+            # Check if the handler has NOISY_LABELS or NOISY_LABEL_PATTERNS attributes
+            # and add them to the state_filter_phrases and state_regex_filters lists
+            # This is useful for state-specific filtering
+            # of noisy labels or patterns
+            logger.debug(f"[DEBUG] handler: {handler}")
             if handler:
                 state_filter_phrases += getattr(handler, "NOISY_LABELS", [])
                 state_regex_filters += getattr(handler, "NOISY_LABEL_PATTERNS", [])
-
+                logger.debug(f"[DEBUG] handler NOISY_LABELS: {getattr(handler, 'NOISY_LABELS', None)}")
+                logger.debug(f"[DEBUG] handler NOISY_LABEL_PATTERNS: {getattr(handler, 'NOISY_LABEL_PATTERNS', None)}")
+        # Add any additional state-specific filters from the context
+        logger.debug(f"[DEBUG] html_context['state']: {html_context.get('state')}")
+        logger.debug(f"[DEBUG] html_context['county']: {html_context.get('county')}")
+        if html_context.get("state") and html_context.get("county"):
+            handler = get_state_handler(state_abbreviation=html_context["state"], county_name=html_context["county"])
+            logger.debug(f"[DEBUG] 2nd handler: {handler}")
+            if handler:
+                state_filter_phrases += getattr(handler, "NOISY_LABELS", [])
+                state_regex_filters += getattr(handler, "NOISY_LABEL_PATTERNS", [])
+                logger.debug(f"[DEBUG] 2nd handler NOISY_LABELS: {getattr(handler, 'NOISY_LABELS', None)}")
+                logger.debug(f"[DEBUG] 2nd handler NOISY_LABEL_PATTERNS: {getattr(handler, 'NOISY_LABEL_PATTERNS', None)}")
         state_filter_phrases = [phrase.lower() for phrase in state_filter_phrases]
+        state_regex_filters = [pattern.lower() for pattern in state_regex_filters]
+        # Remove duplicates
+        state_filter_phrases = list(set(state_filter_phrases))
+        state_regex_filters = list(set(state_regex_filters))
+        # Remove empty strings
+        state_filter_phrases = [phrase for phrase in state_filter_phrases if phrase]
+        state_regex_filters = [pattern for pattern in state_regex_filters if pattern]
 
         # precompile regex patterns for efficiency
-        compiled_patterns = [re.compile(pat, re.IGNORECASE) for pat in state_regex_filters]
-
+        compiled_patterns = [re.compile(pat, re.IGNORECASE) for pat in state_regex_filters] 
         def is_noisy_race(race_clean):
+            race_clean = re.sub(r'[\s:]+', ' ', normalize_text(race_clean).lower()).strip()
             for phrase in state_filter_phrases:
                 if phrase in race_clean:
                     return True
@@ -89,10 +129,11 @@ def parse(page: Page, html_context: Optional[dict] = None):
                     return True
             return False
 
-        log_debug(f"[DEBUG] NOISY_LABELS active: {state_filter_phrases}")
-        log_debug(f"[DEBUG] NOISY_LABEL_PATTERNS active: {state_regex_filters}")
-        log_info(f"[INFO] Filtering {len(raw_detected)} races using state noise filters")
-
+        logger.debug(f"[DEBUG] NOISY_LABELS active: {state_filter_phrases}")
+        logger.debug(f"[DEBUG] NOISY_LABEL_PATTERNS active: {state_regex_filters}")
+        logger.info(f"[INFO] Filtering {len(raw_detected)} races using state noise filters")
+        logger.debug(f"[DEBUG] resolved_handler: {resolved_handler}")
+        logger.debug(f"[DEBUG] handler (state/county): {handler}")
         filter_types = html_context.get("filter_race_type", [])
         if isinstance(filter_types, str):
             filter_types = [filter_types]
@@ -106,7 +147,9 @@ def parse(page: Page, html_context: Optional[dict] = None):
             if not tup or len(tup) < 3:
                 continue
             race_clean = re.sub(r'[\s:]+', ' ', normalize_text(tup[2]).lower()).strip()
-            
+            if is_noisy_race(race_clean):
+                logger.debug(f"[SKIP] Filtered noisy race: {race_clean}")
+                continue
 
             # Skip year/type titles like "2024 General Election" that match year + type
             context_year = html_context.get("filter_race_year") or html_context.get("year")
@@ -127,13 +170,13 @@ def parse(page: Page, html_context: Optional[dict] = None):
                 context_type = re.sub(r'[\s:]+', ' ', normalize_text(context_type).lower()).strip()
             if context_year and context_type:
                 if race_clean == f"{context_year} {context_type}".lower():
-                    log_debug(f"[SKIP] Skipping self-referential header: {race_clean}")
+                    logger.debug(f"[SKIP] Skipping self-referential header: {race_clean}")
                     continue    
 
             if is_noisy_race(race_clean):
                 
-                if "View results" in race_clean:
-                    log_warning(f"[WARN] Possibly unfiltered navigation phrase: {race_clean}")
+                if any(phrase in race_clean for phrase in state_filter_phrases) or any(pattern.search(race_clean) for pattern in compiled_patterns):
+                    logger.warning(f"[WARN] Possibly unfiltered navigation phrase: {race_clean}")
                     
                 continue
             
@@ -304,7 +347,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
 
     # STEP 2 — Infer state dynamically if not present
     if not html_context or 'state' not in html_context or html_context['state'] == 'Unknown':
-        log_info("[INFO] Inferring state from URL or page text...")
+        logger.info("[INFO] Inferring state from URL or page text...")
         if html_context is None:
             html_context = {}
         handler_module = resolve_state_handler(page.url)
@@ -319,7 +362,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
             # This is a placeholder for the actual logic
             # that would be used to extract the state from the text
             # For now, we'll just log the raw text for debugging
-            log_debug(f"[DEBUG] Raw text for state inference: {html_context['raw_text']}")
+            logger.debug(f"[DEBUG] Raw text for state inference: {html_context['raw_text']}")
             # Attempt to resolve state from raw text
             combined = page.url + " " + html_context["raw_text"]
             handler_module = resolve_state_handler(combined)
@@ -328,37 +371,37 @@ def parse(page: Page, html_context: Optional[dict] = None):
             inferred_state = handler_module.get_state_from_text(html_context["raw_text"])
             if inferred_state:
                 html_context['state'] = inferred_state
-                log_info(f"[INFO] Inferred state via get_state_from_text: {inferred_state}")
+                logger.info(f"[INFO] Inferred state via get_state_from_text: {inferred_state}")
         elif handler_module and hasattr(handler_module, "get_state_from_url"):
             # Use the handler's method to extract state from URL
             inferred_state = handler_module.get_state_from_url(page.url)
             if inferred_state:
                 html_context['state'] = inferred_state
-                log_info(f"[INFO] Inferred state via get_state_from_url: {inferred_state}")
+                logger.info(f"[INFO] Inferred state via get_state_from_url: {inferred_state}")
         elif handler_module and hasattr(handler_module, "get_state_from_page"):
             # Use the handler's method to extract state from page
             inferred_state = handler_module.get_state_from_page(page)
             if inferred_state:
                 html_context['state'] = inferred_state
-                log_info(f"[INFO] Inferred state via get_state_from_page: {inferred_state}")
+                logger.info(f"[INFO] Inferred state via get_state_from_page: {inferred_state}")
         elif handler_module and hasattr(handler_module, "get_state_from_context"):
             # Use the handler's method to extract state from context
             inferred_state = handler_module.get_state_from_context(html_context)
             if inferred_state:
                 html_context['state'] = inferred_state
-                log_info(f"[INFO] Inferred state via get_state_from_context: {inferred_state}")
+                logger.info(f"[INFO] Inferred state via get_state_from_context: {inferred_state}")
         elif handler_module and hasattr(handler_module, "get_state_from_text"):
             # Use the handler's method to extract state from text
             inferred_state = handler_module.get_state_from_text(html_context["raw_text"])
             if inferred_state:
                 html_context['state'] = inferred_state
-                log_info(f"[INFO] Inferred state via get_state_from_text: {inferred_state}")
+                logger.info(f"[INFO] Inferred state via get_state_from_text: {inferred_state}")
         elif handler_module and hasattr(handler_module, "get_state_from_url"):
             # Use the handler's method to extract state from URL
             inferred_state = handler_module.get_state_from_url(page.url)
             if inferred_state:
                 html_context['state'] = inferred_state
-                log_info(f"[INFO] Inferred state via get_state_from_url: {inferred_state}")
+                logger.info(f"[INFO] Inferred state via get_state_from_url: {inferred_state}")
         if handler_module:
             # Extract state abbreviation from the module name
             # e.g., "handlers.states.new_york" -> "NY"
@@ -367,25 +410,25 @@ def parse(page: Page, html_context: Optional[dict] = None):
                 # Check if the inferred state is a valid abbreviation
                 if len(inferred_state) == 2 and inferred_state.isalpha():
                     html_context['state'] = inferred_state
-                    log_info(f"[INFO] Inferred state via module name: {inferred_state}")
+                    logger.info(f"[INFO] Inferred state via module name: {inferred_state}")
                 else:
-                    log_warning(f"[WARN] Inferred state from module name is not a valid abbreviation: {inferred_state}")
+                    logger.warning(f"[WARN] Inferred state from module name is not a valid abbreviation: {inferred_state}")
         elif "state" in html_context:
             # Attempt to resolve state from the page text
             # This is a fallback if the URL doesn't provide enough context
             # Note: This is a basic heuristic and may not be accurate
             html_context['state'] = inferred_state
-            log_info(f"[INFO] Inferred state via resolve_state_handler: {inferred_state}")
+            logger.info(f"[INFO] Inferred state via resolve_state_handler: {inferred_state}")
         else:
-            log_warning("[WARN] Could not infer state from URL or page text.")
-    log_info(f"[INFO] Inferred state: {html_context.get('state', 'Unknown')}")
+            logger.warning("[WARN] Could not infer state from URL or page text.")
+    logger.info(f"[INFO] Inferred state: {html_context.get('state', 'Unknown')}")
 
     # STEP 3 — Redirect to state/county-specific handler if matched
     # Check if the state handler is already resolved
     if html_context.get("state") and html_context.get("county"):
         # If state and county are already set, use them directly
-        log_debug(f"[DEBUG] State and county already set in context: {html_context['state']}, {html_context['county']}")
-    log_debug(f"[DEBUG] Attempting to route using get_handler(state='{html_context.get('state')}', county='{html_context.get('county')}')")
+        logger.debug(f"[DEBUG] State and county already set in context: {html_context['state']}, {html_context['county']}")
+    logger.debug(f"[DEBUG] Attempting to route using get_handler(state='{html_context.get('state')}', county='{html_context.get('county')}')")
     state_handler = get_state_handler(
         state_abbreviation=html_context.get("state"),
         county_name=html_context.get("county")
@@ -393,15 +436,15 @@ def parse(page: Page, html_context: Optional[dict] = None):
     if state_handler:
         # Check if the handler has a parse method
         if hasattr(state_handler, "parse"):
-            log_info(f"[HTML Handler] Redirecting to state handler: {state_handler.__name__}...")
+            logger.info(f"[HTML Handler] Redirecting to state handler: {state_handler.__name__}...")
             return state_handler.parse(page, html_context)
         else:
-            log_warning(f"[WARN] State handler {state_handler.__name__} does not have a parse method.")
+            logger.warning(f"[WARN] State handler {state_handler.__name__} does not have a parse method.")
     elif html_context.get("state") and not html_context.get("county"):
         # If only the state is set, use the state handler directly
-        log_info(f"[HTML Handler] Redirecting to state handler: {html_context['state']}...")
+        logger.info(f"[HTML Handler] Redirecting to state handler: {html_context['state']}...")
         state_handler = get_state_handler(state_abbreviation=html_context["state"])
-        log_info(f"[HTML Handler] Redirecting to handler for {html_context.get('state')} / {html_context.get('county') or 'state-default'}...")
+        logger.info(f"[HTML Handler] Redirecting to handler for {html_context.get('state')} / {html_context.get('county') or 'state-default'}...")
         return state_handler.parse(page, html_context)
 
     # STEP 4 — Final fallback: Basic HTML table extraction if no route matched
@@ -435,29 +478,29 @@ def parse(page: Page, html_context: Optional[dict] = None):
             rows.append(row_data)
         if not rows:
             raise RuntimeError("No rows found in the table.")
-        log_info(f"[HTML Handler] Extracted {len(rows)} rows from the table.")
+        logger.info(f"[HTML Handler] Extracted {len(rows)} rows from the table.")
     except RuntimeError as e:
-        log_error(f"[ERROR] Failed to extract table from page: {e}")
+        logger.error(f"[ERROR] Failed to extract table from page: {e}")
         return None, None, None, {"error": str(e)}
     except AttributeError as e:
-        log_error(f"[ERROR] Failed to extract table from page: {e}")
+        logger.error(f"[ERROR] Failed to extract table from page: {e}")
         return None, None, None, {"error": str(e)}
     except TypeError as e:
-        log_error(f"[ERROR] Failed to extract table from page: {e}")
+        logger.error(f"[ERROR] Failed to extract table from page: {e}")
         return None, None, None, {"error": str(e)}
     except ValueError as e:
-        log_error(f"[ERROR] Failed to extract table from page: {e}")
+        logger.error(f"[ERROR] Failed to extract table from page: {e}")
         return None, None, None, {"error": str(e)}
     except KeyError as e:
-        log_error(f"[ERROR] Failed to extract table from page: {e}")
+        logger.error(f"[ERROR] Failed to extract table from page: {e}")
         return None, None, None, {"error": str(e)}
     except IndexError as e:
-        log_error(f"[ERROR] Failed to extract table from page: {e}")
+        logger.error(f"[ERROR] Failed to extract table from page: {e}")
         return None, None, None, {"error": str(e)}
     except Exception as e:
         # Catch-all for any other exceptions
         # This is a generic error handler for any unexpected errors
-        log_error(f"[ERROR] Failed to extract table from page: {e}")
+        logger.error(f"[ERROR] Failed to extract table from page: {e}")
         return None, None, None, {"error": str(e)}
 
     # STEP 5 — Output metadata for this HTML-based parse session
@@ -480,4 +523,5 @@ def parse(page: Page, html_context: Optional[dict] = None):
     }
 
     return race_title, headers, rows, metadata
+
 # End of file
