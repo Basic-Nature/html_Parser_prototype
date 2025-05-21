@@ -1,0 +1,26 @@
+# Core libraries
+playwright==1.52.0
+rich>=13.3.5
+tqdm>=4.66.1
+dotenv>=0.9.9
+
+# Optional CAPTCHA visual bypass
+seleniumbase==4.38.0
+
+# File handling
+pypdf2>=3.0.1
+pandas>=2.1.4
+lxml>=4.9.3
+beautifulsoup4>=4.12.3
+pytesseract>=0.3.13
+pdf2image>=1.17.0
+pdfplumber>=0.11.6
+fitz>=0.0.1.dev2
+# For JSON and structured parsing
+jsonlines>=4.0.0
+
+# For browser fingerprint masking (via Playwright)
+fake-useragent>=1.5.1
+
+# CLI-friendly argument parsing (if used in future)
+click>=8.1.7

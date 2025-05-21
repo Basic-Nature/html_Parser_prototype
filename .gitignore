@@ -1,0 +1,87 @@
+# .gitignore for Smart Elections Parser
+
+# ----------------------------
+# Python and Environment Files
+# ----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg-info/
+.env
+.env.*
+
+# ----------------------------
+# Logs and Debug Artifacts
+# ----------------------------
+*.log
+*.bak
+*.tmp
+*.swp
+nohup.out
+*.out
+
+# ----------------------------
+# System Files
+# ----------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ----------------------------
+# IDE and Editor Directories
+# ----------------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ----------------------------
+# Output and Generated Data
+# ----------------------------
+output/
+input/
+*.csv
+*.pdf
+*.json
+*.html
+urls.txt
+
+# ----------------------------
+# Browser Drivers and Cache
+# ----------------------------
+msedge_driver.log
+chromedriver.log
+selenium-screenshots/
+.playwright/
+
+# ----------------------------
+# Jupyter Notebooks (optional)
+# ----------------------------
+.ipynb_checkpoints/
+*.ipynb
+
+# ----------------------------
+# Miscellaneous
+# ----------------------------
+*.tar.gz
+*.zip
+*.7z
+*.bak
+
+# ----------------------------
+# Dev Enhancements and Overrides
+# ----------------------------
+# .env file stores sensitive and overrideable configs like:
+# - BROWSER=msedge or chrome
+# - HEADLESS=true or false
+# - CAPTCHA_DETECTION_ENABLED=true
+# - USER_AGENT_ROTATION=true
+# - OUTPUT_DIR=output
+# These are auto-loaded with `dotenv` and excluded from source control
+
+# ----------------------------
+# Configurable Output Routing Structure
+# ----------------------------
+# Example final output path: ${OUTPUT_DIR}/${STATE}/${COUNTY}/${RACE}/results.csv

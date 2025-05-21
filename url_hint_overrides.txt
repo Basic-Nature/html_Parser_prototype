@@ -1,0 +1,8 @@
+{
+  "results.arizona.vote": "handlers.states.arizona",
+  "rockland-county-ny": "handlers.states.new_york.county.rockland",
+  "electionreturns.pa.gov": "handlers.states.pennsylvania",
+  "clarityelections.com/GA/Fulton": "handlers.states.georgia.county.fulton",
+  "flelectionfiles.floridados.gov": "handlers.states.florida",
+  "elections.myflorida.com": "handlers.states.florida"
+}
