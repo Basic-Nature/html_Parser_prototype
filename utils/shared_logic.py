@@ -95,11 +95,14 @@ def parse_numeric(val):
 def click_vote_method_toggle(page, keywords=None):
     """
     Attempts to locate and click a toggle button for showing vote method breakdowns.
-    State/county handlers can pass a list of expected label keywords.
+    Supports common <button> elements as well as <p-togglebutton> with onlabel/offlabel.
     """
     if keywords is None:
         keywords = ["Vote Method", "Voting Details", "Show Breakdown", "Voting Method", "Ballot Method"]
 
+    toggled = False
+
+    # First: check standard button elements
     buttons = page.locator("button")
     for i in range(buttons.count()):
         btn = buttons.nth(i)
@@ -110,13 +113,32 @@ def click_vote_method_toggle(page, keywords=None):
                 btn.click()
                 page.wait_for_timeout(1000)
                 log_info(f"[TOGGLE] Button clicked: '{label}'")
-                return True
+                toggled = True
+                break
         except Exception as e:
             log_debug(f"[TOGGLE] Button check failed: {e}")
             continue
 
-    log_warning("[TOGGLE] No matching toggle button found.")
-    return False
+    # If not found, fallback to p-togglebutton detection
+    if not toggled:
+        toggles = page.query_selector_all("p-togglebutton")
+        for toggle in toggles:
+            try:
+                label = toggle.get_attribute("onlabel") or toggle.get_attribute("aria-label") or ""
+                if any(k.lower() in label.lower() for k in keywords):
+                    toggle.scroll_into_view_if_needed()
+                    toggle.click(force=True)
+                    page.wait_for_timeout(1000)
+                    log_info(f"[TOGGLE] Custom toggle clicked via onlabel: '{label}'")
+                    toggled = True
+                    break
+            except Exception as e:
+                log_debug(f"[TOGGLE] Fallback toggle failed: {e}")
+                continue
+
+    if not toggled:
+        log_warning("[TOGGLE] No matching toggle button found.")
+    return toggled
 
 def autoscroll_until_stable(page, max_stable_frames=5, step=3000, delay_ms=500):
     """
