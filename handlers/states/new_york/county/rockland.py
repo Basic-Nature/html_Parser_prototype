@@ -38,9 +38,9 @@ NOISY_LABELS = [
     "voting method",
 ]
 NOISY_LABEL_PATTERNS = [
-    r"view results? by.*district",
-    r"proposal number",
-    r"proposition",
+    r"view results? by election district\\s*[:\\n]?$",
+    r"summary by method\\s*[:\\n]?$",
+    r"download\\s*[:\\n]?$",
     r"^vote for \d+$"
 ]
 
@@ -60,7 +60,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
             rprint("[green][INFO] JSON parse successful. Bypassing HTML and returning results.[/green]")
         return result
     race_title = html_context.get("selected_race")
-    race_core = race_title.split("2024:")[-1].strip().lower() if race_title else ""
+    race_core = race_title.split("2024")[-1].strip().lower() if race_title else ""
     if "view results by election district" in race_core:
        rprint("[red]Selected entry is a navigation link, not a real contest. Skipping.[/red]")
        return None, None, None, {"skipped": True} 
@@ -84,7 +84,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
             section = link.locator("xpath=ancestor::p-panel[1]//h1")
             heading_text = section.inner_text().strip().lower() if section.is_visible() else ""
             link_text = (link.inner_text() or "").strip().lower()
-            if race_core and (race_core in heading_text or race_core in link_text):
+            if race_core and (race_core in heading_text or race_core in link_text or heading_text.startswith(race_core) or link_text.startswith(race_core)):
                 rprint(f"[cyan][INFO] Matched contest link for: {race_title}[/cyan]")
                 link.scroll_into_view_if_needed()
                 page.wait_for_timeout(500)
@@ -97,6 +97,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
             if VERBOSE:
                 rprint(f"[yellow][WARN] Skipped a link due to error: {e}[/yellow]")
 
+    rprint(f"[magenta][DEBUG] race_title: {race_title} | race_core: {race_core}[/magenta]")
     # Toggle Vote Method if available — AFTER confirming we're on the precinct detail page
     rprint("[cyan][INFO] Waiting for toggle to appear after contest view loads...[/cyan]")
     try:

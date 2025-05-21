@@ -77,12 +77,15 @@ def parse(page: Page, html_context: Optional[dict] = None):
 
         state_filter_phrases = [phrase.lower() for phrase in state_filter_phrases]
 
+        # precompile regex patterns for efficiency
+        compiled_patterns = [re.compile(pat, re.IGNORECASE) for pat in state_regex_filters]
+
         def is_noisy_race(race_clean):
             for phrase in state_filter_phrases:
                 if phrase in race_clean:
                     return True
-            for pattern in state_regex_filters:
-                if re.search(pattern, race_clean):
+            for pattern in compiled_patterns:
+                if pattern.search(race_clean):
                     return True
             return False
 
@@ -135,13 +138,13 @@ def parse(page: Page, html_context: Optional[dict] = None):
             rprint(f"[bold #87cefa]{year}[/bold #87cefa]")
             for etype in sorted(grouped[year]):
                 rprint(f"  [bold cyan]{etype}[/bold cyan]")
+                shown_this_year = 0
                 for race in grouped[year][etype]:
                     label = f"{year} • {etype} — {race}"
                     key = normalize_text(label).strip().lower()
                     if key in seen:
                         continue
                     seen.add(key)
-                    rprint(f"    [#eb4f43][{len(flat_list)}] {race}[/#eb4f43]")
                     flat_list.append(label)
                     rprint(f"    [#eb4f43][{len(flat_list)-1}] {race}[/#eb4f43]")
                     total_shown += 1
