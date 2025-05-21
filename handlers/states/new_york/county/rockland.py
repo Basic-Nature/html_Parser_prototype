@@ -91,7 +91,9 @@ def parse(page: Page, html_context: Optional[dict] = None):
 
     # Toggle Vote Method if available
     rprint("[cyan][INFO] Searching for vote method toggle...[/cyan]")
-    click_vote_method_toggle(page)
+    toggled = click_vote_method_toggle(page, keywords=["Vote Method", "Voting Method", "Ballot Method"])
+    if not toggled:
+        rprint("[yellow][WARN] Vote method toggle not found. Some columns may be missing.[/yellow]")
     toggled = click_vote_method_toggle(page, keywords=["Vote Method", "Voting Method", "Ballot Method"])
     if not toggled:
         rprint("[yellow][WARN] Vote method toggle not found. Some columns may be missing.[/yellow]")
