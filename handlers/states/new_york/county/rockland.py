@@ -10,16 +10,15 @@ from playwright.sync_api import Page
 from handlers.formats import html_handler as fallback_html_handler
 from handlers.formats import json_handler
 from handlers.formats.html_handler import extract_contest_panel, extract_precinct_tables
-from utils.html_scanner import get_detected_races_from_context
-from utils.output_utils import finalize_election_output
+from utils.html_scanner import detect_precinct_headers, get_detected_races_from_context
+from utils.output_utils import calculate_grand_totals, finalize_election_output
 from utils.shared_logger import logging
 from utils.shared_logic import (
     autoscroll_until_stable,
     click_toggles_with_url_check,
     build_precinct_reporting_lookup,
-    detect_precinct_headers,
     parse_candidate_vote_table,
-    calculate_grand_totals
+    
 )
 import os
 import re

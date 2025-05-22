@@ -15,7 +15,7 @@ load_dotenv()
 SUPPORTED_FORMATS = [ext if ext.startswith('.') else f'.{ext}' for ext in os.getenv("SUPPORTED_FORMATS", ".json, .csv, .pdf").split(",")]
 
 
-def detect_format_from_links(page, base_url=None) -> list[tuple[str, str]]:
+def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tuple[str, str]]:
     """
     Scans a webpage for file links matching supported extensions.
     Returns a flat list in discovery order: [("json", url1), ("csv", url2), ...]
@@ -40,6 +40,10 @@ def detect_format_from_links(page, base_url=None) -> list[tuple[str, str]]:
             flat_results.append((ext.strip("."), url))
     if not flat_results:
         log_warning("[WARN] No supported file formats found on the page.")
+    # Auto-confirm logic: return only the first found format if enabled
+    if auto_confirm and flat_results:
+        log_info(f"[INFO] Auto-confirm enabled. Automatically selecting: {flat_results[0]}")
+        return [flat_results[0]]
     return flat_results
 
 def route_format_handler(format_str: str) -> Optional[object]:

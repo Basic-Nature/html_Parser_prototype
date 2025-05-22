@@ -31,9 +31,9 @@ from playwright.sync_api import sync_playwright, Page
 # Local project utils
 from handlers.formats import html_handler
 from utils.browser_utils import launch_browser_with_stealth
+from utils.captcha_tools import handle_cloudflare_captcha
 from utils.download_utils import ensure_input_directory, ensure_output_directory
 from utils.format_router import detect_format_from_links, route_format_handler
-from utils.captcha_tools import handle_cloudflare_captcha
 from utils.html_scanner import scan_html_for_context
 from state_router import get_handler as get_state_handler
 from utils.shared_logger import rprint
@@ -231,7 +231,25 @@ def process_url(target_url):
             result = None
             if FORMAT_DETECTION_ENABLED:
                 # Automatically detect if downloadable formats like JSON/CSV/PDF are available
-                confirmed = detect_format_from_links(page, auto_confirm=True)
+                auto_confirm = os.getenv("FORMAT_AUTO_CONFIRM", "true").lower() == "true"
+                confirmed = detect_format_from_links(page, target_url, auto_confirm=auto_confirm)
+                
+                if not confirmed:
+                    logging.warning("[WARN] No downloadable formats detected.")
+                else:
+                    logging.info(f"[INFO] Detected formats: {confirmed}")
+                    # If multiple formats are available, prompt the user to select one
+                    format_options = [f"{fmt.upper()} ({local_file})" for fmt, local_file in confirmed]
+                    format_selection = input(f"[PROMPT] Select a format to parse (0-{len(format_options)-1}): ")
+                    try:
+                        selected_index = int(format_selection)
+                        if selected_index < 0 or selected_index >= len(format_options):
+                            raise IndexError
+                        fmt, local_file = confirmed[selected_index]
+                        logging.info(f"[INFO] User selected format: {fmt.upper()}")
+                    except (IndexError, ValueError):
+                        logging.warning("[WARN] Invalid selection. Skipping format parsing.")
+                        return
                 for fmt, local_file in confirmed:
                     format_handler = route_format_handler(fmt)
                     if format_handler and hasattr(format_handler, "parse"):
