@@ -18,28 +18,35 @@ import os
 import re
 # This fallback HTML handler is invoked when no state or county-specific handler is matched.
 # It handles race prompting, HTML table fallback extraction, and potential re-routing.
-def extract_contest_panel(page, contest_title):
+def extract_contest_panel(page, contest_title, panel_tags=None):
     """
-    Returns the Playwright element for the contest panel matching contest_title.
+    Returns a Playwright Locator for the contest panel matching contest_title.
+    Tries all tags in panel_tags (default: CONTEST_PANEL_TAGS).
     """
     header_selector = ", ".join(CONTEST_HEADER_SELECTORS)
-    for tag in CONTEST_PANEL_TAGS:
-        panels = page.query_selector_all(tag)
-        for panel in panels:
-            header = panel.query_selector(header_selector)
-            if header and contest_title.lower() in header.inner_text().strip().lower():
-                return panel
+    panel_tags = panel_tags or CONTEST_PANEL_TAGS
+    for tag in panel_tags:
+        # Use locator, not query_selector_all, for robust downstream use
+        panels = page.locator(tag)
+        for i in range(panels.count()):
+            panel = panels.nth(i)
+            header = panel.locator(header_selector)
+            if header.count() > 0:
+                header_text = header.first.inner_text().strip().lower()
+                if contest_title.lower() in header_text:
+                    return panel
     return None
-
 def extract_precinct_tables(panel):
     """
     Returns a list of (precinct_name, table_element) tuples from a contest panel.
+    Accepts a Playwright Locator as panel.
     """
     selector = ', '.join(PRECINCT_ELEMENT_TAGS)
-    elements = panel.query_selector_all(selector)
+    elements = panel.locator(selector)
     precincts = []
     current_precinct = None
-    for el in elements:
+    for i in range(elements.count()):
+        el = elements.nth(i)
         tag = el.evaluate("e => e.tagName").strip().upper()
         if tag in [t.upper() for t in PRECINCT_ELEMENT_TAGS if t != "table"]:
             label = el.inner_text().strip()

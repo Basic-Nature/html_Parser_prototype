@@ -100,40 +100,85 @@ def parse(page: Page, html_context: Optional[dict] = None):
         return None, None, None, {"skipped": True}
         
     # --- Robust contest-specific toggle, then dynamic vote method toggle ---
+    toggle_texts = [
+        "View results by election district",
+        "View Results",
+        "Results by District"
+    ]
+    contest_toggle_clicked = False
+    for toggle_text in toggle_texts:
+        contest_toggle_clicked = click_contest_toggle_dynamic_heading(
+            page,
+            link_text=toggle_text,
+            contest_title=contest_title,
+            panel_selector="p-panel",
+            extra_heading_tags=["p-span", "span"],
+            logger=logger,
+            verbose=VERBOSE
+        )
+        if contest_toggle_clicked:
+            rprint("[cyan][INFO] Contest-specific toggle clicked.[/cyan]")
+            break
 
-    # 1. Click "View results by election district" ONLY for the selected contest
-    contest_toggle_clicked = click_contest_toggle_dynamic_heading(
-        page,
-        link_text="View results by election district",
-        contest_title=contest_title,
-        panel_selector="p-panel",  # adjust if your contest panels use a different tag
-        extra_heading_tags=["p-span", "span"],  # add custom heading tags if needed
-        logger=logger,
-        verbose=VERBOSE
-    )
-    if contest_toggle_clicked:
-        rprint("[cyan][INFO] Contest-specific toggle clicked.[/cyan]")
+    if not contest_toggle_clicked:
+        # Fallback: try to click any button with the text in the contest panel
+        for toggle_text in toggle_texts:
+            clickable = contest_panel.locator("button, a, [role='button'], div[tabindex], span[tabindex]")
+            for i in range(clickable.count()):
+                el = clickable.nth(i)
+                try:
+                    text = el.inner_text().strip()
+                    if toggle_text.lower() in text.lower():
+                        el.click()
+                        rprint(f"[cyan][INFO] Fallback: Clicked contest toggle '{text}'.[/cyan]")
+                        contest_toggle_clicked = True
+                        break
+                except Exception:
+                    continue
+            if contest_toggle_clicked:
+                break
+            
     else:
         rprint("[yellow][WARN] Contest-specific toggle not found for this contest.[/yellow]")
+        # Diagnostic: List all clickable elements in the contest panel
+        if contest_panel and hasattr(contest_panel, "locator"):
+            clickable = contest_panel.locator("button, a, [role='button'], div[tabindex], span[tabindex]")
+            rprint("[yellow][DEBUG] Clickable elements in contest panel:")
+            for i in range(clickable.count()):
+                try:
+                    text = clickable.nth(i).inner_text().strip()
+                    rprint(f"  - {text}")
+                except Exception:
+                    continue
 
-    # 2. Click "Vote Method" toggle (if present) in the contest panel
+        # 2. Click "Vote Method" toggle (if present) in the contest panel
     vote_method_clicked = click_vote_method_toggle(
         page,
         keywords=["Vote Method", "Voting Method", "Ballot Method"],
         logger=logger,
         verbose=VERBOSE,
-        container=contest_panel  # restrict search to the contest panel
+        container=contest_panel  # contest_panel is now a Locator!
     )
     if vote_method_clicked:
         rprint("[cyan][INFO] Vote method toggle clicked.[/cyan]")
     else:
         rprint("[yellow][WARN] Vote method toggle not found in contest panel.[/yellow]")
+        # Diagnostic: List all clickable elements in the contest panel
+        if contest_panel and hasattr(contest_panel, "locator"):
+            clickable = contest_panel.locator("button, a, [role='button'], div[tabindex], span[tabindex]")
+            rprint("[yellow][DEBUG] Clickable elements in contest panel:")
+            for i in range(clickable.count()):
+                try:
+                    text = clickable.nth(i).inner_text().strip()
+                    rprint(f"  - {text}")
+                except Exception:
+                    continue
         # Check for "No Results" message
         no_results = page.locator("text=No results").count()
         if no_results > 0:
             rprint("[red][ERROR] No results found on the page. Skipping further processing.[/red]")
             return None, None, None, {"skipped": True}
-
+    
     # Scroll page to load dynamic precincts
     rprint("[cyan][INFO] Scrolling to load precincts...[/cyan]")
     autoscroll_until_stable(page)
@@ -162,8 +207,9 @@ def parse(page: Page, html_context: Optional[dict] = None):
 
         # Extract method_names from table headers if not already set
         if method_names is None:
-            headers = table.query_selector_all('thead tr th')
-            method_names = [h.inner_text().strip() for h in headers][1:-1]  # skip first (candidate), last (total)
+            header_locator = table.locator('thead tr th')
+            header_count = header_locator.count()
+            method_names = [header_locator.nth(i).inner_text().strip() for i in range(header_count)][1:-1]
 
         reporting_pct = precinct_reporting_lookup.get(precinct_name.lower(), "0.00%")
         row = parse_candidate_vote_table(table, precinct_name, method_names, reporting_pct)

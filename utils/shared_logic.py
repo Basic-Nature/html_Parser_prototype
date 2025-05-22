@@ -244,15 +244,20 @@ def click_contest_toggle_dynamic_heading(
 ):
     """
     Clicks a link/button with given text, but only within a panel whose heading matches contest_title.
+    Tries all clickable elements, not just direct children.
     """
+    # More general selectors: any clickable element with the text
     selectors = [
-        f"{panel_selector} a:has-text('{link_text}')",
-        f"{panel_selector} button:has-text('{link_text}')"
+        f"{panel_selector} button",
+        f"{panel_selector} a",
+        f"{panel_selector} [role='button']",
+        f"{panel_selector} div[tabindex]",
+        f"{panel_selector} span[tabindex]"
     ]
-    # Compose heading tags list
     tags = heading_tags or [f"h{n}" for n in range(1, max_heading_level+1)]
     if extra_heading_tags:
         tags += extra_heading_tags
+    # Use fuzzy keyword matching
     return _find_and_click_toggle(
         search_root=page,
         selectors=selectors,
@@ -438,12 +443,18 @@ def parse_candidate_vote_table(table_element, current_precinct, method_names, re
     """
     row = {"Precinct": current_precinct, "% Precincts Reporting": reporting_pct}
     try:
-        headers = table_element.query_selector_all('thead tr th')
-        rows = table_element.query_selector_all('tbody tr')
-        colnames = [h.inner_text().strip() for h in headers]
-
-        for r in rows:
-            cells = r.query_selector_all('td')
+        header_locator = table_element.locator('thead tr th')
+        header_count = header_locator.count()
+        if header_count == 0:
+            header_locator = table_element.locator('tbody tr:first-child th')
+            header_count = header_locator.count()
+        row_locator = table_element.locator('tbody tr')
+        row_count = row_locator.count()
+        for r_idx in range(row_count):
+            r = row_locator.nth(r_idx)
+            cell_locator = r.locator('td')
+            cell_count = cell_locator.count()
+            cells = [cell_locator.nth(i) for i in range(cell_count)]
             if len(cells) < 2:
                 continue
             full_name = cells[0].inner_text().strip()
