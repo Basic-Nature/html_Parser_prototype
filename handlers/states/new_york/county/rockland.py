@@ -129,10 +129,12 @@ def parse(page: Page, html_context: Optional[dict] = None):
                 try:
                     text = el.inner_text().strip()
                     if toggle_text.lower() in text.lower():
-                        el.click()
-                        rprint(f"[cyan][INFO] Fallback: Clicked contest toggle '{text}'.[/cyan]")
-                        contest_toggle_clicked = True
-                        break
+                        if el.is_visible() and el.is_enabled():
+                            el.scroll_into_view_if_needed()   
+                            el.click()
+                            rprint(f"[cyan][INFO] Fallback: Clicked contest toggle '{text}'.[/cyan]")
+                            contest_toggle_clicked = True
+                            break
                 except Exception:
                     continue
             if contest_toggle_clicked:
