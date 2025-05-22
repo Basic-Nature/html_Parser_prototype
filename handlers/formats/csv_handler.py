@@ -160,8 +160,10 @@ def parse(page, html_context):
             filename = f"{safe_title}_parsed_{timestamp}.csv" if timestamp else f"{safe_title}_parsed.csv"
             filepath = os.path.join(output_path, filename)
             
-            result = finalize_election_output(headers, data, metadata)
-            return result.get("contest_title", os.path.basename(csv_path)), headers, data, result.get("metadata", metadata)
+            result = finalize_election_output(headers, data, contest_title, metadata)
+            contest_title = result.get("contest_title", os.path.basename(csv_path))
+            metadata = result.get("metadata", metadata)
+            return headers, data, contest_title, metadata
             
 
     except Exception as e:

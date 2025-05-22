@@ -69,7 +69,7 @@ def parse(page, html_context):
             return None, None, None, {"skip_pdf": True}      
         all_text = ""
         metadata = {}
-        inferred_columns = []
+        headers = []
         header_candidates = []
         ocr_passes = 0
       
@@ -190,8 +190,8 @@ def parse(page, html_context):
             # Step: Attempt basic column inference
             header_candidates = [line for line in lines if all(h in line.lower() for h in ["precinct", "votes"])]
             if header_candidates:
-                inferred_columns = header_candidates[0].split()
-                logger.info(f"[INFO] Inferred column headers: {inferred_columns}")
+                headers = header_candidates[0].split()
+                logger.info(f"[INFO] Inferred column headers: {headers}")
             else:
                 logger.info("[INFO] No strong header line found. Will treat first non-empty row as fallback header.")
         else:
@@ -218,16 +218,16 @@ def parse(page, html_context):
 
         # Step: Attempt contest selection (if inferred columns contain contest-like fields)
         contest_column = None
-        if inferred_columns:
+        if headers:
             rprint("[yellow]Inferred Columns:[/yellow]")
-            for i, col in enumerate(inferred_columns):
+            for i, col in enumerate(headers):
                 rprint(f"  [bold cyan]{i}[/bold cyan]: {col}")
             selection = input("[PROMPT] Select contest column index (or leave blank to skip): ").strip()
             if selection.isdigit():
-                contest_column = inferred_columns[int(selection)]
+                contest_column = headers[int(selection)]
 
         # Step: Attempt row splitting from lines if table detected
-        structured_rows = []
+        data = []
         if matches or multi_column_lines:
             content_lines = [line.strip() for line in lines if line.strip()]
             if header_candidates:
@@ -239,22 +239,22 @@ def parse(page, html_context):
                 start_index = 0
             for line in content_lines[start_index + 1:]:
                 row = line.split()
-                if contest_column and inferred_columns and len(row) == len(inferred_columns):
-                    contest_value = row[inferred_columns.index(contest_column)]
+                if contest_column and headers and len(row) == len(headers):
+                    contest_value = row[headers.index(contest_column)]
                     if contest_value:
-                        structured_rows.append(dict(zip(inferred_columns, row)))
-                elif inferred_columns and len(row) == len(inferred_columns):
-                    structured_rows.append(dict(zip(inferred_columns, row)))
+                        data.append(dict(zip(headers, row)))
+                elif headers and len(row) == len(headers):
+                    data.append(dict(zip(headers, row)))
 
-            if structured_rows:
-                logger.info(f"[INFO] Extracted {len(structured_rows)} structured row(s) from table.")
+            if data:
+                logger.info(f"[INFO] Extracted {len(data)} structured row(s) from table.")
             else:
                 unmatched_count = len(content_lines[start_index + 1:])
-                logger.warning(f"[WARN] No structured rows matched the inferred column count of {len(inferred_columns)}. Total lines scanned: {unmatched_count}")
+                logger.warning(f"[WARN] No structured rows matched the inferred column count of {len(headers)}. Total lines scanned: {unmatched_count}")
                 fallback_rows = [{"raw_line": line} for line in content_lines[start_index + 1:]]
                 return os.path.basename(pdf_path), ["raw_line"], fallback_rows, metadata
 
-        if structured_rows:
+        if data:
             safe_title = re.sub(r"[\\/*?\"<>|]", "_", os.path.basename(pdf_path).replace(".pdf", ""))
             output_path = get_output_path(metadata["state"], metadata.get("county", "Unknown"), "parsed")
             timestamp = format_timestamp() if os.getenv("INCLUDE_TIMESTAMP_IN_FILENAME", "true").lower() == "true" else ""
@@ -262,13 +262,13 @@ def parse(page, html_context):
             filepath = os.path.join(output_path, filename)
 
             with open(filepath, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=inferred_columns)
+                writer = csv.DictWriter(f, fieldnames=headers)
                 writer.writeheader()
-                writer.writerows(structured_rows)
+                writer.writerows(data)
                 f.write(f"\n# Generated at: {format_timestamp()}")
             metadata["output_file"] = filepath
             logger.info(f"[OUTPUT] PDF Contest Results saved to: {filepath}")
-            return os.path.basename(pdf_path), inferred_columns, structured_rows, metadata
+            return headers, data, os.path.basename(pdf_path), metadata
         return os.path.basename(pdf_path), ["text"], [{"text": all_text}], metadata
     except Exception as e:
         logger.error(f"[ERROR] Failed to parse PDF: {e}")

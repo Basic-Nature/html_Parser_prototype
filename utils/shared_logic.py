@@ -95,147 +95,101 @@ def parse_numeric(val):
         return None
 
 
-# === Precinct Parsing Utilities ===
-def click_vote_method_toggle(page, keywords=None):
+def click_toggles_with_url_check(page, keyword_sets, logger=None, verbose=False):
     """
-    Attempts to locate and click a toggle button for showing vote method breakdowns.
-    Supports common <button> elements as well as <p-togglebutton> with onlabel/offlabel.
+    Clicks a sequence of toggles/buttons/links by keyword sets.
+    Logs the URL before and after each click.
+    Returns a list of (clicked: bool, url_before, url_after) for each toggle.
     """
-    if keywords is None:
-        keywords = ["Vote Method", "Voting Details", "Show Breakdown", "Voting Method", "Ballot Method"]
-    logger.info(f"[TOGGLE] Attempting to click vote method toggle with keywords: {keywords}")
-    try:
-        page.wait_for_timeout(1000)  # Allow time for elements to load
-    except Exception as e:
-        logger.debug(f"[TOGGLE] Timeout waiting for elements: {e}")
-        return False
-    # Attempt to click the toggle button
-    # This is a generic approach; specific implementations may vary
-    toggled = False
+    results = []
+    for keywords in keyword_sets:
+        if logger:
+            logger.info(f"[TOGGLE] Attempting to click toggle with keywords: {keywords}")
+        url_before = page.url
+        toggled = False
 
-    # First: check standard button elements
-    buttons = page.locator("button")
-    if buttons.count() == 0:
-        logger.warning("[TOGGLE] No buttons found on the page.")
-        return False
-    logger.info(f"[TOGGLE] Found {buttons.count()} buttons on the page.")
-    # Iterate through buttons to find a match
-    for i in range(buttons.count()):
-        # Use nth(i) to access the button
-        # This is a workaround for Playwright's locator API
-        btn = buttons.nth(i)
-        # Check if the button is visible and enabled
-        if not btn.is_visible() or not btn.is_enabled():
-            logger.debug(f"[TOGGLE] Button {i} is not visible or enabled.")
-            continue
-        # Attempt to read the button's text
-        # This may fail if the button is not a standard text button
-        # or if it has complex inner HTML
-        # Use inner_text() to get the button's text
-        # and strip any leading/trailing whitespace
-        # Use try-except to handle potential errors
-        try:
-            # Check if the button has an aria-label attribute
-            aria_label = btn.get_attribute("aria-label")
-            if aria_label and any(k.lower() in aria_label.lower() for k in keywords):
-                btn.scroll_into_view_if_needed()
-                btn.click()
-                page.wait_for_timeout(1000)
-                logger.info(f"[TOGGLE] Button clicked via aria-label: '{aria_label}'")
-                toggled = True
-                break
-            # If no aria-label, use inner_text() to get the button's text
-            # and check if it contains any of the keywords
-            # This is a fallback in case the button doesn't have an aria-label
-            # or if the aria-label is not descriptive enough
-            # Use inner_text() to get the button's text
-            # and strip any leading/trailing whitespace
-            # Use try-except to handle potential errors
-            # Use inner_text() to get the button's text
-            # and strip any leading/trailing whitespace
-            label = btn.inner_text().strip()
-            if any(k.lower() in label.lower() for k in keywords):
-                btn.scroll_into_view_if_needed(
-                    timeout=5000  # Increase timeout for scrolling
-                )
-                btn.click()
-                # Wait for the page to settle after clicking
-                # This is important for dynamic pages where content may change
-                # or load new elements after clicking
-                page.wait_for_timeout(1000)
-                logger.info(f"[TOGGLE] Button clicked: '{label}'")
-                toggled = True
-                break
-        except Exception as e:
-            logger.debug(f"[TOGGLE] Button check failed: {e}")
-            continue
-
-    # If not found, fallback to p-togglebutton detection
-    if not toggled:
-        logger.info("[TOGGLE] No standard button found. Checking for p-togglebutton elements.")
-        # Attempt to locate p-togglebutton elements
-        # This is a specific implementation for the Rockland County Board of Elections
-        # but may be applicable to other counties as well
-        toggles = page.query_selector_all("p-togglebutton")
-        if toggles.count() == 0:
-            logger.warning("[TOGGLE] No p-togglebutton elements found on the page.")
-            return False
-        logger.info(f"[TOGGLE] Found {toggles.count()} p-togglebutton elements on the page.")
-        # Iterate through p-togglebutton elements to find a match
-        for toggle in toggles:
-            # Check if the toggle is visible and enabled
-            if not toggle.is_visible() or not toggle.is_enabled():
-                logger.debug("[TOGGLE] Toggle is not visible or enabled.")
+        # Try <button> elements
+        buttons = page.locator("button")
+        for i in range(buttons.count()):
+            btn = buttons.nth(i)
+            if not btn.is_visible() or not btn.is_enabled():
                 continue
-            # Attempt to read the toggle's onlabel or aria-label
-            # This may fail if the toggle is not a standard text toggle
-            # or if it has complex inner HTML
-            # Use try-except to handle potential errors
-            # Use get_attribute() to get the toggle's onlabel or aria-label
-            # and check if it contains any of the keywords
-            # This is a fallback in case the toggle doesn't have an onlabel
-            # or if the onlabel is not descriptive enough
             try:
-                # Check if the toggle has an onlabel attribute
-                label = toggle.get_attribute("onlabel") or toggle.get_attribute("aria-label") or ""
-                if label and any(k.lower() in label.lower() for k in keywords):
-                    toggle.scroll_into_view_if_needed()
-                    toggle.click(force=True)
+                aria_label = btn.get_attribute("aria-label") or ""
+                label = btn.inner_text().strip()
+                if any(k.lower() in aria_label.lower() or k.lower() in label.lower() for k in keywords):
+                    btn.scroll_into_view_if_needed(timeout=5000)
+                    if logger and verbose:
+                        logger.info(f"[TOGGLE] URL before click: {url_before}")
+                    btn.click()
                     page.wait_for_timeout(1000)
-                    logger.info(f"[TOGGLE] Custom toggle clicked: '{label}'")
-                    toggled = True
-                    break
-                # If no onlabel, use inner_text() to get the toggle's text
-                # and check if it contains any of the keywords
-                # This is a fallback in case the toggle doesn't have an onlabel
-                # or if the onlabel is not descriptive enough
-                if any(k.lower() in label.lower() for k in keywords):
-                    # Use inner_text() to get the toggle's text
-                    # and strip any leading/trailing whitespace
-                    toggle.scroll_into_view_if_needed()
-                    # This is important for dynamic pages where content may change
-                    # or load new elements after clicking
-                    toggle.click(force=True)
-                    # Wait for the page to settle after clicking
-                    # This is important for dynamic pages where content may change
-                    page.wait_for_timeout(1000)
-                    # Use inner_text() to get the toggle's text
-                    # and strip any leading/trailing whitespace
-                    logger.info(f"[TOGGLE] Custom toggle clicked via onlabel: '{label}'")
+                    url_after = page.url
+                    if logger and verbose:
+                        logger.info(f"[TOGGLE] URL after click: {url_after}")
+                    if logger:
+                        logger.info(f"[TOGGLE] Button clicked: '{label or aria_label}'")
                     toggled = True
                     break
             except Exception as e:
-                # Handle potential errors when reading the toggle's attributes
-                # This may fail if the toggle is not a standard text toggle
-                logger.debug(f"[TOGGLE] Fallback toggle failed: {e}")
+                if logger:
+                    logger.debug(f"[TOGGLE] Button check failed: {e}")
                 continue
 
-    if not toggled:
-        # If no toggle was found, log a warning
-        # This is important for dynamic pages where content may change
-        logger.warning("[TOGGLE] No matching toggle button found.")
-    return toggled
+        # Try <p-togglebutton> elements if not found
+        if not toggled:
+            toggles = page.query_selector_all("p-togglebutton")
+            for toggle in toggles:
+                if not toggle.is_visible() or not toggle.is_enabled():
+                    continue
+                try:
+                    label = toggle.get_attribute("onlabel") or toggle.get_attribute("aria-label") or ""
+                    if any(k.lower() in label.lower() for k in keywords):
+                        toggle.scroll_into_view_if_needed()
+                        if logger and verbose:
+                            logger.info(f"[TOGGLE] URL before click: {url_before}")
+                        toggle.click(force=True)
+                        page.wait_for_timeout(1000)
+                        url_after = page.url
+                        if logger and verbose:
+                            logger.info(f"[TOGGLE] URL after click: {url_after}")
+                        if logger:
+                            logger.info(f"[TOGGLE] p-togglebutton clicked: '{label}'")
+                        toggled = True
+                        break
+                except Exception as e:
+                    if logger:
+                        logger.debug(f"[TOGGLE] p-togglebutton check failed: {e}")
+                    continue
 
+        # Try <a> links if not found
+        if not toggled:
+            links = page.query_selector_all("a")
+            for link in links:
+                try:
+                    label = link.inner_text().strip()
+                    if any(k.lower() in label.lower() for k in keywords):
+                        link.scroll_into_view_if_needed()
+                        if logger and verbose:
+                            logger.info(f"[TOGGLE] URL before click: {url_before}")
+                        link.click()
+                        page.wait_for_timeout(1000)
+                        url_after = page.url
+                        if logger and verbose:
+                            logger.info(f"[TOGGLE] URL after click: {url_after}")
+                        if logger:
+                            logger.info(f"[TOGGLE] Link clicked: '{label}'")
+                        toggled = True
+                        break
+                except Exception as e:
+                    if logger:
+                        logger.debug(f"[TOGGLE] Link check failed: {e}")
+                    continue
+
+        if not toggled and logger:
+            logger.warning(f"[TOGGLE] No matching toggle/button/link found for keywords: {keywords}")
+        url_after = page.url
+        results.append((toggled, url_before, url_after))
+    return results
 def autoscroll_until_stable(page, max_stable_frames=5, step=3000, delay_ms=500):
     """
     Continuously scrolls a Playwright page until its scroll height stabilizes.
@@ -875,7 +829,14 @@ def calculate_grand_totals(rows):
             except:
                 continue
     totals["Precinct"] = "Grand Total"
-    totals["Total"] = sum(totals.values())
+    numeric_values = []
+    for v in totals.values():
+        try:
+            numeric_values.append(float(v))
+        except (ValueError, TypeError):
+            continue
+    totals["Total"] = str(int(sum(numeric_values)))    
+    totals["Total"] = str(sum(numeric_values))
     totals["Total"] = str(totals["Total"])
     totals["% Precincts Reporting"] = "100.00%"
     totals["Total Votes"] = totals.get("Total", 0)

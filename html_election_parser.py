@@ -196,7 +196,7 @@ def process_format_override():
     result = handler.parse(dummy_page, html_context)
 
     if result and all(result):
-        contest_title, headers, data, metadata = result
+        *_, metadata = result
         if "output_file" in metadata:
             logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
         else:
@@ -235,7 +235,7 @@ def process_url(target_url):
                 for fmt, local_file in confirmed:
                     format_handler = route_format_handler(fmt)
                     if format_handler and hasattr(format_handler, "parse"):
-                        file_context = {**html_context, "filename": os.path.basename(local_file), "skip_format": True}
+                        file_context = {**html_context, "filename": os.path.basename(local_file), "skip_format": False}
                         dummy_page = cast(Page, None)
                         # Skip parsing if user declined
                         if local_file is None or local_file == "skip":
@@ -253,7 +253,7 @@ def process_url(target_url):
                             mark_url_processed(target_url, status="fail")
                             return                        
                         if result and all(result):
-                            contest_title, headers, data, metadata = result
+                            headers, data, contest_title, metadata = result
                             if "output_file" in metadata:
                                 logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
                             mark_url_processed(target_url, status="success")
@@ -274,8 +274,8 @@ def process_url(target_url):
                     if not isinstance(result, tuple) or len(result) != 4:
                         logging.warning(f"[Batch Mode] Skipped: {race_title} — Handler error.")
                         continue
-                    contest_title, headers, data, metadata = result
-                    if all([contest_title, headers, data]):
+                    headers, data, contest_title, metadata = result
+                    if all([headers, data, contest_title, metadata]):
                         if "output_file" in metadata:
                             logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
                         else:
@@ -302,8 +302,8 @@ def process_url(target_url):
                 logging.error("[ERROR] Handler returned unexpected structure: expected 4 values.")
                 mark_url_processed(target_url, status="fail")
                 return             
-            contest_title, headers, data, metadata = result
-            if all([contest_title, headers, data]):
+            headers, data, contest_title, metadata = result
+            if all([headers, data, contest_title, metadata]):
                 if "output_file" in metadata:
                     logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
                 else:

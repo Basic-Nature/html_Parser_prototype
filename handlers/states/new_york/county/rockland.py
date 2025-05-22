@@ -9,11 +9,12 @@
 from playwright.sync_api import Page
 from handlers.formats import html_handler as fallback_html_handler
 from handlers.formats import json_handler
+from handlers.formats.html_handler import extract_contest_panel, extract_precinct_tables
 from utils.output_utils import finalize_election_output
 from utils.shared_logger import logging
 from utils.shared_logic import (
     autoscroll_until_stable,
-    click_vote_method_toggle,
+    click_toggles_with_url_check,
     build_precinct_reporting_lookup,
     detect_precinct_headers,
     parse_candidate_vote_table,
@@ -81,95 +82,81 @@ def parse(page: Page, html_context: Optional[dict] = None):
         if VERBOSE:
             rprint("[green][INFO] JSON parse successful. Bypassing HTML and returning results.[/green]")
         return result
+
     contest_title = html_context.get("selected_race")
     race_core = contest_title.split("2024")[-1].strip().lower() if contest_title else ""
     if "view results by election district" in race_core:
-       rprint("[red]Selected entry is a navigation link, not a real contest. Skipping.[/red]")
-       return None, None, None, {"skipped": True} 
+        rprint("[red]Selected entry is a navigation link, not a real contest. Skipping.[/red]")
+        return None, None, None, {"skipped": True}
     if not race_core:
         rprint("[yellow]No contest race selected. Re-launching contest list.[/yellow]")
         return fallback_html_handler.parse(page, html_context)
     if VERBOSE:
         rprint(f"[blue][DEBUG] Rockland handler received selected race: '{contest_title}'[/blue]")
-    
+
     page.wait_for_timeout(500)
     rprint("[cyan][INFO] Waiting for contest-specific page content...[/cyan]")
-    links = page.locator("a:has-text('View results by election district')")
-    if links.count() == 0:
-        rprint("[red]No contest links found on the page.[/red]")
-        return None, None, None, {"skipped": True}
 
-    for i in range(links.count()):
-        link = links.nth(i)
-        try:
-            section = link.locator("xpath=ancestor::p-panel[1]//h1")
-            heading_text = section.inner_text().strip().lower() if section.is_visible() else ""
-            link_text = (link.inner_text() or "").strip().lower()
-            if race_core and (race_core in heading_text or race_core in link_text or heading_text.startswith(race_core) or link_text.startswith(race_core)):
-                rprint(f"[cyan][INFO] Matched contest link for: {contest_title}[/cyan]")
-                link.scroll_into_view_if_needed()
-                page.wait_for_timeout(500)
-                rprint(f"[cyan][INFO] URL before click: {page.url}[/cyan]")
-                link.click(force=True, timeout=5000)
-                page.wait_for_timeout(2500)
-                rprint(f"[cyan][INFO] URL after click: {page.url}[/cyan]")
-                break
-        except Exception as e:
-            if VERBOSE:
-                rprint(f"[yellow][WARN] Skipped a link due to error: {e}[/yellow]")
+    # --- Dynamic toggles: View results by election district, then Vote Method ---
+    toggle_results = click_toggles_with_url_check(
+        page,
+        [
+            ["View results by election district"],  # First toggle
+            ["Vote Method", "Voting Method", "Ballot Method"],  # Second toggle
+        ],
+        logger=logging,
+        verbose=VERBOSE
+    )
 
-    rprint(f"[magenta][DEBUG] contest_title: {contest_title} | race_core: {race_core}[/magenta]")
-    # Toggle Vote Method if available — AFTER confirming we're on the precinct detail page
-    rprint("[cyan][INFO] Waiting for toggle to appear after contest view loads...[/cyan]")
-    try:
-        page.wait_for_selector("p-togglebutton", timeout=5000)
-    except Exception:
-        rprint("[yellow][WARN] Toggle button did not render within timeout. Proceeding anyway.[/yellow]")
-    toggled = click_vote_method_toggle(page, keywords=["Vote Method", "Voting Method", "Ballot Method"])
-    if not toggled:
-        rprint("[yellow][WARN] Vote method toggle not found. Some columns may be missing.[/yellow]")
-    page.wait_for_timeout(1000) # Allow time for toggle to settle
+    for idx, (clicked, url_before, url_after) in enumerate(toggle_results):
+        if not clicked:
+            rprint(f"[yellow][WARN] Toggle {idx+1} not found.[/yellow]")
+        else:
+            rprint(f"[cyan][INFO] Toggle {idx+1} clicked. URL before: {url_before} | after: {url_after}[/cyan]")
+
     # Check for "No Results" message
     no_results = page.locator("text=No results").count()
     if no_results > 0:
         rprint("[red][ERROR] No results found on the page. Skipping further processing.[/red]")
-        return None, None, None, {"skipped": True}  
-    no_results = page.locator("text=No results").count()
-           
+        return None, None, None, {"skipped": True}
+
     # Scroll page to load dynamic precincts
     rprint("[cyan][INFO] Scrolling to load precincts...[/cyan]")
     autoscroll_until_stable(page)
 
     # Build reporting percentage lookup
+    # Build reporting percentage lookup
     precinct_reporting_lookup = build_precinct_reporting_lookup(page)
+    contest_panel = extract_contest_panel(page, contest_title)
+    if not contest_panel:
+        rprint("[red][ERROR] Contest panel not found. Skipping further processing.[/red]")
+        return None, None, None, {"skipped": True}
 
-    # Parse all precinct tables and build Smart Elections rows
-    elements = page.query_selector_all('h3, strong, b, span, table')
-    precinct_headers = detect_precinct_headers(elements)
-    precinct_headers = [h for h in precinct_headers if "vote for" not in h.lower()]
+    precinct_tables = extract_precinct_tables(contest_panel)
     data = []
-    method_names = []
+    method_names = None
 
-    estimated = len(precinct_headers)
-    progress = tqdm(total=estimated or 1, desc="Loading precinct results", unit="precinct", colour="#45818E", dynamic_ncols=True, leave=True, disable=not VERBOSE)
+    for precinct_name, table in precinct_tables:
+        if not table:
+            rprint(f"[red][ERROR] No table found for precinct '{precinct_name}'. Skipping.[/red]")
+            continue
+        if is_noisy_label(precinct_name):
+            rprint(f"[yellow][WARN] Noisy label detected in precinct name: '{precinct_name}'. Skipping.[/yellow]")
+            continue
+        if VERBOSE:
+            rprint(f"[blue][DEBUG] Parsing precinct: {precinct_name}[/blue]")
 
-    current_precinct = None
-    for el in elements:
-        tag = el.evaluate("e => e.tagName").strip().upper()
+        # Extract method_names from table headers if not already set
+        if method_names is None:
+            headers = table.query_selector_all('thead tr th')
+            method_names = [h.inner_text().strip() for h in headers][1:-1]  # skip first (candidate), last (total)
 
-        if tag in ["H3", "STRONG", "B", "SPAN"]:
-            label = el.inner_text().strip()
-            if label and "vote for" not in label.lower() and label in precinct_headers:
-                current_precinct = label
-                lookup_key = label.lower()
-                reporting_pct = precinct_reporting_lookup.get(lookup_key, "0.00%")
-                progress.update(1)
-
-        elif tag == "TABLE" and current_precinct:
-            reporting_pct = locals().get("reporting_pct", "0.00%")
-            row = parse_candidate_vote_table(el, current_precinct, method_names, reporting_pct)
-            data.append(row)
-            current_precinct = None
+        reporting_pct = precinct_reporting_lookup.get(precinct_name.lower(), "0.00%")
+        row = parse_candidate_vote_table(table, precinct_name, method_names, reporting_pct)
+        if not row:
+            rprint(f"[red][ERROR] No data parsed for precinct '{precinct_name}'. Skipping.[/red]")
+            continue
+        data.append(row)
 
     if not data:
         rprint("[red][ERROR] No precinct data was parsed.[/red]")
@@ -181,9 +168,6 @@ def parse(page: Page, html_context: Optional[dict] = None):
 
     # Assemble headers from union of all rows
     headers = sorted(set().union(*(row.keys() for row in data)))
-    progress.n = progress.total
-    progress.refresh()
-    progress.close()
 
     metadata = {
         "state": "NY",
@@ -193,7 +177,6 @@ def parse(page: Page, html_context: Optional[dict] = None):
         "handler": "rockland"
     }
 
-    metadata["output_file"] = finalize_election_output(headers, data, metadata).get("csv_path")
-    return  headers, data, contest_title, metadata
+    metadata["output_file"] = finalize_election_output(headers, data, contest_title, metadata).get("csv_path")
+    return headers, data, contest_title, metadata
 # End of file
-

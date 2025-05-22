@@ -260,4 +260,4 @@ def parse(page, html_context):
     with open(json_meta_path, "w", encoding="utf-8") as jf:
         json.dump(metadata, jf, indent=2)
     logger.info(f"[OUTPUT] Metadata written to: {json_meta_path}")
-    return contest_title, headers, data, metadata
+    return headers, data, contest_title, metadata
