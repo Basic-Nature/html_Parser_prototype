@@ -9,7 +9,7 @@ from utils.shared_logger import log_info, log_debug, log_warning, rprint
 from urllib.parse import urljoin
 import os
 
-SUPPORTED_FORMATS = [".json", ".csv", ".pdf"]
+SUPPORTED_FORMATS = os.getenv("SUPPORTED_FORMATS", ".json,.csv,.pdf").split(",")
 
 
 def detect_format_from_links(page, base_url=None):
