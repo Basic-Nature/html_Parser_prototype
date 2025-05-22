@@ -4,6 +4,7 @@
 ##While election website structures vary significantly by vendor or county/state implementation,
 ##many elements are consistent such as contest labeling, vote method naming, and tabular breakdowns.
 ##These helpers promote DRY principles and consistent behavior across handlers.
+import difflib
 from numpy import e
 
 from typing import List, Dict
@@ -27,6 +28,15 @@ COMMON_VOTE_METHODS = [
 COMMON_PRECINCT_HEADERS = [
     "Precinct", "Ward", "District", "Voting District"
 ]
+def normalize_label(label) -> str:
+    """
+    Ensures a contest/race label is a string.
+    - Joins tuple elements with a space.
+    - Converts other types to string.
+    """
+    if isinstance(label, tuple):
+        return " ".join(str(x) for x in label)
+    return str(label)
 
 def normalize_text(text):
     """
@@ -93,104 +103,200 @@ def parse_numeric(val):
         return int(val.replace(",", ""))
     except Exception:
         return None
-
-
-def click_toggles_with_url_check(page, keyword_sets, logger=None, verbose=False):
+# (Core utility, not for direct use in handlers)
+def _find_and_click_toggle(
+    search_root,
+    selectors,
+    keywords,
+    logger=None,
+    verbose=False,
+    wait_selector=None,
+    heading_match=None,
+    heading_tags=None,
+    max_heading_level=20,
+    screenshot_on_fail=False,
+    screenshot_prefix="toggle_fail",
+    page=None
+):
     """
-    Clicks a sequence of toggles/buttons/links by keyword sets.
-    Logs the URL before and after each click.
-    Returns a list of (clicked: bool, url_before, url_after) for each toggle.
+    Core utility to find and click a toggle/button/link.
+    - selectors: list of CSS selectors to try
+    - keywords: list of keywords to match (in text or aria-label)
+    - heading_match: if provided, only click if inside a parent with a heading matching this string
+    - heading_tags: list of heading tags to check (e.g. ["h1", "h2", "p-span"])
+    - max_heading_level: max hN to check if heading_tags not provided
+    - screenshot_on_fail: if True, saves screenshot on failure
+    - page: playwright page object (for screenshot)
+    Returns True if clicked, False otherwise.
     """
-    results = []
-    for keywords in keyword_sets:
-        if logger:
-            logger.info(f"[TOGGLE] Attempting to click toggle with keywords: {keywords}")
-        url_before = page.url
-        toggled = False
+    import difflib
+    import re
 
-        # Try <button> elements
-        buttons = page.locator("button")
-        for i in range(buttons.count()):
-            btn = buttons.nth(i)
-            if not btn.is_visible() or not btn.is_enabled():
-                continue
+    def matches_keywords(text, keywords):
+        text_norm = re.sub(r'\s+', ' ', text or '').strip().lower()
+        for keyword in keywords:
+            keyword_norm = re.sub(r'\s+', ' ', keyword or '').strip().lower()
+            if keyword_norm in text_norm:
+                return True
+            # Fuzzy match
+            if difflib.get_close_matches(keyword_norm, [text_norm], n=1, cutoff=0.8):
+                return True
+        return False
+
+    for selector in selectors:
+        elements = search_root.locator(selector)
+        for i in range(elements.count()):
+            el = elements.nth(i)
             try:
-                aria_label = btn.get_attribute("aria-label") or ""
-                label = btn.inner_text().strip()
-                if any(k.lower() in aria_label.lower() or k.lower() in label.lower() for k in keywords):
-                    btn.scroll_into_view_if_needed(timeout=5000)
+                if not el.is_visible() or not el.is_enabled():
+                    continue
+                label = el.inner_text().strip()
+                aria_label = el.get_attribute("aria-label") or ""
+                all_labels = [label, aria_label]
+                # If heading_match is required, check parent headings
+                if heading_match:
+                    panel = el.locator(f"xpath=ancestor::*[self::{' or self::'.join(['div','section','p-panel'])}][1]")
+                    found_heading = False
+                    heading_text = ""
+                    tags_to_check = heading_tags or [f"h{n}" for n in range(1, max_heading_level+1)]
+                    for tag in tags_to_check:
+                        heading = panel.locator(tag)
+                        if heading.count() > 0:
+                            heading_text = heading.inner_text().strip().lower()
+                            if heading_match.lower() in heading_text:
+                                found_heading = True
+                                break
+                    if not found_heading:
+                        continue
+                # Keyword match
+                if any(matches_keywords(l, keywords) for l in all_labels if l):
+                    el.scroll_into_view_if_needed()
+                    el.click()
                     if logger and verbose:
-                        logger.info(f"[TOGGLE] URL before click: {url_before}")
-                    btn.click()
-                    page.wait_for_timeout(1000)
-                    url_after = page.url
-                    if logger and verbose:
-                        logger.info(f"[TOGGLE] URL after click: {url_after}")
-                    if logger:
-                        logger.info(f"[TOGGLE] Button clicked: '{label or aria_label}'")
-                    toggled = True
-                    break
+                        logger.info(f"[TOGGLE] Clicked: '{label or aria_label}' (selector: {selector})")
+                    if wait_selector and page:
+                        try:
+                            page.wait_for_selector(wait_selector, timeout=3000)
+                        except Exception as e:
+                            if logger:
+                                logger.warning(f"[TOGGLE] Wait for selector '{wait_selector}' failed: {e}")
+                    return True
             except Exception as e:
                 if logger:
-                    logger.debug(f"[TOGGLE] Button check failed: {e}")
+                    logger.debug(f"[TOGGLE] Error checking toggle: {e}")
                 continue
-
-        # Try <p-togglebutton> elements if not found
-        if not toggled:
-            toggles = page.query_selector_all("p-togglebutton")
-            for toggle in toggles:
-                if not toggle.is_visible() or not toggle.is_enabled():
-                    continue
-                try:
-                    label = toggle.get_attribute("onlabel") or toggle.get_attribute("aria-label") or ""
-                    if any(k.lower() in label.lower() for k in keywords):
-                        toggle.scroll_into_view_if_needed()
-                        if logger and verbose:
-                            logger.info(f"[TOGGLE] URL before click: {url_before}")
-                        toggle.click(force=True)
-                        page.wait_for_timeout(1000)
-                        url_after = page.url
-                        if logger and verbose:
-                            logger.info(f"[TOGGLE] URL after click: {url_after}")
-                        if logger:
-                            logger.info(f"[TOGGLE] p-togglebutton clicked: '{label}'")
-                        toggled = True
-                        break
-                except Exception as e:
-                    if logger:
-                        logger.debug(f"[TOGGLE] p-togglebutton check failed: {e}")
-                    continue
-
-        # Try <a> links if not found
-        if not toggled:
-            links = page.query_selector_all("a")
-            for link in links:
-                try:
-                    label = link.inner_text().strip()
-                    if any(k.lower() in label.lower() for k in keywords):
-                        link.scroll_into_view_if_needed()
-                        if logger and verbose:
-                            logger.info(f"[TOGGLE] URL before click: {url_before}")
-                        link.click()
-                        page.wait_for_timeout(1000)
-                        url_after = page.url
-                        if logger and verbose:
-                            logger.info(f"[TOGGLE] URL after click: {url_after}")
-                        if logger:
-                            logger.info(f"[TOGGLE] Link clicked: '{label}'")
-                        toggled = True
-                        break
-                except Exception as e:
-                    if logger:
-                        logger.debug(f"[TOGGLE] Link check failed: {e}")
-                    continue
-
-        if not toggled and logger:
-            logger.warning(f"[TOGGLE] No matching toggle/button/link found for keywords: {keywords}")
+    if logger:
+        logger.warning(f"[TOGGLE] No toggle found for selectors={selectors}, keywords={keywords}, heading_match={heading_match}")
+    if screenshot_on_fail and page:
+        fname = f"{screenshot_prefix}_{'_'.join(keywords)}.png"
+        page.screenshot(path=fname)
+        if logger:
+            logger.warning(f"[TOGGLE] Screenshot saved: {fname}")
+    return False
+def click_toggles_with_url_check(
+    page,
+    container,
+    keyword_sets,
+    logger=None,
+    verbose=False,
+    screenshot_on_fail=True,
+    wait_selector=None,
+    max_retries=2
+):
+    """
+    Tries all keyword sets on all common selectors in the given container.
+    Returns a list of (clicked, url_before, url_after) for each keyword set.
+    """
+    selectors = ["button", "p-togglebutton", "a", "[role='button']", "div[tabindex]", "span[tabindex]"]
+    results = []
+    for keywords in keyword_sets:
+        url_before = page.url
+        toggled = False
+        for attempt in range(max_retries):
+            toggled = _find_and_click_toggle(
+                search_root=container,
+                selectors=selectors,
+                keywords=keywords,
+                logger=logger,
+                verbose=verbose,
+                wait_selector=wait_selector,
+                screenshot_on_fail=screenshot_on_fail,
+                screenshot_prefix="toggle_fail",
+                page=page
+            )
+            if toggled:
+                break
         url_after = page.url
         results.append((toggled, url_before, url_after))
     return results
-def autoscroll_until_stable(page, max_stable_frames=5, step=3000, delay_ms=500):
+
+def click_contest_toggle_dynamic_heading(
+    page,
+    link_text,
+    contest_title,
+    panel_selector="p-panel",
+    heading_tags=None,
+    max_heading_level=20,
+    extra_heading_tags=None,
+    logger=None,
+    verbose=False,
+    wait_selector=None
+):
+    """
+    Clicks a link/button with given text, but only within a panel whose heading matches contest_title.
+    """
+    selectors = [
+        f"{panel_selector} a:has-text('{link_text}')",
+        f"{panel_selector} button:has-text('{link_text}')"
+    ]
+    # Compose heading tags list
+    tags = heading_tags or [f"h{n}" for n in range(1, max_heading_level+1)]
+    if extra_heading_tags:
+        tags += extra_heading_tags
+    return _find_and_click_toggle(
+        search_root=page,
+        selectors=selectors,
+        keywords=[link_text],
+        logger=logger,
+        verbose=verbose,
+        wait_selector=wait_selector,
+        heading_match=contest_title,
+        heading_tags=tags,
+        page=page
+    )
+    
+def click_vote_method_toggle(
+    page,
+    keywords=None,
+    logger=None,
+    verbose=False,
+    wait_selector=None,
+    container=None
+):
+    """
+    Finds and clicks a 'Vote Method' toggle/button/link.
+    """
+    if keywords is None:
+        keywords = ["Vote Method", "Voting Method", "Show Vote Methods", "Display Vote Methods"]
+    selectors = ["button", "a", "[role='button']", "div[tabindex]", "span[tabindex]"]
+    search_root = container if container else page
+    return _find_and_click_toggle(
+        search_root=search_root,
+        selectors=selectors,
+        keywords=keywords,
+        logger=logger,
+        verbose=verbose,
+        wait_selector=wait_selector,
+        page=page
+    )
+
+def get_custom_buttons(container):
+    """
+    Returns all custom clickable elements in the container.
+    """
+    return container.query_selector_all('[role="button"], div[tabindex], span[tabindex]')
+
+def autoscroll_until_stable(page, max_stable_frames=5, step=8000, delay_ms=200):
     """
     Continuously scrolls a Playwright page until its scroll height stabilizes.
     Useful for dynamic election websites where all precinct data is only visible after scrolling.

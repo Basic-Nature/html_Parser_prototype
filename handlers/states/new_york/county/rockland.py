@@ -10,21 +10,23 @@ from playwright.sync_api import Page
 from handlers.formats import html_handler as fallback_html_handler
 from handlers.formats import json_handler
 from handlers.formats.html_handler import extract_contest_panel, extract_precinct_tables
-from utils.html_scanner import detect_precinct_headers, get_detected_races_from_context
+from utils.contest_selector import select_contest
+from utils.html_scanner import scan_html_for_context, get_detected_races_from_context
 from utils.output_utils import calculate_grand_totals, finalize_election_output
-from utils.shared_logger import logging
+from utils.shared_logger import logging, logger
 from utils.shared_logic import (
     autoscroll_until_stable,
-    click_toggles_with_url_check,
+    click_contest_toggle_dynamic_heading,
+    click_vote_method_toggle,
     build_precinct_reporting_lookup,
     parse_candidate_vote_table,
     
 )
 import os
-import re
+
 from dotenv import load_dotenv
 from rich import print as rprint
-from tqdm import tqdm
+
 
 load_dotenv()
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -33,43 +35,12 @@ logging.basicConfig(level=LOG_LEVEL)
 
 from typing import Optional
 
-NOISY_LABELS = [
-    "view results by election district",
-    "summary by method",
-    "download",
-    "vote method",
-    "voting method",
-]
-NOISY_LABEL_PATTERNS = [
-    r"view results? by election district\s*[:\n]?$",
-    r"summary by method\s*[:\n]?$",
-    r"download\s*[:\n]?$",
-    r"vote method\s*[:\n]?$",
-    r"voting method\s*[:\n]?$",
-    r"^vote for \d+$"
-]
-NOISY_LABELS = [label.lower() for label in NOISY_LABELS]
-
-def is_noisy_label(label: str) -> bool:
-    """
-    Check if a label is considered noisy based on predefined patterns.
-    """
-    label = label.lower()
-    for pattern in NOISY_LABEL_PATTERNS:
-        if re.search(pattern, label):
-            return True
-    # Check for exact matches with noisy labels
-    if label in NOISY_LABELS:
-        return True
-    # Check for any noisy label in the string
-    # This is a more lenient check, but it can be useful for certain cases
-        
-        
-    return any(noisy in label for noisy in NOISY_LABELS)
 
 def parse(page: Page, html_context: Optional[dict] = None):
     if html_context is None:
         html_context = {}
+    if "__root" not in html_context:
+        html_context["__root"] = True  # Mark this as the root call
     rprint("[bold cyan][Rockland Handler] Parsing Rockland County Enhanced Voting page...[/bold cyan]")
 
     if html_context.get("json_source"):
@@ -82,48 +53,86 @@ def parse(page: Page, html_context: Optional[dict] = None):
         if VERBOSE:
             rprint("[green][INFO] JSON parse successful. Bypassing HTML and returning results.[/green]")
         return result
-    detected = get_detected_races_from_context(html_context)
-    filtered_races = [race for race in detected if not is_noisy_label(race)]
-    if not filtered_races:
-        rprint("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
-        return None, None, None, {"skipped": True}
     contest_title = html_context.get("selected_race")
-    race_core = contest_title.split("2024")[-1].strip().lower() if contest_title else ""
+    if not contest_title:
+        if html_context.get("__root", False):  # Only show UI on root call
+            rprint("[cyan]Preparing contest selections. Please wait...[/cyan]")
+            context = scan_html_for_context(page)
+            detected = get_detected_races_from_context(context)
+            logger.debug(f"[DEBUG] All detected races: {detected}")
+            selected = select_contest(detected)
+            if not selected:
+                rprint("[red]No contest selected. Skipping.[/red]")
+                return None, None, None, {"skipped": True}
+            if isinstance(selected, list):
+                # If multiple contests selected, process each one by title
+                results = []
+                for contest_tuple in selected:
+                    contest_title = contest_tuple[2]  # third element is the contest title
+                    html_context_copy = dict(html_context)
+                    html_context_copy["selected_race"] = contest_title
+                    html_context_copy.pop("__root", None)  # Remove root flag for recursion
+                    result = parse(page, html_context_copy)
+                    results.append(result)
+                return results[0] if results else (None, None, None, {"skipped": True})
+            else:
+                # Single contest selected
+                contest_title = selected[2]  # third element is the contest title
+                html_context["selected_race"] = contest_title
+                html_context.pop("__root", None)
+                return parse(page, html_context)
+        else:
+            # If not root, just skip (should not happen)
+            return None, None, None, {"skipped": True}
+    race_core = contest_title.split("2024")[-1].strip().lower()
     if "view results by election district" in race_core:
         rprint("[red]Selected entry is a navigation link, not a real contest. Skipping.[/red]")
         return None, None, None, {"skipped": True}
-    if not race_core:
-        rprint("[yellow]No contest race selected. Re-launching contest list.[/yellow]")
-        return fallback_html_handler.parse(page, html_context)
     if VERBOSE:
         rprint(f"[blue][DEBUG] Rockland handler received selected race: '{contest_title}'[/blue]")
 
     page.wait_for_timeout(500)
     rprint("[cyan][INFO] Waiting for contest-specific page content...[/cyan]")
-    for idx, race in enumerate(filtered_races):
-        rprint(f"  [{idx}] {race}")
-    # --- Dynamic toggles: View results by election district, then Vote Method ---
-    toggle_results = click_toggles_with_url_check(
+    # Wait for the contest panel to load
+    contest_panel = extract_contest_panel(page, contest_title)
+    if not contest_panel:
+        rprint("[red][ERROR] Contest panel not found. Skipping further processing.[/red]")
+        return None, None, None, {"skipped": True}
+        
+    # --- Robust contest-specific toggle, then dynamic vote method toggle ---
+
+    # 1. Click "View results by election district" ONLY for the selected contest
+    contest_toggle_clicked = click_contest_toggle_dynamic_heading(
         page,
-        [
-            ["View results by election district"],  # First toggle
-            ["Vote Method", "Voting Method", "Ballot Method"],  # Second toggle
-        ],
-        logger=logging,
+        link_text="View results by election district",
+        contest_title=contest_title,
+        panel_selector="p-panel",  # adjust if your contest panels use a different tag
+        extra_heading_tags=["p-span", "span"],  # add custom heading tags if needed
+        logger=logger,
         verbose=VERBOSE
     )
+    if contest_toggle_clicked:
+        rprint("[cyan][INFO] Contest-specific toggle clicked.[/cyan]")
+    else:
+        rprint("[yellow][WARN] Contest-specific toggle not found for this contest.[/yellow]")
 
-    for idx, (clicked, url_before, url_after) in enumerate(toggle_results):
-        if not clicked:
-            rprint(f"[yellow][WARN] Toggle {idx+1} not found.[/yellow]")
-        else:
-            rprint(f"[cyan][INFO] Toggle {idx+1} clicked. URL before: {url_before} | after: {url_after}[/cyan]")
-
-    # Check for "No Results" message
-    no_results = page.locator("text=No results").count()
-    if no_results > 0:
-        rprint("[red][ERROR] No results found on the page. Skipping further processing.[/red]")
-        return None, None, None, {"skipped": True}
+    # 2. Click "Vote Method" toggle (if present) in the contest panel
+    vote_method_clicked = click_vote_method_toggle(
+        page,
+        keywords=["Vote Method", "Voting Method", "Ballot Method"],
+        logger=logger,
+        verbose=VERBOSE,
+        container=contest_panel  # restrict search to the contest panel
+    )
+    if vote_method_clicked:
+        rprint("[cyan][INFO] Vote method toggle clicked.[/cyan]")
+    else:
+        rprint("[yellow][WARN] Vote method toggle not found in contest panel.[/yellow]")
+        # Check for "No Results" message
+        no_results = page.locator("text=No results").count()
+        if no_results > 0:
+            rprint("[red][ERROR] No results found on the page. Skipping further processing.[/red]")
+            return None, None, None, {"skipped": True}
 
     # Scroll page to load dynamic precincts
     rprint("[cyan][INFO] Scrolling to load precincts...[/cyan]")
@@ -145,8 +154,8 @@ def parse(page: Page, html_context: Optional[dict] = None):
         if not table:
             rprint(f"[red][ERROR] No table found for precinct '{precinct_name}'. Skipping.[/red]")
             continue
-        if is_noisy_label(precinct_name):
-            rprint(f"[yellow][WARN] Noisy label detected in precinct name: '{precinct_name}'. Skipping.[/yellow]")
+        if not precinct_name:
+            rprint(f"[red][ERROR] No precinct name found for table. Skipping.[/red]")
             continue
         if VERBOSE:
             rprint(f"[blue][DEBUG] Parsing precinct: {precinct_name}[/blue]")

@@ -29,7 +29,8 @@ if os.path.abspath(OUTPUT_DIR).startswith(os.path.expanduser("~")):
   
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(STRESS_DIR, exist_ok=True)
-
+# Set up logging
+logging.getLogger().setLevel(logging.INFO)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -191,6 +192,11 @@ def main():
     parser.add_argument('--url', help='URL to fetch')
     args = parser.parse_args()
 
+    # Add this check here
+    if args.input and not os.path.isfile(args.input):
+        print(f"ERROR: Input file not found: {args.input}")
+        return
+
     with open(SCHEMA_FILE, 'w') as f:
         json.dump({"County": "str", "REP Total Votes": "int", "DEM Total Votes": "int"}, f)
     with open(COUNTIES_FILE, 'w') as f:
@@ -210,6 +216,3 @@ def main():
     out_file = os.path.join(OUTPUT_DIR, f"cleaned_{fmt}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
     df.to_csv(out_file, index=False)
     print(f"\n✅ Output: {out_file}")
-
-if __name__ == '__main__':
-    main()
