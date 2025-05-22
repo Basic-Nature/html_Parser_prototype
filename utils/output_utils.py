@@ -9,6 +9,7 @@ import csv
 import json
 from datetime import datetime
 from typing import Optional
+from utils.html_table_extractor import calculate_grand_totals
 from utils.shared_logger import log_debug, log_info, log_warning, log_error
 
 def mark_url_processed(url):
@@ -75,35 +76,36 @@ def resolve_output_file(base_title: str, state: str, county: Optional[str] = Non
     os.makedirs(output_path, exist_ok=True)
     return os.path.join(output_path, filename)
 
-def write_csv_output(headers, rows, metadata):
+def write_csv_output(headers, data, contest_title, metadata, include_grand_totals=True):
     """
     Writes Smart Elections-compliant CSV output using headers and row data.
     The filename is derived using state, county, race, and timestamp.
-
-    Args:
-        headers (List[str]): List of column names
-        rows (List[Dict]): List of row dictionaries
-        metadata (Dict): Includes 'state', 'county', and 'race' for filename resolution
-
-    Returns:
-        str: Path to the written CSV file
+    Optionally includes contest_title as a column.
     """
     state = metadata.get("state", "Unknown")
     county = metadata.get("county", "Unknown")
-    title = metadata.get("race", "Election_Results")
+    title = contest_title or metadata.get("race", "Election_Results")
     output_path = resolve_output_file(title, state, county, ext="csv", subfolder="parsed")
-
+    if contest_title:
+        for row in data:
+            row["Contest Title"] = contest_title
+        if "Contest Title" not in headers:
+            headers.append("Contest Title")
     if not headers:
         # Build header union from all rows
         header_set = set()
-        for row in rows:
+        for row in data:
             header_set.update(row.keys())
         headers = sorted(header_set)
-
+    # Optionally add grand totals
+    if include_grand_totals and data:
+        grand_totals = calculate_grand_totals(data)
+        data = data + [grand_totals]
+    # Write CSV file
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=headers, extrasaction='ignore')
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writedata(data)
         f.write(f"# Generated at: {format_timestamp()}")
 
     return output_path
@@ -188,21 +190,16 @@ def clean_metadata_for_output(metadata):
 
     return cleaned
 
-def finalize_election_output(headers, rows, metadata, write_metadata=True):
+def finalize_election_output(headers, data, contest_title, metadata, write_metadata=True, include_grand_totals=True):
     """
     Unified output finalizer that writes both CSV and optional JSON metadata.
-
-    Args:
-        headers (List[str]): Column names for CSV
-        rows (List[Dict[str, str]]): Row data
-        metadata (Dict): Includes 'state', 'county', 'race', etc.
-        write_metadata (bool): Whether to output JSON metadata file
-
-    Returns:
-        Dict[str, str]: Paths to generated files, including 'csv_path' and optionally 'json_path'
+    Ensures contest_title is passed through.
     """
     result = {}
-    result['csv_path'] = write_csv_output(headers, rows, metadata)
+    result['csv_path'] = write_csv_output(headers, data, contest_title, metadata, include_grand_totals=include_grand_totals)
+    if not result['csv_path']:
+        log_error("Failed to write CSV output.")
+        return result
     if write_metadata:
         result['json_path'] = write_json_metadata(metadata)
     return result

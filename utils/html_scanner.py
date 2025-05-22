@@ -10,8 +10,9 @@ import re
 import time
 import os
 from collections import defaultdict
+from playwright.sync_api import Error as PlaywrightError
 from typing import Dict
-
+from utils.shared_logic import COMMON_PRECINCT_HEADERS
 
 from utils.shared_logger import logger
 #
@@ -211,7 +212,90 @@ def scan_html_for_context(page) -> Dict:
     except Exception:  
         pass
     return context_result
+def detect_precinct_headers(elements):
+    """
+    Scans a list of DOM elements and identifies potential precinct section headers.
+    This includes H3, STRONG, SPAN, and B tags that contain keywords like 'Ward', 'District', etc.
 
+    Args:
+        elements (List): List of Playwright DOM nodes.
+
+    Returns:
+        List[str]: List of detected precinct names.
+
+    Note:
+        This function is only for identification. It does not attempt to infer reporting percentages.
+    """
+    precincts = []
+    if not elements:
+        logger.debug("[HEADER] No elements found for precinct header detection.")
+        return precincts
+    logger.info(f"[HEADER] Found {len(elements)} elements for precinct header detection.")
+    # Iterate through each element to check for precinct headers
+    for el in elements:
+        try:
+            # Check if the element is visible and enabled
+            tag = el.evaluate("e => e.tagName").strip().lower()
+            header_tags = {f"h{i}" for i in range(1, 25)} # Supports h1 through h24
+            other_tags = {"strong", "b", "span"}
+            if tag in header_tags or tag in other_tags:
+                # Check if the tag is visible and enabled
+                if not el.is_visible() or not el.is_enabled():
+                    logger.debug(f"[HEADER] Tag {tag} is not visible or enabled.")
+                    continue
+                # Attempt to read the tag's text
+                # This may fail if the tag is not a standard text tag
+                # or if it has complex inner HTML
+                # Use try-except to handle potential errors
+                # Use inner_text() to get the tag's text
+                # and strip any leading/trailing whitespace
+                label = el.inner_text().strip()
+            # Check if the tag is one of the expected header types
+            # and if it contains any of the common precinct keywords
+            # This assumes the tag is in uppercase and stripped of whitespace
+            # This is a fallback in case the tag is not one of the expected header types
+            # or if the tag is not descriptive enough
+            # Use inner_text() to get the tag's text
+            # and strip any leading/trailing whitespace
+            # Use try-except to handle potential errors
+                if any(k in label for k in COMMON_PRECINCT_HEADERS) or any(char.isdigit() for char in label):       
+                    # If the label contains any of the common precinct keywords
+                    # or if the label contains any digits, add it to the precincts list
+                    precincts.append(label)
+                else:
+                    # If the label does not contain any of the common precinct keywords
+                    # or if the label does not contain any digits, skip this tag
+                    logger.debug(f"[HEADER] Label '{label}' does not match precinct keywords.")
+                    continue
+            else:
+                # If the tag is not one of the expected header types, skip this tag
+                logger.debug(f"[HEADER] Tag '{tag}' is not a recognized header type.")
+                continue
+        except PlaywrightError as e:
+            logger.debug(f"[HEADER] Failed to read tag: {e}")
+            continue
+        except AttributeError as e:
+            logger.debug(f"[HEADER] Failed to read label: {e}")
+            continue
+        except TypeError as e:
+            logger.debug(f"[HEADER] Failed to read label: {e}")
+            continue
+        except ValueError as e:
+            logger.debug(f"[HEADER] Failed to read label: {e}")
+            continue
+        except KeyError as e:
+            logger.debug(f"[HEADER] Failed to read label: {e}")
+            continue    
+        except IndexError as e:
+            logger.debug(f"[HEADER] Failed to read label: {e}")
+            continue
+        except TimeoutError as e:
+            logger.debug(f"[HEADER] Failed to read label: {e}")
+            continue
+        except Exception as e:
+            logger.debug(f"[HEADER] Failed to evaluate tag or read label: {e}")
+            continue
+    return precincts
 def get_detected_races_from_context(context_result):
     """
     Returns a flat, sorted list of (year, election_type, race) tuples.
