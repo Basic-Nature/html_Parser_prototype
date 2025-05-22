@@ -1,0 +1,5 @@
+{
+    "name": "My Bot",
+    "description": "A simple bot that responds to messages.",
+    "version": "1.0"
+}
