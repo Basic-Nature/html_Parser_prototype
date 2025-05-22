@@ -10,6 +10,7 @@ from playwright.sync_api import Page
 from handlers.formats import html_handler as fallback_html_handler
 from handlers.formats import json_handler
 from handlers.formats.html_handler import extract_contest_panel, extract_precinct_tables
+from utils.html_scanner import get_detected_races_from_context
 from utils.output_utils import finalize_election_output
 from utils.shared_logger import logging
 from utils.shared_logic import (
@@ -82,7 +83,11 @@ def parse(page: Page, html_context: Optional[dict] = None):
         if VERBOSE:
             rprint("[green][INFO] JSON parse successful. Bypassing HTML and returning results.[/green]")
         return result
-
+    detected = get_detected_races_from_context(html_context)
+    filtered_races = [race for race in detected if not is_noisy_label(race)]
+    if not filtered_races:
+        rprint("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
+        return None, None, None, {"skipped": True}
     contest_title = html_context.get("selected_race")
     race_core = contest_title.split("2024")[-1].strip().lower() if contest_title else ""
     if "view results by election district" in race_core:
@@ -96,7 +101,8 @@ def parse(page: Page, html_context: Optional[dict] = None):
 
     page.wait_for_timeout(500)
     rprint("[cyan][INFO] Waiting for contest-specific page content...[/cyan]")
-
+    for idx, race in enumerate(filtered_races):
+        rprint(f"  [{idx}] {race}")
     # --- Dynamic toggles: View results by election district, then Vote Method ---
     toggle_results = click_toggles_with_url_check(
         page,
