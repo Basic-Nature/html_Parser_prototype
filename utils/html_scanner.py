@@ -10,11 +10,22 @@ import re
 import time
 import os
 from collections import defaultdict
-from typing import Dict, List
-from datetime import datetime
-from bs4 import BeautifulSoup
-from utils.shared_logger import logger
+from typing import Dict
 
+
+from utils.shared_logger import logger
+#
+CONTEST_PANEL_TAGS = [
+    "p-panel", "div.panel", "section.contest-panel"
+]
+
+PRECINCT_ELEMENT_TAGS = [
+    "h3", "strong", "b", "span", "table"
+]
+
+CONTEST_HEADER_SELECTORS = [
+    "h1", "h2", "h3", "h4", "h5", "h6"
+]
 # List of known election-related race keywords used to identify contests
 RACE_KEYWORDS = [
     # Federal

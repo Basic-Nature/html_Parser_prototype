@@ -4,15 +4,15 @@
 # Used when structured formats (JSON, CSV, PDF) are not present.
 # This routes through the state_router using html_scanner context.
 # ==============================================================
-
-from playwright.sync_api import Page
+from utils.contest_selector import select_contest
+from utils.html_table_extractor import extract_table_data
 from utils.shared_logic import normalize_text
-from state_router import get_handler as get_state_handler, resolve_state_handler
+from state_router import get_handler as get_state_handler
 from utils.format_router import detect_format_from_links, route_format_handler
+from utils.html_scanner import CONTEST_PANEL_TAGS, PRECINCT_ELEMENT_TAGS, CONTEST_HEADER_SELECTORS
 from utils.download_utils import download_confirmed_file
 from utils.shared_logger import logger
 from rich import print as rprint
-from typing import Optional
 from utils.html_scanner import get_detected_races_from_context
 import os
 import re
@@ -22,23 +22,26 @@ def extract_contest_panel(page, contest_title):
     """
     Returns the Playwright element for the contest panel matching contest_title.
     """
-    panels = page.query_selector_all("p-panel")
-    for panel in panels:
-        header = panel.query_selector("h1, h2, h3, h4, h5, h6")
-        if header and contest_title.lower() in header.inner_text().strip().lower():
-            return panel
+    header_selector = ", ".join(CONTEST_HEADER_SELECTORS)
+    for tag in CONTEST_PANEL_TAGS:
+        panels = page.query_selector_all(tag)
+        for panel in panels:
+            header = panel.query_selector(header_selector)
+            if header and contest_title.lower() in header.inner_text().strip().lower():
+                return panel
     return None
 
 def extract_precinct_tables(panel):
     """
     Returns a list of (precinct_name, table_element) tuples from a contest panel.
     """
-    elements = panel.query_selector_all('h3, strong, b, span, table')
+    selector = ', '.join(PRECINCT_ELEMENT_TAGS)
+    elements = panel.query_selector_all(selector)
     precincts = []
     current_precinct = None
     for el in elements:
         tag = el.evaluate("e => e.tagName").strip().upper()
-        if tag in ["H3", "STRONG", "B", "SPAN"]:
+        if tag in [t.upper() for t in PRECINCT_ELEMENT_TAGS if t != "table"]:
             label = el.inner_text().strip()
             current_precinct = label
         elif tag == "TABLE" and current_precinct:
@@ -82,22 +85,21 @@ def parse(page, html_context=None):
         html_context = {}
     contest_title = html_context.get("selected_race")
     if not contest_title and "available_races" in html_context:
-        detected = get_detected_races_from_context(html_context)
-        if not detected:
-            rprint("[yellow]No contests detected. Skipping HTML parsing.[/yellow]")
+        detected = get_detected_races_from_context(html_context) 
+        contest_title = select_contest(detected)
+        if not contest_title:
             return None, None, None, {"skipped": True}
-        rprint("[bold #eb4f43]Contest Races Detected:[/bold #eb4f43]")
-        for idx, race in enumerate(detected):
-            rprint(f"  [{idx}] {race}")
-        choice = input("[PROMPT] Enter contest index or leave blank to skip: ").strip()
-        if not choice or not choice.isdigit() or int(choice) >= len(detected):
-            rprint("[yellow]No contest selected. Skipping HTML parsing.[/yellow]")
-            return None, None, None, {"skipped": True}
-        contest_title = detected[int(choice)]
-        html_context["selected_race"] = contest_title    
-
+        html_context["selected_race"] = contest_title
     # STEP 3 — Redirect to state/county-specific handler if matched
     # Check if the state handler is already resolved
+    state_handler = get_state_handler(
+        state_abbreviation=html_context.get("state"),
+        county_name=html_context.get("county")
+    )
+    if state_handler and hasattr(state_handler, "parse"):
+        logger.info(f"[HTML Handler] Redirecting to state handler: {state_handler.__name__}...")
+        return state_handler.parse(page, html_context)    
+
     state = html_context.get("state")
     county = html_context.get("county")
     if state or county:
@@ -141,6 +143,7 @@ def parse(page, html_context=None):
         return state_handler.parse(page, html_context)
 
     # STEP 4 — Final fallback: Basic HTML table extraction if no route matched
+    headers = []
     try:
         table = page.query_selector("table")
         if not table:
@@ -149,52 +152,13 @@ def parse(page, html_context=None):
         if not table:
             raise RuntimeError("No table found on the page.")
         # Extract
-        headers = [th.inner_text().strip() for th in table.query_selector_all("thead tr th")]
-        if not headers:
-            # Attempt to find headers in the first row of the table
-            headers = [th.inner_text().strip() for th in table.query_selector_all("tbody tr:first-child th")]
-        if not headers:
-            raise RuntimeError("No headers found in the table.")
+        headers, data = extract_table_data(table)
+        logger.info(f"[HTML Handler] Extracted {len(data)} rows from the table.")
+    except Exception as e:    
+        logger.error(f"[ERROR] Failed to extract table from page: {e}")
+        return None, None, None, {"error": str(e)}
         # Extract rows
         # Use a list comprehension to extract data from each row
-        data = []
-        for row in table.query_selector_all("tbody tr"):
-            # Check if the row is empty or contains only headers
-            if not row.query_selector("td"):
-                continue
-            # Extract data from each cell in the row
-            # Use a dictionary comprehension to create a dictionary for each row
-            # Use the headers as keys and the cell values as values
-            # Use the min function to avoid index errors if the number of headers and cells differ
-            cells = row.query_selector_all("td")
-            row_data = {headers[i]: cells[i].inner_text().strip() for i in range(min(len(headers), len(cells)))}
-            data.append(row_data)
-        if not data:
-            raise RuntimeError("No rows found in the table.")
-        logger.info(f"[HTML Handler] Extracted {len(data)} rows from the table.")
-    except RuntimeError as e:
-        logger.error(f"[ERROR] Failed to extract table from page: {e}")
-        return None, None, None, {"error": str(e)}
-    except AttributeError as e:
-        logger.error(f"[ERROR] Failed to extract table from page: {e}")
-        return None, None, None, {"error": str(e)}
-    except TypeError as e:
-        logger.error(f"[ERROR] Failed to extract table from page: {e}")
-        return None, None, None, {"error": str(e)}
-    except ValueError as e:
-        logger.error(f"[ERROR] Failed to extract table from page: {e}")
-        return None, None, None, {"error": str(e)}
-    except KeyError as e:
-        logger.error(f"[ERROR] Failed to extract table from page: {e}")
-        return None, None, None, {"error": str(e)}
-    except IndexError as e:
-        logger.error(f"[ERROR] Failed to extract table from page: {e}")
-        return None, None, None, {"error": str(e)}
-    except Exception as e:
-        # Catch-all for any other exceptions
-        # This is a generic error handler for any unexpected errors
-        logger.error(f"[ERROR] Failed to extract table from page: {e}")
-        return None, None, None, {"error": str(e)}
 
     # STEP 5 — Output metadata for this HTML-based parse session
     # --- 5. Output metadata ---
