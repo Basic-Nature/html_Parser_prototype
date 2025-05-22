@@ -45,8 +45,9 @@ def extract_precinct_tables(panel):
             precincts.append((current_precinct, el))
             current_precinct = None
     return precincts
+# --- 1. Detect structured files and prompt user ---
 def parse(page, html_context=None):
-    # --- 1. Detect structured files and prompt user ---
+  
     found_files = detect_format_from_links(page)
     for fmt, url in found_files:
         filename = os.path.basename(url)
