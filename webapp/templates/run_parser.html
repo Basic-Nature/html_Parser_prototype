@@ -1,0 +1,163 @@
+<!-- filepath: ...\html_Parser_prototype\webapp\templates\run_parser.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Run Parser | Smart Elections Parser</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --main-blue: #45818e;
+            --main-red: #eb4f43;
+            --main-bg: #f8f9fa;
+        }
+        body {
+            background: linear-gradient(120deg, var(--main-blue) 0%, var(--main-red) 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .navbar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: var(--main-blue);
+            padding: 1em 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .navbar a {
+            color: #fff;
+            text-decoration: none;
+            margin: 0 1.5em;
+            font-weight: 600;
+            letter-spacing: 1px;
+            padding: 0.5em 1em;
+            border-radius: 6px;
+            transition: background 0.3s, color 0.3s;
+        }
+        .navbar a:hover, .navbar a.active {
+            background: var(--main-red);
+            color: #fff;
+        }
+        .container-main {
+            max-width: 900px;
+            margin: 2em auto;
+            background: rgba(255,255,255,0.97);
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            padding: 2.5em 2em;
+        }
+        h1 {
+            color: var(--main-blue);
+            text-align: center;
+            margin-bottom: 0.5em;
+        }
+        .subtitle {
+            text-align: center;
+            color: var(--main-red);
+            font-size: 1.1em;
+            margin-bottom: 2em;
+        }
+        .instructions {
+            background: #f8f9fa;
+            border-left: 5px solid var(--main-blue);
+            border-radius: 8px;
+            padding: 1em 1.5em;
+            margin-bottom: 2em;
+            color: #333;
+        }
+        .form-section {
+            margin-bottom: 2em;
+            text-align: center;
+        }
+        .btn-primary {
+            background-color: var(--main-blue);
+            border-color: var(--main-blue);
+            color: #fff;
+            font-weight: 600;
+            border-radius: 6px;
+            padding: 0.7em 2em;
+            font-size: 1.1em;
+            transition: background 0.3s, border 0.3s;
+        }
+        .btn-primary:hover {
+            background-color: var(--main-red);
+            border-color: var(--main-red);
+        }
+        .output-section {
+            background: #222;
+            color: #d4f1f9;
+            font-family: 'Fira Mono', 'Consolas', monospace;
+            border-radius: 10px;
+            padding: 1.5em 1em;
+            min-height: 180px;
+            margin-bottom: 1em;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .flash {
+            margin: 1em auto;
+            max-width: 600px;
+            padding: 1em 1.5em;
+            border-radius: 8px;
+            background: var(--main-red);
+            color: #fff;
+            font-weight: 600;
+            text-align: center;
+        }
+        @media (max-width: 700px) {
+            .container-main { padding: 1em; }
+            .navbar { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('url_hints') }}">URL Hints</a>
+        <a href="{{ url_for('history') }}">History</a>
+        <a href="{{ url_for('run_parser_page') }}" class="active">Run Parser</a>
+        <a href="https://github.com/SmartElections/parser" target="_blank">About</a>
+    </nav>
+    <div class="container-main">
+        <h1>Run the Smart Elections Parser</h1>
+        <div class="subtitle">Start a new parsing job and view the results below.</div>
+        <div class="instructions">
+            <strong>Instructions:</strong>
+            <ul>
+                <li>Click <b>Run Parser</b> to start the election data extraction process.</li>
+                <li>Parser will use the current URL hint configuration and available handlers.</li>
+                <li>Results and logs will be displayed in the output area below.</li>
+                <li>For advanced options, update your URL hints or handler modules first.</li>
+            </ul>
+        </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="form-section">
+            <form method="POST" action="{{ url_for('run_parser') }}">
+                <!-- Example toggle: -->
+                <!--
+                <label>
+                    <input type="checkbox" name="dry_run" value="1"> Dry Run (no changes)
+                </label>
+                -->
+                <button type="submit" class="btn-primary">Run Parser</button>
+            </form>
+        </div>
+
+        <div class="output-section">
+            {% if parser_output %}
+                {{ parser_output }}
+            {% else %}
+                <span style="color:#888;">Parser output will appear here after you run the parser.</span>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
