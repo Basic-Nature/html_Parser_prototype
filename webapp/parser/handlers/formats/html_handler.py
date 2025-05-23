@@ -5,14 +5,14 @@
 # This routes through the state_router using html_scanner context.
 # ==============================================================
 
-from webapp.parser.state_router import get_handler as get_state_handler
-from utils.contest_selector import select_contest
-from utils.download_utils import download_confirmed_file
-from utils.format_router import detect_format_from_links, route_format_handler
-from utils.html_table_extractor import extract_table_data
-from utils.html_scanner import scan_html_for_context, get_detected_races_from_context
-from utils.shared_logger import logger
-from utils.shared_logic import (
+from ...state_router import get_handler as get_state_handler
+from ...utils.contest_selector import select_contest
+from ...utils.download_utils import download_confirmed_file
+from ...utils.format_router import detect_format_from_links, route_format_handler
+from ...utils.html_table_extractor import extract_table_data
+from ...utils.html_scanner import scan_html_for_context, get_detected_races_from_context
+from ...utils.shared_logger import logger
+from ...utils.shared_logic import (
     normalize_text, click_dynamic_toggle,
     CONTEST_HEADER_SELECTORS, CONTEST_PANEL_TAGS,
     PRECINCT_ELEMENT_TAGS, CONTEST_PANEL_TAGS

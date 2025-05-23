@@ -5,7 +5,7 @@
 # ==============================================================
 
 from tqdm import tqdm
-from utils.shared_logger import log_info, log_debug, log_warning, log_error
+from ....utils.shared_logger import log_info, log_debug, log_warning, log_error
 from rich import print as rprint
 
 def handle(page, config):

@@ -7,14 +7,14 @@
 # ==============================================================================
 
 from playwright.sync_api import Page
-from handlers.formats import html_handler as fallback_html_handler
-from handlers.formats import json_handler
-from handlers.formats.html_handler import extract_contest_panel, extract_precinct_tables
-from utils.contest_selector import select_contest
-from utils.html_scanner import scan_html_for_context, get_detected_races_from_context
-from utils.output_utils import calculate_grand_totals, finalize_election_output
-from utils.shared_logger import logging, logger
-from utils.shared_logic import (
+from .....handlers.formats import html_handler as fallback_html_handler
+from .....handlers.formats import json_handler
+from .....handlers.formats.html_handler import extract_contest_panel, extract_precinct_tables
+from .....utils.contest_selector import select_contest
+from .....utils.html_scanner import scan_html_for_context, get_detected_races_from_context
+from .....utils.output_utils import calculate_grand_totals, finalize_election_output
+from .....utils.shared_logger import logging, logger
+from .....utils.shared_logic import (
     autoscroll_until_stable,
     click_contest_toggle_dynamic_heading,
     click_vote_method_toggle,

@@ -4,7 +4,7 @@
 # Uses importlib for auto-resolution from folder structure.
 # Also used by JSON, CSV, and PDF format handlers.
 # ===============================================
-from utils.shared_logger import logger
+from .utils.shared_logger import logger
 import os
 import importlib
 

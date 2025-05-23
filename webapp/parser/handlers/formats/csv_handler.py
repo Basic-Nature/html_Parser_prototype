@@ -8,9 +8,9 @@ import csv
 import os
 import re
 from dotenv import load_dotenv
-from webapp.parser.state_router import resolve_state_handler
-from utils.output_utils import get_output_path, format_timestamp, finalize_election_output
-from utils.shared_logger import logging, rprint, logger
+from ...state_router import resolve_state_handler
+from ...utils.output_utils import get_output_path, format_timestamp, finalize_election_output
+from ...utils.shared_logger import logging, rprint, logger
 
 load_dotenv()
 

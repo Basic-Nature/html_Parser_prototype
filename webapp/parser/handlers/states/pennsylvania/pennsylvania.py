@@ -7,9 +7,9 @@
 import csv
 import os
 from datetime import datetime
-from utils.shared_logger import logger
+from ....utils.shared_logger import logger
 from rich import print as rprint
-from utils.output_utils import get_output_path, format_timestamp, sanitize_filename, finalize_election_output
+from ....utils.output_utils import get_output_path, format_timestamp, sanitize_filename, finalize_election_output
 
 def apply_navigation_steps(page, config):
     steps = config.get("nav_actions", [])

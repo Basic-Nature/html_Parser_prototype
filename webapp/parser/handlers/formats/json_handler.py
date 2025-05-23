@@ -13,9 +13,9 @@ import os
 import pandas as pd
 import re
 from collections import defaultdict
-from webapp.parser.state_router import get_handler_from_context, resolve_state_handler
-from utils.shared_logger import logger, rprint
-from utils.output_utils import get_output_path, format_timestamp
+from ...state_router import get_handler_from_context, resolve_state_handler
+from ...utils.shared_logger import logger, rprint
+from ...utils.output_utils import get_output_path, format_timestamp
 
 def parse(page, html_context):
     # Respect early skip signal from calling context

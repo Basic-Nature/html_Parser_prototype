@@ -8,8 +8,8 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from rich import print as rprint
-from webapp.parser.state_router import resolve_state_handler
-from utils.output_utils import get_output_path, format_timestamp
+from ...state_router import resolve_state_handler
+from ...utils.output_utils import get_output_path, format_timestamp
 from typing import cast
 from fitz import Page
 

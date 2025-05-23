@@ -29,15 +29,15 @@ from rich import print as rprint
 from playwright.sync_api import sync_playwright, Page
 
 # Local project utils
-from handlers.formats import html_handler
-from utils.browser_utils import launch_browser_with_stealth
-from utils.captcha_tools import handle_cloudflare_captcha
-from utils.download_utils import ensure_input_directory, ensure_output_directory
-from utils.format_router import detect_format_from_links, prompt_user_for_format , route_format_handler
-from utils.html_scanner import scan_html_for_context
-from webapp.parser.state_router import get_handler as get_state_handler
-from utils.shared_logger import rprint
-from utils.user_prompt import prompt_user_input
+from .handlers.formats import html_handler
+from .utils.browser_utils import launch_browser_with_stealth
+from .utils.captcha_tools import handle_cloudflare_captcha
+from .utils.download_utils import ensure_input_directory, ensure_output_directory
+from .utils.format_router import detect_format_from_links, prompt_user_for_format , route_format_handler
+from .utils.html_scanner import scan_html_for_context
+from .state_router import get_handler as get_state_handler
+from .utils.shared_logger import rprint
+from .utils.user_prompt import prompt_user_input
 # Load settings from .env file
 load_dotenv()
 

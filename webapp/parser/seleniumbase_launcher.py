@@ -1,9 +1,9 @@
 # seleniumbase_launcher.py
 from seleniumbase import Driver
-from utils.shared_logger import log_debug, log_info, log_warning, log_error
-from utils.captcha_tools import wait_for_user_to_solve_captcha
-from utils.browser_utils import force_foreground
-from utils.shared_logger import logger
+from .utils.shared_logger import log_debug, log_info, log_warning, log_error
+from .utils.captcha_tools import wait_for_user_to_solve_captcha
+from .utils.browser_utils import force_foreground
+from .utils.shared_logger import logger
 
 
 def launch_browser():

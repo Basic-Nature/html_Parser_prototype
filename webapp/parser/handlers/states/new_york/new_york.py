@@ -1,7 +1,7 @@
 import importlib
 from playwright.sync_api import Page
 from typing import Optional
-from utils.shared_logger import logger
+from ....utils.shared_logger import logger
 
 def parse(page: Page, html_context: Optional[dict] = None):
     if html_context is None:
