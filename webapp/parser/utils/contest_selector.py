@@ -4,7 +4,7 @@
 # This script is part of the Election Data Cleaner project, which is licensed under the MIT License.
 # ===================================================================
 from rich import print as rprint
-from utils.shared_logger import logger
+from ..utils.shared_logger import logger
 import re
 
 DEFAULT_NOISY_LABELS = [

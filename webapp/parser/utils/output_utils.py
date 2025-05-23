@@ -1,5 +1,5 @@
 import re
-from utils.shared_logger import logger
+from ..utils.shared_logger import logger
 
 def clean_candidate_name(name):
     """

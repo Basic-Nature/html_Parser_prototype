@@ -2,12 +2,12 @@ import re
 import time
 from collections import defaultdict
 from typing import Dict, Any
-from utils.shared_logic import ( 
+from ..utils.shared_logic import ( 
     COMMON_CONTEST_LABELS, COMMON_PRECINCT_HEADERS, 
     IGNORE_SUBSTRINGS, SCAN_WAIT_SECONDS,
     ALL_SELECTORS, YEAR_REGEX, SYMBOL_REGEX
 )
-from utils.shared_logger import logger
+from ..utils.shared_logger import logger
 
 
 def normalize_text(text: str) -> str:

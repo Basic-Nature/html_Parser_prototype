@@ -6,8 +6,8 @@
 # ==============================================================
 
 from typing import Optional
-from utils.shared_logger import log_info, log_debug, log_warning, rprint
-from utils.user_prompt import prompt_user_input
+from ..utils.shared_logger import log_info, log_debug, log_warning, rprint
+from ..utils.user_prompt import prompt_user_input
 from urllib.parse import urljoin
 from dotenv import load_dotenv
 import os

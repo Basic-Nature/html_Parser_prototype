@@ -8,8 +8,8 @@
 import random
 import os
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
-from utils.user_agents import USER_AGENTS
-from utils.shared_logger import logger, rprint
+from ..utils.user_agents import USER_AGENTS
+from ..utils.shared_logger import logger, rprint
 
 def create_browser_context(browser_type, user_agent, headless=True, proxy=None):
     """

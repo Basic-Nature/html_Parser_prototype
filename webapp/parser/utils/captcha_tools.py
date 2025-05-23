@@ -7,8 +7,8 @@ import time
 import os
 import platform
 from playwright.sync_api import Page, sync_playwright, Error as PlaywrightError
-from utils.browser_utils import relaunch_browser_fullscreen_if_needed
-from utils.shared_logger import logger, rprint
+from ..utils.browser_utils import relaunch_browser_fullscreen_if_needed
+from ..utils.shared_logger import logger, rprint
 # Load timeout from environment (default to 300 seconds)
 DEFAULT_CAPTCHA_TIMEOUT = int(os.getenv("CAPTCHA_TIMEOUT", "300"))
 POLL_INTERVAL = 5

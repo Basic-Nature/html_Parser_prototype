@@ -5,7 +5,7 @@
 # ===================================================================
 import re
 from numpy import e
-from utils.shared_logger import logger
+from ..utils.shared_logger import logger
 def extract_table_data(table):
     try:
         headers = [th.inner_text().strip() for th in table.query_selector_all("thead tr th")]

@@ -7,7 +7,7 @@
 import difflib
 import os
 import re
-from utils.shared_logger import logger, rprint
+from ..utils.shared_logger import logger, rprint
 # Dynamically generate all header tags up to h24
 
 HEADER_TAGS = [f"h{i}" for i in range(1, 25)]
