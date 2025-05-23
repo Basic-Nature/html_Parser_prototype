@@ -1,218 +1,68 @@
-# election_pipeline_monolith.py
-# SINGLE-FILE EDITION: Self-contained, secure, and portable
+#Merry ChristmuhKwanzikah:
 
-import os
-import re
-import csv
-import sys
-import json
-import logging
-import argparse
-from io import StringIO
-from datetime import datetime
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
+import csv
+import re
+from io import StringIO
+from difflib import SequenceMatcher
 
-# ================================
-# SECTION 0 — GLOBAL SETUP
-# ================================
-OUTPUT_DIR = r"C:\ElectionDataOutput"
-SCHEMA_FILE = os.path.join(OUTPUT_DIR, "schema.json")
-COUNTIES_FILE = os.path.join(OUTPUT_DIR, "known_counties.txt")
-STRESS_DIR = os.path.join(OUTPUT_DIR, "stress_inputs")
+COMMON_DELIMITERS = [',', '\t', ';', '|']
+LIKELY_HEADERS = ['county', 'rep', 'dem', 'trump', 'biden', 'harris', 'total', 'votes', 'other']
 
-if os.path.abspath(OUTPUT_DIR) == os.path.expanduser("~"):
-    raise ValueError("SECURITY ERROR: Output directory must not be your home directory itself. Please set OUTPUT_DIR to a subfolder or another location.")
-if os.path.abspath(OUTPUT_DIR).startswith(os.path.expanduser("~")):
-    print("WARNING: Output is inside your home directory. Proceeding anyway.")
-  
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(STRESS_DIR, exist_ok=True)
-# Set up logging
-logging.getLogger().setLevel(logging.INFO)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(os.path.join(OUTPUT_DIR, "log.txt"), encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
 
-# ================================
-# SECTION 1 — UTILITIES
-# ================================
-def safe_convert(df, col):
-    df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', ''), errors='coerce')
-    if df[col].isnull().any():
-        raise ValueError(f"Non-numeric or missing values in: {col}")
-    return df
+def guess_delimiter(text):
+    scores = {}
+    for delim in COMMON_DELIMITERS:
+        lines = text.strip().splitlines()[:10]
+        fields = [len(line.split(delim)) for line in lines]
+        scores[delim] = sum(fields)
+    return max(scores, key=scores.get)
 
-def normalize_county(df):
-    df['County'] = df['County'].astype(str).str.strip().str.title()
-    return df
 
-def print_summary(df):
-    print("\n✅ Summary:")
-    print(f"Counties: {len(df)}")
+def clean_column_name(name):
+    return re.sub(r'[^a-z0-9]', '', name.strip().lower())
+
+
+def match_header_column(col_name):
+    norm_col = clean_column_name(col_name)
+    best = None
+    best_score = 0
+    for candidate in LIKELY_HEADERS:
+        score = SequenceMatcher(None, norm_col, candidate).ratio()
+        if score > best_score:
+            best_score = score
+            best = candidate
+    return best if best_score > 0.6 else None
+
+
+def interpret_structure(text):
+    delimiter = guess_delimiter(text)
+    try:
+        df = pd.read_csv(StringIO(text), sep=delimiter, engine='python')
+    except Exception as e:
+        return None, f"Failed to parse with delimiter '{delimiter}': {e}"
+
+    # Normalize and match headers
+    column_mapping = {}
     for col in df.columns:
-        if 'Votes' in col:
-            print(f"{col}: {df[col].sum():,}")
+        mapped = match_header_column(col)
+        if mapped:
+            column_mapping[col] = mapped
 
-# ================================
-# SECTION 2 — FORMAT CLEANERS
-# ================================
-def process_format_1(df):
-    df = normalize_county(df)
-    for col in ['REP', 'DEM']:
-        df = safe_convert(df, col)
-    return df[['County', 'REP', 'DEM']].rename(columns={'REP': 'REP Total Votes', 'DEM': 'DEM Total Votes'})
+    df.rename(columns=column_mapping, inplace=True)
 
-def process_format_2(df):
-    df = df.rename(columns={df.columns[0]: 'County'})
-    df = normalize_county(df)
-    df = pd.DataFrame({
-        'County': df['County'],
-        'DEM Total Votes': df[('Biden', 'Total')],
-        'REP Total Votes': df[('Trump', 'Total')]
-    })
-    for col in ['REP Total Votes', 'DEM Total Votes']:
-        df = safe_convert(df, col)
-    return df
+    if 'county' not in df.columns or ('rep' not in df.columns and 'trump' not in df.columns):
+        return None, "Unrecognized structure. Could not match essential headers."
 
-def process_format_3(df):
-    df = normalize_county(df)
-    for col in ['Trump', 'Harris', 'Other']:
-        if col in df.columns:
-            df = safe_convert(df, col)
-    return df[['County', 'Trump', 'Harris', 'Other']].rename(columns={
-        'Trump': 'REP Total Votes',
-        'Harris': 'DEM Total Votes',
-        'Other': 'Other Votes'
-    })
-def process_format_precinct_totals(df):
-    # Find the "Precinct" column
-    if 'Precinct' not in df.columns:
-        raise ValueError("No 'Precinct' column found")
-    # All other columns are candidate totals
-    candidate_cols = [col for col in df.columns if col != 'Precinct' and col.endswith('- Total')]
-    # Melt the DataFrame to long format
-    melted = df.melt(id_vars=['Precinct'], value_vars=candidate_cols,
-                     var_name='Candidate', value_name='Votes')
-    # Clean up
-    melted['Votes'] = pd.to_numeric(melted['Votes'].astype(str).str.replace(',', ''), errors='coerce').fillna(0).astype(int)
-    return melted, 'precinct_totals'
-# ================================
-# SECTION 3 — FORMAT DETECTION
-# ================================
-def detect_and_process(raw, delimiter='\t'):
-    print("DEBUG: Raw input preview:\n", raw[:500])
-    try:
-        df = pd.read_csv(StringIO(raw), sep=delimiter, header=[0, 1])
-        print("DEBUG: Multi-index columns:", df.columns.tolist())
-        if ('Biden', 'Total') in df.columns:
-            return process_format_2(df), 'format_2'
-    except Exception as e:
-        print("DEBUG: Format 2 failed:", e)
+    return df, None
 
-    try:
-        df = pd.read_csv(StringIO(raw), sep=delimiter)
-        print("DEBUG: Columns:", df.columns.tolist())
-        if {'County', 'REP', 'DEM'}.issubset(df.columns):
-            return process_format_1(df), 'format_1'
-    except Exception as e:
-        print("DEBUG: Format 1 failed:", e)
 
-    try:
-        df = pd.read_csv(StringIO(raw), sep=delimiter)
-        print("DEBUG: Columns:", df.columns.tolist())
-        if {'County', 'Trump', 'Harris'}.issubset(df.columns):
-            return process_format_3(df), 'format_3'
-    except Exception as e:
-        print("DEBUG: Format 3 failed:", e)
-    try:
-        df = pd.read_csv(StringIO(raw), sep=delimiter)
-        print("DEBUG: Columns:", df.columns.tolist())
-        if 'Precinct' in df.columns:
-            return process_format_precinct_totals(df)
-    except Exception as e:
-        print("DEBUG: Precinct totals format failed:", e)
-    raise ValueError("Unrecognized format")
-
-# ================================
-# SECTION 4 — INGESTION / FETCH
-# ================================
-def ingest_url(url):
-    logging.info(f"Fetching: {url}")
-    r = requests.get(url)
-    content = r.text
-    if '<table' in content:
-        soup = BeautifulSoup(content, 'html.parser')
-        table = soup.find('table')
-        rows = ["\t".join([cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])])
-                for row in table.find_all('tr')]
-        return "\n".join(rows)
-    return content
-
-# ================================
-# SECTION 5 — VALIDATOR
-# ================================
-def validate_output(df):
-    if df.isnull().sum().sum() > 0:
-        raise ValueError("Null values detected")
-    for col in df.columns:
-        if 'Votes' in col and not pd.api.types.is_integer_dtype(df[col]):
-            raise ValueError(f"Non-integer detected in: {col}")
-    return df
-
-# ================================
-# SECTION 6 — STRESS FILES
-# ================================
-def write_stress_inputs():
-    if not os.listdir(STRESS_DIR):
-        samples = {
-            'missing_column.csv': "County,REP\nAlpha,12345",
-            'bad_delimiter.txt': "County|REP|DEM\nAlpha|12345|54321",
-            'extra_whitespace.tsv': "\n\nCounty\tREP\tDEM\nAlpha\t12345\t54321\n\nBeta\t67890\t9876\n",
-            'empty_file.csv': "",
-            'malformed_header.csv': "Couny,Republicans,Democracts\nAlpha,12345,54321"
-        }
-        for name, content in samples.items():
-            with open(os.path.join(STRESS_DIR, name), 'w') as f:
-                f.write(content)
-        logging.info("Stress inputs written")
-
-# ================================
-# SECTION 7 — CONTROLLER
-# ================================
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--input', help='Path to file')
-    parser.add_argument('--url', help='URL to fetch')
-    args = parser.parse_args()
-
-    # Add this check here
-    if args.input and not os.path.isfile(args.input):
-        print(f"ERROR: Input file not found: {args.input}")
-        return
-
-    with open(SCHEMA_FILE, 'w') as f:
-        json.dump({"County": "str", "REP Total Votes": "int", "DEM Total Votes": "int"}, f)
-    with open(COUNTIES_FILE, 'w') as f:
-        f.write("Los Angeles\nSan Diego\nOrange")
-
-    write_stress_inputs()
-
-    if not args.input and not args.url:
-        print("Provide --input or --url")
-        return
-
-    raw = ingest_url(args.url) if args.url else open(args.input).read()
-    df, fmt = detect_and_process(raw)
-    df = validate_output(df)
-    print_summary(df)
-
-    out_file = os.path.join(OUTPUT_DIR, f"cleaned_{fmt}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-    df.to_csv(out_file, index=False)
-    print(f"\n✅ Output: {out_file}")
+if __name__ == "__main__":
+    with open("test_input.txt", "r", encoding="utf-8") as f:
+        content = f.read()
+    df, err = interpret_structure(content)
+    if err:
+        print(f"❌ Error: {err}")
+    else:
+        print("✅ Parsed dataframe:")
+        print(df.head())
