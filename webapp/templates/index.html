@@ -1,0 +1,242 @@
+<!-- filepath: ...\html_Parser_prototype\webapp\templates\index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Smart Elections Parser</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --main-blue: #45818e;
+            --main-red: #eb4f43;
+            --main-bg: #f8f9fa;
+            --glass: rgba(255,255,255,0.15);
+        }
+        body {
+            background: linear-gradient(120deg, var(--main-blue) 0%, var(--main-red) 100%);
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            color: #222;
+        }
+        .navbar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: var(--main-blue);
+            padding: 1em 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .navbar a {
+            color: #fff;
+            text-decoration: none;
+            margin: 0 1.5em;
+            font-weight: 600;
+            letter-spacing: 1px;
+            padding: 0.5em 1em;
+            border-radius: 6px;
+            transition: background 0.3s, color 0.3s;
+        }
+        .navbar a:hover, .navbar a.active {
+            background: var(--main-red);
+            color: #fff;
+        }
+        .container {
+            max-width: 900px;
+            margin: 2em auto;
+            background: var(--glass);
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            padding: 2.5em 2em;
+        }
+        h1 {
+            text-align: center;
+            color: var(--main-blue);
+            margin-bottom: 0.5em;
+        }
+        .subtitle {
+            text-align: center;
+            color: var(--main-red);
+            font-size: 1.2em;
+            margin-bottom: 1em;
+        }
+        .mission {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            padding: 1.2em 1em;
+            margin-bottom: 2em;
+            text-align: center;
+            color: #333;
+        }
+        .feature-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2em;
+            justify-content: center;
+            margin-bottom: 2em;
+        }
+        .feature {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            padding: 1.5em 1.2em;
+            min-width: 220px;
+            flex: 1 1 220px;
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s, border 0.2s;
+            border: 2px solid transparent;
+            cursor: pointer;
+        }
+        .feature:hover {
+            transform: translateY(-6px) scale(1.04);
+            box-shadow: 0 8px 32px rgba(235, 79, 67, 0.15);
+            border-color: var(--main-red);
+            background: #f8f9fa;
+        }
+        .feature h3 {
+            color: var(--main-blue);
+            margin-bottom: 0.5em;
+        }
+        .feature p {
+            color: #444;
+            font-size: 1em;
+        }
+        .canvas-section {
+            margin: 2em 0 1em 0;
+            text-align: center;
+        }
+        #container {
+            display: block;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .rainbow-text {
+            background: linear-gradient(90deg, #f22, #f2f, #22f, #2ff, #2f2, #ff2, #f22);
+            background-size: 200% auto;
+            color: transparent;
+            background-clip: text;
+            -webkit-background-clip: text;
+            animation: rainbow 3s linear infinite;
+            font-weight: bold;
+            font-size: 1.5em;
+        }
+        @keyframes rainbow {
+            to { background-position: 200% center; }
+        }
+        .flash {
+            margin: 1em auto;
+            max-width: 600px;
+            padding: 1em 1.5em;
+            border-radius: 8px;
+            background: var(--main-red);
+            color: #fff;
+            font-weight: 600;
+            text-align: center;
+        }
+        @media (max-width: 700px) {
+            .feature-list { flex-direction: column; }
+            .container { padding: 1em; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('index') }}" class="active">Dashboard</a>
+        <a href="{{ url_for('url_hints') }}">URL Hints</a>
+        <a href="{{ url_for('history') }}">History</a>
+        <a href="#" onclick="alert('Parser run coming soon!')">Run Parser</a>
+        <a href="https://github.com/SmartElections/parser" target="_blank">About</a>
+    </nav>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <h1>Smart Elections Parser</h1>
+        <div class="subtitle rainbow-text">Open, Transparent, and Modular Election Data Extraction</div>
+        <div class="mission">
+            <strong>Mission:</strong> To empower election transparency and civic engagement by providing open-source, modular tools for extracting, normalizing, and analyzing election results from any state or county in the U.S.<br><br>
+            <strong>Goals:</strong>
+            <ul style="text-align:left; max-width:700px; margin:1em auto 0 auto; color:#333;">
+                <li>Make election data accessible and comparable across formats and jurisdictions.</li>
+                <li>Enable researchers, journalists, and advocates to analyze results quickly and accurately.</li>
+                <li>Foster a community-driven ecosystem for election data tools and best practices.</li>
+            </ul>
+        </div>
+        <div class="feature-list">
+            <div class="feature" onclick="window.location='{{ url_for('url_hints') }}'">
+                <h3>URL Hint Manager</h3>
+                <p>Manage custom URL-to-handler mappings for tricky or new election sites. Import/export hints, undo changes, and validate handler modules.</p>
+            </div>
+            <div class="feature" onclick="window.location='{{ url_for('history') }}'">
+                <h3>Change History</h3>
+                <p>View the full history of URL hint changes and parser configuration updates for transparency and auditability.</p>
+            </div>
+            <div class="feature" onclick="alert('Parser run coming soon!')">
+                <form method="POST" action="{{ url_for('run_parser') }}">
+                    <button type="submit" class="btn btn-primary w-100" style="font-size:1.1em;">Run Parser</button>
+                <h3>Run Parser</h3>
+                <p>Start a new parsing job using the current configuration. CLI and batch automation also supported.</p>
+            </div>
+            <div class="feature" onclick="window.open('https://github.com/SmartElections/parser', '_blank')">
+                <h3>About & Docs</h3>
+                <p>Learn more about the Smart Elections Parser project, its architecture, and how to contribute.</p>
+            </div>
+        </div>
+        <div class="canvas-section">
+            <canvas id="container" width="300" height="300"></canvas>
+        </div>
+        <div style="text-align:center; margin-top:2em;">
+            <span style="color:var(--main-blue); font-weight:600;">Contact:</span>
+            <a href="mailto:info@smartelections.org" style="color:var(--main-red); font-weight:600;">info@smartelections.org</a>
+        </div>
+    </div>
+    <script>
+        // Canvas animation (solar system)
+        var sun = new Image();
+        var moon = new Image();
+        var earth = new Image();
+        function init() {
+            sun.src = 'https://mdn.mozillademos.org/files/1456/Canvas_sun.png';
+            moon.src = 'https://mdn.mozillademos.org/files/1443/Canvas_moon.png';
+            earth.src = 'https://mdn.mozillademos.org/files/1429/Canvas_earth.png';
+            window.requestAnimationFrame(draw);
+        }
+        function draw() {
+            var ctx = document.getElementById('container').getContext('2d');
+            ctx.globalCompositeOperation = 'destination-over';
+            ctx.clearRect(0, 0, 300, 300); // clear canvas
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.strokeStyle = 'rgba(0, 153, 255, 0.4)';
+            ctx.save();
+            ctx.translate(150, 150);
+            var time = new Date();
+            // Earth
+            ctx.rotate(((2 * Math.PI) / 60) * time.getSeconds() + ((2 * Math.PI) / 60000) * time.getMilliseconds());
+            ctx.translate(105, 0);
+            ctx.fillRect(0, -12, 40, 24); // Shadow
+            ctx.drawImage(earth, -12, -12);
+            // Moon
+            ctx.save();
+            ctx.rotate(((2 * Math.PI) / 6) * time.getSeconds() + ((2 * Math.PI) / 6000) * time.getMilliseconds());
+            ctx.translate(0, 28.5);
+            ctx.drawImage(moon, -3.5, -3.5);
+            ctx.restore();
+            ctx.restore();
+            ctx.beginPath();
+            ctx.arc(150, 150, 105, 0, Math.PI * 2, false); // Earth orbit
+            ctx.stroke();
+            ctx.drawImage(sun, 0, 0, 300, 300);
+            window.requestAnimationFrame(draw);
+        }
+        init();
+    </script>
+</body>
+</html>

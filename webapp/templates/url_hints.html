@@ -1,0 +1,185 @@
+<!-- filepath: ...\html_Parser_prototype\webapp\templates\url_hints.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>URL Hint Overrides | Smart Elections Parser</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --main-blue: #45818e;
+            --main-red: #eb4f43;
+            --main-bg: #f8f9fa;
+        }
+        body {
+            background: linear-gradient(120deg, var(--main-blue) 0%, var(--main-red) 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .navbar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: var(--main-blue);
+            padding: 1em 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .navbar a {
+            color: #fff;
+            text-decoration: none;
+            margin: 0 1.5em;
+            font-weight: 600;
+            letter-spacing: 1px;
+            padding: 0.5em 1em;
+            border-radius: 6px;
+            transition: background 0.3s, color 0.3s;
+        }
+        .navbar a:hover, .navbar a.active {
+            background: var(--main-red);
+            color: #fff;
+        }
+        .container-main {
+            max-width: 950px;
+            margin: 2em auto;
+            background: rgba(255,255,255,0.95);
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            padding: 2.5em 2em;
+        }
+        h1 {
+            color: var(--main-blue);
+            text-align: center;
+            margin-bottom: 0.5em;
+        }
+        .subtitle {
+            text-align: center;
+            color: var(--main-red);
+            font-size: 1.1em;
+            margin-bottom: 2em;
+        }
+        .btn-primary {
+            background-color: var(--main-blue);
+            border-color: var(--main-blue);
+        }
+        .btn-primary:hover {
+            background-color: var(--main-red);
+            border-color: var(--main-red);
+        }
+        .btn-outline-secondary {
+            border-color: var(--main-blue);
+            color: var(--main-blue);
+        }
+        .btn-outline-secondary:hover {
+            background: var(--main-blue);
+            color: #fff;
+        }
+        .valid { color: #198754; font-weight: bold; }
+        .invalid { color: #dc3545; font-weight: bold; }
+        .flash {
+            margin: 1em auto;
+            max-width: 600px;
+            padding: 1em 1.5em;
+            border-radius: 8px;
+            background: var(--main-red);
+            color: #fff;
+            font-weight: 600;
+            text-align: center;
+        }
+        @media (max-width: 700px) {
+            .container-main { padding: 1em; }
+            .navbar { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('url_hints') }}" class="active">URL Hints</a>
+        <a href="{{ url_for('history') }}">History</a>
+        <a href="#" onclick="alert('Parser run coming soon!')">Run Parser</a>
+        <a href="https://github.com/SmartElections/parser" target="_blank">About</a>
+    </nav>
+    <div class="container-main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <h1>URL Hint Overrides Manager</h1>
+        <div class="subtitle">
+            Add, edit, or remove custom URL-to-handler mappings for election sites.<br>
+            Import/export hints, undo changes, and validate handler modules.
+        </div>
+
+        <form method="POST" action="{{ url_for('url_hints') }}" class="row g-3 mb-4">
+            <div class="col-md-5">
+                <label class="form-label">URL Fragment:
+                <input type="text" name="fragment" class="form-control" required>
+                </label>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label">Module Path:
+                <input type="text" name="module_path" class="form-control" required>
+                </label>
+            </div>
+            <div class="col-md-2 align-self-end">
+                <button type="submit" class="btn btn-primary w-100">Add Entry</button>
+            </div>
+        </form>
+
+        <form method="POST" action="{{ url_for('import_hints') }}" enctype="multipart/form-data" class="mb-4">
+            <label class="form-label">Import CSV:
+                <input type="file" name="csv_file" accept=".csv" class="form-control" required>
+            </label>
+            <button type="submit" class="btn btn-outline-secondary mt-2">Upload CSV</button>
+            <a href="{{ url_for('export_hints') }}" class="btn btn-outline-secondary mt-2 ms-2">Export to CSV</a>
+            <form method="POST" action="{{ url_for('undo_hints') }}" style="display:inline;">
+                <button type="submit" class="btn btn-outline-secondary mt-2 ms-2">Undo Last Change</button>
+            </form>
+        </form>
+
+        <h2 class="mt-4 mb-3">Current Overrides</h2>
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>URL Fragment</th>
+                    <th>Module Path</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for frag, path in overrides.items() %}
+                <tr>
+                    <td>{{ frag }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('edit_hint') }}" class="d-flex align-items-center gap-2">
+                            <input type="hidden" name="fragment" value="{{ frag }}">
+                            <input type="text" name="module_path" value="{{ path }}" class="form-control form-control-sm">
+                            <button type="submit" class="btn btn-sm btn-warning">Update</button>
+                        </form>
+                    </td>
+                    <td>
+                        {% if validations[frag][0] %}
+                            <span class="valid">✔ Valid</span>
+                        {% else %}
+                            <span class="invalid">✘ Invalid</span>
+                            {% if validations[frag][1] %}<br><em>{{ validations[frag][1] }}</em>{% endif %}
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" action="{{ url_for('delete_hint_route', frag=frag) }}" style="display:inline">
+                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

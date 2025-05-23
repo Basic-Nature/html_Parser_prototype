@@ -1,0 +1,150 @@
+<!-- filepath: c:\Users\olivi\OneDrive\Desktop\html_Parser_prototype\webapp\templates\history.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Change History | Smart Elections Parser</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --main-blue: #45818e;
+            --main-red: #eb4f43;
+        }
+        body {
+            background: linear-gradient(120deg, var(--main-blue) 0%, var(--main-red) 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .navbar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: var(--main-blue);
+            padding: 1em 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .navbar a {
+            color: #fff;
+            text-decoration: none;
+            margin: 0 1.5em;
+            font-weight: 600;
+            letter-spacing: 1px;
+            padding: 0.5em 1em;
+            border-radius: 6px;
+            transition: background 0.3s, color 0.3s;
+        }
+        .navbar a:hover, .navbar a.active {
+            background: var(--main-red);
+            color: #fff;
+        }
+        .container-main {
+            max-width: 950px;
+            margin: 2em auto;
+            background: rgba(255,255,255,0.97);
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            padding: 2.5em 2em;
+        }
+        h1 {
+            color: var(--main-blue);
+            text-align: center;
+            margin-bottom: 1em;
+        }
+        .flash {
+            margin: 1em auto;
+            max-width: 600px;
+            padding: 1em 1.5em;
+            border-radius: 8px;
+            background: var(--main-red);
+            color: #fff;
+            font-weight: 600;
+            text-align: center;
+        }
+        .accordion-button:not(.collapsed) {
+            color: #fff;
+            background-color: var(--main-blue);
+        }
+        .accordion-button.collapsed {
+            color: var(--main-blue);
+        }
+        .btn-danger {
+            background-color: var(--main-red);
+            border-color: var(--main-red);
+        }
+        .btn-danger:hover {
+            background-color: #c0392b;
+            border-color: #c0392b;
+        }
+        @media (max-width: 700px) {
+            .container-main { padding: 1em; }
+            .navbar { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('index') }}">Dashboard</a>
+        <a href="{{ url_for('url_hints') }}">URL Hints</a>
+        <a href="{{ url_for('history') }}" class="active">History</a>
+        <a href="#" onclick="alert('Parser run coming soon!')">Run Parser</a>
+        <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">About</a>
+    </nav>
+    <div class="container-main">
+        <h1>Change History</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        {% if snapshots|length == 0 %}
+            <p>No changes have been logged yet.</p>
+        {% else %}
+        <div class="accordion mb-4" id="historyAccordion">
+            {% for i, snapshot in snapshots %}
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading{{ i }}">
+                    <button class="accordion-button {% if i != 0 %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ i }}" aria-expanded="{{ 'true' if i == 0 else 'false' }}" aria-controls="collapse{{ i }}">
+                        Snapshot #{{ i + 1 }} {% if snapshot.timestamp %} - {{ snapshot.timestamp }}{% endif %}
+                    </button>
+                </h2>
+                <div id="collapse{{ i }}" class="accordion-collapse collapse {% if i == 0 %}show{% endif %}" aria-labelledby="heading{{ i }}" data-bs-parent="#historyAccordion">
+                    <div class="accordion-body">
+                        <pre style="background:#f8f9fa; border-radius:8px; padding:1em;">{{ snapshot | tojson(indent=2) }}</pre>
+                        <form method="POST" action="{{ url_for('rollback', index=i) }}">
+                            <button type="submit" class="btn btn-sm btn-danger mt-2">Restore This Version</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <a href="{{ url_for('index') }}" class="btn btn-primary mt-4">Back to Dashboard</a>
+    </div>
+
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="toastSuccess" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">
+                    Snapshot successfully restored.
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("restored") === "1") {
+            const toastEl = document.getElementById("toastSuccess");
+            const toast = new bootstrap.Toast(toastEl);
+            toast.show();
+        }
+    </script>
+</body>
+</html>
