@@ -172,16 +172,18 @@ html_Parser_prototype/
 
 4. **Run Parser (CLI)**
 
-   ``bash
-   python html_election_parser.py
+   ``bash <--Terminal
+   (uncomment the "")--"python html_election_parser.py" if terminal already in root folder; otherwise,
+    (replace full path with the actual path to the folder)
+    "cd ...full path...\html_Parser_prototype\webapp\parser"
    ``
 
 5. **Run Parser (Web UI, Optional)**
 
-   ``bash
-   python webapp/Smart_Elections_Parser_Webapp.py
-   ``
-   - Then visit [http://localhost:5000](http://localhost:5000) in your browser.
+   ``bash<Same as above with "" and folder path>
+    "python Smart_Elections_Parser_Webapp.py"
+   ``"cd ...full path...\html_Parser_prototype\webapp"
+   - Then visit [http://localhost:5000](http://localhost:5000) in your browser or more likely the printed to terminal IP address pasted into browser of choice.
 
 ---
 
