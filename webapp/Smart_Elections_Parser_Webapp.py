@@ -89,12 +89,6 @@ def history():
         snapshots = [json.loads(line) for line in f]
     return render_template("history.html", snapshots=enumerate(snapshots))
 
-@app.route("/run-parser", methods=["POST"])
-def run_parser_page():
-    thread = Thread(target=run_parser_background)
-    thread.start()
-    return render_template("run_parser.html")
-
 @app.route("/url-hints", methods=["GET", "POST"])
 def url_hints():
     overrides = load_overrides()

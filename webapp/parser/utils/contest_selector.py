@@ -70,9 +70,9 @@ def is_noisy_contest_label(label: str, election_types=None, noisy_label_patterns
             if re.fullmatch(pat, label, re.IGNORECASE):
                 return True
     return bool(re.fullmatch(pattern, label, re.IGNORECASE))
-
+    
 def select_contest(
-    detected_races,
+    detected_races, 
     prompt_message="[PROMPT] Enter contest indices (comma-separated), 'all', or leave blank to skip: ",
     allow_multiple=True,
     noisy_labels=None,

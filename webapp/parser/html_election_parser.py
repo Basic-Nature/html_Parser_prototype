@@ -36,7 +36,7 @@ from .utils.download_utils import ensure_input_directory, ensure_output_director
 from .utils.format_router import detect_format_from_links, prompt_user_for_format , route_format_handler
 from .utils.html_scanner import scan_html_for_context
 from .state_router import get_handler as get_state_handler
-from .utils.shared_logger import rprint
+from .utils.shared_logger import logger, rprint
 from .utils.user_prompt import prompt_user_input
 # Load settings from .env file
 load_dotenv()
@@ -232,6 +232,7 @@ def process_url(target_url):
                 browser, context, page, user_agent = captcha_result
             # Scan the HTML page for embedded context such as state, county, and contest list
             html_context = scan_html_for_context(page)
+            logger.debug(f"html_context after scan: {html_context}")
             html_context["source_url"] = target_url
 
             FORMAT_DETECTION_ENABLED = os.getenv("FORMAT_DETECTION_ENABLED", "true").lower() == "true"
