@@ -49,10 +49,11 @@ log_level_str = os.getenv("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
 log_level = getattr(logging, log_level_str, logging.INFO)
 logging.basicConfig(level=log_level, format='[%(levelname)s] %(message)s')
 
+BASE_DIR = Path(__file__).parent
 # Flags for caching behavior
 CACHE_PROCESSED_URLS = os.getenv("CACHE_PROCESSED", "true").lower() == "true"
 CACHE_RESET = os.getenv("CACHE_RESET", "false").lower() == "true"
-CACHE_FILE = Path(".processed_urls")
+CACHE_FILE = BASE_DIR / ".processed_urls"
 
 # Reset cache if flag is enabled
 if CACHE_RESET and CACHE_FILE.exists():
@@ -60,9 +61,10 @@ if CACHE_RESET and CACHE_FILE.exists():
     CACHE_FILE.unlink()
 
 # Project paths
-INPUT_DIR = Path("input")
-OUTPUT_DIR = Path("output")
-URL_LIST_FILE = Path("urls.txt")
+INPUT_DIR = BASE_DIR / "input"
+OUTPUT_DIR = BASE_DIR / "output"
+URL_LIST_FILE = BASE_DIR / "urls.txt"
+
 HEADLESS_DEFAULT = os.getenv("HEADLESS", "true").lower() == "true"
 TIMEOUT_SEC = int(os.getenv("CAPTCHA_TIMEOUT", "300"))
 INCLUDE_TIMESTAMP_IN_FILENAME = os.getenv("TIMESTAMP_IN_FILENAME", "true").lower() == "true"
@@ -173,7 +175,7 @@ def process_format_override():
     if not force_parse or not force_format:
         return None
 
-    input_folder = "input"
+    input_folder = INPUT_DIR
     files = [f for f in os.listdir(input_folder) if f.endswith(f".{force_format}")]
     if not files:
         rprint(f"[red][ERROR] No .{force_format} files found in 'input' folder.[/red]")
@@ -196,7 +198,7 @@ def process_format_override():
         rprint(f"[red][ERROR] No format handler found for '{force_format}'[/red]")
         return None
 
-    full_path = os.path.join(input_folder, target_file)
+    full_path = str(input_folder / target_file)
     html_context = {"manual_file": full_path}
     dummy_page = cast(Page, None)  # Temporarily trick the type checker
     result = handler.parse(dummy_page, html_context)

@@ -9,56 +9,69 @@ from ...state_router import get_handler as get_state_handler
 from ...utils.contest_selector import select_contest
 from ...utils.download_utils import download_confirmed_file
 from ...utils.format_router import detect_format_from_links, route_format_handler
-from ...utils.html_table_extractor import extract_table_data
+from ...utils.table_builder import extract_table_data
 from ...utils.html_scanner import scan_html_for_context, get_detected_races_from_context
 from ...utils.shared_logger import logger
 from ...utils.shared_logic import (
     normalize_text, click_dynamic_toggle,
-    CONTEST_HEADER_SELECTORS, CONTEST_PANEL_TAGS,
-    PRECINCT_ELEMENT_TAGS, CONTEST_PANEL_TAGS
+    ALL_SELECTORS, COMMON_CONTEST_LABELS
 )
 from rich import print as rprint
 import os
 import re
 # This fallback HTML handler is invoked when no state or county-specific handler is matched.
 # It handles race prompting, HTML table fallback extraction, and potential re-routing.
+PRECINCT_ELEMENT_TAGS = ["H3", "H4", "H5", "STRONG", "B", "SPAN", "DIV"]
+CONTEST_PANEL_TAGS = ["div", "section", "article"]
 def extract_contest_panel(page, contest_title, panel_tags=None):
     """
     Returns a Playwright Locator for the contest panel matching contest_title.
-    Tries all tags in panel_tags (default: CONTEST_PANEL_TAGS).
+    Tries all tags in panel_tags (default: CONTEST_PANEL_TAGS), then falls back to ALL_SELECTORS.
     """
-    header_selector = ", ".join(CONTEST_HEADER_SELECTORS)
     panel_tags = panel_tags or CONTEST_PANEL_TAGS
-    for tag in panel_tags:
-        # Use locator, not query_selector_all, for robust downstream use
-        panels = page.locator(tag)
+    selectors_to_try = [
+        ", ".join(panel_tags),  # Try the specific panel tags first
+        ALL_SELECTORS           # Fallback: try all selectors
+    ]
+    for selector in selectors_to_try:
+        panels = page.locator(selector)
+        if panels.count() == 0:
+            continue
         for i in range(panels.count()):
             panel = panels.nth(i)
-            header = panel.locator(header_selector)
-            if header.count() > 0:
-                header_text = header.first.inner_text().strip().lower()
-                if contest_title.lower() in header_text:
-                    return panel
-    pass
+            header_text = panel.inner_text().strip().lower()
+            if contest_title and contest_title.lower() in header_text:
+                return panel
+    return None
+
 def extract_precinct_tables(panel):
     """
     Returns a list of (precinct_name, table_element) tuples from a contest panel.
     Accepts a Playwright Locator as panel.
+    Tries default tags, then falls back to ALL_SELECTORS.
     """
-    selector = ', '.join(PRECINCT_ELEMENT_TAGS)
-    elements = panel.locator(selector)
+    selectors_to_try = [
+        ', '.join(PRECINCT_ELEMENT_TAGS),
+        ALL_SELECTORS
+    ]
     precincts = []
-    current_precinct = None
-    for i in range(elements.count()):
-        el = elements.nth(i)
-        tag = el.evaluate("e => e.tagName").strip().upper()
-        if tag in [t.upper() for t in PRECINCT_ELEMENT_TAGS if t != "table"]:
-            label = el.inner_text().strip()
-            current_precinct = label
-        elif tag == "TABLE" and current_precinct:
-            precincts.append((current_precinct, el))
-            current_precinct = None
-    pass
+    for selector in selectors_to_try:
+        elements = panel.locator(selector)
+        if elements.count() == 0:
+            continue
+        current_precinct = None
+        for i in range(elements.count()):
+            el = elements.nth(i)
+            tag = el.evaluate("e => e.tagName").strip().upper()
+            if tag in PRECINCT_ELEMENT_TAGS:
+                label = el.inner_text().strip()
+                current_precinct = label
+            elif tag == "TABLE" and current_precinct:
+                precincts.append((current_precinct, el))
+                current_precinct = None
+        if precincts:
+            break  # Stop if we found any precincts
+    return precincts
 # --- 1. Detect structured files and prompt user ---
 def parse(page, html_context=None):
     # 1. Check for structured files first

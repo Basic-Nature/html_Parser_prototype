@@ -3,12 +3,12 @@
 # UI and CLI tool to manage and validate URL_HINT_OVERRIDES.txt entries
 # against live importable handler modules.
 # ==============================================================
-
-import json
 import importlib
+import json
+import os
 from difflib import get_close_matches
 
-HINT_FILE = "url_hint_overrides.txt"
+HINT_FILE = os.path.join(os.path.dirname(__file__), ".url_hint_overrides.txt")
 
 
 # Load the URL_HINT_OVERRIDES from a local .txt file

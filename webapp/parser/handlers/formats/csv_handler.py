@@ -9,11 +9,55 @@ import os
 import re
 from dotenv import load_dotenv
 from ...state_router import resolve_state_handler
-from ...utils.output_utils import get_output_path, format_timestamp, finalize_election_output
+from ...utils.output_utils import finalize_election_output
 from ...utils.shared_logger import logging, rprint, logger
 
 load_dotenv()
 
+def detect_csv_files(input_folder="input"):
+    """Return a list of CSV files in the input folder, sorted by modified time (newest first)."""
+    try:
+        csv_files = [f for f in os.listdir(input_folder) if f.lower().endswith(".csv")]
+        csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(input_folder, x)), reverse=True)
+        return [os.path.join(input_folder, f) for f in csv_files]
+    except Exception as e:
+        logger.error(f"[ERROR] Failed to list CSV files: {e}")
+        return []
+
+def prompt_file_selection(csv_files):
+    """Prompt user to select a CSV file from the list."""
+    rprint("\n[yellow]Available CSV files in 'input' folder:[/yellow]")
+    for i, f in enumerate(csv_files):
+        rprint(f"  [bold cyan][{i}][/bold cyan] {os.path.basename(f)}")
+    idx = input("\n[PROMPT] Enter file index or press Enter to cancel: ").strip()
+    if not idx.isdigit():
+        rprint("[yellow]No file selected. Skipping CSV parsing.[/yellow]")
+        return None
+    try:
+        return csv_files[int(idx)]
+    except (IndexError, ValueError):
+        rprint("[red]Invalid index. Skipping CSV parsing.[/red]")
+        return None
+
+def detect_headers_and_skip_metadata(f, handler_keywords):
+    """Skip metadata lines and find the header row."""
+    preview_lines = [next(f) for _ in range(10)]
+    f.seek(0)
+    detected = next((line for line in preview_lines if any(k in line.lower() for k in handler_keywords)), None)
+    if detected:
+        while True:
+            line = f.readline()
+            if any(k in line.lower() for k in handler_keywords):
+                break
+        f.seek(f.tell())
+    else:
+        rprint("[yellow]No recognizable header found in preview. Proceed anyway? (y/n):[/yellow]")
+        confirm = input().strip().lower()
+        if confirm != 'y':
+            logging.warning("[WARN] No header match found and user declined to proceed.")
+            return False
+        f.seek(f.tell())
+    return True
 
 def parse(page, html_context):
     """
@@ -23,22 +67,17 @@ def parse(page, html_context):
     # Respect early skip signal from calling context
     if html_context.get("skip_format") or html_context.get("manual_skip"):
         logger.info("[SKIP] CSV parsing intentionally skipped via context flag.")
-        return None, None, None, {"skipped": True}    
-    csv_path = html_context.get("csv_source")
+        return None, None, None, {"skipped": True}
 
+    csv_path = html_context.get("csv_source")
     if not csv_path:
-        try:
-            csv_files = [f for f in os.listdir("input") if f.lower().endswith(".csv")]
-            if csv_files:
-                csv_files.sort(key=lambda x: os.path.getmtime(os.path.join("input", x)), reverse=True)
-                csv_path = os.path.join("input", csv_files[0])
-                logging.info(f"[FALLBACK] Using most recent CSV file: {csv_path}")
-            else:
-                logging.error("[ERROR] No CSV files found in the input directory.")
-                return None, None, None, {"error": "No CSV in input folder"}
-        except Exception as e:
-            logging.error(f"[ERROR] Failed to list CSV files: {e}")
-            return None, None, None, {"error": str(e)}
+        csv_files = detect_csv_files()
+        if not csv_files:
+            logger.error("[ERROR] No CSV files found in the input directory.")
+            return None, None, None, {"error": "No CSV in input folder"}
+        csv_path = prompt_file_selection(csv_files)
+        if not csv_path:
+            return None, None, None, {"skipped": True}
 
     try:
         rprint("[yellow]Available CSV file detected:[/yellow]")
@@ -48,15 +87,15 @@ def parse(page, html_context):
             logging.info("[INFO] User opted to fallback to HTML scanning.")
             return None, None, None, {"fallback_to_html": True}
         elif user_input != 'y':
-            logging.info("[INFO] User declined CSV parse. Falling back to HTML-based scraping.")
+            logging.info("[INFO] User declined CSV parse. Skipping.")
             return None, None, None, {"skip_csv": True}
     except Exception as e:
         logging.warning(f"[WARN] Skipping user input prompt due to error: {e}")
         return None, None, None, {"error": str(e)}
 
     data = []
-    contest_column = None
     headers = []
+    contest_column = None
     try:
         with open(csv_path, newline='', encoding='utf-8') as f:
             # Step: Handle embedded headers or skip metadata lines
@@ -66,41 +105,51 @@ def parse(page, html_context):
             if handler and hasattr(handler, "header_keywords"):
                 handler_keywords = getattr(handler, "header_keywords")
 
-            preview_lines = [next(f) for _ in range(10)]  # Read first 10 lines
-            f.seek(0)
-            detected = next((line for line in preview_lines if any(k in line.lower() for k in handler_keywords)), None)
+            if not detect_headers_and_skip_metadata(f, handler_keywords):
+                return None, None, None, {"error": "Header match declined"}
 
-            if detected:
-                
-                while True:
-                    line = f.readline()
-                    if any(k in line.lower() for k in handler_keywords):
-                        break
-                f.seek(f.tell())
-            else:
-                rprint("[yellow]No recognizable header found in preview. Proceed anyway? (y/n):[/yellow]")
-                confirm = input().strip().lower()
-                if confirm != 'y':
-                    logging.warning("[WARN] No header match found and user declined to proceed.")
-                    return None, None, None, {"error": "Header match declined"}
-                    
-                f.seek(f.tell())  # Start DictReader here
             reader = csv.DictReader(f)
             headers = [h.strip() for h in reader.fieldnames or []]
 
-            # Step: Determine index column label dynamically
-            index_label = "Precinct"
-            possible_labels = ["ward", "district", "town"]
-            for label in possible_labels:
-                if any(label.lower() in h.lower() for h in headers):
-                    index_label = label.capitalize()
-                    logging.info(f"[Label Detection] Using '{index_label}' as the row label based on column names.")
-                    break
+            # Step: Detect contest/race column if present
+            possible_contest_cols = [col for col in headers if any(k in col.lower() for k in ["contest", "race", "office"])]
+            if possible_contest_cols:
+                contest_column = possible_contest_cols[0]
 
+            # Step: Read and clean data
             for row in reader:
                 row = {k.strip(): v for k, v in row.items()}
                 if any(val.strip() for val in row.values() if val):  # Skip empty/garbage rows
                     data.append(row)
+
+            # Step: If multiple contests, prompt user to select one
+            contest_title = None
+            if contest_column:
+                contests = sorted({row[contest_column].strip() for row in data if row.get(contest_column)})
+                if len(contests) > 1:
+                    rprint("\n[yellow]Multiple contests detected:[/yellow]")
+                    for i, name in enumerate(contests, 1):
+                        rprint(f" [bold cyan]{i:2d}[/bold cyan]. {name}")
+                    rprint("\nEnter the contest name (exactly as shown), or type its number:")
+                    user_input = input("> ").strip()
+                    if user_input.isdigit():
+                        idx = int(user_input)
+                        try:
+                            contest_title = contests[idx - 1]
+                        except IndexError:
+                            rprint("[red]Invalid contest number.[/red]")
+                            return None, None, None, {"error": "Invalid contest number"}
+                    else:
+                        if user_input not in contests:
+                            rprint(f"[red][ERROR] Contest name '{user_input}' not found.[/red]")
+                            return None, None, None, {"error": "Contest name not found"}
+                        contest_title = user_input
+                    # Filter data to only selected contest
+                    data = [row for row in data if row.get(contest_column, "").strip() == contest_title]
+                elif contests:
+                    contest_title = contests[0]
+            else:
+                contest_title = os.path.basename(csv_path).replace(".csv", "")
 
             # Step: Null detection logging
             null_counts = {col: sum(1 for row in data if not row.get(col)) for col in headers}
@@ -149,22 +198,17 @@ def parse(page, html_context):
                         break
 
             metadata = {
-                "race": os.path.basename(csv_path).replace(".csv", "").replace("_", " ").title(),
+                "race": contest_title,
                 "state": html_context.get("state", "Unknown"),
                 "county": html_context.get("county", "Unknown"),
                 "handler": "csv_handler"
             }
-            safe_title = re.sub(r"[\\/*?\"<>|]", "_", os.path.basename(csv_path).replace(".csv", ""))
-            output_path = get_output_path(metadata["state"], metadata["county"], "parsed")
-            timestamp = format_timestamp() if os.getenv("INCLUDE_TIMESTAMP_IN_FILENAME", "true").lower() == "true" else ""
-            filename = f"{safe_title}_parsed_{timestamp}.csv" if timestamp else f"{safe_title}_parsed.csv"
-            filepath = os.path.join(output_path, filename)
-            
+
+            # Output via finalize_election_output
             result = finalize_election_output(headers, data, contest_title, metadata)
-            contest_title = result.get("contest_title", os.path.basename(csv_path))
+            contest_title = result.get("contest_title", contest_title)
             metadata = result.get("metadata", metadata)
             return headers, data, contest_title, metadata
-            
 
     except Exception as e:
         logging.error(f"[ERROR] Failed to parse CSV: {e}")
