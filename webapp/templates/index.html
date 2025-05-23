@@ -9,7 +9,7 @@
         :root {
             --main-blue: #45818e;
             --main-red: #eb4f43;
-            --main-bg: #f8f9fa;
+            --main-bg:rgba(93, 123, 158, 0.37);
             --glass: rgba(255,255,255,0.15);
         }
         body {
@@ -109,7 +109,7 @@
         #container {
             display: block;
             margin: 0 auto;
-            background: #fff;
+            background: var(--main-bg);
             border-radius: 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.07);
         }
@@ -144,11 +144,11 @@
 </head>
 <body>
     <nav class="navbar">
-        <a href="{{ url_for('index') }}" class="active">Dashboard</a>
-        <a href="{{ url_for('url_hints') }}">URL Hints</a>
-        <a href="{{ url_for('history') }}">History</a>
-        <a href="#" onclick="alert('Parser run coming soon!')">Run Parser</a>
-        <a href="https://github.com/SmartElections/parser" target="_blank">About</a>
+        <a href="https://smartelections.us/" >Home Base</a>
+        <a href="{{ url_for('url_hints') }}" onclick="alert('URL hints coming soon!')">URL Hints</a>
+        <a href="{{ url_for('history') }}" onclick="alert('History feature coming soon!')">History</a>
+        <a href="{{ url_for('run_parser') }}" onclick="alert('Parser run coming soon!')">Run Parser</a>
+        <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">About</a>
     </nav>
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -171,31 +171,30 @@
             </ul>
         </div>
         <div class="feature-list">
-            <div class="feature" onclick="window.location='{{ url_for('url_hints') }}'">
+            <a class="feature" href="{{ url_for('url_hints') }}">
                 <h3>URL Hint Manager</h3>
                 <p>Manage custom URL-to-handler mappings for tricky or new election sites. Import/export hints, undo changes, and validate handler modules.</p>
-            </div>
-            <div class="feature" onclick="window.location='{{ url_for('history') }}'">
+            </a>
+            <a class="feature" href="{{ url_for('history') }}">
                 <h3>Change History</h3>
                 <p>View the full history of URL hint changes and parser configuration updates for transparency and auditability.</p>
-            </div>
-            <div class="feature" onclick="alert('Parser run coming soon!')">
-                <form method="POST" action="{{ url_for('run_parser') }}">
-                    <button type="submit" class="btn btn-primary w-100" style="font-size:1.1em;">Run Parser</button>
+            </a>
+            <a class="feature" href="{{ url_for('run_parser') }}">
+                
                 <h3>Run Parser</h3>
                 <p>Start a new parsing job using the current configuration. CLI and batch automation also supported.</p>
-            </div>
-            <div class="feature" onclick="window.open('https://github.com/SmartElections/parser', '_blank')">
+            </a>
+            <a class="feature" href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">
                 <h3>About & Docs</h3>
                 <p>Learn more about the Smart Elections Parser project, its architecture, and how to contribute.</p>
-            </div>
+            </a>
         </div>
         <div class="canvas-section">
             <canvas id="container" width="300" height="300"></canvas>
         </div>
         <div style="text-align:center; margin-top:2em;">
             <span style="color:var(--main-blue); font-weight:600;">Contact:</span>
-            <a href="mailto:info@smartelections.org" style="color:var(--main-red); font-weight:600;">info@smartelections.org</a>
+            <a href="smartelectionsact@gmail.com" style="color:var(--main-red); font-weight:600;">smartelectionsact@gmail.com</a>
         </div>
     </div>
     <script>
@@ -203,12 +202,28 @@
         var sun = new Image();
         var moon = new Image();
         var earth = new Image();
-        function init() {
-            sun.src = 'https://mdn.mozillademos.org/files/1456/Canvas_sun.png';
-            moon.src = 'https://mdn.mozillademos.org/files/1443/Canvas_moon.png';
-            earth.src = 'https://mdn.mozillademos.org/files/1429/Canvas_earth.png';
-            window.requestAnimationFrame(draw);
+        var imagesLoaded = 0;
+
+        function tryStart() {
+            imagesLoaded++;
+            if (imagesLoaded === 3) {
+                window.requestAnimationFrame(draw);
+            }
         }
+        sun.onload = tryStart;
+        moon.onload = tryStart;
+        earth.onload = tryStart;
+        
+        sun.onerror = moon.onerror = earth.onerror = function() {
+            console.error("Failed to load one of the images.");
+        };    
+
+        
+        sun.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Sun_symbol_%28planetary_color%29.svg/640px-Sun_symbol_%28planetary_color%29.svg.png';
+        moon.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/Moon_0063_Nevit.svg/640px-Moon_0063_Nevit.svg.png';
+        earth.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/The_Earth_seen_from_Apollo_17_with_transparent_background.png/640px-The_Earth_seen_from_Apollo_17_with_transparent_background.png';
+            
+        
         function draw() {
             var ctx = document.getElementById('container').getContext('2d');
             ctx.globalCompositeOperation = 'destination-over';
@@ -221,13 +236,27 @@
             // Earth
             ctx.rotate(((2 * Math.PI) / 60) * time.getSeconds() + ((2 * Math.PI) / 60000) * time.getMilliseconds());
             ctx.translate(105, 0);
-            ctx.fillRect(0, -12, 40, 24); // Shadow
-            ctx.drawImage(earth, -12, -12);
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(-6, -6);
+            ctx.lineTo(50, 0);
+            ctx.lineTo(-6, 6);
+            ctx.closePath();
+            var grad = ctx.createLinearGradient(0, 0, 50, 0);
+            grad.addColorStop(0, 'rgba(0,0,0,0.18)');
+            grad.addColorStop(0.08, 'rgba(0,0,0,0.18)');
+            grad.addColorStop(0.25, 'rgba(0,0,0,0.12)');
+            grad.addColorStop(0.7, 'rgba(0,0,0,0.08)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.restore();
+            ctx.drawImage(earth, -8, -8, 16, 16);
             // Moon
             ctx.save();
             ctx.rotate(((2 * Math.PI) / 6) * time.getSeconds() + ((2 * Math.PI) / 6000) * time.getMilliseconds());
             ctx.translate(0, 28.5);
-            ctx.drawImage(moon, -3.5, -3.5);
+            ctx.drawImage(moon, -2.5, -2.5, 5, 5);
             ctx.restore();
             ctx.restore();
             ctx.beginPath();
@@ -235,8 +264,12 @@
             ctx.stroke();
             ctx.drawImage(sun, 0, 0, 300, 300);
             window.requestAnimationFrame(draw);
+            // Sun
         }
-        init();
+        // Add event listener to the canvas
+        document.getElementById('container').addEventListener('click', function() {
+            alert('Bloop! You clicked the canvas!');
+        });
     </script>
 </body>
 </html>
