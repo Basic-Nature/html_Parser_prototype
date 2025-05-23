@@ -123,7 +123,9 @@ Manual parsing is supported if you use the correct naming convention and trigger
   Add to `bot/bot_router.py` and enable with `ENABLE_BOT_TASKS=true` in `.env`.
 - **User prompts:**  
   Always use `prompt_user_input()` for future web UI compatibility.
-
+- **Testing files**
+  Tonoccus contribution `election_pipeline_monolith.py`for final csv in output folder to be generated into Smart Elections Standard formatting
+  
 ---
 
 ## ✅ Future Enhancements

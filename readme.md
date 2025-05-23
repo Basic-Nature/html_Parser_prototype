@@ -35,6 +35,34 @@ A highly adaptable and modular precinct-level election result scraper. Designed 
 
 ---
 
+## 🖥️ Web UI (Optional)
+
+**The Smart Elections Parser can be used in two ways:**
+
+1. **Standalone Python Script:**  
+   - Run `html_election_parser.py` directly from your IDE or terminal for full CLI control.
+   - No web server required.
+
+2. **Web UI (Optional):**  
+   - A modern Flask-based web interface is included for users who prefer a graphical experience or are new to coding.
+   - **Key Features of the Web UI:**
+     - **Dashboard:** Overview of the parser and quick access to all tools.
+     - **URL Hint Manager:** Add, edit, import/export, and validate custom URL-to-handler mappings.
+     - **Change History:** View and restore previous configurations for transparency and auditability.
+     - **Run Parser:** Trigger the parser from the browser and view real-time output in a styled terminal-like area.
+     - **Live Feedback:** See parser logs as they happen (via WebSockets).
+     - **Accessible:** Designed for both technical and non-technical users, making it ideal for teams, researchers, and those learning to code.
+   - **How to Use the Web UI:**
+     1. Install requirements:  
+        `pip install -r requirements.txt`
+     2. Set up your `.env` file as needed.
+     3. Start the web server:  
+        `python webapp/Smart_Elections_Parser_Webapp.py`
+     4. Open your browser to `http://localhost:5000`
+   - The web UI is optional—**all core parser features remain available via the CLI**.
+
+---
+
 ## How to Add a New State/County Handler, Format, or Bot Task
 
 1. **State/County Handler:**  
@@ -57,10 +85,10 @@ A highly adaptable and modular precinct-level election result scraper. Designed 
    - Use `prompt_user_input()` for all user input to allow easy web UI integration later.  
    - Example:
 
-     ```python
+     ``python
      from utils.user_prompt import prompt_user_input
      url = prompt_user_input("Enter URL: ")
-     ```
+     ``
 
 ---
 
@@ -68,40 +96,49 @@ A highly adaptable and modular precinct-level election result scraper. Designed 
 
 ``
 html_Parser_prototype/
-├── handlers/
-│   ├── formats/
-│   │   ├── csv_handler.py
-│   │   ├── html_handler.py
-│   │   ├── json_handler.py
-│   │   └── pdf_handler.py
-│   └── states/
-│       └── county/
-│
-├── utils/
-│   ├── browser_utils.py
-│   ├── captcha_tools.py
-│   ├── contest_selector.py
-│   ├── download_utils.py
-│   ├── format_router.py
-│   ├── html_scanner.py
-│   ├── output_utils.py
-│   ├── shared_logger.py
-│   ├── shared_logic.py
-│   ├── user_agents.py
-│   └── user_prompt.py
-│
-├── bot/
-│   └── bot_router.py
-│
-├── state_router.py
-├── html_election_parser.py
-├── url_hint_overrides.txt
-├── urls.txt
-├── .env
-├── .env.template
-├── .gitignore
-├── requirements.txt
-├── seleniumbase_launcher.py
+└── webapp/
+    ├── Smart_Elections_Parser_Webapp.py
+    │└── templates/
+    │   ├── index.html
+    │   ├── url_hints.html
+    │   ├── history.html
+    │   └── run_parser.html
+    └──parser
+        └── handlers/
+            ├── formats/
+            │   │   ├── csv_handler.py
+            │   │   ├── html_handler.py
+            │   │   ├── json_handler.py
+            │   │   └── pdf_handler.py
+            │   └── states/
+            │       └── county/
+            │
+            ├── utils/
+            │   ├── browser_utils.py
+            │   ├── captcha_tools.py
+            │   ├── contest_selector.py
+            │   ├── download_utils.py
+            │   ├── format_router.py
+            │   ├── html_scanner.py
+            │   ├── output_utils.py
+            │   ├── shared_logger.py
+            │   ├── shared_logic.py
+            │   ├── user_agents.py
+            │   └── user_prompt.py
+            │
+            ├── bot/
+            │   └── bot_router.py
+            │
+            ├── state_router.py
+            ├── html_election_parser.py
+            ├── url_hint_overrides.txt
+            ├── urls.txt
+            ├── .env
+            ├── .env.template
+            ├── .gitignore
+            ├── requirements.txt
+            ├── seleniumbase_launcher.py
+
 ``
 
 ---
@@ -110,16 +147,16 @@ html_Parser_prototype/
 
 1. **Install Requirements**
 
-   ```bash
+   ``bash
    pip install -r requirements.txt
-   ```
+   ``
 
 2. **Configure Settings (Optional)**
    Copy `.env.template` to `.env` and modify:
 
-   ```bash
+   ``bash
    cp .env.template .env
-   ```
+   ``
 
    Variables include:
 
@@ -133,11 +170,18 @@ html_Parser_prototype/
    - Populate `urls.txt` with target election result URLs.
    - `url_hint_overrides.txt` is used in conjunction with `state_router.py` when dynamic state detection fails.
 
-4. **Run Parser**
+4. **Run Parser (CLI)**
 
-   ```bash
+   ``bash
    python html_election_parser.py
-   ```
+   ``
+
+5. **Run Parser (Web UI, Optional)**
+
+   ``bash
+   python webapp/Smart_Elections_Parser_Webapp.py
+   ``
+   - Then visit [http://localhost:5000](http://localhost:5000) in your browser.
 
 ---
 
@@ -171,6 +215,7 @@ output/arizona/maricopa/us_senate/kari_lake_results.csv
 - All scraping runs headlessly unless CAPTCHA is triggered.
 - `.env` is excluded from version control via `.gitignore`.
 - No credentials or session tokens are stored.
+- The web UI can be protected with authentication if deployed publicly.
 
 ---
 
@@ -195,4 +240,4 @@ MIT License (TBD)
 
 - Lead Dev: [Juancarlos Barragan]
 - Elections Research: TBD
-- PDF Table Extraction: TBD
+- Format Extraction: TBD

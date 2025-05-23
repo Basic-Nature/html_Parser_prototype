@@ -17,6 +17,7 @@ This project is designed to be scalable, readable, and resilient — please read
 - Strengthen **modularity, orchestration, and UX** in `html_election_parser.py`.
 - Add **bot tasks** in `bot/bot_router.py` for automation or notifications.
 - Improve **shared utilities** in `utils/` or `handlers/shared/`.
+- Enhance or document the **Web UI** (Flask app in `webapp/`) for a better user experience, especially for new coders or non-technical users.
 
 ---
 
@@ -34,19 +35,27 @@ This project is designed to be scalable, readable, and resilient — please read
 3. Create your `.env` file:
    ``bash
    cp .env.template .env
-
-Then edit `.env` as needed for HEADLESS mode, CAPTCHA_TIMEOUT, etc.
-
-``
+   ``
+   Then edit `.env` as needed for HEADLESS mode, CAPTCHA_TIMEOUT, etc.
 
 ---
 
 ### 🧪 Running the Parser
 
+**CLI (Recommended for advanced users):**
 ``bash
 python html_election_parser.py
 ``
 You’ll be prompted to select from `urls.txt`, then walk through format/state handler detection, CAPTCHA solving, and CSV extraction.
+
+**Web UI (Optional, recommended for new users or those who prefer a graphical interface):**
+``bash
+python webapp/Smart_Elections_Parser_Webapp.py
+``
+
+- Open your browser to [http://localhost:5000](http://localhost:5000)or link printed in terminal - more likely the printed IP Address
+- The Web UI provides a dashboard, URL hint manager, change history, and a "Run Parser" page with real-time output.
+- This is ideal for teams, researchers, and those learning to code—no Python experience required to use the main features!
 
 ---
 
@@ -112,6 +121,18 @@ def parse(page, html_context):
 
 ---
 
+### 🖥️ Web UI Contributions
+
+- The Web UI (in `webapp/`) is **optional** but highly valuable for users who prefer a graphical interface or are new to coding.
+- You can contribute by:
+  - Improving the dashboard, forms, or real-time output display.
+  - Adding new features (e.g., search, filtering, user authentication).
+  - Enhancing accessibility and documentation for non-technical users.
+  - Writing clear instructions and tooltips to help new users understand each feature.
+- The Web UI is designed to make the parser accessible to everyone, regardless of coding experience.
+
+---
+
 ### 📦 Folder Structure (Quick Glance)
 
 - `handlers/`: State and format-specific scrapers.
@@ -120,6 +141,7 @@ def parse(page, html_context):
 - `output/`: Where CSVs go.
 - `urls.txt`: List of URLs to cycle.
 - `.env`: Controls mode, timeouts, etc.
+- `webapp/`: Flask-based Web UI (optional).
 
 ---
 
@@ -130,6 +152,7 @@ def parse(page, html_context):
 - Check logs for errors and tuple structure issues.
 - Use `CACHE_RESET=true` in `.env` to clear processed URL cache if needed.
 - For bot/automation, see `bot/bot_router.py` and enable with `ENABLE_BOT_TASKS=true` in `.env`.
+- If contributing to the Web UI, test both CLI and web workflows to ensure compatibility.
 
 ---
 

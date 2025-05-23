@@ -161,3 +161,19 @@
     </div>
 </body>
 </html>
+
+<div class="output-section" id="output">
+    <span style="color:#888;">Parser output will appear here after you run the parser.</span>
+</div>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+    var socket = io();
+    var outputDiv = document.getElementById('output');
+    socket.on('parser_output', function(data) {
+        if (outputDiv.innerHTML.includes('Parser output will appear')) {
+            outputDiv.innerHTML = '';
+        }
+        outputDiv.innerHTML += data.replace(/\n/g, '<br>');
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+    });
+</script>

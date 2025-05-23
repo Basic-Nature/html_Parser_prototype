@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask_socketio import emit, SocketIO
+from threading import Thread
 from webapp.parser.html_election_parser import main as run_html_parser
 import os
 import json
@@ -13,6 +15,7 @@ from difflib import get_close_matches
 load_dotenv()
 
 app = Flask(__name__)
+socketio = SocketIO(app)
 
 # Secure secret key from environment
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
@@ -26,6 +29,16 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 # File paths for hint management
 HISTORY_FILE = os.path.join(os.path.dirname(__file__), "url_hint_history.jsonl")
 HINT_FILE = os.path.join(os.path.dirname(__file__), "url_hint_overrides.txt")
+
+# SocketIO event for real-time updates
+
+def run_parser_background():
+    # Example: Replace with your real parser logic
+    import time
+    for i in range(10):
+        socketio.emit('parser_output', f"Line {i+1}: Processing...\n")
+        time.sleep(1)
+    socketio.emit('parser_output', "Parser finished!\n")
 
 # --- Utility functions for hint management ---
 
@@ -60,6 +73,9 @@ def validate_module_path(path):
         return False, "Module not found"
 
 # --- Routes ---
+@socketio.on('connect')
+def handle_connect():
+    print("Client connected")
 
 @app.route("/")
 def index():
@@ -74,13 +90,10 @@ def history():
     return render_template("history.html", snapshots=enumerate(snapshots))
 
 @app.route("/run-parser", methods=["POST"])
-def run_parser():
-    try:
-        run_html_parser()
-        flash("Parser run completed successfully!", "success")
-    except Exception as e:
-        flash(f"Parser run failed: {e}", "danger")
-    return redirect(url_for("index"))
+def run_parser_page():
+    thread = Thread(target=run_parser_background)
+    thread.start()
+    return render_template("run_parser.html")
 
 @app.route("/url-hints", methods=["GET", "POST"])
 def url_hints():
@@ -98,6 +111,23 @@ def url_hints():
             flash("Both URL fragment and module path are required.", "danger")
         return redirect(url_for("url_hints"))
     return render_template("url_hints.html", overrides=overrides, validations=validations)
+
+@app.route("/run-parser", methods=["GET", "POST"])
+def run_parser_page():
+    parser_output = None
+    if request.method == "POST":
+        # Capture output from parser (example)
+        import io, sys
+        old_stdout = sys.stdout
+        sys.stdout = mystdout = io.StringIO()
+        try:
+            run_html_parser()
+        except Exception as e:
+            print(f"Error: {e}")
+        sys.stdout = old_stdout
+        parser_output = mystdout.getvalue()
+        flash("Parser run completed.", "success")
+    return render_template("run_parser.html", parser_output=parser_output)
 
 @app.route("/edit-hint", methods=["POST"])
 def edit_hint():
@@ -184,4 +214,4 @@ def run_parser():
     return redirect(url_for("index"))
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    socketio.run(app, debug=True)

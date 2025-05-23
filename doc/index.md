@@ -7,7 +7,7 @@ This index links to all core documents and resources for building, extending, an
 
 ## 🧭 Core Docs
 
-- [`README.md`](../README.md): Project overview, install steps, and high-level architecture
+- [`README.md`](../README.md): Project overview, install steps, CLI and Web UI usage, and high-level architecture
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md): How to contribute, coding standards, and review process
 - [`LICENSE`](../LICENSE): Open-source licensing and reuse terms
 
@@ -18,6 +18,19 @@ This index links to all core documents and resources for building, extending, an
 - [`docs/architecture.md`](architecture.md): System components, orchestration, and data flow
 - [`docs/handlers.md`](handlers.md): How to build and extend state, county, and format handlers
 - [`docs/roadmap.md`](roadmap.md): Planned features, enhancements, and future directions
+
+---
+
+## 🖥️ Web UI (Optional)
+
+- The Smart Elections Parser includes an **optional Flask-based Web UI** for users who prefer a graphical experience or are new to coding.
+- The Web UI provides:
+  - A dashboard for quick access to all tools
+  - URL Hint Manager for managing custom URL-to-handler mappings
+  - Change History for configuration transparency and auditability
+  - "Run Parser" page with real-time output and styled terminal-like area
+  - Live feedback via WebSockets
+- The Web UI is ideal for teams, researchers, and those learning to code—**all core parser features remain available via the CLI**.
 
 ---
 
@@ -51,6 +64,7 @@ This index links to all core documents and resources for building, extending, an
 
 - See the [GitHub Issues](https://github.com/Basic-Nature/html_Parser_prototype) or Discussions tab for questions and support
 - Refer to `handlers.md` for handler development, or `README.md` for general usage
+- The Web UI is documented in the `README.md` and is fully optional—use the interface that best fits your workflow!
 
 ---
 

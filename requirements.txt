@@ -2,10 +2,12 @@
 playwright==1.52.0
 rich>=13.3.5
 tqdm>=4.66.1
-dotenv>=0.9.9
+python-dotenv>=0.9.0
+flask-socketio>=5.5.1
+eventlet>=0.33.0
 
 # Optional CAPTCHA visual bypass
-seleniumbase==4.38.0
+seleniumbase>=4.38.0
 
 # File handling
 pypdf2>=3.0.1
@@ -24,3 +26,11 @@ fake-useragent>=1.5.1
 
 # CLI-friendly argument parsing (if used in future)
 click>=8.1.7
+
+# flask-login for user session management, is not used in the current version
+# optional future implementation
+# flask-login>=0.6.2
+
+# flask-wtf for form handling, is not used in the current version
+# optional future implementation
+# flask-wtf>=1.0.0
