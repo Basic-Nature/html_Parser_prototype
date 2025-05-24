@@ -1,15 +1,17 @@
+
+import csv
+from datetime import datetime
+from difflib import get_close_matches
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, send_from_directory
 from flask_socketio import emit, SocketIO
+import importlib
+from io import StringIO
+import json
+import os
+import sys
 from threading import Thread
 from webapp.parser.html_election_parser import main as run_html_parser
-import os
-import json
-from dotenv import load_dotenv
-import sys
-from io import StringIO
-import csv
-import importlib
-from difflib import get_close_matches
 
 # Load environment variables from .env
 load_dotenv()
@@ -172,6 +174,45 @@ def export_hints():
         download_name="url_hint_overrides.csv"
     )
 
+@app.route("/history")
+def history():
+    # Read all snapshots from the history file
+    snapshots = []
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    snap = json.loads(line)
+                    # Optionally, add a timestamp if you store it, or parse from the dict
+                    # snap['timestamp'] = snap.get('timestamp', None)
+                    snapshots.append(snap)
+                except Exception:
+                    continue
+    # Pass index and snapshot for the accordion
+    indexed_snapshots = list(enumerate(snapshots))
+    return render_template("history.html", snapshots=indexed_snapshots)
+
+@app.route("/rollback/<int:index>", methods=["POST"])
+def rollback(index):
+    # Read all snapshots
+    if not os.path.exists(HISTORY_FILE):
+        flash("No history file found.", "danger")
+        return redirect(url_for("history"))
+    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    if index < 0 or index >= len(lines):
+        flash("Invalid snapshot index.", "danger")
+        return redirect(url_for("history"))
+    # Restore the selected snapshot
+    selected = json.loads(lines[index])
+    # Truncate history to this point
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        f.writelines(lines[:index+1])
+    # Save as current overrides
+    save_overrides(selected)
+    flash("Snapshot restored successfully.", "success")
+    # Add ?restored=1 for toast
+    return redirect(url_for("history", restored=1))
 @app.route("/import-hints", methods=["POST"])
 def import_hints():
     file = request.files.get("csv_file")
@@ -232,6 +273,38 @@ def handle_parser_prompt(data):
     # Process the prompt, send output back
     output = process_user_prompt(data)  # Your function
     emit('parser_output', output)
+
+@app.route("/run-parser", methods=["GET", "POST"])
+def run_parser_page():
+    # Gather file lists for display
+    uploaded_files = os.listdir(UPLOAD_FOLDER)
+    input_files = os.listdir(INPUT_FOLDER)
+    output_files = os.listdir(OUTPUT_FOLDER)
+    parser_output = None
+
+    # Handle file upload to uploads folder
+    if request.method == "POST":
+        file = request.files.get("data_file")
+        if file and allowed_file(file.filename):
+            filename = file.filename
+            file.save(os.path.join(UPLOAD_FOLDER, filename))
+            flash(f"File '{filename}' uploaded successfully to uploads.", "success")
+        else:
+            flash("Invalid file type or no file selected.", "danger")
+        # Optionally, you could trigger the parser here if desired
+
+    # Optionally, you could run the parser and capture output here
+    # For example:
+    # if request.method == "POST" and 'run_parser' in request.form:
+    #     parser_output = run_html_parser()  # Or however your parser returns output
+
+    return render_template(
+        "run_parser.html",
+        uploaded_files=uploaded_files,
+        input_files=input_files,
+        output_files=output_files,
+        parser_output=parser_output
+    )
 
 @app.route("/undo-hints", methods=["POST"])
 def undo_hints():
