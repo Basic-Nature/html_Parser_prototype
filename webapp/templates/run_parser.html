@@ -14,12 +14,28 @@
             --border-radius: 18px;
             --neon: #00ffe7;
             --neon2: #d4af37;
-            --metal: linear-gradient(120deg, #bfc9d1 0%, #e6e8ea 100%);
         }
         body {
-            background: var(--metal);
             min-height: 100vh;
             font-family: 'Segoe UI', Arial, sans-serif;
+            /* Reversed gradient for parser page */
+            background: linear-gradient(120deg, var(--main-red) 0%, var(--main-blue) 100%);
+            position: relative;
+            overflow-x: hidden;
+        }
+        /* Glossy ray overlay */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            background: 
+                repeating-linear-gradient(120deg, rgba(255,255,255,0.09) 0 2px, transparent 2px 80px),
+                radial-gradient(ellipse at 60% 10%, rgba(255,255,255,0.18) 0%, transparent 60%),
+                radial-gradient(ellipse at 20% 80%, rgba(255,255,255,0.10) 0%, transparent 70%);
+            z-index: 0;
+            opacity: 0.85;
+            mix-blend-mode: lighten;
         }
         .navbar {
             display: flex;
@@ -28,6 +44,8 @@
             background: var(--main-blue);
             padding: 1em 0;
             box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+            position: relative;
+            z-index: 2;
         }
         .navbar a {
             color: #fff;
@@ -53,6 +71,7 @@
             padding: 2.5em 2em 2em 2em;
             border: 2.5px solid #bfc9d1;
             position: relative;
+            z-index: 2;
         }
         h1 {
             color: var(--main-blue);
@@ -102,12 +121,18 @@
                 box-shadow 0.3s,
                 color 0.2s,
                 filter 0.2s;
+            /* Futuristic shine pulse */
+            animation: shinePulse 2.5s infinite alternate;
+        }
+        @keyframes shinePulse {
+            0% { box-shadow: 0 0 24px 2px var(--neon2), 0 2px 12px #bfc9d1; }
+            100% { box-shadow: 0 0 48px 8px var(--neon), 0 2px 24px #bfc9d1; }
         }
         .run-btn:hover, .run-btn:focus {
             background: linear-gradient(90deg, var(--neon2) 0%, var(--main-blue) 100%);
             color: #fff;
-            box-shadow: 0 0 32px 8px var(--neon), 0 2px 24px #bfc9d1;
-            filter: brightness(1.15) drop-shadow(0 0 8px var(--neon));
+            box-shadow: 0 0 48px 12px var(--neon), 0 2px 24px #bfc9d1;
+            filter: brightness(1.18) drop-shadow(0 0 12px var(--neon));
         }
         .run-btn:active {
             filter: brightness(1.3) drop-shadow(0 0 16px var(--neon2));
@@ -125,6 +150,10 @@
             white-space: pre-wrap;
             border: 2px solid #00ffe7;
             position: relative;
+            /* Futuristic glass reflection */
+            background-image:
+                linear-gradient(120deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.01) 100%),
+                repeating-linear-gradient(120deg, rgba(255,255,255,0.08) 0 2px, transparent 2px 80px);
         }
         .output-section::before {
             content: '';
@@ -282,8 +311,6 @@
         const y = rect.top + rect.height / 2 + window.scrollY;
         createExplosion(x, y);
     });
-
-    // Collapsible sections removed
 
     // SocketIO terminal output
     var socket = io();
