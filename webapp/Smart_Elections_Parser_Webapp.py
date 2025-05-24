@@ -1,5 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
-from flask_socketio import emit, send_from_directory, SocketIO
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, send_from_directory
+from flask_socketio import emit, SocketIO
 from threading import Thread
 from webapp.parser.html_election_parser import main as run_html_parser
 import os
