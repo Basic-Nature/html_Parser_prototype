@@ -1,4 +1,3 @@
-<!-- filepath: ...\html_Parser_prototype\webapp\templates\index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,15 +8,44 @@
         :root {
             --main-blue: #45818e;
             --main-red: #eb4f43;
-            --main-bg:rgba(93, 123, 158, 0.37);
-            --glass: rgba(255,255,255,0.15);
+            --main-bg: #1a232a;
+            --glass: rgba(40,60,80,0.82);
+            --glass-soft: rgba(220,230,240,0.13);
+            --neon: #00ffe7;
+            --neon2: #d4af37;
+            --neon3: #eb4f43;
+            --neon4: #45818e;
+            --gold: #ffd700;
+            --cyan: #00ffe7;
+            --faint-cyan: rgba(0,255,231,0.13);
+            --faint-blue: rgba(69,129,142,0.13);
+            --faint-red: rgba(235,79,67,0.13);
         }
         body {
-            background: linear-gradient(120deg, var(--main-blue) 0%, var(--main-red) 100%);
             min-height: 100vh;
             margin: 0;
             font-family: 'Segoe UI', Arial, sans-serif;
             color: #222;
+            background: linear-gradient(120deg, var(--main-red) 0%, var(--main-blue) 100%);
+            position: relative;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: 0;
+            background:
+                repeating-linear-gradient(135deg, rgba(255,255,255,0.04) 0 2px, transparent 2px 80px),
+                repeating-linear-gradient(-45deg, rgba(0,0,0,0.07) 0 8px, transparent 8px 80px),
+                linear-gradient(120deg, var(--main-red) 0%, var(--main-blue) 100%);
+            animation: fractalSteps 12s linear infinite;
+            opacity: 0.95;
+        }
+        @keyframes fractalSteps {
+            0% { background-position: 0 0, 0 0, 0 0; }
+            100% { background-position: 120px 120px, -80px 80px, 0 0; }
         }
         .navbar {
             display: flex;
@@ -26,6 +54,8 @@
             background: var(--main-blue);
             padding: 1em 0;
             box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            z-index: 2;
+            position: relative;
         }
         .navbar a {
             color: #fff;
@@ -35,83 +65,47 @@
             letter-spacing: 1px;
             padding: 0.5em 1em;
             border-radius: 6px;
-            transition: background 0.3s, color 0.3s;
+            transition: background 0.3s, color 0.3s, box-shadow 0.3s;
         }
         .navbar a:hover, .navbar a.active {
             background: var(--main-red);
             color: #fff;
+            box-shadow: 0 2px 12px var(--neon2);
         }
         .container {
             max-width: 900px;
             margin: 2em auto;
-            background: var(--glass);
-            border-radius: 18px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            background: var(--glass-soft);
+            border-radius: 22px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18);
             padding: 2.5em 2em;
+            position: relative;
+            z-index: 2;
         }
         h1 {
             text-align: center;
-            color: var(--main-blue);
+            color: #23272b;
             margin-bottom: 0.5em;
+            font-size: 2.5em;
+            font-weight: 900;
+            letter-spacing: 2px;
+            background: linear-gradient(120deg, #bfc9d1 10%, #e6e8ea 40%, #bfc9d1 90%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 2px 12px #bfc9d1) brightness(0.85);
+            animation: shimmerTitle 3s linear infinite;
+        }
+        @keyframes shimmerTitle {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 100% 50%; }
         }
         .subtitle {
             text-align: center;
             color: var(--main-red);
             font-size: 1.2em;
             margin-bottom: 1em;
-        }
-        .mission {
-            background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-            padding: 1.2em 1em;
-            margin-bottom: 2em;
-            text-align: center;
-            color: #333;
-        }
-        .feature-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 2em;
-            justify-content: center;
-            margin-bottom: 2em;
-        }
-        .feature {
-            background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-            padding: 1.5em 1.2em;
-            min-width: 220px;
-            flex: 1 1 220px;
-            text-align: center;
-            transition: transform 0.2s, box-shadow 0.2s, border 0.2s;
-            border: 2px solid transparent;
-            cursor: pointer;
-        }
-        .feature:hover {
-            transform: translateY(-6px) scale(1.04);
-            box-shadow: 0 8px 32px rgba(235, 79, 67, 0.15);
-            border-color: var(--main-red);
-            background: #f8f9fa;
-        }
-        .feature h3 {
-            color: var(--main-blue);
-            margin-bottom: 0.5em;
-        }
-        .feature p {
-            color: #444;
-            font-size: 1em;
-        }
-        .canvas-section {
-            margin: 2em 0 1em 0;
-            text-align: center;
-        }
-        #container {
-            display: block;
-            margin: 0 auto;
-            background: var(--main-bg);
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
         }
         .rainbow-text {
             background: linear-gradient(90deg, #f22, #f2f, #22f, #2ff, #2f2, #ff2, #f22);
@@ -126,6 +120,173 @@
         @keyframes rainbow {
             to { background-position: 200% center; }
         }
+        .mission {
+            transition: box-shadow 0.4s, background 0.4s;
+            background: rgba(30,40,60,0.82);
+            border-radius: 18px;
+            box-shadow: 0 2px 24px 2px var(--faint-cyan), 0 2px 8px rgba(0,0,0,0.07);
+            padding: 1.5em 1.2em 1.5em 1.2em;
+            margin-bottom: 2em;
+            text-align: center;
+            color: #e6e8ea;
+            position: relative;
+            overflow: hidden;
+        }
+        .mission .rim-tracer {
+            pointer-events: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 0;
+        }
+        .mission.glossy {
+            box-shadow: 0 0 12px 2px var(--neon), 0 2px 8px #bfc9d1, 0 0 0 2px rgba(0,255,231,0.04);
+            background: linear-gradient(120deg, rgba(40,60,80,0.92) 80%, rgba(0,255,231,0.03) 100%);
+        }
+        .feature-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2em;
+            justify-content: center;
+            margin-bottom: 2em;
+        }
+        .feature {
+            background: rgba(30,40,60,0.85);
+            border-radius: 14px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.09);
+            padding: 1.5em 1.2em;
+            min-width: 220px;
+            flex: 1 1 220px;
+            text-align: center;
+            transition: 
+                transform 0.22s cubic-bezier(.61,-0.01,.7,1.01),
+                box-shadow 0.22s,
+                border 0.22s,
+                background 0.22s;
+            border: 2.5px solid transparent;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        .feature[href*="run_parser_page"] {
+            border-color: var(--neon);
+            box-shadow: 0 0 24px 2px var(--neon), 0 2px 12px #bfc9d1;
+        }
+        .feature[href*="run_parser_page"]:hover {
+            transform: translateY(-8px) scale(1.06) rotate(-1deg);
+            box-shadow: 0 0 48px 8px var(--neon), 0 2px 24px #bfc9d1;
+            border-color: var(--neon2);
+            background: rgba(0,255,231,0.13);
+        }
+        .feature[href*="history"] {
+            border-color: var(--gold);
+            
+        }
+        .feature[href*="history"]:hover {
+            transform: translateY(-8px) scale(1.06) rotate(1deg);
+            box-shadow: 0 0 18px 4px var(--gold), 0 2px 12px #bfc9d1;
+            border-color: var(--neon2);
+            background: rgba(255,215,0,0.07);
+            
+        }
+        .feature[href*="manage_data"] {
+            border-color: var(--main-blue);
+            background: repeating-linear-gradient(135deg, rgba(69,129,142,0.13) 0 2px, transparent 2px 40px), rgba(30,40,60,0.85);
+            box-shadow: 0 0 18px 2px var(--main-blue), 0 2px 12px #bfc9d1;
+        }
+        .feature[href*="manage_data"]:hover {
+            transform: translateY(-8px) scale(1.06) rotate(-2deg);
+            box-shadow: 0 0 36px 8px var(--main-blue), 0 2px 24px #bfc9d1;
+            border-color: var(--neon);
+            background: repeating-linear-gradient(135deg, var(--main-blue) 0 2px, transparent 2px 40px), rgba(30,40,60,0.92);
+        }
+        .feature h3 {
+            margin-bottom: 0.5em;
+            font-weight: 800;
+            font-size: 1.18em;
+            color: var(--neon);
+            letter-spacing: 1px;
+            text-shadow: 0 2px 8px #23272b;
+        }
+        .feature[href*="history"] h3 {
+            color: var(--gold);
+        }
+        .feature[href*="manage_data"] h3 {
+            color: var(--main-blue);
+        }
+        .feature[href*="run_parser_page"] h3 {
+            color: var(--neon);
+            text-shadow: 0 2px 12px var(--neon2);
+        }
+        .feature p {
+            color: #c6e2f7;
+            font-size: 1em;
+        }
+        .canvas-section {
+            margin: 2em 0 1em 0;
+            text-align: center;
+            position: relative;
+        }
+        #container {
+            display: block;
+            margin: 0 auto;
+            background: var(--main-bg);
+            border-radius: 50%;
+            box-shadow: 0 0 0 12px rgba(0,255,231,0.07), 0 0 32px 8px var(--main-blue);
+            width: 300px; height: 300px;
+            filter: drop-shadow(0 0 32px var(--neon));
+            position: relative;
+            z-index: 1;
+            transition: box-shadow 0.3s;
+        }
+        #container::after {
+            content: "";
+            position: absolute;
+            left: 0; top: 0; width: 100%; height: 100%;
+            border-radius: 50%;
+            pointer-events: none;
+            background: radial-gradient(circle, rgba(0,255,231,0.12) 60%, transparent 100%);
+            z-index: 2;
+        }
+        #container.fade {
+            opacity: 0.3;
+            transition: opacity 0.7s;
+        }
+        .custom-popup {
+            position: fixed;
+            left: 50%; top: 50%;
+            transform: translate(-50%,-50%);
+            background: rgba(30,40,60,0.97);
+            border-radius: 18px;
+            box-shadow: 0 0 32px 8px var(--neon), 0 2px 12px #bfc9d1;
+            color: #e6e8ea;
+            padding: 2em 2.5em;
+            z-index: 9999;
+            border: 2.5px solid var(--neon);
+            font-size: 1.15em;
+            text-align: center;
+            animation: popupAppear 0.5s cubic-bezier(.61,-0.01,.7,1.01);
+        }
+        @keyframes popupAppear {
+            from { opacity: 0; transform: translate(-50%,-60%) scale(0.8);}
+            to { opacity: 1; transform: translate(-50%,-50%) scale(1);}
+        }
+        .custom-popup button {
+            margin-top: 1.5em;
+            padding: 0.7em 2em;
+            border-radius: 8px;
+            border: none;
+            background: linear-gradient(90deg, var(--main-blue), var(--neon2));
+            color: #fff;
+            font-weight: 700;
+            font-size: 1.08em;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .custom-popup button:hover {
+            background: linear-gradient(90deg, var(--neon2), var(--main-blue));
+            box-shadow: 0 0 12px var(--neon2);
+        }
         .flash {
             margin: 1em auto;
             max-width: 600px;
@@ -139,6 +300,7 @@
         @media (max-width: 700px) {
             .feature-list { flex-direction: column; }
             .container { padding: 1em; }
+            #container { width: 220px; height: 220px; }
         }
     </style>
 </head>
@@ -161,10 +323,11 @@
 
         <h1>Smart Elections Parser</h1>
         <div class="subtitle rainbow-text">Open, Transparent, and Modular Election Data Extraction</div>
-        <div class="mission">
+        <div class="mission" id="missionPanel" style="position:relative;overflow:hidden;">
+            <canvas class="rim-tracer" id="rimTracer" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></canvas>
             <strong>Mission:</strong> To empower election transparency and civic engagement by providing open-source, modular tools for extracting, normalizing, and analyzing election results from any state or county in the U.S.<br><br>
             <strong>Goals:</strong>
-            <ul style="text-align:left; max-width:700px; margin:1em auto 0 auto; color:#333;">
+            <ul style="text-align:left; max-width:700px; margin:1em auto 0 auto; color:#e6e8ea;">
                 <li>Make election data accessible and comparable across formats and jurisdictions.</li>
                 <li>Enable researchers, journalists, and advocates to analyze results quickly and accurately.</li>
                 <li>Foster a community-driven ecosystem for election data tools and best practices.</li>
@@ -196,13 +359,151 @@
             <a href="smartelectionsact@gmail.com" style="color:var(--main-red); font-weight:600;">smartelectionsact@gmail.com</a>
         </div>
     </div>
+    <div id="popup" style="display:none;"></div>
     <script>
-        // Canvas animation (solar system)
+        // Rim tracer for mission panel (subtle, smooth, with sparks)
+        const rimCanvas = document.getElementById('rimTracer');
+        const missionPanel = document.getElementById('missionPanel');
+        let sparks = [];
+        function resizeRimCanvas() {
+            rimCanvas.width = missionPanel.offsetWidth;
+            rimCanvas.height = missionPanel.offsetHeight;
+        }
+        function getPos(d, w, h, r) {
+            if (d < w-2*r) return {x:r+d, y:r, a:0};
+            d -= (w-2*r);
+            if (d < r*Math.PI/2) return {x:w-r+r*Math.cos(Math.PI/2-d/r), y:r+r*Math.sin(Math.PI/2-d/r), a:Math.PI/2-d/r};
+            d -= r*Math.PI/2;
+            if (d < h-2*r) return {x:w-r, y:r+d, a:Math.PI/2};
+            d -= (h-2*r);
+            if (d < r*Math.PI/2) return {x:w-r+r*Math.sin(d/r), y:h-r+r*Math.cos(d/r), a:Math.PI+d/r};
+            d -= r*Math.PI/2;
+            if (d < w-2*r) return {x:w-r-d, y:h-r, a:Math.PI};
+            d -= (w-2*r);
+            if (d < r*Math.PI/2) return {x:r+r*Math.cos(3*Math.PI/2+d/r), y:h-r+r*Math.sin(3*Math.PI/2+d/r), a:3*Math.PI/2+d/r};
+            d -= r*Math.PI/2;
+            return {x:r, y:h-r-d, a:3*Math.PI/2};
+        }
+        function animateRimTracer() {
+            const ctx = rimCanvas.getContext('2d');
+            ctx.clearRect(0,0,rimCanvas.width,rimCanvas.height);
+            const w = rimCanvas.width, h = rimCanvas.height;
+            const r = 10; // <-- Corner radius. Lower = closer to edge. Adjust for fit.
+
+            // ---- SPEED CONTROL: adjust divisor for speed (higher = slower) ----
+            const SPEED_DIVISOR = 3;
+            const t = Date.now() / (2200 * SPEED_DIVISOR); // slower
+            const perim = 2*(w+h-4*r) + 2*Math.PI*r;
+            const speed = (t % 1) * perim;
+            const TRAIL_HEAD_RADIUS = 8;
+            const TRAIL_TAIL_RADIUS = 3;
+            const TRAIL_STEPS = 10;
+            // Afterglow: 
+            for(let i=TRAIL_STEPS;i>=1;i--){
+                let d = (speed - i*7 + perim) % perim;
+                let {x, y} = getPos(d, w, h, r);
+                // Interpolate radius from head to tail
+                let radius = TRAIL_TAIL_RADIUS + (TRAIL_HEAD_RADIUS - TRAIL_TAIL_RADIUS) * (i / TRAIL_STEPS);
+                ctx.save();
+                ctx.globalAlpha = 0.03 + 0.04*i;
+                ctx.shadowColor = "#00ffe7";
+                ctx.shadowBlur = 16 + (i*2); // more blur at trail end
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, 2*Math.PI);
+                ctx.fillStyle = "#00ffe7";
+                ctx.fill();
+                ctx.restore();
+            }
+            // Main tracer (laser)
+            let {x, y, a} = getPos(speed, w, h, r);
+            ctx.save();
+            ctx.globalAlpha = 0.18;
+            ctx.shadowColor = "#00ffe7";
+            ctx.shadowBlur = 18;
+            ctx.beginPath();
+            ctx.arc(x, y, TRAIL_HEAD_RADIUS, 0, 2*Math.PI); // <-- Head particle size
+            ctx.fillStyle = "#00ffe7";
+            ctx.fill();
+            ctx.restore();
+
+            // Laser outline (very subtle, behind)
+            ctx.save();
+            ctx.strokeStyle = "rgba(0,255,231,0.08)";
+            ctx.shadowColor = "#00ffe7";
+            ctx.shadowBlur = 6;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(r,0);
+            ctx.lineTo(w-r,0);
+            ctx.arcTo(w,0,w,r,r);
+            ctx.lineTo(w,h-r);
+            ctx.arcTo(w,h,w-r,h,r);
+            ctx.lineTo(r,h);
+            ctx.arcTo(0,h,0,h-r,r);
+            ctx.lineTo(0,r);
+            ctx.arcTo(0,0,r,0,r);
+            ctx.closePath();
+            ctx.stroke();
+            ctx.restore();
+
+            // Sparks!
+            if (Math.random() < 0.08) {
+                let angle = a + (Math.random()-0.5)*0.7;
+                let len = 12 + Math.random()*12;
+                sparks.push({
+                    x, y,
+                    dx: Math.cos(angle)*len,
+                    dy: Math.sin(angle)*len,
+                    alpha: 0.5 + Math.random()*0.2,
+                    life: 0
+                });
+            }
+            // Draw and update sparks
+            for (let i=sparks.length-1; i>=0; i--) {
+                let s = sparks[i];
+                s.life += 1;
+                let px = s.x + s.dx * (s.life/10);
+                let py = s.y + s.dy * (s.life/10);
+                ctx.save();
+                ctx.globalAlpha = s.alpha * (1-s.life/10);
+                ctx.shadowColor = "#00ffe7";
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.arc(px, py, 1.5, 0, 2*Math.PI);
+                ctx.fillStyle = "#00ffe7";
+                ctx.fill();
+                ctx.restore();
+                if (s.life > 10) sparks.splice(i,1);
+            }
+            requestAnimationFrame(animateRimTracer);
+        }
+        resizeRimCanvas();
+        animateRimTracer();
+        window.addEventListener('resize', resizeRimCanvas);
+
+        // Glossy hover effect (subtle)
+        missionPanel.addEventListener('mouseenter', ()=>missionPanel.classList.add('glossy'));
+        missionPanel.addEventListener('mouseleave', ()=>missionPanel.classList.remove('glossy'));
+
+        // Feature button hover rim tracer
+        document.querySelectorAll('.feature').forEach(btn => {
+            btn.addEventListener('mousemove', function(e){
+                this.style.boxShadow = "0 0 24px 4px " + (
+                    this.href.includes('run_parser_page') ? "#00ffe7" :
+                    this.href.includes('history') ? "#ffd700" :
+                    this.href.includes('manage_data') ? "#45818e" : "#eb4f43"
+                ) + ", 0 2px 12px #bfc9d1";
+            });
+            btn.addEventListener('mouseleave', function(e){
+                this.style.boxShadow = "";
+            });
+        });
+
+        // Canvas animation (solar system) - unchanged
         var sun = new Image();
         var moon = new Image();
         var earth = new Image();
         var imagesLoaded = 0;
-
         function tryStart() {
             imagesLoaded++;
             if (imagesLoaded === 3) {
@@ -212,23 +513,30 @@
         sun.onload = tryStart;
         moon.onload = tryStart;
         earth.onload = tryStart;
-        
         sun.onerror = moon.onerror = earth.onerror = function() {
             console.error("Failed to load one of the images.");
         };    
-
-        
         sun.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Sun_symbol_%28planetary_color%29.svg/640px-Sun_symbol_%28planetary_color%29.svg.png';
         moon.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/Moon_0063_Nevit.svg/640px-Moon_0063_Nevit.svg.png';
         earth.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/The_Earth_seen_from_Apollo_17_with_transparent_background.png/640px-The_Earth_seen_from_Apollo_17_with_transparent_background.png';
-            
-        
         function draw() {
             var ctx = document.getElementById('container').getContext('2d');
+            ctx.clearRect(0, 0, 300, 300);
+            // Fade out edges
+            var grad = ctx.createRadialGradient(150,150,120,150,150,150);
+            grad.addColorStop(0.8, 'rgba(0,255,231,0)');
+            grad.addColorStop(1, 'rgba(0,255,231,0.13)');
+            ctx.save();
+            ctx.globalAlpha = 0.8;
+            ctx.beginPath();
+            ctx.arc(150,150,150,0,2*Math.PI);
+            ctx.closePath();
+            ctx.clip();
+            ctx.fillStyle = grad;
+            ctx.fillRect(0,0,300,300);
+            ctx.restore();
+            ctx.globalAlpha = 1;
             ctx.globalCompositeOperation = 'destination-over';
-            ctx.clearRect(0, 0, 300, 300); // clear canvas
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-            ctx.strokeStyle = 'rgba(0, 153, 255, 0.4)';
             ctx.save();
             ctx.translate(150, 150);
             var time = new Date();
@@ -241,13 +549,13 @@
             ctx.lineTo(50, 0);
             ctx.lineTo(-6, 6);
             ctx.closePath();
-            var grad = ctx.createLinearGradient(0, 0, 50, 0);
-            grad.addColorStop(0, 'rgba(0,0,0,0.18)');
-            grad.addColorStop(0.08, 'rgba(0,0,0,0.18)');
-            grad.addColorStop(0.25, 'rgba(0,0,0,0.12)');
-            grad.addColorStop(0.7, 'rgba(0,0,0,0.08)');
-            grad.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.fillStyle = grad;
+            var grad2 = ctx.createLinearGradient(0, 0, 50, 0);
+            grad2.addColorStop(0, 'rgba(0,0,0,0.18)');
+            grad2.addColorStop(0.08, 'rgba(0,0,0,0.18)');
+            grad2.addColorStop(0.25, 'rgba(0,0,0,0.12)');
+            grad2.addColorStop(0.7, 'rgba(0,0,0,0.08)');
+            grad2.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad2;
             ctx.fill();
             ctx.restore();
             ctx.drawImage(earth, -8, -8, 16, 16);
@@ -260,15 +568,23 @@
             ctx.restore();
             ctx.beginPath();
             ctx.arc(150, 150, 105, 0, Math.PI * 2, false); // Earth orbit
+            ctx.strokeStyle = "rgba(0,255,231,0.18)";
+            ctx.lineWidth = 2.5;
             ctx.stroke();
             ctx.drawImage(sun, 0, 0, 300, 300);
             window.requestAnimationFrame(draw);
-            // Sun
         }
-        // Add event listener to the canvas
         document.getElementById('container').addEventListener('click', function() {
-            alert('Bloop! You clicked the canvas!');
+            showPopup('🌞 You clicked the solar system!<br><br><span style="color:var(--neon);font-size:1.2em;">Keep exploring the universe of transparent data!</span>');
         });
+        function showPopup(msg) {
+            var popup = document.getElementById('popup');
+            popup.innerHTML = '<div class="custom-popup">'+msg+'<br><button onclick="closePopup()">Close</button></div>';
+            popup.style.display = '';
+        }
+        function closePopup() {
+            document.getElementById('popup').style.display = 'none';
+        }
     </script>
 </body>
 </html>
