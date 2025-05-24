@@ -1,4 +1,4 @@
-<!-- filepath: ...\html_Parser_prototype\webapp\templates\history.html -->
+<!-- filepath: webapp/templates/history.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,9 +10,13 @@
         :root {
             --main-blue: #45818e;
             --main-red: #eb4f43;
+            --metal-bg: linear-gradient(120deg, #bfc9d1 0%, #e6e8ea 100%);
+            --metal-border: #a0a8b3;
+            --metal-shadow: 0 4px 24px rgba(80,90,110,0.18);
+            --metal-accent: #d4af37;
         }
         body {
-            background: linear-gradient(120deg, var(--main-blue) 0%, var(--main-red) 100%);
+            background: var(--metal-bg);
             min-height: 100vh;
             font-family: 'Segoe UI', Arial, sans-serif;
         }
@@ -28,28 +32,33 @@
             color: #fff;
             text-decoration: none;
             margin: 0 1.5em;
-            font-weight: 600;
+            font-weight: 700;
             letter-spacing: 1px;
             padding: 0.5em 1em;
             border-radius: 6px;
-            transition: background 0.3s, color 0.3s;
+            transition: background 0.3s, color 0.3s, box-shadow 0.3s;
         }
         .navbar a:hover, .navbar a.active {
             background: var(--main-red);
             color: #fff;
+            box-shadow: 0 2px 8px var(--metal-accent);
         }
         .container-main {
-            max-width: 950px;
+            max-width: 1000px;
             margin: 2em auto;
-            background: rgba(255,255,255,0.97);
+            background: rgba(245,245,245,0.98);
             border-radius: 18px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            box-shadow: var(--metal-shadow);
             padding: 2.5em 2em;
+            border: 2px solid var(--metal-border);
         }
         h1 {
             color: var(--main-blue);
             text-align: center;
-            margin-bottom: 1em;
+            margin-bottom: 1.2em;
+            font-weight: 900;
+            letter-spacing: 2px;
+            text-shadow: 1px 2px 0 #fff, 0 1px 8px #bfc9d1;
         }
         .flash {
             margin: 1em auto;
@@ -58,27 +67,79 @@
             border-radius: 8px;
             background: var(--main-red);
             color: #fff;
-            font-weight: 600;
+            font-weight: 700;
             text-align: center;
+            border: 2px solid var(--metal-accent);
+            box-shadow: 0 2px 8px #bfc9d1;
         }
         .accordion-button:not(.collapsed) {
             color: #fff;
-            background-color: var(--main-blue);
+            background: linear-gradient(90deg, var(--main-blue) 80%, var(--metal-accent) 100%);
+            font-weight: 700;
+            border-bottom: 2px solid var(--metal-accent);
         }
         .accordion-button.collapsed {
             color: var(--main-blue);
+            background: #e6e8ea;
+            font-weight: 700;
+        }
+        .accordion-item {
+            border: 2px solid var(--metal-border);
+            border-radius: 12px;
+            margin-bottom: 1em;
+            box-shadow: 0 2px 8px #bfc9d1;
+        }
+        .accordion-body {
+            background: #f8f9fa;
+            border-radius: 0 0 12px 12px;
+            border-top: 1px solid #e6e8ea;
+        }
+        .snapshot-meta {
+            font-size: 1em;
+            color: #555;
+            margin-bottom: 0.7em;
+            font-weight: 600;
+        }
+        .snapshot-json {
+            background: #23272b;
+            color: #e6e8ea;
+            border-radius: 8px;
+            padding: 1em;
+            font-family: 'Fira Mono', 'Consolas', monospace;
+            font-size: 1em;
+            margin-bottom: 1em;
+            box-shadow: 0 2px 8px #bfc9d1;
+            border: 1.5px solid #444;
         }
         .btn-danger {
             background-color: var(--main-red);
             border-color: var(--main-red);
+            font-weight: 700;
+            letter-spacing: 1px;
         }
         .btn-danger:hover {
             background-color: #c0392b;
             border-color: #c0392b;
         }
+        .btn-primary {
+            background: var(--main-blue);
+            border-color: var(--main-blue);
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+        .btn-primary:hover {
+            background: var(--main-red);
+            border-color: var(--main-red);
+        }
+        .metal-divider {
+            border: none;
+            border-top: 2px solid var(--metal-accent);
+            margin: 2em 0;
+        }
         @media (max-width: 700px) {
             .container-main { padding: 1em; }
             .navbar { flex-direction: column; }
+            .snapshot-json { font-size: 0.95em; }
         }
     </style>
 </head>
@@ -87,7 +148,7 @@
         <a href="{{ url_for('index') }}">Dashboard</a>
         <a href="{{ url_for('manage_data') }}">Manage Data & URL</a>
         <a href="{{ url_for('history') }}" class="active">History</a>
-        <a href="#" onclick="alert('Parser run coming soon!')">Run Parser</a>
+        <a href="{{ url_for('run_parser_page') }}">Run Parser</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">About</a>
     </nav>
     <div class="container-main">
@@ -101,19 +162,40 @@
         {% endwith %}
 
         {% if snapshots|length == 0 %}
-            <p>No changes have been logged yet.</p>
+            <p class="text-center mt-4">No changes have been logged yet.</p>
         {% else %}
         <div class="accordion mb-4" id="historyAccordion">
             {% for i, snapshot in snapshots %}
             <div class="accordion-item">
                 <h2 class="accordion-header" id="heading{{ i }}">
                     <button class="accordion-button {% if i != 0 %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ i }}" aria-expanded="{{ 'true' if i == 0 else 'false' }}" aria-controls="collapse{{ i }}">
-                        Snapshot #{{ i + 1 }} {% if snapshot.timestamp %} - {{ snapshot.timestamp }}{% endif %}
+                        <span style="font-size:1.1em;">
+                            <span style="color:var(--metal-accent); font-weight:900;">&#9733;</span>
+                            Snapshot #{{ i + 1 }}
+                            {% if snapshot.timestamp %}
+                                <span class="ms-2" style="font-size:0.95em; color:#222;">
+                                    ({{ snapshot.timestamp|default('No timestamp') }})
+                                </span>
+                            {% endif %}
+                        </span>
                     </button>
                 </h2>
                 <div id="collapse{{ i }}" class="accordion-collapse collapse {% if i == 0 %}show{% endif %}" aria-labelledby="heading{{ i }}" data-bs-parent="#historyAccordion">
                     <div class="accordion-body">
-                        <pre style="background:#f8f9fa; border-radius:8px; padding:1em;">{{ snapshot | tojson(indent=2) }}</pre>
+                        <div class="snapshot-meta">
+                            {% if snapshot.timestamp %}
+                                <span><b>Timestamp:</b> {{ snapshot.timestamp }}</span><br>
+                            {% endif %}
+                            {% if snapshot.data.user %}
+                                <span><b>User:</b> {{ snapshot.data.user }}</span><br>
+                            {% endif %}
+                            {% if snapshot.data.action %}
+                                <span><b>Action:</b> {{ snapshot.data.action }}</span><br>
+                            {% endif %}
+                        </div>
+                        <div class="snapshot-json">
+                            {{ snapshot.data | tojson(indent=2) }}
+                        </div>
                         <form method="POST" action="{{ url_for('rollback', index=i) }}">
                             <button type="submit" class="btn btn-sm btn-danger mt-2">Restore This Version</button>
                         </form>
@@ -123,7 +205,10 @@
             {% endfor %}
         </div>
         {% endif %}
-        <a href="{{ url_for('index') }}" class="btn btn-primary mt-4">Back to Dashboard</a>
+        <hr class="metal-divider">
+        <div class="text-center">
+            <a href="{{ url_for('index') }}" class="btn btn-primary mt-2">Back to Dashboard</a>
+        </div>
     </div>
 
     <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">

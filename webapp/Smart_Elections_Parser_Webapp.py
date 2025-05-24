@@ -69,9 +69,13 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def append_history(data):
+    snapshot = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": data
+    }
     with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(data) + "\n")
-
+        f.write(json.dumps(snapshot) + "\n")
+        
 def edit_hint():
     frag = request.form.get("fragment", "").strip()
     path = request.form.get("module_path", "").strip()
@@ -183,8 +187,9 @@ def history():
             for line in f:
                 try:
                     snap = json.loads(line)
-                    # Optionally, add a timestamp if you store it, or parse from the dict
-                    # snap['timestamp'] = snap.get('timestamp', None)
+                    timestamp = snap.get("timestamp")
+                    data = snap.get("data", snap)  # fallback for old entries
+                    snapshots.append({"timestamp": timestamp, "data": data})
                     snapshots.append(snap)
                 except Exception:
                     continue
@@ -323,9 +328,38 @@ def undo_hints():
     flash("Undo successful.", "success")
     return redirect(url_for("url_hints"))
 
-@app.route("/uploads/<filename>")
-def uploaded_file(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+@app.route("/upload/input", methods=["POST"])
+def upload_to_input():
+    file = request.files.get("file")
+    if file and allowed_file(file.filename):
+        filename = file.filename
+        file.save(os.path.join(INPUT_FOLDER, filename))
+        flash(f"File '{filename}' uploaded to input folder.", "success")
+    else:
+        flash("Invalid file type or no file selected.", "danger")
+    return redirect(request.referrer or url_for("manage_data"))
+
+@app.route("/upload/output", methods=["POST"])
+def upload_to_output():
+    file = request.files.get("file")
+    if file and allowed_file(file.filename):
+        filename = file.filename
+        file.save(os.path.join(OUTPUT_FOLDER, filename))
+        flash(f"File '{filename}' uploaded to output folder.", "success")
+    else:
+        flash("Invalid file type or no file selected.", "danger")
+    return redirect(request.referrer or url_for("manage_data"))
+
+@app.route("/upload/uploads", methods=["POST"])
+def upload_to_uploads():
+    file = request.files.get("file")
+    if file and allowed_file(file.filename):
+        filename = file.filename
+        file.save(os.path.join(UPLOAD_FOLDER, filename))
+        flash(f"File '{filename}' uploaded to uploads folder.", "success")
+    else:
+        flash("Invalid file type or no file selected.", "danger")
+    return redirect(request.referrer or url_for("manage_data"))
 
 if __name__ == "__main__":
     socketio.run(app, debug=True)
