@@ -145,9 +145,6 @@
 <body>
     <nav class="navbar">
         <a href="https://smartelections.us/" >Home Base</a>
-        <a href="https://docs.google.com/spreadsheets/d/your_datasheet_id" target="_blank">Master Datasheet</a>
-        <a href="https://drive.google.com/drive/folders/your_folder_id" target="_blank">Upload Data</a>
-        <a href="https://forms.gle/your_google_form_id" target="_blank">Suggest a Site</a>
         <a href="https://discord.gg/your_invite" target="_blank">Community</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype/wiki" target="_blank">Docs</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype/issues" target="_blank">Feedback</a>
@@ -174,8 +171,8 @@
             </ul>
         </div>
         <div class="feature-list">
-            <a class="feature" href="{{ url_for('url_hints') }}">
-                <h3>URL Hint Manager</h3>
+            <a class="feature" href="{{ url_for('manage_data') }}">
+                <h3>Data & URL Hint Manager</h3>
                 <p>Manage custom URL-to-handler mappings for tricky or new election sites. Import/export hints, undo changes, and validate handler modules.</p>
             </a>
             <a class="feature" href="{{ url_for('run_parser_page') }}">

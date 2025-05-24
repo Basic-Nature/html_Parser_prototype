@@ -25,12 +25,13 @@ OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")
 PARSER_DIR = os.path.join(os.path.dirname(__file__), "parser")
 HINT_FILE = os.path.join(PARSER_DIR, "url_hint_overrides.txt")
 HISTORY_FILE = os.path.join(PARSER_DIR, "url_hint_history.jsonl")
-UPLOAD_FOLDER = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 URLS_FILE = os.path.join(PARSER_DIR, "urls.txt")
 
 # Ensure input/output folders exist
 os.makedirs(INPUT_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Secure secret key from environment
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
@@ -200,6 +201,8 @@ def manage_data():
     overrides = load_overrides()
     validations = {k: validate_module_path(v) for k, v in overrides.items()}
     uploaded_files = os.listdir(UPLOAD_FOLDER)
+    input_files = os.listdir(INPUT_FOLDER)
+    output_files = os.listdir(OUTPUT_FOLDER)
     if request.method == "POST":
         # Handle file upload
         file = request.files.get("data_file")
@@ -209,12 +212,14 @@ def manage_data():
             flash(f"File '{filename}' uploaded successfully.", "success")
         else:
             flash("Invalid file type or no file selected.", "danger")
-        return redirect(url_for("manage_data"))
+        pass
     return render_template(
         "manage_data.html",
         overrides=overrides,
         validations=validations,
-        uploaded_files=uploaded_files
+        uploaded_files=uploaded_files,
+        input_files=input_files,
+        output_files=output_files
     )
 
 @app.route("/output-files")

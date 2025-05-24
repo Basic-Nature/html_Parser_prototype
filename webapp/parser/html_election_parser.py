@@ -49,7 +49,7 @@ log_level_str = os.getenv("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
 log_level = getattr(logging, log_level_str, logging.INFO)
 logging.basicConfig(level=log_level, format='[%(levelname)s] %(message)s')
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).parent.parent.parent
 # Flags for caching behavior
 CACHE_PROCESSED_URLS = os.getenv("CACHE_PROCESSED", "true").lower() == "true"
 CACHE_RESET = os.getenv("CACHE_RESET", "false").lower() == "true"
@@ -62,8 +62,9 @@ if CACHE_RESET and CACHE_FILE.exists():
 
 # Project paths
 INPUT_DIR = BASE_DIR / "input"
+INPUT_DIR = BASE_DIR / "input"
 OUTPUT_DIR = BASE_DIR / "output"
-URL_LIST_FILE = BASE_DIR / "urls.txt"
+URL_LIST_FILE = BASE_DIR / "webapp/parser/urls.txt"
 
 HEADLESS_DEFAULT = os.getenv("HEADLESS", "true").lower() == "true"
 TIMEOUT_SEC = int(os.getenv("CAPTCHA_TIMEOUT", "300"))
