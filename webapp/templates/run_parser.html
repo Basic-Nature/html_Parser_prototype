@@ -1,4 +1,4 @@
-<!-- filepath: ...\html_Parser_prototype\webapp\templates\run_parser.html -->
+<!-- filepath: webapp/templates/run_parser.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,12 +9,15 @@
         :root {
             --main-blue: #45818e;
             --main-red: #eb4f43;
-            --main-bg: #f8f9fa;
-            --glass: rgba(255,255,255,0.18);
-            --border-radius: 14px;
+            --main-bg: #1a232a;
+            --glass: rgba(40,60,80,0.85);
+            --border-radius: 18px;
+            --neon: #00ffe7;
+            --neon2: #d4af37;
+            --metal: linear-gradient(120deg, #bfc9d1 0%, #e6e8ea 100%);
         }
         body {
-            background: linear-gradient(120deg, var(--main-blue) 0%, var(--main-red) 100%);
+            background: var(--metal);
             min-height: 100vh;
             font-family: 'Segoe UI', Arial, sans-serif;
         }
@@ -24,155 +27,186 @@
             align-items: center;
             background: var(--main-blue);
             padding: 1em 0;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            box-shadow: 0 2px 12px rgba(0,0,0,0.12);
         }
         .navbar a {
             color: #fff;
             text-decoration: none;
             margin: 0 1.2em;
-            font-weight: 600;
+            font-weight: 700;
             letter-spacing: 1px;
-            padding: 0.5em 1em;
-            border-radius: 6px;
-            transition: background 0.3s, color 0.3s;
+            padding: 0.5em 1.2em;
+            border-radius: 8px;
+            transition: background 0.3s, color 0.3s, box-shadow 0.3s;
         }
         .navbar a:hover, .navbar a.active {
             background: var(--main-red);
             color: #fff;
+            box-shadow: 0 2px 12px var(--neon2);
         }
         .container-main {
-            max-width: 950px;
-            margin: 2.5em auto;
+            max-width: 800px;
+            margin: 3em auto;
             background: var(--glass);
             border-radius: var(--border-radius);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-            padding: 2.5em 2em;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+            padding: 2.5em 2em 2em 2em;
+            border: 2.5px solid #bfc9d1;
+            position: relative;
         }
         h1 {
             color: var(--main-blue);
             text-align: center;
             margin-bottom: 0.5em;
+            font-weight: 900;
+            letter-spacing: 2px;
+            text-shadow: 0 2px 8px #fff, 0 1px 16px #bfc9d1;
         }
         .subtitle {
             text-align: center;
             color: var(--main-red);
-            font-size: 1.1em;
+            font-size: 1.15em;
             margin-bottom: 2em;
+            font-weight: 700;
+            letter-spacing: 1px;
         }
         .instructions {
-            background: #f8f9fa;
+            background: rgba(255,255,255,0.10);
             border-left: 5px solid var(--main-blue);
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 1em 1.5em;
             margin-bottom: 2em;
-            color: #333;
+            color: #e6e8ea;
+            font-size: 1.08em;
+            box-shadow: 0 2px 12px #bfc9d1;
         }
-        .section {
-            background: #fff;
-            border-radius: var(--border-radius);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-            padding: 1.5em 1.2em;
+        .form-section {
+            text-align: center;
             margin-bottom: 2em;
         }
-        .collapsible-btn {
-            background: var(--main-blue);
+        .run-btn {
+            background: linear-gradient(90deg, var(--main-blue) 60%, var(--neon2) 100%);
             color: #fff;
+            font-size: 1.25em;
+            font-weight: 900;
+            padding: 0.8em 2.5em;
             border: none;
-            border-radius: 8px;
-            padding: 0.6em 1.2em;
-            margin-bottom: 1em;
-            font-size: 1em;
-            font-weight: 600;
+            border-radius: 14px;
+            box-shadow: 0 0 24px 2px var(--neon2), 0 2px 12px #bfc9d1;
             cursor: pointer;
-            transition: background 0.2s;
+            letter-spacing: 2px;
+            position: relative;
+            overflow: hidden;
+            transition: 
+                background 0.3s,
+                box-shadow 0.3s,
+                color 0.2s,
+                filter 0.2s;
         }
-        .collapsible-btn:hover {
-            background: var(--main-red);
-        }
-        .file-list {
-            list-style: none;
-            padding: 0;
-            margin: 0.5em 0 0 0;
-        }
-        .file-list li {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: var(--main-bg);
-            border-radius: 8px;
-            margin-bottom: 0.5em;
-            padding: 0.5em 1em;
-        }
-        .file-actions {
-            display: flex;
-            gap: 0.5em;
-        }
-        .btn {
-            border: none;
-            border-radius: 6px;
-            padding: 0.4em 0.9em;
-            font-size: 0.98em;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.2s, color 0.2s;
-        }
-        .btn-primary {
-            background: var(--main-blue);
+        .run-btn:hover, .run-btn:focus {
+            background: linear-gradient(90deg, var(--neon2) 0%, var(--main-blue) 100%);
             color: #fff;
+            box-shadow: 0 0 32px 8px var(--neon), 0 2px 24px #bfc9d1;
+            filter: brightness(1.15) drop-shadow(0 0 8px var(--neon));
         }
-        .btn-primary:hover {
-            background: var(--main-red);
-        }
-        .btn-success {
-            background: #4caf50;
-            color: #fff;
-        }
-        .btn-success:hover {
-            background: #388e3c;
-        }
-        .btn-danger {
-            background: #eb4f43;
-            color: #fff;
-        }
-        .btn-danger:hover {
-            background: #b71c1c;
-        }
-        .btn-upload {
-            background: #fff;
-            color: var(--main-blue);
-            border: 1px solid var(--main-blue);
-        }
-        .btn-upload:hover {
-            background: var(--main-blue);
-            color: #fff;
+        .run-btn:active {
+            filter: brightness(1.3) drop-shadow(0 0 16px var(--neon2));
         }
         .output-section {
-            background: #222;
-            color: #d4f1f9;
+            background: rgba(20,30,40,0.98);
+            color: #00ffe7;
             font-family: 'Fira Mono', 'Consolas', monospace;
-            border-radius: 10px;
-            padding: 1.5em 1em;
-            min-height: 180px;
-            margin-bottom: 1em;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+            border-radius: 14px;
+            padding: 1.5em 1em 1.5em 1.5em;
+            min-height: 220px;
+            margin-bottom: 1.5em;
+            box-shadow: 0 2px 24px #00ffe7, 0 2px 12px #bfc9d1;
             overflow-x: auto;
             white-space: pre-wrap;
+            border: 2px solid #00ffe7;
+            position: relative;
+        }
+        .output-section::before {
+            content: '';
+            display: block;
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 8px;
+            border-radius: 14px 14px 0 0;
+            background: linear-gradient(90deg, var(--main-blue), var(--neon2), var(--main-blue));
+            opacity: 0.7;
+        }
+        .prompt-section {
+            text-align: center;
+            margin-top: 1.5em;
+        }
+        .prompt-section input[type="text"] {
+            width: 70%;
+            padding: 0.7em;
+            border-radius: 8px;
+            border: 1.5px solid var(--neon2);
+            background: #23272b;
+            color: #00ffe7;
+            font-size: 1.08em;
+            font-family: 'Fira Mono', 'Consolas', monospace;
+            margin-right: 0.5em;
+            outline: none;
+            transition: border 0.2s, box-shadow 0.2s;
+        }
+        .prompt-section input[type="text"]:focus {
+            border: 2px solid var(--neon);
+            box-shadow: 0 0 8px var(--neon);
+        }
+        .prompt-section button {
+            padding: 0.7em 2em;
+            border-radius: 8px;
+            border: none;
+            background: linear-gradient(90deg, var(--main-blue), var(--neon2));
+            color: #fff;
+            font-weight: 700;
+            font-size: 1.08em;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .prompt-section button:hover {
+            background: linear-gradient(90deg, var(--neon2), var(--main-blue));
+            box-shadow: 0 0 12px var(--neon2);
         }
         .flash {
             margin: 1em auto;
             max-width: 600px;
             padding: 1em 1.5em;
-            border-radius: 8px;
+            border-radius: 10px;
             background: var(--main-red);
             color: #fff;
-            font-weight: 600;
+            font-weight: 700;
             text-align: center;
+            border: 2px solid var(--neon2);
+            box-shadow: 0 2px 8px #bfc9d1;
+        }
+        /* Data particle explosion */
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 50%;
+            opacity: 0.85;
+            z-index: 9999;
+            width: 8px;
+            height: 8px;
+            background: radial-gradient(circle, var(--neon2) 0%, var(--neon) 100%);
+            box-shadow: 0 0 12px 2px var(--neon2), 0 0 24px 4px var(--neon);
+            animation: explode 0.8s cubic-bezier(.61,-0.01,.7,1.01) forwards;
+        }
+        @keyframes explode {
+            to {
+                opacity: 0;
+                transform: translate(var(--dx), var(--dy)) scale(1.8);
+            }
         }
         @media (max-width: 700px) {
             .container-main { padding: 1em; }
             .navbar { flex-direction: column; }
-            .file-list li { flex-direction: column; align-items: flex-start; }
-            .file-actions { margin-top: 0.5em; }
+            .output-section { font-size: 0.98em; }
         }
     </style>
 </head>
@@ -180,9 +214,6 @@
     <nav class="navbar">
         <a href="{{ url_for('index') }}">Dashboard</a>
         <a href="{{ url_for('manage_data') }}">Manage Data & URL</a>
-        <a href="https://docs.google.com/spreadsheets/d/1x3ZUXWK9u3nhWU1-dds2jyNyZ8eLr2EM/edit?gid=1068368443#gid=1068368443" target="_blank">Master Datasheet</a>
-        <a href="https://drive.google.com/drive/u/1/folders/1TKh2gbG__0ZQME15aMpDE-Gn0SfyUF4d" target="_blank">Upload Data</a>
-        <a href="https://forms.gle/your_google_form_id" target="_blank">Suggest a Site</a>
         <a href="{{ url_for('history') }}">History</a>
         <a href="{{ url_for('run_parser_page') }}" class="active">Run Parser</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">About</a>
@@ -207,144 +238,84 @@
           {% endif %}
         {% endwith %}
 
-        <!-- Uploads Folder Section -->
-        <div class="section">
-            <button type="button" class="collapsible-btn" onclick="toggleSection('uploadsSection')">Uploads Folder Files</button>
-            <div id="uploadsSection" style="display:none;">
-                <form method="POST" enctype="multipart/form-data" action="{{ url_for('run_parser_page') }}" style="margin-bottom:1em;">
-                    <input type="file" name="data_file" accept=".csv,.pdf,.xlsx,.xls,.txt" required>
-                    <button type="submit" class="btn btn-upload">Upload</button>
-                </form>
-                <ul class="file-list">
-                    {% for fname in uploaded_files %}
-                        <li>
-                            <span>{{ fname }}</span>
-                            <div class="file-actions">
-                                <a href="{{ url_for('uploaded_file', filename=fname) }}" class="btn btn-success" target="_blank">Download</a>
-                                <form method="POST" action="{{ url_for('delete_upload_file', filename=fname) }}" style="display:inline;">
-                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ fname }}?')">Delete</button>
-                                </form>
-                            </div>
-                        </li>
-                    {% else %}
-                        <li>No files uploaded yet.</li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </div>
-
-        <!-- Input Folder Section -->
-        <div class="section">
-            <button type="button" class="collapsible-btn" onclick="toggleSection('inputSection')">Input Folder Files</button>
-            <div id="inputSection" style="display:none;">
-                <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
-                    <input type="file" name="file" required>
-                    <button type="submit" class="btn btn-upload">Upload</button>
-                </form>
-                <ul class="file-list">
-                    {% for file in input_files %}
-                        <li>
-                            <span>{{ file }}</span>
-                            <div class="file-actions">
-                                <a href="{{ url_for('download_input_file', filename=file) }}" class="btn btn-success">Download</a>
-                                <form method="POST" action="{{ url_for('delete_input_file', filename=file) }}" style="display:inline;">
-                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
-                                </form>
-                            </div>
-                        </li>
-                    {% else %}
-                        <li>No files in input folder.</li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </div>
-
-        <!-- Output Folder Section -->
-        <div class="section">
-            <button type="button" class="collapsible-btn" onclick="toggleSection('outputSection')">Output Folder Files</button>
-            <div id="outputSection" style="display:none;">
-                <form method="POST" action="{{ url_for('upload_to_output') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
-                    <input type="file" name="file" required>
-                    <button type="submit" class="btn btn-upload">Upload</button>
-                </form>
-                <ul class="file-list">
-                    {% for file in output_files %}
-                        <li>
-                            <span>{{ file }}</span>
-                            <div class="file-actions">
-                                <a href="{{ url_for('download_output_file', filename=file) }}" class="btn btn-success">Download</a>
-                                <form method="POST" action="{{ url_for('delete_output_file', filename=file) }}" style="display:inline;">
-                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
-                                </form>
-                            </div>
-                        </li>
-                    {% else %}
-                        <li>No files in output folder.</li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </div>
-
-        <hr>
-        <h2 class="mt-4 mb-3">Run the Parser</h2>
-        <p>Click the button below to start the parser. Make sure you have configured your URL hints and handlers correctly.</p>
         <div class="form-section">
             <form method="POST" action="{{ url_for('run_parser_page') }}">
-                <button type="submit" class="btn-primary">Run Parser</button>
+                <button type="submit" class="run-btn" id="runParserBtn">Run Parser</button>
             </form>
         </div>
 
-        <div class="output-section">
+        <div class="output-section" id="terminal">
             {% if parser_output %}
                 {{ parser_output }}
             {% else %}
-                <span style="color:#888;">Parser output will appear here after you run the parser.</span>
+                <span style="color:#3ff;">Parser output will appear here after you run the parser.</span>
             {% endif %}
         </div>
-        <div class="prompt-section" style="text-align:center; margin-top:1em;">
+        <div class="prompt-section">
             <form id="promptForm" autocomplete="off" onsubmit="sendPrompt(event)">
-                <input type="text" id="promptInput" placeholder="Type a command..." style="width:70%;padding:0.5em;">
-                <button type="submit" class="btn-primary" style="padding:0.5em 1.5em;">Send</button>
+                <input type="text" id="promptInput" placeholder="Type a command...">
+                <button type="submit">Send</button>
             </form>
         </div>
     </div>
     <script>
-    function toggleSection(id) {
-        var el = document.getElementById(id);
-        el.style.display = (el.style.display === "none" || el.style.display === "") ? "block" : "none";
+    // Data particle explosion effect
+    function createExplosion(x, y, color) {
+        for (let i = 0; i < 32; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            const angle = Math.random() * 2 * Math.PI;
+            const radius = 80 + Math.random() * 60;
+            const dx = Math.cos(angle) * radius;
+            const dy = Math.sin(angle) * radius;
+            particle.style.left = x + 'px';
+            particle.style.top = y + 'px';
+            particle.style.setProperty('--dx', dx + 'px');
+            particle.style.setProperty('--dy', dy + 'px');
+            document.body.appendChild(particle);
+            setTimeout(() => particle.remove(), 800);
+        }
     }
+    document.getElementById('runParserBtn').addEventListener('click', function(e) {
+        const rect = this.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2 + window.scrollY;
+        createExplosion(x, y);
+    });
+
+    // Collapsible sections removed
+
+    // SocketIO terminal output
+    var socket = io();
+    var outputDiv = document.getElementById('terminal');
+    socket.on('parser_output', function(data) {
+        if (outputDiv.innerHTML.includes('Parser output will appear')) {
+            outputDiv.innerHTML = '';
+        }
+        outputDiv.innerHTML += data.replace(/\n/g, '<br>');
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+    });
+    function sendPrompt(event) {
+        event.preventDefault();
+        var input = document.getElementById('promptInput');
+        var value = input.value.trim();
+        if (value) {
+            socket.emit('parser_prompt', value);
+            input.value = '';
+        }
+    }
+    document.getElementById('promptForm').addEventListener('submit', sendPrompt);
+    document.getElementById('promptInput').addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            sendPrompt(event);
+        }
+    });
+    document.getElementById('promptInput').addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            this.value = '';
+        }
+    });
     </script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script>
-        var socket = io();
-        var outputDiv = document.querySelector('.output-section');
-        socket.on('parser_output', function(data) {
-            if (outputDiv.innerHTML.includes('Parser output will appear')) {
-                outputDiv.innerHTML = '';
-            }
-            outputDiv.innerHTML += data.replace(/\n/g, '<br>');
-            outputDiv.scrollTop = outputDiv.scrollHeight;
-        });
-        function sendPrompt(event) {
-            event.preventDefault();
-            var input = document.getElementById('promptInput');
-            var value = input.value.trim();
-            if (value) {
-                socket.emit('parser_prompt', value);
-                input.value = '';
-            }
-        }
-        document.getElementById('promptForm').addEventListener('submit', sendPrompt);
-        document.getElementById('promptInput').addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                sendPrompt(event);
-            }
-        });
-        document.getElementById('promptInput').addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                this.value = '';
-            }
-        });
-    </script>
 </body>
 </html>
