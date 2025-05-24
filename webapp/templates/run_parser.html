@@ -10,6 +10,8 @@
             --main-blue: #45818e;
             --main-red: #eb4f43;
             --main-bg: #f8f9fa;
+            --glass: rgba(255,255,255,0.18);
+            --border-radius: 14px;
         }
         body {
             background: linear-gradient(120deg, var(--main-blue) 0%, var(--main-red) 100%);
@@ -27,7 +29,7 @@
         .navbar a {
             color: #fff;
             text-decoration: none;
-            margin: 0 1.5em;
+            margin: 0 1.2em;
             font-weight: 600;
             letter-spacing: 1px;
             padding: 0.5em 1em;
@@ -39,10 +41,10 @@
             color: #fff;
         }
         .container-main {
-            max-width: 900px;
-            margin: 2em auto;
-            background: rgba(255,255,255,0.97);
-            border-radius: 18px;
+            max-width: 950px;
+            margin: 2.5em auto;
+            background: var(--glass);
+            border-radius: var(--border-radius);
             box-shadow: 0 8px 32px rgba(0,0,0,0.12);
             padding: 2.5em 2em;
         }
@@ -65,23 +67,84 @@
             margin-bottom: 2em;
             color: #333;
         }
-        .form-section {
+        .section {
+            background: #fff;
+            border-radius: var(--border-radius);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            padding: 1.5em 1.2em;
             margin-bottom: 2em;
-            text-align: center;
+        }
+        .collapsible-btn {
+            background: var(--main-blue);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 0.6em 1.2em;
+            margin-bottom: 1em;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .collapsible-btn:hover {
+            background: var(--main-red);
+        }
+        .file-list {
+            list-style: none;
+            padding: 0;
+            margin: 0.5em 0 0 0;
+        }
+        .file-list li {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--main-bg);
+            border-radius: 8px;
+            margin-bottom: 0.5em;
+            padding: 0.5em 1em;
+        }
+        .file-actions {
+            display: flex;
+            gap: 0.5em;
+        }
+        .btn {
+            border: none;
+            border-radius: 6px;
+            padding: 0.4em 0.9em;
+            font-size: 0.98em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
         }
         .btn-primary {
-            background-color: var(--main-blue);
-            border-color: var(--main-blue);
+            background: var(--main-blue);
             color: #fff;
-            font-weight: 600;
-            border-radius: 6px;
-            padding: 0.7em 2em;
-            font-size: 1.1em;
-            transition: background 0.3s, border 0.3s;
         }
         .btn-primary:hover {
-            background-color: var(--main-red);
-            border-color: var(--main-red);
+            background: var(--main-red);
+        }
+        .btn-success {
+            background: #4caf50;
+            color: #fff;
+        }
+        .btn-success:hover {
+            background: #388e3c;
+        }
+        .btn-danger {
+            background: #eb4f43;
+            color: #fff;
+        }
+        .btn-danger:hover {
+            background: #b71c1c;
+        }
+        .btn-upload {
+            background: #fff;
+            color: var(--main-blue);
+            border: 1px solid var(--main-blue);
+        }
+        .btn-upload:hover {
+            background: var(--main-blue);
+            color: #fff;
         }
         .output-section {
             background: #222;
@@ -108,6 +171,8 @@
         @media (max-width: 700px) {
             .container-main { padding: 1em; }
             .navbar { flex-direction: column; }
+            .file-list li { flex-direction: column; align-items: flex-start; }
+            .file-actions { margin-top: 0.5em; }
         }
     </style>
 </head>
@@ -141,67 +206,90 @@
             {% endfor %}
           {% endif %}
         {% endwith %}
-        <!-- File Upload Section -->
-        <h2 class="mt-4 mb-3">Upload New Data File</h2>
-        <form method="POST" enctype="multipart/form-data" class="mb-4">
-            <input type="file" name="data_file" accept=".csv,.pdf,.xlsx,.xls,.txt" class="form-control" required>
-            <button type="submit" class="btn btn-primary mt-2">Upload File</button>
-        </form>
-        <h3>Uploaded Files</h3>
-        
-        <ul>
-            {% for fname in uploaded_files %}
-                <li>
-                    <a href="{{ url_for('uploaded_file', filename=fname) }}" target="_blank">{{ fname }}</a>
-                </li>
-            {% else %}
-                <li>No files uploaded yet.</li>
-            {% endfor %}
-        </ul>
-    <button type="button" onclick="toggleSection('inputSection')" class="btn btn-outline-secondary mb-2">Show/Hide Input Files</button>
-    <div id="inputSection" style="display:none; margin-bottom:1em;">
-        <h3>Input Folder Files</h3>
-        <ul>
-            {% for file in input_files %}
-                <li>
-                    <a href="{{ url_for('download_input_file', filename=file) }}">{{ file }}</a>
-                </li>
-            {% else %}
-                <li>No files in input folder.</li>
-            {% endfor %}
-        </ul>
-    </div>
 
-    <button type="button" onclick="toggleSection('outputSection')" class="btn btn-outline-secondary mb-2">Show/Hide Output Files</button>
-    <div id="outputSection" style="display:none; margin-bottom:1em;">
-        <h3>Output Folder Files</h3>
-        <ul>
-            {% for file in output_files %}
-                <li>
-                    <a href="{{ url_for('download_output_file', filename=file) }}">{{ file }}</a>
-                </li>
-            {% else %}
-                <li>No files in output folder.</li>
-            {% endfor %}
-        </ul>
-    </div>
-    <script>
-    function toggleSection(id) {
-        var el = document.getElementById(id);
-        el.style.display = (el.style.display === "none" || el.style.display === "") ? "block" : "none";
-    }
-    </script>
+        <!-- Uploads Folder Section -->
+        <div class="section">
+            <button type="button" class="collapsible-btn" onclick="toggleSection('uploadsSection')">Uploads Folder Files</button>
+            <div id="uploadsSection" style="display:none;">
+                <form method="POST" enctype="multipart/form-data" action="{{ url_for('run_parser_page') }}" style="margin-bottom:1em;">
+                    <input type="file" name="data_file" accept=".csv,.pdf,.xlsx,.xls,.txt" required>
+                    <button type="submit" class="btn btn-upload">Upload</button>
+                </form>
+                <ul class="file-list">
+                    {% for fname in uploaded_files %}
+                        <li>
+                            <span>{{ fname }}</span>
+                            <div class="file-actions">
+                                <a href="{{ url_for('uploaded_file', filename=fname) }}" class="btn btn-success" target="_blank">Download</a>
+                                <form method="POST" action="{{ url_for('delete_upload_file', filename=fname) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ fname }}?')">Delete</button>
+                                </form>
+                            </div>
+                        </li>
+                    {% else %}
+                        <li>No files uploaded yet.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- Input Folder Section -->
+        <div class="section">
+            <button type="button" class="collapsible-btn" onclick="toggleSection('inputSection')">Input Folder Files</button>
+            <div id="inputSection" style="display:none;">
+                <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
+                    <input type="file" name="file" required>
+                    <button type="submit" class="btn btn-upload">Upload</button>
+                </form>
+                <ul class="file-list">
+                    {% for file in input_files %}
+                        <li>
+                            <span>{{ file }}</span>
+                            <div class="file-actions">
+                                <a href="{{ url_for('download_input_file', filename=file) }}" class="btn btn-success">Download</a>
+                                <form method="POST" action="{{ url_for('delete_input_file', filename=file) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                </form>
+                            </div>
+                        </li>
+                    {% else %}
+                        <li>No files in input folder.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- Output Folder Section -->
+        <div class="section">
+            <button type="button" class="collapsible-btn" onclick="toggleSection('outputSection')">Output Folder Files</button>
+            <div id="outputSection" style="display:none;">
+                <form method="POST" action="{{ url_for('upload_to_output') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
+                    <input type="file" name="file" required>
+                    <button type="submit" class="btn btn-upload">Upload</button>
+                </form>
+                <ul class="file-list">
+                    {% for file in output_files %}
+                        <li>
+                            <span>{{ file }}</span>
+                            <div class="file-actions">
+                                <a href="{{ url_for('download_output_file', filename=file) }}" class="btn btn-success">Download</a>
+                                <form method="POST" action="{{ url_for('delete_output_file', filename=file) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                </form>
+                            </div>
+                        </li>
+                    {% else %}
+                        <li>No files in output folder.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
         <hr>
         <h2 class="mt-4 mb-3">Run the Parser</h2>
         <p>Click the button below to start the parser. Make sure you have configured your URL hints and handlers correctly.</p>
         <div class="form-section">
             <form method="POST" action="{{ url_for('run_parser') }}">
-                <!-- Example toggle: -->
-                <!--
-                <label>
-                    <input type="checkbox" name="dry_run" value="1"> Dry Run (no changes)
-                </label>
-                -->
                 <button type="submit" class="btn-primary">Run Parser</button>
             </form>
         </div>
@@ -220,42 +308,43 @@
             </form>
         </div>
     </div>
+    <script>
+    function toggleSection(id) {
+        var el = document.getElementById(id);
+        el.style.display = (el.style.display === "none" || el.style.display === "") ? "block" : "none";
+    }
+    </script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        var socket = io();
+        var outputDiv = document.querySelector('.output-section');
+        socket.on('parser_output', function(data) {
+            if (outputDiv.innerHTML.includes('Parser output will appear')) {
+                outputDiv.innerHTML = '';
+            }
+            outputDiv.innerHTML += data.replace(/\n/g, '<br>');
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        });
+        function sendPrompt(event) {
+            event.preventDefault();
+            var input = document.getElementById('promptInput');
+            var value = input.value.trim();
+            if (value) {
+                socket.emit('parser_prompt', value);
+                input.value = '';
+            }
+        }
+        document.getElementById('promptForm').addEventListener('submit', sendPrompt);
+        document.getElementById('promptInput').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                sendPrompt(event);
+            }
+        });
+        document.getElementById('promptInput').addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                this.value = '';
+            }
+        });
+    </script>
 </body>
 </html>
-
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script>
-    var socket = io();
-    var outputDiv = document.querySelector('.output-section');
-    socket.on('parser_output', function(data) {
-        if (outputDiv.innerHTML.includes('Parser output will appear')) {
-            outputDiv.innerHTML = '';
-        }
-        outputDiv.innerHTML += data.replace(/\n/g, '<br>');
-        outputDiv.scrollTop = outputDiv.scrollHeight;
-    });
-    function sendPrompt(event) {
-        event.preventDefault();
-        var input = document.getElementById('promptInput');
-        var value = input.value.trim();
-        if (value) {
-            socket.emit('parser_prompt', value); // You need to handle this event on the server
-            input.value = '';
-        }
-    }
-    document.getElementById('promptForm').addEventListener('submit', sendPrompt);
-    // Optional: Handle the Enter key for the input field
-    document.getElementById('promptInput').addEventListener('keypress', function(event) {
-        if (event.key === 'Enter') {
-            sendPrompt(event);
-        }
-    });
-    // Optional: Handle the Escape key to clear the input field
-    document.getElementById('promptInput').addEventListener('keydown', function(event) {
-        if (event.key === 'Escape') {
-            this.value = '';
-        }
-    });
-
-</script>
