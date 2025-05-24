@@ -388,26 +388,27 @@
             const ctx = rimCanvas.getContext('2d');
             ctx.clearRect(0,0,rimCanvas.width,rimCanvas.height);
             const w = rimCanvas.width, h = rimCanvas.height;
-            const r = 10; // <-- Corner radius. Lower = closer to edge. Adjust for fit.
+            const r = 3; // <-- Corner radius. Lower = closer to edge. Adjust for fit.
 
             // ---- SPEED CONTROL: adjust divisor for speed (higher = slower) ----
             const SPEED_DIVISOR = 3;
             const t = Date.now() / (2200 * SPEED_DIVISOR); // slower
             const perim = 2*(w+h-4*r) + 2*Math.PI*r;
             const speed = (t % 1) * perim;
-            const TRAIL_HEAD_RADIUS = 8;
-            const TRAIL_TAIL_RADIUS = 3;
-            const TRAIL_STEPS = 10;
+            // ---- TRAIL PARTICLE SIZE CONTROL ----
+            const TRAIL_HEAD_RADIUS = 5;   // <-- Size of the leading (head) particle
+            const TRAIL_TAIL_RADIUS = 1;   // <-- Size of the last (tail) particle
+            const TRAIL_STEPS = 8;        // <-- Number of trail particles
             // Afterglow: 
-            for(let i=TRAIL_STEPS;i>=1;i--){
+            for(let i=1;i<=TRAIL_STEPS;i++){
                 let d = (speed - i*7 + perim) % perim;
                 let {x, y} = getPos(d, w, h, r);
                 // Interpolate radius from head to tail
-                let radius = TRAIL_TAIL_RADIUS + (TRAIL_HEAD_RADIUS - TRAIL_TAIL_RADIUS) * (i / TRAIL_STEPS);
+                let radius = TRAIL_TAIL_RADIUS + (TRAIL_HEAD_RADIUS - TRAIL_TAIL_RADIUS) * ((TRAIL_STEPS - i) / (TRAIL_STEPS - 1));
                 ctx.save();
-                ctx.globalAlpha = 0.03 + 0.04*i;
+                ctx.globalAlpha = 0.03 + 0.04*(TRAIL_STEPS - i + 1);
                 ctx.shadowColor = "#00ffe7";
-                ctx.shadowBlur = 16 + (i*2); // more blur at trail end
+                ctx.shadowBlur = 16 + ((TRAIL_STEPS - i + 1)*2); // more blur at trail end
                 ctx.beginPath();
                 ctx.arc(x, y, radius, 0, 2*Math.PI);
                 ctx.fillStyle = "#00ffe7";
