@@ -152,6 +152,7 @@
         .feature {
             background: rgba(30,40,60,0.85);
             border-radius: 14px;
+            border-width: 3px;
             box-shadow: 0 2px 12px rgba(0,0,0,0.09);
             padding: 1.5em 1.2em;
             min-width: 220px;
@@ -162,14 +163,14 @@
                 box-shadow 0.22s,
                 border 0.22s,
                 background 0.22s;
-            border: 2.5px solid transparent;
+            
             cursor: pointer;
             position: relative;
             overflow: hidden;
         }
         .feature[href*="run_parser_page"] {
-            border-color: var(--neon);
-            box-shadow: 0 0 24px 2px var(--neon), 0 2px 12px #bfc9d1;
+            border-color: var(--main-red);
+            
         }
         .feature[href*="run_parser_page"]:hover {
             transform: translateY(-8px) scale(1.06) rotate(-1deg);
@@ -182,7 +183,7 @@
             
         }
         .feature[href*="history"]:hover {
-            transform: translateY(-8px) scale(1.06) rotate(1deg);
+            transform: translate(8px, -8px) scale(1.06) rotate(1deg);
             box-shadow: 0 0 18px 4px var(--gold), 0 2px 12px #bfc9d1;
             border-color: var(--neon2);
             background: rgba(255,215,0,0.07);
@@ -190,11 +191,18 @@
         }
         .feature[href*="manage_data"] {
             border-color: var(--main-blue);
-            background: repeating-linear-gradient(135deg, rgba(69,129,142,0.13) 0 2px, transparent 2px 40px), rgba(30,40,60,0.85);
             box-shadow: 0 0 18px 2px var(--main-blue), 0 2px 12px #bfc9d1;
+            background: rgba(30,40,60,0.85); 
+            transition:
+                transform 0.22s cubic-bezier(.61,-0.01,.7,1.01),
+                box-shadow 0.22s,
+                border 0.22s,
+                background 0.22s;
+
+
         }
         .feature[href*="manage_data"]:hover {
-            transform: translateY(-8px) scale(1.06) rotate(-2deg);
+            transform: translate(-8px, -8px) scale(1.06) rotate(-2deg);
             box-shadow: 0 0 36px 8px var(--main-blue), 0 2px 24px #bfc9d1;
             border-color: var(--neon);
             background: repeating-linear-gradient(135deg, var(--main-blue) 0 2px, transparent 2px 40px), rgba(30,40,60,0.92);
@@ -209,13 +217,15 @@
         }
         .feature[href*="history"] h3 {
             color: var(--gold);
+            text-shadow: 0 2px 12px var(--neon2);
         }
         .feature[href*="manage_data"] h3 {
             color: var(--main-blue);
+            text-shadow: 0 2px 12px var(--neon);
         }
         .feature[href*="run_parser_page"] h3 {
-            color: var(--neon);
-            text-shadow: 0 2px 12px var(--neon2);
+            color: var(--main-red);
+            text-shadow: 0 2px 12px var(--neon3);
         }
         .feature p {
             color: #c6e2f7;
@@ -302,7 +312,20 @@
             .container { padding: 1em; }
             #container { width: 220px; height: 220px; }
         }
+        .feature-title.manage-title {
+            color: var(--main-blue);
+            text-shadow: 0 2px 12px var(--neon);
+        }
+        .feature-title.parser-title {
+            color: var(--main-red);
+            text-shadow: 0 2px 12px var(--neon3);
+        }
+        .feature-title.history-title {
+            color: var(--gold);
+            text-shadow: 0 2px 12px var(--neon2);
+        }
     </style>
+    
 </head>
 <body>
     <nav class="navbar">
