@@ -42,10 +42,10 @@ desktop.ini
 # ----------------------------
 output/
 input/
+uploads/
 *.csv
 *.pdf
 *.json
-*.html
 urls.txt
 
 # ----------------------------
