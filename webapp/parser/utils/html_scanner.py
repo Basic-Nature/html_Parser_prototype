@@ -122,11 +122,15 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
 
 def get_detected_races_from_context(context_result):
     """
-    Returns a flat, sorted list of (year, election_type, race) tuples.
+    Returns a flat, sorted list of (year, election_type, race) tuples, deduplicated and filtered.
     """
     flat = []
+    seen = set()
     for year, year_group in context_result.get("available_races", {}).items():
         for etype, races in year_group.items():
             for race in races:
-                flat.append((year, etype, race))
+                key = (year, etype, race.strip())
+                if key not in seen and race.strip() and not race.strip().lower().startswith("vote for"):
+                    flat.append(key)
+                    seen.add(key)
     return sorted(flat)

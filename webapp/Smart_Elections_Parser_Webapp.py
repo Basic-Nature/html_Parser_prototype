@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
-from flask_socketio import emit, SocketIO
+from flask_socketio import emit, send_from_directory, SocketIO
 from threading import Thread
 from webapp.parser.html_election_parser import main as run_html_parser
 import os
@@ -17,6 +17,21 @@ load_dotenv()
 app = Flask(__name__)
 socketio = SocketIO(app)
 
+ALLOWED_EXTENSIONS = {"csv", "json", "pdf", "txt"}
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+INPUT_FOLDER = os.path.join(BASE_DIR, "input")
+OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")
+# Data folders
+PARSER_DIR = os.path.join(os.path.dirname(__file__), "parser")
+HINT_FILE = os.path.join(PARSER_DIR, "url_hint_overrides.txt")
+HISTORY_FILE = os.path.join(PARSER_DIR, "url_hint_history.jsonl")
+UPLOAD_FOLDER = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+URLS_FILE = os.path.join(PARSER_DIR, "urls.txt")
+
+# Ensure input/output folders exist
+os.makedirs(INPUT_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
 # Secure secret key from environment
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 if not app.secret_key:
@@ -25,10 +40,6 @@ if not app.secret_key:
 # Optional: Set secure cookie flags for production
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "False").lower() == "true"
-
-# File paths for hint management
-HISTORY_FILE = os.path.join(os.path.dirname(__file__), "url_hint_history.jsonl")
-HINT_FILE = os.path.join(os.path.dirname(__file__), "url_hint_overrides.txt")
 
 # SocketIO event for real-time updates
 
@@ -40,7 +51,47 @@ def run_parser_background():
         time.sleep(1)
     socketio.emit('parser_output', "Parser finished!\n")
 
-# --- Utility functions for hint management ---
+def process_user_prompt(data):
+    raise NotImplementedError("process_user_prompt function not implemented.")
+
+# --- Utility functions for Data management ---
+def add_url():
+    url = input("Enter new URL to add: ").strip()
+    if url:
+        with open(URLS_FILE, "a", encoding="utf-8") as f:
+            f.write(url + "\n")
+        print(f"[ADDED] {url}")
+        
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def append_history(data):
+    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(data) + "\n")
+
+def edit_hint():
+    frag = request.form.get("fragment", "").strip()
+    path = request.form.get("module_path", "").strip()
+    overrides = load_overrides()
+    if frag in overrides and path:
+        overrides[frag] = path
+        append_history(overrides)
+        save_overrides(overrides)
+        flash("Hint updated.", "success")
+    else:
+        flash("Invalid fragment or path.", "danger")
+    return redirect(url_for("url_hints"))
+
+def list_urls():
+    if not os.path.exists(URLS_FILE):
+        print("[INFO] No urls.txt found.")
+        return []
+    with open(URLS_FILE, "r", encoding="utf-8") as f:
+        urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+    print("\n[URLS.TXT ENTRIES]")
+    for i, url in enumerate(urls, 1):
+        print(f"{i}. {url}")
+    return urls
 
 def load_overrides():
     if os.path.exists(HINT_FILE):
@@ -51,10 +102,6 @@ def load_overrides():
 def save_overrides(data):
     with open(HINT_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
-
-def append_history(data):
-    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(data) + "\n")
 
 def validate_module_path(path):
     try:
@@ -73,69 +120,14 @@ def validate_module_path(path):
         return False, "Module not found"
 
 # --- Routes ---
-@socketio.on('connect')
-def handle_connect():
-    print("Client connected")
-
 @app.route("/")
 def index():
     return render_template("index.html")
 
-@app.route("/history")
-def history():
-    if not os.path.exists(HISTORY_FILE):
-        return render_template("history.html", snapshots=[])
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        snapshots = [json.loads(line) for line in f]
-    return render_template("history.html", snapshots=enumerate(snapshots))
-
-@app.route("/url-hints", methods=["GET", "POST"])
-def url_hints():
-    overrides = load_overrides()
-    validations = {k: validate_module_path(v) for k, v in overrides.items()}
-    if request.method == "POST":
-        frag = request.form.get("fragment", "").strip()
-        path = request.form.get("module_path", "").strip()
-        if frag and path:
-            overrides[frag] = path
-            append_history(overrides)
-            save_overrides(overrides)
-            flash("Hint added or updated!", "success")
-        else:
-            flash("Both URL fragment and module path are required.", "danger")
-        return redirect(url_for("url_hints"))
-    return render_template("url_hints.html", overrides=overrides, validations=validations)
-
-@app.route("/run-parser", methods=["GET", "POST"])
-def run_parser_page():
-    parser_output = None
-    if request.method == "POST":
-        # Capture output from parser (example)
-        import io, sys
-        old_stdout = sys.stdout
-        sys.stdout = mystdout = io.StringIO()
-        try:
-            run_html_parser()
-        except Exception as e:
-            print(f"Error: {e}")
-        sys.stdout = old_stdout
-        parser_output = mystdout.getvalue()
-        flash("Parser run completed.", "success")
-    return render_template("run_parser.html", parser_output=parser_output)
-
-@app.route("/edit-hint", methods=["POST"])
-def edit_hint():
-    frag = request.form.get("fragment", "").strip()
-    path = request.form.get("module_path", "").strip()
-    overrides = load_overrides()
-    if frag in overrides and path:
-        overrides[frag] = path
-        append_history(overrides)
-        save_overrides(overrides)
-        flash("Hint updated.", "success")
-    else:
-        flash("Invalid fragment or path.", "danger")
-    return redirect(url_for("url_hints"))
+@socketio.on('connect')
+def handle_connect():
+    print("Client connected")
+    emit('parser_output', "Connected to server.\n")
 
 @app.route("/delete-hint/<frag>", methods=["POST"])
 def delete_hint_route(frag):
@@ -148,6 +140,36 @@ def delete_hint_route(frag):
     else:
         flash("Hint not found.", "warning")
     return redirect(url_for("url_hints"))
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print("Client disconnected")
+    emit('parser_output', "Disconnected from server.\n")
+@app.route("/edit-hint", methods=["POST"])
+
+@app.route("/download/input/<filename>")
+def download_input_file(filename):
+    return send_from_directory(INPUT_FOLDER, filename, as_attachment=True)
+
+@app.route("/download/output/<filename>")
+def download_output_file(filename):
+    return send_from_directory(OUTPUT_FOLDER, filename, as_attachment=True)    
+
+@app.route("/export-hints")
+def export_hints():
+    overrides = load_overrides()
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["URL Fragment", "Module Path"])
+    for k, v in overrides.items():
+        writer.writerow([k, v])
+    output.seek(0)
+    return send_file(
+        StringIO(output.read()),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name="url_hint_overrides.csv"
+    )
 
 @app.route("/import-hints", methods=["POST"])
 def import_hints():
@@ -168,21 +190,43 @@ def import_hints():
     flash("Hints imported.", "success")
     return redirect(url_for("url_hints"))
 
-@app.route("/export-hints")
-def export_hints():
+@app.route("/input-files")
+def input_files():
+    files = os.listdir(INPUT_FOLDER)
+    return render_template("file_list.html", files=files, folder="Input", download_url="download_input_file")
+
+@app.route("/manage-data", methods=["GET", "POST"])
+def manage_data():
     overrides = load_overrides()
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["URL Fragment", "Module Path"])
-    for k, v in overrides.items():
-        writer.writerow([k, v])
-    output.seek(0)
-    return send_file(
-        StringIO(output.read()),
-        mimetype='text/csv',
-        as_attachment=True,
-        download_name="url_hint_overrides.csv"
+    validations = {k: validate_module_path(v) for k, v in overrides.items()}
+    uploaded_files = os.listdir(UPLOAD_FOLDER)
+    if request.method == "POST":
+        # Handle file upload
+        file = request.files.get("data_file")
+        if file and allowed_file(file.filename):
+            filename = file.filename
+            file.save(os.path.join(UPLOAD_FOLDER, filename))
+            flash(f"File '{filename}' uploaded successfully.", "success")
+        else:
+            flash("Invalid file type or no file selected.", "danger")
+        return redirect(url_for("manage_data"))
+    return render_template(
+        "manage_data.html",
+        overrides=overrides,
+        validations=validations,
+        uploaded_files=uploaded_files
     )
+
+@app.route("/output-files")
+def output_files():
+    files = os.listdir(OUTPUT_FOLDER)
+    return render_template("file_list.html", files=files, folder="Output", download_url="download_output_file")
+
+@socketio.on('parser_prompt')
+def handle_parser_prompt(data):
+    # Process the prompt, send output back
+    output = process_user_prompt(data)  # Your function
+    emit('parser_output', output)
 
 @app.route("/undo-hints", methods=["POST"])
 def undo_hints():
@@ -201,11 +245,9 @@ def undo_hints():
     flash("Undo successful.", "success")
     return redirect(url_for("url_hints"))
 
-@app.route("/run-parser", methods=["POST"])
-def run_parser():
-    # Placeholder: Integrate your parser logic here
-    flash("Parser run triggered (not yet implemented).", "info")
-    return redirect(url_for("index"))
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 if __name__ == "__main__":
     socketio.run(app, debug=True)

@@ -111,6 +111,12 @@ def parse(page, html_context=None):
         contest_title = select_contest(detected)
         if not contest_title:
             return None, None, None, {"skipped": True}
+        # If select_contest returns a list, pick the first contest's title
+        if isinstance(contest_title, list):
+            if contest_title and isinstance(contest_title[0], tuple):
+                contest_title = contest_title[0][2]  # (year, etype, race)
+            elif contest_title and isinstance(contest_title[0], str):
+                contest_title = contest_title[0]                
         html_context["selected_race"] = contest_title
 
     # 4. Delegate to state/county handler if available

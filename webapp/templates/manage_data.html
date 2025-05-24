@@ -1,11 +1,10 @@
-<!-- filepath: ...\html_Parser_prototype\webapp\templates\url_hints.html -->
+<!-- filepath: c:\Users\olivi\OneDrive\Desktop\html_Parser_prototype\webapp\templates\manage_data.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>URL Hint Overrides | Smart Elections Parser</title>
+    <title>Data & URL Hint Manager | Smart Elections Parser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
             --main-blue: #45818e;
@@ -95,9 +94,10 @@
 <body>
     <nav class="navbar">
         <a href="{{ url_for('index') }}">Dashboard</a>
-        <a href="{{ url_for('url_hints') }}" class="active">URL Hints</a>
-        <a href="{{ url_for('history') }}">History</a>
-        <a href="#" onclick="alert('Parser run coming soon!')">Run Parser</a>
+        <a href="{{ url_for('manage_data') }}" class="active">Data & URL Hints</a>
+        <a href="{{ url_for('input_files') }}">Input Files</a>
+        <a href="{{ url_for('output_files') }}">Output Files</a>
+        <a href="{{ url_for('run_parser_page') }}">Run Parser</a>
         <a href="https://github.com/SmartElections/parser" target="_blank">About</a>
     </nav>
     <div class="container-main">
@@ -109,12 +109,32 @@
           {% endif %}
         {% endwith %}
 
-        <h1>URL Hint Overrides Manager</h1>
+        <h1>Data & URL Hint Manager</h1>
         <div class="subtitle">
-            Add, edit, or remove custom URL-to-handler mappings for election sites.<br>
-            Import/export hints, undo changes, and validate handler modules.
+            Manage custom URL-to-handler mappings and upload new data files for parsing.
         </div>
 
+        <!-- File Upload Section -->
+        <h2 class="mt-4 mb-3">Upload New Data File</h2>
+        <form method="POST" enctype="multipart/form-data" class="mb-4">
+            <input type="file" name="data_file" accept=".csv,.pdf,.xlsx,.xls,.txt" class="form-control" required>
+            <button type="submit" class="btn btn-primary mt-2">Upload File</button>
+        </form>
+        <h3>Uploaded Files</h3>
+        <ul>
+            {% for fname in uploaded_files %}
+                <li>
+                    <a href="{{ url_for('uploaded_file', filename=fname) }}" target="_blank">{{ fname }}</a>
+                </li>
+            {% else %}
+                <li>No files uploaded yet.</li>
+            {% endfor %}
+        </ul>
+
+        <hr>
+
+        <!-- URL Hint Manager Section (reuse your existing form/table) -->
+        <h2 class="mt-4 mb-3">URL Hint Overrides</h2>
         <form method="POST" action="{{ url_for('url_hints') }}" class="row g-3 mb-4">
             <div class="col-md-5">
                 <label class="form-label">URL Fragment:
@@ -130,19 +150,7 @@
                 <button type="submit" class="btn btn-primary w-100">Add Entry</button>
             </div>
         </form>
-
-        <form method="POST" action="{{ url_for('import_hints') }}" enctype="multipart/form-data" class="mb-4">
-            <label class="form-label">Import CSV:
-                <input type="file" name="csv_file" accept=".csv" class="form-control" required>
-            </label>
-            <button type="submit" class="btn btn-outline-secondary mt-2">Upload CSV</button>
-            <a href="{{ url_for('export_hints') }}" class="btn btn-outline-secondary mt-2 ms-2">Export to CSV</a>
-            <form method="POST" action="{{ url_for('undo_hints') }}" style="display:inline;">
-                <button type="submit" class="btn btn-outline-secondary mt-2 ms-2">Undo Last Change</button>
-            </form>
-        </form>
-
-        <h2 class="mt-4 mb-3">Current Overrides</h2>
+        <h3>Current Overrides</h3>
         <table class="table table-striped align-middle">
             <thead>
                 <tr>

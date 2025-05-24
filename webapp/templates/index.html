@@ -145,9 +145,12 @@
 <body>
     <nav class="navbar">
         <a href="https://smartelections.us/" >Home Base</a>
-        <a href="{{ url_for('url_hints') }}" onclick="alert('URL hints coming soon!')">URL Hints</a>
-        <a href="{{ url_for('history') }}" onclick="alert('History feature coming soon!')">History</a>
-        <a href="{{ url_for('run_parser') }}" onclick="alert('Parser run coming soon!')">Run Parser</a>
+        <a href="https://docs.google.com/spreadsheets/d/your_datasheet_id" target="_blank">Master Datasheet</a>
+        <a href="https://drive.google.com/drive/folders/your_folder_id" target="_blank">Upload Data</a>
+        <a href="https://forms.gle/your_google_form_id" target="_blank">Suggest a Site</a>
+        <a href="https://discord.gg/your_invite" target="_blank">Community</a>
+        <a href="https://github.com/Basic-Nature/html_Parser_prototype/wiki" target="_blank">Docs</a>
+        <a href="https://github.com/Basic-Nature/html_Parser_prototype/issues" target="_blank">Feedback</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">About</a>
     </nav>
     <div class="container">
@@ -175,14 +178,13 @@
                 <h3>URL Hint Manager</h3>
                 <p>Manage custom URL-to-handler mappings for tricky or new election sites. Import/export hints, undo changes, and validate handler modules.</p>
             </a>
+            <a class="feature" href="{{ url_for('run_parser_page') }}">
+                <h3>Run Parser</h3>
+                <p>Start a new parsing job using the current configuration. CLI and batch automation also supported.</p>
+            </a>            
             <a class="feature" href="{{ url_for('history') }}">
                 <h3>Change History</h3>
                 <p>View the full history of URL hint changes and parser configuration updates for transparency and auditability.</p>
-            </a>
-            <a class="feature" href="{{ url_for('run_parser') }}">
-                
-                <h3>Run Parser</h3>
-                <p>Start a new parsing job using the current configuration. CLI and batch automation also supported.</p>
             </a>
             <a class="feature" href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">
                 <h3>About & Docs</h3>

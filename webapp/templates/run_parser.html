@@ -158,17 +158,21 @@
                 <span style="color:#888;">Parser output will appear here after you run the parser.</span>
             {% endif %}
         </div>
+        <div class="prompt-section" style="text-align:center; margin-top:1em;">
+            <form id="promptForm" autocomplete="off" onsubmit="sendPrompt(event)">
+                <input type="text" id="promptInput" placeholder="Type a command..." style="width:70%;padding:0.5em;">
+                <button type="submit" class="btn-primary" style="padding:0.5em 1.5em;">Send</button>
+            </form>
+        </div>
     </div>
 </body>
 </html>
 
-<div class="output-section" id="output">
-    <span style="color:#888;">Parser output will appear here after you run the parser.</span>
-</div>
+
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
     var socket = io();
-    var outputDiv = document.getElementById('output');
+    var outputDiv = document.querySelector('.output-section');
     socket.on('parser_output', function(data) {
         if (outputDiv.innerHTML.includes('Parser output will appear')) {
             outputDiv.innerHTML = '';
@@ -176,4 +180,27 @@
         outputDiv.innerHTML += data.replace(/\n/g, '<br>');
         outputDiv.scrollTop = outputDiv.scrollHeight;
     });
+    function sendPrompt(event) {
+        event.preventDefault();
+        var input = document.getElementById('promptInput');
+        var value = input.value.trim();
+        if (value) {
+            socket.emit('parser_prompt', value); // You need to handle this event on the server
+            input.value = '';
+        }
+    }
+    document.getElementById('promptForm').addEventListener('submit', sendPrompt);
+    // Optional: Handle the Enter key for the input field
+    document.getElementById('promptInput').addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            sendPrompt(event);
+        }
+    });
+    // Optional: Handle the Escape key to clear the input field
+    document.getElementById('promptInput').addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            this.value = '';
+        }
+    });
+
 </script>
