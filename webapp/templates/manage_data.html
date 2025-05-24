@@ -122,6 +122,7 @@
             <button type="submit" class="btn btn-primary mt-2">Upload File</button>
         </form>
         <h3>Uploaded Files</h3>
+        
         <ul>
             {% for fname in uploaded_files %}
                 <li>
@@ -131,7 +132,39 @@
                 <li>No files uploaded yet.</li>
             {% endfor %}
         </ul>
+    <button type="button" onclick="toggleSection('inputSection')" class="btn btn-outline-secondary mb-2">Show/Hide Input Files</button>
+    <div id="inputSection" style="display:none; margin-bottom:1em;">
+        <h3>Input Folder Files</h3>
+        <ul>
+            {% for file in input_files %}
+                <li>
+                    <a href="{{ url_for('download_input_file', filename=file) }}">{{ file }}</a>
+                </li>
+            {% else %}
+                <li>No files in input folder.</li>
+            {% endfor %}
+        </ul>
+    </div>
 
+    <button type="button" onclick="toggleSection('outputSection')" class="btn btn-outline-secondary mb-2">Show/Hide Output Files</button>
+    <div id="outputSection" style="display:none; margin-bottom:1em;">
+        <h3>Output Folder Files</h3>
+        <ul>
+            {% for file in output_files %}
+                <li>
+                    <a href="{{ url_for('download_output_file', filename=file) }}">{{ file }}</a>
+                </li>
+            {% else %}
+                <li>No files in output folder.</li>
+            {% endfor %}
+        </ul>
+    </div>
+    <script>
+    function toggleSection(id) {
+        var el = document.getElementById(id);
+        el.style.display = (el.style.display === "none" || el.style.display === "") ? "block" : "none";
+    }
+    </script>
         <hr>
 
         <!-- URL Hint Manager Section (reuse your existing form/table) -->

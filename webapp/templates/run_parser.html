@@ -141,7 +141,59 @@
             {% endfor %}
           {% endif %}
         {% endwith %}
+        <!-- File Upload Section -->
+        <h2 class="mt-4 mb-3">Upload New Data File</h2>
+        <form method="POST" enctype="multipart/form-data" class="mb-4">
+            <input type="file" name="data_file" accept=".csv,.pdf,.xlsx,.xls,.txt" class="form-control" required>
+            <button type="submit" class="btn btn-primary mt-2">Upload File</button>
+        </form>
+        <h3>Uploaded Files</h3>
+        
+        <ul>
+            {% for fname in uploaded_files %}
+                <li>
+                    <a href="{{ url_for('uploaded_file', filename=fname) }}" target="_blank">{{ fname }}</a>
+                </li>
+            {% else %}
+                <li>No files uploaded yet.</li>
+            {% endfor %}
+        </ul>
+    <button type="button" onclick="toggleSection('inputSection')" class="btn btn-outline-secondary mb-2">Show/Hide Input Files</button>
+    <div id="inputSection" style="display:none; margin-bottom:1em;">
+        <h3>Input Folder Files</h3>
+        <ul>
+            {% for file in input_files %}
+                <li>
+                    <a href="{{ url_for('download_input_file', filename=file) }}">{{ file }}</a>
+                </li>
+            {% else %}
+                <li>No files in input folder.</li>
+            {% endfor %}
+        </ul>
+    </div>
 
+    <button type="button" onclick="toggleSection('outputSection')" class="btn btn-outline-secondary mb-2">Show/Hide Output Files</button>
+    <div id="outputSection" style="display:none; margin-bottom:1em;">
+        <h3>Output Folder Files</h3>
+        <ul>
+            {% for file in output_files %}
+                <li>
+                    <a href="{{ url_for('download_output_file', filename=file) }}">{{ file }}</a>
+                </li>
+            {% else %}
+                <li>No files in output folder.</li>
+            {% endfor %}
+        </ul>
+    </div>
+    <script>
+    function toggleSection(id) {
+        var el = document.getElementById(id);
+        el.style.display = (el.style.display === "none" || el.style.display === "") ? "block" : "none";
+    }
+    </script>
+        <hr>
+        <h2 class="mt-4 mb-3">Run the Parser</h2>
+        <p>Click the button below to start the parser. Make sure you have configured your URL hints and handlers correctly.</p>
         <div class="form-section">
             <form method="POST" action="{{ url_for('run_parser') }}">
                 <!-- Example toggle: -->
