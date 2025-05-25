@@ -3,8 +3,8 @@ import csv
 from datetime import datetime
 from difflib import get_close_matches
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, send_from_directory
-from flask_socketio import emit, session, SocketIO
+from flask import Flask, render_template, request, redirect, session, url_for, flash, send_file, send_from_directory
+from flask_socketio import emit, SocketIO
 import logging
 import importlib
 from io import StringIO
@@ -13,7 +13,7 @@ import os
 import sys
 from threading import Thread
 import webapp.parser.html_election_parser as run_html_parser
-from webapp.parser.web_pipeline import process_urls_for_web
+from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
 
 # Load environment variables from .env
 load_dotenv()
@@ -60,12 +60,20 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 
 # SocketIO event for real-time updates
 
-def run_parser_for_urls(urls):
-    session_id = session.get('sid') or request.sid  # Use Flask session or Socket.IO sid
-    def emit_to_socketio(line):
-        socketio.emit('parser_output', line, room=session_id)
-    process_urls_for_web(urls, emit_to_socketio, session_id)   
-    
+def run_parser_for_urls(urls, session_id):
+    try:
+        cancellation_manager.reset(session_id)
+        def emit_to_socketio(line):
+            socketio.emit('parser_output', line, room=session_id)
+        process_urls_for_web(urls, emit_to_socketio, session_id)
+    except Exception as e:
+        # Try to notify the UI if possible
+        try:
+            socketio.emit('parser_output', f"[ERROR] Parser crashed: {e}\n", room=session_id)
+        except Exception:
+            pass  # If socketio is already dead, just ignore
+        print(f"[ERROR] run_parser_for_urls crashed: {e}")
+        
 def process_user_prompt(data):
     global URL_LIST
     user_input = data.strip().lower()
@@ -84,8 +92,11 @@ def process_user_prompt(data):
     if not selected:
         return "No valid URLs selected.\n"
 
+    # --- FIX: Capture session_id here ---
+    session_id = session.get('sid') or request.sid
+
     # Start the parser in a background thread and stream output
-    thread = Thread(target=run_parser_for_urls, args=(selected,))
+    thread = Thread(target=run_parser_for_urls, args=(selected, session_id))
     thread.start()
     return f"Started parsing {len(selected)} URL(s)...\n"
 

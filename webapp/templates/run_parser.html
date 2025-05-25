@@ -309,6 +309,7 @@
     }
     document.getElementById('runParserBtn').addEventListener('click', function(e) {
         e.preventDefault();
+        outputDiv.innerHTML = '';
         const rect = this.getBoundingClientRect();
         const x = rect.left + rect.width / 2;
         const y = rect.top + rect.height / 2 + window.scrollY;
