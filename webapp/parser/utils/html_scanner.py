@@ -8,7 +8,8 @@ from typing import Dict, Any
 from ..utils.shared_logic import ( 
     COMMON_CONTEST_LABELS, COMMON_PRECINCT_HEADERS, 
     IGNORE_SUBSTRINGS, SCAN_WAIT_SECONDS,
-    ALL_SELECTORS, YEAR_REGEX, SYMBOL_REGEX, is_contest_label 
+    ALL_SELECTORS, YEAR_REGEX, SYMBOL_REGEX, is_contest_label,
+    CONTEST_PARTS
 )
 from ..utils.shared_logger import logger
 
@@ -17,43 +18,69 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text)
     return text.strip().lower()
 
+def all_patterns(name, extra_terms=None):
+    """
+    Generate all reasonable patterns for a name (state/county) using contest parts and common separators.
+    """
+    patterns = set()
+    base = name.lower().replace("_", " ").replace("-", " ").strip()
+    base = re.sub(r"\s+", " ", base)
+    patterns.add(base)
+    # Add with contest parts as suffix/prefix
+    terms = ["county", "state", "election", "results", "votes"]
+    if extra_terms:
+        terms += extra_terms
+    for part in terms:
+        part_norm = part.lower().replace("_", " ").replace("-", " ").strip()
+        patterns.add(f"{base} {part_norm}")
+        patterns.add(f"{base}-{part_norm}")
+        patterns.add(f"{base}_{part_norm}")
+        patterns.add(f"{base}.{part_norm}")
+        patterns.add(f"{base}{part_norm}")
+        patterns.add(f"{part_norm} {base}")
+        patterns.add(f"{part_norm}-{base}")
+        patterns.add(f"{part_norm}_{base}")
+        patterns.add(f"{part_norm}.{base}")
+        patterns.add(f"{part_norm}{base}")
+    # Add with separators
+    for sep in ["/", "-", "_", ".", ""]:
+        patterns.add(f"{sep}{base}{sep}")
+        patterns.add(f"{sep}{base}")
+        patterns.add(f"{base}{sep}")
+    return patterns
+
 def score_state_county_from_url(url: str, text_lower: str):
-    """
-    Score state and county from the URL and text, similar to DOM scoring.
-    Returns (best_state, state_score, best_county, county_score)
-    """
     url = url.lower()
+    text_lower = text_lower.lower()
+
+    # --- State scoring ---
     state_scores = {}
     for abbr, state_name in STATE_MODULE_MAP.items():
         score = 0
-        state_name_clean = state_name.replace("_", " ")
-        if state_name_clean in url:
-            score += 2
-        if state_name_clean in text_lower:
-            score += 1
-        abbr_pattern = rf"(?<![a-z]){re.escape(abbr)}(?![a-z])"
-        if re.search(abbr_pattern, url):
-            score += 2
-        if re.search(abbr_pattern, text_lower):
-            score += 1
-        abbr_sep_pattern = rf"([/\-_\.]){re.escape(abbr)}([/\-_\.])"
-        if re.search(abbr_sep_pattern, url):
-            score += 2
-        for clue in ["county", "election", "results", "votes"]:
-            if f"{state_name_clean} {clue}" in url or f"{abbr} {clue}" in url:
+        state_name_clean = state_name.replace("_", " ").replace("-", " ").strip().lower()
+        abbr_clean = abbr.lower()
+
+        # 1. Score full state name (robust patterns)
+        patterns = all_patterns(state_name_clean, extra_terms=CONTEST_PARTS)
+        for pattern in patterns:
+            if pattern and pattern in url:
+                score += 2
+            if pattern and pattern in text_lower:
                 score += 1
-            if f"{state_name_clean}-{clue}" in url or f"{abbr}-{clue}" in url:
-                score += 1
-            if f"{state_name_clean}_{clue}" in url or f"{abbr}_{clue}" in url:
-                score += 1
-        for header in COMMON_PRECINCT_HEADERS:
-            if header.lower() in text_lower and (state_name_clean in text_lower or abbr in text_lower):
-                score += 1
+
+        # 2. Score abbreviation ONLY if it's a whole word or separated
+        abbr_regex = re.compile(rf"\b{re.escape(abbr_clean)}\b")
+        if abbr_regex.search(url):
+            score += 1  # Lower score for abbreviation
+        if abbr_regex.search(text_lower):
+            score += 0.5
+
         state_scores[abbr] = score
+
     best_state = max(state_scores, key=state_scores.get)
     state_score = state_scores[best_state]
 
-    # County scoring (only if state found)
+    # --- County scoring (only if state found) ---
     best_county = None
     county_score = 0
     county_folder = os.path.join(
@@ -66,13 +93,13 @@ def score_state_county_from_url(url: str, text_lower: str):
         ]
         for county in possible_counties:
             score = 0
-            county_pattern = re.compile(rf"\b{re.escape(county)}\b", re.IGNORECASE)
-            if county_pattern.search(url):
-                score += 2
-            if county_pattern.search(text_lower):
-                score += 1
-            if f"{county}-county" in url or f"{county}_county" in url or f"{county} county" in url:
-                score += 1
+            county_clean = county.lower().replace("_", " ").replace("-", " ").strip()
+            patterns = all_patterns(county_clean, extra_terms=CONTEST_PARTS)
+            for pattern in patterns:
+                if pattern and pattern in url:
+                    score += 2
+                if pattern and pattern in text_lower:
+                    score += 1
             if score > county_score:
                 best_county = county
                 county_score = score
@@ -119,35 +146,14 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
             state_scores = {}
             for abbr, state_name in STATE_MODULE_MAP.items():
                 score = 0
-                state_name_clean = state_name.replace("_", " ")
-
-                if state_name_clean in url:
-                    score += 2
-                if state_name_clean in text_lower:
-                    score += 1
-
-                abbr_pattern = rf"(?<![a-z]){re.escape(abbr)}(?![a-z])"
-                if re.search(abbr_pattern, url):
-                    score += 2
-                if re.search(abbr_pattern, text_lower):
-                    score += 1
-
-                abbr_sep_pattern = rf"([/\-_\.]){re.escape(abbr)}([/\-_\.])"
-                if re.search(abbr_sep_pattern, url):
-                    score += 2
-
-                for clue in ["county", "election", "results", "votes"]:
-                    if f"{state_name_clean} {clue}" in url or f"{abbr} {clue}" in url:
+                state_name_clean = state_name.replace("_", " ").replace("-", " ").strip().lower()
+                abbr_clean = abbr.lower()
+                patterns = all_patterns(state_name_clean, extra_terms=CONTEST_PARTS) | all_patterns(abbr_clean, extra_terms=CONTEST_PARTS)
+                for pattern in patterns:
+                    if pattern and pattern in url:
+                        score += 2
+                    if pattern and pattern in text_lower:
                         score += 1
-                    if f"{state_name_clean}-{clue}" in url or f"{abbr}-{clue}" in url:
-                        score += 1
-                    if f"{state_name_clean}_{clue}" in url or f"{abbr}_{clue}" in url:
-                        score += 1
-
-                for header in COMMON_PRECINCT_HEADERS:
-                    if header.lower() in text_lower and (state_name_clean in text_lower or abbr in text_lower):
-                        score += 1
-
                 state_scores[abbr] = score
 
             best_state_dom = max(state_scores, key=state_scores.get)
@@ -171,13 +177,13 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
                 best_score_dom = 0
                 for county in possible_counties:
                     score = 0
-                    county_pattern = re.compile(rf"\b{re.escape(county)}\b", re.IGNORECASE)
-                    if county_pattern.search(url):
-                        score += 2
-                    if county_pattern.search(text_lower):
-                        score += 1
-                    if f"{county}-county" in url or f"{county}_county" in url or f"{county} county" in url:
-                        score += 1
+                    county_clean = county.lower().replace("_", " ").replace("-", " ").strip()
+                    patterns = all_patterns(county_clean, extra_terms=CONTEST_PARTS)
+                    for pattern in patterns:
+                        if pattern and pattern in url:
+                            score += 2
+                        if pattern and pattern in text_lower:
+                            score += 1
                     if score > best_score_dom:
                         best_county_dom = county
                         best_score_dom = score
