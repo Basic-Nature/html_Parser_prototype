@@ -48,7 +48,7 @@ CONTEST_PARTS = [
 # Full contest labels (for direct matching)
 COMMON_CONTEST_LABELS = [
     "President", "Vice President", "Presidential", "Senate", "Senator", "Congress", "Representative", "Electors",
-    "House of Representatives", "House", "District Representative", "District Delegate",
+    "House of Representatives", "Proposition", "Amendment","House", "District Representative", "District Delegate",
     "Governor", "Lieutenant Governor", "Attorney General", "Comptroller", "Treasurer", "Secretary of State",
     "State Senator", "State Assembly", "State Representative", "Assembly Member", "Member of Assembly",
     "State House", "State Senate", "State House of Representatives", "State Delegate", "State Board of Education",
@@ -311,10 +311,8 @@ def click_dynamic_toggle(
         keywords=handler_keywords,
         logger=logger,
         verbose=verbose,
-        heading_match=heading_match,
         heading_tags=heading_tags,
         max_heading_level=max_heading_level,
-        page=page,
         interactive=interactive
     )
 

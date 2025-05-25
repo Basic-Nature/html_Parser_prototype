@@ -268,9 +268,10 @@
         {% endwith %}
 
         <div class="form-section">
-            <form method="POST" action="{{ url_for('run_parser_page') }}">
+            <form method="POST" action="{{ url_for('run_parser_page') }}" style="display:inline;">
                 <button type="submit" class="run-btn" id="runParserBtn">Run Parser</button>
             </form>
+            <button type="button" class="run-btn" id="cancelParserBtn" style="background:linear-gradient(90deg, var(--main-red), #333);margin-left:1em;">Cancel</button>
         </div>
 
         <div class="output-section" id="terminal">
@@ -287,6 +288,7 @@
             </form>
         </div>
     </div>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script>
     // Data particle explosion effect
     function createExplosion(x, y, color) {
@@ -306,10 +308,22 @@
         }
     }
     document.getElementById('runParserBtn').addEventListener('click', function(e) {
+        e.preventDefault();
         const rect = this.getBoundingClientRect();
         const x = rect.left + rect.width / 2;
         const y = rect.top + rect.height / 2 + window.scrollY;
         createExplosion(x, y);
+        socket.emit('run_parser');
+    });
+    
+    // Cancel button logic
+    document.getElementById('cancelParserBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+        socket.emit('cancel_parser');
+        // Optional: visually indicate cancellation
+        outputDiv.innerHTML += '<br><span style="color:#eb4f43;">[CANCEL REQUESTED]</span><br>';
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+        window.scrollTo(0, document.body.scrollHeight);
     });
 
     // SocketIO terminal output
@@ -321,7 +335,9 @@
         }
         outputDiv.innerHTML += data.replace(/\n/g, '<br>');
         outputDiv.scrollTop = outputDiv.scrollHeight;
+        window.scrollTo(0, document.body.scrollHeight); // <-- Auto-scroll page
     });
+
     function sendPrompt(event) {
         event.preventDefault();
         var input = document.getElementById('promptInput');
@@ -342,7 +358,7 @@
             this.value = '';
         }
     });
+    
     </script>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </body>
 </html>

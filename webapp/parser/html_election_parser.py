@@ -15,11 +15,14 @@
 # ============================================================
 
 # Standard library
-import os
-import logging
-from pathlib import Path
+import contextlib
 from datetime import datetime
+import io
+import logging
 from multiprocessing import Pool
+import os
+from pathlib import Path
+import sys
 from typing import cast
 
 # Third-party
@@ -30,12 +33,12 @@ from playwright.sync_api import sync_playwright, Page
 
 # Local project utils
 from .handlers.formats import html_handler
+from .state_router import get_handler as get_state_handler
 from .utils.browser_utils import launch_browser_with_stealth
 from .utils.captcha_tools import handle_cloudflare_captcha
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.format_router import detect_format_from_links, prompt_user_for_format , route_format_handler
 from .utils.html_scanner import scan_html_for_context
-from .state_router import get_handler as get_state_handler
 from .utils.shared_logger import logger, rprint
 from .utils.user_prompt import prompt_user_input
 # Load settings from .env file
@@ -79,6 +82,30 @@ except ImportError:
 # Load a list of target URLs from urls.txt.
 # Prompts the user to add one manually if the file is missing or empty.
 # If the file is missing or empty, prompt the user to input a fallback URL.
+
+def process_url_stream(url):
+    """
+    Runs process_url(url) and yields each line of output (print and logging).
+    Designed for web streaming. Does NOT affect CLI usage.
+    """
+    buffer = io.StringIO()
+
+    # Capture logging output as well as print/rich.print
+    log_handler = logging.StreamHandler(buffer)
+    log_handler.setFormatter(logging.Formatter('[%(levelname)s] %(message)s'))
+    root_logger = logging.getLogger()
+    root_logger.addHandler(log_handler)
+
+    try:
+        with contextlib.redirect_stdout(buffer):
+            process_url(url)
+    finally:
+        root_logger.removeHandler(log_handler)
+
+    buffer.seek(0)
+    for line in buffer:
+        yield line
+        
 def load_urls():
     if not URL_LIST_FILE.exists():
         logging.error("urls.txt not found. Please provide a valid file.")

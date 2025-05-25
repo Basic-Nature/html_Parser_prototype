@@ -300,7 +300,6 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
         err_msg = f"[SCAN ERROR] HTML parsing failed: {e}"
         logger.error(err_msg)
         context_result["error"] = err_msg
-    logger.info(f"[DEBUG] html_context before routing: {context_result}")
     return context_result  # END scan_html_for_context
 
 def get_detected_races_from_context(context_result):

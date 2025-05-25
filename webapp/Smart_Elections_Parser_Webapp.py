@@ -4,20 +4,31 @@ from datetime import datetime
 from difflib import get_close_matches
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, send_from_directory
-from flask_socketio import emit, SocketIO
+from flask_socketio import emit, session, SocketIO
+import logging
 import importlib
 from io import StringIO
 import json
 import os
 import sys
 from threading import Thread
-from webapp.parser.html_election_parser import main as run_html_parser
+import webapp.parser.html_election_parser as run_html_parser
+from webapp.parser.web_pipeline import process_urls_for_web
 
 # Load environment variables from .env
 load_dotenv()
 
 app = Flask(__name__)
 socketio = SocketIO(app)
+
+class SocketIOLogHandler(logging.Handler):
+    def emit(self, record):
+        log_entry = self.format(record)
+        socketio.emit('parser_output', log_entry)
+
+socketio_handler = SocketIOLogHandler()
+socketio_handler.setLevel(logging.INFO)
+logging.getLogger().addHandler(socketio_handler)
 
 ALLOWED_EXTENSIONS = {"csv", "json", "pdf", "txt"}
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -29,6 +40,9 @@ HINT_FILE = os.path.join(PARSER_DIR, "url_hint_overrides.txt")
 HISTORY_FILE = os.path.join(PARSER_DIR, "url_hint_history.jsonl")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 URLS_FILE = os.path.join(PARSER_DIR, "urls.txt")
+
+# Store URLs in memory for the session (for demo; in production, use session or DB)
+URL_LIST = []
 
 # Ensure input/output folders exist
 os.makedirs(INPUT_FOLDER, exist_ok=True)
@@ -46,16 +60,34 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 
 # SocketIO event for real-time updates
 
-def run_parser_background():
-    # Example: Replace with your real parser logic
-    import time
-    for i in range(10):
-        socketio.emit('parser_output', f"Line {i+1}: Processing...\n")
-        time.sleep(1)
-    socketio.emit('parser_output', "Parser finished!\n")
-
+def run_parser_for_urls(urls):
+    session_id = session.get('sid') or request.sid  # Use Flask session or Socket.IO sid
+    def emit_to_socketio(line):
+        socketio.emit('parser_output', line, room=session_id)
+    process_urls_for_web(urls, emit_to_socketio, session_id)   
+    
 def process_user_prompt(data):
-    raise NotImplementedError("process_user_prompt function not implemented.")
+    global URL_LIST
+    user_input = data.strip().lower()
+    if not URL_LIST:
+        return "No URLs loaded. Click 'Run Parser' first.\n"
+    if user_input in ("", "cancel"):
+        return "Cancelled.\n"
+    if user_input == "all":
+        selected = URL_LIST
+    else:
+        try:
+            indices = [int(x.strip()) for x in user_input.split(",") if x.strip()]
+            selected = [URL_LIST[i-1] for i in indices if 1 <= i <= len(URL_LIST)]
+        except Exception:
+            return "Invalid input. Please enter indices like '1,2' or 'all'.\n"
+    if not selected:
+        return "No valid URLs selected.\n"
+
+    # Start the parser in a background thread and stream output
+    thread = Thread(target=run_parser_for_urls, args=(selected,))
+    thread.start()
+    return f"Started parsing {len(selected)} URL(s)...\n"
 
 # --- Utility functions for Data management ---
 def add_url():
@@ -88,6 +120,14 @@ def edit_hint():
     else:
         flash("Invalid fragment or path.", "danger")
     return redirect(url_for("url_hints"))
+
+def get_url_list():
+    # Load URLs from file
+    if not os.path.exists(URLS_FILE):
+        return []
+    with open(URLS_FILE, "r", encoding="utf-8") as f:
+        urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+    return urls
 
 def list_urls():
     if not os.path.exists(URLS_FILE):
@@ -218,6 +258,7 @@ def rollback(index):
     flash("Snapshot restored successfully.", "success")
     # Add ?restored=1 for toast
     return redirect(url_for("history", restored=1))
+
 @app.route("/import-hints", methods=["POST"])
 def import_hints():
     file = request.files.get("csv_file")
@@ -273,44 +314,36 @@ def output_files():
     files = os.listdir(OUTPUT_FOLDER)
     return render_template("file_list.html", files=files, folder="Output", download_url="download_output_file")
 
+@socketio.on('cancel_parser')
+def handle_cancel_parser():
+    session_id = session.get('sid') or request.sid
+    from webapp.parser.web_pipeline import cancel_processing
+    cancel_processing(session_id)
+
 @socketio.on('parser_prompt')
 def handle_parser_prompt(data):
     # Process the prompt, send output back
     output = process_user_prompt(data)  # Your function
     emit('parser_output', output)
 
-@app.route("/run-parser", methods=["GET", "POST"])
+@app.route("/run-parser")
 def run_parser_page():
-    # Gather file lists for display
-    uploaded_files = os.listdir(UPLOAD_FOLDER)
-    input_files = os.listdir(INPUT_FOLDER)
-    output_files = os.listdir(OUTPUT_FOLDER)
-    parser_output = None
+    return render_template("run_parser.html")
 
-    # Handle file upload to uploads folder
-    if request.method == "POST":
-        file = request.files.get("data_file")
-        if file and allowed_file(file.filename):
-            filename = file.filename
-            file.save(os.path.join(UPLOAD_FOLDER, filename))
-            flash(f"File '{filename}' uploaded successfully to uploads.", "success")
-        else:
-            flash("Invalid file type or no file selected.", "danger")
-        # Optionally, you could trigger the parser here if desired
-
-    # Optionally, you could run the parser and capture output here
-    # For example:
-    # if request.method == "POST" and 'run_parser' in request.form:
-    #     parser_output = run_html_parser()  # Or however your parser returns output
-
-    return render_template(
-        "run_parser.html",
-        uploaded_files=uploaded_files,
-        input_files=input_files,
-        output_files=output_files,
-        parser_output=parser_output
-    )
-
+@socketio.on('run_parser')
+def handle_run_parser():
+    global URL_LIST
+    URL_LIST = get_url_list()
+    if not URL_LIST:
+        socketio.emit('parser_output', "No URLs found.\n")
+        return
+    # Show the URLs to the user
+    url_lines = ["URLs loaded:"]
+    for idx, url in enumerate(URL_LIST, 1):
+        url_lines.append(f"  [{idx}] {url}")
+    url_lines.append("\nEnter indices (comma-separated), 'all', or leave empty to cancel:")
+    socketio.emit('parser_output', "\n".join(url_lines))
+    
 @app.route("/undo-hints", methods=["POST"])
 def undo_hints():
     if not os.path.exists(HISTORY_FILE):
