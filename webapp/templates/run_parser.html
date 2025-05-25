@@ -330,13 +330,32 @@
     // SocketIO terminal output
     var socket = io();
     var outputDiv = document.getElementById('terminal');
+
+    document.getElementById('runParserBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+        outputDiv.innerHTML = '';
+        const rect = this.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2 + window.scrollY;
+        createExplosion(x, y);
+        socket.emit('run_parser');
+    });
+
+    document.getElementById('cancelParserBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+        socket.emit('cancel_parser');
+        outputDiv.innerHTML += '<br><span style="color:#eb4f43;">[CANCEL REQUESTED]</span><br>';
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+        window.scrollTo(0, document.body.scrollHeight);
+    });
+
     socket.on('parser_output', function(data) {
         if (outputDiv.innerHTML.includes('Parser output will appear')) {
             outputDiv.innerHTML = '';
         }
         outputDiv.innerHTML += data.replace(/\n/g, '<br>');
         outputDiv.scrollTop = outputDiv.scrollHeight;
-        window.scrollTo(0, document.body.scrollHeight); // <-- Auto-scroll page
+        window.scrollTo(0, document.body.scrollHeight);
     });
 
     function sendPrompt(event) {
@@ -348,12 +367,6 @@
             input.value = '';
         }
     }
-    document.getElementById('promptForm').addEventListener('submit', sendPrompt);
-    document.getElementById('promptInput').addEventListener('keypress', function(event) {
-        if (event.key === 'Enter') {
-            sendPrompt(event);
-        }
-    });
     document.getElementById('promptInput').addEventListener('keydown', function(event) {
         if (event.key === 'Escape') {
             this.value = '';

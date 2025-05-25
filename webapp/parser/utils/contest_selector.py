@@ -1,58 +1,24 @@
-# utiils/contest_selector.py
-# ===================================================================
-# Election Data Cleaner
-# This script is part of the Election Data Cleaner project, which is licensed under the MIT License.
-# ===================================================================
 from rich import print as rprint
 from ..utils.shared_logger import logger
+from ..utils.user_prompt import prompt_user_input, PromptCancelled
 import re
 
 DEFAULT_NOISY_LABELS = [
-    "view results by election district",
-    "summary by method",
-    "download",
-    "vote method",
-    "voting method",
-    "election districts reporting",
-    "as of",
-    "candidate",
-    "percentage",
-    "votes",
-    "winner",
-    "response",
-    "yes",
-    "no"
+    "view results by election district", "summary by method", "download",
+    "vote method", "voting method", "election districts reporting", "as of",
+    "candidate", "percentage", "votes", "winner", "response", "yes", "no"
 ]
 DEFAULT_NOISY_LABEL_PATTERNS = [
-    r"view results? by election district\s*[:\n]?$",
-    r"summary by method\s*[:\n]?$",
-    r"download\s*[:\n]?$",
-    r"^view results.*",
-    r"^summary by method.*",
-    r"^download.*",
-    r"^vote method.*",
-    r"^voting method.*",
-    r"vote method\s*[:\n]?$",
-    r"voting method\s*[:\n]?$",
-    r"^vote for \d+$",
-    r"election districts reporting.*",
-    r"as of.*",
-    r"candidate.*",
-    r"percentage.*",
-    r"votes.*",
-    r"winner.*",
-    r"response.*",
-    r"^yes$",
-    r"^no$"
-    # Add more as needed
+    r"view results? by election district\s*[:\n]?$", r"summary by method\s*[:\n]?$",
+    r"download\s*[:\n]?$", r"^view results.*", r"^summary by method.*", r"^download.*",
+    r"^vote method.*", r"^voting method.*", r"vote method\s*[:\n]?$", r"voting method\s*[:\n]?$",
+    r"^vote for \d+$", r"election districts reporting.*", r"as of.*", r"candidate.*",
+    r"percentage.*", r"votes.*", r"winner.*", r"response.*", r"^yes$", r"^no$"
 ]
 DEFAULT_NOISY_LABELS = [label.lower() for label in DEFAULT_NOISY_LABELS]
 
 def is_noisy_label(label: str, noisy_labels=None, noisy_label_patterns=None) -> bool:
-    """
-    Check if a label is considered noisy based on patterns.
-    Handlers can supply custom noisy_labels and patterns.
-    """
+    """Check if a label is considered noisy based on patterns."""
     noisy_labels = noisy_labels or DEFAULT_NOISY_LABELS
     noisy_label_patterns = noisy_label_patterns or DEFAULT_NOISY_LABEL_PATTERNS
     label = label.lower()
@@ -64,18 +30,12 @@ def is_noisy_label(label: str, noisy_labels=None, noisy_label_patterns=None) -> 
     return any(noisy in label for noisy in noisy_labels)
 
 def extract_election_types(races):
-    """
-    Dynamically extract possible election types from the list of races.
-    Returns a set of types (e.g., {'general', 'primary', 'runoff', ...}).
-    """
+    """Extract possible election types from the list of races."""
     types = set()
     for race in races:
-       # If race is a tuple, get the etype directly
         if isinstance(race, tuple) and len(race) == 3:
             types.add(race[1].strip().lower())
         else:
-            # fallback for string input        
-        # Look for words after the year, e.g., "2024 General", "2024 Primary Election"
             m = re.match(r'(19|20)\d{2}\s+([a-z ]+?)( election)?$', race.lower())
             if m:
                 types.add(m.group(2).strip())
@@ -88,32 +48,33 @@ def is_noisy_contest_label(label: str, election_types=None, noisy_label_patterns
     types_pattern = "|".join(re.escape(t.strip().lower()) for t in election_types)
     label = re.sub(r'\s+', ' ', label)
     pattern = rf'^((19|20)\d{{2}}\s+({types_pattern})( election)?\s*)+$'
-    # Allow handler to override patterns
     if noisy_label_patterns:
         for pat in noisy_label_patterns:
             if re.fullmatch(pat, label, re.IGNORECASE):
                 return True
     return bool(re.fullmatch(pattern, label, re.IGNORECASE))
-    
+
 def normalize_race_name(race):
-    # Remove "Vote for X" and extra whitespace
+    """Remove 'Vote for X' and extra whitespace, lowercased."""
     race = re.sub(r"\s*Vote for \d+\s*$", "", race, flags=re.IGNORECASE)
     return race.strip().lower()
 
 def select_contest(
-    detected_races, 
+    detected_races,
     prompt_message="[PROMPT] Enter contest indices (comma-separated), 'all', or leave blank to skip: ",
     allow_multiple=True,
     noisy_labels=None,
-    noisy_label_patterns=None
+    noisy_label_patterns=None,
+    non_interactive=False,
+    log_func=None
 ):
     """
-    Selects contests from detected races, filtering out noisy/generic labels.
-    Handlers can supply custom noisy_labels and patterns.
+    Prompts the user to select contests from detected races, filtering out noisy/generic labels.
+    Returns a list of selected contest tuples or None if skipped/cancelled.
     """
     election_types = extract_election_types(detected_races)
     filtered_races = [
-        (year, etype, race) for (year, etype, race) in detected_races 
+        (year, etype, race) for (year, etype, race) in detected_races
         if not is_noisy_contest_label(race, election_types, noisy_label_patterns)
         and not is_noisy_label(race, noisy_labels, noisy_label_patterns)
     ]
@@ -152,19 +113,48 @@ def select_contest(
         for race in races:
             rprint(f"  [{idx}] {race}")
             idx += 1
-    logger.debug(f"[DEBUG] Number of races displayed: {idx}")    
+    logger.debug(f"[DEBUG] Number of races displayed: {idx}")
 
     # Auto-select if only one contest
     if len(filtered_races) == 1:
         rprint(f"[green]Only one contest found. Auto-selecting: {filtered_races[0]}[/green]")
+        if log_func:
+            log_func(f"[CONTEST] Auto-selected: {filtered_races[0]}")
         return [filtered_races[0]]
 
-    choice = input(prompt_message).strip().lower()
+    if non_interactive:
+        # In non-interactive mode, select all by default
+        if log_func:
+            log_func(f"[CONTEST] Non-interactive mode: selecting all contests.")
+        return filtered_races
+
+    try:
+        choice = prompt_user_input(
+            prompt_message,
+            default="all",
+            validator=lambda x: x == "all" or all(
+                p.strip().isdigit() and 0 <= int(p.strip()) < len(filtered_races)
+                for p in x.split(",") if p.strip()
+            ),
+            allow_cancel=True,
+            header="CONTEST SELECTION",
+            log_func=log_func
+        ).strip().lower()
+    except PromptCancelled:
+        rprint("[yellow]Contest selection cancelled by user.[/yellow]")
+        if log_func:
+            log_func("[CONTEST] User cancelled contest selection.")
+        return None
+
     if not choice:
         rprint("[yellow]No contest selected. Skipping.[/yellow]")
+        if log_func:
+            log_func("[CONTEST] No contest selected.")
         return None
 
     if choice == "all":
+        if log_func:
+            log_func("[CONTEST] User selected all contests.")
         return filtered_races
 
     # Parse comma-separated indices
@@ -177,6 +167,11 @@ def select_contest(
                 indices.append(idx)
     if not indices:
         rprint("[yellow]No valid contest indices selected. Skipping.[/yellow]")
+        if log_func:
+            log_func("[CONTEST] No valid contest indices selected.")
         return None
 
-    return [filtered_races[i] for i in indices]
+    selected = [filtered_races[i] for i in indices]
+    if log_func:
+        log_func(f"[CONTEST] User selected contests: {selected}")
+    return selected

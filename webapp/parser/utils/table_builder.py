@@ -12,6 +12,7 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
     Extracts headers and row data from a Playwright table element.
     Returns (headers, data) where headers is a list of column names,
     and data is a list of dicts mapping headers to cell values.
+    Ensures all rows have the same headers.
     """
     try:
         headers = [th.inner_text().strip() for th in table.query_selector_all("thead tr th")]
@@ -29,10 +30,18 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
         if not data:
             logger.info(f"[HTML Handler] Extracted 0 rows from the table.")
             raise RuntimeError("No rows found in the table.")
+        # Harmonize all rows to have the same headers
+        data = harmonize_rows(headers, data)
         return headers, data
     except Exception as e:
         logger.error(f"[ERROR] Failed to extract table from page: {e}")
         return [], []
+
+def harmonize_rows(headers: List[str], data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Ensures all rows have the same headers, filling missing fields with empty string.
+    """
+    return [{h: row.get(h, "") for h in headers} for row in data]
 
 def clean_candidate_name(name: str) -> str:
     """
@@ -79,6 +88,7 @@ def parse_candidate_vote_table(
     """
     Converts a DOM table element into a Smart Elections-style row for a single precinct.
     Returns a dict with standardized candidate-method vote fields and metadata.
+    Handles edge cases where candidate/party columns are missing or extra columns are present.
     """
     def is_total_row(cell_text):
         totals = {
@@ -159,6 +169,7 @@ def calculate_grand_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     Sums all numeric columns across a list of parsed precinct rows.
     Returns a 'Grand Total' row.
     Skips fields like 'Precinct' and '% Precincts Reporting'.
+    Ensures all keys present in any row are included in the grand total row.
     """
     totals = {}
     skip_fields = {
@@ -171,12 +182,22 @@ def calculate_grand_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "Total Votes Canceled", "Total Ballots Canceled", "Total Votes Disqualified", "Total Ballots Disqualified",
         "Total Votes Nullified", "Total Ballots Nullified", "Total Votes Voided", "Total Ballots Voided"
     }
+    # Collect all possible keys
+    all_keys = set()
+    for row in rows:
+        if isinstance(row, dict):
+            all_keys.update(row.keys())
+    for key in all_keys:
+        if key in skip_fields:
+            continue
+        totals[key] = 0.0
     for row in rows:
         if not isinstance(row, dict):
             continue
-        for k, v in row.items():
+        for k in all_keys:
             if k in skip_fields:
                 continue
+            v = row.get(k, "")
             if not isinstance(v, str) or not v.strip():
                 continue
             try:
@@ -189,4 +210,5 @@ def calculate_grand_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Optionally add a "Total" column if present in data
     if "Total" in totals:
         totals["Total"] = str(int(totals["Total"]))
+    # Convert all floats to string for CSV output
     return {k: (str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)) for k, v in totals.items()}

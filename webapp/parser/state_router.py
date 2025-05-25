@@ -14,6 +14,7 @@ from typing import Optional, Dict, Any, Set, List
 
 from .utils.shared_logger import logger
 
+# Mapping of state abbreviations and alternate names to canonical state keys
 STATE_MODULE_MAP = {
     # Modern then Traditional postal abbreviations
     "al": "alabama", "ala": "alabama",
@@ -68,7 +69,9 @@ STATE_MODULE_MAP = {
     "wi": "wisconsin", "wis": "wisconsin",
     "wy": "wyoming", "wyo": "wyoming",
 }
+
 LOADED_HANDLERS: Dict[str, Any] = {}
+
 FUZZY_MATCH_CUTOFF = float(os.getenv("FUZZY_MATCH_CUTOFF", "0.7"))
 if FUZZY_MATCH_CUTOFF < 0.5 or FUZZY_MATCH_CUTOFF > 1.0:
     logger.warning(f"[Router] Invalid FUZZY_MATCH_CUTOFF value: {FUZZY_MATCH_CUTOFF}. Using default 0.7.")
@@ -79,13 +82,17 @@ def get_hint_file_path() -> str:
     return os.path.join(os.path.dirname(__file__), "url_hint_overrides.txt")
 
 class UrlHintOverridesCache:
-    """Caches and reloads url_hint_overrides.txt on change."""
+    """
+    Caches and reloads url_hint_overrides.txt on change.
+    Used for custom URL-to-handler overrides.
+    """
     def __init__(self):
         self._path = get_hint_file_path()
         self._last_mtime = None
         self._cache: Dict[str, str] = {}
 
     def get(self) -> Dict[str, str]:
+        """Return the cached overrides, reloading if the file has changed."""
         try:
             mtime = os.path.getmtime(self._path)
             if self._last_mtime != mtime:
@@ -106,9 +113,13 @@ class UrlHintOverridesCache:
 URL_HINT_OVERRIDES_CACHE = UrlHintOverridesCache()
 
 def import_handler(module_path: str):
-    """Dynamically import and return a handler module from the given dotted path."""
+    """
+    Dynamically import and return a handler module from the given dotted path.
+    Uses caching to avoid repeated imports.
+    """
     try:
         if module_path not in LOADED_HANDLERS:
+            logger.debug(f"[Router] Importing handler module: {module_path}")
             module = importlib.import_module(module_path)
             LOADED_HANDLERS[module_path] = module
         return LOADED_HANDLERS[module_path]
@@ -127,10 +138,15 @@ def import_handler(module_path: str):
                 return importlib.import_module(retry_path)
         except Exception as inner:
             logger.debug(f"[Router] Retry suggestion failed: {inner}")
+        # If handler is missing, log an error callback for maintainers
+        logger.error(f"[Router] Handler import failed for {module_path}. Please check if the handler exists.")
         return None
 
 def resolve_state_handler(url_or_text: str):
-    """Tries to match known state identifiers in a URL or HTML snippet to route to the appropriate handler module."""
+    """
+    Tries to match known state identifiers in a URL or HTML snippet to route to the appropriate handler module.
+    Uses both abbreviation and custom overrides.
+    """
     lower = url_or_text.lower()
     for state_abbr, state_key in STATE_MODULE_MAP.items():
         if state_abbr in lower:
@@ -152,7 +168,10 @@ def resolve_state_handler(url_or_text: str):
     return None
 
 def get_handler(state_abbreviation: Optional[str], county_name: Optional[str] = None):
-    """Dynamically loads and returns a handler based on state or state+county keys."""
+    """
+    Dynamically loads and returns a handler based on state or state+county keys.
+    Returns the handler module or None if not found.
+    """
     logger.info(f"[DEBUG] About to call get_handler with state={state_abbreviation}, county={county_name}")
     if not state_abbreviation:
         logger.warning("[Router] Missing state_abbreviation — skipping handler resolution.")
@@ -171,17 +190,23 @@ def get_handler(state_abbreviation: Optional[str], county_name: Optional[str] = 
         if module:
             logger.info(f"[Router] Routed to handler for {state_key}_{normalized_county}")
             return module
+        else:
+            logger.warning(f"[Router] County handler not found for {state_key}_{normalized_county}")
 
     # --- STATE HANDLER FALLBACK ---
     module = import_handler(module_path)
     if module:
+        logger.info(f"[Router] Routed to state handler for {state_key}")
         return module
     else:
         logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
         return None
 
 def get_handler_from_context(context: Dict[str, Any]):
-    """Extracts state and county info from a context dictionary and routes accordingly."""
+    """
+    Extracts state and county info from a context dictionary and routes accordingly.
+    Returns the handler module or None if not found.
+    """
     state = context.get("state")
     county = context.get("county")
     logger.info(f"[Router DEBUG] Context received: state={state}, county={county}, context={context}")
@@ -189,6 +214,7 @@ def get_handler_from_context(context: Dict[str, Any]):
         logger.warning("[Router] No state or county provided in context.")
         return None
 
+    # Try to infer state from filename if missing
     if not state:
         filename = context.get("filename", "").lower()
         tokens = filename.replace("_", " ").split()
@@ -221,7 +247,10 @@ def get_handler_from_context(context: Dict[str, Any]):
 # =========================
 
 def list_available_states() -> List[str]:
-    """List all available state handler modules."""
+    """
+    List all available state handler modules.
+    Returns a sorted list of state directory names.
+    """
     base_path = os.path.join(os.path.dirname(__file__), "handlers", "states")
     if not os.path.isdir(base_path):
         logger.warning("[Router] handlers/states directory not found.")
@@ -229,9 +258,13 @@ def list_available_states() -> List[str]:
     return sorted([d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))])
 
 def list_available_counties(state_key: str) -> List[str]:
-    """List all available county handler modules for a given state."""
+    """
+    List all available county handler modules for a given state.
+    Returns a sorted list of county Python filenames (without __init__).
+    """
     base_path = os.path.join(os.path.dirname(__file__), "handlers", "states", state_key, "county")
     if not os.path.isdir(base_path):
+        logger.warning(f"[Router] counties directory not found for state: {state_key}")
         return []
     return sorted([d for d in os.listdir(base_path) if d.endswith(".py") and not d.startswith("__")])
 
@@ -259,6 +292,8 @@ def batch_run(states: Optional[List[str]] = None, counties: Optional[List[str]] 
                     # You can call a standard entry point here, e.g.:
                     # county_handler.parse(...)
                     processed.add(key)
+                else:
+                    logger.warning(f"[Batch] No handler found for county: {county} in state: {state}")
         else:
             if state in processed:
                 continue
@@ -267,7 +302,10 @@ def batch_run(states: Optional[List[str]] = None, counties: Optional[List[str]] 
             processed.add(state)
 
 def cli():
-    """Simple CLI for state_router utilities."""
+    """
+    Simple CLI for state_router utilities.
+    Allows listing states/counties and batch running handlers.
+    """
     import argparse
     parser = argparse.ArgumentParser(description="State Router CLI Utility")
     parser.add_argument("--list-states", action="store_true", help="List all available state handlers")

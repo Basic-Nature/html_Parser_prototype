@@ -12,7 +12,7 @@ import json
 import os
 import sys
 from threading import Thread
-import webapp.parser.html_election_parser as run_html_parser
+import webapp.parser.html_election_parser as process_url_stream
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
 
 # Load environment variables from .env
@@ -74,7 +74,7 @@ def run_parser_for_urls(urls, session_id):
             pass  # If socketio is already dead, just ignore
         print(f"[ERROR] run_parser_for_urls crashed: {e}")
         
-def process_user_prompt(data):
+def process_user_prompt(data, session_id):
     global URL_LIST
     user_input = data.strip().lower()
     if not URL_LIST:
@@ -91,9 +91,6 @@ def process_user_prompt(data):
             return "Invalid input. Please enter indices like '1,2' or 'all'.\n"
     if not selected:
         return "No valid URLs selected.\n"
-
-    # --- FIX: Capture session_id here ---
-    session_id = session.get('sid') or request.sid
 
     # Start the parser in a background thread and stream output
     thread = Thread(target=run_parser_for_urls, args=(selected, session_id))
@@ -333,9 +330,10 @@ def handle_cancel_parser():
 
 @socketio.on('parser_prompt')
 def handle_parser_prompt(data):
-    # Process the prompt, send output back
-    output = process_user_prompt(data)  # Your function
-    emit('parser_output', output)
+    print(f"Received prompt: {data}")
+    session_id = session.get('sid') if 'sid' in session else request.sid
+    output = process_user_prompt(data, session_id)
+    emit('parser_output', output, room=session_id)
 
 @app.route("/run-parser")
 def run_parser_page():
@@ -344,16 +342,16 @@ def run_parser_page():
 @socketio.on('run_parser')
 def handle_run_parser():
     global URL_LIST
+    session_id = session.get('sid') if 'sid' in session else request.sid
     URL_LIST = get_url_list()
     if not URL_LIST:
-        socketio.emit('parser_output', "No URLs found.\n")
+        socketio.emit('parser_output', "No URLs found.\n", room=session_id)
         return
-    # Show the URLs to the user
     url_lines = ["URLs loaded:"]
     for idx, url in enumerate(URL_LIST, 1):
         url_lines.append(f"  [{idx}] {url}")
     url_lines.append("\nEnter indices (comma-separated), 'all', or leave empty to cancel:")
-    socketio.emit('parser_output', "\n".join(url_lines))
+    socketio.emit('parser_output', "\n".join(url_lines), room=session_id)
     
 @app.route("/undo-hints", methods=["POST"])
 def undo_hints():

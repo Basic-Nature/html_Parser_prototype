@@ -1,28 +1,19 @@
-# handlers/formats/html_handler.py
-# ==============================================================
-# Fallback handler for generic HTML parsing.
-# Used when structured formats (JSON, CSV, PDF) are not present.
-# This routes through the state_router using html_scanner context.
-# ==============================================================
-
 from ...state_router import get_handler_from_context
 from ...utils.contest_selector import select_contest
-from ...utils.download_utils import download_confirmed_file
-from ...utils.format_router import detect_format_from_links, route_format_handler
 from ...utils.table_builder import extract_table_data
 from ...utils.html_scanner import scan_html_for_context, get_detected_races_from_context
 from ...utils.shared_logger import logger
 from ...utils.shared_logic import (
     normalize_text, click_dynamic_toggle,
-    ALL_SELECTORS, COMMON_CONTEST_LABELS
+    ALL_SELECTORS
 )
 from rich import print as rprint
 import os
 import re
-# This fallback HTML handler is invoked when no state or county-specific handler is matched.
-# It handles race prompting, HTML table fallback extraction, and potential re-routing.
+
 PRECINCT_ELEMENT_TAGS = ["H3", "H4", "H5", "STRONG", "B", "SPAN", "DIV"]
 CONTEST_PANEL_TAGS = ["div", "section", "article"]
+
 def extract_contest_panel(page, contest_title, panel_tags=None):
     """
     Returns a Playwright Locator for the contest panel matching contest_title.
@@ -72,37 +63,26 @@ def extract_precinct_tables(panel):
         if precincts:
             break  # Stop if we found any precincts
     return precincts
-# --- 1. Detect structured files and prompt user ---
-def parse(page, html_context=None):
-    # 1. Check for structured files first
-    found_files = detect_format_from_links(page)
-    for fmt, url in found_files:
-        filename = os.path.basename(url)
-        rprint(f"[bold green]Discovered {fmt.upper()} file:[/bold green] {filename}")
-        choice = input(f"[PROMPT] Download and parse {filename}? [y/n] (n): ").strip().lower()
-        if choice == "y":
-            handler = route_format_handler(fmt)
-            if handler:
-                file_path = download_confirmed_file(url, page.url)
-                if not file_path:
-                    rprint(f"[red]Failed to download {filename}. Continuing with HTML parsing.[/red]")
-                    continue
-                result = handler.parse(None, {"filename": file_path})
-                if not isinstance(result, tuple) or len(result) != 4:
-                    rprint(f"[red]Handler for {fmt} did not return expected structure. Skipping.[/red]")
-                    continue
-                return result
-            else:
-                rprint(f"[red]No handler for {fmt}[/red]")
-                continue
-        else:
-            rprint(f"[yellow]Skipping {filename}, continuing with HTML parsing.[/yellow]")
 
-    # 2. Scan the page for context and races
+def parse(page, html_context=None):
+    """
+    Generic HTML handler: cleans, filters, and extracts data from HTML using shared utilities.
+    Delegates to state/county handler if available.
+    """
+    # 1. Scan the page for context and races
     context = scan_html_for_context(page, debug=False)
     if html_context is None:
         html_context = {}
     html_context.update(context)
+
+    # 2. Try to delegate to state/county handler if available
+    state_handler = get_handler_from_context(
+        state=html_context.get("state"),
+        county=html_context.get("county")
+    )
+    if state_handler and hasattr(state_handler, "parse"):
+        logger.info(f"[HTML Handler] Redirecting to state handler: {state_handler.__name__}...")
+        return state_handler.parse(page, html_context)
 
     # 3. Let user select contest if not already set
     contest_title = html_context.get("selected_race")
@@ -116,33 +96,23 @@ def parse(page, html_context=None):
             if contest_title and isinstance(contest_title[0], tuple):
                 contest_title = contest_title[0][2]  # (year, etype, race)
             elif contest_title and isinstance(contest_title[0], str):
-                contest_title = contest_title[0]                
+                contest_title = contest_title[0]
         html_context["selected_race"] = contest_title
 
-    # 4. Delegate to state/county handler if available
-    state_handler = get_handler_from_context(
-        state=html_context.get("state"),
-        county=html_context.get("county")
-    )
-    if state_handler and hasattr(state_handler, "parse"):
-        logger.info(f"[HTML Handler] Redirecting to state handler: {state_handler.__name__}...")
-        return state_handler.parse(page, html_context)
-
-    # 5. Try to find and click toggles dynamically using handler-supplied keywords
-    # Example: handler_keywords could come from config, context, or be generic
+    # 4. Try to find and click toggles dynamically using handler-supplied keywords
     handler_keywords = html_context.get("toggle_keywords", ["View Results", "Vote Method", "Show Results"])
     clicked = click_dynamic_toggle(
         page,
-        container=None,  # or a panel if you have one
+        container=None,
         handler_keywords=handler_keywords,
         logger=logger,
         verbose=True,
-        interactive=True  # Enable prompt fallback
+        interactive=True
     )
     if not clicked:
         logger.warning("[HTML Handler] No toggle/button clicked automatically or interactively.")
 
-    # 6. Fallback: Try to extract the first table
+    # 5. Fallback: Try to extract the first table
     headers, data = [], []
     try:
         table = page.query_selector("table")
@@ -156,7 +126,7 @@ def parse(page, html_context=None):
         logger.error(f"[ERROR] Failed to extract table from page: {e}")
         return None, None, None, {"error": str(e)}
 
-    # 7. Output metadata
+    # 6. Output metadata
     clean_race = normalize_text(contest_title).strip().lower() if contest_title else "unknown"
     clean_race = re.sub(r'[\s:]+', ' ', clean_race).strip()
     clean_race = re.sub(r'[\\/:*?"<>|]', '_', clean_race)
@@ -169,5 +139,3 @@ def parse(page, html_context=None):
         "year": html_context.get("year", "Unknown")
     }
     return headers, data, contest_title, metadata
-
-# End of file

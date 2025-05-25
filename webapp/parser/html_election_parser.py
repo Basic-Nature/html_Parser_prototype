@@ -2,126 +2,85 @@
 # 🗳️ Smart Elections: HTML Election Parser Pipeline
 # ============================================================
 #
-# This script serves as the main pipeline for parsing U.S. election results
-# from county and state-level canvass websites. It supports both HTML scraping
-# and structured file parsing (e.g., JSON, CSV, PDF).
-#
-# Key Features:
-# - Loads URLs from a list and caches already processed entries
-# - Supports rich output logging and CAPTCHA detection
-# - Allows manual file parsing via .env overrides
-# - Dynamically routes to state/county-specific parsing modules
-# - Writes results to structured CSV directories by state, county, and race
+# Main orchestrator for parsing U.S. election results from county/state canvass sites.
+# Supports HTML scraping, structured file parsing (JSON, CSV, PDF), and batch/multiprocessing.
+# Delegates all specialized logic to modular handlers/utilities for maintainability.
+# Designed for future extensibility: AI anomaly detection, real-time streaming, and distributed collection.
 # ============================================================
 
-# Standard library
-import contextlib
-from datetime import datetime
-import io
-import logging
-from multiprocessing import Pool
 import os
-from pathlib import Path
 import sys
-from typing import cast
+import logging
+import contextlib
+import io
+from pathlib import Path
+from datetime import datetime
+from typing import cast, Dict, Any, List
+from multiprocessing import Pool
 
-# Third-party
 from dotenv import load_dotenv
 from rich.console import Console
 from rich import print as rprint
 from playwright.sync_api import sync_playwright, Page
 
-# Local project utils
+# --- Local imports (all logic is modularized) ---
 from .handlers.formats import html_handler
 from .state_router import get_handler as get_state_handler
 from .utils.browser_utils import launch_browser_with_stealth
 from .utils.captcha_tools import handle_cloudflare_captcha
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
-from .utils.format_router import detect_format_from_links, prompt_user_for_format , route_format_handler
+from .utils.format_router import detect_format_from_links, prompt_user_for_format, route_format_handler
 from .utils.html_scanner import scan_html_for_context
 from .utils.shared_logger import logger, rprint
 from .utils.user_prompt import prompt_user_input
-# Load settings from .env file
+
+# Optional: Bot integration and future AI/ML hooks
+try:
+    from .bots.bot_router import run_bot_task
+except ImportError:
+    run_bot_task = None
+
+# --- Environment & Path Setup ---
 load_dotenv()
-
-# Rich console styling
 console = Console()
-
-# Initialize logging based on LOG_LEVEL in .env
-log_level_str = os.getenv("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
-log_level = getattr(logging, log_level_str, logging.INFO)
-logging.basicConfig(level=log_level, format='[%(levelname)s] %(message)s')
-
-BASE_DIR = Path(__file__).parent.parent.parent
-# Flags for caching behavior
-CACHE_PROCESSED_URLS = os.getenv("CACHE_PROCESSED", "true").lower() == "true"
-CACHE_RESET = os.getenv("CACHE_RESET", "false").lower() == "true"
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+INPUT_DIR = BASE_DIR / "input"
+OUTPUT_DIR = BASE_DIR / "output"
+URL_LIST_FILE = BASE_DIR / "webapp/parser/urls.txt"
 CACHE_FILE = BASE_DIR / ".processed_urls"
 
-# Reset cache if flag is enabled
+# --- Config Flags ---
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format='[%(levelname)s] %(message)s')
+CACHE_PROCESSED_URLS = os.getenv("CACHE_PROCESSED", "true").lower() == "true"
+CACHE_RESET = os.getenv("CACHE_RESET", "false").lower() == "true"
+HEADLESS_DEFAULT = os.getenv("HEADLESS", "true").lower() == "true"
+TIMEOUT_SEC = int(os.getenv("CAPTCHA_TIMEOUT", "300"))
+INCLUDE_TIMESTAMP_IN_FILENAME = os.getenv("TIMESTAMP_IN_FILENAME", "true").lower() == "true"
+ENABLE_PARALLEL = os.getenv("ENABLE_PARALLEL", "false").lower() == "true"
+ENABLE_AI_ANALYSIS = os.getenv("ENABLE_AI_ANALYSIS", "false").lower() == "true"
+ENABLE_REALTIME_STREAM = os.getenv("ENABLE_REALTIME_STREAM", "false").lower() == "true"
+ENABLE_BOT_TASKS = os.getenv("ENABLE_BOT_TASKS", "false").lower() == "true"
+
+# --- Cache Reset ---
 if CACHE_RESET and CACHE_FILE.exists():
     logging.debug("Deleting .processed_urls cache for fresh start...")
     CACHE_FILE.unlink()
 
-# Project paths
-INPUT_DIR = BASE_DIR / "input"
-INPUT_DIR = BASE_DIR / "input"
-OUTPUT_DIR = BASE_DIR / "output"
-URL_LIST_FILE = BASE_DIR / "webapp/parser/urls.txt"
-
-HEADLESS_DEFAULT = os.getenv("HEADLESS", "true").lower() == "true"
-TIMEOUT_SEC = int(os.getenv("CAPTCHA_TIMEOUT", "300"))
-INCLUDE_TIMESTAMP_IN_FILENAME = os.getenv("TIMESTAMP_IN_FILENAME", "true").lower() == "true"
-
-# Optional: Bot integration
-try:
-    from bots.bot_router import run_bot_task
-except ImportError:
-    run_bot_task = None
-
-# Load a list of target URLs from urls.txt.
-# Prompts the user to add one manually if the file is missing or empty.
-# If the file is missing or empty, prompt the user to input a fallback URL.
-
-def process_url_stream(url):
-    """
-    Runs process_url(url) and yields each line of output (print and logging).
-    Designed for web streaming. Does NOT affect CLI usage.
-    """
-    buffer = io.StringIO()
-
-    # Capture logging output as well as print/rich.print
-    log_handler = logging.StreamHandler(buffer)
-    log_handler.setFormatter(logging.Formatter('[%(levelname)s] %(message)s'))
-    root_logger = logging.getLogger()
-    root_logger.addHandler(log_handler)
-
-    try:
-        with contextlib.redirect_stdout(buffer):
-            process_url(url)
-    finally:
-        root_logger.removeHandler(log_handler)
-
-    buffer.seek(0)
-    for line in buffer:
-        yield line
-        
-def load_urls():
+# --- Utility: Load URLs from file or prompt user ---
+def load_urls() -> List[str]:
     if not URL_LIST_FILE.exists():
-        logging.error("urls.txt not found. Please provide a valid file.")
         console.print("[bold red]\nNo urls.txt found. Please input a URL to append:")
         url = prompt_user_input("URL: ").strip()
         if url:
             URL_LIST_FILE.write_text(url + "\n")
             logging.info(f"Appended URL to urls.txt: {url}")
         return [url] if url else []
-
     with open(URL_LIST_FILE, 'r') as f:
-        lines = [line.strip() for line in f.readlines() if line.strip() and not line.strip().startswith("#")]
+        lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
         if not lines:
-            logging.warning("urls.txt is empty or contains only comments.")
             console.print("[bold red]\nurls.txt has no usable URLs. Please input a URL to append:")
-            url = input("URL: ").strip()
+            url = prompt_user_input("URL: ").strip()
             if url:
                 with open(URL_LIST_FILE, 'a') as f_append:
                     f_append.write(url + "\n")
@@ -129,9 +88,8 @@ def load_urls():
                 return [url]
         return lines
 
-# Load previously processed URLs from .processed_urls cache file.
-# Returns a dictionary keyed by URL with timestamp and status.
-def load_processed_urls():
+# --- Utility: Processed URL cache ---
+def load_processed_urls() -> Dict[str, Any]:
     if not CACHE_PROCESSED_URLS or not CACHE_FILE.exists():
         return {}
     processed = {}
@@ -143,8 +101,6 @@ def load_processed_urls():
                 processed[url] = {"timestamp": timestamp, "status": status}
     return processed
 
-# Append a URL entry to .processed_urls to mark it as processed.
-# Includes a timestamp and success/failure status.
 def mark_url_processed(url, status="success"):
     if not CACHE_PROCESSED_URLS:
         return
@@ -152,9 +108,8 @@ def mark_url_processed(url, status="success"):
     with open(CACHE_FILE, 'a') as f:
         f.write(f"{url}|{timestamp}|{status}\n")
 
-# Display the list of available URLs and prompt the user to select some.
-# Supports entering indices, 'all', or nothing to cancel.
-def prompt_url_selection(urls):
+# --- Utility: Prompt user to select URLs to process ---
+def prompt_url_selection(urls: List[str]) -> List[str]:
     console.print("\n[bold #eb4f43]URLs loaded:[/bold #eb4f43]")
     for i, url in enumerate(urls):
         console.print(f"  [{i+1}] {url}", style="#45818e")
@@ -166,12 +121,12 @@ def prompt_url_selection(urls):
     indices = [int(i) - 1 for i in user_input.split(',') if i.strip().isdigit()]
     return [urls[i] for i in indices if 0 <= i < len(urls)]
 
-# Determine appropriate handler and dispatch to parser
-
-# Dispatch the URL to the appropriate state/county handler using state_router.
-# If not available, fallback to the default HTML handler.
-# If not available, fallback to the generic HTML parser.
+# --- Handler Resolution: State/County/Format Routing ---
 def resolve_and_parse(page, context, url):
+    """
+    Given a Playwright page, context, and URL, route to the correct handler.
+    Tries state/county handler, then HTML handler, then fallback.
+    """
     context["source_url"] = url
     state = context.get("state")
     county = context.get("county")
@@ -190,47 +145,35 @@ def resolve_and_parse(page, context, url):
         return html_handler.parse_fallback(page=page, html_context=context)
     return html_handler.parse(page=page, html_context=context)
 
-
-# Pipeline runner
-
-# If manual parsing override is enabled (via .env), prompt the user to select a file
-# and route it through the corresponding handler based on its extension. in the input folder
-# and process using the appropriate format handler (JSON, CSV, PDF).
+# --- Manual Format Override (for direct file parsing) ---
 def process_format_override():
-
     force_parse = os.getenv("FORCE_PARSE_INPUT_FILE", "false").lower() == "true"
     force_format = os.getenv("FORCE_PARSE_FORMAT", "").strip().lower()
     if not force_parse or not force_format:
         return None
-
     input_folder = INPUT_DIR
     files = [f for f in os.listdir(input_folder) if f.endswith(f".{force_format}")]
     if not files:
         rprint(f"[red][ERROR] No .{force_format} files found in 'input' folder.[/red]")
         return None
-
     rprint(f"[yellow]Manual override enabled for format:[/yellow] [bold]{force_format}[/bold]")
     for i, f in enumerate(files):
         rprint(f"  [bold cyan][{i}][/bold cyan] {f}")
-
     try:
-        selection = input("[PROMPT] Select a file index to parse: ").strip()
+        selection = prompt_user_input("[PROMPT] Select a file index to parse: ").strip()
         index = int(selection)
         target_file = files[index]
     except (IndexError, ValueError, EOFError, KeyboardInterrupt):
         rprint("[red]Invalid selection. Aborting manual parse.[/red]")
         return None
-    # Determine the handler for the file format specified in manual override (.env)
     handler = route_format_handler(force_format)
     if not handler:
         rprint(f"[red][ERROR] No format handler found for '{force_format}'[/red]")
         return None
-
     full_path = str(input_folder / target_file)
     html_context = {"manual_file": full_path}
-    dummy_page = cast(Page, None)  # Temporarily trick the type checker
+    dummy_page = cast(Page, None)
     result = handler.parse(dummy_page, html_context)
-
     if result and all(result):
         *_, metadata = result
         if "output_file" in metadata:
@@ -243,31 +186,62 @@ def process_format_override():
         rprint("[red][ERROR] Manual parsing failed or returned no data.[/red]")
         return None
 
-# Core handler for processing a single URL: launch browser, detect format,
-# scrape or parse election data, route to appropriate handler, and track output.
+# --- AI/ML Anomaly Detection Stub ---
+def ai_analyze_results(headers, data, contest_title, metadata):
+    """
+    Placeholder for future AI/ML anomaly detection.
+    This could call an external service, run a local model, or use AutoGPT.
+    """
+    # Example: send data to an anomaly detection service or model
+    if ENABLE_AI_ANALYSIS:
+        try:
+            # from .ai_tools import analyze_results
+            # anomalies = analyze_results(headers, data, contest_title, metadata)
+            anomalies = []  # Placeholder
+            if anomalies:
+                rprint(f"[bold red][AI ALERT][/bold red] Potential anomalies detected: {anomalies}")
+                logger.warning(f"[AI] Anomalies detected: {anomalies}")
+            else:
+                logger.info("[AI] No anomalies detected.")
+        except Exception as e:
+            logger.error(f"[AI] Analysis failed: {e}")
+
+# --- Real-time Streaming Stub ---
+def stream_results(headers, data, contest_title, metadata):
+    """
+    Placeholder for future real-time streaming of results.
+    Could push to a websocket, message queue, or distributed ledger.
+    """
+    if ENABLE_REALTIME_STREAM:
+        try:
+            # from .streaming_tools import stream_to_network
+            # stream_to_network(headers, data, contest_title, metadata)
+            logger.info("[STREAM] Results streamed in real-time (stub).")
+        except Exception as e:
+            logger.error(f"[STREAM] Streaming failed: {e}")
+
+# --- Main URL Processing Logic ---
 def process_url(target_url):
     logging.info(f"Navigating to: {target_url}")
     with sync_playwright() as p:
         try:
-            # Launch browser using stealth mode to reduce bot detection
             browser, context, page, user_agent = launch_browser_with_stealth(
                 p, headless=HEADLESS_DEFAULT, minimized=HEADLESS_DEFAULT
             )
             page.goto(target_url, timeout=60000)
-            # Detect and resolve Cloudflare CAPTCHA if triggered
+            # CAPTCHA handling
             captcha_result = handle_cloudflare_captcha(p, page, target_url)
             if captcha_result:
                 browser, context, page, user_agent = captcha_result
-            # Scan the HTML page for embedded context such as state, county, and contest list
+            # Scan for context (state, county, races, etc.)
             html_context = scan_html_for_context(page)
             logger.debug(f"html_context after scan: {html_context}")
             html_context["source_url"] = target_url
 
+            # --- Format Detection (JSON/CSV/PDF) ---
             FORMAT_DETECTION_ENABLED = os.getenv("FORMAT_DETECTION_ENABLED", "true").lower() == "true"
-            format_type = None
             result = None
             if FORMAT_DETECTION_ENABLED:
-                # Automatically detect if downloadable formats like JSON/CSV/PDF are available
                 auto_confirm = os.getenv("FORMAT_AUTO_CONFIRM", "true").lower() == "true"
                 confirmed = detect_format_from_links(page, target_url, auto_confirm=auto_confirm)
                 fmt, local_file = prompt_user_for_format(confirmed, logger=logging)
@@ -288,6 +262,8 @@ def process_url(target_url):
                             return
                         if result and all(result):
                             headers, data, contest_title, metadata = result
+                            ai_analyze_results(headers, data, contest_title, metadata)
+                            stream_results(headers, data, contest_title, metadata)
                             if "output_file" in metadata:
                                 logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
                             mark_url_processed(target_url, status="success")
@@ -295,8 +271,9 @@ def process_url(target_url):
                         else:
                             logging.warning(f"[WARN] No handler found for format: {fmt}")
                     else:
-                         logging.info("[INFO] No format selected or skipped by user.")        
-            # If multiple races are present and batch_mode is enabled, iterate through all
+                        logging.info("[INFO] No format selected or skipped by user.")        
+
+            # --- Batch Mode: Multiple Races ---
             if html_context.get("batch_mode") and "selected_races" in html_context:
                 for race_title in html_context["selected_races"]:
                     if "filter_race_type" in html_context:
@@ -312,6 +289,8 @@ def process_url(target_url):
                         continue
                     headers, data, contest_title, metadata = result
                     if all([headers, data, contest_title, metadata]):
+                        ai_analyze_results(headers, data, contest_title, metadata)
+                        stream_results(headers, data, contest_title, metadata)
                         if "output_file" in metadata:
                             logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
                         else:
@@ -321,6 +300,7 @@ def process_url(target_url):
                 mark_url_processed(target_url, status="success")
                 return
 
+            # --- Default: Single Race/Context ---
             if not result:
                 result = resolve_and_parse(page, html_context, target_url)
                 if not isinstance(result, tuple) or len(result) != 4:
@@ -329,17 +309,19 @@ def process_url(target_url):
                     return
             else:
                 if isinstance(result, tuple) and len(result) == 4:
-                     *_, metadata = result 
-                     if metadata.get("skipped"):
-                         logging.info(f"[INFO] Handler skipped parsing. Falling back to HTML.")
-                         result = resolve_and_parse(page, html_context, target_url)
-            # Final result check: if all parts returned, log the outcome and mark URL
+                    *_, metadata = result 
+                    if metadata.get("skipped"):
+                        logging.info(f"[INFO] Handler skipped parsing. Falling back to HTML.")
+                        result = resolve_and_parse(page, html_context, target_url)
+            # --- Final Output ---
             if not result or not isinstance(result, tuple) or len(result) != 4:
                 logging.error("[ERROR] Handler returned unexpected structure: expected 4 values.")
                 mark_url_processed(target_url, status="fail")
                 return             
             headers, data, contest_title, metadata = result
             if all([headers, data, contest_title, metadata]):
+                ai_analyze_results(headers, data, contest_title, metadata)
+                stream_results(headers, data, contest_title, metadata)
                 if "output_file" in metadata:
                     logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
                 else:
@@ -352,16 +334,14 @@ def process_url(target_url):
         except Exception as e:
             logging.error(f"Failed to process {target_url}: {e}", exc_info=True)
             mark_url_processed(target_url, status="error")
-# Main entry point for the HTML election parser pipeline.
-# Handles URL queueing, manual override, routing, parsing, and structured output..
-# Handles manual overrides, URL queueing, scraping logic, contest selection, and output.
+
+# --- Main Entry Point ---
 def main():
     # --- Bot integration: run bot tasks if enabled ---
-    if os.getenv("ENABLE_BOT_TASKS", "false").lower() == "true" and run_bot_task:
-        # You can pass context or arguments as needed
+    if ENABLE_BOT_TASKS and run_bot_task:
         run_bot_task("scan_and_notify", context={})
         return
-    # --- End bot integration ---    
+
     if process_format_override():
         return
 
@@ -393,14 +373,13 @@ def main():
         logging.info("No URLs selected. Exiting.")
         return
 
-    # Optionally enable multiprocessing for batch mode
-    if os.getenv("ENABLE_PARALLEL", "false").lower() == "true":
+    # --- Multiprocessing for batch mode ---
+    if ENABLE_PARALLEL:
         with Pool() as pool:
             pool.map(process_url, selected_urls)
     else:
         for url in selected_urls:
             process_url(url)
-
 
 if __name__ == "__main__":
     main()
