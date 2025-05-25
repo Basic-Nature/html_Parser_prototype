@@ -37,7 +37,12 @@ IGNORE_SUBSTRINGS = [
 CONTEST_PARTS = [
     "President", "Vice President", "Senate", "Senator", "Congress", "Representative", "Governor",
     "Board", "Supervisor", "Elections", "Registration", "District", "County", "City", "Town", "Ward",
-    "School", "Education", "Court", "Justice", "Judge", "Clerk", "Commissioner", "Trustee", "Auditor"
+    "School", "Education", "Court", "Justice", "Judge", "Clerk", "Commissioner", "Trustee", "Auditor", "state",
+    "Assembly", "House", "Delegate", "Elector", "Electors", "Attorney General", "Comptroller", "Treasurer",
+    "Secretary of State", "District Attorney", "Public Utility", "Soil and Water Conservation",
+    "Conservation District", "Conservation Board", "Conservation Supervisor", "Conservation Director",
+    "Conservation Commissioner", "Conservation Board of Supervisors", "Conservation Board of Directors",
+    "Conservation Board of Commissioners", "Conservation Board of Assessors", "Conservation Board of Auditors",
 ]
 
 # Full contest labels (for direct matching)

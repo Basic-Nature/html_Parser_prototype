@@ -5,7 +5,7 @@
 # This routes through the state_router using html_scanner context.
 # ==============================================================
 
-from ...state_router import get_handler as get_state_handler
+from ...state_router import get_handler_from_context
 from ...utils.contest_selector import select_contest
 from ...utils.download_utils import download_confirmed_file
 from ...utils.format_router import detect_format_from_links, route_format_handler
@@ -120,9 +120,9 @@ def parse(page, html_context=None):
         html_context["selected_race"] = contest_title
 
     # 4. Delegate to state/county handler if available
-    state_handler = get_state_handler(
-        state_abbreviation=html_context.get("state"),
-        county_name=html_context.get("county")
+    state_handler = get_handler_from_context(
+        state=html_context.get("state"),
+        county=html_context.get("county")
     )
     if state_handler and hasattr(state_handler, "parse"):
         logger.info(f"[HTML Handler] Redirecting to state handler: {state_handler.__name__}...")

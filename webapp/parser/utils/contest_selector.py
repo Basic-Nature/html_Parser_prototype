@@ -13,14 +13,38 @@ DEFAULT_NOISY_LABELS = [
     "download",
     "vote method",
     "voting method",
+    "election districts reporting",
+    "as of",
+    "candidate",
+    "percentage",
+    "votes",
+    "winner",
+    "response",
+    "yes",
+    "no"
 ]
 DEFAULT_NOISY_LABEL_PATTERNS = [
     r"view results? by election district\s*[:\n]?$",
     r"summary by method\s*[:\n]?$",
     r"download\s*[:\n]?$",
+    r"^view results.*",
+    r"^summary by method.*",
+    r"^download.*",
+    r"^vote method.*",
+    r"^voting method.*",
     r"vote method\s*[:\n]?$",
     r"voting method\s*[:\n]?$",
-    r"^vote for \d+$"
+    r"^vote for \d+$",
+    r"election districts reporting.*",
+    r"as of.*",
+    r"candidate.*",
+    r"percentage.*",
+    r"votes.*",
+    r"winner.*",
+    r"response.*",
+    r"^yes$",
+    r"^no$"
+    # Add more as needed
 ]
 DEFAULT_NOISY_LABELS = [label.lower() for label in DEFAULT_NOISY_LABELS]
 
@@ -77,6 +101,7 @@ def select_contest(
     allow_multiple=True,
     noisy_labels=None,
     noisy_label_patterns=None
+    
 ):
     """
     Selects contests from detected races, filtering out noisy/generic labels.
@@ -90,6 +115,17 @@ def select_contest(
     ]
     logger.debug(f"[DEBUG] Filtered races (full): {filtered_races}")
     logger.debug(f"[DEBUG] Number of filtered races (full): {len(filtered_races)}")
+    if not filtered_races:
+        rprint("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
+        return None
+    # After filtering, before grouping:
+    unique_races = []
+    seen = set()
+    for race in filtered_races:
+        if race not in seen:
+            unique_races.append(race)
+            seen.add(race)
+    filtered_races = unique_races
     if not filtered_races:
         rprint("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
         return None

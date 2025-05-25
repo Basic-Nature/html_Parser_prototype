@@ -153,6 +153,7 @@ def resolve_state_handler(url_or_text: str):
 
 def get_handler(state_abbreviation: Optional[str], county_name: Optional[str] = None):
     """Dynamically loads and returns a handler based on state or state+county keys."""
+    logger.info(f"[DEBUG] About to call get_handler with state={state_abbreviation}, county={county_name}")
     if not state_abbreviation:
         logger.warning("[Router] Missing state_abbreviation — skipping handler resolution.")
         return None
@@ -183,6 +184,7 @@ def get_handler_from_context(context: Dict[str, Any]):
     """Extracts state and county info from a context dictionary and routes accordingly."""
     state = context.get("state")
     county = context.get("county")
+    logger.info(f"[Router DEBUG] Context received: state={state}, county={county}, context={context}")
     if not state and not county:
         logger.warning("[Router] No state or county provided in context.")
         return None
