@@ -23,7 +23,7 @@ def parse(page: Page, html_context: Optional[dict] = None):
         logger.warning("[NY Handler] No county specified in html_context.")
         raise NotImplementedError("No county specified for NY handler.")
 
-    module_path = f"handlers.states.new_york.county.{county}"
+    module_path = f"webapp.parser.handlers.states.new_york.county.{county}"
 
     try:
         county_module = importlib.import_module(module_path)

@@ -135,7 +135,7 @@ def resolve_state_handler(url_or_text: str):
     for state_abbr, state_key in STATE_MODULE_MAP.items():
         if state_abbr in lower:
             logger.info(f"[State Router] URL/text matched state '{state_abbr}' → {state_key}")
-            module_path = f"handlers.states.{state_key}"
+            module_path = f"webapp.parser.handlers.states.{state_key}"
             module = import_handler(module_path)
             if module:
                 return module
@@ -160,7 +160,7 @@ def get_handler(state_abbreviation: Optional[str], county_name: Optional[str] = 
 
     normalized_state = state_abbreviation.strip().lower().replace(" ", "_")
     state_key = STATE_MODULE_MAP.get(normalized_state, normalized_state)
-    module_path = f"handlers.states.{state_key}"
+    module_path = f"webapp.parser.handlers.states.{state_key}"
 
     # --- COUNTY HANDLER PRIORITY ---
     if county_name:
