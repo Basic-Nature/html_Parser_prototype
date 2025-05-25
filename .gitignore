@@ -46,7 +46,7 @@ uploads/
 *.csv
 *.pdf
 *.json
-urls.txt
+
 
 # ----------------------------
 # Browser Drivers and Cache

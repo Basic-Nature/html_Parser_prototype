@@ -1,0 +1,26 @@
+# === Smart Elections Parser - URL List ===
+# Add one URL per line below. Lines starting with "#" are ignored.
+# These can represent state election result portals, PDF links, or JSON endpoints.
+
+# Arizona - General Election (Live Results)
+https://results.arizona.vote/default.html
+
+# Rockland county, Ny - what the default is set to
+https://app.enhancedvoting.com/results/public/rockland-county-ny/elections/GE2024Results
+
+# Pennsylvania - 2022 General Election Official
+https://www.electionreturns.pa.gov/Home/SummaryResults
+
+# Fulton County, GA - JSON API Results
+https://results.enr.clarityelections.com/GA/Fulton/105430/web.264614/#/summary
+
+# Florida - csv results
+https://flelectionfiles.floridados.gov/enightfilespublic/20250401_ElecResultsFL.xls
+# Florida - Live Results
+https://results.elections.myflorida.com/
+
+# Uncomment below to include additional races
+# https://www.elections.virginia.gov/resultsreports/election-results/
+# https://electionresults.iowa.gov/IA/122322/web.345435/#/summary
+
+# === End of File ===

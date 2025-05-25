@@ -178,29 +178,33 @@ def find_best_toggle(
     search_root,
     selectors,
     keywords,
+    contest_heading=None,
+    heading_tags=None,
+    max_heading_level=6,
     logger=None,
     verbose=False,
-    heading_match=None,
-    heading_tags=None,
-    max_heading_level=20,
-    page=None,
     interactive=False
 ):
     """
-    Attempts to find and click a toggle/button/link matching handler-provided keywords.
-    If no match is found, interactively prompts the user to select from best candidates.
-    Returns True if clicked, False otherwise.
+    Improved: Finds and clicks a toggle/button/link matching keywords,
+    prioritizing those within the correct contest panel (by heading).
     """
-    def matches_keywords(text, keywords):
-        text_norm = re.sub(r'\s+', ' ', text or '').strip().lower()
-        for keyword in keywords:
-            keyword_norm = re.sub(r'\s+', ' ', keyword or '').strip().lower()
-            if keyword_norm in text_norm:
-                return True
-            # Fuzzy match
-            if difflib.get_close_matches(keyword_norm, [text_norm], n=1, cutoff=0.8):
-                return True
-        return False
+    import difflib
+
+    def normalize(text):
+        return (text or "").strip().lower()
+
+    def get_nearest_heading(el):
+        # Walk up ancestors to find nearest heading tag
+        tags = heading_tags or [f"h{i}" for i in range(1, max_heading_level+1)]
+        for tag in tags:
+            try:
+                heading = el.locator(f"xpath=ancestor::{tag}[1]")
+                if heading.count() > 0:
+                    return heading.nth(0).inner_text().strip()
+            except Exception:
+                continue
+        return ""
 
     candidates = []
     for selector in selectors:
@@ -212,66 +216,64 @@ def find_best_toggle(
                     continue
                 label = el.inner_text().strip()
                 aria_label = el.get_attribute("aria-label") or ""
-                all_labels = [label, aria_label]
-                # If heading_match is required, check parent headings
-                if heading_match:
-                    panel = el.locator(f"xpath=ancestor::*[self::{' or self::'.join(['div','section','p-panel'])}][1]")
-                    found_heading = False
-                    tags_to_check = heading_tags or [f"h{n}" for n in range(1, max_heading_level+1)]
-                    for tag in tags_to_check:
-                        heading = panel.locator(tag)
-                        if heading.count() > 0:
-                            heading_text = heading.inner_text().strip().lower()
-                            if heading_match.lower() in heading_text:
-                                found_heading = True
-                                break
-                    if not found_heading:
-                        continue
-                # Keyword match
-                if any(matches_keywords(l, keywords) for l in all_labels if l):
-                    el.scroll_into_view_if_needed()
-                    el.click()
-                    if logger and verbose:
-                        logger.info(f"[TOGGLE] Clicked: '{label or aria_label}' (selector: {selector})")
-                    return True
-                # Collect for fallback
-                candidates.append((el, label, aria_label, selector))
+                class_attr = el.get_attribute("class") or ""
+                # Find nearest heading
+                nearest_heading = get_nearest_heading(el)
+                # Score: 2 if heading matches contest, 1 if not, 0 if no heading
+                heading_score = 0
+                if contest_heading and nearest_heading:
+                    if normalize(contest_heading) in normalize(nearest_heading):
+                        heading_score = 2
+                    elif normalize(contest_heading).split()[0] in normalize(nearest_heading):
+                        heading_score = 1
+                # Fuzzy match label/aria-label to keywords
+                best_score = 0
+                for kw in keywords:
+                    for txt in [label, aria_label]:
+                        score = difflib.SequenceMatcher(None, normalize(kw), normalize(txt)).ratio()
+                        if score > best_score:
+                            best_score = score
+                # Extra: boost score if class matches known patterns
+                class_score = 1 if "btn-outline-dark" in class_attr else 0
+                total_score = best_score + heading_score + class_score
+                candidates.append((total_score, el, label, aria_label, class_attr, nearest_heading, selector))
             except Exception as e:
                 if logger:
-                    logger.debug(f"[TOGGLE] Error checking toggle: {e}")
+                    logger.debug(f"[TOGGLE] Error: {e}")
                 continue
 
-    # If no match, offer interactive prompt if enabled
-    if interactive and candidates:
-        print("\n[INTERACTIVE] No automatic toggle match found.")
-        print("Available clickable elements (best fuzzy matches first):")
-        scored = []
-        for el, label, aria_label, selector in candidates:
-            best_score = 0
-            best_kw = ""
-            for kw in keywords:
-                score = difflib.SequenceMatcher(None, kw.lower(), (label or aria_label).lower()).ratio()
-                if score > best_score:
-                    best_score = score
-                    best_kw = kw
-            scored.append((best_score, label, aria_label, selector, el))
-        scored.sort(reverse=True)
-        for idx, (score, label, aria_label, selector, el) in enumerate(scored[:10]):
-            print(f"{idx+1}. [{score:.2f}] '{label or aria_label}' (selector: {selector})")
-        choice = input("Enter the number of the element to click (or press Enter to skip): ")
-        if choice.isdigit():
-            idx = int(choice) - 1
-            if 0 <= idx < len(scored):
-                el = scored[idx][4]
-                el.scroll_into_view_if_needed()
-                el.click()
-                print(f"[INTERACTIVE] Clicked: '{scored[idx][1] or scored[idx][2]}'")
-                return True
+    # Sort by total_score descending
+    candidates.sort(reverse=True, key=lambda x: x[0])
+
+    # Try to click the best candidate above a threshold
+    for score, el, label, aria_label, class_attr, nearest_heading, selector in candidates:
+        if score >= 1.5:  # Tune this threshold as needed
+            el.scroll_into_view_if_needed()
+            el.click()
+            if logger and verbose:
+                logger.info(f"[TOGGLE] Clicked: '{label or aria_label}' (class: {class_attr}) [heading: {nearest_heading}]")
+            return True
+
+    # Diagnostics: print all candidates if nothing matched
+    if verbose or interactive:
+        print("\n[DIAGNOSTIC] No automatic toggle match found.")
+        print("Available clickable elements (sorted by score):")
+        for idx, (score, el, label, aria_label, class_attr, nearest_heading, selector) in enumerate(candidates):
+            print(f"{idx+1}. [score={score:.2f}] '{label or aria_label}' (class: {class_attr}) [heading: {nearest_heading}] (selector: {selector})")
+        if interactive and candidates:
+            choice = input("Enter the number of the element to click (or press Enter to skip): ")
+            if choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(candidates):
+                    el = candidates[idx][1]
+                    el.scroll_into_view_if_needed()
+                    el.click()
+                    print(f"[INTERACTIVE] Clicked: '{candidates[idx][2] or candidates[idx][3]}'")
+                    return True
 
     if logger:
-        logger.warning(f"[TOGGLE] No toggle found for selectors={selectors}, keywords={keywords}, heading_match={heading_match}")
+        logger.warning(f"[TOGGLE] No toggle found for selectors={selectors}, keywords={keywords}, contest_heading={contest_heading}")
     return False
-
 def click_dynamic_toggle(
     page,
     container,
@@ -287,7 +289,21 @@ def click_dynamic_toggle(
     Handler supplies handler_keywords (list of phrases).
     Attempts to click a matching toggle, or interactively prompts if not found.
     """
-    selectors = ["button", "a", "[role='button']", "div[tabindex]", "span[tabindex]"]
+    selectors = [
+        "button",
+        "a[role='button']",
+        "input[type='button']",
+        "input[type='submit']",
+        "input[type='reset']",
+        "[role='button']",
+        ".btn", ".btn-outline-dark", ".btn-primary", ".btn-success", ".btn-info",
+        ".btn-secondary", ".btn-link", ".btn-default", ".btn-danger", ".btn-warning", ".btn-light",
+        ".btn-outline-primary", ".btn-outline-success", ".btn-outline-info",
+        ".btn-outline-secondary", ".btn-outline-danger", ".btn-outline-warning", ".btn-outline-light",
+        "div[class*='button']", "span[class*='button']",
+        "div[class*='btn']", "span[class*='btn']",
+        "app-vote-method button"
+    ]
     search_root = container if container else page
     return find_best_toggle(
         search_root=search_root,

@@ -95,13 +95,17 @@ def is_noisy_contest_label(label: str, election_types=None, noisy_label_patterns
                 return True
     return bool(re.fullmatch(pattern, label, re.IGNORECASE))
     
+def normalize_race_name(race):
+    # Remove "Vote for X" and extra whitespace
+    race = re.sub(r"\s*Vote for \d+\s*$", "", race, flags=re.IGNORECASE)
+    return race.strip().lower()
+
 def select_contest(
     detected_races, 
     prompt_message="[PROMPT] Enter contest indices (comma-separated), 'all', or leave blank to skip: ",
     allow_multiple=True,
     noisy_labels=None,
     noisy_label_patterns=None
-    
 ):
     """
     Selects contests from detected races, filtering out noisy/generic labels.
@@ -118,17 +122,22 @@ def select_contest(
     if not filtered_races:
         rprint("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
         return None
-    # After filtering, before grouping:
+
+    # Deduplicate by normalized race name
     unique_races = []
     seen = set()
-    for race in filtered_races:
-        if race not in seen:
-            unique_races.append(race)
-            seen.add(race)
+    for year, etype, race in filtered_races:
+        norm = normalize_race_name(race)
+        key = (year, etype, norm)
+        if key not in seen:
+            unique_races.append((year, etype, race))
+            seen.add(key)
     filtered_races = unique_races
+
     if not filtered_races:
         rprint("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
         return None
+
     # Group by (year, etype)
     from collections import defaultdict
     grouped = defaultdict(list)
@@ -138,12 +147,13 @@ def select_contest(
     # Display headings and contests
     idx = 0
     for (year, etype), races in sorted(grouped.items()):
-        rprint(f"[bold cyan]{year} {etype}[/bold cyan]")
+        label = f"{year or 'Unknown'} {etype or 'Unknown'}"
+        rprint(f"[bold cyan]{label}[/bold cyan]")
         for race in races:
             rprint(f"  [{idx}] {race}")
             idx += 1
     logger.debug(f"[DEBUG] Number of races displayed: {idx}")    
-    
+
     # Auto-select if only one contest
     if len(filtered_races) == 1:
         rprint(f"[green]Only one contest found. Auto-selecting: {filtered_races[0]}[/green]")

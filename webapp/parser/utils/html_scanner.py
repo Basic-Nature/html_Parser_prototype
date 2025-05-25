@@ -3,6 +3,7 @@ import re
 import time
 from collections import defaultdict
 from .contest_selector import is_noisy_label, is_noisy_contest_label
+import difflib
 from ..state_router import STATE_MODULE_MAP
 from typing import Dict, Any
 from ..utils.shared_logic import ( 
@@ -84,22 +85,40 @@ def score_state_county_from_url(url: str, text_lower: str):
     best_county = None
     county_score = 0
     county_folder = os.path.join(
-        os.path.dirname(__file__), "..", "handlers", "states", best_state, "county"
+        os.path.dirname(__file__), "..", "handlers", "states", STATE_MODULE_MAP.get(best_state, best_state), "county"
     )
     if os.path.isdir(county_folder):
         possible_counties = [
             f[:-3] for f in os.listdir(county_folder)
             if f.endswith(".py") and f != "__init__.py"
         ]
+        url_segments = re.split(r"[\/\-_\.]", url)
         for county in possible_counties:
             score = 0
             county_clean = county.lower().replace("_", " ").replace("-", " ").strip()
-            patterns = all_patterns(county_clean, extra_terms=CONTEST_PARTS)
+            # Only generate a few key patterns
+            patterns = {
+                county_clean,
+                f"{county_clean} county",
+                county_clean.replace(" ", ""),
+                f"{county_clean.replace(' ', '')}county",
+                f"{county_clean}-county",
+                f"{county_clean}_county",
+                f"{county_clean}county"
+            }
+            # Check patterns in URL
             for pattern in patterns:
                 if pattern and pattern in url:
                     score += 2
-                if pattern and pattern in text_lower:
-                    score += 1
+            # Check for exact segment match
+            if county_clean in url_segments or f"{county_clean} county" in url_segments:
+                score += 4  # Strong match for segment
+            # Fuzzy match only if no strong match yet
+            if score < 4:
+                matches = difflib.get_close_matches(county_clean, url_segments, n=1, cutoff=0.85)
+                matches += difflib.get_close_matches(f"{county_clean} county", url_segments, n=1, cutoff=0.85)
+                if matches:
+                    score += 3  # Slightly lower than exact
             if score > county_score:
                 best_county = county
                 county_score = score
@@ -129,18 +148,19 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
 
         # --- 1. Try to detect state/county from URL first, using scoring ---
         best_state, state_score, best_county, county_score = score_state_county_from_url(url, text_lower)
+        logger.debug(f"Results from {url} returned state '{best_state}' with score {state_score}.")
+        logger.debug(f"Results from {url} returned county '{best_county}' with score {county_score}.")
         if state_score >= 3:
             context_result["state"] = best_state
             logger.info(f"[SCAN] (URL) Detected state '{best_state}' from URL with score {state_score}.")
         else:
             logger.info(f"[SCAN] (URL) State score too low ({state_score}), will try DOM context.")
-
+            
         if county_score >= 3:
             context_result["county"] = best_county
-            logger.info(f"[SCAN] (URL) Detected county '{best_county}' from URL with score {county_score}.")
         else:
             logger.info(f"[SCAN] (URL) County score too low ({county_score}), will try DOM context.")
-
+            logger.debug(f"Results from {url} returned county '{best_county}' with score {county_score}.")
         # --- 2. Fallback: DOM-based state detection if not found in URL ---
         if context_result["state"] == "Unknown":
             state_scores = {}
@@ -219,16 +239,25 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
             ):
                 continue
 
-            # Detect year
+            # Detect year (try to extract from the segment itself if present)
             year_matches = YEAR_REGEX.findall(raw_segment)
+            year_in_label = None
             if year_matches:
                 last_detected_year = max(year_matches)
+                year_in_label = last_detected_year
                 logger.debug(f"[SCAN] Detected year: {last_detected_year} from line: '{raw_segment[:50]}...'")
+            else:
+                # Try to extract year from contest/race label itself
+                year_matches_label = YEAR_REGEX.findall(norm_segment)
+                if year_matches_label:
+                    last_detected_year = max(year_matches_label)
+                    year_in_label = last_detected_year
 
             # Detect contest/race keywords
             for keyword in COMMON_CONTEST_LABELS:
                 if normalize_text(keyword) in norm_segment:
-                    tag_year = last_detected_year if last_detected_year else "Unknown"
+                    # Prefer year in label, else last detected year, else "Unknown"
+                    tag_year = year_in_label if year_in_label else (last_detected_year if last_detected_year else "Unknown")
                     # Detect election type
                     if "general" in norm_segment:
                         detected_type = "General"
@@ -280,10 +309,10 @@ def get_detected_races_from_context(context_result):
     for year, year_group in context_result.get("available_races", {}).items():
         for etype, races in year_group.items():
             for race in races:
-                key = (year, etype, race.strip())
-                # Filter out noisy/generic races
+                # Normalize for deduplication: (year, etype, normalized race)
+                key = (year, etype, normalize_text(race))
                 if key not in seen and race.strip() and not race.strip().lower().startswith("vote for"):
                     if not is_noisy_label(race) and not is_noisy_contest_label(race):
-                        flat.append(key)
+                        flat.append((year, etype, race.strip()))
                         seen.add(key)
     return sorted(flat)
