@@ -282,7 +282,7 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
             anomalies, clusters = detect_anomalies_with_ml(contests, output_cache)
             if anomalies:
                 for idx in anomalies:
-                    logging.alert(
+                    logging.warning(
                         f"Anomaly detected in contest: {contests[idx]['title']}",
                         context=contests[idx],
                         alert_type="warning"
@@ -290,7 +290,7 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
             # NLP outlier detection
             nlp_outliers = nlp_title_outlier_detection(contests)
             for idx in nlp_outliers:
-                logging.alert(
+                logging.warning(
                     f"NLP Outlier detected in contest title: {contests[idx]['title']}",
                     context=contests[idx],
                     alert_type="warning"
@@ -310,7 +310,7 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
 
     # --- Congestion/flow detection ---
     if len(contests) > 50:
-       logging.warning(f"[CONTEXT ORGANIZER] High contest count detected — possible congestion.", context={"contest_count": len(contests)})
+       logging.warning(f"[CONTEXT ORGANIZER] High contest count detected — possible congestion. Context: contest_count={len(contests)}")
 
     organized = {
         "contests": contests,
