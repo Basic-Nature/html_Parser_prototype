@@ -2,6 +2,7 @@
 # ==============================================================
 # Parses election results from PDF files.
 # Includes dynamic scanning, OCR fallback, and optional user prompt.
+# Enhanced for multi-pass OCR, accuracy scoring, and harmonized output.
 # ==============================================================
 
 import os
@@ -12,6 +13,7 @@ from rich import print as rprint
 from ...state_router import resolve_state_handler
 from ...utils.output_utils import finalize_election_output
 from ...utils.shared_logger import logger
+from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
 
 try:
     import fitz  # PyMuPDF
@@ -51,6 +53,59 @@ def prompt_file_selection(pdf_files):
         rprint("[red]Invalid index. Skipping PDF parsing.[/red]")
         return None
 
+def ocr_multi_pass(images, passes=3, confidence_threshold=30):
+    """Run OCR multiple times and aggregate results with confidence scoring."""
+    ocr_runs = []
+    pass_confidences = []
+
+    def process_image_ocr(img):
+        page_text = ""
+        confidences = []
+        if pytesseract:
+            details = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT) if hasattr(pytesseract, "Output") else {}
+            for j in range(len(details.get("text", []))):
+                word = details["text"][j].strip()
+                conf = details["conf"][j]
+                if word:
+                    try:
+                        conf_val = float(conf)
+                        confidences.append(conf_val)
+                        if conf_val >= confidence_threshold:
+                            page_text += word + " "
+                    except ValueError:
+                        continue
+        return page_text, confidences
+
+    for i in range(passes):
+        logger.info(f"[INFO] OCR pass {i+1} of {passes}")
+        ocr_text = ""
+        confidences = []
+        with ThreadPoolExecutor() as executor:
+            results = list(executor.map(process_image_ocr, images))
+        for text, conf_list in results:
+            ocr_text += text + "\n"
+            confidences.extend(conf_list)
+        avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
+        pass_confidences.append(avg_conf)
+        ocr_runs.append(ocr_text)
+
+    # Merge and dedupe lines, cross-reference for best lines
+    line_sets = [set(text.splitlines()) for text in ocr_runs]
+    combined_lines = sorted(set.union(*line_sets))
+    all_text = "\n".join(combined_lines)
+    overall_avg = sum(pass_confidences) / len(pass_confidences) if pass_confidences else 0.0
+    return all_text, overall_avg, ocr_runs
+
+def infer_headers_and_methods(lines, table_hints):
+    """Try to infer headers and method columns from lines."""
+    header_candidates = [line for line in lines if sum(1 for hint in table_hints if hint in line.lower()) >= 2]
+    headers = []
+    if header_candidates:
+        # Use the first candidate as header
+        headers = re.split(r"\s{2,}|\t|,", header_candidates[0].strip())
+        headers = [h.strip() for h in headers if h.strip()]
+    return headers, header_candidates
+
 def parse(page, html_context):
     # Respect early skip signal from calling context
     if html_context.get("skip_format") or html_context.get("manual_skip"):
@@ -82,7 +137,10 @@ def parse(page, html_context):
     all_text = ""
     metadata = {}
     headers = []
-    ocr_passes = 0
+    ocr_passes = int(os.getenv("OCR_ATTEMPTS", "3"))
+    confidence_threshold = float(os.getenv("OCR_CONFIDENCE_THRESHOLD", "30"))
+    ocr_score = 0.0
+    ocr_runs = []
 
     try:
         # Extract text with PyMuPDF
@@ -99,64 +157,16 @@ def parse(page, html_context):
     if not all_text.strip() and pytesseract and pdf2image and os.getenv("ENABLE_OCR", "true").lower() == "true":
         logger.info("[INFO] Empty text result from PyMuPDF — attempting OCR fallback.")
         images = pdf2image.convert_from_path(pdf_path)
-        ocr_runs = []
-        pass_confidences = []
-        ocr_passes = int(os.getenv("OCR_ATTEMPTS", "3"))
-        confidence_threshold = float(os.getenv("OCR_CONFIDENCE_THRESHOLD", "30"))
-
-        def process_image_ocr(img):
-            page_text = ""
-            confidences = []
-            if pytesseract:
-                details = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT) if hasattr(pytesseract, "Output") else {}
-                for j in range(len(details.get("text", []))):
-                    word = details["text"][j].strip()
-                    conf = details["conf"][j]
-                    if word:
-                        try:
-                            conf_val = float(conf)
-                            confidences.append(conf_val)
-                            if conf_val >= confidence_threshold:
-                                page_text += word + " "
-                        except ValueError:
-                            continue
-            return page_text, confidences
-
-        for i in range(ocr_passes):
-            logger.info(f"[INFO] OCR pass {i+1} of {ocr_passes}")
-            ocr_text = ""
-            confidences = []
-            with ThreadPoolExecutor() as executor:
-                results = list(executor.map(process_image_ocr, images))
-            for text, conf_list in results:
-                ocr_text += text + "\n"
-                confidences.extend(conf_list)
-            avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
-            pass_confidences.append(avg_conf)
-            ocr_runs.append(ocr_text)
-
-        # Merge and dedupe lines
-        line_sets = [set(text.splitlines()) for text in ocr_runs]
-        combined_lines = sorted(set.union(*line_sets))
-        all_text = "\n".join(combined_lines)
-        overall_avg = sum(pass_confidences) / len(pass_confidences) if pass_confidences else 0.0
-        metadata["ocr_confidence_avg"] = round(overall_avg, 2)
+        all_text, ocr_score, ocr_runs = ocr_multi_pass(images, passes=ocr_passes, confidence_threshold=confidence_threshold)
+        metadata["ocr_confidence_avg"] = round(ocr_score, 2)
+        metadata["ocr_passes"] = ocr_passes
 
     logger.debug("[DEBUG] PDF extracted text preview (first 500 chars):" + all_text[:500])
 
     # Step: Basic check for tabular structure
     table_hints = os.getenv("PDF_HEADER_KEYWORDS", "precinct,votes,candidate,early,absentee,provisional").split(",")
     lines = all_text.splitlines()
-    matches = [line for line in lines if sum(1 for hint in table_hints if hint in line.lower()) >= 2]
-    multi_column_lines = [line for line in lines if line.count("  ") > 3 or line.count("\t") > 2]
-
-    # Attempt basic column inference
-    header_candidates = [line for line in lines if all(h in line.lower() for h in ["precinct", "votes"])]
-    if header_candidates:
-        headers = header_candidates[0].split()
-        logger.info(f"[INFO] Inferred column headers: {headers}")
-    else:
-        logger.info("[INFO] No strong header line found. Will treat first non-empty row as fallback header.")
+    headers, header_candidates = infer_headers_and_methods(lines, table_hints)
 
     # Detect state and county from filename if not already present
     if "state" not in html_context or html_context.get("state") == "Unknown":
@@ -190,35 +200,76 @@ def parse(page, html_context):
 
     # Attempt row splitting from lines if table detected
     data = []
-    if matches or multi_column_lines:
-        content_lines = [line.strip() for line in lines if line.strip()]
-        if header_candidates:
+    if headers:
+        # Find the header line index
+        header_line_idx = None
+        for idx, line in enumerate(lines):
+            if all(h.lower() in line.lower() for h in headers[:2]):  # crude match
+                header_line_idx = idx
+                break
+        if header_line_idx is None and header_candidates:
             try:
-                start_index = content_lines.index(header_candidates[0])
+                header_line_idx = lines.index(header_candidates[0])
             except ValueError:
-                start_index = 0
-        else:
-            start_index = 0
-        for line in content_lines[start_index + 1:]:
-            row = line.split()
-            if contest_column and headers and len(row) == len(headers):
-                contest_value = row[headers.index(contest_column)]
-                if contest_value:
-                    data.append(dict(zip(headers, row)))
-            elif headers and len(row) == len(headers):
-                data.append(dict(zip(headers, row)))
+                header_line_idx = 0
+        if header_line_idx is None:
+            header_line_idx = 0
 
+        # Parse rows
+        for line in lines[header_line_idx + 1:]:
+            if not line.strip():
+                continue
+            # Try to split by multiple spaces, tabs, or commas
+            row = re.split(r"\s{2,}|\t|,", line.strip())
+            row = [cell.strip() for cell in row if cell.strip()]
+            if len(row) == len(headers):
+                row_dict = dict(zip(headers, row))
+                data.append(row_dict)
+
+        # Harmonize and format as wide CSV
         if data:
+            # Try to detect candidate/method/reporting unit columns
+            candidate_cols = [col for col in headers if "candidate" in col.lower()]
+            precinct_cols = [col for col in headers if any(x in col.lower() for x in ["precinct", "ward", "district", "county"])]
+            method_cols = [col for col in headers if any(m in col.lower() for m in ["election day", "early", "absentee", "mail", "provisional", "total"])]
+
+            wide_data = []
+            reporting_unit_col = precinct_cols[0] if precinct_cols else headers[0]
+            for row in data:
+                wide_row = {reporting_unit_col: row.get(reporting_unit_col, "")}
+                for cand_col in candidate_cols:
+                    candidate = clean_candidate_name(row.get(cand_col, ""))
+                    for method_col in method_cols:
+                        val = row.get(method_col, "")
+                        col_name = f"{candidate} - {method_col}"
+                        wide_row[col_name] = val
+                if not candidate_cols:
+                    for method_col in method_cols:
+                        wide_row[method_col] = row.get(method_col, "")
+                for col in headers:
+                    if col not in candidate_cols + method_cols + [reporting_unit_col]:
+                        wide_row[col] = row.get(col, "")
+                wide_data.append(wide_row)
+
+            # Build headers from all keys
+            all_keys = set()
+            for row in wide_data:
+                all_keys.update(row.keys())
+            headers = [reporting_unit_col] + sorted([k for k in all_keys if k != reporting_unit_col])
+
+            # Harmonize and add grand total
+            wide_data = harmonize_rows(headers, wide_data)
+            wide_data.append(calculate_grand_totals(wide_data))
+
             contest_title = os.path.basename(pdf_path).replace(".pdf", "")
-            # Output via finalize_election_output
-            result = finalize_election_output(headers, data, contest_title, metadata)
+            result = finalize_election_output(headers, wide_data, contest_title, metadata)
             contest_title = result.get("contest_title", contest_title)
             metadata = result.get("metadata", metadata)
-            return headers, data, contest_title, metadata
+            return headers, wide_data, contest_title, metadata
         else:
-            unmatched_count = len(content_lines[start_index + 1:])
+            unmatched_count = len(lines[header_line_idx + 1:])
             logger.warning(f"[WARN] No structured rows matched the inferred column count of {len(headers)}. Total lines scanned: {unmatched_count}")
-            fallback_rows = [{"raw_line": line} for line in content_lines[start_index + 1:]]
+            fallback_rows = [{"raw_line": line} for line in lines[header_line_idx + 1:]]
             return ["raw_line"], fallback_rows, os.path.basename(pdf_path), metadata
 
     # If no table, return plain text

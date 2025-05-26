@@ -18,16 +18,18 @@ DEFAULT_NOISY_LABEL_PATTERNS = [
 DEFAULT_NOISY_LABELS = [label.lower() for label in DEFAULT_NOISY_LABELS]
 
 def is_noisy_label(label: str, noisy_labels=None, noisy_label_patterns=None) -> bool:
-    """Check if a label is considered noisy based on patterns."""
+    """Check if a label is considered noisy based on patterns or substrings."""
     noisy_labels = noisy_labels or DEFAULT_NOISY_LABELS
     noisy_label_patterns = noisy_label_patterns or DEFAULT_NOISY_LABEL_PATTERNS
     label = label.lower()
     for pattern in noisy_label_patterns:
         if re.search(pattern, label):
             return True
-    if label in noisy_labels:
-        return True
-    return any(noisy in label for noisy in noisy_labels)
+    # Check if any noisy label is a substring of the contest label
+    for noisy in noisy_labels:
+        if noisy in label:
+            return True
+    return False
 
 def extract_election_types(races):
     """Extract possible election types from the list of races."""

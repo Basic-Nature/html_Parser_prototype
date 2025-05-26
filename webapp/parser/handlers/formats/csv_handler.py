@@ -8,9 +8,10 @@ import csv
 import os
 import re
 from dotenv import load_dotenv
-from ...state_router import resolve_state_handler
+from ...state_router import resolve_state_handler, get_handler_from_context
 from ...utils.output_utils import finalize_election_output
 from ...utils.shared_logger import logging, rprint, logger
+from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
 
 load_dotenv()
 
@@ -151,38 +152,42 @@ def parse(page, html_context):
             else:
                 contest_title = os.path.basename(csv_path).replace(".csv", "")
 
-            # Step: Null detection logging
-            null_counts = {col: sum(1 for row in data if not row.get(col)) for col in headers}
-            if any(count > 0 for count in null_counts.values()):
-                if os.getenv("LOG_WARNINGS", "true").lower() == "true":
-                    logging.warning("[Missing Data] Some values are missing in the CSV:")
-                    for col, count in null_counts.items():
-                        if count > 0:
-                            logging.warning(f" - Column '{col}': {count} missing value(s)")
+            # Step: Normalize candidate/precinct columns and harmonize
+            # Try to detect candidate columns and method columns
+            candidate_cols = [col for col in headers if "candidate" in col.lower()]
+            precinct_cols = [col for col in headers if "precinct" in col.lower() or "ward" in col.lower() or "district" in col.lower() or "county" in col.lower()]
+            method_cols = [col for col in headers if any(m in col.lower() for m in ["election day", "early", "absentee", "mail", "provisional", "total"])]
 
-            # Step: Grand totals row calculation (numeric columns only)
-            def is_number(val):
-                try:
-                    float(val.replace(',', '').strip())
-                    return True
-                except:
-                    return False
+            # Build wide-format rows: one row per reporting unit, columns for each candidate-method
+            wide_data = []
+            reporting_unit_col = precinct_cols[0] if precinct_cols else headers[0]
+            for row in data:
+                wide_row = {reporting_unit_col: row.get(reporting_unit_col, "")}
+                for cand_col in candidate_cols:
+                    candidate = clean_candidate_name(row.get(cand_col, ""))
+                    for method_col in method_cols:
+                        val = row.get(method_col, "")
+                        col_name = f"{candidate} - {method_col}"
+                        wide_row[col_name] = val
+                # If no candidate columns, just copy all method columns
+                if not candidate_cols:
+                    for method_col in method_cols:
+                        wide_row[method_col] = row.get(method_col, "")
+                # Add any other columns that are not candidate/method/reporting unit
+                for col in headers:
+                    if col not in candidate_cols + method_cols + [reporting_unit_col]:
+                        wide_row[col] = row.get(col, "")
+                wide_data.append(wide_row)
 
-            numeric_cols = [col for col in headers if all(is_number(row[col]) for row in data if row.get(col))]
-            if numeric_cols:
-                grand_total = {}
-                for col in numeric_cols:
-                    total = 0.0
-                    for row in data:
-                        val = row.get(col)
-                        if val and is_number(val):
-                            try:
-                                total += float(val.replace(',', '').strip())
-                            except Exception as e:
-                                logging.warning(f"[WARN] Could not convert value '{val}' in column '{col}' to float: {e}")
-                    grand_total[col] = total
-                grand_total[headers[0]] = "Grand Totals"
-                data.append(grand_total)
+            # Build headers from all keys
+            all_keys = set()
+            for row in wide_data:
+                all_keys.update(row.keys())
+            headers = [reporting_unit_col] + sorted([k for k in all_keys if k != reporting_unit_col])
+
+            # Harmonize and add grand total
+            wide_data = harmonize_rows(headers, wide_data)
+            wide_data.append(calculate_grand_totals(wide_data))
 
             # Step: Detect state and county from filename if not already present
             if "state" not in html_context or html_context["state"] == "Unknown":
@@ -205,10 +210,10 @@ def parse(page, html_context):
             }
 
             # Output via finalize_election_output
-            result = finalize_election_output(headers, data, contest_title, metadata)
+            result = finalize_election_output(headers, wide_data, contest_title, metadata)
             contest_title = result.get("contest_title", contest_title)
             metadata = result.get("metadata", metadata)
-            return headers, data, contest_title, metadata
+            return headers, wide_data, contest_title, metadata
 
     except Exception as e:
         logging.error(f"[ERROR] Failed to parse CSV: {e}")

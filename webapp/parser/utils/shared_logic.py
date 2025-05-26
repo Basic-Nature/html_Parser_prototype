@@ -185,17 +185,12 @@ def find_best_toggle(
     verbose=False,
     interactive=False
 ):
-    """
-    Improved: Finds and clicks a toggle/button/link matching keywords,
-    prioritizing those within the correct contest panel (by heading).
-    """
     import difflib
 
     def normalize(text):
         return (text or "").strip().lower()
 
     def get_nearest_heading(el):
-        # Walk up ancestors to find nearest heading tag
         tags = heading_tags or [f"h{i}" for i in range(1, max_heading_level+1)]
         for tag in tags:
             try:
@@ -217,23 +212,25 @@ def find_best_toggle(
                 label = el.inner_text().strip()
                 aria_label = el.get_attribute("aria-label") or ""
                 class_attr = el.get_attribute("class") or ""
-                # Find nearest heading
                 nearest_heading = get_nearest_heading(el)
-                # Score: 2 if heading matches contest, 1 if not, 0 if no heading
                 heading_score = 0
                 if contest_heading and nearest_heading:
                     if normalize(contest_heading) in normalize(nearest_heading):
                         heading_score = 2
                     elif normalize(contest_heading).split()[0] in normalize(nearest_heading):
                         heading_score = 1
-                # Fuzzy match label/aria-label to keywords
+                # --- PATCH: Use substring and fuzzy matching, case-insensitive ---
                 best_score = 0
                 for kw in keywords:
                     for txt in [label, aria_label]:
-                        score = difflib.SequenceMatcher(None, normalize(kw), normalize(txt)).ratio()
+                        txt_norm = normalize(txt)
+                        kw_norm = normalize(kw)
+                        if kw_norm in txt_norm:
+                            score = 2.0  # Strong substring match
+                        else:
+                            score = difflib.SequenceMatcher(None, kw_norm, txt_norm).ratio()
                         if score > best_score:
                             best_score = score
-                # Extra: boost score if class matches known patterns
                 class_score = 1 if "btn-outline-dark" in class_attr else 0
                 total_score = best_score + heading_score + class_score
                 candidates.append((total_score, el, label, aria_label, class_attr, nearest_heading, selector))
@@ -242,10 +239,8 @@ def find_best_toggle(
                     logger.debug(f"[TOGGLE] Error: {e}")
                 continue
 
-    # Sort by total_score descending
     candidates.sort(reverse=True, key=lambda x: x[0])
 
-    # Try to click the best candidate above a threshold
     for score, el, label, aria_label, class_attr, nearest_heading, selector in candidates:
         if score >= 1.5:  # Tune this threshold as needed
             el.scroll_into_view_if_needed()
@@ -258,22 +253,71 @@ def find_best_toggle(
     if verbose or interactive:
         print("\n[DIAGNOSTIC] No automatic toggle match found.")
         print("Available clickable elements (sorted by score):")
-        for idx, (score, el, label, aria_label, class_attr, nearest_heading, selector) in enumerate(candidates):
-            print(f"{idx+1}. [score={score:.2f}] '{label or aria_label}' (class: {class_attr}) [heading: {nearest_heading}] (selector: {selector})")
-        if interactive and candidates:
+        seen = set()
+        filtered_candidates = []
+        for score, el, label, aria_label, class_attr, nearest_heading, selector in candidates:
+            # Filter out low-score options
+            if score < 0.3:
+                continue
+            # Remove duplicates based on label, class, selector
+            key = (label, class_attr, selector)
+            if key in seen:
+                continue
+            seen.add(key)
+            filtered_candidates.append((score, label, class_attr, nearest_heading, selector))
+        for idx, (score, label, class_attr, nearest_heading, selector) in enumerate(filtered_candidates):
+            print(f"{idx+1}. [score={score:.2f}] '{label}' (class: {class_attr}) [heading: {nearest_heading}] (selector: {selector})")
+        if interactive and filtered_candidates:
             choice = input("Enter the number of the element to click (or press Enter to skip): ")
             if choice.isdigit():
                 idx = int(choice) - 1
-                if 0 <= idx < len(candidates):
-                    el = candidates[idx][1]
+                if 0 <= idx < len(filtered_candidates):
+                    # Find the original element to click
+                    orig_idx = [i for i, cand in enumerate(candidates)
+                                if (cand[2], cand[4], cand[6]) == (filtered_candidates[idx][1], filtered_candidates[idx][2], filtered_candidates[idx][4])][0]
+                    el = candidates[orig_idx][1]
                     el.scroll_into_view_if_needed()
                     el.click()
-                    print(f"[INTERACTIVE] Clicked: '{candidates[idx][2] or candidates[idx][3]}'")
+                    print(f"[INTERACTIVE] Clicked: '{filtered_candidates[idx][1]}'")
                     return True
-
     if logger:
         logger.warning(f"[TOGGLE] No toggle found for selectors={selectors}, keywords={keywords}, contest_heading={contest_heading}")
     return False
+
+def parse_single_contest(page, html_context, state, county, find_contest_panel):
+    contest_title = html_context.get("selected_race")
+    rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
+
+    contest_panel = find_contest_panel(page, contest_title)
+    if not contest_panel:
+        rprint("[red][ERROR] Contest panel not found. Skipping.[/red]")
+        return None, None, None, {"skipped": True}
+
+    # Pass contest_title as contest_heading!
+    click_dynamic_toggle(
+        page,
+        container=contest_panel,
+        handler_keywords=[
+            "View results by election district"
+        ],
+        logger=logger,
+        verbose=True,
+        interactive=True,
+        heading_match=contest_title  # <-- Passes contest_heading here to shared_logic!
+    )
+
+    click_dynamic_toggle(
+        page,
+        container=contest_panel,
+        handler_keywords=[
+            "Vote Method", "Voting Method", "Ballot Method"
+        ],
+        logger=logger,
+        verbose=True,
+        interactive=True,
+    )
+
+
 def click_dynamic_toggle(
     page,
     container,
@@ -302,13 +346,26 @@ def click_dynamic_toggle(
         ".btn-outline-secondary", ".btn-outline-danger", ".btn-outline-warning", ".btn-outline-light",
         "div[class*='button']", "span[class*='button']",
         "div[class*='btn']", "span[class*='btn']",
-        "app-vote-method button"
+        "app-vote-method button",
+        "a",  # All <a> tags
+        "span",  # All <span> tags (for clickable spans)
+        "div[tabindex]", "span[tabindex]",
+        "div[onclick]", "span[onclick]",
+        "[onclick]", "[tabindex]",
     ]
+    # Add Playwright :has-text() selectors for each keyword
+    for kw in handler_keywords:
+        selectors.append(f"a:has-text('{kw}')")
+        selectors.append(f"button:has-text('{kw}')")
+        selectors.append(f"span:has-text('{kw}')")
+        selectors.append(f"div:has-text('{kw}')")
+        selectors.append(f"label:has-text('{kw}')")
     search_root = container if container else page
     return find_best_toggle(
         search_root=search_root,
         selectors=selectors,
         keywords=handler_keywords,
+        contest_heading=heading_match,
         logger=logger,
         verbose=verbose,
         heading_tags=heading_tags,
@@ -316,11 +373,202 @@ def click_dynamic_toggle(
         interactive=interactive
     )
 
+def find_best_toggle(
+    search_root,
+    selectors,
+    keywords,
+    contest_heading=None,
+    heading_tags=None,
+    max_heading_level=6,
+    logger=None,
+    verbose=False,
+    interactive=False,
+    custom_button_fallback=True,
+    user_custom_selectors=None
+):
+    import difflib
+
+    def normalize(text):
+        return (text or "").strip().lower()
+
+    def get_nearest_heading(el):
+        tags = heading_tags or [f"h{i}" for i in range(1, max_heading_level+1)]
+        for tag in tags:
+            try:
+                heading = el.locator(f"xpath=ancestor::{tag}[1]")
+                if heading.count() > 0:
+                    return heading.nth(0).inner_text().strip()
+            except Exception:
+                continue
+        return ""
+
+    candidates = []
+    # 1. Try all selectors (including user-supplied)
+    all_selectors = selectors[:]
+    if user_custom_selectors:
+        all_selectors.extend(user_custom_selectors)
+    for selector in all_selectors:
+        try:
+            elements = search_root.locator(selector)
+            for i in range(elements.count()):
+                el = elements.nth(i)
+                try:
+                    if not el.is_visible() or not el.is_enabled():
+                        continue
+                    label = el.inner_text().strip()
+                    aria_label = el.get_attribute("aria-label") or ""
+                    class_attr = el.get_attribute("class") or ""
+                    nearest_heading = get_nearest_heading(el)
+                    heading_score = 0
+                    if contest_heading and nearest_heading:
+                        if normalize(contest_heading) in normalize(nearest_heading):
+                            heading_score = 2
+                        elif normalize(contest_heading).split()[0] in normalize(nearest_heading):
+                            heading_score = 1
+                    best_score = 0
+                    for kw in keywords:
+                        for txt in [label, aria_label]:
+                            txt_norm = normalize(txt)
+                            kw_norm = normalize(kw)
+                            if kw_norm in txt_norm:
+                                score = 2.0
+                            else:
+                                score = difflib.SequenceMatcher(None, kw_norm, txt_norm).ratio()
+                            if score > best_score:
+                                best_score = score
+                    class_score = 1 if "btn-outline-dark" in class_attr else 0
+                    total_score = best_score + heading_score + class_score
+                    candidates.append((total_score, el, label, aria_label, class_attr, nearest_heading, selector))
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    # 2. Fallback: search for any visible element containing the keyword text
+    for kw in keywords:
+        try:
+            elements = search_root.locator(f"*:has-text('{kw}')")
+            for i in range(elements.count()):
+                el = elements.nth(i)
+                try:
+                    if not el.is_visible() or not el.is_enabled():
+                        continue
+                    label = el.inner_text().strip()
+                    aria_label = el.get_attribute("aria-label") or ""
+                    class_attr = el.get_attribute("class") or ""
+                    nearest_heading = get_nearest_heading(el)
+                    total_score = 2.5
+                    candidates.append((total_score, el, label, aria_label, class_attr, nearest_heading, f"*:has-text('{kw}')"))
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    """
+    user_custom_selectors = []
+    find_best_toggle(..., user_custom_selectors=user_custom_selectors)
+    # Save user_custom_selectors to disk if changed
+    """
+    # 3. Fallback: get custom clickable elements if enabled
+    if custom_button_fallback:
+        try:
+            custom_buttons = get_custom_buttons(search_root)
+            for el in custom_buttons:
+                try:
+                    if not el.is_visible() or not el.is_enabled():
+                        continue
+                    label = el.inner_text().strip()
+                    aria_label = el.get_attribute("aria-label") or ""
+                    class_attr = el.get_attribute("class") or ""
+                    nearest_heading = get_nearest_heading(el)
+                    best_score = 0
+                    for kw in keywords:
+                        for txt in [label, aria_label]:
+                            txt_norm = normalize(txt)
+                            kw_norm = normalize(kw)
+                            if kw_norm in txt_norm:
+                                score = 2.0
+                            else:
+                                score = difflib.SequenceMatcher(None, kw_norm, txt_norm).ratio()
+                            if score > best_score:
+                                best_score = score
+                    total_score = best_score + 0.5  # Slightly lower than direct match
+                    candidates.append((total_score, el, label, aria_label, class_attr, nearest_heading, "custom_button"))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    # Deduplicate by (label, class, selector)
+    seen = set()
+    unique_candidates = []
+    for cand in candidates:
+        key = (cand[2], cand[4], cand[6])
+        if key not in seen:
+            seen.add(key)
+            unique_candidates.append(cand)
+
+    unique_candidates.sort(reverse=True, key=lambda x: x[0])
+
+    for score, el, label, aria_label, class_attr, nearest_heading, selector in unique_candidates:
+        if score >= 1.5:
+            el.scroll_into_view_if_needed()
+            el.click()
+            if logger and verbose:
+                logger.info(f"[TOGGLE] Clicked: '{label or aria_label}' (class: {class_attr}) [heading: {nearest_heading}] (selector: {selector})")
+            return True
+
+    # Diagnostics: print all candidates if nothing matched
+    if verbose or interactive:
+        print("\n[DIAGNOSTIC] No automatic toggle match found.")
+        print("Available clickable elements (sorted by score):")
+        for idx, (score, label, class_attr, nearest_heading, selector) in enumerate(
+            [(c[0], c[2], c[4], c[5], c[6]) for c in unique_candidates if c[0] >= 0.3]
+        ):
+            print(f"{idx+1}. [score={score:.2f}] '{label}' (class: {class_attr}) [heading: {nearest_heading}] (selector: {selector})")
+        if interactive and unique_candidates:
+            choice = input("Enter the number of the element to click (or press Enter to skip): ")
+            if choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(unique_candidates):
+                    el = unique_candidates[idx][1]
+                    el.scroll_into_view_if_needed()
+                    el.click()
+                    print(f"[INTERACTIVE] Clicked: '{unique_candidates[idx][2]}'")
+                    # Optionally, ask user if this should be saved as a new selector
+                    if user_custom_selectors is not None:
+                        add = input("Save this selector for future runs? (y/n): ").strip().lower()
+                        if add == "y":
+                            user_custom_selectors.append(selector)
+                    return True
+    if logger:
+        logger.warning(f"[TOGGLE] No toggle found for selectors={selectors}, keywords={keywords}, contest_heading={contest_heading}")
+    return False
+
+
+
 def get_custom_buttons(container):
     """
     Returns all custom clickable elements in the container.
+    This is robust for many HTML patterns seen in election and admin UIs.
     """
-    return container.query_selector_all('[role="button"], div[tabindex], span[tabindex]')
+    selectors = [
+        '[role="button"]',
+        'div[tabindex]', 'span[tabindex]', 'li[tabindex]',
+        'div[onclick]', 'span[onclick]', 'li[onclick]',
+        '[tabindex]:not(input):not(textarea):not(select)',  # Any focusable non-input
+        '[onclick]:not(a):not(button)',  # Any clickable non-link/button
+        '[class*="button"]', '[class*="btn"]', '[class*="click"]', '[class*="toggle"]',
+        '[data-action]', '[data-toggle]', '[data-role*="button"]', '[data-role*="toggle"]',
+        '[aria-pressed]', '[aria-expanded]', '[aria-controls]',
+        'a:not([href^="http"]):not([href^="#"])',  # Local anchor links (often used as buttons)
+        'label[for]',  # Labels that may act as toggles
+        'input[type="checkbox"]', 'input[type="radio"]',  # Sometimes styled as buttons
+        'summary',  # <summary> tag in <details>
+        'mat-button', 'mat-icon-button', 'mat-raised-button',  # Angular Material
+        'button', 'a[role="button"]',  # Redundant but safe
+    ]
+    selector_str = ", ".join(selectors)
+    return container.query_selector_all(selector_str)
 
 def autoscroll_until_stable(page, max_stable_frames=5, step=8000, delay_ms=200):
     """

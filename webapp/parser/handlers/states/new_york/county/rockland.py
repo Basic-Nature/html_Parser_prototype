@@ -1,4 +1,6 @@
 from playwright.sync_api import Page
+from .....handlers.formats.html_handler import extract_contest_panel, extract_precinct_tables
+import os
 from .....utils.html_scanner import scan_html_for_context, get_detected_races_from_context
 from .....utils.format_router import detect_format_from_links, prompt_user_for_format, route_format_handler
 from .....utils.download_utils import download_confirmed_file
@@ -8,7 +10,8 @@ from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import logger, rprint
 from .....utils.shared_logic import click_dynamic_toggle, autoscroll_until_stable
 
-import os
+
+
 
 def parse(page: Page, html_context: dict = None):
     """
@@ -64,37 +67,53 @@ def parse(page: Page, html_context: dict = None):
             contest_title = contest_tuple[2]  # (year, etype, race)
             html_context_copy = dict(html_context)
             html_context_copy["selected_race"] = contest_title
-            result = parse_single_contest(page, html_context_copy, state, county)
+            result = parse_single_contest(page, html_context_copy, state, county, find_contest_panel=extract_contest_panel)
             results.append(result)
         # Return the first result (or aggregate as needed)
         return results[0] if results else (None, None, None, {"skipped": True})
     else:
         contest_title = selected[2]
         html_context["selected_race"] = contest_title
-        return parse_single_contest(page, html_context, state, county)
+        return parse_single_contest(page, html_context, state, county, find_contest_panel=extract_contest_panel)
 
-def parse_single_contest(page, html_context, state, county):
+def parse_single_contest(page, html_context, state, county, find_contest_panel):
     """
     Handles a single contest: finds the contest panel, toggles, extracts tables, and outputs.
     """
     contest_title = html_context.get("selected_race")
     rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
 
-    # Wait for contest panel to load (site-specific: may need to adjust selector)
+    # Find the contest panel using find_contest_panel
     contest_panel = find_contest_panel(page, contest_title)
     if not contest_panel:
         rprint("[red][ERROR] Contest panel not found. Skipping.[/red]")
         return None, None, None, {"skipped": True}
 
     # Click toggles if needed (using shared logic)
-    click_dynamic_toggle(page, container=contest_panel, handler_keywords=[
-        "View results by election district"
-    ], logger=logger, verbose=True, interactive=True)
+    click_dynamic_toggle(
+        page, 
+        container=contest_panel, 
+        handler_keywords=[
+            "View results by election district"
+        ], 
+        logger=logger, 
+        verbose=True, 
+        interactive=True,
+        heading_match=contest_title  # Pass heading for context-specific toggle
+    )
 
-    # Click vote method toggle if present
-    click_dynamic_toggle(page, container=contest_panel, handler_keywords=[
-        "Vote Method", "Voting Method", "Ballot Method"
-    ], logger=logger, verbose=True, interactive=True)
+    # Click vote method toggle if present (do NOT pass heading_match)
+    click_dynamic_toggle(
+        page, 
+        container=contest_panel, 
+        handler_keywords=[
+            "Vote Method", "Voting Method", "Ballot Method"
+        ], 
+        logger=logger, 
+        verbose=True, 
+        interactive=True
+        # No heading_match here!
+    )
 
     # Scroll to load all precincts
     autoscroll_until_stable(page)
@@ -135,20 +154,6 @@ def parse_single_contest(page, html_context, state, county):
         "handler": "rockland"
     }
     return finalize_and_output(headers, data, contest_title, metadata)
-
-def find_contest_panel(page, contest_title):
-    """
-    Finds the contest panel for the given contest title using shared logic.
-    """
-    from .....handlers.formats.html_handler import extract_contest_panel
-    return extract_contest_panel(page, contest_title)
-
-def extract_precinct_tables(contest_panel):
-    """
-    Extracts precinct tables from the contest panel using shared logic.
-    """
-    from .....handlers.formats.html_handler import extract_precinct_tables
-    return extract_precinct_tables(contest_panel)
 
 def finalize_and_output(headers, data, contest_title, metadata):
     """

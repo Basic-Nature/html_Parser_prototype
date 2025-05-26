@@ -30,6 +30,9 @@ def finalize_election_output(headers, data, contest_title, metadata):
     filename = f"{safe_title.replace(' ', '_')}_results_{timestamp}.csv"
     filepath = os.path.join(output_path, filename)
 
+    # Harmonize all rows to have all headers
+    data = [{h: row.get(h, "") for h in headers} for row in data]
+
     # Write CSV
     with open(filepath, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=headers)

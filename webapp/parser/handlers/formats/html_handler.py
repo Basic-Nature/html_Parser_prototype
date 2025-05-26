@@ -1,6 +1,6 @@
 from ...state_router import get_handler_from_context
 from ...utils.contest_selector import select_contest
-from ...utils.table_builder import extract_table_data
+from ...utils.table_builder import extract_table_data, parse_candidate_vote_table, calculate_grand_totals
 from ...utils.html_scanner import scan_html_for_context, get_detected_races_from_context
 from ...utils.shared_logger import logger
 from ...utils.shared_logic import (
@@ -68,6 +68,7 @@ def parse(page, html_context=None):
     """
     Generic HTML handler: cleans, filters, and extracts data from HTML using shared utilities.
     Delegates to state/county handler if available.
+    Returns headers, data, contest_title, metadata.
     """
     # 1. Scan the page for context and races
     context = scan_html_for_context(page, debug=False)
@@ -112,9 +113,49 @@ def parse(page, html_context=None):
     if not clicked:
         logger.warning("[HTML Handler] No toggle/button clicked automatically or interactively.")
 
-    # 5. Fallback: Try to extract the first table
+    # 5. Try to extract contest panel and precinct tables
     headers, data = [], []
     try:
+        contest_panel = extract_contest_panel(page, contest_title)
+        if contest_panel:
+            precinct_tables = extract_precinct_tables(contest_panel)
+            if precinct_tables:
+                # Try to get method names from the first table header
+                first_table = precinct_tables[0][1]
+                method_names = []
+                header_locator = first_table.locator("thead tr th")
+                if header_locator.count() == 0:
+                    header_locator = first_table.locator("tbody tr:first-child th")
+                for i in range(1, header_locator.count() - 1):  # skip first (candidate), last (total)
+                    method_names.append(header_locator.nth(i).inner_text().strip())
+                data = []
+                for precinct_name, table in precinct_tables:
+                    row = parse_candidate_vote_table(table, precinct_name, method_names)
+                    if row:
+                        data.append(row)
+                if data:
+                    # Build headers from all keys
+                    all_keys = set()
+                    for row in data:
+                        all_keys.update(row.keys())
+                    headers = ["Precinct", "% Precincts Reporting"] + sorted([k for k in all_keys if k not in ("Precinct", "% Precincts Reporting")])
+                    # Add grand total row
+                    data.append(calculate_grand_totals(data))
+                    logger.info(f"[HTML Handler] Extracted {len(data)-1} precinct rows from contest panel.")
+                    # Output metadata
+                    clean_race = normalize_text(contest_title).strip().lower() if contest_title else "unknown"
+                    clean_race = re.sub(r'[\s:]+', ' ', clean_race).strip()
+                    clean_race = re.sub(r'[\\/:*?"<>|]', '_', clean_race)
+                    metadata = {
+                        "race": clean_race,
+                        "source": page.url,
+                        "handler": "html_handler",
+                        "state": html_context.get("state", "Unknown"),
+                        "county": html_context.get("county", None),
+                        "year": html_context.get("year", "Unknown")
+                    }
+                    return headers, data, contest_title, metadata
+        # Fallback: Try to extract the first table on the page
         table = page.query_selector("table")
         if not table:
             table = page.query_selector("table#resultsTable, table.results-table")

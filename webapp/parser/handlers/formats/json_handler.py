@@ -3,6 +3,8 @@ import os
 from ...state_router import get_handler_from_context, resolve_state_handler
 from ...utils.shared_logger import logger, rprint
 from ...utils.output_utils import finalize_election_output
+from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
+from ...utils.shared_logic import normalize_text
 from collections import defaultdict
 
 def detect_json_files(input_folder="input"):
@@ -93,11 +95,11 @@ def parse(page, html_context):
             target_contest = user_input
 
         # --- Data normalization and cleaning logic ---
-        # (You can move this to a utility if you want to reuse it)
         group_rename = {
             "Election Day": "Election Day",
-            "Early Voting": "Early",
-            "Absentee Mail": "Mail-In",
+            "Early Voting": "Early Voting",
+            "Absentee Mail": "Absentee Mail",
+            "Mail-In": "Absentee Mail",
             "Provisional": "Provisional"
         }
         vote_methods = list(group_rename.values())
@@ -108,7 +110,7 @@ def parse(page, html_context):
             for opt in item.get("ballotOptions", []):
                 raw = opt.get("name", "").strip()
                 party = opt.get("politicalParty", "Unknown")
-                label = f"{raw} ({party})"
+                label = f"{clean_candidate_name(raw)} ({party})"
                 raw_candidates[raw] = label
 
         normalization_map = raw_candidates.copy()
@@ -137,21 +139,18 @@ def parse(page, html_context):
         for precinct, cands in results_nested.items():
             row = {"Precinct": precinct}
             for raw_label, methods in cands.items():
+                canonical_label = normalization_map.get(raw_label, raw_label)
                 for method, count in methods.items():
-                    col = f"{normalization_map.get(raw_label, raw_label)} - {method}"
+                    col = f"{canonical_label} - {method}"
                     row[col] = count
                     if col not in headers:
                         headers.append(col)
             data_rows.append(row)
         headers = ["Precinct"] + sorted([h for h in headers if h != "Precinct"])
 
-        # Optionally, add a grand totals row
-        grand_total = {"Precinct": "Grand Totals"}
-        for h in headers[1:]:
-            try:
-                grand_total[h] = sum(float(row.get(h, 0) or 0) for row in data_rows)
-            except Exception:
-                grand_total[h] = ""
+        # Harmonize rows and add grand total
+        data_rows = harmonize_rows(headers, data_rows)
+        grand_total = calculate_grand_totals(data_rows)
         data_rows.append(grand_total)
 
         # Metadata
@@ -159,7 +158,8 @@ def parse(page, html_context):
             "state": html_context.get("state", "Unknown"),
             "county": html_context.get("county", "Unknown"),
             "race": target_contest,
-            "handler": "json_handler"
+            "handler": "json_handler",
+            "source": json_path
         }
 
         # Output via finalize_election_output

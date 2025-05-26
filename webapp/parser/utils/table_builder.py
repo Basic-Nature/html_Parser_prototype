@@ -7,25 +7,36 @@ import re
 from typing import List, Dict, Tuple, Any
 from .shared_logger import logger
 
-def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
+def extract_table_data(table_locator) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
-    Extracts headers and row data from a Playwright table element.
+    Extracts headers and row data from a Playwright Locator for a table element.
     Returns (headers, data) where headers is a list of column names,
     and data is a list of dicts mapping headers to cell values.
     Ensures all rows have the same headers.
     """
     try:
-        headers = [th.inner_text().strip() for th in table.query_selector_all("thead tr th")]
-        if not headers:
-            headers = [th.inner_text().strip() for th in table.query_selector_all("tbody tr:first-child th")]
+        # Try to get headers from thead first, then from first tbody row
+        headers = []
+        header_locator = table_locator.locator("thead tr th")
+        if header_locator.count() == 0:
+            header_locator = table_locator.locator("tbody tr:first-child th")
+        for i in range(header_locator.count()):
+            headers.append(header_locator.nth(i).inner_text().strip())
         if not headers:
             raise RuntimeError("No headers found in the table.")
+
         data = []
-        for row in table.query_selector_all("tbody tr"):
-            if not row.query_selector("td"):
+        row_locator = table_locator.locator("tbody tr")
+        for r_idx in range(row_locator.count()):
+            r = row_locator.nth(r_idx)
+            # Skip header rows in tbody
+            if r.locator("th").count() > 0 and r.locator("td").count() == 0:
                 continue
-            cells = row.query_selector_all("td")
-            row_data = {headers[i]: cells[i].inner_text().strip() for i in range(min(len(headers), len(cells)))}
+            cell_locator = r.locator("td")
+            if cell_locator.count() == 0:
+                continue
+            cells = [cell_locator.nth(i).inner_text().strip() for i in range(cell_locator.count())]
+            row_data = {headers[i]: cells[i] for i in range(min(len(headers), len(cells)))}
             data.append(row_data)
         if not data:
             logger.info(f"[HTML Handler] Extracted 0 rows from the table.")
