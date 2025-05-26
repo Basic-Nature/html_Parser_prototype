@@ -302,15 +302,15 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
     integrity_issues = election_integrity_checks(contests)
     for issue, contest in integrity_issues:
         if issue == "duplicate":
-            logging.warning("[INTEGRITY] Duplicate contest detected.", context=contest)
+            logging.warning(f"[INTEGRITY] Duplicate contest detected. Context: {contest}")
         elif issue == "missing_location":
-            logging.warning("[INTEGRITY] Contest missing location info.", context=contest)
+            logging.warning(f"[INTEGRITY] Contest missing location info. Context: {contest}")
         elif issue == "missing_year":
-            logging.warning("[INTEGRITY] Contest missing year.", context=contest)
+            logging.warning(f"[INTEGRITY] Contest missing year. Context: {contest}")
 
     # --- Congestion/flow detection ---
     if len(contests) > 50:
-        logging.warning("[CONTEXT ORGANIZER] High contest count detected — possible congestion.", context={"contest_count": len(contests)})
+       logging.warning(f"[CONTEXT ORGANIZER] High contest count detected — possible congestion.", context={"contest_count": len(contests)})
 
     organized = {
         "contests": contests,
