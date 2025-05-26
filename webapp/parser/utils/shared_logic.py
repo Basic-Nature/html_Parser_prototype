@@ -1,8 +1,19 @@
 # shared_logic.py - Common parsing utilities for context-integrated pipeline
-
+import os
+import json
 import re
 import time
 from ..utils.shared_logger import logger, rprint
+
+CONTEXT_LIBRARY_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
+)
+if os.path.exists(CONTEXT_LIBRARY_PATH):
+    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
+        CONTEXT_LIBRARY = json.load(f)
+    ALL_SELECTORS = ", ".join(CONTEXT_LIBRARY.get("selectors", {}).get("all_selectors", []))
+else:
+    ALL_SELECTORS = "h1, h2, h3, h4, h5, h6, strong, b, span, div"
 
 def normalize_text(text):
     return re.sub(r"\s+", " ", text.strip().lower())

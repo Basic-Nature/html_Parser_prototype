@@ -5,6 +5,7 @@ from ...utils.html_scanner import scan_html_for_context, get_detected_races_from
 from ...utils.shared_logger import logger
 from ...utils.shared_logic import (
     normalize_text, find_and_click_toggle,
+    ALL_SELECTORS
 )
 from rich import print as rprint
 import os
@@ -20,12 +21,11 @@ if os.path.exists(CONTEXT_LIBRARY_PATH):
         CONTEXT_LIBRARY = json.load(f)
     PRECINCT_ELEMENT_TAGS = CONTEXT_LIBRARY.get("precinct_element_tags", ["h3", "h4", "h5", "strong", "b", "span", "div"])
     CONTEST_PANEL_TAGS = CONTEXT_LIBRARY.get("contest_panel_tags", ["div", "section", "article"])
-    ALL_SELECTORS = ", ".join(CONTEXT_LIBRARY.get("selectors", {}).get("all_selectors", []))
+    
 else:
     logger.error("[html_handler] context_library.json not found. Using default tags.")
     PRECINCT_ELEMENT_TAGS = ["h3", "h4", "h5", "strong", "b", "span", "div"]
     CONTEST_PANEL_TAGS = ["div", "section", "article"]
-    ALL_SELECTORS = "h1, h2, h3, h4, h5, h6, strong, b, span, div"
 
 def extract_contest_panel(page, contest_title, panel_tags=None):
     """

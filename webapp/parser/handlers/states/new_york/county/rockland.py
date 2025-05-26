@@ -9,7 +9,7 @@ from .....utils.contest_selector import select_contest
 from .....utils.table_builder import extract_table_data, calculate_grand_totals
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import logger, rprint
-from .....utils.shared_logic import click_dynamic_toggle, autoscroll_until_stable, extract_button_features
+from .....utils.shared_logic import autoscroll_until_stable, find_and_click_toggle, ALL_SELECTORS
 
 
 
@@ -87,7 +87,7 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
         return None, None, None, {"skipped": True}
 
     # --- 1. Toggle "View results by election district" ---
-    button_features = extract_button_features(page, container=contest_panel)
+    button_features = ALL_SELECTORS(page, container=contest_panel)
     toggle_button = next(
         (btn for btn in button_features if "election-district" in btn["label"].lower() or "your-class-name" in btn["class"]), 
         None
@@ -101,7 +101,7 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
             handler_keywords.append(toggle_button["label"])
 
     # Click the first toggle
-    click_dynamic_toggle(
+    find_and_click_toggle(
         page,
         container=contest_panel,
         handler_selectors=handler_selectors if handler_selectors else None,
@@ -116,7 +116,7 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
 
     # --- 3. Now look for and toggle vote method, if present ---
     # (This must be after the first toggle, as the vote method toggle may not exist before)
-    click_dynamic_toggle(
+    find_and_click_toggle(
         page, 
         container=contest_panel, 
         handler_keywords=[
