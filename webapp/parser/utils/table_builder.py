@@ -4,8 +4,15 @@
 # ===================================================================
 
 import re
-from typing import List, Dict, Tuple, Any
+import os
+from typing import List, Dict, Tuple, Any, Optional
 from .shared_logger import logger
+from .shared_logic import (
+    COMMON_PRECINCT_HEADERS,
+    is_precinct_header,
+    is_contest_label,
+    normalize_text,
+)
 
 def extract_table_data(table_locator) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
@@ -90,90 +97,117 @@ def clean_candidate_name(name: str) -> str:
     name = ' '.join(smart_cap(w) for w in name.split())
     return name
 
-def parse_candidate_vote_table(
-    table_element, 
-    current_precinct: str, 
-    method_names: List[str], 
-    reporting_pct: str = "0.00%"
-) -> Dict[str, Any]:
+def parse_candidate_col(col: str) -> Tuple[str, str, str]:
     """
-    Converts a DOM table element into a Smart Elections-style row for a single precinct.
-    Returns a dict with standardized candidate-method vote fields and metadata.
-    Handles edge cases where candidate/party columns are missing or extra columns are present.
+    Attempts to parse a column header into (candidate, party, method).
     """
-    def is_total_row(cell_text):
-        totals = {
-            "total", "total votes", "total ballots", "total votes cast", "total ballots cast",
-            "total votes counted", "total ballots counted", "total votes remaining", "total ballots remaining",
-            "total votes outstanding", "total ballots outstanding", "total votes uncounted", "total ballots uncounted",
-            "total votes disputed", "total ballots disputed", "total votes invalid", "total ballots invalid",
-            "total votes spoiled", "total ballots spoiled", "total votes rejected", "total ballots rejected",
-            "total votes canceled", "total ballots canceled", "total votes disqualified", "total ballots disqualified",
-            "total votes nullified", "total ballots nullified", "total votes voided", "total ballots voided"
-        }
-        return cell_text.strip().lower() in totals
+    m = re.match(r"(.+?)\s+\((.+?)\)\s*-\s*(.+)", col)
+    if m:
+        return m.groups()
+    parts = col.rsplit(" - ", 2)
+    if len(parts) == 2:
+        return parts[0], "", parts[1]
+    return col, "", ""
 
-    row = {"Precinct": current_precinct, "% Precincts Reporting": reporting_pct}
-    try:
-        header_locator = table_element.locator('thead tr th')
-        if header_locator.count() == 0:
-            header_locator = table_element.locator('tbody tr:first-child th')
-        row_locator = table_element.locator('tbody tr')
-        for r_idx in range(row_locator.count()):
-            r = row_locator.nth(r_idx)
-            cells = [r.locator('td').nth(i) for i in range(r.locator('td').count())]
-            if len(cells) < 2:
-                continue
-            full_name = cells[0].inner_text().strip()
-            if is_total_row(full_name):
-                continue
+def detect_table_orientation(headers: List[str], data: List[Dict[str, Any]]) -> str:
+    """
+    Returns 'precincts_in_rows' if first header is a precinct/district,
+    'candidates_in_rows' if first header is a candidate, else 'unknown'.
+    """
+    if headers and is_precinct_header(headers[0]):
+        return 'precincts_in_rows'
+    # Optionally, check if any header matches a candidate pattern
+    if headers and is_contest_label(headers[0]):
+        return 'candidates_in_rows'
+    return 'unknown'
 
-            # Candidate/party extraction
-            name_parts = full_name.split()
-            candidate_name, party = "", ""
-            if len(name_parts) >= 3:
-                candidate_name = " ".join(name_parts[1:-1])
-                party = name_parts[-1]
-            elif len(name_parts) == 2:
-                candidate_name, party = name_parts
-            elif len(name_parts) == 1 and not name_parts[0].isdigit():
-                candidate_name = name_parts[0]
-            else:
-                candidate_name = full_name
+def normalize_header(header: str) -> str:
+    return re.sub(r'\s+', ' ', header.strip().lower())
 
-            candidate_name = clean_candidate_name(candidate_name)
-            party = party.strip().upper()
-            if party in {"DEM", "REP", "IND", "LIB", "GRE"}:
-                party = party.title()
-            canonical = f"{candidate_name} ({party})" if party else candidate_name
+def format_table_data_for_output(
+    headers: List[str],
+    data: List[Dict[str, Any]],
+    handler_options: Optional[dict] = None
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Returns (headers, data) in either wide or long format, based on .env OUTPUT_LONG_FORMAT or handler_options.
+    Dynamically detects if the first column is a precinct/district and pivots accordingly.
+    handler_options: dict for handler-specific overrides.
+    """
+    output_long = os.getenv("OUTPUT_LONG_FORMAT", "false").lower() == "true"
+    if handler_options and "output_long" in handler_options:
+        output_long = handler_options["output_long"]
+    if not output_long:
+        logger.info("[TABLE BUILDER] Outputting in wide format.")
+        return headers, data  # Wide format
 
-            # Avoid duplicate candidates
-            if canonical in row:
-                continue
+    orientation = detect_table_orientation(headers, data)
+    logger.info(f"[TABLE BUILDER] Detected table orientation: {orientation}")
 
-            # Extract method votes and total
-            method_votes = [c.inner_text().strip().replace(",", "").replace("-", "0") for c in cells[1:-1]]
-            total = cells[-1].inner_text().strip().replace(",", "").replace("-", "0")
+    if orientation == 'precincts_in_rows':
+        # Candidates are in columns, precincts in rows
+        first_header = headers[0]
+        long_rows = []
+        for row in data:
+            precinct = row.get(first_header, "")
+            for col in headers[1:]:
+                candidate, party, method = parse_candidate_col(col)
+                value = row.get(col, "")
+                # Only add non-empty values
+                if value and value.strip() not in {"", "-", "0"}:
+                    long_rows.append({
+                        first_header: precinct,
+                        "Candidate": clean_candidate_name(candidate.strip()),
+                        "Party": party.strip(),
+                        "Method": method.strip(),
+                        "Votes": value
+                    })
+        logger.info(f"[TABLE BUILDER] Converted {len(data)} wide rows to {len(long_rows)} long rows.")
+        return [first_header, "Candidate", "Party", "Method", "Votes"], long_rows
 
-            # Validate method votes
-            if len(method_votes) != len(method_names):
-                logger.debug(f"[TABLE] Number of method votes ({len(method_votes)}) does not match number of method names ({len(method_names)}).")
-                continue
-            if not re.match(r"^\d+(\.\d+)?$", total):
-                logger.debug(f"[TABLE] Total '{total}' is not a valid number.")
-                continue
+    elif orientation == 'candidates_in_rows':
+        # Candidates are in rows, precincts/methods in columns
+        # This is less common, but you can implement logic here if needed
+        logger.info("[TABLE BUILDER] Candidates detected in rows; outputting as-is.")
+        return headers, data
 
-            # Add method votes
-            for method, vote in zip(method_names, method_votes):
-                if not re.match(r"^\d+(\.\d+)?$", vote):
-                    logger.debug(f"[TABLE] Vote '{vote}' is not a valid number.")
-                    continue
-                row[f"{canonical} - {method}"] = vote
-            row[f"{canonical} - Total"] = total
+    else:
+        # Unknown orientation, fallback to wide
+        logger.warning("[TABLE BUILDER] Unknown table orientation; outputting in wide format.")
+        return headers, data
 
-    except Exception as e:
-        logger.error(f"[TABLE] Failed to parse candidate vote table: {e}")
-    return row
+def review_and_fill_missing_data(headers: List[str], data: List[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Review process to catch and fill missing data after initial break.
+    Ensures all rows have all headers and attempts to fill missing values with empty string.
+    """
+    # Harmonize all rows to have all headers
+    data = harmonize_rows(headers, data)
+    # Optionally, log missing data
+    for idx, row in enumerate(data):
+        missing = [h for h in headers if not row.get(h)]
+        if missing:
+            logger.warning(f"[TABLE BUILDER] Row {idx} missing data for columns: {missing}")
+    return headers, data
+
+def score_and_break_on_match(
+    candidates: List[Tuple[float, Any]],
+    threshold: float,
+    logger=None
+) -> Optional[Any]:
+    """
+    Given a list of (score, element) tuples, returns the first element above threshold.
+    If none found, returns None. Logs diagnostics.
+    """
+    candidates = sorted(candidates, reverse=True, key=lambda x: x[0])
+    for score, el in candidates:
+        if score >= threshold:
+            if logger:
+                logger.info(f"[TABLE BUILDER] Match found with score {score:.2f}. Breaking early.")
+            return el
+    if logger:
+        logger.warning(f"[TABLE BUILDER] No match found above threshold {threshold}.")
+    return None
 
 def calculate_grand_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     """

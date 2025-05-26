@@ -103,6 +103,8 @@ COMMON_VOTE_METHODS = [
     "In-Person", "In Person", "In-Person Voting"
 ]
 
+TOGGLE_SCORE_THRESHOLD = float(os.getenv("TOGGLE_SCORE_THRESHOLD", "1.0"))
+
 def normalize_text(text):
     """Strips and lowers text for fuzzy matching purposes."""
     return re.sub(r"\s+", " ", text.strip().lower())
@@ -242,7 +244,7 @@ def find_best_toggle(
     candidates.sort(reverse=True, key=lambda x: x[0])
 
     for score, el, label, aria_label, class_attr, nearest_heading, selector in candidates:
-        if score >= 1.5:  # Tune this threshold as needed
+        if score >= TOGGLE_SCORE_THRESHOLD:  # Tune this threshold as needed in .env
             el.scroll_into_view_if_needed()
             el.click()
             if logger and verbose:
@@ -284,40 +286,6 @@ def find_best_toggle(
         logger.warning(f"[TOGGLE] No toggle found for selectors={selectors}, keywords={keywords}, contest_heading={contest_heading}")
     return False
 
-def parse_single_contest(page, html_context, state, county, find_contest_panel):
-    contest_title = html_context.get("selected_race")
-    rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
-
-    contest_panel = find_contest_panel(page, contest_title)
-    if not contest_panel:
-        rprint("[red][ERROR] Contest panel not found. Skipping.[/red]")
-        return None, None, None, {"skipped": True}
-
-    # Pass contest_title as contest_heading!
-    click_dynamic_toggle(
-        page,
-        container=contest_panel,
-        handler_keywords=[
-            "View results by election district"
-        ],
-        logger=logger,
-        verbose=True,
-        interactive=True,
-        heading_match=contest_title  # <-- Passes contest_heading here to shared_logic!
-    )
-
-    click_dynamic_toggle(
-        page,
-        container=contest_panel,
-        handler_keywords=[
-            "Vote Method", "Voting Method", "Ballot Method"
-        ],
-        logger=logger,
-        verbose=True,
-        interactive=True,
-    )
-
-
 def click_dynamic_toggle(
     page,
     container,
@@ -327,11 +295,15 @@ def click_dynamic_toggle(
     heading_match=None,
     heading_tags=None,
     max_heading_level=20,
-    interactive=False
+    interactive=False,
+    max_attempts=3,
+    wait_after_click=1000
 ):
     """
     Handler supplies handler_keywords (list of phrases).
     Attempts to click a matching toggle, or interactively prompts if not found.
+    Returns True if a toggle was clicked, False otherwise.
+    Now includes a break/resume mechanism and limits attempts to avoid infinite loops.
     """
     selectors = [
         "button",
@@ -361,18 +333,121 @@ def click_dynamic_toggle(
         selectors.append(f"div:has-text('{kw}')")
         selectors.append(f"label:has-text('{kw}')")
     search_root = container if container else page
-    return find_best_toggle(
-        search_root=search_root,
-        selectors=selectors,
-        keywords=handler_keywords,
-        contest_heading=heading_match,
-        logger=logger,
-        verbose=verbose,
-        heading_tags=heading_tags,
-        max_heading_level=max_heading_level,
-        interactive=interactive
-    )
 
+    attempts = 0
+    while attempts < max_attempts:
+        result = find_best_toggle(
+            search_root=search_root,
+            selectors=selectors,
+            keywords=handler_keywords,
+            contest_heading=heading_match,
+            logger=logger,
+            verbose=verbose,
+            heading_tags=heading_tags,
+            max_heading_level=max_heading_level,
+            interactive=interactive
+        )
+        if result:
+            # Wait for DOM update after click
+            page.wait_for_timeout(wait_after_click)
+            if logger:
+                logger.info(f"[TOGGLE] Successfully clicked a toggle on attempt {attempts+1}. Breaking out.")
+            return True
+        attempts += 1
+        if logger:
+            logger.info(f"[TOGGLE] Attempt {attempts} failed. Retrying (max {max_attempts})...")
+    if logger:
+        logger.warning(f"[TOGGLE] No toggle found after {max_attempts} attempts.")
+    return False
+
+# --- New: Fallback parser for text blocks when no table is found ---
+
+def parse_text_block_to_rows(text):
+    """
+    Attempts to parse a block of text (as seen after contest selection or failed table detection)
+    into structured contest/candidate/vote rows.
+    Returns a list of dicts (rows) and a list of headers.
+    """
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    contests = []
+    current_contest = None
+    current_candidates = []
+    contest_keywords = [
+        "district", "proposition", "vote for", "amendment", "council", "justice", "judge", "assembly", "mayor", "clerk", "proposal"
+    ]
+    candidate_keywords = ["candidate", "votes", "percentage", "winner", "party"]
+    for line in lines:
+        # Detect contest header
+        if any(kw in line.lower() for kw in contest_keywords):
+            if current_contest and current_candidates:
+                contests.append((current_contest, current_candidates))
+            current_contest = line
+            current_candidates = []
+        elif any(kw in line.lower() for kw in candidate_keywords):
+            continue  # skip label lines
+        else:
+            # Try to parse candidate info
+            if current_contest:
+                current_candidates.append(line)
+    if current_contest and current_candidates:
+        contests.append((current_contest, current_candidates))
+
+    # Now, build rows from contests/candidates
+    rows = []
+    headers = set(["Contest"])
+    for contest, candidates in contests:
+        i = 0
+        while i < len(candidates):
+            row = {"Contest": contest}
+            # Try to extract candidate name
+            row["Candidate"] = candidates[i]
+            i += 1
+            # Try to extract party, percentage, votes
+            for field in ["Party", "Percentage", "Votes"]:
+                if i < len(candidates):
+                    val = candidates[i]
+                    if "%" in val:
+                        row["Percentage"] = val
+                    elif val.replace(",", "").isdigit():
+                        row["Votes"] = val
+                    elif any(x in val.lower() for x in ["democratic", "republican", "conservative", "working", "families", "write-in"]):
+                        row["Party"] = val
+                    i += 1
+            headers.update(row.keys())
+            rows.append(row)
+    return list(headers), rows
+
+# --- New: Utility to auto-resume pipeline after toggle or contest selection ---
+
+def resume_after_toggle_or_selection(page, logger=None):
+    """
+    After a toggle or contest selection, try to find a table.
+    If not found, try to parse a text block.
+    Returns (headers, data) or (None, None) if nothing found.
+    """
+    # Try to find a table
+    table = page.query_selector("table")
+    if table:
+        # Use your extract_table_data utility if available
+        from ..utils.table_builder import extract_table_data
+        headers, data = extract_table_data(table)
+        if logger:
+            logger.info("[RESUME] Table found after toggle/selection.")
+        return headers, data
+    # If no table, try to get main text block
+    main_text = ""
+    # Try to find a main content div or fallback to body text
+    main_div = page.query_selector("main, .main-content, #main-content, body")
+    if main_div:
+        main_text = main_div.inner_text()
+    else:
+        main_text = page.inner_text()
+    headers, data = parse_text_block_to_rows(main_text)
+    if logger:
+        logger.info("[RESUME] No table found. Parsed text block into rows.")
+    return headers, data
+
+# ...existing code...
 def find_best_toggle(
     search_root,
     selectors,
@@ -510,7 +585,14 @@ def find_best_toggle(
     unique_candidates.sort(reverse=True, key=lambda x: x[0])
 
     for score, el, label, aria_label, class_attr, nearest_heading, selector in unique_candidates:
-        if score >= 1.5:
+        # Special case: force click for "View results by election district"
+        if "view results by election district" in (label or "").lower():
+            el.scroll_into_view_if_needed()
+            el.click()
+            if logger and verbose:
+                logger.info(f"[TOGGLE] Force-clicked: '{label or aria_label}' (class: {class_attr}) [heading: {nearest_heading}] (selector: {selector})")
+            return True
+        if score >= TOGGLE_SCORE_THRESHOLD:  # Tune this threshold as needed in .env
             el.scroll_into_view_if_needed()
             el.click()
             if logger and verbose:
