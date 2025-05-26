@@ -10,7 +10,7 @@ import csv
 from ....utils.shared_logger import logger
 from rich import print as rprint
 from ....utils.output_utils import finalize_election_output
-
+from ....html_election_parser import organize_context_with_cache
 # Use BASE_DIR and INPUT_DIR for robust path handling
 BASE_DIR = Path(__file__).parents[3]
 INPUT_DIR = BASE_DIR / "input"

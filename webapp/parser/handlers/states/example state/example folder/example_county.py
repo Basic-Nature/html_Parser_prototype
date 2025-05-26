@@ -5,7 +5,7 @@ from .....utils.output_utils import finalize_election_output
 from .....utils.table_builder import extract_table_data, calculate_grand_totals
 from .....utils.html_scanner import scan_html_for_context, get_detected_races_from_context
 from .....utils.contest_selector import select_contest
-
+from .....html_election_parser import organize_context_with_cache
 def parse(page: Page, html_context: dict = None):
     """
     Example county handler.

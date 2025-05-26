@@ -10,7 +10,7 @@ from ....utils.shared_logger import log_info, log_debug, log_warning, log_error
 from rich import print as rprint
 from ....Context_Integration.context_organizer import organize_context
 from ....utils.output_utils import finalize_election_output
-
+from ....html_election_parser import organize_context_with_cache
 # Load config from context library if available
 CONTEXT_LIBRARY_PATH = os.path.join(
     os.path.dirname(__file__), "..", "..", "..", "Context_Integration", "context_library.json"

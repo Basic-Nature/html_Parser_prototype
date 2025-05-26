@@ -10,8 +10,7 @@ from .....utils.table_builder import extract_table_data, calculate_grand_totals
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import logger, rprint
 from .....utils.shared_logic import autoscroll_until_stable, find_and_click_toggle, ALL_SELECTORS
-
-
+from .....html_election_parser import organize_context_with_cache
 
 
 def parse(page: Page, html_context: dict = None):

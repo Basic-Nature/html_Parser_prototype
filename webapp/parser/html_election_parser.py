@@ -174,6 +174,8 @@ def mark_url_processed(url, status="success", **metadata):
         "status": status,
         **metadata
     }
+    # Check if file exists and is empty
+    write_header = not os.path.exists(CACHE_FILE) or os.path.getsize(CACHE_FILE) == 0
     # Append as JSON per line for extensibility
     with open(CACHE_FILE, 'a', encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")

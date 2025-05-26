@@ -6,7 +6,7 @@ from ...utils.output_utils import finalize_election_output
 from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
 from ...utils.shared_logic import normalize_text
 from collections import defaultdict
-
+from ...html_election_parser import organize_context_with_cache
 def detect_json_files(input_folder="input"):
     """Return a list of JSON files in the input folder, sorted by modified time (newest first)."""
     try:

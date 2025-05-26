@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from ..utils.shared_logger import logger
 from ..utils.table_builder import format_table_data_for_output, review_and_fill_missing_data
-from ..Context_Integration.context_organizer import organize_context, append_to_context_library, load_context_library
+from ..Context_Integration.context_organizer import organize_context_with_cache, append_to_context_library, load_context_library
 from ..utils.user_prompt import prompt_yes_no
 
 CACHE_FILE = ".output_cache.jsonl"
