@@ -167,9 +167,9 @@ def parse(page, html_context=None):
     headers_out = sorted([col for col in precinct_data[0] if col != "Precinct Name"] if precinct_data else [])
     metadata = {
         "state": "AZ",
-        "race": contest_title,
+        "race": contest_title or "Unknown",
         "handler": "arizona",
-        "source": page.url if hasattr(page, "url") else None
+        "source": getattr(page, "url", "Unknown")
     }
     if county_totals:
         metadata.update(county_totals)

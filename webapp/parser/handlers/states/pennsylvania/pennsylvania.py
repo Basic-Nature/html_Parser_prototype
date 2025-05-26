@@ -135,9 +135,9 @@ def parse(page, html_context=None):
         contest_title = header_text or "Pennsylvania County Results"
         metadata = {
             "state": "PA",
-            "county": html_context.get("county", ""),
+            "county": html_context.get("county", "Unknown"),
             "handler": "pennsylvania",
-            "race": contest_title
+            "race": contest_title or "Unknown"
         }
 
         from ....Context_Integration.context_organizer import organize_context

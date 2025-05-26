@@ -77,10 +77,10 @@ def parse_single_contest(page, html_context, state, county):
     # Assemble headers and finalize output
     headers = sorted(set().union(*(row.keys() for row in data)))
     metadata = {
-        "state": state,
-        "county": county,
-        "race": contest_title,
-        "source": page.url,
+        "state": state or "Unknown",
+        "county": county or "Unknown",
+        "race": contest_title or "Unknown",
+        "source": getattr(page, "url", "Unknown"),
         "handler": "example_county"
     }
     return finalize_and_output(headers, data, contest_title, metadata)
