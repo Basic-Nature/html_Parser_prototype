@@ -83,6 +83,10 @@ def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
     for key in ["contests", "buttons", "panels", "tables", "alerts"]:
         if key in new_data:
             for item in new_data[key]:
+                # Defensive: ensure item is a dict
+                if not isinstance(item, dict):
+                    # Optionally, wrap string as dict or skip
+                    item = {"label": str(item)}
                 norm_label = normalize_label(item.get("title", item.get("label", str(item))))
                 if not any(
                     normalize_label(existing.get("title", existing.get("label", str(existing)))) == norm_label
@@ -91,7 +95,7 @@ def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
                     library.setdefault(key, []).append(item)
     save_context_library(library, path)
     logging.info(f"[CONTEXT ORGANIZER] Appended new data to context library at {path}")
-
+    
 def load_processed_urls(path=PROCESSED_URLS_CACHE):
     if not os.path.exists(path):
         return {}
