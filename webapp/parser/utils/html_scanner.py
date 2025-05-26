@@ -112,6 +112,7 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
     """
     Scans the HTML for state/county/race info, available downloadable formats, 
     and button-like elements. Does NOT prompt or organize, just collects info.
+    Implements early break logic for efficiency when possible.
     """
     context_result = {
         "available_races": defaultdict(lambda: defaultdict(list)),
@@ -123,8 +124,8 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
         "election_type": None,
         "error": None,
         "debug_elements": [],
-        "available_formats": [],  # <-- NEW: List of (format, url)
-        "button_elements": [],    # <-- NEW: List of detected button-like elements
+        "available_formats": [],
+        "button_elements": [],
     }
 
     try:
@@ -144,7 +145,6 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
             context_result["county"] = best_county
 
         # --- 2. Detect downloadable formats (CSV, JSON, PDF, etc.) ---
-        # Look for <a> tags with hrefs ending in known formats
         known_exts = [".csv", ".json", ".pdf", ".xlsx", ".xls"]
         for a in page.query_selector_all("a[href]"):
             try:
@@ -154,6 +154,7 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
                 for ext in known_exts:
                     if href.lower().endswith(ext):
                         context_result["available_formats"].append((ext.lstrip('.'), page.urljoin(href)))
+                        break  # EARLY BREAK: found a format, skip to next link
             except Exception:
                 continue
 
@@ -165,6 +166,7 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
                     label = btn.inner_text().strip()
                     if label:
                         context_result["button_elements"].append(label)
+                        # No break here: collect all button labels
                 except Exception:
                     continue
 
@@ -186,6 +188,7 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
             except Exception:
                 continue
 
+            # Early break for noisy/irrelevant labels
             if (
                 not norm_segment
                 or any(ignore in norm_segment for ignore in IGNORE_SUBSTRINGS)
@@ -206,6 +209,7 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
                     last_detected_year = max(year_matches_label)
                     year_in_label = last_detected_year
 
+            # Early break for contest label match
             for keyword in COMMON_CONTEST_LABELS:
                 if normalize_text(keyword) in norm_segment:
                     tag_year = year_in_label if year_in_label else (last_detected_year if last_detected_year else "Unknown")
@@ -221,12 +225,12 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
                         detected_type = context_result.get("election_type") or last_detected_type or "Unknown"
                     context_result["election_type"] = last_detected_type = detected_type
                     context_result["available_races"][tag_year][detected_type].append(raw_segment)
-                    break
+                    break  # EARLY BREAK: found contest label, skip to next element
 
             for header in COMMON_PRECINCT_HEADERS:
                 if normalize_text(header) in norm_segment:
                     context_result.setdefault("precinct_headers", []).append(raw_segment)
-                    break
+                    break  # EARLY BREAK: found precinct header, skip to next element
 
         # Flatten all detected races for indicators
         all_races = []

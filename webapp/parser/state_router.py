@@ -146,15 +146,17 @@ def resolve_state_handler(url_or_text: str):
     """
     Tries to match known state identifiers in a URL or HTML snippet to route to the appropriate handler module.
     Uses both abbreviation and custom overrides.
+    Implements early break logic for efficiency.
     """
     lower = url_or_text.lower()
+    # Early break: return on first confident state match
     for state_abbr, state_key in STATE_MODULE_MAP.items():
         if state_abbr in lower:
             logger.info(f"[State Router] URL/text matched state '{state_abbr}' → {state_key}")
             module_path = f"webapp.parser.handlers.states.{state_key}"
             module = import_handler(module_path)
             if module:
-                return module
+                return module  # EARLY BREAK: found a match
 
     url_hint_overrides = URL_HINT_OVERRIDES_CACHE.get()
     for pattern, module_path in url_hint_overrides.items():
@@ -162,7 +164,7 @@ def resolve_state_handler(url_or_text: str):
             module = import_handler(module_path)
             if module:
                 logger.info(f"[State Router] URL pattern '{pattern}' matched → {module_path}")
-                return module
+                return module  # EARLY BREAK: found a match
 
     logger.info("[State Router] No matching state-specific handler found.")
     return None
@@ -171,6 +173,7 @@ def get_handler(state_abbreviation: Optional[str], county_name: Optional[str] = 
     """
     Dynamically loads and returns a handler based on state or state+county keys.
     Returns the handler module or None if not found.
+    Implements early break logic for efficiency.
     """
     logger.info(f"[DEBUG] About to call get_handler with state={state_abbreviation}, county={county_name}")
     if not state_abbreviation:
@@ -189,7 +192,7 @@ def get_handler(state_abbreviation: Optional[str], county_name: Optional[str] = 
         module = import_handler(composite_path)
         if module:
             logger.info(f"[Router] Routed to handler for {state_key}_{normalized_county}")
-            return module
+            return module  # EARLY BREAK: found a match
         else:
             logger.warning(f"[Router] County handler not found for {state_key}_{normalized_county}")
 
@@ -197,7 +200,7 @@ def get_handler(state_abbreviation: Optional[str], county_name: Optional[str] = 
     module = import_handler(module_path)
     if module:
         logger.info(f"[Router] Routed to state handler for {state_key}")
-        return module
+        return module  # EARLY BREAK: found a match
     else:
         logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
         return None
@@ -206,6 +209,7 @@ def get_handler_from_context(context: Dict[str, Any]):
     """
     Extracts state and county info from a context dictionary and routes accordingly.
     Returns the handler module or None if not found.
+    Implements early break logic for efficiency.
     """
     state = context.get("state")
     county = context.get("county")
@@ -223,7 +227,7 @@ def get_handler_from_context(context: Dict[str, Any]):
                 state = token
                 context["state"] = token
                 logger.info(f"[Router] Inferred state '{state}' from filename: {filename}")
-                break
+                break  # EARLY BREAK: found a match
         if not state:
             logger.warning("[Router] No state provided in context.")
             return None
@@ -231,16 +235,17 @@ def get_handler_from_context(context: Dict[str, Any]):
     handler = get_handler(state_abbreviation=state, county_name=county)
     if handler:
         logger.info(f"[Router] Handler resolved via get_handler for state '{state}' and county '{county}'")
-        return handler
+        return handler  # EARLY BREAK: found a match
 
     # Fallback if fuzzy match + module lookup failed
     url_text = context.get("url", "") + " " + context.get("raw_text", "")
     fallback = resolve_state_handler(url_text)
     if fallback:
         logger.info("[Router] Fallback to resolve_state_handler succeeded.")
+        return fallback  # EARLY BREAK: found a match
     else:
         logger.warning("[Router] No handler could be resolved even via fallback.")
-    return fallback
+    return None
 
 # =========================
 # CLI Utilities & Batch Mode

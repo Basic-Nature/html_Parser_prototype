@@ -18,6 +18,7 @@ def extract_contest_panel(page, contest_title, panel_tags=None):
     """
     Returns a Playwright Locator for the contest panel matching contest_title.
     Tries all tags in panel_tags (default: CONTEST_PANEL_TAGS), then falls back to ALL_SELECTORS.
+    Implements early break logic for efficiency.
     """
     panel_tags = panel_tags or CONTEST_PANEL_TAGS
     selectors_to_try = [
@@ -32,7 +33,7 @@ def extract_contest_panel(page, contest_title, panel_tags=None):
             panel = panels.nth(i)
             header_text = panel.inner_text().strip().lower()
             if contest_title and contest_title.lower() in header_text:
-                return panel
+                return panel  # EARLY BREAK: found a match
     return None
 
 def extract_precinct_tables(panel):
@@ -40,6 +41,7 @@ def extract_precinct_tables(panel):
     Returns a list of (precinct_name, table_element) tuples from a contest panel.
     Accepts a Playwright Locator as panel.
     Tries default tags, then falls back to ALL_SELECTORS.
+    Implements early break logic for efficiency.
     """
     selectors_to_try = [
         ', '.join(PRECINCT_ELEMENT_TAGS),
@@ -61,7 +63,7 @@ def extract_precinct_tables(panel):
                 precincts.append((current_precinct, el))
                 current_precinct = None
         if precincts:
-            break  # Stop if we found any precincts
+            break  # EARLY BREAK: found precincts, stop searching
     return precincts
 
 def parse(page, html_context=None):
@@ -78,11 +80,10 @@ def parse(page, html_context=None):
 
     # 2. Try to delegate to state/county handler if available
     state_handler = get_handler_from_context(
-        state=html_context.get("state"),
-        county=html_context.get("county")
+        context=html_context
     )
     if state_handler and hasattr(state_handler, "parse"):
-        logger.info(f"[HTML Handler] Redirecting to state handler: {state_handler.__name__}...")
+        logger.info(f"[HTML Handler] Redirecting to state handler: {getattr(state_handler, '__name__', str(state_handler))}...")
         return state_handler.parse(page, html_context)
 
     # 3. Let user select contest if not already set
