@@ -147,7 +147,7 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
         "button_elements": [],
         "contests": [],
         "buttons": [],
-        "panels": [],
+        "panels": {},
         "tables": [],
         "metadata": {},
     }
