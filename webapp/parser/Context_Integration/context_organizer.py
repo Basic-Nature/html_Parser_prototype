@@ -201,7 +201,7 @@ def monitor_db_for_alerts(poll_interval=10):
                 rows = cursor.fetchall()
                 for row in rows:
                     last_alert_id = row[0]
-                    logging.alert(f"[REAL-TIME ALERT][{row[1]}] {row[2]}", context=row[3], alert_type=row[1])
+                    logging.warning(f"[REAL-TIME ALERT][{row[1]}] {row[2]} | Context: {row[3]} | ALERT_TYPE: {row[1]}")
                 conn.close()
             except Exception as e:
                 logging.error(f"[MONITOR] Error in real-time alert monitor: {e}")
@@ -323,6 +323,9 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
         "clusters": clusters.tolist() if hasattr(clusters, "tolist") else clusters,
         "integrity_issues": integrity_issues,
     }
+    years = [c.get("year") for c in contests if c.get("year")]
+    if years:
+        metadata["year"] = years[0]  # or max(years), or whatever logic you prefer
     append_to_context_library(organized, path=CONTEXT_LIBRARY_PATH)
     logging.info(f"[CONTEXT ORGANIZER] Organized context for {len(contests)} contests. Anomalies: {len(anomalies)}. Integrity issues: {len(integrity_issues)}")
 
