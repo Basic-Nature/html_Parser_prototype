@@ -86,9 +86,7 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
         return None, None, None, {"skipped": True}
 
     # --- 1. Toggle "View results by election district" ---
-    button_features = page.locator(ALL_SELECTORS, container=contest_panel)
-    # or, if you want all elements matching ALL_SELECTORS:
-    # button_features = page.locator(ALL_SELECTORS)
+    button_features = page.locator(ALL_SELECTORS)
     toggle_button = next(
         (btn for btn in button_features if "election-district" in btn["label"].lower() or "your-class-name" in btn["class"]), 
         None
@@ -162,10 +160,10 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
     # Assemble headers and finalize output
     headers = sorted(set().union(*(row.keys() for row in data)))
     metadata = {
-        "state": state,
-        "county": county,
-        "race": contest_title,
-        "source": page.url,
+        "state": state or "Unknown",
+        "county": county or "Unknown",
+        "race": contest_title or "Unknown",
+        "source": getattr(page, "url", "Unknown"),
         "handler": "rockland"
     }
     return finalize_and_output(headers, data, contest_title, metadata)
