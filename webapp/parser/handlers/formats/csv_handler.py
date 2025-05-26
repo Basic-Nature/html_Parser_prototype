@@ -8,7 +8,7 @@ import csv
 import os
 import re
 from dotenv import load_dotenv
-from ...state_router import resolve_state_handler, get_handler_from_context
+from ...state_router import get_handler_from_context
 from ...utils.output_utils import finalize_election_output
 from ...utils.shared_logger import logging, rprint, logger
 from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
@@ -103,7 +103,7 @@ def parse(page, html_context):
             # Step: Handle embedded headers or skip metadata lines
             default_keywords = os.getenv("CSV_HEADER_KEYWORDS", "precinct,votes,candidate").split(",")
             handler_keywords = default_keywords
-            handler = resolve_state_handler(csv_path)
+            handler = get_handler_from_context(csv_path)
             if handler and hasattr(handler, "header_keywords"):
                 handler_keywords = getattr(handler, "header_keywords")
 
@@ -189,7 +189,7 @@ def parse(page, html_context):
 
             # Step: Detect state and county from filename if not already present
             if "state" not in html_context or html_context["state"] == "Unknown":
-                resolved = resolve_state_handler(csv_path)
+                resolved = get_handler_from_context(csv_path)
                 if resolved:
                     html_context["state"] = resolved.__name__.split(".")[-1].upper()
 

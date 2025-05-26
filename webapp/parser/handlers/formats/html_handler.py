@@ -4,8 +4,7 @@ from ...utils.table_builder import extract_table_data, calculate_grand_totals
 from ...utils.html_scanner import scan_html_for_context, get_detected_races_from_context
 from ...utils.shared_logger import logger
 from ...utils.shared_logic import (
-    normalize_text, click_dynamic_toggle,
-    ALL_SELECTORS
+    normalize_text, find_and_click_toggle,
 )
 from rich import print as rprint
 import os
@@ -21,10 +20,12 @@ if os.path.exists(CONTEXT_LIBRARY_PATH):
         CONTEXT_LIBRARY = json.load(f)
     PRECINCT_ELEMENT_TAGS = CONTEXT_LIBRARY.get("precinct_element_tags", ["h3", "h4", "h5", "strong", "b", "span", "div"])
     CONTEST_PANEL_TAGS = CONTEXT_LIBRARY.get("contest_panel_tags", ["div", "section", "article"])
+    ALL_SELECTORS = ", ".join(CONTEXT_LIBRARY.get("selectors", {}).get("all_selectors", []))
 else:
     logger.error("[html_handler] context_library.json not found. Using default tags.")
     PRECINCT_ELEMENT_TAGS = ["h3", "h4", "h5", "strong", "b", "span", "div"]
     CONTEST_PANEL_TAGS = ["div", "section", "article"]
+    ALL_SELECTORS = "h1, h2, h3, h4, h5, h6, strong, b, span, div"
 
 def extract_contest_panel(page, contest_title, panel_tags=None):
     """
@@ -115,7 +116,7 @@ def parse(page, html_context=None):
 
     # 4. Try to find and click toggles dynamically using handler-supplied keywords
     handler_keywords = html_context.get("toggle_keywords", ["View Results", "Vote Method", "Show Results"])
-    clicked = click_dynamic_toggle(
+    clicked = find_and_click_toggle(
         page,
         container=None,
         handler_keywords=handler_keywords,
