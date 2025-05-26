@@ -277,6 +277,7 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
         "election_type": raw_context.get("election_type"),
         "scrape_time": raw_context.get("scrape_time"),
         "year": None,
+        "race": raw_context.get("race"),
         "environment": scan_environment(),
     }
 

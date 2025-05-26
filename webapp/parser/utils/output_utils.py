@@ -31,6 +31,8 @@ def get_output_path(metadata, subfolder="parsed"):
     if race:
         safe_race = "".join([c if c.isalnum() or c in " _-" else "_" for c in str(race)])
         parts.append(safe_race.replace(" ", "_"))
+    else:
+        parts.append("unknown_race")  # <-- Add a fallback for missing race
     if subfolder:
         parts.append(str(subfolder))
     path = os.path.join(*parts)
@@ -81,6 +83,9 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     # 1. Enrich metadata using context organizer
     organized = organize_context(metadata)
     enriched_meta = organized.get("metadata", metadata)
+    # Defensive: ensure 'race' is present in enriched_meta
+    if "race" not in enriched_meta:
+        enriched_meta["race"] = metadata.get("race", "Unknown")
     # 2. Optionally append output info to context library
     append_to_context_library({"metadata": enriched_meta})
 
@@ -88,7 +93,7 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     existing = check_existing_output(enriched_meta)
     if existing:
         overwrite = prompt_yes_no(
-            f"Output for {enriched_meta['state']} {enriched_meta['county']} {enriched_meta['year']} {enriched_meta['race']} already exists at {existing['output_path']}. Overwrite?",
+            f"Output for {enriched_meta.get('state', 'Unknown')} {enriched_meta.get('county', 'Unknown')} {enriched_meta.get('year', 'Unknown')} {enriched_meta.get('race', 'Unknown')} already exists at {existing.get('output_path', 'Unknown')}. Overwrite?",
             default="n"
         )
         if not overwrite:
@@ -101,7 +106,7 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     output_path = get_output_path(enriched_meta, "parsed")
     timestamp = format_timestamp()
     # 5. Build safe and descriptive filename
-    safe_title = "".join([c if c.isalnum() or c in " _-" else "_" for c in contest_title or enriched_meta.get("race", "results")])
+    safe_title = "".join([c if c.isalnum() or c in " _-" else "_" for c in (contest_title or enriched_meta.get("race", "results"))])
     safe_title = safe_title.replace(" ", "_")
     year = enriched_meta.get("year", "")
     state = enriched_meta.get("state", "")
