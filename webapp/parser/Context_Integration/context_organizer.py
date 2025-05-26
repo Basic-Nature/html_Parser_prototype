@@ -13,6 +13,8 @@ import sqlite3
 import threading
 import time
 from collections import defaultdict
+from rich import print as rprint
+
 
 from sklearn.ensemble import IsolationForest
 from sklearn.cluster import DBSCAN
@@ -20,8 +22,10 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 
-logging.basicConfig(level=logging.DEBUG)
-
+logging.basicConfig(
+    level=logging.INFO,
+    format="\n[%(levelname)s] %(message)s\n"
+)
 # Paths
 CONTEXT_LIBRARY_PATH = os.path.join(
     os.path.dirname(__file__), "Context_Library", "context_library.json"
@@ -94,7 +98,7 @@ def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
                 ):
                     library.setdefault(key, []).append(item)
     save_context_library(library, path)
-    logging.info(f"[CONTEXT ORGANIZER] Appended new data to context library at {path}")
+    rprint(f"[CONTEXT ORGANIZER] Appended new data to context library at {path}")
     
 def load_processed_urls(path=PROCESSED_URLS_CACHE):
     if not os.path.exists(path):
@@ -201,7 +205,7 @@ def monitor_db_for_alerts(poll_interval=10):
                 rows = cursor.fetchall()
                 for row in rows:
                     last_alert_id = row[0]
-                    logging.warning(f"[REAL-TIME ALERT][{row[1]}] {row[2]} | Context: {row[3]} | ALERT_TYPE: {row[1]}")
+                    rprint(f"[REAL-TIME ALERT][{row[1]}] {row[2]} | Context: {row[3]} | ALERT_TYPE: {row[1]}")
                 conn.close()
             except Exception as e:
                 logging.error(f"[MONITOR] Error in real-time alert monitor: {e}")
@@ -290,30 +294,30 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
                 for idx in anomalies:
                     contest = contests[idx]
                     title = contest.get('title', str(contest))
-                    logging.warning(f"[ML] Context anomaly detected: {title} | Context: {contest}")
+                    rprint(f"[bold magenta][ML][/bold magenta] Context anomaly detected: [bold yellow]{title}[/bold yellow]\n  [dim]Context:[/dim] {contest}")
             # NLP outlier detection
             nlp_outliers = nlp_title_outlier_detection(contests)
             for idx in nlp_outliers:
                 contest = contests[idx]
                 title = contest.get('title', str(contest))
-                logging.warning(f"[NLP] Outlier contest title detected: {title} | Context: {contest}")
+                rprint(f"[bold cyan][NLP][/bold cyan] Outlier contest title detected: [bold yellow]{title}[/bold yellow]\n  [dim]Context:[/dim] {contest}")
         except Exception as e:
-            logging.error(f"[ML] Anomaly/NLP detection failed: {e}")
+            rprint(f"[bold red][ML] Anomaly/NLP detection failed:[/bold red] {e}")
 
     # --- Election integrity checks ---
     integrity_issues = election_integrity_checks(contests)
     for issue, contest in integrity_issues:
         if issue == "duplicate":
-            logging.warning(f"[INTEGRITY] Duplicate contest detected. Context: {contest}")
+            rprint(f"[bold yellow][INTEGRITY][/bold yellow] Duplicate contest detected.\n  [dim]Context:[/dim] {contest}")
         elif issue == "missing_location":
-            logging.warning(f"[INTEGRITY] Contest missing location info. Context: {contest}")
+            rprint(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing location info.\n  [dim]Context:[/dim] {contest}")
         elif issue == "missing_year":
-            logging.warning(f"[INTEGRITY] Contest missing year. Context: {contest}")
+            rprint(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing year.\n  [dim]Context:[/dim] {contest}")
 
     # --- Congestion/flow detection ---
     if len(contests) > 50:
-       logging.warning(f"[CONTEXT ORGANIZER] High contest count detected — possible congestion. Context: contest_count={len(contests)}")
-
+        rprint(f"[bold red][CONTEXT ORGANIZER][/bold red] High contest count detected — possible congestion.\n  [dim]Context:[/dim] contest_count={len(contests)}")
+        
     organized = {
         "contests": contests,
         "buttons": dict(buttons_by_contest),
@@ -328,7 +332,10 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
     if years:
         metadata["year"] = years[0]  # or max(years), or whatever logic you prefer
     append_to_context_library(organized, path=CONTEXT_LIBRARY_PATH)
-    logging.info(f"[CONTEXT ORGANIZER] Organized context for {len(contests)} contests. Anomalies: {len(anomalies)}. Integrity issues: {len(integrity_issues)}")
+    rprint(
+        f"[bold green][CONTEXT ORGANIZER][/bold green] Organized context for [bold]{len(contests)}[/bold] contests.\n"
+        f"  [magenta]Anomalies:[/magenta] {len(anomalies)}  [yellow]Integrity issues:[/yellow] {len(integrity_issues)}"
+    )
 
     # Insert contests into DB for persistent storage and future ML
     conn = sqlite3.connect(DB_PATH)
