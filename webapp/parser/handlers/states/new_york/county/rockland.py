@@ -86,7 +86,9 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
         return None, None, None, {"skipped": True}
 
     # --- 1. Toggle "View results by election district" ---
-    button_features = ALL_SELECTORS(page, container=contest_panel)
+    button_features = page.locator(ALL_SELECTORS, container=contest_panel)
+    # or, if you want all elements matching ALL_SELECTORS:
+    # button_features = page.locator(ALL_SELECTORS)
     toggle_button = next(
         (btn for btn in button_features if "election-district" in btn["label"].lower() or "your-class-name" in btn["class"]), 
         None
