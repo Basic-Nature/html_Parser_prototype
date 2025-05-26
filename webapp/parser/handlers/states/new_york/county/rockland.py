@@ -87,16 +87,27 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
 
     # --- 1. Toggle "View results by election district" ---
     button_features = page.locator(ALL_SELECTORS)
-    class_name = btn.get_attribute("text-decoration-none ng-star-inserted") or ""
+    toggle_button = None
     handler_keywords = []
     for i in range(button_features.count()):
         btn = button_features.nth(i)
         label = btn.inner_text() or ""
+        class_name = btn.get_attribute("text-decoration-none ng-star-inserted") or ""
         if label and len(label) < 100 and "\n" not in label:
             if "election district" in label.lower():
                 toggle_button = btn
                 handler_keywords = [label]
                 break
+        if "election-district" in label.lower() or "text-decoration-none ng-star-inserted" in class_name:
+            toggle_button = btn
+            break
+    handler_selectors = []
+    handler_keywords = []
+    if toggle_button:
+        if toggle_button["selector"]:
+            handler_selectors.append(toggle_button["selector"])
+        if toggle_button["label"]:
+            handler_keywords.append(toggle_button["label"])
     # Fallback if not found
     if not handler_keywords:
         handler_keywords = ["View results by election district"]
@@ -105,6 +116,7 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
     find_and_click_toggle(
         page,
         container=contest_panel,
+
         handler_keywords=handler_keywords if handler_keywords else ["View results by election district"],
         logger=logger,
         verbose=True,
@@ -117,7 +129,6 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
    # --- 3. Now look for and toggle vote method, if present ---
     # (This must be after the first toggle, as the vote method toggle may not exist before)
     vote_method_keywords = ["Vote Method"]
-    vote_method_button = None
     handler_keywords = []
     button_features = page.locator(ALL_SELECTORS)
     for i in range(button_features.count()):
@@ -125,7 +136,6 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
         label = btn.inner_text() or ""
         if label and len(label) < 100 and "\n" not in label:
             if "vote method" in label.lower():
-                vote_method_button = btn
                 handler_keywords = [label]
                 break
     # Fallback if not found
