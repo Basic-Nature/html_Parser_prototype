@@ -2,6 +2,7 @@ import csv
 import json
 import os
 from datetime import datetime
+from rich import print as rprint
 from ..utils.shared_logger import logger
 from ..utils.table_builder import format_table_data_for_output, review_and_fill_missing_data
 from ..Context_Integration.context_organizer import organize_context, append_to_context_library, load_context_library
@@ -15,24 +16,33 @@ def get_output_path(metadata, subfolder="parsed"):
     Example: output/state/county/year/race/parsed/
     """
     parts = ["output"]
-    state = metadata.get("state", "unknown")
-    county = metadata.get("county", "unknown")
-    year = metadata.get("year", None)
-    race = metadata.get("race", None)
-    election_type = metadata.get("election_type", None)
+    state = metadata.get("state", "Unknown")
+    county = metadata.get("county", "Unknown")
+    year = metadata.get("year", "Unknown")
+    race = metadata.get("race", "Unknown")
+    election_type = metadata.get("election_type", "Unknown")
+
+    def safe_filename(s):
+        return "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
+
+    race_safe = safe_filename(race)
+    county_safe = safe_filename(county)
+    state_safe = safe_filename(state)
     if state:
-        parts.append(str(state).lower())
+        parts.append(state_safe.lower())
     if county:
-        parts.append(str(county).lower())
-    if year:
+        parts.append(county_safe.lower())
+    if year and str(year).isdigit() and len(str(year)) == 4:
         parts.append(str(year))
+    else:
+        parts.append("Unknown")
     if election_type:
-        parts.append(str(election_type).lower())
+        parts.append(safe_filename(election_type).lower())
     if race:
         safe_race = "".join([c if c.isalnum() or c in " _-" else "_" for c in str(race)])
         parts.append(safe_race.replace(" ", "_"))
     else:
-        parts.append("unknown_race")  # <-- Add a fallback for missing race
+        parts.append("unknown_race")
     if subfolder:
         parts.append(str(subfolder))
     path = os.path.join(*parts)
@@ -66,10 +76,10 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
             meta = entry.get("metadata", {})
             # Compare key fields for deduplication
             if (
-                meta.get("state") == metadata.get("state") and
-                meta.get("county") == metadata.get("county") and
-                meta.get("year") == metadata.get("year") and
-                meta.get("race") == metadata.get("race")
+                meta.get("state", "Unknown") == metadata.get("state", "Unknown") and
+                meta.get("county", "Unknown") == metadata.get("county", "Unknown") and
+                meta.get("year", "Unknown") == metadata.get("year", "Unknown") and
+                meta.get("race", "Unknown") == metadata.get("race", "Unknown")
             ):
                 return entry
     return None
@@ -86,6 +96,14 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     # Defensive: ensure 'race' is present in enriched_meta
     if "race" not in enriched_meta:
         enriched_meta["race"] = metadata.get("race", "Unknown")
+    # Defensive: ensure 'year' is present and valid
+    if "year" not in enriched_meta or not (str(enriched_meta["year"]).isdigit() and len(str(enriched_meta["year"])) == 4):
+        enriched_meta["year"] = "Unknown"
+    # Defensive: ensure 'state' and 'county' are present
+    if "state" not in enriched_meta:
+        enriched_meta["state"] = metadata.get("state", "Unknown")
+    if "county" not in enriched_meta:
+        enriched_meta["county"] = metadata.get("county", "Unknown")
     # 2. Optionally append output info to context library
     append_to_context_library({"metadata": enriched_meta})
 
@@ -93,11 +111,11 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     existing = check_existing_output(enriched_meta)
     if existing:
         overwrite = prompt_yes_no(
-            f"Output for {enriched_meta.get('state', 'Unknown')} {enriched_meta.get('county', 'Unknown')} {enriched_meta.get('year', 'Unknown')} {enriched_meta.get('race', 'Unknown')} already exists at {existing.get('output_path', 'Unknown')}. Overwrite?",
+            f"Output for [bold]{enriched_meta.get('state', 'Unknown')}[/bold] [bold]{enriched_meta.get('county', 'Unknown')}[/bold] [bold]{enriched_meta.get('year', 'Unknown')}[/bold] [bold]{enriched_meta.get('race', 'Unknown')}[/bold] already exists at [cyan]{existing.get('output_path', 'Unknown')}[/cyan]. Overwrite?",
             default="n"
         )
         if not overwrite:
-            logger.info("[OUTPUT] Skipping write due to existing output.")
+            rprint(f"[bold yellow][OUTPUT][/bold yellow] Skipping write due to existing output.")
             csv_path = existing["output_path"]
             json_meta_path = csv_path.replace(".csv", "_metadata.json")
             return {"csv_path": csv_path, "metadata_path": json_meta_path}
@@ -113,7 +131,7 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     county = enriched_meta.get("county", "")
     election_type = enriched_meta.get("election_type", "")
     filename_parts = [
-        str(year) if year else "",
+        str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "",
         str(state).lower() if state else "",
         str(county).lower() if county else "",
         str(election_type).lower() if election_type else "",
@@ -168,7 +186,7 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     # --- Update output cache ---
     update_output_cache(metadata_out, filepath)
 
-    logger.info(f"[OUTPUT] Wrote {len(data)} rows to {filepath}")
-    logger.info(f"[OUTPUT] Metadata written to {json_meta_path}")
+    rprint(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
+    rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
 
     return {"csv_path": filepath, "metadata_path": json_meta_path}
