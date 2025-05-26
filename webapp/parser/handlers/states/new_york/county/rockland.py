@@ -87,30 +87,20 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
 
     # --- 1. Toggle "View results by election district" ---
     button_features = page.locator(ALL_SELECTORS)
-    toggle_button = None
+
     handler_keywords = []
     for i in range(button_features.count()):
         btn = button_features.nth(i)
         label = btn.inner_text() or ""
-        class_name = btn.get_attribute("text-decoration-none ng-star-inserted") or ""
+        class_name = btn.get_attribute("class") or ""
         if label and len(label) < 100 and "\n" not in label:
             if "election district" in label.lower():
-                toggle_button = btn
                 handler_keywords = [label]
                 break
-        if "election-district" in label.lower() or "text-decoration-none ng-star-inserted" in class_name:
-            toggle_button = btn
-            break
-    handler_selectors = []
-    handler_keywords = []
-    if toggle_button:
-        if toggle_button["selector"]:
-            handler_selectors.append(toggle_button["selector"])
-        if toggle_button["label"]:
-            handler_keywords.append(toggle_button["label"])
     # Fallback if not found
-    if not handler_keywords:
+    if "election-district" in label.lower() or "text-decoration-none ng-star-inserted" in class_name:
         handler_keywords = ["View results by election district"]
+        
         
     # Click the first toggle
     find_and_click_toggle(
