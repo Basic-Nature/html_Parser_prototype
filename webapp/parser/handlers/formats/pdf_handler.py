@@ -14,7 +14,7 @@ from ...state_router import get_handler_from_context
 from ...utils.output_utils import finalize_election_output
 from ...utils.shared_logger import logger
 from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
-from ...html_election_parser import organize_context_with_cache
+
 try:
     import fitz  # PyMuPDF
 except ImportError:
@@ -265,7 +265,7 @@ def parse(page, html_context):
 
             # --- Standardize: Enrich metadata and output ---
             from ...Context_Integration.context_organizer import organize_context
-            organized = organize_context_with_cache(metadata)
+            organized = organize_context(metadata)
             metadata = organized.get("metadata", metadata)
             result = finalize_election_output(headers, wide_data, contest_title, metadata)
             contest_title = result.get("contest_title", contest_title)
@@ -278,7 +278,7 @@ def parse(page, html_context):
             fallback_rows = [{"raw_line": line} for line in lines[header_line_idx + 1:]]
             # --- Standardize fallback ---
             from ...Context_Integration.context_organizer import organize_context
-            organized = organize_context_with_cache(metadata)
+            organized = organize_context(metadata)
             metadata = organized.get("metadata", metadata)
             result = finalize_election_output(["raw_line"], fallback_rows, os.path.basename(pdf_path), metadata)
             contest_title = result.get("contest_title", os.path.basename(pdf_path))
@@ -287,7 +287,7 @@ def parse(page, html_context):
 
     # If no table, return plain text
     from ...Context_Integration.context_organizer import organize_context
-    organized = organize_context_with_cache(metadata)
+    organized = organize_context(metadata)
     metadata = organized.get("metadata", metadata)
     result = finalize_election_output(["text"], [{"text": all_text}], os.path.basename(pdf_path), metadata)
     contest_title = result.get("contest_title", os.path.basename(pdf_path))

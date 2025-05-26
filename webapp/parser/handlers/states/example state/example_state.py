@@ -7,7 +7,7 @@ from ....utils.output_utils import finalize_election_output
 from ....utils.contest_selector import select_contest
 from ....utils.table_builder import extract_table_data, calculate_grand_totals
 from ....utils.html_scanner import scan_html_for_context, get_detected_races_from_context
-from ....html_election_parser import organize_context_with_cache
+
 def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, Any, dict]:
     """
     Example state handler.
@@ -117,7 +117,7 @@ def finalize_and_output(headers, data, contest_title, metadata):
     # Recompute headers in case grand_total added new fields
     headers = sorted(set().union(*(row.keys() for row in data)))
     # --- Enrich metadata and context ---
-    organized = organize_context_with_cache(metadata)
+    organized = organize_context(metadata)
     metadata = organized.get("metadata", metadata)
     # Write output and metadata
     result = finalize_election_output(headers, data, contest_title, metadata)

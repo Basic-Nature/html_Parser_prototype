@@ -206,7 +206,7 @@ def monitor_db_for_alerts(poll_interval=10):
     thread.start()
 
 # --- Main Organizer ---
-def organize_context_with_cache(raw_context, button_features=None, panel_features=None, use_library=True, cache=None, enable_ml=True):
+def organize_context(raw_context, button_features=None, panel_features=None, use_library=True, cache=None, enable_ml=True):
     ensure_db_schema()
     library = load_context_library() if use_library else {"contests": [], "buttons": [], "panels": [], "tables": [], "alerts": []}
     processed_urls = load_processed_urls()

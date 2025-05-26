@@ -10,7 +10,7 @@ from .....utils.table_builder import extract_table_data, calculate_grand_totals
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import logger, rprint
 from .....utils.shared_logic import autoscroll_until_stable, find_and_click_toggle, ALL_SELECTORS
-from .....html_election_parser import organize_context_with_cache
+
 
 
 def parse(page: Page, html_context: dict = None):
@@ -180,7 +180,7 @@ def finalize_and_output(headers, data, contest_title, metadata):
     # Recompute headers in case grand_total added new fields
     headers = sorted(set().union(*(row.keys() for row in data)))
     # --- Enrich metadata and context ---
-    organized = organize_context_with_cache(metadata)
+    organized = organize_context(metadata)
     metadata = organized.get("metadata", metadata)
     # Write output and metadata
     result = finalize_election_output(headers, data, contest_title, metadata)

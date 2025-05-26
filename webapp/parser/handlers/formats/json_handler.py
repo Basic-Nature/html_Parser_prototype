@@ -6,7 +6,7 @@ from ...utils.output_utils import finalize_election_output
 from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
 from ...utils.shared_logic import normalize_text
 from collections import defaultdict
-from ...html_election_parser import organize_context_with_cache
+
 def detect_json_files(input_folder="input"):
     """Return a list of JSON files in the input folder, sorted by modified time (newest first)."""
     try:
@@ -164,7 +164,7 @@ def parse(page, html_context):
 
         # Output via finalize_election_output
         from ...Context_Integration.context_organizer import organize_context
-        organized = organize_context_with_cache(metadata)
+        organized = organize_context(metadata)
         metadata = organized.get("metadata", metadata)
         result = finalize_election_output(headers, data_rows, target_contest, metadata)
         contest_title = result.get("contest_title", target_contest)

@@ -9,7 +9,7 @@ import difflib
 from .contest_selector import is_noisy_label, is_noisy_contest_label
 from ..state_router import STATE_MODULE_MAP
 from ..utils.shared_logger import logger
-from ..Context_Integration.context_organizer import organize_context_with_cache, append_to_context_library
+from ..Context_Integration.context_organizer import organize_context, append_to_context_library
 
 # --- Load config from context library ---
 CONTEXT_LIBRARY_PATH = os.path.join(

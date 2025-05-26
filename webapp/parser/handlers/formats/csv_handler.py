@@ -12,7 +12,7 @@ from ...state_router import get_handler_from_context
 from ...utils.output_utils import finalize_election_output
 from ...utils.shared_logger import logging, rprint, logger
 from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
-from ...html_election_parser import organize_context_with_cache
+
 load_dotenv()
 
 def detect_csv_files(input_folder="input"):
@@ -209,7 +209,7 @@ def parse(page, html_context):
 
             # Enrich metadata and context using context_organizer
             from ...Context_Integration.context_organizer import organize_context
-            organized = organize_context_with_cache(metadata)
+            organized = organize_context(metadata)
             metadata = organized.get("metadata", metadata)
 
             # Output via finalize_election_output
