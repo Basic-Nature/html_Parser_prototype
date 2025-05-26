@@ -87,10 +87,14 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
 
     # --- 1. Toggle "View results by election district" ---
     button_features = page.locator(ALL_SELECTORS)
-    toggle_button = next(
-        (btn for btn in button_features if "election-district" in btn["label"].lower() or "your-class-name" in btn["class"]), 
-        None
-    )
+    toggle_button = None
+    for i in range(button_features.count()):
+        btn = button_features.nth(i)
+        label = btn.get_attribute("aria-label") or btn.inner_text() or ""
+        class_name = btn.get_attribute("class") or ""
+        if "election-district" in label.lower() or "your-class-name" in class_name:
+            toggle_button = btn
+            break
     handler_selectors = []
     handler_keywords = []
     if toggle_button:
@@ -113,14 +117,27 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
     # --- 2. Wait for precincts to load (table or new panel) ---
     autoscroll_until_stable(page, wait_for_selector="table")
 
-    # --- 3. Now look for and toggle vote method, if present ---
+   # --- 3. Now look for and toggle vote method, if present ---
     # (This must be after the first toggle, as the vote method toggle may not exist before)
+    vote_method_keywords = ["Vote Method", "Voting Method", "Ballot Method"]
+    vote_method_button = None
+    button_features = page.locator(ALL_SELECTORS)
+    for i in range(button_features.count()):
+        btn = button_features.nth(i)
+        label = btn.get_attribute("aria-label") or btn.inner_text() or ""
+        if any(k.lower() in label.lower() for k in vote_method_keywords):
+            vote_method_button = btn
+            break
+
+    if vote_method_button:
+        handler_keywords = [label]
+    else:
+        handler_keywords = vote_method_keywords
+
     find_and_click_toggle(
         page, 
         container=contest_panel, 
-        handler_keywords=[
-            "Vote Method", "Voting Method", "Ballot Method"
-        ], 
+        handler_keywords=handler_keywords, 
         logger=logger, 
         verbose=True, 
         interactive=True
