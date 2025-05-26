@@ -88,7 +88,7 @@ def parse_single_contest(page, html_context, state, county):
 
     # Click toggles if needed (using shared logic)
     click_dynamic_toggle(page, container=contest_panel, handler_keywords=[
-        "View results by election district", "View Results", "Results by District"
+        "View results by election district"
     ], logger=logger, verbose=True, interactive=True)
 
     # Click vote method toggle if present
@@ -119,6 +119,9 @@ def parse_single_contest(page, html_context, state, county):
             data.append(row)
 
     if not data:
+        rprint(f"[yellow][DEBUG] precinct_tables: {precinct_tables}[/yellow]")
+        rprint(f"[yellow][DEBUG] method_names: {method_names}[/yellow]")
+        rprint(f"[yellow][DEBUG] data: {data}[/yellow]")
         rprint("[red][ERROR] No precinct data was parsed.[/red]")
         return None, None, None, {"skipped": True}
 

@@ -47,7 +47,7 @@ CONTEST_PARTS = [
 
 # Full contest labels (for direct matching)
 COMMON_CONTEST_LABELS = [
-    "President", "Vice President", "Presidential", "Senate", "Senator", "Congress", "Representative", "Electors",
+    "Award Program", "Vice President", "Presidential", "Senate", "Senator", "Congress", "Representative", "Electors",
     "House of Representatives", "Proposition", "Amendment","House", "District Representative", "District Delegate",
     "Governor", "Lieutenant Governor", "Attorney General", "Comptroller", "Treasurer", "Secretary of State",
     "State Senator", "State Assembly", "State Representative", "Assembly Member", "Member of Assembly",

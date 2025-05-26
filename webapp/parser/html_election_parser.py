@@ -32,7 +32,7 @@ from .utils.download_utils import ensure_input_directory, ensure_output_director
 from .utils.format_router import detect_format_from_links, prompt_user_for_format, route_format_handler
 from .utils.html_scanner import scan_html_for_context
 from .utils.shared_logger import logger, rprint
-from .utils.user_prompt import prompt_user_input
+from .utils.user_prompt import prompt_user_input, PromptCancelled
 
 # Optional: Bot integration and future AI/ML hooks
 try:
@@ -244,35 +244,25 @@ def process_url(target_url):
             if FORMAT_DETECTION_ENABLED:
                 auto_confirm = os.getenv("FORMAT_AUTO_CONFIRM", "true").lower() == "true"
                 confirmed = detect_format_from_links(page, target_url, auto_confirm=auto_confirm)
-                fmt, local_file = prompt_user_for_format(confirmed, logger=logging)
+                try:
+                    fmt, local_file = prompt_user_for_format(confirmed, logger=logging)
+                except PromptCancelled:
+                    rprint("[bold yellow][EXIT][/bold yellow] User cancelled the prompt. Exiting gracefully.")
+                    mark_url_processed(target_url, status="cancelled")
+                    return  # Clean exit for this URL
                 if fmt and local_file:
                     format_handler = route_format_handler(fmt)
                     if format_handler and hasattr(format_handler, "parse"):
-                        file_context = {**html_context, "filename": os.path.basename(local_file), "skip_format": False}
-                        dummy_page = cast(Page, None)
-                        result = format_handler.parse(dummy_page, file_context)
-                        if isinstance(result, tuple) and len(result) == 4:
-                            *_, metadata = result
-                            if metadata.get("skipped"):
-                                logging.info(f"[INFO] {fmt.upper()} parsing was intentionally skipped by user.")
-                                return
-                        if not isinstance(result, tuple) or len(result) != 4:
-                            logging.error(f"[ERROR] Handler returned unexpected structure: expected 4 values, got {len(result) if isinstance(result, tuple) else 'non-tuple'}")
-                            mark_url_processed(target_url, status="fail")
-                            return
-                        if result and all(result):
-                            headers, data, contest_title, metadata = result
-                            ai_analyze_results(headers, data, contest_title, metadata)
-                            stream_results(headers, data, contest_title, metadata)
-                            if "output_file" in metadata:
-                                logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
-                            mark_url_processed(target_url, status="success")
-                            return
-                        else:
-                            logging.warning(f"[WARN] No handler found for format: {fmt}")
-                    else:
-                        logging.info("[INFO] No format selected or skipped by user.")        
-
+                        # add format handler logic here if needed
+                        pass
+                else:
+                    logging.info("[INFO] No format selected or skipped by user. Falling back to HTML parsing.")
+            if not result:
+                result = resolve_and_parse(page, html_context, target_url)
+                if not isinstance(result, tuple) or len(result) != 4:
+                    logging.error(f"[ERROR] Handler returned unexpected structure: expected 4 values, got {len(result) if isinstance(result, tuple) else 'non-tuple'}")
+                    mark_url_processed(target_url, status="fail")
+                    return
             # --- Batch Mode: Multiple Races ---
             if html_context.get("batch_mode") and "selected_races" in html_context:
                 for race_title in html_context["selected_races"]:

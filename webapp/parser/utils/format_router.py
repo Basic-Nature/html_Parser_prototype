@@ -1,8 +1,10 @@
-from typing import Optional
-from ..utils.shared_logger import log_info, log_debug, log_warning, rprint
-from urllib.parse import urljoin
 from dotenv import load_dotenv
+from ..handlers.formats import json_handler, pdf_handler, csv_handler
 import os
+from typing import Optional
+from ..utils.shared_logger import logger, rprint
+from ..utils.user_prompt import prompt_user_input
+from urllib.parse import urljoin
 
 load_dotenv()
 
@@ -19,7 +21,7 @@ def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tu
     """
     links = page.query_selector_all("a")
     found = {ext: [] for ext in SUPPORTED_FORMATS}
-    log_info("[INFO] Scanning for available download links...")
+    logger.info("[INFO] Scanning for available download links...")
     for link in links:
         try:
             href = link.get_attribute("href") or ""
@@ -27,19 +29,19 @@ def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tu
                 if ext.lower() in href.lower():
                     abs_url = urljoin(base_url or page.url, href)
                     found[ext].append(abs_url)
-                    log_debug(f"[DEBUG] Found {ext} link: {abs_url}")
+                    logger.debug(f"[DEBUG] Found {ext} link: {abs_url}")
         except Exception as e:
-            log_debug(f"[DEBUG] Failed to evaluate a link: {e}")
+            logger.debug(f"[DEBUG] Failed to evaluate a link: {e}")
 
     flat_results = []
     for ext in SUPPORTED_FORMATS:
         for url in found[ext]:
             flat_results.append((ext.strip("."), url))
     if not flat_results:
-        log_warning("[WARN] No supported file formats found on the page.")
+        logger.warning("[WARN] No supported file formats found on the page.")
     # Auto-confirm logic: return only the first found format if enabled
     if auto_confirm and flat_results:
-        log_info(f"[INFO] Auto-confirm enabled. Automatically selecting: {flat_results[0]}")
+        logger.info(f"[INFO] Auto-confirm enabled. Automatically selecting: {flat_results[0]}")
         return [flat_results[0]]
     return flat_results
 
@@ -49,7 +51,6 @@ def route_format_handler(format_str: str) -> Optional[object]:
     Expandable: add new formats as needed.
     """
     try:
-        from handlers.formats import json_handler, pdf_handler, csv_handler
         # Add new formats here as needed
         if "json" in format_str:
             return json_handler
@@ -65,10 +66,10 @@ def route_format_handler(format_str: str) -> Optional[object]:
         #     from handlers.formats import xlsx_handler
         #     return xlsx_handler
         else:
-            log_warning(f"[WARN] Unsupported format requested: {format_str}")
+            logger.warning(f"[WARN] Unsupported format requested: {format_str}")
             return None
     except ImportError as e:
-        log_warning(f"[Router] Failed to load handler for format {format_str}: {e}")
+        logger.warning(f"[Router] Failed to load handler for format {format_str}: {e}")
         return None
 
 def prompt_user_for_format(confirmed, logger=None):
@@ -81,15 +82,22 @@ def prompt_user_for_format(confirmed, logger=None):
             logger.warning("[WARN] No downloadable formats detected.")
         return None, None
     format_options = [f"{fmt.upper()} ({local_file})" for fmt, local_file in confirmed]
-    print("\n[FORMATS] Available formats:")
+    rprint("\n[FORMATS] Available formats:")
     for i, opt in enumerate(format_options):
-        print(f"  [{i}] {opt}")
-    from ..utils.user_prompt import prompt_user_input
+        rprint(f"  [{i}] {opt}")
+    rprint("  [n] Skip format parsing")    
+    def validator(x):
+        return (x.isdigit() and 0 <= int(x) < len(format_options)) or x.lower() == "n"
+
     selection = prompt_user_input(
-        f"[PROMPT] Select a format to parse (0-{len(format_options)-1}): ",
+        f"[PROMPT] Select a format to parse (0-{len(format_options)-1}) or 'n' to skip: ",
         default="0",
-        validator=lambda x: x.isdigit() and 0 <= int(x) < len(format_options)
+        validator=validator
     )
+    if selection.lower() == "n":
+        if logger:
+            logger.info("[INFO] User chose to skip format parsing.")
+        return None, None
     try:
         selected_index = int(selection)
         fmt, local_file = confirmed[selected_index]
