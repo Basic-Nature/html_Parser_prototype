@@ -21,7 +21,7 @@ __pycache__/
 *.swp
 nohup.out
 *.out
-
+.db
 # ----------------------------
 # System Files
 # ----------------------------
@@ -46,7 +46,7 @@ uploads/
 *.csv
 *.pdf
 *.json
-
+.processed_urls
 
 # ----------------------------
 # Browser Drivers and Cache
