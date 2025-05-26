@@ -1,6 +1,6 @@
 from ...state_router import get_handler_from_context
 from ...utils.contest_selector import select_contest
-from ...utils.table_builder import extract_table_data, parse_candidate_vote_table, calculate_grand_totals
+from ...utils.table_builder import extract_table_data, calculate_grand_totals
 from ...utils.html_scanner import scan_html_for_context, get_detected_races_from_context
 from ...utils.shared_logger import logger
 from ...utils.shared_logic import (
@@ -131,9 +131,10 @@ def parse(page, html_context=None):
                     method_names.append(header_locator.nth(i).inner_text().strip())
                 data = []
                 for precinct_name, table in precinct_tables:
-                    row = parse_candidate_vote_table(table, precinct_name, method_names)
-                    if row:
-                        data.append(row)
+                   headers, rows = extract_table_data(table)
+                   for row in rows:
+                       row["Precinct"] = precinct_name
+                       data.append(row)
                 if data:
                     # Build headers from all keys
                     all_keys = set()

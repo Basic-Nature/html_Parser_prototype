@@ -5,7 +5,7 @@ from .....utils.html_scanner import scan_html_for_context, get_detected_races_fr
 from .....utils.format_router import detect_format_from_links, prompt_user_for_format, route_format_handler
 from .....utils.download_utils import download_confirmed_file
 from .....utils.contest_selector import select_contest
-from .....utils.table_builder import extract_table_data, parse_candidate_vote_table, calculate_grand_totals
+from .....utils.table_builder import extract_table_data, calculate_grand_totals
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import logger, rprint
 from .....utils.shared_logic import click_dynamic_toggle, autoscroll_until_stable
@@ -133,8 +133,10 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
                 method_names = headers[1:-1]
             else:
                 method_names = []
-        row = parse_candidate_vote_table(table, precinct_name, method_names)
-        if row:
+        headers, rows = extract_table_data(table)
+        for row in rows:
+            # Optionally, add precinct_name to each row if needed
+            row["Precinct"] = precinct_name
             data.append(row)
 
     if not data:
