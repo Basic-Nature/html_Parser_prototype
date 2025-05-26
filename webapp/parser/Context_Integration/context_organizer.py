@@ -276,6 +276,7 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
         "source_url": raw_context.get("url"),
         "election_type": raw_context.get("election_type"),
         "scrape_time": raw_context.get("scrape_time"),
+        "year": None,
         "environment": scan_environment(),
     }
 
@@ -286,19 +287,15 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
             anomalies, clusters = detect_anomalies_with_ml(contests, output_cache)
             if anomalies:
                 for idx in anomalies:
-                    logging.warning(
-                        f"Anomaly detected in contest: {contests[idx]['title']}",
-                        context=contests[idx],
-                        alert_type="warning"
-                    )
+                    contest = contests[idx]
+                    title = contest.get('title', str(contest))
+                    logging.warning(f"[ML] Context anomaly detected: {title} | Context: {contest}")
             # NLP outlier detection
             nlp_outliers = nlp_title_outlier_detection(contests)
             for idx in nlp_outliers:
-                logging.warning(
-                    f"NLP Outlier detected in contest title: {contests[idx]['title']}",
-                    context=contests[idx],
-                    alert_type="warning"
-                )
+                contest = contests[idx]
+                title = contest.get('title', str(contest))
+                logging.warning(f"[NLP] Outlier contest title detected: {title} | Context: {contest}")
         except Exception as e:
             logging.error(f"[ML] Anomaly/NLP detection failed: {e}")
 
