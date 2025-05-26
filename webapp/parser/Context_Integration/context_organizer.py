@@ -207,6 +207,10 @@ def monitor_db_for_alerts(poll_interval=10):
 
 # --- Main Organizer ---
 def organize_context(raw_context, button_features=None, panel_features=None, use_library=True, cache=None, enable_ml=True):
+    # Defensive fix: ensure panels is a dict
+    if "panels" in raw_context and isinstance(raw_context["panels"], list):
+        # Convert list to dict with index as key, or just set to empty dict
+        raw_context["panels"] = {}    
     ensure_db_schema()
     library = load_context_library() if use_library else {"contests": [], "buttons": [], "panels": [], "tables": [], "alerts": []}
     processed_urls = load_processed_urls()
