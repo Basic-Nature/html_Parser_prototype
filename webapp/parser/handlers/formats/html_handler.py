@@ -161,6 +161,8 @@ def parse(page, html_context=None):
                     clean_race = normalize_text(contest_title).strip().lower() if contest_title else "unknown"
                     clean_race = re.sub(r'[\s:]+', ' ', clean_race).strip()
                     clean_race = re.sub(r'[\\/:*?"<>|]', '_', clean_race)
+                    if not clean_race:
+                        clean_race = "unknown"
                     metadata = {
                         "race": clean_race,
                         "source": page.url,
