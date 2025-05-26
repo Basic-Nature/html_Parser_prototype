@@ -50,6 +50,18 @@ def find_and_click_toggle(
 
     # 1. Try handler-supplied selectors (most specific, fastest)
     if handler_selectors:
+        for kw in handler_keywords:
+            # Defensive: skip if kw is too long or contains newlines
+            if not isinstance(kw, str) or len(kw) > 100 or "\n" in kw:
+                if logger:
+                    logger.warning(f"[TOGGLE] Skipping invalid keyword for selector: {repr(kw)}")
+                continue
+            elements = search_root.locator(f"*:has-text('{kw}')")
+            for i in range(elements.count()):
+                el = elements.nth(i)
+                if el.is_visible() and el.is_enabled():
+                    el.scroll_into_view_if_needed()
+                    el.click()            
         for selector in handler_selectors:
             elements = search_root.locator(selector)
             for i in range(elements.count()):

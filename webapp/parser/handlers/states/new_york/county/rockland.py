@@ -91,6 +91,10 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
     for i in range(button_features.count()):
         btn = button_features.nth(i)
         label = btn.get_attribute("aria-label") or btn.inner_text() or ""
+        if label and len(label) < 100 and "\n" not in label:
+            handler_keywords = [label]
+        else:
+            handler_keywords = ["View results by election district", "results by", "View results by", "Election District"]
         class_name = btn.get_attribute("class") or ""
         if "election-district" in label.lower() or "your-class-name" in class_name:
             toggle_button = btn
@@ -111,7 +115,7 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
         handler_keywords=handler_keywords if handler_keywords else ["View results by election district"],
         logger=logger,
         verbose=True,
-        interactive=True
+        
     )
 
     # --- 2. Wait for precincts to load (table or new panel) ---
@@ -125,6 +129,10 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
     for i in range(button_features.count()):
         btn = button_features.nth(i)
         label = btn.get_attribute("aria-label") or btn.inner_text() or ""
+        if label and len(label) < 100 and "\n" not in label:
+            handler_keywords = [label]
+        else:
+            handler_keywords = vote_method_keywords
         if any(k.lower() in label.lower() for k in vote_method_keywords):
             vote_method_button = btn
             break
@@ -140,7 +148,7 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
         handler_keywords=handler_keywords, 
         logger=logger, 
         verbose=True, 
-        interactive=True
+        
     )
 
     # --- 4. Scroll again if needed ---
