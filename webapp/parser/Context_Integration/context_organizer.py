@@ -328,9 +328,20 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
         "clusters": clusters.tolist() if hasattr(clusters, "tolist") else clusters,
         "integrity_issues": integrity_issues,
     }
-    years = [c.get("year") for c in contests if c.get("year")]
-    if years:
-        metadata["year"] = years[0]  # or max(years), or whatever logic you prefer
+    valid_years = [
+        c.get("year")
+        for c in contests
+        if c.get("year") and c.get("type") and str(c.get("year")).isdigit()
+    ]
+    valid_years = [
+        c.get("year")
+        for c in contests
+        if c.get("year") and c.get("type") and str(c.get("year")).isdigit()
+    ]
+    if valid_years:
+        metadata["year"] = valid_years[0]  # or max(valid_years)
+    else:
+        metadata["year"] = "Unknown"
     append_to_context_library(organized, path=CONTEXT_LIBRARY_PATH)
     rprint(
         f"[bold green][CONTEXT ORGANIZER][/bold green] Organized context for [bold]{len(contests)}[/bold] contests.\n"
