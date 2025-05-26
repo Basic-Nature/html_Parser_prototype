@@ -64,6 +64,7 @@ def parse(page, html_context):
     """
     Parses the most recent CSV file in the input folder if available.
     Provides a prompt to continue or fallback. Does not use hardcoded filenames.
+    Returns: headers, data, contest_title, metadata
     """
     # Respect early skip signal from calling context
     if html_context.get("skip_format") or html_context.get("manual_skip"):
@@ -153,7 +154,6 @@ def parse(page, html_context):
                 contest_title = os.path.basename(csv_path).replace(".csv", "")
 
             # Step: Normalize candidate/precinct columns and harmonize
-            # Try to detect candidate columns and method columns
             candidate_cols = [col for col in headers if "candidate" in col.lower()]
             precinct_cols = [col for col in headers if "precinct" in col.lower() or "ward" in col.lower() or "district" in col.lower() or "county" in col.lower()]
             method_cols = [col for col in headers if any(m in col.lower() for m in ["election day", "early", "absentee", "mail", "provisional", "total"])]
@@ -169,11 +169,9 @@ def parse(page, html_context):
                         val = row.get(method_col, "")
                         col_name = f"{candidate} - {method_col}"
                         wide_row[col_name] = val
-                # If no candidate columns, just copy all method columns
                 if not candidate_cols:
                     for method_col in method_cols:
                         wide_row[method_col] = row.get(method_col, "")
-                # Add any other columns that are not candidate/method/reporting unit
                 for col in headers:
                     if col not in candidate_cols + method_cols + [reporting_unit_col]:
                         wide_row[col] = row.get(col, "")
@@ -208,6 +206,11 @@ def parse(page, html_context):
                 "county": html_context.get("county", "Unknown"),
                 "handler": "csv_handler"
             }
+
+            # Enrich metadata and context using context_organizer
+            from ...Context_Integration.context_organizer import organize_context
+            organized = organize_context(metadata)
+            metadata = organized.get("metadata", metadata)
 
             # Output via finalize_election_output
             result = finalize_election_output(headers, wide_data, contest_title, metadata)

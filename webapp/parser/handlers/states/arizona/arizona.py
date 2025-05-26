@@ -3,12 +3,35 @@
 # Handler for Arizona election result sites with expandable cards
 # and toggles between 'Vote Type' and 'By County' views.
 # ==============================================================
-
+import os
+import json
 from tqdm import tqdm
 from ....utils.shared_logger import log_info, log_debug, log_warning, log_error
 from rich import print as rprint
+from ....Context_Integration.context_organizer import organize_context
+from ....utils.output_utils import finalize_election_output
 
-def handle(page, config):
+# Load config from context library if available
+CONTEXT_LIBRARY_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "Context_Integration", "context_library.json"
+)
+if os.path.exists(CONTEXT_LIBRARY_PATH):
+    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
+        CONTEXT_LIBRARY = json.load(f)
+    STATE_CONFIGS = CONTEXT_LIBRARY.get("state_configs", {})
+    config = STATE_CONFIGS.get("arizona", {})
+else:
+    config = {}
+
+# Fallback defaults if not set in context library
+config.setdefault("view_more_selector", "button:has-text('View More')")
+config.setdefault("vote_type_toggle_selector", "button:has-text('Vote Type')")
+config.setdefault("county_toggle_selector", "button:has-text('By County')")
+
+def parse(page, html_context=None):
+    if html_context is None:
+        html_context = {}
+
     print("[INFO] Arizona handler activated. Expanding race-level cards...")
 
     # Step 1: Click all 'View More' buttons if present
@@ -140,20 +163,21 @@ def handle(page, config):
         print("[FALLBACK] Please verify that the site has posted election data.")
 
         # Insert county-level totals as a dummy precinct row if any were found
+    contest_title = "Arizona Statewide Results"
+    headers_out = sorted([col for col in precinct_data[0] if col != "Precinct Name"] if precinct_data else [])
+    metadata = {
+        "state": "AZ",
+        "race": contest_title,
+        "handler": "arizona",
+        "source": page.url if hasattr(page, "url") else None
+    }
     if county_totals:
-        summary_row = {"Precinct Name": "[COUNTY TOTALS]"}
-        for k, v in county_totals.items():
-            summary_row[f"AZ Summary - {k}"] = v
-        precinct_data.insert(0, summary_row)
+        metadata.update(county_totals)
 
-        if not precinct_data:
-            print("[ERROR] No precinct tables extracted. Beginning DOM inspection for contest containers...")
-        contest_blocks = page.locator("div.card-title, h3")
-        if contest_blocks.count() == 0:
-            print("[DEBUG] No contest blocks found. Structure may be dynamic or not yet loaded.")
-        else:
-            print("[DEBUG] Contest blocks detected:")
-            for i in range(min(10, contest_blocks.count())):
-                print(f"  - {contest_blocks.nth(i).inner_text().strip()[:100]}")
-
-    return headers_out, precinct_data, contest_title
+    # Enrich metadata and finalize output
+    organized = organize_context(metadata)
+    metadata = organized.get("metadata", metadata)
+    result = finalize_election_output(headers_out, precinct_data, contest_title, metadata)
+    contest_title = result.get("contest_title", contest_title)
+    metadata = result.get("metadata", metadata)
+    return headers_out, precinct_data, contest_title, metadata

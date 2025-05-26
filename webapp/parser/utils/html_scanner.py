@@ -1,19 +1,41 @@
 import os
 import re
 import time
+import json
 from collections import defaultdict
 from typing import Dict, Any
 import difflib
 
 from .contest_selector import is_noisy_label, is_noisy_contest_label
 from ..state_router import STATE_MODULE_MAP
-from ..utils.shared_logic import ( 
-    COMMON_CONTEST_LABELS, COMMON_PRECINCT_HEADERS, 
-    IGNORE_SUBSTRINGS, SCAN_WAIT_SECONDS,
-    ALL_SELECTORS, YEAR_REGEX, SYMBOL_REGEX, is_contest_label,
-    CONTEST_PARTS
-)
 from ..utils.shared_logger import logger
+from ..Context_Integration.context_organizer import organize_context, append_to_context_library
+
+# --- Load config from context library ---
+CONTEXT_LIBRARY_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
+)
+if os.path.exists(CONTEXT_LIBRARY_PATH):
+    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
+        CONTEXT_LIBRARY = json.load(f)
+    COMMON_CONTEST_LABELS = CONTEXT_LIBRARY.get("common_contest_labels", [])
+    COMMON_PRECINCT_HEADERS = CONTEXT_LIBRARY.get("common_precinct_headers", [])
+    IGNORE_SUBSTRINGS = CONTEXT_LIBRARY.get("ignore_substrings", [])
+    CONTEST_PARTS = CONTEXT_LIBRARY.get("contest_parts", [])
+    ALL_SELECTORS = ", ".join(CONTEXT_LIBRARY.get("selectors", {}).get("all_selectors", []))
+    YEAR_REGEX = re.compile(CONTEXT_LIBRARY.get("regex", {}).get("year", r"\b((?:19|20)\d{2})\b"))
+    SYMBOL_REGEX = re.compile(CONTEXT_LIBRARY.get("regex", {}).get("symbol", r"[\s\n\r\t\$0]+"))
+    SCAN_WAIT_SECONDS = CONTEXT_LIBRARY.get("scan_wait_seconds", 5)
+else:
+    logger.error("[html_scanner] context_library.json not found. Using limited defaults.")
+    COMMON_CONTEST_LABELS = []
+    COMMON_PRECINCT_HEADERS = []
+    IGNORE_SUBSTRINGS = []
+    CONTEST_PARTS = []
+    ALL_SELECTORS = "h1, h2, h3, h4, h5, h6, strong, b, span, div"
+    YEAR_REGEX = re.compile(r"\b((?:19|20)\d{2})\b")
+    SYMBOL_REGEX = re.compile(r"[\s\n\r\t\$0]+")
+    SCAN_WAIT_SECONDS = 5
 
 def normalize_text(text: str) -> str:
     text = SYMBOL_REGEX.sub(" ", text)
@@ -21,7 +43,6 @@ def normalize_text(text: str) -> str:
     return text.strip().lower()
 
 def all_patterns(name, extra_terms=None):
-    # ...unchanged utility for state/county detection...
     patterns = set()
     base = name.lower().replace("_", " ").replace("-", " ").strip()
     base = re.sub(r"\s+", " ", base)
@@ -48,7 +69,6 @@ def all_patterns(name, extra_terms=None):
     return patterns
 
 def score_state_county_from_url(url: str, text_lower: str):
-    # ...unchanged utility for state/county detection...
     url = url.lower()
     text_lower = text_lower.lower()
     state_scores = {}
@@ -111,8 +131,7 @@ def score_state_county_from_url(url: str, text_lower: str):
 def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
     """
     Scans the HTML for state/county/race info, available downloadable formats, 
-    and button-like elements. Does NOT prompt or organize, just collects info.
-    Implements early break logic for efficiency when possible.
+    and button-like elements. Returns a context dict ready for organize_context.
     """
     context_result = {
         "available_races": defaultdict(lambda: defaultdict(list)),
@@ -126,6 +145,11 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
         "debug_elements": [],
         "available_formats": [],
         "button_elements": [],
+        "contests": [],
+        "buttons": [],
+        "panels": [],
+        "tables": [],
+        "metadata": {},
     }
 
     try:
@@ -145,7 +169,7 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
             context_result["county"] = best_county
 
         # --- 2. Detect downloadable formats (CSV, JSON, PDF, etc.) ---
-        known_exts = [".csv", ".json", ".pdf", ".xlsx", ".xls"]
+        known_exts = CONTEXT_LIBRARY.get("supported_formats", [".csv", ".json", ".pdf", ".xlsx", ".xls"])
         for a in page.query_selector_all("a[href]"):
             try:
                 href = a.get_attribute("href")
@@ -154,7 +178,7 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
                 for ext in known_exts:
                     if href.lower().endswith(ext):
                         context_result["available_formats"].append((ext.lstrip('.'), page.urljoin(href)))
-                        break  # EARLY BREAK: found a format, skip to next link
+                        break
             except Exception:
                 continue
 
@@ -166,11 +190,11 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
                     label = btn.inner_text().strip()
                     if label:
                         context_result["button_elements"].append(label)
-                        # No break here: collect all button labels
+                        context_result["buttons"].append({"label": label, "selector": sel})
                 except Exception:
                     continue
 
-        # --- 4. Scan for races, headers, etc. (as before) ---
+        # --- 4. Scan for races, headers, etc. ---
         elements = page.query_selector_all(ALL_SELECTORS)
         last_detected_year = None
         last_detected_type = None
@@ -194,7 +218,6 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
                 or any(ignore in norm_segment for ignore in IGNORE_SUBSTRINGS)
                 or is_noisy_label(norm_segment)
                 or is_noisy_contest_label(norm_segment)
-                or not is_contest_label(norm_segment)
             ):
                 continue
 
@@ -225,12 +248,18 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
                         detected_type = context_result.get("election_type") or last_detected_type or "Unknown"
                     context_result["election_type"] = last_detected_type = detected_type
                     context_result["available_races"][tag_year][detected_type].append(raw_segment)
-                    break  # EARLY BREAK: found contest label, skip to next element
+                    context_result["contests"].append({
+                        "title": raw_segment,
+                        "year": tag_year,
+                        "type": detected_type,
+                        "raw": raw_segment
+                    })
+                    break
 
             for header in COMMON_PRECINCT_HEADERS:
                 if normalize_text(header) in norm_segment:
                     context_result.setdefault("precinct_headers", []).append(raw_segment)
-                    break  # EARLY BREAK: found precinct header, skip to next element
+                    break
 
         # Flatten all detected races for indicators
         all_races = []
@@ -238,6 +267,18 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
             for races in year_group.values():
                 all_races.extend(races)
         context_result["indicators"] = sorted(set(all_races))
+
+        # --- 5. Metadata for context organizer ---
+        context_result["metadata"] = {
+            "state": context_result.get("state"),
+            "county": context_result.get("county"),
+            "source_url": page.url,
+            "election_type": context_result.get("election_type"),
+            "scrape_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+        # --- 6. Optionally update context library ---
+        # append_to_context_library(context_result, path=CONTEXT_LIBRARY_PATH)
 
         if debug:
             print("\n[DEBUG] Elements scanned and normalized:")
@@ -252,7 +293,7 @@ def scan_html_for_context(page, debug=False) -> Dict[str, Any]:
         err_msg = f"[SCAN ERROR] HTML parsing failed: {e}"
         logger.error(err_msg)
         context_result["error"] = err_msg
-    return context_result  # END scan_html_for_context
+    return context_result
 
 def get_detected_races_from_context(context_result):
     flat = []

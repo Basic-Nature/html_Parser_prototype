@@ -163,11 +163,14 @@ def parse(page, html_context):
         }
 
         # Output via finalize_election_output
+        from ...Context_Integration.context_organizer import organize_context
+        organized = organize_context(metadata)
+        metadata = organized.get("metadata", metadata)
         result = finalize_election_output(headers, data_rows, target_contest, metadata)
         contest_title = result.get("contest_title", target_contest)
         metadata = result.get("metadata", metadata)
         return headers, data_rows, contest_title, metadata
-
+    
     except Exception as e:
         logger.error(f"[ERROR] Failed to parse JSON: {e}")
         return None, None, None, {"error": str(e)}

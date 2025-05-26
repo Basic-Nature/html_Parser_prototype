@@ -1,18 +1,32 @@
 # table_builder.py
 # ===================================================================
 # Election Data Cleaner - Table Extraction and Cleaning Utilities
+# Context-integrated version: uses context_library.json for config
 # ===================================================================
 
 import re
 import os
 from typing import List, Dict, Tuple, Any, Optional
 from .shared_logger import logger
-from .shared_logic import (
-    COMMON_PRECINCT_HEADERS,
-    is_precinct_header,
-    is_contest_label,
-    normalize_text,
+from .shared_logic import normalize_text
+
+# Load context config for precinct headers, etc.
+import json
+
+CONTEXT_LIBRARY_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
 )
+if os.path.exists(CONTEXT_LIBRARY_PATH):
+    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
+        CONTEXT_LIBRARY = json.load(f)
+    COMMON_PRECINCT_HEADERS = [h.lower() for h in CONTEXT_LIBRARY.get("common_precinct_headers", [])]
+else:
+    logger.error("[table_builder] context_library.json not found. Precinct header detection will be limited.")
+    COMMON_PRECINCT_HEADERS = []
+
+def is_precinct_header(header: str) -> bool:
+    """Check if a header is a precinct/district header."""
+    return normalize_text(header) in COMMON_PRECINCT_HEADERS
 
 def extract_table_data(table_locator) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
@@ -46,7 +60,7 @@ def extract_table_data(table_locator) -> Tuple[List[str], List[Dict[str, Any]]]:
             row_data = {headers[i]: cells[i] for i in range(min(len(headers), len(cells)))}
             data.append(row_data)
         if not data:
-            logger.info(f"[HTML Handler] Extracted 0 rows from the table.")
+            logger.info(f"[TABLE BUILDER] Extracted 0 rows from the table.")
             raise RuntimeError("No rows found in the table.")
         # Harmonize all rows to have the same headers
         data = harmonize_rows(headers, data)
@@ -70,11 +84,7 @@ def clean_candidate_name(name: str) -> str:
     - Removes party abbreviations if attached
     """
     name = name.strip()
-    # Remove common party abbreviations at the end (if present)
-    name = re.sub(r'\b(DEM|REP|IND|LIB|GRE|CON|WFP|NPP|NPA|U|D|R|G|L|I|C|S|N|P|NP|NONPARTISAN|UNAFFILIATED)$', '', name, flags=re.IGNORECASE).strip()
-    # Remove extra punctuation except hyphens and apostrophes
     name = re.sub(r"[^\w\s\-\']", '', name)
-    # Handle suffixes
     suffixes = ['Jr', 'Sr', 'II', 'III', 'IV', 'V']
     parts = name.split()
     if parts and parts[-1].replace('.', '') in suffixes:
@@ -83,7 +93,6 @@ def clean_candidate_name(name: str) -> str:
         name = f"{name} {suffix}"
     else:
         name = ' '.join(parts)
-    # Proper capitalization (handles Mc/Mac, O', hyphens, etc.)
     def smart_cap(word):
         if word.lower().startswith("mc") and len(word) > 2:
             return "Mc" + word[2:].capitalize()
@@ -116,9 +125,6 @@ def detect_table_orientation(headers: List[str], data: List[Dict[str, Any]]) -> 
     """
     if headers and is_precinct_header(headers[0]):
         return 'precincts_in_rows'
-    # Optionally, check if any header matches a candidate pattern
-    if headers and is_contest_label(headers[0]):
-        return 'candidates_in_rows'
     return 'unknown'
 
 def normalize_header(header: str) -> str:
@@ -153,7 +159,6 @@ def format_table_data_for_output(
             for col in headers[1:]:
                 candidate, party, method = parse_candidate_col(col)
                 value = row.get(col, "")
-                # Only add non-empty values
                 if value and value.strip() not in {"", "-", "0"}:
                     long_rows.append({
                         first_header: precinct,
@@ -165,14 +170,7 @@ def format_table_data_for_output(
         logger.info(f"[TABLE BUILDER] Converted {len(data)} wide rows to {len(long_rows)} long rows.")
         return [first_header, "Candidate", "Party", "Method", "Votes"], long_rows
 
-    elif orientation == 'candidates_in_rows':
-        # Candidates are in rows, precincts/methods in columns
-        # This is less common, but you can implement logic here if needed
-        logger.info("[TABLE BUILDER] Candidates detected in rows; outputting as-is.")
-        return headers, data
-
     else:
-        # Unknown orientation, fallback to wide
         logger.warning("[TABLE BUILDER] Unknown table orientation; outputting in wide format.")
         return headers, data
 
@@ -181,9 +179,7 @@ def review_and_fill_missing_data(headers: List[str], data: List[Dict[str, Any]])
     Review process to catch and fill missing data after initial break.
     Ensures all rows have all headers and attempts to fill missing values with empty string.
     """
-    # Harmonize all rows to have all headers
     data = harmonize_rows(headers, data)
-    # Optionally, log missing data
     for idx, row in enumerate(data):
         missing = [h for h in headers if not row.get(h)]
         if missing:
@@ -216,18 +212,9 @@ def calculate_grand_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     Skips fields like 'Precinct' and '% Precincts Reporting'.
     Ensures all keys present in any row are included in the grand total row.
     """
+    skip_fields = {"Precinct", "% Precincts Reporting"}
     totals = {}
-    skip_fields = {
-        "Precinct", "% Precincts Reporting", "Total", "Precincts Reporting",
-        "Total Votes", "Total Ballots", "Total Votes Cast", "Total Ballots Cast",
-        "Total Votes Counted", "Total Ballots Counted", "Total Votes Remaining", "Total Ballots Remaining",
-        "Total Votes Outstanding", "Total Ballots Outstanding", "Total Votes Uncounted", "Total Ballots Uncounted",
-        "Total Votes Disputed", "Total Ballots Disputed", "Total Votes Invalid", "Total Ballots Invalid",
-        "Total Votes Spoiled", "Total Ballots Spoiled", "Total Votes Rejected", "Total Ballots Rejected",
-        "Total Votes Canceled", "Total Ballots Canceled", "Total Votes Disqualified", "Total Ballots Disqualified",
-        "Total Votes Nullified", "Total Ballots Nullified", "Total Votes Voided", "Total Ballots Voided"
-    }
-    # Collect all possible keys
+
     all_keys = set()
     for row in rows:
         if isinstance(row, dict):
@@ -252,8 +239,6 @@ def calculate_grand_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
             totals[k] = totals.get(k, 0) + val
     totals["Precinct"] = "Grand Total"
     totals["% Precincts Reporting"] = "100.00%"
-    # Optionally add a "Total" column if present in data
     if "Total" in totals:
         totals["Total"] = str(int(totals["Total"]))
-    # Convert all floats to string for CSV output
     return {k: (str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)) for k, v in totals.items()}

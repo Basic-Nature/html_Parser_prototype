@@ -9,10 +9,8 @@
 # ============================================================
 
 import os
-import sys
+import json
 import logging
-import contextlib
-import io
 from pathlib import Path
 from datetime import datetime
 from typing import cast, Dict, Any, List
@@ -24,15 +22,25 @@ from rich import print as rprint
 from playwright.sync_api import sync_playwright, Page
 
 # --- Local imports (all logic is modularized) ---
+from .Context_Integration.context_organizer import append_to_context_library, CONTEXT_LIBRARY_PATH, load_context_library, organize_context
 from .handlers.formats import html_handler
 from .state_router import get_handler as get_state_handler
-from .utils.browser_utils import launch_browser_with_stealth
-from .utils.captcha_tools import handle_cloudflare_captcha
+from .utils.browser_utils import (
+    launch_browser_with_stealth,
+    relaunch_browser_fullscreen_if_needed,
+    relaunch_browser_stealth,
+    detect_environment_for_captcha,
+)
+from .utils.captcha_tools import (
+    is_cloudflare_captcha_present,
+    wait_for_user_to_solve_captcha,
+)
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.format_router import detect_format_from_links, prompt_user_for_format, route_format_handler
 from .utils.html_scanner import scan_html_for_context
 from .utils.shared_logger import logger, rprint
 from .utils.user_prompt import prompt_user_input, PromptCancelled
+
 
 # Optional: Bot integration and future AI/ML hooks
 try:
@@ -62,6 +70,45 @@ ENABLE_AI_ANALYSIS = os.getenv("ENABLE_AI_ANALYSIS", "false").lower() == "true"
 ENABLE_REALTIME_STREAM = os.getenv("ENABLE_REALTIME_STREAM", "false").lower() == "true"
 ENABLE_BOT_TASKS = os.getenv("ENABLE_BOT_TASKS", "false").lower() == "true"
 
+def handle_cloudflare_captcha(playwright, page_or_driver, url, timeout=TIMEOUT_SEC, proxy=None, backend="playwright"):
+    """
+    Handles Cloudflare CAPTCHA detection and user intervention.
+    If persistent CAPTCHA is detected, relaunches browser in GUI mode for manual solve,
+    and if still persistent, relaunches in stealth mode.
+    Returns (browser, context, page, user_agent) if browser was relaunched, else None.
+    """
+    logger.info("[CAPTCHA] Checking for Cloudflare CAPTCHA...")
+    if not is_cloudflare_captcha_present(page_or_driver):
+        logger.info("[CAPTCHA] No CAPTCHA detected.")
+        return None
+
+    logger.warning("[CAPTCHA] CAPTCHA detected! Attempting user intervention.")
+    solved = wait_for_user_to_solve_captcha(page_or_driver, timeout=timeout)
+    if solved:
+        logger.info("[CAPTCHA] CAPTCHA solved by user.")
+        return None
+
+    # If still not solved, relaunch in GUI mode for manual solve
+    logger.warning("[CAPTCHA] Persistent CAPTCHA. Relaunching browser in GUI mode for manual solve.")
+    browser, context, page, user_agent = relaunch_browser_fullscreen_if_needed(
+        playwright, url, timeout=timeout, proxy=proxy, backend=backend
+    )
+    if not page:
+        logger.error("[CAPTCHA] Failed to relaunch browser for CAPTCHA resolution.")
+        return None
+
+    solved = wait_for_user_to_solve_captcha(page, timeout=timeout)
+    if solved:
+        logger.info("[CAPTCHA] CAPTCHA solved after relaunch.")
+        return browser, context, page, user_agent
+
+    # If still persistent, relaunch in stealth mode
+    logger.error("[CAPTCHA] CAPTCHA still persistent after GUI intervention. Relaunching in stealth mode.")
+    browser, context, page, user_agent = relaunch_browser_stealth(
+        playwright, url, proxy=proxy, backend=backend
+    )
+    return browser, context, page, user_agent
+
 # --- Cache Reset ---
 if CACHE_RESET and CACHE_FILE.exists():
     logging.debug("Deleting .processed_urls cache for fresh start...")
@@ -90,29 +137,143 @@ def load_urls() -> List[str]:
 
 # --- Utility: Processed URL cache ---
 def load_processed_urls() -> Dict[str, Any]:
-    if not CACHE_PROCESSED_URLS or not CACHE_FILE.exists():
+    """Load the processed URL cache as a dict: url -> metadata dict."""
+    if not CACHE_FILE.exists():
         return {}
     processed = {}
-    with open(CACHE_FILE, 'r') as f:
+    with open(CACHE_FILE, 'r', encoding="utf-8") as f:
         for line in f:
-            parts = line.strip().split("|")
-            if len(parts) >= 3:
-                url, timestamp, status = parts[:3]
-                processed[url] = {"timestamp": timestamp, "status": status}
+            # Now support JSON per line for richer metadata
+            try:
+                if "|" in line:
+                    # Legacy: url|timestamp|status|error|handler|state|county|contest
+                    parts = line.strip().split("|")
+                    url, timestamp, status = parts[:3]
+                    extra = parts[3:] if len(parts) > 3 else []
+                    processed[url] = {
+                        "timestamp": timestamp,
+                        "status": status,
+                        "extra": extra
+                    }
+                else:
+                    # New: JSON per line
+                    meta = json.loads(line)
+                    url = meta.get("url")
+                    if url:
+                        processed[url] = meta
+            except Exception as e:
+                logger.warning(f"[CACHE] Failed to parse cache line: {line.strip()} ({e})")
     return processed
 
-def mark_url_processed(url, status="success"):
-    if not CACHE_PROCESSED_URLS:
-        return
+def mark_url_processed(url, status="success", **metadata):
+    """Append or update a processed URL with rich metadata."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(CACHE_FILE, 'a') as f:
-        f.write(f"{url}|{timestamp}|{status}\n")
+    entry = {
+        "url": url,
+        "timestamp": timestamp,
+        "status": status,
+        **metadata
+    }
+    # Append as JSON per line for extensibility
+    with open(CACHE_FILE, 'a', encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
 
-# --- Utility: Prompt user to select URLs to process ---
-def prompt_url_selection(urls: List[str]) -> List[str]:
+def organize_context(raw_context, button_features=None, panel_features=None, use_library=True, cache=None):
+    """
+    Main entry point. Optionally uses the persistent context library to improve mapping.
+    Args:
+        raw_context: dict from html_scanner or similar
+        button_features: Optional pre-extracted button features (list of dicts)
+        panel_features: Optional pre-extracted panel features (list of dicts)
+        use_library: Whether to use the persistent context library for reference
+        cache: Optional processed_info or other cache for deduplication/learning
+    Returns:
+        dict with keys:
+            - contests: list of contest dicts (title, year, type, etc.)
+            - buttons: {contest_title: [button_dict, ...], ...}
+            - panels: {contest_title: panel_locator, ...}
+            - tables: {contest_title: [table_locator, ...], ...}
+            - metadata: {state, county, ...}
+    """
+    if use_library:
+        library = load_context_library()
+    else:
+        library = {"contests": [], "buttons": [], "panels": [], "tables": []}
+
+    # Organize context using the utility function
+    organized = organize_context(
+        raw_context=raw_context,
+        button_features=button_features,
+        panel_features=panel_features,
+        use_library=use_library
+    )
+
+    # Optionally append to the context library
+    if use_library and organized:
+        append_to_context_library(organized, path=CONTEXT_LIBRARY_PATH)
+
+    # If cache is provided, deduplicate contests/buttons against it
+    if cache:
+        # Deduplicate contests
+        contests = organized.get("contests", [])
+        if cache.get("contests"):
+            existing_titles = {c["title"].lower() for c in cache["contests"]}
+            contests = [c for c in contests if c["title"].lower() not in existing_titles]
+        # Deduplicate buttons
+        buttons = organized.get("buttons", {})
+        if cache.get("buttons"):
+            for title, btns in buttons.items():
+                existing_btns = {b["label"].lower() for b in cache["buttons"].get(title, [])}
+                buttons[title] = [b for b in btns if b["label"].lower() not in existing_btns]
+        # Deduplicate panels
+        panels = organized.get("panels", {})
+        if cache.get("panels"):
+            for title, panel in panels.items():
+                existing_panels = {p["id"].lower() for p in cache["panels"].get(title, [])}
+                panels[title] = [p for p in panel if p["id"].lower() not in existing_panels]
+        # Deduplicate tables
+        tables = organized.get("tables", {})
+        if cache.get("tables"):
+            for title, tbls in tables.items():
+                existing_tbls = {t["id"].lower() for t in cache["tables"].get(title, [])}
+                tables[title] = [t for t in tbls if t["id"].lower() not in existing_tbls]
+        # Reconstruct organized context with deduplicated data
+        organized = {
+            "contests": contests,
+            "buttons": buttons,
+            "panels": panels,
+            "tables": tables,
+            "metadata": organized.get("metadata", {})
+        }
+
+    return organized
+
+
+        # Deduplicate panels and tables similarly...
+
+    return organized
+
+def get_urls_by_status(processed, status):
+    """Return a list of URLs with the given status."""
+    return [url for url, meta in processed.items() if meta.get("status") == status]
+
+def get_url_metadata(url):
+    """Return metadata for a given URL."""
+    processed = load_processed_urls()
+    return processed.get(url, {})
+
+# --- Utility: Prompt user to select URLs to process, showing status ---
+def prompt_url_selection(urls: List[str], processed: Dict[str, Any]) -> List[str]:
     console.print("\n[bold #eb4f43]URLs loaded:[/bold #eb4f43]")
     for i, url in enumerate(urls):
-        console.print(f"  [{i+1}] {url}", style="#45818e")
+        status = processed.get(url, {}).get("status", "unprocessed")
+        status_color = {
+            "success": "green",
+            "fail": "red",
+            "partial": "yellow",
+            "error": "red"
+        }.get(status, "white")
+        console.print(f"  [{i+1}] {url} [bold {status_color}]({status})[/bold {status_color}]")
     user_input = prompt_user_input("\n[INPUT] Enter indices (comma-separated), 'all', or leave empty to cancel: ").strip().lower()
     if not user_input:
         return []
@@ -221,7 +382,7 @@ def stream_results(headers, data, contest_title, metadata):
             logger.error(f"[STREAM] Streaming failed: {e}")
 
 # --- Main URL Processing Logic ---
-def process_url(target_url):
+def process_url(target_url, processed_info):
     logging.info(f"Navigating to: {target_url}")
     with sync_playwright() as p:
         try:
@@ -229,14 +390,18 @@ def process_url(target_url):
                 p, headless=HEADLESS_DEFAULT, minimized=HEADLESS_DEFAULT
             )
             page.goto(target_url, timeout=60000)
-            # CAPTCHA handling
-            captcha_result = handle_cloudflare_captcha(p, page, target_url)
+            # --- CAPTCHA handling and environment detection ---
+            backend = detect_environment_for_captcha(page)
+            captcha_result = handle_cloudflare_captcha(p, page, target_url, timeout=TIMEOUT_SEC, backend=backend)
             if captcha_result:
                 browser, context, page, user_agent = captcha_result
             # Scan for context (state, county, races, etc.)
             html_context = scan_html_for_context(page)
             logger.debug(f"html_context after scan: {html_context}")
             html_context["source_url"] = target_url
+
+            # Organize context with cache for learning/deduplication
+            organized_context = organize_context(html_context, cache=processed_info)
 
             # --- Format Detection (JSON/CSV/PDF) ---
             FORMAT_DETECTION_ENABLED = os.getenv("FORMAT_DETECTION_ENABLED", "true").lower() == "true"
@@ -351,14 +516,9 @@ def main():
         return
 
     processed_info = load_processed_urls()
-    urls = [u for u in urls if u not in processed_info]
     logging.debug(f"{len(urls)} URLs remain after filtering .processed_urls")
 
-    if not urls:
-        logging.info("All listed URLs have already been processed.")
-        return
-
-    selected_urls = prompt_url_selection(urls)
+    selected_urls = prompt_url_selection(urls, processed_info)
     if not selected_urls:
         logging.info("No URLs selected. Exiting.")
         return
@@ -366,10 +526,11 @@ def main():
     # --- Multiprocessing for batch mode ---
     if ENABLE_PARALLEL:
         with Pool() as pool:
-            pool.map(process_url, selected_urls)
+            pool.starmap(process_url, [(url, processed_info) for url in selected_urls])
     else:
         for url in selected_urls:
-            process_url(url)
+            process_url(url, processed_info)            
+
 
 if __name__ == "__main__":
     main()

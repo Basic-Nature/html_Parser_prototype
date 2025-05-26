@@ -140,8 +140,13 @@ def parse(page, html_context=None):
             "race": contest_title
         }
 
+        from ....Context_Integration.context_organizer import organize_context
+        organized = organize_context(metadata)
+        metadata = organized.get("metadata", metadata)
         result = finalize_election_output(headers, data, contest_title, metadata)
-        return headers, data, contest_title, result.get("metadata", metadata)
+        contest_title = result.get("contest_title", contest_title)
+        metadata = result.get("metadata", metadata)
+        return headers, data, contest_title, metadata
 
     except Exception as e:
         logger.error(f"[ERROR] Failed to read or write CSV: {e}")

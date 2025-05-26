@@ -10,9 +10,21 @@ from ...utils.shared_logic import (
 from rich import print as rprint
 import os
 import re
+import json
 
-PRECINCT_ELEMENT_TAGS = ["H3", "H4", "H5", "STRONG", "B", "SPAN", "DIV"]
-CONTEST_PANEL_TAGS = ["div", "section", "article"]
+# --- Load tag configs from context library ---
+CONTEXT_LIBRARY_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "Context_Integration", "context_library.json"
+)
+if os.path.exists(CONTEXT_LIBRARY_PATH):
+    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
+        CONTEXT_LIBRARY = json.load(f)
+    PRECINCT_ELEMENT_TAGS = CONTEXT_LIBRARY.get("precinct_element_tags", ["h3", "h4", "h5", "strong", "b", "span", "div"])
+    CONTEST_PANEL_TAGS = CONTEXT_LIBRARY.get("contest_panel_tags", ["div", "section", "article"])
+else:
+    logger.error("[html_handler] context_library.json not found. Using default tags.")
+    PRECINCT_ELEMENT_TAGS = ["h3", "h4", "h5", "strong", "b", "span", "div"]
+    CONTEST_PANEL_TAGS = ["div", "section", "article"]
 
 def extract_contest_panel(page, contest_title, panel_tags=None):
     """
@@ -55,11 +67,11 @@ def extract_precinct_tables(panel):
         current_precinct = None
         for i in range(elements.count()):
             el = elements.nth(i)
-            tag = el.evaluate("e => e.tagName").strip().upper()
+            tag = el.evaluate("e => e.tagName").strip().lower()
             if tag in PRECINCT_ELEMENT_TAGS:
                 label = el.inner_text().strip()
                 current_precinct = label
-            elif tag == "TABLE" and current_precinct:
+            elif tag == "table" and current_precinct:
                 precincts.append((current_precinct, el))
                 current_precinct = None
         if precincts:

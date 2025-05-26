@@ -1,4 +1,5 @@
 from playwright.sync_api import Page
+from .....Context_Integration.context_organizer import organize_context
 from .....handlers.formats.html_handler import extract_contest_panel, extract_precinct_tables
 import os
 from .....utils.html_scanner import scan_html_for_context, get_detected_races_from_context
@@ -8,7 +9,7 @@ from .....utils.contest_selector import select_contest
 from .....utils.table_builder import extract_table_data, calculate_grand_totals
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import logger, rprint
-from .....utils.shared_logic import click_dynamic_toggle, autoscroll_until_stable
+from .....utils.shared_logic import click_dynamic_toggle, autoscroll_until_stable, extract_button_features
 
 
 
@@ -77,32 +78,44 @@ def parse(page: Page, html_context: dict = None):
         return parse_single_contest(page, html_context, state, county, find_contest_panel=extract_contest_panel)
 
 def parse_single_contest(page, html_context, state, county, find_contest_panel):
-    """
-    Handles a single contest: finds the contest panel, toggles, extracts tables, and outputs.
-    """
     contest_title = html_context.get("selected_race")
     rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
 
-    # Find the contest panel using find_contest_panel
     contest_panel = find_contest_panel(page, contest_title)
     if not contest_panel:
         rprint("[red][ERROR] Contest panel not found. Skipping.[/red]")
         return None, None, None, {"skipped": True}
 
-    # Click toggles if needed (using shared logic)
+    # --- 1. Toggle "View results by election district" ---
+    button_features = extract_button_features(page, container=contest_panel)
+    toggle_button = next(
+        (btn for btn in button_features if "election-district" in btn["label"].lower() or "your-class-name" in btn["class"]), 
+        None
+    )
+    handler_selectors = []
+    handler_keywords = []
+    if toggle_button:
+        if toggle_button["selector"]:
+            handler_selectors.append(toggle_button["selector"])
+        if toggle_button["label"]:
+            handler_keywords.append(toggle_button["label"])
+
+    # Click the first toggle
     click_dynamic_toggle(
-        page, 
-        container=contest_panel, 
-        handler_keywords=[
-            "View results by election district"
-        ], 
-        logger=logger, 
-        verbose=True, 
-        interactive=True,
-        heading_match=contest_title  # Pass heading for context-specific toggle
+        page,
+        container=contest_panel,
+        handler_selectors=handler_selectors if handler_selectors else None,
+        handler_keywords=handler_keywords if handler_keywords else ["View results by election district"],
+        logger=logger,
+        verbose=True,
+        interactive=True
     )
 
-    # Click vote method toggle if present (do NOT pass heading_match)
+    # --- 2. Wait for precincts to load (table or new panel) ---
+    autoscroll_until_stable(page, wait_for_selector="table")
+
+    # --- 3. Now look for and toggle vote method, if present ---
+    # (This must be after the first toggle, as the vote method toggle may not exist before)
     click_dynamic_toggle(
         page, 
         container=contest_panel, 
@@ -112,13 +125,12 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
         logger=logger, 
         verbose=True, 
         interactive=True
-        # No heading_match here!
     )
 
-    # Scroll to load all precincts
+    # --- 4. Scroll again if needed ---
     autoscroll_until_stable(page)
 
-    # Extract precinct tables
+    # --- 5. Extract precinct tables ---
     precinct_tables = extract_precinct_tables(contest_panel)
     data = []
     method_names = None
@@ -168,6 +180,11 @@ def finalize_and_output(headers, data, contest_title, metadata):
     data.append(grand_total)
     # Recompute headers in case grand_total added new fields
     headers = sorted(set().union(*(row.keys() for row in data)))
+    # --- Enrich metadata and context ---
+    organized = organize_context(metadata)
+    metadata = organized.get("metadata", metadata)
     # Write output and metadata
-    metadata["output_file"] = finalize_election_output(headers, data, contest_title, metadata).get("csv_path")
+    result = finalize_election_output(headers, data, contest_title, metadata)
+    contest_title = result.get("contest_title", contest_title)
+    metadata = result.get("metadata", metadata)
     return headers, data, contest_title, metadata

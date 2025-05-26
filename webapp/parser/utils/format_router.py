@@ -1,18 +1,37 @@
+import os
+import json
 from dotenv import load_dotenv
 from ..handlers.formats import json_handler, pdf_handler, csv_handler
-import os
-from typing import Optional
 from ..utils.shared_logger import logger, rprint
 from ..utils.user_prompt import prompt_user_input
 from urllib.parse import urljoin
 
 load_dotenv()
 
-# Expandable: add new formats to the .env or here
-SUPPORTED_FORMATS = [
-    ext if ext.startswith('.') else f'.{ext}'
-    for ext in os.getenv("SUPPORTED_FORMATS", ".json, .csv, .pdf").split(",")
-]
+# --- Load supported formats from .env or context library ---
+CONTEXT_LIBRARY_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
+)
+if os.path.exists(CONTEXT_LIBRARY_PATH):
+    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
+        CONTEXT_LIBRARY = json.load(f)
+    JSON_FORMATS = CONTEXT_LIBRARY.get("supported_formats", [".json", ".csv", ".pdf"])
+else:
+    logger.error("[format_router] context_library.json not found. Using default formats.")
+    JSON_FORMATS = [".json", ".csv", ".pdf"]
+
+# .env takes priority if set, else use JSON
+ENV_FORMATS = os.getenv("SUPPORTED_FORMATS")
+if ENV_FORMATS:
+    SUPPORTED_FORMATS = [
+        ext if ext.startswith('.') else f'.{ext}'
+        for ext in ENV_FORMATS.split(",")
+    ]
+else:
+    SUPPORTED_FORMATS = JSON_FORMATS
+
+# Remove HTML if present (HTML is fallback, not a downloadable format)
+SUPPORTED_FORMATS = [ext for ext in SUPPORTED_FORMATS if ext.lower() not in [".html", "html"]]
 
 def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tuple[str, str]]:
     """
@@ -45,26 +64,17 @@ def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tu
         return [flat_results[0]]
     return flat_results
 
-def route_format_handler(format_str: str) -> Optional[object]:
+def route_format_handler(format_str: str):
     """
     Dynamically import and return a format-specific handler based on string keyword.
-    Expandable: add new formats as needed.
     """
     try:
-        # Add new formats here as needed
         if "json" in format_str:
             return json_handler
         elif "pdf" in format_str:
             return pdf_handler
         elif "csv" in format_str:
             return csv_handler
-        # Example for future extensibility:
-        # elif "xml" in format_str:
-        #     from handlers.formats import xml_handler
-        #     return xml_handler
-        # elif "xlsx" in format_str:
-        #     from handlers.formats import xlsx_handler
-        #     return xlsx_handler
         else:
             logger.warning(f"[WARN] Unsupported format requested: {format_str}")
             return None
@@ -85,7 +95,7 @@ def prompt_user_for_format(confirmed, logger=None):
     rprint("\n[FORMATS] Available formats:")
     for i, opt in enumerate(format_options):
         rprint(f"  [{i}] {opt}")
-    rprint("  [n] Skip format parsing")    
+    rprint("  [n] Skip format parsing")
     def validator(x):
         return (x.isdigit() and 0 <= int(x) < len(format_options)) or x.lower() == "n"
 

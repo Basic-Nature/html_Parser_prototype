@@ -2,20 +2,22 @@ from rich import print as rprint
 from ..utils.shared_logger import logger
 from ..utils.user_prompt import prompt_user_input, PromptCancelled
 import re
+import json
+import os
 
-DEFAULT_NOISY_LABELS = [
-    "view results by election district", "summary by method", "download",
-    "vote method", "voting method", "election districts reporting", "as of",
-    "candidate", "percentage", "votes", "winner", "response", "yes", "no"
-]
-DEFAULT_NOISY_LABEL_PATTERNS = [
-    r"view results? by election district\s*[:\n]?$", r"summary by method\s*[:\n]?$",
-    r"download\s*[:\n]?$", r"^view results.*", r"^summary by method.*", r"^download.*",
-    r"^vote method.*", r"^voting method.*", r"vote method\s*[:\n]?$", r"voting method\s*[:\n]?$",
-    r"^vote for \d+$", r"election districts reporting.*", r"as of.*", r"candidate.*",
-    r"percentage.*", r"votes.*", r"winner.*", r"response.*", r"^yes$", r"^no$"
-]
-DEFAULT_NOISY_LABELS = [label.lower() for label in DEFAULT_NOISY_LABELS]
+# Load noisy label config from context library
+CONTEXT_LIBRARY_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
+)
+if os.path.exists(CONTEXT_LIBRARY_PATH):
+    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
+        CONTEXT_LIBRARY = json.load(f)
+    DEFAULT_NOISY_LABELS = [label.lower() for label in CONTEXT_LIBRARY.get("default_noisy_labels", [])]
+    DEFAULT_NOISY_LABEL_PATTERNS = CONTEXT_LIBRARY.get("default_noisy_label_patterns", [])
+else:
+    logger.error("[contest_selector] context_library.json not found. Noisy label filtering will be limited.")
+    DEFAULT_NOISY_LABELS = []
+    DEFAULT_NOISY_LABEL_PATTERNS = []
 
 def is_noisy_label(label: str, noisy_labels=None, noisy_label_patterns=None) -> bool:
     """Check if a label is considered noisy based on patterns or substrings."""
@@ -25,7 +27,6 @@ def is_noisy_label(label: str, noisy_labels=None, noisy_label_patterns=None) -> 
     for pattern in noisy_label_patterns:
         if re.search(pattern, label):
             return True
-    # Check if any noisy label is a substring of the contest label
     for noisy in noisy_labels:
         if noisy in label:
             return True
@@ -125,7 +126,6 @@ def select_contest(
         return [filtered_races[0]]
 
     if non_interactive:
-        # In non-interactive mode, select all by default
         if log_func:
             log_func(f"[CONTEST] Non-interactive mode: selecting all contests.")
         return filtered_races

@@ -262,15 +262,34 @@ def parse(page, html_context):
             wide_data.append(calculate_grand_totals(wide_data))
 
             contest_title = os.path.basename(pdf_path).replace(".pdf", "")
+
+            # --- Standardize: Enrich metadata and output ---
+            from ...Context_Integration.context_organizer import organize_context
+            organized = organize_context(metadata)
+            metadata = organized.get("metadata", metadata)
             result = finalize_election_output(headers, wide_data, contest_title, metadata)
             contest_title = result.get("contest_title", contest_title)
             metadata = result.get("metadata", metadata)
             return headers, wide_data, contest_title, metadata
+
         else:
             unmatched_count = len(lines[header_line_idx + 1:])
             logger.warning(f"[WARN] No structured rows matched the inferred column count of {len(headers)}. Total lines scanned: {unmatched_count}")
             fallback_rows = [{"raw_line": line} for line in lines[header_line_idx + 1:]]
-            return ["raw_line"], fallback_rows, os.path.basename(pdf_path), metadata
+            # --- Standardize fallback ---
+            from ...Context_Integration.context_organizer import organize_context
+            organized = organize_context(metadata)
+            metadata = organized.get("metadata", metadata)
+            result = finalize_election_output(["raw_line"], fallback_rows, os.path.basename(pdf_path), metadata)
+            contest_title = result.get("contest_title", os.path.basename(pdf_path))
+            metadata = result.get("metadata", metadata)
+            return ["raw_line"], fallback_rows, contest_title, metadata
 
     # If no table, return plain text
-    return ["text"], [{"text": all_text}], os.path.basename(pdf_path), metadata
+    from ...Context_Integration.context_organizer import organize_context
+    organized = organize_context(metadata)
+    metadata = organized.get("metadata", metadata)
+    result = finalize_election_output(["text"], [{"text": all_text}], os.path.basename(pdf_path), metadata)
+    contest_title = result.get("contest_title", os.path.basename(pdf_path))
+    metadata = result.get("metadata", metadata)
+    return ["text"], [{"text": all_text}], contest_title, metadata

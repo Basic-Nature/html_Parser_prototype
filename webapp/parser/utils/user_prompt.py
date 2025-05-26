@@ -4,7 +4,7 @@
 # -------------------------------------------------------------------
 # - Robust input with validation, timeout, and cancellation
 # - Yes/No and choice selection helpers
-# - Optional headers, logging, and error callbacks
+# - Context-driven metadata and conflict prompts
 # - Designed for integration in multi-step pipelines
 # ===================================================================
 
@@ -111,27 +111,39 @@ def prompt_yes_no(
 ):
     """
     Prompt the user for a yes/no answer, with optional cancel, timeout, header, and logging.
+    Returns True for yes, False for no.
     """
     if header:
         print_header(header)
+    prompt_str = f"{message} (y/n) [{default}]"
+    if allow_cancel:
+        prompt_str += " (type 'cancel' to abort)"
+    prompt_str += ": "
     while True:
-        prompt = f"{message} (y/n) [{default}]"
-        if allow_cancel:
-            prompt += " (type 'cancel' to abort)"
-        prompt += ": "
-        resp = input(prompt) if not timeout else None
         if timeout:
-            # Could implement timeout logic here if needed
-            pass
-        if resp is None:
+            # Timeout logic
+            result = [None]
+            def inner():
+                try:
+                    result[0] = input(prompt_str)
+                except Exception:
+                    result[0] = None
+            t = threading.Thread(target=inner)
+            t.start()
+            t.join(timeout)
+            if t.is_alive():
+                print("\n[Prompt] Timed out.")
+                return default.lower() == "y"
+            resp = result[0]
+        else:
+            resp = input(prompt_str)
+        if resp is None or not resp.strip():
             resp = default
         resp = resp.strip().lower()
         if allow_cancel and resp == "cancel":
             if log_func:
                 log_func(f"[PROMPT] User cancelled yes/no at {datetime.datetime.now()}")
             raise PromptCancelled("User cancelled the prompt.")
-        if not resp and default:
-            resp = default
         if resp in ("y", "yes"):
             if log_func:
                 log_func(f"[PROMPT] User input: YES at {datetime.datetime.now()}")
@@ -173,3 +185,76 @@ def prompt_choice(
     if log_func:
         log_func(f"[PROMPT] User selected option {selection} at {datetime.datetime.now()}")
     return options[int(selection)]
+
+# =========================
+# Advanced Context Prompts
+# =========================
+
+def prompt_for_metadata_field(field_name, suggestions=None, default=None, allow_cancel=True):
+    """
+    Prompt the user to fill in a missing metadata field, with optional suggestions.
+    """
+    if suggestions:
+        print(f"Suggestions for {field_name}:")
+        for idx, s in enumerate(suggestions):
+            print(f"  [{idx}] {s}")
+        def validator(x):
+            return (x.isdigit() and 0 <= int(x) < len(suggestions)) or bool(x.strip())
+        response = prompt_user_input(
+            f"Enter {field_name} or select a suggestion (0-{len(suggestions)-1}):",
+            default=str(default) if default is not None else "",
+            validator=validator,
+            allow_cancel=allow_cancel
+        )
+        if response.isdigit():
+            return suggestions[int(response)]
+        return response
+    else:
+        return prompt_user_input(
+            f"Enter {field_name}:",
+            default=default,
+            allow_cancel=allow_cancel
+        )
+
+def prompt_for_metadata(metadata_fields):
+    """
+    Prompt the user for multiple metadata fields.
+    metadata_fields: dict of {field_name: {"suggestions": [...], "default": ...}}
+    Returns a dict of user responses.
+    """
+    responses = {}
+    for field, opts in metadata_fields.items():
+        responses[field] = prompt_for_metadata_field(
+            field,
+            suggestions=opts.get("suggestions"),
+            default=opts.get("default")
+        )
+    return responses
+
+def prompt_review_context(context):
+    """
+    Display context summary and prompt user to confirm or edit.
+    """
+    print("\n[Context Review]")
+    for k, v in context.items():
+        print(f"  {k}: {v}")
+    if prompt_yes_no("Is this context correct?", default="y"):
+        return context
+    # Optionally allow editing fields
+    for k in context:
+        if prompt_yes_no(f"Edit {k}? (current: {context[k]})", default="n"):
+            context[k] = prompt_user_input(f"Enter new value for {k}:", default=str(context[k]))
+    return context
+
+def prompt_resolve_conflict(conflict_type, options):
+    """
+    Prompt the user to resolve a detected conflict.
+    """
+    print(f"\n[Conflict Detected: {conflict_type}]")
+    for idx, opt in enumerate(options):
+        print(f"  [{idx}] {opt}")
+    idx = prompt_user_input(
+        f"Select the correct option (0-{len(options)-1}):",
+        validator=lambda x: x.isdigit() and 0 <= int(x) < len(options)
+    )
+    return options[int(idx)]
