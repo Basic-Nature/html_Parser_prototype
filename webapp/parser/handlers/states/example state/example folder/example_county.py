@@ -97,7 +97,7 @@ def finalize_and_output(headers, data, contest_title, metadata):
     # Recompute headers in case grand_total added new fields
     headers = sorted(set().union(*(row.keys() for row in data)))
     # --- Enrich metadata and context ---
-    organized = organize_context(metadata)
+    organized = organize_context_with_cache(metadata)
     metadata = organized.get("metadata", metadata)
     # Write output and metadata
     result = finalize_election_output(headers, data, contest_title, metadata)

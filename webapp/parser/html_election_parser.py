@@ -178,7 +178,7 @@ def mark_url_processed(url, status="success", **metadata):
     with open(CACHE_FILE, 'a', encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
-def organize_context(raw_context, button_features=None, panel_features=None, use_library=True, cache=None):
+def organize_context_with_cache(raw_context, button_features=None, panel_features=None, use_library=True, cache=None):
     """
     Main entry point. Optionally uses the persistent context library to improve mapping.
     Args:
@@ -201,7 +201,7 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
         library = {"contests": [], "buttons": [], "panels": [], "tables": []}
 
     # Organize context using the utility function
-    organized = organize_context(
+    organized = organize_context_with_cache(
         raw_context=raw_context,
         button_features=button_features,
         panel_features=panel_features,
@@ -401,7 +401,7 @@ def process_url(target_url, processed_info):
             html_context["source_url"] = target_url
 
             # Organize context with cache for learning/deduplication
-            organized_context = organize_context(html_context, cache=processed_info)
+            organized_context = organize_context_with_cache(html_context, cache=processed_info)
 
             # --- Format Detection (JSON/CSV/PDF) ---
             FORMAT_DETECTION_ENABLED = os.getenv("FORMAT_DETECTION_ENABLED", "true").lower() == "true"

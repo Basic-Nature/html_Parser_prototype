@@ -164,7 +164,7 @@ def parse(page, html_context):
 
         # Output via finalize_election_output
         from ...Context_Integration.context_organizer import organize_context
-        organized = organize_context(metadata)
+        organized = organize_context_with_cache(metadata)
         metadata = organized.get("metadata", metadata)
         result = finalize_election_output(headers, data_rows, target_contest, metadata)
         contest_title = result.get("contest_title", target_contest)

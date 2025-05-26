@@ -79,7 +79,7 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     Returns a dict with the CSV and JSON paths.
     """
     # 1. Enrich metadata using context organizer
-    organized = organize_context(metadata)
+    organized = organize_context_with_cache(metadata)
     enriched_meta = organized.get("metadata", metadata)
     # 2. Optionally append output info to context library
     append_to_context_library({"metadata": enriched_meta})

@@ -209,7 +209,7 @@ def parse(page, html_context):
 
             # Enrich metadata and context using context_organizer
             from ...Context_Integration.context_organizer import organize_context
-            organized = organize_context(metadata)
+            organized = organize_context_with_cache(metadata)
             metadata = organized.get("metadata", metadata)
 
             # Output via finalize_election_output

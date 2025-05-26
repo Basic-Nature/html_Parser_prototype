@@ -175,7 +175,7 @@ def parse(page, html_context=None):
         metadata.update(county_totals)
 
     # Enrich metadata and finalize output
-    organized = organize_context(metadata)
+    organized = organize_context_with_cache(metadata)
     metadata = organized.get("metadata", metadata)
     result = finalize_election_output(headers_out, precinct_data, contest_title, metadata)
     contest_title = result.get("contest_title", contest_title)
