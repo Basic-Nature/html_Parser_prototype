@@ -11,22 +11,12 @@
 import sys
 import threading
 import datetime
-from utils.user_prompt import prompt_user_input, prompt_yes_no, prompt_choice, PromptCancelled
-from utils.shared_logger import log_warning
+from ..utils.shared_logger import log_warning
 class PromptCancelled(Exception):
     """Raised when the user cancels a prompt."""
     pass
 
-def prompt_user_for_label(contest, prompt_func=prompt_user_input):
-    try:
-        label = prompt_func(
-            f"Review contest: {contest['title']}\nLabel as (1) correct, (0) incorrect, or type annotation:",
-            allow_cancel=True
-        )
-        return label
-    except PromptCancelled:
-        log_warning("User cancelled the labeling prompt.", context=contest)
-        return None
+
 
 def print_header(title: str = "USER INPUT REQUIRED", char: str = "=", width: int = 60):
     """

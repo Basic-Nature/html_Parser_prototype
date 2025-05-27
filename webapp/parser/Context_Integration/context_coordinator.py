@@ -6,12 +6,14 @@ Acts as the "brains" for semantic, entity, and text-driven logic, while delegati
 """
 
 import os
+import datetime
 import json
 import sqlite3
 from collections import defaultdict
 from rich import print as rprint
 import importlib.util
 import glob
+from ..utils.user_prompt import prompt_user_input, prompt_yes_no, prompt_choice, PromptCancelled
 from ..utils.shared_logger import log_info, log_warning, log_error, log_critical, log_alert
 
 from ..Context_Integration.spacy_utils import (
@@ -29,6 +31,23 @@ from ..Context_Integration.context_organizer import (
     DB_PATH, load_context_library, election_integrity_checks, organize_context,
     update_contest_in_db, fetch_contests_by_filter
 )
+
+def prompt_user_input(prompt, default=None, allow_cancel=False):
+    env_context = {
+        "ENV": os.getenv("ENV"),
+        "LOG_LEVEL": os.getenv("LOG_LEVEL"),
+        "prompt_time": datetime.datetime.now().isoformat()
+    }
+    try:
+        user_input = input(prompt)
+        if not user_input and default is not None:
+            user_input = default
+        return user_input
+    except (KeyboardInterrupt, EOFError):
+        log_warning("User cancelled prompt", context=env_context)
+        if allow_cancel:
+            raise
+        return None
 
 # --- Database Access Utilities ---
 
