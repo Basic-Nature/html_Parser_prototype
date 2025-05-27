@@ -10,7 +10,7 @@ import json
 import sqlite3
 from collections import defaultdict
 from rich import print as rprint
-
+from spacy_utils import demo_analysis
 import importlib.util
 import glob
 
@@ -28,11 +28,47 @@ from context_organizer import DB_PATH, load_context_library
 
 # --- Database Access Utilities ---
 
+SAMPLE_JSON_PATH = os.path.join(os.path.dirname(__file__), "sample.json")
+
+def load_sample_json(path=SAMPLE_JSON_PATH):
+    if not os.path.exists(path):
+        return {"samples": []}
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_sample_json(data, path=SAMPLE_JSON_PATH):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def add_sample_entry(text, meta=None, path=SAMPLE_JSON_PATH):
+    data = load_sample_json(path)
+    entry = {"text": text}
+    if meta:
+        entry["meta"] = meta
+    data.setdefault("samples", []).append(entry)
+    save_sample_json(data, path)
+
+def update_sample_entry(index, text=None, meta=None, path=SAMPLE_JSON_PATH):
+    data = load_sample_json(path)
+    if 0 <= index < len(data.get("samples", [])):
+        if text is not None:
+            data["samples"][index]["text"] = text
+        if meta is not None:
+            data["samples"][index]["meta"] = meta
+        save_sample_json(data, path)
+        return True
+    return False
+
+def get_sample_text(index=0, path=SAMPLE_JSON_PATH):
+    data = load_sample_json(path)
+    samples = data.get("samples", [])
+    if samples and 0 <= index < len(samples):
+        return samples[index]["text"]
+    return None
+
+# --- Database Access Utilities ---
+
 def fetch_contests_from_db(limit=100, filters=None):
-    """
-    Fetch contests from the database for NLP analysis or reporting.
-    Optionally filter by year, state, etc.
-    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     query = "SELECT id, title, year, type, state, county, metadata FROM contests"
@@ -50,7 +86,6 @@ def fetch_contests_from_db(limit=100, filters=None):
     rows = cursor.fetchall()
     contests = []
     for row in rows:
-        # Try to load metadata as dict, fallback to DB columns
         try:
             meta = json.loads(row[6]) if row[6] else {}
         except Exception:
@@ -285,3 +320,17 @@ if __name__ == "__main__":
          required_states=["New York", "California", "Texas"],
          expected_year=2024 
         )
+if __name__ == "__main__":
+    # Ensure at least one sample exists
+    if not os.path.exists(SAMPLE_JSON_PATH):
+        add_sample_entry(
+            "The 2024 election in Rockland, New York was held on November 5th, 2024. Contact info:",
+            meta={"source": "default"}
+        )
+
+    # Get the first sample from sample.json
+    sample_text = get_sample_text(0)
+    if sample_text:
+        demo_analysis(sample_text)  # This calls the function from spacy_utils.py
+    else:
+        rprint("[red]No sample text found in sample.json[/red]")
