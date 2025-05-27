@@ -98,7 +98,25 @@
     "Cook": ["Chicago", "Evanston", "Oak Park"],
     "Maricopa": ["Phoenix", "Mesa", "Chandler"]
   },
-
+  "labels": {
+    "state": "State",
+    "county": "County",
+    "city": "City",
+    "district": "District",
+    "contest": "Contest",
+    "precinct": "Precinct",
+    "vote_method": "Vote Method",
+    "reporting_status": "Reporting Status",
+    "year": "Year",
+    "symbol": "Symbol"
+  },
+  "title":[
+    "Election Results", "Voting Results", "Vote Count", "Election Summary", "Ballot Results", "Voting Summary"
+  ],
+  "election": [
+    "2024 Presidential Election", "2024 General Election", "2024 Midterm Elections", "2024 Primary Election",
+    "2023 Local Elections", "2023 Special Elections", "2022 General Election", "2022 Midterm Elections"
+  ],
   "known_states": [
     "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming"
   ],
@@ -134,9 +152,15 @@
       "[role]", "[aria-label]", "[data-title]", "[class*=\"header\"]", "[class*=\"title\"]", "[class*=\"name\"]"
     ]
   },
-    "buttons": [
-    "Show Results", "View Results", "Expand", "Vote Method", "By County", "Summary", "Details"
-  ],
+"buttons": [
+  {"label": "Show Results"},
+  {"label": "View Results"},
+  {"label": "Expand"},
+  {"label": "Vote Method"},
+  {"label": "By County"},
+  {"label": "Summary"},
+  {"label": "Details"}
+],
   "regex": {
     "year": "\\b((?:19|20)\\d{2})\\b",
     "symbol": "[\\s\\n\\r\\t\\$0]+"

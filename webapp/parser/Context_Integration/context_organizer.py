@@ -147,13 +147,70 @@ def update_contest_in_db(contest):
 def normalize_label(label):
     return re.sub(r"\s+", " ", str(label).strip().lower())
 
+def sanitize_context_library(library):
+    """
+    Ensures all expected keys are present and have the correct type.
+    Converts legacy or malformed data to the expected structure.
+    """
+    # List-of-dict keys: always a list of dicts with at least a 'label' field
+    list_of_dict_keys = [
+        "buttons", "tables", "panels", "alerts", "contests",
+        "panel_tags", "table_tags", "section_keywords", "output_file_patterns",
+        "active_domains", "inactive_domains", "captcha_patterns",
+        "common_output_headers", "common_error_patterns", "button_keywords",
+        "contest_type_patterns", "reporting_status_patterns", "vote_method_patterns",
+        "precinct_patterns", "anomaly_log", "user_feedback", "download_link_patterns",
+        "known_states", "known_counties", "known_districts", "known_cities",
+        "precinct_header_tags", "default_noisy_labels", "election", "title",
+        "known_contests"
+    ]
+    for key in list_of_dict_keys:
+        val = library.get(key)
+        if val is None:
+            library[key] = []
+        elif isinstance(val, dict):
+            # Convert dict to list of dicts
+            library[key] = [val]
+        elif isinstance(val, list):
+            # Convert list of strings to list of dicts with 'label'
+            if key in ["buttons", "tables", "panels"]:
+                library[key] = [
+                    {"label": v} if isinstance(v, str) else v for v in val
+                ]
+        else:
+            # Fallback: wrap in a list
+            library[key] = [{"label": str(val)}]
+
+    # Dict keys: always dicts
+    dict_keys = [
+        "selectors", "domain_selectors", "domain_scrolls", "captcha_solutions",
+        "Known_state_to_county_map", "Known_county_to_district_map", "labels", "regex", "metadata"
+    ]
+    for key in dict_keys:
+        val = library.get(key)
+        if val is None or not isinstance(val, dict):
+            library[key] = {}
+
+    # Fill in version and last_updated if missing
+    if "version" not in library:
+        library["version"] = "1.0.0"
+    if "last_updated" not in library:
+        from datetime import datetime
+        library["last_updated"] = datetime.utcnow().isoformat()
+
+    return library
+
 def load_context_library(path=CONTEXT_LIBRARY_PATH):
     if not os.path.exists(path):
-        return {"contests": [], "buttons": [], "panels": [], "tables": [], "alerts": []}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        library = {"contests": [], "buttons": [], "panels": [], "tables": [], "alerts": []}
+    else:
+        with open(path, "r", encoding="utf-8") as f:
+            library = json.load(f)
+    library = sanitize_context_library(library)
+    return library
 
 def save_context_library(library, path=CONTEXT_LIBRARY_PATH):
+    library = sanitize_context_library(library)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(library, f, indent=2, ensure_ascii=False)
@@ -193,7 +250,8 @@ def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
         "active_domains", "inactive_domains", "captcha_patterns", "captcha_solutions",
         "Known_state_to_county_map", "Known_county_to_district_map", "state_module_map",
         "selectors", "known_states", "known_counties", "known_districts", "known_cities", "regex",
-        "precinct_header_tags", "common_output_headers", "default_noisy_labels", "domain_selectors"
+        "precinct_header_tags", "common_output_headers", "default_noisy_labels", "domain_selectors",
+        "labels", "election", "version", "last_updated"
     ]
     for key in dynamic_keys:
         if key in new_data:
@@ -416,6 +474,8 @@ def organize_context(
         "panels": [],
         "tables": [],
         "alerts": [],
+        "labels": [],
+        "election": [],
         "regex": [],
         "common_output_headers": [],
         "common_output_headers": [],
@@ -515,7 +575,13 @@ def organize_context(
         panels[c["title"]] = panel
 
     buttons_by_contest = defaultdict(list)
-    all_buttons = (button_features or raw_context.get("buttons", [])) + library.get("buttons", [])
+    raw_buttons = button_features or raw_context.get("buttons", [])
+    lib_buttons = library.get("buttons", [])
+    if not isinstance(raw_buttons, list):
+        raw_buttons = []
+    if not isinstance(lib_buttons, list):
+        lib_buttons = []
+    all_buttons = raw_buttons + lib_buttons
     for btn in all_buttons:
         for c in contests:
             if c["title"].lower() in btn.get("label", "").lower():
@@ -526,14 +592,20 @@ def organize_context(
             buttons_by_contest["__unmatched__"].append(btn)
 
     tables_by_contest = defaultdict(list)
-    all_tables = raw_context.get("tables", []) + library.get("tables", [])
+    raw_tables = raw_context.get("tables", [])
+    lib_tables = library.get("tables", [])
+    if not isinstance(raw_tables, list):
+        raw_tables = []
+    if not isinstance(lib_tables, list):
+        lib_tables = []
+    all_tables = raw_tables + lib_tables
     for tbl in all_tables:
         for c in contests:
             if c["title"].lower() in tbl.get("label", "").lower():
                 tables_by_contest[c["title"]].append(tbl)
         if not any(tbl in v for v in tables_by_contest.values()):
             tables_by_contest["__unmatched__"].append(tbl)
-
+            
     metadata = {
         "state": raw_context.get("state"),
         "county": raw_context.get("county"),
