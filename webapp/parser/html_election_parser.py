@@ -11,6 +11,8 @@
 import os
 import json
 import logging
+import re
+import threading
 from pathlib import Path
 from datetime import datetime
 from typing import cast, Dict, Any, List
@@ -62,6 +64,7 @@ CACHE_FILE = BASE_DIR / ".processed_urls"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format='[%(levelname)s] %(message)s')
 CACHE_PROCESSED_URLS = os.getenv("CACHE_PROCESSED", "true").lower() == "true"
+CACHE_LOCK = threading.Lock()
 CACHE_RESET = os.getenv("CACHE_RESET", "false").lower() == "true"
 HEADLESS_DEFAULT = os.getenv("HEADLESS", "true").lower() == "true"
 TIMEOUT_SEC = int(os.getenv("CAPTCHA_TIMEOUT", "300"))
@@ -110,6 +113,15 @@ def handle_cloudflare_captcha(playwright, page_or_driver, url, timeout=TIMEOUT_S
     )
     return browser, context, page, user_agent
 
+def safe_filename(name):
+    return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
+
+def safe_join(base: Path, *paths) -> Path:
+    final_path = (base / Path(*paths)).resolve()
+    if not str(final_path).startswith(str(base.resolve())):
+        raise ValueError("Unsafe path detected!")
+    return final_path
+
 # --- Cache Reset ---
 if CACHE_RESET and CACHE_FILE.exists():
     logging.debug("Deleting .processed_urls cache for fresh start...")
@@ -139,35 +151,24 @@ def load_urls() -> List[str]:
 # --- Utility: Processed URL cache ---
 def load_processed_urls() -> Dict[str, Any]:
     """Load the processed URL cache as a dict: url -> metadata dict."""
-    if not CACHE_FILE.exists():
+    if not CACHE_FILE.exists() or os.path.getsize(CACHE_FILE) == 0:
         return {}
-    processed = {}
     with open(CACHE_FILE, 'r', encoding="utf-8") as f:
-        for line in f:
-            # Now support JSON per line for richer metadata
-            try:
-                if "|" in line:
-                    # Legacy: url|timestamp|status|error|handler|state|county|contest
-                    parts = line.strip().split("|")
-                    url, timestamp, status = parts[:3]
-                    extra = parts[3:] if len(parts) > 3 else []
-                    processed[url] = {
-                        "timestamp": timestamp,
-                        "status": status,
-                        "extra": extra
-                    }
-                else:
-                    # New: JSON per line
-                    meta = json.loads(line)
-                    url = meta.get("url")
-                    if url:
-                        processed[url] = meta
-            except Exception as e:
-                logger.warning(f"[CACHE] Failed to parse cache line: {line.strip()} ({e})")
+        try:
+            entries = json.load(f)
+            if not isinstance(entries, list):
+                entries = []
+        except Exception:
+            entries = []
+    processed = {}
+    for entry in entries:
+        url = entry.get("url")
+        if url:
+            processed[url] = entry
     return processed
 
 def mark_url_processed(url, status="success", **metadata):
-    """Append or update a processed URL with rich metadata."""
+    """Append or update a processed URL with rich metadata, storing all entries in a JSON array."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = {
         "url": url,
@@ -175,11 +176,30 @@ def mark_url_processed(url, status="success", **metadata):
         "status": status,
         **metadata
     }
-    # Check if file exists and is empty
-    write_header = not os.path.exists(CACHE_FILE) or os.path.getsize(CACHE_FILE) == 0
-    # Append as JSON per line for extensibility
-    with open(CACHE_FILE, 'a', encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+    with CACHE_LOCK:
+        # Load existing entries
+        if CACHE_FILE.exists() and os.path.getsize(CACHE_FILE) > 0:
+            try:
+                with open(CACHE_FILE, 'r', encoding="utf-8") as f:
+                    entries = json.load(f)
+                    if not isinstance(entries, list):
+                        entries = []
+            except Exception:
+                entries = []
+        else:
+            entries = []
+        # Update or append
+        updated = False
+        for i, e in enumerate(entries):
+            if e.get("url") == url:
+                entries[i] = entry
+                updated = True
+                break
+        if not updated:
+            entries.append(entry)
+        # Write back as a JSON array
+        with open(CACHE_FILE, 'w', encoding="utf-8") as f:
+            json.dump(entries, f, indent=2, ensure_ascii=False)
 
 def organize_context_with_cache(raw_context, button_features=None, panel_features=None, use_library=True, cache=None):
     """
@@ -326,7 +346,9 @@ def process_format_override():
     try:
         selection = prompt_user_input("[PROMPT] Select a file index to parse: ").strip()
         index = int(selection)
-        target_file = files[index]
+        if not (0 <= index < len(files)):
+            raise ValueError("Invalid file index")
+        target_file = safe_filename(files[index])
     except (IndexError, ValueError, EOFError, KeyboardInterrupt):
         rprint("[red]Invalid selection. Aborting manual parse.[/red]")
         return None
@@ -334,7 +356,7 @@ def process_format_override():
     if not handler:
         rprint(f"[red][ERROR] No format handler found for '{force_format}'[/red]")
         return None
-    full_path = str(input_folder / target_file)
+    full_path = safe_join(input_folder, target_file)
     html_context = {"manual_file": full_path}
     dummy_page = cast(Page, None)
     result = handler.parse(dummy_page, html_context)
