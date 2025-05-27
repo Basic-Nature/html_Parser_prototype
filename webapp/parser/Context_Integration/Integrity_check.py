@@ -80,57 +80,208 @@ def detect_anomalies_with_ml(
     clusters = clustering.labels_
     return anomalies, clusters
 
-def plot_anomaly_scores(scores: np.ndarray, cutoff: Optional[float] = None):
+def plot_anomaly_scores(
+    scores: np.ndarray,
+    cutoff: Optional[float] = None,
+    highlight: Optional[List[int]] = None,
+    title: str = "IsolationForest Anomaly Scores",
+    xlabel: str = "Sample Index (sorted)",
+    ylabel: str = "Anomaly Score",
+    save_path: Optional[str] = None,
+    show: bool = True,
+    style: str = "seaborn-v0_8-darkgrid",
+    highlight_color: str = "#CC79A7",
+    score_color: str = "#0072B2",
+    cutoff_color: str = "#D55E00",
+    **kwargs
+):
     """
     Plot anomaly scores for visual inspection.
+    - highlight: list of indices to highlight (e.g., detected anomalies)
+    - save_path: if provided, saves the plot to this file
+    - show: if True, attempts to show the plot (main thread only)
+    - style: matplotlib style to use
+    - kwargs: passed to plt.plot for further customization
     """
-    def _plot():
-        import matplotlib.pyplot as plt
-        plt.figure(figsize=(10, 4))
-        plt.plot(sorted(scores), marker='o', linestyle='-', label='Anomaly Score')
-        if cutoff is not None:
-            plt.axhline(cutoff, color='red', linestyle='--', label=f'Cutoff ({cutoff:.2f})')
-        plt.title('IsolationForest Anomaly Scores')
-        plt.xlabel('Sample Index (sorted)')
-        plt.ylabel('Anomaly Score')
-        plt.legend()
-        plt.tight_layout()
-        if threading.current_thread() is threading.main_thread():
-            plt.show()
-        else:
-            print("[WARN] Skipping plt.show()/plt.savefig() in background thread due to GUI backend limitations.")
-            plt.close()
-    # Only start a thread if you really need to, otherwise just call _plot()
-    if threading.current_thread() is threading.main_thread():
-        _plot()
+    import matplotlib.pyplot as plt
+    import threading
+
+    plt.style.use(style)
+    sorted_indices = np.argsort(scores)
+    sorted_scores = np.array(scores)[sorted_indices]
+
+    plt.figure(figsize=kwargs.get("figsize", (13, 6)))
+    plt.plot(sorted_scores, marker='o', linestyle='-', color=score_color, label='Anomaly Score', **kwargs)
+
+    if cutoff is not None:
+        plt.axhline(cutoff, color=cutoff_color, linestyle='--', linewidth=2, label=f'Cutoff ({cutoff:.2f})')
+
+    if highlight is not None and len(highlight) > 0:
+        highlight_sorted = [np.where(sorted_indices == idx)[0][0] for idx in highlight if idx in sorted_indices]
+        plt.scatter(highlight_sorted, sorted_scores[highlight_sorted], color=highlight_color, s=100, marker='X', label='Anomaly', zorder=5, edgecolor='black')
+
+    plt.title(title, fontsize=17, fontweight='bold')
+    plt.xlabel(xlabel, fontsize=13)
+    plt.ylabel(ylabel, fontsize=13)
+    plt.grid(True, linestyle=':', alpha=0.7)
+    plt.legend(fontsize=12)
+    plt.tight_layout()
+
+    if save_path or threading.current_thread() is not threading.main_thread() or not show:
+        out_path = save_path or "anomaly_scores.png"
+        plt.savefig(out_path, dpi=180)
+        print(f"[INFO] Anomaly score plot saved to {out_path}")
     else:
-        threading.Thread(target=_plot, daemon=True).start()
-        
+        plt.show()
+    plt.close()
+
+
 def plot_clusters(
     X: np.ndarray,
     clusters: np.ndarray,
     anomalies: Optional[List[int]] = None,
-    title: str = "PCA Cluster Visualization"
+    title: str = "PCA Cluster Visualization",
+    save_path: Optional[str] = None,
+    show: bool = True,
+    pca_components: int = 2,
+    feature_indices: Optional[List[int]] = None,
+    highlight_color: str = "#D55E00",
+    cluster_palette: str = "plasma",
+    style: str = "seaborn-v0_8-darkgrid",
+    **kwargs
 ):
     """
     Plot clusters and highlight anomalies using PCA for dimensionality reduction.
+    - anomalies: list of indices to highlight (e.g., detected anomalies)
+    - feature_indices: which features to use for PCA (default: all)
+    - save_path: if provided, saves the plot to this file
+    - show: if True, attempts to show the plot (main thread only)
+    - style: matplotlib style to use
+    - kwargs: passed to plt.scatter for further customization
     """
-    def _plot():
-        from sklearn.decomposition import PCA
-        pca = PCA(n_components=2)
-        X_pca = pca.fit_transform(X)
-        plt.figure(figsize=(8, 6))
-        plt.scatter(X_pca[:, 0], X_pca[:, 1], c=clusters, cmap='tab10', alpha=0.7, label='Cluster')
-        if anomalies is not None and len(anomalies) > 0:
-            plt.scatter(X_pca[anomalies, 0], X_pca[anomalies, 1], color='red', marker='x', s=80, label='Anomaly')
-        plt.title(title)
-        plt.xlabel('PCA 1')
-        plt.ylabel('PCA 2')
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
-    threading.Thread(target=_plot, daemon=True).start()
+    import matplotlib.pyplot as plt
+    import threading
+    from sklearn.decomposition import PCA
 
+    plt.style.use(style)
+    if feature_indices is not None:
+        X_plot = X[:, feature_indices]
+    else:
+        X_plot = X
+
+    pca = PCA(n_components=pca_components)
+    X_pca = pca.fit_transform(X_plot)
+
+    plt.figure(figsize=kwargs.get("figsize", (10, 8)))
+    scatter = plt.scatter(
+        X_pca[:, 0], X_pca[:, 1],
+        c=clusters, cmap=cluster_palette, alpha=0.75, s=80, edgecolor='k', label='Cluster', **kwargs
+    )
+
+    if anomalies is not None and len(anomalies) > 0:
+        plt.scatter(
+            X_pca[anomalies, 0], X_pca[anomalies, 1],
+            color=highlight_color, marker='X', s=180, linewidths=2, label='Anomaly', zorder=5, edgecolor='black'
+        )
+
+    plt.title(title, fontsize=17, fontweight='bold')
+    plt.xlabel('PCA Component 1', fontsize=13)
+    plt.ylabel('PCA Component 2', fontsize=13)
+    plt.grid(True, linestyle=':', alpha=0.6)
+    plt.legend(fontsize=12)
+    plt.tight_layout()
+
+    # Add colorbar for clusters if more than 1 cluster
+    if len(set(clusters)) > 1:
+        cbar = plt.colorbar(scatter, ticks=range(int(np.max(clusters)) + 1))
+        cbar.set_label('Cluster Label')
+
+    if save_path or threading.current_thread() is not threading.main_thread() or not show:
+        out_path = save_path or "cluster_plot.png"
+        plt.savefig(out_path, dpi=180)
+        print(f"[INFO] Cluster plot saved to {out_path}")
+    else:
+        plt.show()
+    plt.close()
+    """
+    **Example Usage:**
+    ## for the _plot_anomaly_scores_ and _plot_clusters_ functions, you can use them as follows:
+    
+    ## To show interactively (main thread)
+    
+    plot_anomaly_scores(scores, cutoff=0.5, highlight=anomaly_indices)
+    plot_clusters(X, clusters, anomalies=anomaly_indices)
+    
+    
+    ## To save to files without showing (background thread)
+    
+    plot_anomaly_scores(scores, cutoff=0.5, highlight=anomaly_indices, save_path="my_scores.png", show=False)
+    plot_clusters(X, clusters, anomalies=anomaly_indices, save_path="my_clusters.png", show=False)
+
+    ## To customize style
+    plot_anomaly_scores(scores, color='green', marker='s', figsize=(14,6))
+    plot_clusters(X, clusters, cluster_palette="plasma", highlight_color="red")
+
+    """
+
+def plot_clusters(
+    X: np.ndarray,
+    clusters: np.ndarray,
+    anomalies: Optional[List[int]] = None,
+    title: str = "PCA Cluster Visualization",
+    save_path: Optional[str] = None,
+    show: bool = True,
+    pca_components: int = 2,
+    highlight_color: str = "#D55E00",
+    cluster_palette: str = "tab10",
+    **kwargs
+):
+    """
+    Plot clusters and highlight anomalies using PCA for dimensionality reduction.
+    - anomalies: list of indices to highlight (e.g., detected anomalies)
+    - save_path: if provided, saves the plot to this file
+    - show: if True, attempts to show the plot (main thread only)
+    - kwargs: passed to plt.scatter for further customization
+    """
+    import matplotlib.pyplot as plt
+    import threading
+    from sklearn.decomposition import PCA
+
+    pca = PCA(n_components=pca_components)
+    X_pca = pca.fit_transform(X)
+
+    plt.figure(figsize=kwargs.get("figsize", (9, 7)))
+    scatter = plt.scatter(
+        X_pca[:, 0], X_pca[:, 1],
+        c=clusters, cmap=cluster_palette, alpha=0.7, s=60, edgecolor='k', label='Cluster', **kwargs
+    )
+
+    if anomalies is not None and len(anomalies) > 0:
+        plt.scatter(
+            X_pca[anomalies, 0], X_pca[anomalies, 1],
+            color=highlight_color, marker='x', s=120, linewidths=2, label='Anomaly'
+        )
+
+    plt.title(title, fontsize=15, fontweight='bold')
+    plt.xlabel('PCA Component 1', fontsize=12)
+    plt.ylabel('PCA Component 2', fontsize=12)
+    plt.grid(True, linestyle=':', alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+
+    # Add colorbar for clusters if more than 1 cluster
+    if len(set(clusters)) > 1:
+        cbar = plt.colorbar(scatter, ticks=range(int(np.max(clusters)) + 1))
+        cbar.set_label('Cluster Label')
+
+    if save_path or threading.current_thread() is not threading.main_thread() or not show:
+        out_path = save_path or "cluster_plot.png"
+        plt.savefig(out_path, dpi=150)
+        print(f"[INFO] Cluster plot saved to {out_path}")
+    else:
+        plt.show()
+    plt.close()
+    
 def auto_tune_contamination(
     X: np.ndarray,
     initial_contamination: float = 0.2,

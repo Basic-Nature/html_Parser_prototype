@@ -168,9 +168,12 @@ def parse(page, coordinator: "ContextCoordinator", html_context=None, non_intera
                     }
                     return headers, data, contest_title, metadata
         # Fallback: Try to extract the first table on the page
-        table = page.query_selector("table")
-        if not table:
-            table = page.query_selector("table#resultsTable, table.results-table")
+        table = page.locator("table")
+        if table.count() == 0:
+            table = page.locator("table#resultsTable, table.results-table")
+        if table.count() == 0:
+            raise RuntimeError("No table found on the page.")
+        table = table.first  # Get the first matching table as a Locator
         if not table:
             raise RuntimeError("No table found on the page.")
         headers, data = extract_table_data(table)

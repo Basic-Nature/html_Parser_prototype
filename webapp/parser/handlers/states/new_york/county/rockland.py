@@ -119,6 +119,7 @@ def parse_single_contest(page, html_context, state, county, coordinator, find_co
 
     find_and_click_toggle(
         page,
+        coordinator,
         container=contest_panel,
         handler_keywords=handler_keywords if handler_keywords else ["View results by election district"],
         logger=logger,
@@ -145,6 +146,7 @@ def parse_single_contest(page, html_context, state, county, coordinator, find_co
 
     find_and_click_toggle(
         page, 
+        coordinator,
         container=contest_panel, 
         handler_keywords=handler_keywords, 
         logger=logger, 
