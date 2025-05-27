@@ -1,3 +1,4 @@
+import re
 from ..utils.shared_logger import rprint
 from ..utils.logger_instance import logger
 from ..utils.user_prompt import prompt_user_input, PromptCancelled
@@ -10,6 +11,17 @@ def normalize_race_name(name):
     # Simple normalization for deduplication
     import re
     return re.sub(r"\W+", "", name.strip().lower()) if name else ""
+
+def normalize_contest_title(title: str) -> str:
+    """
+    Normalize contest titles by removing 'Vote for X' and extra whitespace.
+    """
+    if not title:
+        return ""
+    # Remove 'Vote for X' (case-insensitive)
+    title = re.sub(r'\s*[\r\n]*Vote for \d+\s*', '', title, flags=re.IGNORECASE)
+    # Remove extra whitespace
+    return title.strip()
 
 def select_contest(
     coordinator: "ContextCoordinator",
@@ -47,8 +59,8 @@ def select_contest(
     unique_contests = []
     seen = set()
     for c in filtered_contests:
-        norm = normalize_race_name(c.get("title", ""))
-        key = (c.get("year"), c.get("type"), norm)
+        norm_title = normalize_contest_title(c.get("title", ""))
+        key = (c.get("year"), c.get("type"), norm_title)
         if key not in seen:
             unique_contests.append(c)
             seen.add(key)
