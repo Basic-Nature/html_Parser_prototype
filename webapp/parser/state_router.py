@@ -12,6 +12,21 @@ from .utils.logger_instance import logger
 
 import json
 
+def import_handler(module_path: str):
+    """
+    Dynamically import a handler module by its dotted path.
+    Returns the module if found, else None.
+    """
+    try:
+        if module_path in LOADED_HANDLERS:
+            return LOADED_HANDLERS[module_path]
+        module = importlib.import_module(module_path)
+        LOADED_HANDLERS[module_path] = module
+        return module
+    except Exception as e:
+        logger.debug(f"[Router] Could not import {module_path}: {e}")
+        return None
+
 CONTEXT_LIBRARY_PATH = os.path.join(
     os.path.dirname(__file__), "Context_Integration", "context_library.json"
 )
@@ -25,62 +40,25 @@ else:
 
 LOADED_HANDLERS: Dict[str, Any] = {}
 
-def import_handler(module_path: str):
-    """Dynamically import and return a handler module from the given dotted path."""
-    try:
-        if module_path not in LOADED_HANDLERS:
-            logger.debug(f"[Router] Importing handler module: {module_path}")
-            module = importlib.import_module(module_path)
-            LOADED_HANDLERS[module_path] = module
-        return LOADED_HANDLERS[module_path]
-    except ModuleNotFoundError as e:
-        logger.warning(f"[Router] Module not found: {module_path} — {e}")
-        return None
+STATE_HANDLER_BASE_PATH = os.path.join(
+    os.path.dirname(__file__), "handlers", "states"
+)
 
-def get_handler(state_abbreviation: Optional[str], county_name: Optional[str] = None):
+def get_handler(context: Dict[str, Any], url: Optional[str] = None) -> Optional[Any]:
     """
-    Dynamically loads and returns a handler based on state or state+county keys.
-    Returns the handler module or None if not found.
+    Dynamically resolves and returns the best handler module for the given context.
+    - Uses ContextCoordinator to enrich and normalize context.
+    - Tries state/county from context, filename, or URL.
+    - Logs all routing attempts and fallbacks.
     """
-    if not state_abbreviation:
-        logger.warning("[Router] Missing state_abbreviation — skipping handler resolution.")
-        return None
+    from .Context_Integration.context_coordinator import ContextCoordinator
+    # Step 1: Enrich context using the coordinator (NLP, ML, etc.)
+    coordinator = ContextCoordinator(use_library=True, enable_ml=False, alert_monitor=False)
+    enriched = coordinator.organize_and_enrich(context)
+    state = context.get("state") or (enriched.get("metadata", {}).get("state") if enriched else None)
+    county = context.get("county") or (enriched.get("metadata", {}).get("county") if enriched else None)
 
-    normalized_state = state_abbreviation.strip().lower().replace(" ", "_")
-    state_key = STATE_MODULE_MAP.get(normalized_state, normalized_state)
-    module_path = f"webapp.parser.handlers.states.{state_key}"
-
-    # --- COUNTY HANDLER PRIORITY ---
-    if county_name:
-        normalized_county = county_name.strip().lower().replace(" ", "_")
-        composite_path = f"{module_path}.county.{normalized_county}"
-        logger.debug(f"[Router] Attempting county-level handler: {composite_path}")
-        module = import_handler(composite_path)
-        if module:
-            logger.info(f"[Router] Routed to handler for {state_key}_{normalized_county}")
-            return module
-
-    # --- STATE HANDLER FALLBACK ---
-    module = import_handler(module_path)
-    if module:
-        logger.info(f"[Router] Routed to state handler for {state_key}")
-        return module
-    else:
-        logger.warning(f"[Router] Could not import module for state '{state_abbreviation}'")
-        return None
-
-def get_handler_from_context(context: Dict[str, Any]):
-    """
-    Extracts state and county info from a context dictionary and routes accordingly.
-    Returns the handler module or None if not found.
-    """
-    state = context.get("state")
-    county = context.get("county")
-    if not state and not county:
-        logger.warning("[Router] No state or county provided in context.")
-        return None
-
-    # Try to infer state from filename if missing
+    # Step 2: Try to infer state/county from filename if missing
     if not state:
         filename = context.get("filename", "").lower()
         tokens = filename.replace("_", " ").split()
@@ -90,44 +68,49 @@ def get_handler_from_context(context: Dict[str, Any]):
                 context["state"] = token
                 logger.info(f"[Router] Inferred state '{state}' from filename: {filename}")
                 break
-        if not state:
-            logger.warning("[Router] No state provided in context.")
-            return None
 
-    handler = get_handler(state_abbreviation=state, county_name=county)
-    if handler:
-        logger.info(f"[Router] Handler resolved for state '{state}' and county '{county}'")
-        return handler
-    else:
-        logger.warning("[Router] No handler could be resolved.")
-    return None
-
-def extract_state_county_from_context(context: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Extracts and normalizes state and county from a context dictionary.
-    Returns (state, county) tuple for use by format_router/download_utils.
-    """
-    state = context.get("state")
-    county = context.get("county")
-    # Try to infer state from filename if missing
-    if not state:
-        filename = context.get("filename", "").lower()
-        tokens = filename.replace("_", " ").split()
-        for token in tokens:
-            if token in STATE_MODULE_MAP:
-                state = token
+    # Step 3: Try to infer state/county from URL if still missing
+    if not state and url:
+        # Example: look for '/ny/' or '/new_york/' in the URL
+        for key in STATE_MODULE_MAP:
+            if f"/{key}/" in url or f"/{STATE_MODULE_MAP[key]}/" in url:
+                state = key
+                context["state"] = key
+                logger.info(f"[Router] Inferred state '{state}' from URL: {url}")
                 break
-    if state:
-        state = state.strip().lower().replace(" ", "_")
-    if county:
-        county = county.strip().lower().replace(" ", "_")
-    return state, county
 
+    if not state:
+        logger.warning("[Router] No state provided in context, filename, or URL.")
+        return None
+
+    # Step 4: Normalize for module path
+    normalized_state = state.strip().lower().replace(" ", "_")
+    state_key = STATE_MODULE_MAP.get(normalized_state, normalized_state)
+    module_path = f"webapp.parser.handlers.states.{state_key}"
+
+    # Step 5: Try county-level handler first
+    if county:
+        normalized_county = county.strip().lower().replace(" ", "_")
+        composite_path = f"{module_path}.county.{normalized_county}"
+        logger.debug(f"[Router] Attempting county-level handler: {composite_path}")
+        module = import_handler(composite_path)
+        if module:
+            logger.info(f"[Router] Routed to handler for {state_key}_{normalized_county}")
+            return module
+
+    # Step 6: Fallback to state-level handler
+    module = import_handler(module_path)
+    if module:
+        logger.info(f"[Router] Routed to state handler for {state_key}")
+        return module
+
+    logger.warning(f"[Router] Could not import module for state '{state}'")
+    return None
 # --- CLI Utilities (optional, can be removed if not needed) ---
 
 def list_available_states() -> List[str]:
     """List all available state handler modules."""
-    base_path = os.path.join(os.path.dirname(__file__), "handlers", "states")
+    base_path = STATE_HANDLER_BASE_PATH
     if not os.path.isdir(base_path):
         logger.warning("[Router] handlers/states directory not found.")
         return []
@@ -135,7 +118,7 @@ def list_available_states() -> List[str]:
 
 def list_available_counties(state_key: str) -> List[str]:
     """List all available county handler modules for a given state."""
-    base_path = os.path.join(os.path.dirname(__file__), "handlers", "states", state_key, "county")
+    base_path = os.path.join(STATE_HANDLER_BASE_PATH, state_key, "county")
     if not os.path.isdir(base_path):
         logger.warning(f"[Router] counties directory not found for state: {state_key}")
         return []
@@ -159,14 +142,6 @@ def cli():
             print(f" - {county}")
     else:
         parser.print_help()
-
-# --- Integration for format_router/download_utils ---
-
-def get_state_county_for_format(context: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Returns normalized (state, county) tuple for use by format_router or download_utils.
-    """
-    return extract_state_county_from_context(context)
 
 if __name__ == "__main__":
     cli()

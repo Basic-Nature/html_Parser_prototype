@@ -80,61 +80,104 @@ def detect_anomalies_with_ml(
     clusters = clustering.labels_
     return anomalies, clusters
 
-def plot_anomaly_scores(
-    scores: np.ndarray,
-    cutoff: Optional[float] = None,
-    highlight: Optional[List[int]] = None,
-    title: str = "IsolationForest Anomaly Scores",
-    xlabel: str = "Sample Index (sorted)",
-    ylabel: str = "Anomaly Score",
+feature_names = ["state", "county", "year", "title_length"]
+def plot_clusters(
+    X: np.ndarray,
+    clusters: np.ndarray,
+    anomalies: Optional[List[int]] = None,
+    title: str = "PCA Cluster Visualization",
     save_path: Optional[str] = None,
     show: bool = True,
+    pca_components: int = 2,
+    feature_indices: Optional[List[int]] = None,
+    feature_names: Optional[List[str]] = None,
+    highlight_color: str = "#D55E00",
+    cluster_palette: str = "tab20",
     style: str = "seaborn-v0_8-darkgrid",
-    highlight_color: str = "#CC79A7",
-    score_color: str = "#0072B2",
-    cutoff_color: str = "#D55E00",
+    annotate_points: bool = False,
+    context: Optional[dict] = None,
     **kwargs
 ):
     """
-    Plot anomaly scores for visual inspection.
-    - highlight: list of indices to highlight (e.g., detected anomalies)
-    - save_path: if provided, saves the plot to this file
-    - show: if True, attempts to show the plot (main thread only)
-    - style: matplotlib style to use
-    - kwargs: passed to plt.plot for further customization
+    Robust cluster plot with PCA, feature selection, context-aware titles/labels, and anomaly highlighting.
+    - feature_indices: which columns of X to use for PCA (default: all)
+    - feature_names: names of features (for axis labels)
+    - annotate_points: if True, annotate each point with its index
+    - context: dict with keys like 'state', 'county', 'year' to enrich title
+    - kwargs: passed to plt.scatter for further customization
     """
     import matplotlib.pyplot as plt
     import threading
+    from sklearn.decomposition import PCA
 
     plt.style.use(style)
-    sorted_indices = np.argsort(scores)
-    sorted_scores = np.array(scores)[sorted_indices]
+    # Select features for plotting
+    if feature_indices is not None:
+        X_plot = X[:, feature_indices]
+        used_feature_names = [feature_names[i] for i in feature_indices] if feature_names else [f"Feature {i}" for i in feature_indices]
+    else:
+        X_plot = X
+        used_feature_names = feature_names if feature_names else [f"Feature {i}" for i in range(X.shape[1])]
 
-    plt.figure(figsize=kwargs.get("figsize", (13, 6)))
-    plt.plot(sorted_scores, marker='o', linestyle='-', color=score_color, label='Anomaly Score', **kwargs)
+    # PCA for dimensionality reduction
+    pca = PCA(n_components=pca_components)
+    X_pca = pca.fit_transform(X_plot)
 
-    if cutoff is not None:
-        plt.axhline(cutoff, color=cutoff_color, linestyle='--', linewidth=2, label=f'Cutoff ({cutoff:.2f})')
+    plt.figure(figsize=kwargs.get("figsize", (10, 8)))
+    scatter = plt.scatter(
+        X_pca[:, 0], X_pca[:, 1],
+        c=clusters, cmap=cluster_palette, alpha=0.8, s=90, edgecolor='k', label='Cluster', **kwargs
+    )
 
-    if highlight is not None and len(highlight) > 0:
-        highlight_sorted = [np.where(sorted_indices == idx)[0][0] for idx in highlight if idx in sorted_indices]
-        plt.scatter(highlight_sorted, sorted_scores[highlight_sorted], color=highlight_color, s=100, marker='X', label='Anomaly', zorder=5, edgecolor='black')
+    # Highlight anomalies
+    if anomalies is not None and len(anomalies) > 0:
+        plt.scatter(
+            X_pca[anomalies, 0], X_pca[anomalies, 1],
+            color=highlight_color, marker='X', s=200, linewidths=2, label='Anomaly', zorder=5, edgecolor='black'
+        )
 
-    plt.title(title, fontsize=17, fontweight='bold')
+    # Annotate points if requested
+    if annotate_points:
+        for idx, (x, y) in enumerate(zip(X_pca[:, 0], X_pca[:, 1])):
+            plt.annotate(str(idx), (x, y), fontsize=8, alpha=0.7)
+
+    # Build context-aware title
+    context_title = title
+    if context:
+        parts = []
+        for k in ('state', 'county', 'year'):
+            v = context.get(k)
+            if v:
+                parts.append(str(v))
+        if parts:
+            context_title += " (" + ", ".join(parts) + ")"
+    plt.title(context_title, fontsize=17, fontweight='bold')
+
+    # Axis labels
+    xlabel = f"PCA Component 1 ({', '.join(used_feature_names)})"
+    ylabel = "PCA Component 2"
     plt.xlabel(xlabel, fontsize=13)
     plt.ylabel(ylabel, fontsize=13)
-    plt.grid(True, linestyle=':', alpha=0.7)
+    plt.grid(True, linestyle=':', alpha=0.6)
     plt.legend(fontsize=12)
     plt.tight_layout()
 
+    # Colorbar with cluster labels
+    unique_clusters = set(clusters)
+    if len(unique_clusters) > 1 or (-1 in unique_clusters):
+        cbar = plt.colorbar(scatter, ticks=sorted([c for c in unique_clusters if c != -1]))
+        cbar.set_label('Cluster Label')
+        if -1 in unique_clusters:
+            cbar.ax.plot([], [], color='gray', label='Noise/Outlier')
+
+    # Thread-safe display/save
     if save_path or threading.current_thread() is not threading.main_thread() or not show:
-        out_path = save_path or "anomaly_scores.png"
+        out_path = save_path or "cluster_plot.png"
         plt.savefig(out_path, dpi=180)
-        print(f"[INFO] Anomaly score plot saved to {out_path}")
+        print(f"[INFO] Cluster plot saved to {out_path}")
     else:
         plt.show()
     plt.close()
-
 
 def plot_clusters(
     X: np.ndarray,
@@ -222,7 +265,61 @@ def plot_clusters(
     plot_anomaly_scores(scores, color='green', marker='s', figsize=(14,6))
     plot_clusters(X, clusters, cluster_palette="plasma", highlight_color="red")
 
+    """    
+def plot_anomaly_scores(
+    scores: np.ndarray,
+    cutoff: Optional[float] = None,
+    highlight: Optional[List[int]] = None,
+    title: str = "IsolationForest Anomaly Scores",
+    xlabel: str = "Sample Index (sorted)",
+    ylabel: str = "Anomaly Score",
+    save_path: Optional[str] = None,
+    show: bool = True,
+    style: str = "seaborn-v0_8-darkgrid",
+    highlight_color: str = "#CC79A7",
+    score_color: str = "#0072B2",
+    cutoff_color: str = "#D55E00",
+    **kwargs
+):
     """
+    Plot anomaly scores for visual inspection.
+    - highlight: list of indices to highlight (e.g., detected anomalies)
+    - save_path: if provided, saves the plot to this file
+    - show: if True, attempts to show the plot (main thread only)
+    - style: matplotlib style to use
+    - kwargs: passed to plt.plot for further customization
+    """
+    import matplotlib.pyplot as plt
+    import threading
+
+    plt.style.use(style)
+    sorted_indices = np.argsort(scores)
+    sorted_scores = np.array(scores)[sorted_indices]
+
+    plt.figure(figsize=kwargs.get("figsize", (13, 6)))
+    plt.plot(sorted_scores, marker='o', linestyle='-', color=score_color, label='Anomaly Score', **kwargs)
+
+    if cutoff is not None:
+        plt.axhline(cutoff, color=cutoff_color, linestyle='--', linewidth=2, label=f'Cutoff ({cutoff:.2f})')
+
+    if highlight is not None and len(highlight) > 0:
+        highlight_sorted = [np.where(sorted_indices == idx)[0][0] for idx in highlight if idx in sorted_indices]
+        plt.scatter(highlight_sorted, sorted_scores[highlight_sorted], color=highlight_color, s=100, marker='X', label='Anomaly', zorder=5, edgecolor='black')
+
+    plt.title(title, fontsize=17, fontweight='bold')
+    plt.xlabel(xlabel, fontsize=13)
+    plt.ylabel(ylabel, fontsize=13)
+    plt.grid(True, linestyle=':', alpha=0.7)
+    plt.legend(fontsize=12)
+    plt.tight_layout()
+
+    if save_path or threading.current_thread() is not threading.main_thread() or not show:
+        out_path = save_path or "anomaly_scores.png"
+        plt.savefig(out_path, dpi=180)
+        print(f"[INFO] Anomaly score plot saved to {out_path}")
+    else:
+        plt.show()
+    plt.close()    
 
 def plot_clusters(
     X: np.ndarray,
