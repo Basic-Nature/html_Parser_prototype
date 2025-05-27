@@ -1,4 +1,4 @@
-from ...state_router import get_handler_from_context
+from ...state_router import get_handler
 from ...utils.contest_selector import select_contest
 from ...utils.table_builder import extract_table_data, calculate_grand_totals
 from ...utils.html_scanner import scan_html_for_context
@@ -89,7 +89,7 @@ def parse(page, coordinator: "ContextCoordinator", html_context=None, non_intera
             coordinator.organize_and_enrich(html_context)
 
     # 3. Try to delegate to state/county handler if available
-    state_handler = get_handler_from_context(context=html_context)
+    state_handler = get_handler(context=html_context)
     if state_handler and hasattr(state_handler, "parse"):
         logger.info(f"[HTML Handler] Redirecting to state handler: {getattr(state_handler, '__name__', str(state_handler))}...")
         return state_handler.parse(page, html_context, coordinator=coordinator, non_interactive=non_interactive)

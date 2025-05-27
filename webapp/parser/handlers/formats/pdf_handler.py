@@ -10,7 +10,7 @@ import re
 import csv
 from concurrent.futures import ThreadPoolExecutor
 from ...utils.shared_logger import rprint
-from ...state_router import get_handler_from_context
+from ...state_router import get_handler
 from ...utils.output_utils import finalize_election_output
 from ...utils.logger_instance import logger
 from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
@@ -170,7 +170,7 @@ def parse(page, html_context):
 
     # Detect state and county from filename if not already present
     if "state" not in html_context or html_context.get("state") == "Unknown":
-        resolved = get_handler_from_context(pdf_path)
+        resolved = get_handler(pdf_path)
         if resolved:
             html_context["state"] = resolved.__name__.split(".")[-1].upper()
 

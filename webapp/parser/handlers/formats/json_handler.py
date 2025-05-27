@@ -1,6 +1,6 @@
 import json
 import os
-from ...state_router import get_handler_from_context, get_handler
+from ...state_router import get_handler
 from ...utils.logger_instance import logger
 from ...utils.shared_logger import rprint
 from ...utils.output_utils import finalize_election_output
@@ -64,7 +64,7 @@ def parse(page, html_context):
             data = json.load(f)
 
         # Try to resolve a state-specific handler
-        handler = get_handler_from_context(html_context) or get_handler(html_context.get("source_url", ""))
+        handler = get_handler(html_context) or get_handler(html_context.get("source_url", ""))
         if handler and hasattr(handler, "parse_json"):
             logger.info(f"Using custom state handler '{handler.__name__}' for JSON parsing.")
             return handler.parse_json(data, html_context)
