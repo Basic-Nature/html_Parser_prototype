@@ -2,7 +2,8 @@ import os
 import json
 from dotenv import load_dotenv
 from ..handlers.formats import json_handler, pdf_handler, csv_handler
-from ..utils.shared_logger import logger, rprint
+from ..utils.logger_instance import logger
+from ..utils.shared_logger import rprint
 from ..utils.user_prompt import prompt_user_input
 from urllib.parse import urljoin
 

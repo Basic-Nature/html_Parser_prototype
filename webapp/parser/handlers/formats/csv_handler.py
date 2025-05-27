@@ -10,9 +10,9 @@ import re
 from dotenv import load_dotenv
 from ...state_router import get_handler_from_context
 from ...utils.output_utils import finalize_election_output
-from ...utils.shared_logger import logging, rprint, logger
+from ...utils.shared_logger import logger
 from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
-
+from ...utils.shared_logger import rprint
 load_dotenv()
 
 def detect_csv_files(input_folder="input"):
@@ -55,7 +55,7 @@ def detect_headers_and_skip_metadata(f, handler_keywords):
         rprint("[yellow]No recognizable header found in preview. Proceed anyway? (y/n):[/yellow]")
         confirm = input().strip().lower()
         if confirm != 'y':
-            logging.warning("[WARN] No header match found and user declined to proceed.")
+            logger.warning("[WARN] No header match found and user declined to proceed.")
             return False
         f.seek(f.tell())
     return True
@@ -86,13 +86,13 @@ def parse(page, html_context):
         rprint(f"  [bold cyan]{os.path.basename(csv_path)}[/bold cyan]")
         user_input = input("[PROMPT] Parse this file? (y/n, or 'h' to fallback to HTML): ").strip().lower()
         if user_input == 'h':
-            logging.info("[INFO] User opted to fallback to HTML scanning.")
+            logger.info("[INFO] User opted to fallback to HTML scanning.")
             return None, None, None, {"fallback_to_html": True}
         elif user_input != 'y':
-            logging.info("[INFO] User declined CSV parse. Skipping.")
+            logger.info("[INFO] User declined CSV parse. Skipping.")
             return None, None, None, {"skip_csv": True}
     except Exception as e:
-        logging.warning(f"[WARN] Skipping user input prompt due to error: {e}")
+        logger.warning(f"[WARN] Skipping user input prompt due to error: {e}")
         return None, None, None, {"error": str(e)}
 
     data = []
@@ -219,5 +219,5 @@ def parse(page, html_context):
             return headers, wide_data, contest_title, metadata
 
     except Exception as e:
-        logging.error(f"[ERROR] Failed to parse CSV: {e}")
+        logger.error(f"[ERROR] Failed to parse CSV: {e}")
         return None, None, None, {"error": str(e)}

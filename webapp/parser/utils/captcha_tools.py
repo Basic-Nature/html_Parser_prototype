@@ -6,7 +6,8 @@
 import time
 import os
 import platform
-from ..utils.shared_logger import logger, rprint
+from ..utils.logger_instance import logger
+from ..utils.shared_logger import rprint
 import json
 
 # Load CAPTCHA indicators from context library

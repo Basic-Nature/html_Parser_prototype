@@ -1,7 +1,7 @@
 import importlib
 from playwright.sync_api import Page
 from typing import Optional, Tuple, Any
-from ....utils.shared_logger import logger
+from ....utils.logger_instance import logger
 
 def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, Any, dict]:
     """

@@ -1,23 +1,26 @@
 from playwright.sync_api import Page
-from .....Context_Integration.context_organizer import organize_context
+
 from .....handlers.formats.html_handler import extract_contest_panel, extract_precinct_tables
 import os
-from .....utils.html_scanner import scan_html_for_context, get_detected_races_from_context
+from .....utils.html_scanner import scan_html_for_context
 from .....utils.format_router import detect_format_from_links, prompt_user_for_format, route_format_handler
 from .....utils.download_utils import download_confirmed_file
 from .....utils.contest_selector import select_contest
 from .....utils.table_builder import extract_table_data, calculate_grand_totals
 from .....utils.output_utils import finalize_election_output
-from .....utils.shared_logger import logger, rprint
-from .....utils.shared_logic import autoscroll_until_stable, find_and_click_toggle, ALL_SELECTORS
+from .....utils.logger_instance import logger
+from .....utils.shared_logger import rprint
+from .....utils.shared_logic import autoscroll_until_stable, find_and_click_toggle
 
+# Use a modern, robust selector for clickable elements
+BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
 
-
-def parse(page: Page, html_context: dict = None):
+def parse(page: Page, html_context: dict = None, coordinator=None, non_interactive=False):
     """
     Rockland County handler: delegates all generic logic to shared utilities.
     Only customizes steps unique to Rockland's site.
     """
+    from .....Context_Integration.context_coordinator import ContextCoordinator
     if html_context is None:
         html_context = {}
 
@@ -39,7 +42,7 @@ def parse(page: Page, html_context: dict = None):
                         rprint(f"[red]Failed to download {filename}. Continuing with HTML parsing.[/red]")
                         continue
                     # Parse with the appropriate handler
-                    result = handler.parse(None, {"filename": file_path, **html_context})
+                    result = handler.parse(None, {"filename": file_path, **html_context}, coordinator=coordinator, non_interactive=non_interactive)
                     if result and isinstance(result, tuple) and len(result) == 4:
                         headers, data, contest_title, metadata = result
                         return finalize_and_output(headers, data, contest_title, metadata)
@@ -54,29 +57,42 @@ def parse(page: Page, html_context: dict = None):
     state = html_context.get("state", "NY")
     county = html_context.get("county", "Rockland")
 
-    # --- 3. Contest selection ---
-    detected_races = get_detected_races_from_context(html_context)
-    selected = select_contest(detected_races)
+    # --- 3. Organize context with coordinator ---
+    if coordinator is None:
+        coordinator = ContextCoordinator()
+        coordinator.organize_and_enrich(html_context)
+    else:
+        if not coordinator.organized:
+            coordinator.organize_and_enrich(html_context)
+
+    # --- 4. Contest selection using coordinator ---
+    selected = select_contest(
+        coordinator,
+        state=state,
+        county=county,
+        year=html_context.get("year"),
+        non_interactive=non_interactive
+    )
     if not selected:
         rprint("[red]No contest selected. Skipping.[/red]")
         return None, None, None, {"skipped": True}
     # If multiple contests, process each
     if isinstance(selected, list):
         results = []
-        for contest_tuple in selected:
-            contest_title = contest_tuple[2]  # (year, etype, race)
+        for contest in selected:
+            contest_title = contest.get("title") if isinstance(contest, dict) else contest
             html_context_copy = dict(html_context)
             html_context_copy["selected_race"] = contest_title
-            result = parse_single_contest(page, html_context_copy, state, county, find_contest_panel=extract_contest_panel)
+            result = parse_single_contest(page, html_context_copy, state, county, coordinator, find_contest_panel=extract_contest_panel)
             results.append(result)
         # Return the first result (or aggregate as needed)
         return results[0] if results else (None, None, None, {"skipped": True})
     else:
-        contest_title = selected[2]
+        contest_title = selected.get("title") if isinstance(selected, dict) else selected
         html_context["selected_race"] = contest_title
-        return parse_single_contest(page, html_context, state, county, find_contest_panel=extract_contest_panel)
+        return parse_single_contest(page, html_context, state, county, coordinator, find_contest_panel=extract_contest_panel)
 
-def parse_single_contest(page, html_context, state, county, find_contest_panel):
+def parse_single_contest(page, html_context, state, county, coordinator, find_contest_panel):
     contest_title = html_context.get("selected_race")
     rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
 
@@ -86,7 +102,7 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
         return None, None, None, {"skipped": True}
 
     # --- 1. Toggle "View results by election district" ---
-    button_features = page.locator(ALL_SELECTORS)
+    button_features = page.locator(BUTTON_SELECTORS)
 
     handler_keywords = []
     for i in range(button_features.count()):
@@ -98,29 +114,24 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
                 handler_keywords = [label]
                 break
     # Fallback if not found
-    if "election-district" in label.lower() or "text-decoration-none ng-star-inserted" in class_name:
+    if not handler_keywords and ("election-district" in label.lower() or "text-decoration-none ng-star-inserted" in class_name):
         handler_keywords = ["View results by election district"]
-        
-        
-    # Click the first toggle
+
     find_and_click_toggle(
         page,
         container=contest_panel,
-
         handler_keywords=handler_keywords if handler_keywords else ["View results by election district"],
         logger=logger,
         verbose=True,
-        
     )
 
     # --- 2. Wait for precincts to load (table or new panel) ---
     autoscroll_until_stable(page, wait_for_selector="table")
 
-   # --- 3. Now look for and toggle vote method, if present ---
-    # (This must be after the first toggle, as the vote method toggle may not exist before)
+    # --- 3. Now look for and toggle vote method, if present ---
     vote_method_keywords = ["Vote Method"]
     handler_keywords = []
-    button_features = page.locator(ALL_SELECTORS)
+    button_features = page.locator(BUTTON_SELECTORS)
     for i in range(button_features.count()):
         btn = button_features.nth(i)
         label = btn.inner_text() or ""
@@ -138,8 +149,8 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
         handler_keywords=handler_keywords, 
         logger=logger, 
         verbose=True, 
-        
     )
+
 
     # --- 4. Scroll again if needed ---
     autoscroll_until_stable(page)
@@ -161,7 +172,6 @@ def parse_single_contest(page, html_context, state, county, find_contest_panel):
                 method_names = []
         headers, rows = extract_table_data(table)
         for row in rows:
-            # Optionally, add precinct_name to each row if needed
             row["Precinct"] = precinct_name
             data.append(row)
 
@@ -195,8 +205,8 @@ def finalize_and_output(headers, data, contest_title, metadata):
     # Recompute headers in case grand_total added new fields
     headers = sorted(set().union(*(row.keys() for row in data)))
     # --- Enrich metadata and context ---
-    organized = organize_context(metadata)
-    metadata = organized.get("metadata", metadata)
+    # Use ContextCoordinator for metadata enrichment if needed
+    # (Optional: could pass coordinator here for further enrichment)
     # Write output and metadata
     result = finalize_election_output(headers, data, contest_title, metadata)
     contest_title = result.get("contest_title", contest_title)

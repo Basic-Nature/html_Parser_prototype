@@ -1,32 +1,40 @@
 # table_builder.py
 # ===================================================================
 # Election Data Cleaner - Table Extraction and Cleaning Utilities
-# Context-integrated version: uses context_library.json for config
+# Context-integrated version: uses ContextCoordinator for config
 # ===================================================================
 
 import re
 import os
 from typing import List, Dict, Tuple, Any, Optional
-from .shared_logger import logger
+from .logger_instance import logger
 from .shared_logic import normalize_text
 
-# Load context config for precinct headers, etc.
+
 import json
 
-CONTEXT_LIBRARY_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
-)
-if os.path.exists(CONTEXT_LIBRARY_PATH):
-    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
-        CONTEXT_LIBRARY = json.load(f)
-    COMMON_PRECINCT_HEADERS = [h.lower() for h in CONTEXT_LIBRARY.get("common_precinct_headers", [])]
-else:
-    logger.error("[table_builder] context_library.json not found. Precinct header detection will be limited.")
-    COMMON_PRECINCT_HEADERS = []
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..Context_Integration.context_coordinator import ContextCoordinator
 
-def is_precinct_header(header: str) -> bool:
-    """Check if a header is a precinct/district header."""
-    return normalize_text(header) in COMMON_PRECINCT_HEADERS
+def get_precinct_headers(coordinator: "ContextCoordinator", state=None, county=None) -> List[str]:
+    """
+    Get precinct/district headers using the ContextCoordinator.
+    """
+    if coordinator is not None:
+        from ..Context_Integration.context_coordinator import ContextCoordinator
+        # Try to get from coordinator's library (state/county aware)
+        headers = coordinator.library.get("precinct_header_tags", [])
+        # Optionally, filter by state/county if your library supports it
+        return headers
+    # Fallback: use a default set
+    return ["Precinct", "District", "Ward", "Division", "Area"]
+
+def is_precinct_header(header: str, coordinator: "ContextCoordinator", state=None, county=None ) -> bool:
+    """Check if a header is a precinct/district header using coordinator."""
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    precinct_headers = get_precinct_headers(state=state, county=county, coordinator=coordinator)
+    return normalize_text(header) in [normalize_text(h) for h in precinct_headers]
 
 def extract_table_data(table_locator) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
@@ -118,12 +126,13 @@ def parse_candidate_col(col: str) -> Tuple[str, str, str]:
         return parts[0], "", parts[1]
     return col, "", ""
 
-def detect_table_orientation(headers: List[str], data: List[Dict[str, Any]]) -> str:
+def detect_table_orientation(headers: List[str], data: List[Dict[str, Any]], coordinator=None, state=None, county=None) -> str:
     """
     Returns 'precincts_in_rows' if first header is a precinct/district,
     'candidates_in_rows' if first header is a candidate, else 'unknown'.
     """
-    if headers and is_precinct_header(headers[0]):
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    if headers and is_precinct_header(headers[0], state=state, county=county, coordinator=coordinator):
         return 'precincts_in_rows'
     return 'unknown'
 
@@ -133,7 +142,10 @@ def normalize_header(header: str) -> str:
 def format_table_data_for_output(
     headers: List[str],
     data: List[Dict[str, Any]],
-    handler_options: Optional[dict] = None
+    coordinator: "ContextCoordinator",
+    handler_options: Optional[dict] = None,    
+    state=None,
+    county=None
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Returns (headers, data) in either wide or long format, based on .env OUTPUT_LONG_FORMAT or handler_options.
@@ -147,7 +159,7 @@ def format_table_data_for_output(
         logger.info("[TABLE BUILDER] Outputting in wide format.")
         return headers, data  # Wide format
 
-    orientation = detect_table_orientation(headers, data)
+    orientation = detect_table_orientation(headers, data, coordinator=coordinator, state=state, county=county)
     logger.info(f"[TABLE BUILDER] Detected table orientation: {orientation}")
 
     if orientation == 'precincts_in_rows':
@@ -252,3 +264,12 @@ def calculate_grand_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     if "Total" in totals:
         totals["Total"] = str(int(totals["Total"]))
     return {k: (str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)) for k, v in totals.items()}
+
+# Example usage for integration/testing
+if __name__ == "__main__":
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    # Simulate a coordinator and a table extraction
+    coordinator = ContextCoordinator()
+    # You would pass a real Playwright table_locator in production
+    # For demo, just print the precinct headers
+    print("Precinct headers from coordinator:", get_precinct_headers(coordinator=coordinator))

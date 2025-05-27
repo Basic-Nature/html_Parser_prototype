@@ -11,7 +11,8 @@ import platform
 import json
 from ..utils.seleniumbase_launcher import launch_browser as sb_launch, relaunch_browser_fullscreen_if_needed as sb_relaunch         
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
-from ..utils.shared_logger import logger, rprint
+from ..utils.logger_instance import logger
+from ..utils.shared_logger import rprint
 
 # --- Load user agents from context library ---
 CONTEXT_LIBRARY_PATH = os.path.join(

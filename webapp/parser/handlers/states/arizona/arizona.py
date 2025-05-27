@@ -7,7 +7,7 @@ import os
 import json
 from tqdm import tqdm
 from ....utils.shared_logger import log_info, log_debug, log_warning, log_error
-from rich import print as rprint
+from ....utils.shared_logger import rprint
 from ....Context_Integration.context_organizer import organize_context
 from ....utils.output_utils import finalize_election_output
 

@@ -1,27 +1,35 @@
 # shared_logic.py - Common parsing utilities for context-integrated pipeline
 from datetime import datetime
 import difflib
-import os
 import json
+import os
+import platform
 import re
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, SpinnerColumn
 import time
-from ..utils.shared_logger import logger, rprint
+from ..utils.logger_instance import logger
+from ..utils.shared_logger import rprint
 from ..utils.user_prompt import prompt_user_input
 
-CONTEXT_LIBRARY_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
-)
-if os.path.exists(CONTEXT_LIBRARY_PATH):
-    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
-        CONTEXT_LIBRARY = json.load(f)
-    ALL_SELECTORS = ", ".join(CONTEXT_LIBRARY.get("selectors", {}).get("all_selectors", []))
-else:
-    ALL_SELECTORS = "h1, h2, h3, h4, h5, h6, strong, b, span, div"
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..Context_Integration.context_coordinator import ContextCoordinator
 
-# How to Use the Progress Bar Elsewhere
-# for item in show_progress_bar("Processing items...", total=len(items), update_iter=items):
-    # process item
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+def scan_environment():
+    return {
+        "os": platform.system(),
+        "os_version": platform.version(),
+        "python_version": platform.python_version(),
+        "cwd": os.getcwd()
+    }
+
+def get_title_embedding_features(contests, model_name="all-MiniLM-L6-v2"):
+    from sentence_transformers import SentenceTransformer
+    model = SentenceTransformer(model_name)
+    titles = [c.get("title", "") for c in contests]
+    return model.encode(titles)
 
 def show_progress_bar(task_desc, total, update_iter):
     with Progress(
@@ -53,14 +61,29 @@ def build_csv_headers(rows):
         headers.update(row.keys())
     return sorted(headers)
 
-def load_context_library():
-    if os.path.exists(CONTEXT_LIBRARY_PATH):
-        with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+def safe_join(base, *paths):
+    final_path = os.path.abspath(os.path.join(base, *paths))
+    if not final_path.startswith(os.path.abspath(base)):
+        print(f"DEBUG: Attempted to join {paths} to base {base} -> {final_path}")
+        raise ValueError("Attempted Path Traversal Detected!")
+    return final_path
 
-def save_context_library(lib):
-    with open(CONTEXT_LIBRARY_PATH, "w", encoding="utf-8") as f:
+def load_context_library(path=None):
+    if path is None:
+        from ..Context_Integration.context_organizer import CONTEXT_LIBRARY_PATH
+        path = CONTEXT_LIBRARY_PATH
+    safe_path = safe_join(BASE_DIR, os.path.relpath(path, BASE_DIR))
+    if not os.path.exists(safe_path):
+        return {}
+    with open(safe_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_context_library(lib, path=None):
+    if path is None:
+        from ..Context_Integration.context_organizer import CONTEXT_LIBRARY_PATH
+        path = CONTEXT_LIBRARY_PATH
+    safe_path = safe_join(BASE_DIR, os.path.relpath(path, BASE_DIR))
+    with open(safe_path, "w", encoding="utf-8") as f:
         json.dump(lib, f, indent=2, ensure_ascii=False)
 
 def update_domain_selector_cache(domain, selector, label, success=True):
@@ -87,8 +110,52 @@ def get_domain_selectors(domain):
     lib = load_context_library()
     return lib.get("domain_selectors", {}).get(domain, [])
 
+# --- ContextCoordinator Integration ---
+
+def get_contextual_buttons(coordinator, contest_title=None, keywords=None):
+    """
+    Use ContextCoordinator to get the best button(s) for a contest, optionally filtered by keywords.
+    """
+    if not coordinator or not hasattr(coordinator, "get_best_button"):
+        return []
+    return coordinator.get_best_button(contest_title, keywords=keywords)
+
+def get_contextual_selectors(coordinator, contest_title=None):
+    """
+    Use ContextCoordinator to get selectors for a contest or globally.
+    """
+    if not coordinator or not hasattr(coordinator, "get_for_html_handler"):
+        return []
+    selectors = coordinator.get_for_html_handler().get("all_selectors", [])
+    return selectors
+
+def get_contextual_contests(coordinator, filters=None):
+    """
+    Use ContextCoordinator to get contests, optionally filtered.
+    """
+    if not coordinator or not hasattr(coordinator, "get_contests"):
+        return []
+    return coordinator.get_contests(filters=filters)
+
+def get_precinct_headers_from_coordinator(coordinator):
+    """
+    Use ContextCoordinator to get precinct headers for table parsing.
+    """
+    if not coordinator or not hasattr(coordinator, "get_for_table_builder"):
+        return []
+    return coordinator.get_for_table_builder().get("precinct_headers", [])
+
+# Example usage in your pipeline:
+# coordinator = ContextCoordinator()
+# contests = get_contextual_contests(coordinator)
+# selectors = get_contextual_selectors(coordinator)
+# find_and_click_toggle(page, coordinator=coordinator, ...)
+
+# --- Button/Toggle Logic (Context-Driven) ---
+
 def find_and_click_toggle(
     page,
+    coordinator: "ContextCoordinator",
     container=None,
     handler_selectors=None,
     handler_keywords=None,
@@ -99,18 +166,40 @@ def find_and_click_toggle(
     wait_after_click=0,
     fallback_selectors=None,
     fallback_keywords=None,
-    context_title=None,  # New: contest or section title for proximity scoring
-    domain_cache=None,   # New: dict to cache successful selectors per domain
+    context_title=None,
+    domain_cache=None,
 ):
     """
-    Attempts to click a toggle using handler-supplied selectors/keywords first.
-    If not found, falls back to generic selectors/keywords.
+    Attempts to click a toggle using handler/coordinator-supplied selectors/keywords first.
     Returns True if a toggle was clicked and post_toggle_check passes (or table appears).
     """
     search_root = container if container else page
     domain = page.url.split("/")[2] if "://" in page.url else page.url.split("/")[0]
-    cached_selectors = [e["selector"] for e in get_domain_selectors(domain)]
+
+    # 1. Use coordinator for selectors/keywords if available
+    if coordinator:
+        ctx_selectors = get_contextual_selectors(coordinator, contest_title=context_title)
+        if ctx_selectors:
+            for selector in ctx_selectors:
+                elements = search_root.locator(selector)
+                for i in range(elements.count()):
+                    el = elements.nth(i)
+                    if el.is_visible() and el.is_enabled():
+                        el.scroll_into_view_if_needed()
+                        el.click()
+                        if wait_after_click:
+                            page.wait_for_timeout(wait_after_click)
+                        if post_toggle_check and post_toggle_check(page):
+                            if logger:
+                                logger.info(f"[TOGGLE] Clicked coordinator selector: {selector}")
+                            return True
+                        if page.query_selector("table"):
+                            if logger:
+                                logger.info(f"[TOGGLE] Table found after coordinator selector: {selector}")
+                            return True
+
     # Try cached selectors first
+    cached_selectors = [e["selector"] for e in get_domain_selectors(domain)]
     for selector in cached_selectors:
         elements = search_root.locator(selector)
         for i in range(elements.count()):
@@ -131,20 +220,8 @@ def find_and_click_toggle(
                         logger.info(f"[TOGGLE] Table found after cached selector: {selector}")
                     return True
 
-    # 1. Try handler-supplied selectors (most specific, fastest)
+    # 2. Try handler-supplied selectors (most specific, fastest)
     if handler_selectors:
-        for kw in handler_keywords:
-            # Defensive: skip if kw is too long or contains newlines
-            if not isinstance(kw, str) or len(kw) > 100 or "\n" in kw:
-                if logger:
-                    logger.warning(f"[TOGGLE] Skipping invalid keyword for selector: {repr(kw)}")
-                continue
-            elements = search_root.locator(f"*:has-text('{kw}')")
-            for i in range(elements.count()):
-                el = elements.nth(i)
-                if el.is_visible() and el.is_enabled():
-                    el.scroll_into_view_if_needed()
-                    el.click()            
         for selector in handler_selectors:
             elements = search_root.locator(selector)
             for i in range(elements.count()):
@@ -163,7 +240,7 @@ def find_and_click_toggle(
                             logger.info(f"[TOGGLE] Table found after handler selector: {selector}")
                         return True
 
-    # 2. Try handler-supplied keywords (text/aria-label)
+    # 3. Try handler-supplied keywords (text/aria-label)
     if handler_keywords:
         for kw in handler_keywords:
             elements = search_root.locator(f"*:has-text('{kw}')")
@@ -183,7 +260,7 @@ def find_and_click_toggle(
                             logger.info(f"[TOGGLE] Table found after handler keyword: {kw}")
                         return True
 
-    # 3. Fallback: Try generic selectors/keywords if provided
+    # 4. Fallback: Try generic selectors/keywords if provided
     if fallback_selectors:
         for selector in fallback_selectors:
             elements = search_root.locator(selector)
@@ -221,17 +298,17 @@ def find_and_click_toggle(
                         if logger:
                             logger.info(f"[TOGGLE] Table found after fallback keyword: {kw}")
                         return True
-    # 2. Dynamic DOM scan for clickable elements
+
+    # 5. Dynamic DOM scan for clickable elements
     clickable_selectors = [
         "button", "a", "[role=button]", "[onclick]", ".btn", ".toggle", ".expand"
     ]
     elements = []
     for sel in clickable_selectors:
         elements.extend(search_root.locator(sel).all())
-    # Remove duplicates
     elements = list({el: None for el in elements}.keys())
 
-    # 3. Score elements by text similarity to keywords and proximity to context_title
+    # 6. Score elements by text similarity to keywords and proximity to context_title
     candidates = []
     for el in elements:
         try:
@@ -250,7 +327,7 @@ def find_and_click_toggle(
             continue
     candidates.sort(reverse=True, key=lambda x: x[0])
 
-    # 4. Try clicking candidates in order of score
+    # 7. Try clicking candidates in order of score
     for score, el, text in candidates[:max_attempts]:
         try:
             el.scroll_into_view_if_needed()
@@ -260,9 +337,7 @@ def find_and_click_toggle(
             if post_toggle_check and post_toggle_check(page):
                 if logger:
                     logger.info(f"[TOGGLE] Clicked dynamic candidate: {text}")
-                # Optionally cache selector for this domain
                 if domain_cache is not None:
-                    domain = page.url.split("/")[2]
                     domain_cache.setdefault(domain, []).append(el.selector)
                 return True
             if page.query_selector("table"):
@@ -276,7 +351,6 @@ def find_and_click_toggle(
 
     if logger:
         logger.warning("[TOGGLE] No toggle found/clicked after dynamic scan.")
-        # List clickable elements for user
     elements = []
     for sel in clickable_selectors:
         elements.extend(search_root.locator(sel).all())
@@ -318,83 +392,6 @@ def log_selector_attempt(domain, selector, label, success):
         "timestamp": datetime.utcnow().isoformat()
     })
     save_context_library(lib)
-    
-def autoscroll_until_stable(
-    page,
-    max_stable_frames=5,
-    step=8000,
-    delay_ms=200,
-    max_total_time=10000,
-    wait_for_selector=None
-):
-    """
-    Continuously scrolls a Playwright page until its scroll height stabilizes,
-    or until max_total_time is reached. Optionally waits for a selector to appear.
-    Returns True if stabilized or selector found, False if timed out.
-    """
-    logger.info("[SCROLL] Starting auto-scroll until page height stabilizes...")
-    start_time = time.time()
-    page.evaluate("window.scrollTo(0, 0)")
-    page.wait_for_timeout(delay_ms)
-    stable = 0
-    last_height = 0
-    while stable < max_stable_frames:
-        current_height = page.evaluate("() => document.body.scrollHeight")
-        if current_height == last_height:
-            stable += 1
-        else:
-            stable = 0
-        last_height = current_height
-        page.evaluate(f"window.scrollBy(0, {step})")
-        page.wait_for_timeout(delay_ms)
-        if wait_for_selector and page.query_selector(wait_for_selector):
-            logger.info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
-            break
-        if (time.time() - start_time) * 1000 > max_total_time:
-            logger.warning("[SCROLL] Max scroll time exceeded. Stopping scroll.")
-            break
-    logger.info("[SCROLL] Completed scrolling until page height stabilized.")
-    return True
-
-def parse_text_block_to_rows(text):
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-    contests = []
-    current_contest = None
-    current_candidates = []
-
-    for line in lines:
-        if any(kw in line.lower() for kw in ["president", "senate", "congress", "governor"]):
-            if current_contest and current_candidates:
-                contests.append((current_contest, current_candidates))
-            current_contest = line
-            current_candidates = []
-        else:
-            if current_contest:
-                current_candidates.append(line)
-    if current_contest and current_candidates:
-        contests.append((current_contest, current_candidates))
-
-    rows = []
-    headers = set(["Contest"])
-    for contest, candidates in contests:
-        i = 0
-        while i < len(candidates):
-            row = {"Contest": contest}
-            row["Candidate"] = candidates[i]
-            i += 1
-            for field in ["Party", "Percentage", "Votes"]:
-                if i < len(candidates):
-                    val = candidates[i]
-                    if "%" in val:
-                        row["Percentage"] = val
-                    elif val.replace(",", "").isdigit():
-                        row["Votes"] = val
-                    elif any(x in val.lower() for x in ["democratic", "republican", "conservative", "working", "families", "write-in"]):
-                        row["Party"] = val
-                    i += 1
-            headers.update(row.keys())
-            rows.append(row)
-    return list(headers), rows
 
 def autoscroll_until_stable(
     page,
@@ -467,7 +464,6 @@ def autoscroll_until_stable(
             if wait_for_selector and page.query_selector(wait_for_selector):
                 logger and logger.info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
                 break
-            # Prompt user if scrolling takes too long
             elapsed = (time.time() - start_time) * 1000
             if elapsed > max_total_time * 0.8 and scroll_attempts % 10 == 0:
                 console.print("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
@@ -488,7 +484,6 @@ def autoscroll_until_stable(
 
     if stable >= max_stable_frames:
         logger and logger.info("[SCROLL] Completed scrolling until page height/content stabilized.")
-        # Coordinator feedback hook
         if coordinator_feedback:
             coordinator_feedback(domain, scroll_attempts, step)
         return True
@@ -497,3 +492,43 @@ def autoscroll_until_stable(
         if coordinator_feedback:
             coordinator_feedback(domain, scroll_attempts, step, incomplete=True)
         return False
+
+def parse_text_block_to_rows(text):
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    contests = []
+    current_contest = None
+    current_candidates = []
+
+    for line in lines:
+        if any(kw in line.lower() for kw in ["president", "senate", "congress", "governor"]):
+            if current_contest and current_candidates:
+                contests.append((current_contest, current_candidates))
+            current_contest = line
+            current_candidates = []
+        else:
+            if current_contest:
+                current_candidates.append(line)
+    if current_contest and current_candidates:
+        contests.append((current_contest, current_candidates))
+
+    rows = []
+    headers = set(["Contest"])
+    for contest, candidates in contests:
+        i = 0
+        while i < len(candidates):
+            row = {"Contest": contest}
+            row["Candidate"] = candidates[i]
+            i += 1
+            for field in ["Party", "Percentage", "Votes"]:
+                if i < len(candidates):
+                    val = candidates[i]
+                    if "%" in val:
+                        row["Percentage"] = val
+                    elif val.replace(",", "").isdigit():
+                        row["Votes"] = val
+                    elif any(x in val.lower() for x in ["democratic", "republican", "conservative", "working", "families", "write-in"]):
+                        row["Party"] = val
+                    i += 1
+            headers.update(row.keys())
+            rows.append(row)
+    return list(headers), rows

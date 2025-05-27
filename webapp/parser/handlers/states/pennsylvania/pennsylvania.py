@@ -7,8 +7,8 @@
 import os
 from pathlib import Path
 import csv
-from ....utils.shared_logger import logger
-from rich import print as rprint
+from ....utils.logger_instance import logger
+from ....utils.shared_logger import rprint
 from ....utils.output_utils import finalize_election_output
 
 # Use BASE_DIR and INPUT_DIR for robust path handling

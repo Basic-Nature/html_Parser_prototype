@@ -4,7 +4,7 @@ import hashlib
 import json
 from urllib.parse import urljoin
 from datetime import datetime
-from ..utils.shared_logger import logger
+from ..utils.logger_instance import logger
 from ..Context_Integration.context_organizer import append_to_context_library
 
 DOWNLOAD_MANIFEST = "input/.download_manifest.jsonl"

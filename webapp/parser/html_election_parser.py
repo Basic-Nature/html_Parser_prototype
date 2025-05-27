@@ -20,13 +20,13 @@ from multiprocessing import Pool
 
 from dotenv import load_dotenv
 from rich.console import Console
-from rich import print as rprint
+from .utils.shared_logger import rprint
 from playwright.sync_api import sync_playwright, Page
 
 # --- Local imports (all logic is modularized) ---
-from .Context_Integration.context_coordinator import analyze_contest_titles, summarize_context_entities
+from .Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
 from .Context_Integration.context_organizer import append_to_context_library, CONTEXT_LIBRARY_PATH, load_context_library, organize_context
-from .handlers.formats import html_handler
+from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler as get_state_handler
 from .utils.browser_utils import (
     launch_browser_with_stealth,
@@ -38,10 +38,12 @@ from .utils.captcha_tools import (
     is_cloudflare_captcha_present,
     wait_for_user_to_solve_captcha,
 )
+from .utils.db_utils import append_to_context_library, load_processed_urls
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.format_router import detect_format_from_links, prompt_user_for_format, route_format_handler
 from .utils.html_scanner import scan_html_for_context
-from .utils.shared_logger import logger, rprint
+from .utils.logger_instance import logger
+from .utils.shared_logic import safe_join
 from .utils.user_prompt import prompt_user_input, PromptCancelled
 
 
@@ -58,7 +60,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 INPUT_DIR = BASE_DIR / "input"
 OUTPUT_DIR = BASE_DIR / "output"
 URL_LIST_FILE = BASE_DIR / "webapp/parser/urls.txt"
-CACHE_FILE = BASE_DIR / ".processed_urls"
+PROCESSED_URLS_FILE = BASE_DIR / ".processed_urls"
 
 # --- Config Flags ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
@@ -116,16 +118,11 @@ def handle_cloudflare_captcha(playwright, page_or_driver, url, timeout=TIMEOUT_S
 def safe_filename(name):
     return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
 
-def safe_join(base: Path, *paths) -> Path:
-    final_path = (base / Path(*paths)).resolve()
-    if not str(final_path).startswith(str(base.resolve())):
-        raise ValueError("Unsafe path detected!")
-    return final_path
 
 # --- Cache Reset ---
-if CACHE_RESET and CACHE_FILE.exists():
+if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     logging.debug("Deleting .processed_urls cache for fresh start...")
-    CACHE_FILE.unlink()
+    PROCESSED_URLS_FILE.unlink()
 
 # --- Utility: Load URLs from file or prompt user ---
 def load_urls() -> List[str]:
@@ -148,24 +145,7 @@ def load_urls() -> List[str]:
                 return [url]
         return lines
 
-# --- Utility: Processed URL cache ---
-def load_processed_urls() -> Dict[str, Any]:
-    """Load the processed URL cache as a dict: url -> metadata dict."""
-    if not CACHE_FILE.exists() or os.path.getsize(CACHE_FILE) == 0:
-        return {}
-    with open(CACHE_FILE, 'r', encoding="utf-8") as f:
-        try:
-            entries = json.load(f)
-            if not isinstance(entries, list):
-                entries = []
-        except Exception:
-            entries = []
-    processed = {}
-    for entry in entries:
-        url = entry.get("url")
-        if url:
-            processed[url] = entry
-    return processed
+
 
 def mark_url_processed(url, status="success", **metadata):
     """Append or update a processed URL with rich metadata, storing all entries in a JSON array."""
@@ -178,9 +158,9 @@ def mark_url_processed(url, status="success", **metadata):
     }
     with CACHE_LOCK:
         # Load existing entries
-        if CACHE_FILE.exists() and os.path.getsize(CACHE_FILE) > 0:
+        if PROCESSED_URLS_FILE.exists() and os.path.getsize(PROCESSED_URLS_FILE) > 0:
             try:
-                with open(CACHE_FILE, 'r', encoding="utf-8") as f:
+                with open(PROCESSED_URLS_FILE, 'r', encoding="utf-8") as f:
                     entries = json.load(f)
                     if not isinstance(entries, list):
                         entries = []
@@ -198,7 +178,7 @@ def mark_url_processed(url, status="success", **metadata):
         if not updated:
             entries.append(entry)
         # Write back as a JSON array
-        with open(CACHE_FILE, 'w', encoding="utf-8") as f:
+        with open(PROCESSED_URLS_FILE, 'w', encoding="utf-8") as f:
             json.dump(entries, f, indent=2, ensure_ascii=False)
 
 def organize_context_with_cache(raw_context, button_features=None, panel_features=None, use_library=True, cache=None):
@@ -311,23 +291,23 @@ def resolve_and_parse(page, context, url):
     Given a Playwright page, context, and URL, route to the correct handler.
     Tries state/county handler, then HTML handler, then fallback.
     """
+    from .Context_Integration.context_coordinator import ContextCoordinator
     context["source_url"] = url
     state = context.get("state")
     county = context.get("county")
     handler = get_state_handler(state_abbreviation=state, county_name=county)
     if handler and hasattr(handler, 'parse'):
         logging.info(f"[State Router] Matched — routing to {handler.__name__}")
-        return handler.parse(page=page, html_context=context)
+        return handler.parse(page=page, coordinator=coordinator, html_context=context)
     if handler and hasattr(handler, 'parse_fallback'):
         logging.info(f"[State Router] Matched — routing to {handler.__name__} fallback")
-        return handler.parse_fallback(page=page, html_context=context)
+        return handler.parse_fallback(page=page, coordinator=coordinator, html_context=context)
     if hasattr(html_handler, 'parse'):
         logging.info("[State Router] No match — routing to HTML handler")
-        return html_handler.parse(page=page, html_context=context)
-    if hasattr(html_handler, 'parse_fallback'):
-        logging.info("[State Router] No match — routing to HTML handler fallback")
-        return html_handler.parse_fallback(page=page, html_context=context)
-    return html_handler.parse(page=page, html_context=context)
+        coordinator = ContextCoordinator()
+        return html_handler(page=page, coordinator=coordinator, html_context=context)
+    coordinator = ContextCoordinator()
+    return html_handler(page=page, coordinator=coordinator, html_context=context)
 
 # --- Manual Format Override (for direct file parsing) ---
 def process_format_override():

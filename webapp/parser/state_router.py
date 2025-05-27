@@ -3,13 +3,13 @@
 # Dynamically routes to the correct state or county-specific handler module
 # Uses importlib for auto-resolution from folder structure.
 # Now uses context_library.json for state/county mapping.
+# Also provides state/county info for format_router and download_utils.
 # ===============================================
 import os
 import importlib
-from typing import Optional, Dict, Any, List
-from .utils.shared_logger import logger
+from typing import Optional, Dict, Any, List, Tuple
+from .utils.logger_instance import logger
 
-# --- Load state/county mapping from context library JSON ---
 import json
 
 CONTEXT_LIBRARY_PATH = os.path.join(
@@ -102,6 +102,27 @@ def get_handler_from_context(context: Dict[str, Any]):
         logger.warning("[Router] No handler could be resolved.")
     return None
 
+def extract_state_county_from_context(context: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extracts and normalizes state and county from a context dictionary.
+    Returns (state, county) tuple for use by format_router/download_utils.
+    """
+    state = context.get("state")
+    county = context.get("county")
+    # Try to infer state from filename if missing
+    if not state:
+        filename = context.get("filename", "").lower()
+        tokens = filename.replace("_", " ").split()
+        for token in tokens:
+            if token in STATE_MODULE_MAP:
+                state = token
+                break
+    if state:
+        state = state.strip().lower().replace(" ", "_")
+    if county:
+        county = county.strip().lower().replace(" ", "_")
+    return state, county
+
 # --- CLI Utilities (optional, can be removed if not needed) ---
 
 def list_available_states() -> List[str]:
@@ -138,6 +159,14 @@ def cli():
             print(f" - {county}")
     else:
         parser.print_help()
+
+# --- Integration for format_router/download_utils ---
+
+def get_state_county_for_format(context: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Returns normalized (state, county) tuple for use by format_router or download_utils.
+    """
+    return extract_state_county_from_context(context)
 
 if __name__ == "__main__":
     cli()

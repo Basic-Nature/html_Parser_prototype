@@ -1,7 +1,8 @@
 import json
 import os
 from ...state_router import get_handler_from_context, get_handler
-from ...utils.shared_logger import logger, rprint
+from ...utils.logger_instance import logger
+from ...utils.shared_logger import rprint
 from ...utils.output_utils import finalize_election_output
 from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
 from ...utils.shared_logic import normalize_text

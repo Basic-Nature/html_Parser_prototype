@@ -14,7 +14,7 @@ import sys
 from threading import Thread
 import webapp.parser.html_election_parser as process_url_stream
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
-
+from config import BASE_DIR
 # Load environment variables from .env
 load_dotenv()
 
