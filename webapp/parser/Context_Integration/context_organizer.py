@@ -2,30 +2,34 @@
 context_organizer.py
 
 Advanced context organizer for election HTML parsing and data integrity.
-Integrates dynamic logging, ML anomaly detection, cache-aware learning, and robust DB.
+Handles data formatting, ML anomaly detection, cache-aware learning, clustering, and robust DB.
+Delegates NLP/semantic logic to the context_coordinator and spacy_utils modules.
 """
 
 import re
 import os
 import json
 import logging
+import matplotlib.pyplot as plt
 import sqlite3
 import threading
 import time
 from collections import defaultdict
 from rich import print as rprint
 
-
+from sentence_transformers import SentenceTransformer
+from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest
 from sklearn.cluster import DBSCAN
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import LabelEncoder
-from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 
 logging.basicConfig(
     level=logging.INFO,
     format="\n[%(levelname)s] %(message)s\n"
 )
+
 # Paths
 CONTEXT_LIBRARY_PATH = os.path.join(
     os.path.dirname(__file__), "Context_Library", "context_library.json"
@@ -87,9 +91,7 @@ def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
     for key in ["contests", "buttons", "panels", "tables", "alerts"]:
         if key in new_data:
             for item in new_data[key]:
-                # Defensive: ensure item is a dict
                 if not isinstance(item, dict):
-                    # Optionally, wrap string as dict or skip
                     item = {"label": str(item)}
                 norm_label = normalize_label(item.get("title", item.get("label", str(item))))
                 if not any(
@@ -99,7 +101,7 @@ def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
                     library.setdefault(key, []).append(item)
     save_context_library(library, path)
     rprint(f"[CONTEXT ORGANIZER] Appended new data to context library at {path}")
-    
+
 def load_processed_urls(path=PROCESSED_URLS_CACHE):
     if not os.path.exists(path):
         return {}
@@ -139,8 +141,8 @@ def scan_environment():
     }
     return env_info
 
-# --- Advanced ML/AI: Anomaly Detection, Clustering, NLP ---
-def detect_anomalies_with_ml(contexts, cache):
+# --- ML/AI: Anomaly Detection, Clustering ---
+def detect_anomalies_with_ml(contexts, contamination=0.05, n_estimators=100, random_state=42):
     if not contexts:
         return [], []
     features = []
@@ -158,25 +160,60 @@ def detect_anomalies_with_ml(contexts, cache):
             len(c.get("title", "")),
         ])
     X = np.array(features)
-    clf = IsolationForest(contamination=0.05, random_state=42)
+    clf = IsolationForest(
+        contamination=contamination,
+        n_estimators=n_estimators,
+        random_state=random_state
+    )
     preds = clf.fit_predict(X)
     anomalies = [i for i, p in enumerate(preds) if p == -1]
     clustering = DBSCAN(eps=3, min_samples=2).fit(X)
     clusters = clustering.labels_
     return anomalies, clusters
 
-def nlp_title_outlier_detection(contests):
-    """Detect outlier contest titles using TF-IDF and cosine similarity."""
+def plot_anomaly_scores(scores, cutoff=None):
+    plt.figure(figsize=(10, 4))
+    plt.plot(sorted(scores), marker='o', linestyle='-', label='Anomaly Score')
+    if cutoff is not None:
+        plt.axhline(cutoff, color='red', linestyle='--', label=f'Cutoff ({cutoff:.2f})')
+    plt.title('IsolationForest Anomaly Scores')
+    plt.xlabel('Sample Index (sorted)')
+    plt.ylabel('Anomaly Score')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+def plot_clusters(X, clusters, anomalies=None, title="PCA Cluster Visualization"):
+    pca = PCA(n_components=2)
+    X_pca = pca.fit_transform(X)
+    plt.figure(figsize=(8, 6))
+    plt.scatter(X_pca[:, 0], X_pca[:, 1], c=clusters, cmap='tab10', alpha=0.7, label='Cluster')
+    if anomalies is not None and len(anomalies) > 0:
+        plt.scatter(X_pca[anomalies, 0], X_pca[anomalies, 1], color='red', marker='x', s=80, label='Anomaly')
+    plt.title(title)
+    plt.xlabel('PCA 1')
+    plt.ylabel('PCA 2')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+def auto_tune_contamination(X, initial_contamination=0.2, min_contamination=0.01, max_contamination=0.2, plot=False):
+    clf = IsolationForest(contamination=initial_contamination, random_state=42)
+    clf.fit(X)
+    scores = -clf.decision_function(X)
+    cutoff = np.percentile(scores, 90)
+    n_anomalies = np.sum(scores >= cutoff)
+    contamination = n_anomalies / len(scores)
+    contamination = max(min_contamination, min(max_contamination, contamination))
+    if plot:
+        plot_anomaly_scores(scores, cutoff=cutoff)
+    return contamination
+
+def get_title_embedding_features(contests, model_name="all-MiniLM-L6-v2"):
+    model = SentenceTransformer(model_name)
     titles = [c.get("title", "") for c in contests]
-    if len(titles) < 2:
-        return []
-    vectorizer = TfidfVectorizer()
-    X = vectorizer.fit_transform(titles)
-    similarities = (X * X.T).A
-    avg_sim = np.mean(similarities, axis=1)
-    threshold = np.percentile(avg_sim, 10)
-    outliers = [i for i, sim in enumerate(avg_sim) if sim < threshold]
-    return outliers
+    embeddings = model.encode(titles)
+    return embeddings
 
 def election_integrity_checks(contests):
     seen = set()
@@ -214,15 +251,34 @@ def monitor_db_for_alerts(poll_interval=10):
     thread.start()
 
 # --- Main Organizer ---
-def organize_context(raw_context, button_features=None, panel_features=None, use_library=True, cache=None, enable_ml=True):
-    # Defensive fix: ensure panels is a dict
-    if "panels" in raw_context and isinstance(raw_context["panels"], list):
-        # Convert list to dict with index as key, or just set to empty dict
-        raw_context["panels"] = {}    
+def organize_context(
+    raw_context,
+    button_features=None,
+    panel_features=None,
+    use_library=True,
+    cache=None,
+    enable_ml=True,
+    contamination=None,
+    n_estimators=100,
+    random_state=42,
+    embedding_model="all-MiniLM-L6-v2",
+    plot_anomalies=True,
+    plot_clusters_flag=True
+):
     ensure_db_schema()
-    library = load_context_library() if use_library else {"contests": [], "buttons": [], "panels": [], "tables": [], "alerts": []}
+    library = load_context_library() if use_library else {
+        "contests": [],
+        "buttons": [],
+        "panels": [],
+        "tables": [],
+        "alerts": []
+    }
     processed_urls = load_processed_urls()
     output_cache = load_output_cache()
+
+    # Defensive fix: ensure panels is a dict
+    if "panels" in raw_context and isinstance(raw_context["panels"], list):
+        raw_context["panels"] = {}
 
     contests = []
     contest_titles = set()
@@ -244,6 +300,32 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
         if norm_title not in contest_titles:
             contests.append(c)
             contest_titles.add(norm_title)
+
+    # --- ML Feature Engineering ---
+    features = []
+    le_state = LabelEncoder()
+    le_county = LabelEncoder()
+    states = [c.get("state", "unknown") for c in contests]
+    counties = [c.get("county", "unknown") for c in contests]
+    le_state.fit(states)
+    le_county.fit(counties)
+    for c in contests:
+        features.append([
+            le_state.transform([c.get("state", "unknown")])[0],
+            le_county.transform([c.get("county", "unknown")])[0],
+            int(c.get("year", 0)) if str(c.get("year", "0")).isdigit() else 0,
+            len(c.get("title", "")),
+        ])
+    features = np.array(features)
+    embedding_features = get_title_embedding_features(contests, model_name=embedding_model)
+    X = np.hstack([features, embedding_features])
+
+    # --- Adaptive ML parameter tuning ---
+    if contamination is None:
+        if len(X) > 10:
+            contamination = auto_tune_contamination(X, plot=plot_anomalies)
+        else:
+            contamination = 0.2 if len(X) < 10 else 0.1
 
     panels = {}
     for c in contests:
@@ -287,22 +369,23 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
 
     # --- ML anomaly detection & clustering ---
     anomalies, clusters = [], []
-    if enable_ml and contests:
+    if enable_ml and len(contests) > 0:
         try:
-            anomalies, clusters = detect_anomalies_with_ml(contests, output_cache)
+            anomalies, clusters = detect_anomalies_with_ml(
+                contests,
+                contamination=contamination,
+                n_estimators=n_estimators,
+                random_state=random_state
+            )
             if anomalies:
                 for idx in anomalies:
                     contest = contests[idx]
                     title = contest.get('title', str(contest))
                     rprint(f"[bold magenta][ML][/bold magenta] Context anomaly detected: [bold yellow]{title}[/bold yellow]\n  [dim]Context:[/dim] {contest}")
-            # NLP outlier detection
-            nlp_outliers = nlp_title_outlier_detection(contests)
-            for idx in nlp_outliers:
-                contest = contests[idx]
-                title = contest.get('title', str(contest))
-                rprint(f"[bold cyan][NLP][/bold cyan] Outlier contest title detected: [bold yellow]{title}[/bold yellow]\n  [dim]Context:[/dim] {contest}")
+            if plot_clusters_flag:
+                plot_clusters(X, clusters, anomalies=anomalies)
         except Exception as e:
-            rprint(f"[bold red][ML] Anomaly/NLP detection failed:[/bold red] {e}")
+            rprint(f"[bold red][ML] Anomaly detection failed:[/bold red] {e}")
 
     # --- Election integrity checks ---
     integrity_issues = election_integrity_checks(contests)
@@ -314,10 +397,9 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
         elif issue == "missing_year":
             rprint(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing year.\n  [dim]Context:[/dim] {contest}")
 
-    # --- Congestion/flow detection ---
     if len(contests) > 50:
         rprint(f"[bold red][CONTEXT ORGANIZER][/bold red] High contest count detected — possible congestion.\n  [dim]Context:[/dim] contest_count={len(contests)}")
-        
+
     organized = {
         "contests": contests,
         "buttons": dict(buttons_by_contest),
@@ -333,13 +415,8 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
         for c in contests
         if c.get("year") and c.get("type") and str(c.get("year")).isdigit()
     ]
-    valid_years = [
-        c.get("year")
-        for c in contests
-        if c.get("year") and c.get("type") and str(c.get("year")).isdigit()
-    ]
     if valid_years:
-        metadata["year"] = valid_years[0]  # or max(valid_years)
+        metadata["year"] = valid_years[0]
     else:
         metadata["year"] = "Unknown"
     append_to_context_library(organized, path=CONTEXT_LIBRARY_PATH)
@@ -368,7 +445,6 @@ def organize_context(raw_context, button_features=None, panel_features=None, use
 
     return organized
 
-# --- Helper: Get best button for a contest ---
 def get_best_button(organized_context, contest_title, keywords=None, class_hint=None):
     buttons = organized_context["buttons"].get(contest_title, [])
     if not buttons:
@@ -390,5 +466,4 @@ def get_panel(organized_context, contest_title):
 def get_tables(organized_context, contest_title):
     return organized_context["tables"].get(contest_title, [])
 
-# --- Start real-time monitoring thread on import ---
 monitor_db_for_alerts(poll_interval=10)

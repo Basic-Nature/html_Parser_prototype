@@ -55,6 +55,7 @@ A highly adaptable and modular precinct-level election result scraper. Designed 
    - **How to Use the Web UI:**
      1. Install requirements:  
         `pip install -r requirements.txt`
+        `python -m spacy download en_core_web_sm`
      2. Set up your `.env` file as needed.
      3. Start the web server:  
         `python webapp/Smart_Elections_Parser_Webapp.py`

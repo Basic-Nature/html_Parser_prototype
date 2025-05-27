@@ -17,8 +17,10 @@ beautifulsoup4>=4.12.3
 pytesseract>=0.3.13
 pdf2image>=1.17.0
 pdfplumber>=0.11.6
-fitz>=0.0.1.dev2
-scikit-learn>=1.6.1
+PyMuPDF>=1.23.0
+scikit-learn>=1.3.0
+matplotlib>=3.7.0
+sentence_transformers>=4.1.0
 # For JSON and structured parsing
 jsonlines>=4.0.0
 
@@ -27,6 +29,12 @@ fake-useragent>=1.5.1
 
 # CLI-friendly argument parsing (if used in future)
 click>=8.1.7
+
+# NLP and ML enhancements
+spacy>=3.7.0
+umap-learn>=0.5.5
+faiss-cpu>=1.7.4
+shap>=0.44.0
 
 # flask-login for user session management, is not used in the current version
 # optional future implementation
