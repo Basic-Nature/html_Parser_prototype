@@ -1,0 +1,8 @@
+{
+    "delimiter": "\t",
+    "output_folder": "~/Election Data Output",
+    
+    "name": "My Bot",
+    "description": "A simple bot that responds to messages.",
+    "version": "1.0"
+}

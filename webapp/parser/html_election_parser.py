@@ -477,45 +477,28 @@ def process_url(target_url, processed_info):
                     if all([headers, data, contest_title, metadata]):
                         ai_analyze_results(headers, data, contest_title, metadata)
                         stream_results(headers, data, contest_title, metadata)
-                        if "output_file" in metadata:
-                            logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
+                        output_file = metadata.get("output_file")
+                        if output_file:
+                            if os.path.exists(output_file):
+                                logging.info(f"[OUTPUT] CSV written to: {output_file}")
+                            else:
+                                logging.warning(f"[WARN] Output file path returned but file does not exist: {output_file}")
                         else:
-                            logging.warning("[WARN] No output file path returned from parser.")
+                            # Check if output_utils or handler wrote the file but didn't return the path
+                            output_dir = metadata.get("output_dir") or OUTPUT_DIR
+                            possible_files = []
+                            if os.path.isdir(output_dir):
+                                for f in os.listdir(output_dir):
+                                    if f.endswith(".csv") or f.endswith(".json"):
+                                        possible_files.append(os.path.join(output_dir, f))
+                            if possible_files:
+                                logging.warning(f"[WARN] No output file path returned from parser, but found files: {possible_files[-3:]}")
+                            else:
+                                logging.warning("[WARN] No output file path returned from parser and no output files found.")
+                        mark_url_processed(target_url, status="success")
                     else:
-                        logging.warning(f"[Batch Mode] Incomplete data for: {race_title}")
-                mark_url_processed(target_url, status="success")
-                return
-
-            # --- Default: Single Race/Context ---
-            if not result:
-                result = resolve_and_parse(page, html_context, target_url)
-                if not isinstance(result, tuple) or len(result) != 4:
-                    logging.error(f"[ERROR] Handler returned unexpected structure: expected 4 values, got {len(result) if isinstance(result, tuple) else 'non-tuple'}")
-                    mark_url_processed(target_url, status="fail")
-                    return
-            else:
-                if isinstance(result, tuple) and len(result) == 4:
-                    *_, metadata = result 
-                    if metadata.get("skipped"):
-                        logging.info(f"[INFO] Handler skipped parsing. Falling back to HTML.")
-                        result = resolve_and_parse(page, html_context, target_url)
-            # --- Final Output ---
-            if not result or not isinstance(result, tuple) or len(result) != 4:
-                logging.error("[ERROR] Handler returned unexpected structure: expected 4 values.")
-                mark_url_processed(target_url, status="fail")
-                return             
-            headers, data, contest_title, metadata = result
-            if all([headers, data, contest_title, metadata]):
-                ai_analyze_results(headers, data, contest_title, metadata)
-                stream_results(headers, data, contest_title, metadata)
-                if "output_file" in metadata:
-                    logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
-                else:
-                    logging.warning("[WARN] No output file path returned from parser.")
-                mark_url_processed(target_url, status="success")
-            else:
-                logging.warning("Incomplete result structure — skipping CSV write.")
-                mark_url_processed(target_url, status="partial")
+                        logging.warning("Incomplete result structure — skipping CSV write.")
+                        mark_url_processed(target_url, status="partial")
 
         except Exception as e:
             logging.error(f"Failed to process {target_url}: {e}", exc_info=True)

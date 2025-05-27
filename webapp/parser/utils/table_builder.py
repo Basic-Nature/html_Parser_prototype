@@ -178,12 +178,22 @@ def review_and_fill_missing_data(headers: List[str], data: List[Dict[str, Any]])
     """
     Review process to catch and fill missing data after initial break.
     Ensures all rows have all headers and attempts to fill missing values with empty string.
+    Summarizes missing data warnings at the end.
     """
     data = harmonize_rows(headers, data)
+    missing_summary = []
     for idx, row in enumerate(data):
         missing = [h for h in headers if not row.get(h)]
         if missing:
-            logger.warning(f"[TABLE BUILDER] Row {idx} missing data for columns: {missing}")
+            # Collect warning instead of logging immediately
+            missing_summary.append((idx, missing))
+    # Log up to 5 individual warnings, then a summary
+    for idx, missing in missing_summary[:5]:
+        logger.warning(f"[TABLE BUILDER] Row {idx} missing data for columns: {missing}")
+    if len(missing_summary) > 5:
+        logger.warning(f"[TABLE BUILDER] {len(missing_summary)} rows had missing data (showing first 5).")
+    elif missing_summary:
+        logger.warning(f"[TABLE BUILDER] {len(missing_summary)} rows had missing data.")
     return headers, data
 
 def score_and_break_on_match(
