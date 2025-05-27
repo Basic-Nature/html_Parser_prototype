@@ -12,18 +12,25 @@ import json
 import logging
 import matplotlib.pyplot as plt
 import sqlite3
+import sys
 import threading
 import time
 from collections import defaultdict
 from rich import print as rprint
-
+# if you want to suppress tqdm globally
+# sys.stderr = open(os.devnull, 'w')
 from sentence_transformers import SentenceTransformer
+# sys.stderr = sys.__stderr__
+
 from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
+
+# If you want to suppress the progress bar from SentenceTransformer
+# os.environ["TRANSFORMERS_NO_PROGRESS_BAR"] = "1"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -152,20 +159,73 @@ def save_context_library(library, path=CONTEXT_LIBRARY_PATH):
         json.dump(library, f, indent=2, ensure_ascii=False)
 
 def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
+    """
+    Advanced merge/deduplication for context library.
+    - Merges lists by key (title/label), updating existing entries with new fields.
+    - Merges dicts recursively.
+    - Handles new dynamic sections.
+    """
+    def merge_dicts(existing, new):
+        """Recursively merge two dicts."""
+        for k, v in new.items():
+            if k in existing and isinstance(existing[k], dict) and isinstance(v, dict):
+                merge_dicts(existing[k], v)
+            else:
+                existing[k] = v
+
+    def find_existing(lst, item, keys=("title", "label")):
+        """Find index of existing item in list by normalized key."""
+        for i, existing in enumerate(lst):
+            for key in keys:
+                if key in item and key in existing:
+                    if normalize_label(item[key]) == normalize_label(existing[key]):
+                        return i
+        return -1
+
     library = load_context_library(path)
-    for key in ["contests", "buttons", "panels", "tables", "alerts"]:
+    dynamic_keys = [
+        "contests", "buttons", "panels", "tables", "alerts",
+        "common_output_headers", "common_error_patterns", "domain_scrolls",
+        "button_keywords", "contest_type_patterns", "reporting_status_patterns",
+        "vote_method_patterns", "precinct_patterns",
+        "anomaly_log", "user_feedback", "download_link_patterns",
+        "panel_tags", "table_tags", "section_keywords", "output_file_patterns",
+        "active_domains", "inactive_domains", "captcha_patterns", "captcha_solutions",
+        "Known_state_to_county_map", "Known_county_to_district_map", "state_module_map",
+        "selectors", "known_states", "known_counties", "known_districts", "known_cities", "regex",
+        "precinct_header_tags", "common_output_headers", "default_noisy_labels"
+    ]
+    for key in dynamic_keys:
         if key in new_data:
-            for item in new_data[key]:
-                if not isinstance(item, dict):
-                    item = {"label": str(item)}
-                norm_label = normalize_label(item.get("title", item.get("label", str(item))))
-                if not any(
-                    normalize_label(existing.get("title", existing.get("label", str(existing)))) == norm_label
-                    for existing in library.get(key, [])
-                ):
-                    library.setdefault(key, []).append(item)
+            # Handle lists of dicts (merge by key)
+            if isinstance(new_data[key], list):
+                if not isinstance(library.get(key), list):
+                    library[key] = []
+                for item in new_data[key]:
+                    if isinstance(item, dict):
+                        idx = find_existing(library[key], item)
+                        if idx >= 0:
+                            merge_dicts(library[key][idx], item)
+                        else:
+                            library[key].append(item)
+                    else:
+                        if item not in library[key]:
+                            library[key].append(item)
+            # Handle dicts (merge/update)
+            elif isinstance(new_data[key], dict):
+                if not isinstance(library.get(key), dict):
+                    library[key] = {}
+                for subk, subv in new_data[key].items():
+                    if (
+                        subk in library[key]
+                        and isinstance(library[key][subk], dict)
+                        and isinstance(subv, dict)
+                    ):
+                        merge_dicts(library[key][subk], subv)
+                    else:
+                        library[key][subk] = subv
     save_context_library(library, path)
-    rprint(f"[CONTEXT ORGANIZER] Appended new data to context library at {path}")
+    rprint(f"[CONTEXT ORGANIZER] Appended/merged new data to context library at {path}")
 
 def load_processed_urls(path=PROCESSED_URLS_CACHE):
     if not os.path.exists(path):
@@ -237,31 +297,50 @@ def detect_anomalies_with_ml(contexts, contamination=0.05, n_estimators=100, ran
     return anomalies, clusters
 
 def plot_anomaly_scores(scores, cutoff=None):
-    plt.figure(figsize=(10, 4))
-    plt.plot(sorted(scores), marker='o', linestyle='-', label='Anomaly Score')
-    if cutoff is not None:
-        plt.axhline(cutoff, color='red', linestyle='--', label=f'Cutoff ({cutoff:.2f})')
-    plt.title('IsolationForest Anomaly Scores')
-    plt.xlabel('Sample Index (sorted)')
-    plt.ylabel('Anomaly Score')
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+    def _plot():
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(10, 4))
+        plt.plot(sorted(scores), marker='o', linestyle='-', label='Anomaly Score')
+        if cutoff is not None:
+            plt.axhline(cutoff, color='red', linestyle='--', label=f'Cutoff ({cutoff:.2f})')
+        plt.title('IsolationForest Anomaly Scores')
+        plt.xlabel('Sample Index (sorted)')
+        plt.ylabel('Anomaly Score')
+        plt.legend()
+        plt.tight_layout()
+        # Minimize the plot window if possible
+        try:
+            mng = plt.get_current_fig_manager()
+            mng.window.state('iconic')  # TkAgg backend
+        except Exception:
+            pass
+        plt.show()
+    threading.Thread(target=_plot, daemon=True).start()
 
 def plot_clusters(X, clusters, anomalies=None, title="PCA Cluster Visualization"):
-    pca = PCA(n_components=2)
-    X_pca = pca.fit_transform(X)
-    plt.figure(figsize=(8, 6))
-    plt.scatter(X_pca[:, 0], X_pca[:, 1], c=clusters, cmap='tab10', alpha=0.7, label='Cluster')
-    if anomalies is not None and len(anomalies) > 0:
-        plt.scatter(X_pca[anomalies, 0], X_pca[anomalies, 1], color='red', marker='x', s=80, label='Anomaly')
-    plt.title(title)
-    plt.xlabel('PCA 1')
-    plt.ylabel('PCA 2')
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
+    def _plot():
+        import matplotlib.pyplot as plt
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=2)
+        X_pca = pca.fit_transform(X)
+        plt.figure(figsize=(8, 6))
+        plt.scatter(X_pca[:, 0], X_pca[:, 1], c=clusters, cmap='tab10', alpha=0.7, label='Cluster')
+        if anomalies is not None and len(anomalies) > 0:
+            plt.scatter(X_pca[anomalies, 0], X_pca[anomalies, 1], color='red', marker='x', s=80, label='Anomaly')
+        plt.title(title)
+        plt.xlabel('PCA 1')
+        plt.ylabel('PCA 2')
+        plt.legend()
+        plt.tight_layout()
+        # Minimize the plot window if possible
+        try:
+            mng = plt.get_current_fig_manager()
+            mng.window.state('iconic')
+        except Exception:
+            pass
+        plt.show()
+    threading.Thread(target=_plot, daemon=True).start()
+    
 def auto_tune_contamination(X, initial_contamination=0.2, min_contamination=0.01, max_contamination=0.2, plot=False):
     clf = IsolationForest(contamination=initial_contamination, random_state=42)
     clf.fit(X)
@@ -336,7 +415,40 @@ def organize_context(
         "buttons": [],
         "panels": [],
         "tables": [],
-        "alerts": []
+        "alerts": [],
+        "regex": [],
+        "common_output_headers": [],
+        "common_output_headers": [],
+        "common_error_patterns": [],
+        "domain_scrolls": {},
+        "button_keywords": [],
+        "contest_type_patterns": [],
+        "vote_method_patterns": [],
+        "precinct_patterns": [],
+        "reporting_status_patterns": [],
+        "anomaly_log": [],
+        "user_feedback": [],
+        "download_link_patterns": [],
+        "panel_tags": [],
+        "table_tags": [],
+        "section_keywords": [],
+        "output_file_patterns": [],
+        "active_domains": [],
+        "inactive_domains": [],
+        "captcha_patterns": [],
+        "captcha_solutions": {},
+        "last_updated": None,
+        "version": "1.2.0",
+        "Known_state_to_county_map": {},
+        "Known_county_to_district_map": {},
+        "state_module_map": {},
+        "selectors": {},
+        "known_states": [],
+        "known_counties": [],
+        "known_districts": [],
+        "known_cities": [],
+        "precinct_header_tags": [],
+        "default_noisy_labels": []
     }
     processed_urls = load_processed_urls()
     output_cache = load_output_cache()

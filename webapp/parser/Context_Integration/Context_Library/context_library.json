@@ -820,202 +820,110 @@
       }
     }
   ],
-  "buttons": [
-    {
-      "label": "__unmatched__"
-    }
-  ],
-  "panels": [
-    {
-      "label": "Electors for President and Vice President\nVote for 1"
-    },
-    {
-      "label": "Electors for President and Vice President"
-    },
-    {
-      "label": "United States Senator\nVote for 1"
-    },
-    {
-      "label": "United States Senator"
-    },
-    {
-      "label": "Supreme Court Justice 9th Judicial District\nVote for 5"
-    },
-    {
-      "label": "Supreme Court Justice 9th Judicial District"
-    },
-    {
-      "label": "Representative in Congress 17th Congressional District\nVote for 1"
-    },
-    {
-      "label": "Representative in Congress 17th Congressional District"
-    },
-    {
-      "label": "State Senator 40th Senatorial District\nVote for 1"
-    },
-    {
-      "label": "State Senator 40th Senatorial District"
-    },
-    {
-      "label": "State Senator 38th Senatorial District\nVote for 1"
-    },
-    {
-      "label": "State Senator 38th Senatorial District"
-    },
-    {
-      "label": "Member of Assembly 96th Assembly District\nVote for 1"
-    },
-    {
-      "label": "Member of Assembly 96th Assembly District"
-    },
-    {
-      "label": "Member of Assembly 97th Assembly District\nVote for 1"
-    },
-    {
-      "label": "Member of Assembly 97th Assembly District"
-    },
-    {
-      "label": "Member of Assembly 98th Assembly District\nVote for 1"
-    },
-    {
-      "label": "Member of Assembly 98th Assembly District"
-    },
-    {
-      "label": "Member of Assembly 99th Assembly District\nVote for 1"
-    },
-    {
-      "label": "Member of Assembly 99th Assembly District"
-    },
-    {
-      "label": "County Clerk\nVote for 1"
-    },
-    {
-      "label": "County Clerk"
-    },
-    {
-      "label": "County Court Judge\nVote for 2"
-    },
-    {
-      "label": "County Court Judge"
-    },
-    {
-      "label": "Family Court Judge\nVote for 1"
-    },
-    {
-      "label": "Family Court Judge"
-    },
-    {
-      "label": "Clarkstown Town Council (Ward 1)\nVote for 1"
-    },
-    {
-      "label": "Clarkstown Town Council (Ward 1)"
-    },
-    {
-      "label": "Orangetown Town Council\nVote for 1"
-    },
-    {
-      "label": "Orangetown Town Council"
-    },
-    {
-      "label": "Clarkstown Town Justice\nVote for 1"
-    },
-    {
-      "label": "Clarkstown Town Justice"
-    },
-    {
-      "label": "Ramapo Town Justice\nVote for 1"
-    },
-    {
-      "label": "Ramapo Town Justice"
-    },
-    {
-      "label": "Haverstraw Town Justice\nVote for 1"
-    },
-    {
-      "label": "Haverstraw Town Justice"
-    },
-    {
-      "label": "Sloatsburg Village Mayor\nVote for 1"
-    },
-    {
-      "label": "Sloatsburg Village Mayor"
-    },
-    {
-      "label": "Spring Valley Village Justice\nVote for 1"
-    },
-    {
-      "label": "Spring Valley Village Justice"
-    },
-    {
-      "label": "Sloatsburg Village Justice\nVote for 1"
-    },
-    {
-      "label": "Sloatsburg Village Justice"
-    },
-    {
-      "label": "West Haverstraw Village Justice\nVote for 1"
-    },
-    {
-      "label": "West Haverstraw Village Justice"
-    },
-    {
-      "label": "West Haverstraw Village Trustee\nVote for 1"
-    },
-    {
-      "label": "West Haverstraw Village Trustee"
-    },
-    {
-      "label": "Haverstraw Village Trustee\nVote for 2"
-    },
-    {
-      "label": "Haverstraw Village Trustee"
-    },
-    {
-      "label": "Piermont Village Trustee\nVote for 2"
-    },
-    {
-      "label": "Piermont Village Trustee"
-    },
-    {
-      "label": "Nyack Village Trustee\nVote for 2"
-    },
-    {
-      "label": "Nyack Village Trustee"
-    },
-    {
-      "label": "Suffern Village Trustee\nVote for 2"
-    },
-    {
-      "label": "Suffern Village Trustee"
-    },
-    {
-      "label": "Sloatsburg Village Trustee\nVote for 2"
-    },
-    {
-      "label": "Sloatsburg Village Trustee"
-    },
-    {
-      "label": "Proposal Number One, An Amendment\nVote for 1"
-    },
-    {
-      "label": "Proposal Number One, An Amendment"
-    },
-    {
-      "label": "Proposition Number Two (Village of Suffern)\nVote for 1"
-    },
-    {
-      "label": "Proposition Number Two (Village of Suffern)"
-    },
-    {
-      "label": "Suffern Fire Department Award Program Do you support an amendment to the Suffern Fire Department Length of Service Award Program (LOSAP) to increase the maximum years of service credit from 30 years to 35 years, and to increase the maximum accrued monthly service award from $600 to $700?"
-    },
-    {
-      "label": "Proposition Number Two (Stony Point)\nVote for 1"
-    },
-    {
-      "label": "Proposition Number Two (Stony Point)"
-    }
-  ],
-  "tables": [],
+  "buttons": {
+    "__unmatched__": [
+      {
+        "label": "Download Reports",
+        "selector": "button"
+      },
+      {
+        "label": "Vote Method",
+        "selector": "button"
+      },
+      {
+        "label": "My Followed Results",
+        "selector": "button"
+      },
+      {
+        "label": "Search",
+        "selector": "button"
+      },
+      {
+        "label": "Follow",
+        "selector": "button"
+      },
+      {
+        "label": "Download Reports",
+        "selector": ".btn"
+      },
+      {
+        "label": "Vote Method",
+        "selector": ".btn"
+      },
+      {
+        "label": "My Followed Results",
+        "selector": ".btn"
+      },
+      {
+        "label": "__unmatched__"
+      }
+    ]
+  },
+  "panels": {
+    "Electors for President and Vice President\nVote for 1": null,
+    "Electors for President and Vice President": null,
+    "United States Senator\nVote for 1": null,
+    "United States Senator": null,
+    "Supreme Court Justice 9th Judicial District\nVote for 5": null,
+    "Supreme Court Justice 9th Judicial District": null,
+    "Representative in Congress 17th Congressional District\nVote for 1": null,
+    "Representative in Congress 17th Congressional District": null,
+    "State Senator 40th Senatorial District\nVote for 1": null,
+    "State Senator 40th Senatorial District": null,
+    "State Senator 38th Senatorial District\nVote for 1": null,
+    "State Senator 38th Senatorial District": null,
+    "Member of Assembly 96th Assembly District\nVote for 1": null,
+    "Member of Assembly 96th Assembly District": null,
+    "Member of Assembly 97th Assembly District\nVote for 1": null,
+    "Member of Assembly 97th Assembly District": null,
+    "Member of Assembly 98th Assembly District\nVote for 1": null,
+    "Member of Assembly 98th Assembly District": null,
+    "Member of Assembly 99th Assembly District\nVote for 1": null,
+    "Member of Assembly 99th Assembly District": null,
+    "County Clerk\nVote for 1": null,
+    "County Clerk": null,
+    "County Court Judge\nVote for 2": null,
+    "County Court Judge": null,
+    "Family Court Judge\nVote for 1": null,
+    "Family Court Judge": null,
+    "Clarkstown Town Council (Ward 1)\nVote for 1": null,
+    "Clarkstown Town Council (Ward 1)": null,
+    "Orangetown Town Council\nVote for 1": null,
+    "Orangetown Town Council": null,
+    "Clarkstown Town Justice\nVote for 1": null,
+    "Clarkstown Town Justice": null,
+    "Ramapo Town Justice\nVote for 1": null,
+    "Ramapo Town Justice": null,
+    "Haverstraw Town Justice\nVote for 1": null,
+    "Haverstraw Town Justice": null,
+    "Sloatsburg Village Mayor\nVote for 1": null,
+    "Sloatsburg Village Mayor": null,
+    "Spring Valley Village Justice\nVote for 1": null,
+    "Spring Valley Village Justice": null,
+    "Sloatsburg Village Justice\nVote for 1": null,
+    "Sloatsburg Village Justice": null,
+    "West Haverstraw Village Justice\nVote for 1": null,
+    "West Haverstraw Village Justice": null,
+    "West Haverstraw Village Trustee\nVote for 1": null,
+    "West Haverstraw Village Trustee": null,
+    "Haverstraw Village Trustee\nVote for 2": null,
+    "Haverstraw Village Trustee": null,
+    "Piermont Village Trustee\nVote for 2": null,
+    "Piermont Village Trustee": null,
+    "Nyack Village Trustee\nVote for 2": null,
+    "Nyack Village Trustee": null,
+    "Suffern Village Trustee\nVote for 2": null,
+    "Suffern Village Trustee": null,
+    "Sloatsburg Village Trustee\nVote for 2": null,
+    "Sloatsburg Village Trustee": null,
+    "Proposal Number One, An Amendment\nVote for 1": null,
+    "Proposal Number One, An Amendment": null,
+    "Proposition Number Two (Village of Suffern)\nVote for 1": null,
+    "Proposition Number Two (Village of Suffern)": null,
+    "Suffern Fire Department Award Program Do you support an amendment to the Suffern Fire Department Length of Service Award Program (LOSAP) to increase the maximum years of service credit from 30 years to 35 years, and to increase the maximum accrued monthly service award from $600 to $700?": null,
+    "Proposition Number Two (Stony Point)\nVote for 1": null,
+    "Proposition Number Two (Stony Point)": null
+  },
+  "tables": {},
   "alerts": []
 }

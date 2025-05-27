@@ -52,7 +52,7 @@
     "wi": "wisconsin", "wis": "wisconsin",
     "wy": "wyoming", "wyo": "wyoming"
   },
-  "Know_state_to_county_map": {
+  "Known_state_to_county_map": {
     "alabama": ["autauga", "baldwin", "barbour", "bibb", "blount", "bullock", "butler", "calhoun", "chambers", "cherokee", "chilton", "choctaw", "clarke", "cleburne", "coffee", "colbert", "coneucuh", "coosa", "covington", "crenshaw", "cullman", "dale", "dallas", "de kalb", "elmore", "escambia", "etowah", "fayette", "franklin"],
     "alaska": ["aleutians east", "aleutians west", "anchorage", "bethel", "bristol bay", "denali", "fairbanks north star", "haines", "juneau", "kenai peninsula", "ketchikan gateway", "kipnuk", "kodiak island", "lake and peninsula", "matanuska-susitna", "nome", "north slope", "northwest arctic", "prince of wales-hyder", "sitka", "skagway", "southeast fairbanks", "valdez-cordova"],
     "arizona": ["apache", "coconino", "gila", "graham", "greenlee", "la paz", "maricopa", "mojave", "navajo", "pima", "pinal", "santa cruz", "yavapai", "yuma"],
@@ -90,6 +90,15 @@
     "north_dakota": ["adams", "barnes", "burke", "cass", "cavalier", "dickey", "divide", "dunn", "edmunds", "emmons", "foster", "golden valley", "grand forks", "grant", "hedinger"]
 
   },
+    "Known_county_to_district_map": {
+    "Rockland": ["Haverstraw", "Clarkstown", "Ramapo", "Orangetown", "Stony Point"],
+    "Kings": ["Brooklyn", "Coney Island", "Brownsville"],
+    "Queens": ["Astoria", "Flushing", "Jamaica", "Long Island City", "Forest Hills"],
+    "Los Angeles": ["Central LA", "South LA", "East LA"],
+    "Cook": ["Chicago", "Evanston", "Oak Park"],
+    "Maricopa": ["Phoenix", "Mesa", "Chandler"]
+  },
+
   "known_states": [
     "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming"
   ],
@@ -98,23 +107,19 @@
   ],
   "known_cities": [
     "New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose"
+  ], 
+  "known_districts": [
+    "Haverstraw", "Clarkstown", "Ramapo", "Orangetown", "Stony Point",
+    "Brooklyn", "Coney Island", "Brownsville",
+    "Astoria", "Flushing", "Jamaica", "Long Island City", "Forest Hills",
+    "Central LA", "South LA", "East LA",
+    "Chicago", "Evanston", "Oak Park",
+    "Phoenix", "Mesa", "Chandler"
   ],
-  "known_precincts": [
-    "Precinct 1", "Precinct 2", "Ward 1", "District 1", "Voting District A", "County A", "City Center", "Downtown"
-  ],
-
-  "Known_county_to_district_map": {
-    "Rockland": ["Haverstraw", "Clarkstown", "Ramapo", "Orangetown", "Stony Point"],
-    "Kings": ["Brooklyn", "Coney Island", "Brownsville"],
-    "Queens": ["Astoria", "Flushing", "Jamaica", "Long Island City", "Forest Hills"],
-    "Los Angeles": ["Central LA", "South LA", "East LA"],
-    "Cook": ["Chicago", "Evanston", "Oak Park"],
-    "Maricopa": ["Phoenix", "Mesa", "Chandler"]
-  },
   "known_contests": [
     "President", "Vice President", "Senate", "Congress", "Governor", "Mayor", "School Board", "Proposition", "Referendum"
   ],
-
+  
   "selectors": {
     "header_tags": ["h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8", "h9", "h10", "h11", "h12", "h13", "h14", "h15", "h16", "h17", "h18", "h19", "h20", "h21", "h22", "h23", "h24"],
     "element_tags": [
@@ -129,6 +134,9 @@
       "[role]", "[aria-label]", "[data-title]", "[class*=\"header\"]", "[class*=\"title\"]", "[class*=\"name\"]"
     ]
   },
+    "buttons": [
+    "Show Results", "View Results", "Expand", "Vote Method", "By County", "Summary", "Details"
+  ],
   "regex": {
     "year": "\\b((?:19|20)\\d{2})\\b",
     "symbol": "[\\s\\n\\r\\t\\$0]+"
@@ -137,17 +145,8 @@
   "ignore_substrings": [
     "turnout", "ballots cast", "voter registration", "unofficial", "total votes"
   ],
-  "contest_parts": [
-    "President", "Vice President", "Senate", "Senator", "Congress", "Representative", "Governor",
-    "Board", "Supervisor", "Elections", "Registration", "District", "County", "City", "Town", "Ward",
-    "School", "Education", "Court", "Justice", "Judge", "Clerk", "Commissioner", "Trustee", "Auditor", "state",
-    "Assembly", "House", "Delegate", "Elector", "Electors", "Attorney General", "Comptroller", "Treasurer",
-    "Secretary of State", "District Attorney", "Public Utility", "Soil and Water Conservation",
-    "Conservation District", "Conservation Board", "Conservation Supervisor", "Conservation Director",
-    "Conservation Commissioner", "Conservation Board of Supervisors", "Conservation Board of Directors",
-    "Conservation Board of Commissioners", "Conservation Board of Assessors", "Conservation Board of Auditors"
-  ],
-  "common_contest_labels": [
+ 
+  "contest": [
     "Award Program", "Vice President", "Presidential", "Senate", "Senator", "Congress", "Representative", "Electors",
     "House of Representatives", "Proposition", "Amendment", "House", "District Representative", "District Delegate",
     "Governor", "Lieutenant Governor", "Attorney General", "Comptroller", "Treasurer", "Secretary of State",
@@ -172,10 +171,7 @@
     "Soil and Water Conservation Board", "Soil and Water Conservation District Director",
     "Soil and Water Conservation District Board", "Soil and Water Conservation District Commissioner"
   ],
-  "state_board_parts": [
-    "State Board", "Supervisors", "Elections", "Registration", "Voter Registration", "Registrars", "Voters"
-  ],
-  "common_precinct_headers": [
+  "precinct_patterns": [
     "Precinct", "Ward", "District", "Voting District", "County", "City", "Township", "Neighborhood",
     "Polling Place", "Election District", "Voting Area", "Electoral District", "Community District",
     "Voting Center", "Voting Location", "Polling Station", "Polling Area", "Voting Precinct",
@@ -187,7 +183,7 @@
     "Reported", "Reporting", "Counted", "Counting", "Tabulated", "Tabulation",
     "Final", "Complete", "Partial", "In Progress", "Unofficial"
   ],
-  "common_vote_methods": [
+  "vote_method_patterns": [
     "Absentee", "Early Voting", "Election Day", "Vote By Mail", "Vote By Mail Ballots",
     "Vote By Mail Votes", "Vote By Mail Voting", "Vote By Mail Ballot", "Vote By Mail Vote",
     "In-Person", "In Person", "In-Person Voting"
@@ -250,18 +246,9 @@
   "domain_scrolls": {
     "example.com": {"max_scrolls": 12, "step": 8000, "last_used": "2025-05-26T18:00:00"}
   },
-  "button_keywords": [
-    "Show Results", "View Results", "Expand", "Vote Method", "By County", "Summary", "Details"
-  ],
+
   "contest_type_patterns": [
     "president", "senate", "congress", "governor", "mayor", "school board", "proposition", "referendum"
-  ],
-  "vote_method_patterns": [
-    "absentee", "early voting", "election day", "vote by mail", "in-person", "mail-in", "provisional"
-  ],
-  "precinct_patterns": [
-    "precinct", "ward", "district", "voting district", "county", "city", "township", "neighborhood",
-    "polling place", "election district", "voting area", "electoral district"
   ],
   
   "reporting_status_patterns": [
