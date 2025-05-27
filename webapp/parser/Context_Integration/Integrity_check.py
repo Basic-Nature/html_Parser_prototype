@@ -4,7 +4,7 @@ from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import LabelEncoder
 import matplotlib
 # Ensure matplotlib uses a non-GUI backend for environments without display
-# matplotlib.use('Agg')  # Use Agg backend for non-GUI environments
+matplotlib.use('Agg')  # Use Agg backend for non-GUI environments
 import matplotlib.pyplot as plt
 import threading
 import sqlite3
