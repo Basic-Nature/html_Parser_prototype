@@ -193,7 +193,7 @@ def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
         "active_domains", "inactive_domains", "captcha_patterns", "captcha_solutions",
         "Known_state_to_county_map", "Known_county_to_district_map", "state_module_map",
         "selectors", "known_states", "known_counties", "known_districts", "known_cities", "regex",
-        "precinct_header_tags", "common_output_headers", "default_noisy_labels"
+        "precinct_header_tags", "common_output_headers", "default_noisy_labels", "domain_selectors"
     ]
     for key in dynamic_keys:
         if key in new_data:
@@ -420,6 +420,7 @@ def organize_context(
         "common_output_headers": [],
         "common_output_headers": [],
         "common_error_patterns": [],
+        "domain_selectors": {},
         "domain_scrolls": {},
         "button_keywords": [],
         "contest_type_patterns": [],
