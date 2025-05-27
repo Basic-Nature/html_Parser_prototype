@@ -189,8 +189,6 @@ def flag_suspicious_contests(contests, context_library_path=None):
     Flags contests with suspicious or ambiguous titles/entities.
     Returns a list of flagged contest dicts with reasons.
     """
-    from spacy_utils import load_known_states_counties, validate_contest_title
-
     known_states, known_counties = load_known_states_counties(context_library_path)
     flagged = []
     for c in contests:
