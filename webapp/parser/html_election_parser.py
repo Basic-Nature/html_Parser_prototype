@@ -22,6 +22,7 @@ from rich import print as rprint
 from playwright.sync_api import sync_playwright, Page
 
 # --- Local imports (all logic is modularized) ---
+from .Context_Integration.context_coordinator import analyze_contest_titles, summarize_context_entities
 from .Context_Integration.context_organizer import append_to_context_library, CONTEXT_LIBRARY_PATH, load_context_library, organize_context
 from .handlers.formats import html_handler
 from .state_router import get_handler as get_state_handler
@@ -404,7 +405,13 @@ def process_url(target_url, processed_info):
 
             # Organize context with cache for learning/deduplication
             organized_context = organize_context(html_context, cache=processed_info)
-
+            try:
+                nlp_report = analyze_contest_titles(organized_context.get("contests", []))
+                entity_summary = summarize_context_entities(organized_context.get("contests", []))
+                logger.info(f"[NLP] Contest Title Analysis: {nlp_report}")
+                logger.info(f"[NLP] Entity Summary: {entity_summary}")
+            except Exception as e:
+                logger.warning(f"[NLP] Context coordinator analysis failed: {e}")
             # --- Format Detection (JSON/CSV/PDF) ---
             FORMAT_DETECTION_ENABLED = os.getenv("FORMAT_DETECTION_ENABLED", "true").lower() == "true"
             result = None

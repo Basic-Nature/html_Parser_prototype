@@ -72,6 +72,71 @@ def ensure_db_schema():
 
 ensure_db_schema()
 
+
+
+def fetch_contests_by_filter(filters=None, limit=100):
+    """
+    Fetch contests from the DB with optional filters (dict).
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    query = "SELECT id, title, year, type, state, county, metadata FROM contests"
+    params = []
+    if filters:
+        clauses = []
+        for k, v in filters.items():
+            clauses.append(f"{k}=?")
+            params.append(v)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    contests = []
+    for row in rows:
+        try:
+            meta = json.loads(row[6]) if row[6] else {}
+        except Exception:
+            meta = {}
+        contest = {
+            "id": row[0],
+            "title": row[1],
+            "year": row[2],
+            "type": row[3],
+            "state": row[4],
+            "county": row[5],
+            **meta
+        }
+        contests.append(contest)
+    conn.close()
+    return contests
+
+def update_contest_in_db(contest):
+    """
+    Update a contest record in the DB by id.
+    Expects contest dict to have at least 'id' and fields to update.
+    """
+    if "id" not in contest:
+        raise ValueError("Contest must have an 'id' field to update.")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE contests
+        SET title = ?, year = ?, type = ?, state = ?, county = ?, metadata = ?
+        WHERE id = ?
+    """, (
+        contest.get("title"),
+        contest.get("year"),
+        contest.get("type"),
+        contest.get("state"),
+        contest.get("county"),
+        json.dumps(contest),
+        contest["id"]
+    ))
+    conn.commit()
+    conn.close()
+
 def normalize_label(label):
     return re.sub(r"\s+", " ", str(label).strip().lower())
 

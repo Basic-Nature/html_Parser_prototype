@@ -13,22 +13,55 @@ from rich import print as rprint
 from spacy_utils import demo_analysis
 import importlib.util
 import glob
-
+from utils.shared_logger import log_info, log_warning, log_error, log_critical, log_alert
 
 from spacy_utils import (
     extract_entities,
     get_sentences,
     clean_text,
+    flag_suspicious_contests,
     extract_entities_from_list,
     extract_entity_labels,
     extract_locations,
     extract_dates,
 )
-from context_organizer import DB_PATH, load_context_library
+from context_organizer import (
+    DB_PATH, load_context_library, election_integrity_checks, organize_context,
+    update_contest_in_db, fetch_contests_by_filter
+)
 
 # --- Database Access Utilities ---
 
 SAMPLE_JSON_PATH = os.path.join(os.path.dirname(__file__), "sample.json")
+
+def analyze_filtered_contests(filters=None, limit=20):
+    """
+    Fetch contests from the DB using filters, enrich with NLP, and print a report.
+    """
+    contests = fetch_contests_by_filter(filters=filters, limit=limit)
+    if not contests:
+        rprint("[yellow]No contests found for the given filters.[/yellow]")
+        return
+
+    # Enrich with NLP
+    enriched = enrich_contests_with_nlp(contests)
+
+    # Print a summary report
+    rprint(f"[bold cyan]NLP Analysis for {len(enriched)} filtered contests[/bold cyan]")
+    for c in enriched:
+        rprint({
+            "id": c.get("id"),
+            "title": c.get("title"),
+            "entities": c.get("entities"),
+            "locations": c.get("locations"),
+            "dates": c.get("dates"),
+        })
+
+# Example usage:
+if __name__ == "__main__":
+    # Example: Find all 2024 contests in New York
+    filters = {"year": 2024, "state": "New York"}
+    analyze_filtered_contests(filters=filters, limit=10)
 
 def load_sample_json(path=SAMPLE_JSON_PATH):
     if not os.path.exists(path):
@@ -102,6 +135,40 @@ def fetch_contests_from_db(limit=100, filters=None):
         contests.append(contest)
     conn.close()
     return contests
+
+def coordinator_integrity_pipeline(raw_html_context):
+    # Step 1: Organize context (parse, deduplicate, cluster, etc.)
+    organized = organize_context(raw_html_context)
+    
+    # Step 2: NLP & semantic validation
+    contests = organized["contests"]
+    nlp_enriched = enrich_contests_with_nlp(contests)
+    
+    # Step 3: Integrity checks (duplicates, missing info, suspicious entities)
+    integrity_issues = election_integrity_checks(nlp_enriched)
+    flagged = flag_suspicious_contests(nlp_enriched)
+    
+    # Step 4: Transparency report
+    report = {
+        "integrity_issues": integrity_issues,
+        "flagged_suspicious": flagged,
+        "anomalies": organized.get("anomalies", []),
+        "clusters": organized.get("clusters", []),
+    }
+    rprint("[bold green]Election Integrity Report[/bold green]")
+    rprint(report)
+    return report
+
+def correct_and_update_contest(contest_id, correction_data):
+    # Fetch contest from organizer/DB
+    contests = fetch_contests_from_db(filters={"id": contest_id})
+    if contests:
+        contest = contests[0]
+        # Apply correction
+        contest.update(correction_data)
+        # Save back to organizer/DB (implement a save/update function in organizer)
+        update_contest_in_db(contest)
+        rprint(f"[green]Contest {contest_id} updated with correction.[/green]")
 
 # --- Context Coordinator Functions (NLP, Reporting, Feedback) ---
 
@@ -276,17 +343,33 @@ def coordinator_pipeline(
     Main entry: coordinates NLP enrichment and reporting for a raw context dict or DB.
     Returns enriched contests and a summary report.
     """
+    # Define environment context for logging and traceability
+    env_context = {
+        "ENV": os.getenv("ENV"),
+        "LOG_LEVEL": os.getenv("LOG_LEVEL"),
+        "DB_PATH": DB_PATH,
+        "from_db": from_db,
+        "db_limit": db_limit,
+        "filters": db_filters,
+        "active_learning": enable_active_learning
+    }
+    log_info("Coordinator pipeline started", context=env_context)
     if from_db:
         contests = fetch_contests_from_db(limit=db_limit, filters=db_filters)
+        log_info("Fetched contests from DB", context={"count": len(contests), **env_context})
+        
     else:
         contests = raw_context.get("contests", []) if raw_context else []
+        log_info("Fetched contests from raw context", context={"count": len(contests), **env_context})
     contests = enrich_contests_with_nlp(contests)
+    log_info("NLP enrichment complete", context={"count": len(contests), **env_context})
     coordinator_report(contests, required_states=required_states, expected_year=expected_year)
 
     # Optionally run active learning/user feedback
     if enable_active_learning and uncertain_idxs:
         feedback = active_learning_feedback(contests, uncertain_idxs, prompt_func=prompt_func)
         rprint(f"[ACTIVE LEARNING] Feedback received: {feedback}")
+        log_info("Active learning feedback received", context={"feedback": feedback, **env_context})
 
     return contests
 
@@ -320,6 +403,105 @@ if __name__ == "__main__":
          required_states=["New York", "California", "Texas"],
          expected_year=2024 
         )
+def robust_db_usage_example():
+    env_context = {
+    "ENV": os.getenv("ENV"),
+    "LOG_LEVEL": os.getenv("LOG_LEVEL"),
+    "DB_PATH": DB_PATH,
+    "from_db": True,
+    "db_limit": 20,
+    "filters": {"year": 2024, "state": "New York"},
+    "active_learning": False
+    }
+    # 1. Fetch contests from DB with flexible filters
+    filters = {"year": 2024, "state": "New York"}  # Example: all 2024 NY contests
+    contests = fetch_contests_by_filter(filters=filters, limit=20)
+    if not contests:
+        rprint("[yellow]No contests found for the given filters.[/yellow]")
+        return
+
+    # 2. Enrich with NLP
+    enriched = enrich_contests_with_nlp(contests)
+
+    # 3. Flag suspicious contests
+    flagged = flag_suspicious_contests(enriched)
+    if flagged:
+        rprint(f"[red]Flagged suspicious contests:[/red]")
+        for entry in flagged:
+            rprint(entry)
+
+    # 4. Print a transparency/integrity report
+    rprint("[bold cyan]Transparency/Integrity Report[/bold cyan]")
+    for c in enriched:
+        rprint({
+            "id": c.get("id"),
+            "title": c.get("title"),
+            "entities": c.get("entities"),
+            "locations": c.get("locations"),
+            "dates": c.get("dates"),
+        })
+
+    # 5. Example: Correct and update a contest (simulate correction)
+    if enriched:
+        contest_to_update = enriched[0]
+        correction = {"title": contest_to_update["title"] + " (Corrected)"}
+        contest_to_update.update(correction)
+    try:
+        update_contest_in_db(contest_to_update)
+        log_info("Contest updated in DB", context={"contest_id": contest_to_update["id"], **env_context})       
+        rprint(f"[green]Contest {contest_to_update['id']} updated with correction.[/green]")
+    except Exception as e:
+        log_warning("High number of suspicious contests", context={"flagged_count": len(flagged), **env_context})
+def orchestrator_cli():
+    rprint("[bold cyan]Election Context Orchestrator CLI[/bold cyan]")
+    # 1. Get filters from user
+    year = input("Enter year (or leave blank): ").strip()
+    state = input("Enter state (or leave blank): ").strip()
+    filters = {}
+    if year:
+        filters["year"] = int(year)
+    if state:
+        filters["state"] = state
+
+    # 2. Fetch contests
+    contests = fetch_contests_by_filter(filters=filters, limit=20)
+    if not contests:
+        rprint("[yellow]No contests found for the given filters.[/yellow]")
+        return
+
+    # 3. NLP enrichment
+    enriched = enrich_contests_with_nlp(contests)
+
+    # 4. Flag suspicious
+    flagged = flag_suspicious_contests(enriched)
+    if flagged:
+        rprint(f"[red]Flagged suspicious contests:[/red]")
+        for entry in flagged:
+            rprint(entry)
+
+    # 5. Print transparency/integrity report
+    rprint("[bold cyan]Transparency/Integrity Report[/bold cyan]")
+    for c in enriched:
+        rprint({
+            "id": c.get("id"),
+            "title": c.get("title"),
+            "entities": c.get("entities"),
+            "locations": c.get("locations"),
+            "dates": c.get("dates"),
+        })
+
+    # 6. Optionally update a contest
+    update = input("Update a contest? Enter ID or leave blank: ").strip()
+    if update:
+        for c in enriched:
+            if str(c.get("id")) == update:
+                new_title = input(f"New title for contest {update} (leave blank to skip): ").strip()
+                if new_title:
+                    c["title"] = new_title
+                    update_contest_in_db(c)
+                    rprint(f"[green]Contest {update} updated.[/green]")
+                break
+            
 if __name__ == "__main__":
     # Ensure at least one sample exists
     if not os.path.exists(SAMPLE_JSON_PATH):
@@ -334,3 +516,5 @@ if __name__ == "__main__":
         demo_analysis(sample_text)  # This calls the function from spacy_utils.py
     else:
         rprint("[red]No sample text found in sample.json[/red]")
+    robust_db_usage_example()
+    orchestrator_cli()
