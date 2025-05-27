@@ -10,10 +10,10 @@ import json
 import sqlite3
 from collections import defaultdict
 from rich import print as rprint
-from spacy_utils import demo_analysis
+from ..Context_Integration.spacy_utils import demo_analysis
 import importlib.util
 import glob
-from utils.shared_logger import log_info, log_warning, log_error, log_critical, log_alert
+from ..utils.shared_logger import log_info, log_warning, log_error, log_critical, log_alert
 
 from spacy_utils import (
     extract_entities,
