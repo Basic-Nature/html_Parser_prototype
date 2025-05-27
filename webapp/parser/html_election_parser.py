@@ -291,7 +291,7 @@ def resolve_and_parse(page, context, url):
     Given a Playwright page, context, and URL, route to the correct handler.
     Tries state/county handler, then HTML handler, then fallback.
     """
-    
+    from .Context_Integration.context_coordinator import ContextCoordinator    
     context["source_url"] = url
     state = context.get("state")
     county = context.get("county")
@@ -304,9 +304,11 @@ def resolve_and_parse(page, context, url):
         return handler.parse_fallback(page=page, coordinator=coordinator, html_context=context)
     if hasattr(html_handler, 'parse'):
         logging.info("[State Router] No match — routing to HTML handler")
-        coordinator = "ContextCoordinator"
+        coordinator = ContextCoordinator()
+        coordinator.organize_and_enrich(context)
         return html_handler(page=page, coordinator=coordinator, html_context=context)
-    coordinator = "ContextCoordinator"
+    coordinator = ContextCoordinator()
+    coordinator.organize_and_enrich(context)
     return html_handler(page=page, coordinator=coordinator, html_context=context)
 
 # --- Manual Format Override (for direct file parsing) ---
