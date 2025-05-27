@@ -10,12 +10,11 @@ import json
 import sqlite3
 from collections import defaultdict
 from rich import print as rprint
-from ..Context_Integration.spacy_utils import demo_analysis
 import importlib.util
 import glob
 from ..utils.shared_logger import log_info, log_warning, log_error, log_critical, log_alert
 
-from spacy_utils import (
+from ..Context_Integration.spacy_utils import (
     extract_entities,
     get_sentences,
     clean_text,
@@ -24,8 +23,9 @@ from spacy_utils import (
     extract_entity_labels,
     extract_locations,
     extract_dates,
+    demo_analysis
 )
-from context_organizer import (
+from ..Context_Integration.context_organizer import (
     DB_PATH, load_context_library, election_integrity_checks, organize_context,
     update_contest_in_db, fetch_contests_by_filter
 )
