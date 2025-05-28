@@ -213,4 +213,7 @@ def finalize_election_output(headers, data, coordinator, contest_title, handler_
     rprint(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
     rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
 
-    return {"csv_path": filepath, "metadata_path": json_meta_path}
+    return {"csv_path": filepath, 
+            "metadata_path": json_meta_path,
+            "output_file": filepath
+    }

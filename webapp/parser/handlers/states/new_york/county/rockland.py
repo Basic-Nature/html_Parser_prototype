@@ -269,5 +269,13 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         metadata["election_type"] = html_context["election_type"]
 
     result = finalize_election_output(headers, data, coordinator, contest_title, handler_options, state, county)
-    handler_options = result.get("handler_options", handler_options)
-    return headers, data, contest_title, handler_options, state, county
+    # Merge handler_options and metadata for output
+    if isinstance(result, dict):
+        # Ensure output_file is present for the main pipeline
+        if "csv_path" in result:
+            metadata["output_file"] = result["csv_path"]
+        # Optionally include metadata_path or other keys if needed
+        if "metadata_path" in result:
+            metadata["metadata_path"] = result["metadata_path"]
+        metadata.update(result)
+    return headers, data, contest_title, metadata
