@@ -14,7 +14,7 @@ import sys
 from threading import Thread
 import webapp.parser.html_election_parser as process_url_stream
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
-from config import BASE_DIR
+from webapp.parser.config import BASE_DIR
 # Load environment variables from .env
 load_dotenv()
 
@@ -31,11 +31,10 @@ socketio_handler.setLevel(logging.INFO)
 logging.getLogger().addHandler(socketio_handler)
 
 ALLOWED_EXTENSIONS = {"csv", "json", "pdf", "txt"}
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 INPUT_FOLDER = os.path.join(BASE_DIR, "input")
 OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")
 # Data folders
-PARSER_DIR = os.path.join(os.path.dirname(__file__), "parser")
+PARSER_DIR = os.path.join(BASE_DIR, "parser")
 HINT_FILE = os.path.join(PARSER_DIR, "url_hint_overrides.txt")
 HISTORY_FILE = os.path.join(PARSER_DIR, "url_hint_history.jsonl")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")

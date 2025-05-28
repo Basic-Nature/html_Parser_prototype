@@ -8,17 +8,15 @@ Production-grade Context Coordinator for Election Data Pipeline
 - Provides robust, dynamic, and cache-aware access to contests, buttons, panels, tables, candidates, districts, etc.
 - Ensures all data is validated, deduplicated, and anomaly-checked before output.
 """
-
+import re
 import os
-import json
-import glob
-import datetime
 import numpy as np
 from ..utils.shared_logger import rprint
 from sklearn.preprocessing import LabelEncoder
 
 from ..utils.shared_logger import log_info, log_warning
-from ..utils.shared_logic import load_context_library
+
+
 
 from ..utils.spacy_utils import (
     extract_entities, extract_locations, extract_dates
@@ -28,9 +26,21 @@ from .Integrity_check import (
     election_integrity_checks, monitor_db_for_alerts, advanced_cross_field_validation
 )
 from .context_organizer import organize_context
-
+import inspect
 # --- Config ---
 SAMPLE_JSON_PATH = os.path.join(os.path.dirname(__file__), "sample.json")
+
+def get_Known_state_to_county_map(self):
+    return [s.lower().replace(" ", "_") for s in self.library.get("Known_state_to_county_map", [])]
+
+def get_Known_county_to_district_map(self):
+    return [c.lower().replace(" ", "_") for c in self.library.get("Known_county_to_district_map", [])]
+
+def get_known_states(self):
+    return [s.lower().replace(" ", "_") for s in self.library.get("known_states", [])]
+
+def get_known_counties(self):
+    return [c.lower().replace(" ", "_") for c in self.library.get("known_counties", [])]
 
 # --- Core Coordinator Class ---
 
@@ -41,6 +51,7 @@ class ContextCoordinator:
     """
 
     def __init__(self, use_library=True, enable_ml=True, alert_monitor=True):
+        from ..utils.shared_logic import load_context_library
         self.library = load_context_library() if use_library else {}
         self.enable_ml = enable_ml
         self.alert_monitor = alert_monitor
@@ -91,41 +102,170 @@ class ContextCoordinator:
             return True
         return [c for c in contests if match(c)]
 
-    def get_buttons(self, contest_title=None):
+    def get_buttons(self, contest_title=None, keyword=None, url=None):
         """
-        Return all buttons, or those for a specific contest.
+        Return all buttons, or those for a specific contest, or matching a keyword/URL.
         """
         if not self.organized:
             return []
-        if contest_title:
-            return self.organized.get("buttons", {}).get(contest_title, []) \
-                or self.organized.get("buttons", {}).get("__unmatched__", [])
-        # Flatten all buttons
+        buttons_dict = self.organized.get("buttons", {})
+        results = []
+
+        # 1. By contest title (exact match)
+        if contest_title and isinstance(contest_title, str):
+            results = buttons_dict.get(contest_title, [])
+            if results:
+                return results
+
+        # 2. By keyword in label or selector
+        if keyword:
+            keyword = keyword.lower()
+            for btn_list in buttons_dict.values():
+                for btn in btn_list:
+                    if keyword in btn.get("label", "").lower() or keyword in btn.get("selector", "").lower():
+                        results.append(btn)
+            if results:
+                return results
+
+        # 3. By URL (if you want to associate buttons with URLs)
+        if url:
+            for btn_list in buttons_dict.values():
+                for btn in btn_list:
+                    if url in btn.get("selector", ""):
+                        results.append(btn)
+            if results:
+                return results
+
+        # 4. Fallback: return all buttons
         all_buttons = []
-        for btns in self.organized.get("buttons", {}).values():
+        for btns in buttons_dict.values():
             all_buttons.extend(btns)
         return all_buttons
 
-    def get_best_button(self, contest_title, keywords=None, class_hint=None, prefer_clickable=True, prefer_visible=True):
+    def get_best_button(
+        self,
+        contest_title=None,
+        keywords=None,
+        class_hint=None,
+        url=None,
+        prefer_clickable=True,
+        prefer_visible=True,
+        log_memory=True,
+        page=None,  # Pass Playwright page if you want to scan live DOM
+        max_attempts=3,
+        fuzzy_threshold=0.7
+    ):
         """
-        Retrieve the best button for a contest, optionally filtering by keywords and class hints.
+        Return the best button by contest, keyword, selector, or URL.
+        If not found, scan page for candidates using regex/fuzzy match and retry.
+        Logs all attempts for ML/rule improvement.
         """
+        # 1. Try by contest title first
         buttons = self.get_buttons(contest_title)
+        # 2. Try by keywords
+        if not buttons and keywords:
+            for kw in keywords:
+                buttons = self.get_buttons(keyword=kw)
+                if buttons:
+                    break
+        # 3. Try by URL
+        if not buttons and url:
+            buttons = self.get_buttons(url=url)
+
+        # 4. Filter by clickable/visible
         if prefer_clickable:
             buttons = [b for b in buttons if b.get("is_clickable", False)] or buttons
         if prefer_visible:
             buttons = [b for b in buttons if b.get("is_visible", True)] or buttons
+
+        # 5. Try to match by keywords/class_hint
         if keywords:
             for btn in buttons:
                 if any(kw.lower() in btn.get("label", "").lower() for kw in keywords):
                     if not class_hint or class_hint in btn.get("class", ""):
+                        if log_memory:
+                            self._log_button_memory(btn, contest_title, "pass")
                         return btn
         if class_hint:
             for btn in buttons:
                 if class_hint in btn.get("class", ""):
+                    if log_memory:
+                        self._log_button_memory(btn, contest_title, "pass")
                     return btn
-        return buttons[0] if buttons else None
 
+        # 6. If still not found, scan live DOM for candidates using regex/fuzzy match
+        if page is not None:
+            # Scan all visible/clickable buttons
+            BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
+            button_features = page.locator(BUTTON_SELECTORS)
+            candidates = []
+            for i in range(button_features.count()):
+                btn = button_features.nth(i)
+                label = btn.inner_text() or ""
+                class_name = btn.get_attribute("class") or ""
+                is_visible = btn.is_visible()
+                is_enabled = btn.is_enabled()
+                selector = None
+                try:
+                    selector = btn.evaluate("el => el.outerHTML")
+                except Exception:
+                    pass
+                candidates.append({
+                    "label": label,
+                    "class": class_name,
+                    "selector": selector,
+                    "is_visible": is_visible,
+                    "is_clickable": is_enabled
+                })
+                if log_memory:
+                    self._log_button_memory(
+                        {"label": label, "class": class_name, "selector": selector, "is_visible": is_visible, "is_clickable": is_enabled},
+                        contest_title,
+                        "scanned"
+                    )
+
+            # Score candidates by fuzzy match to keywords
+            best_score = 0
+            best_candidate = None
+            for cand in candidates:
+                for kw in (keywords or []):
+                    # Fuzzy match on label
+                    score = difflib.SequenceMatcher(None, kw.lower(), (cand["label"] or "").lower()).ratio()
+                    if score > best_score:
+                        best_score = score
+                        best_candidate = cand
+                    # Regex partial match
+                    if re.search(re.escape(kw), cand["label"], re.IGNORECASE):
+                        best_score = 1.0
+                        best_candidate = cand
+                        break
+            if best_candidate and best_score >= fuzzy_threshold:
+                if log_memory:
+                    self._log_button_memory(best_candidate, contest_title, f"fuzzy_pass_{best_score:.2f}")
+                return best_candidate
+
+        # 7. Fallback: return first button and log as "fail"
+        if buttons and isinstance(buttons[0], dict):
+            if log_memory:
+                self._log_button_memory(buttons[0], contest_title, "fail")
+            return buttons[0]
+        return None
+    
+    def _log_button_memory(self, button, contest_title, result):
+        """
+        Log button selection attempts for future ML or rule improvements.
+        """
+        # You could append to a file, DB, or in-memory structure
+        log_entry = {
+            "contest_title": contest_title,
+            "button_label": button.get("label"),
+            "selector": button.get("selector"),
+            "result": result
+        }
+        # Example: append to a file for later analysis
+        with open("button_selection_log.jsonl", "a", encoding="utf-8") as f:
+            import json
+            f.write(json.dumps(log_entry) + "\n")
     def get_panel(self, contest_title):
         """
         Retrieve the panel for a given contest title.
@@ -311,6 +451,13 @@ class ContextCoordinator:
         # Optionally re-fetch and re-organize
         self.organized = None
 
+def call_handler_with_coordinator(handler, *args, coordinator=None, **kwargs):
+    sig = inspect.signature(handler.parse)
+    if 'coordinator' in sig.parameters:
+        return handler.parse(*args, coordinator, **kwargs)
+    else:
+        return handler.parse(*args, **kwargs)
+
     # --- Sample Usage ---
 
 def sample_usage():
@@ -356,6 +503,180 @@ def sample_usage():
     # finalize_election_output(headers, data, contest_title, metadata)
 
     rprint("[bold green]=== End Sample Usage ===[/bold green]")
+
+import difflib
+
+def dynamic_state_county_detection(context, html, context_library, debug=False):
+    """
+    Dynamically detect county (first) and state (second) using all available clues.
+    If only state is found, checks for available county handler modules.
+    Returns (county, state, handler_path, detection_log)
+    """
+    from ..utils.spacy_utils import extract_entities
+
+    detection_log = []
+    county = context.get("county")
+    state = context.get("state")
+    url = context.get("url", "")
+    contests = context.get("contests", [])
+    known_states = context_library.get("known_states", [])
+    state_to_county = context_library.get("Known_state_to_county_map", {})
+    all_counties = set()
+    for counties in state_to_county.values():
+        all_counties.update(counties)
+    all_counties = list(all_counties)
+
+    # --- 1. Try context fields directly ---
+    if county:
+        detection_log.append(f"County found in context: {county}")
+    if state:
+        detection_log.append(f"State found in context: {state}")
+
+    # --- 2. Try to extract county from URL ---
+    if not county and url:
+        for c in all_counties:
+            c_norm = c.lower().replace(" ", "_")
+            if c_norm in url.lower():
+                county = c
+                detection_log.append(f"County '{county}' detected from URL.")
+                break
+
+    # --- 3. Try to extract county from contest titles ---
+    if not county and contests:
+        for contest in contests:
+            title = contest.get("title", "")
+            for c in all_counties:
+                if c.lower() in title.lower():
+                    county = c
+                    detection_log.append(f"County '{county}' detected from contest title: '{title}'")
+                    break
+            if county:
+                break
+
+    # --- 4. Try to extract county from HTML using NLP entities ---
+    if not county and html:
+        entities = extract_entities(html)
+        gpe_entities = [ent for ent, label in entities if label in ("GPE", "LOC")]
+        for ent in gpe_entities:
+            matches = difflib.get_close_matches(ent.lower(), [c.lower() for c in all_counties], n=1, cutoff=0.7)
+            if matches:
+                county = all_counties[[c.lower() for c in all_counties].index(matches[0])]
+                detection_log.append(f"County '{county}' detected from HTML NLP entity: '{ent}'")
+                break
+
+    # --- 5. Fuzzy match county if still not found ---
+    if not county and url:
+        url_tokens = re.split(r"[\W_]+", url.lower())
+        matches = difflib.get_close_matches(" ".join(url_tokens), [c.lower() for c in all_counties], n=1, cutoff=0.6)
+        if matches:
+            county = all_counties[[c.lower() for c in all_counties].index(matches[0])]
+            detection_log.append(f"County '{county}' fuzzy-matched from URL tokens.")
+
+    # --- 6. Now try to detect state, using county if found ---
+    if not state and county:
+        for s, counties in state_to_county.items():
+            if county in counties:
+                state = s
+                detection_log.append(f"State '{state}' inferred from county '{county}'.")
+                break
+
+    # --- 7. Try to extract state from URL ---
+    if not state and url:
+        for s in known_states:
+            s_norm = s.lower().replace(" ", "_")
+            if s_norm in url.lower():
+                state = s
+                detection_log.append(f"State '{state}' detected from URL.")
+                break
+
+    # --- 8. Try to extract state from contest titles ---
+    if not state and contests:
+        for contest in contests:
+            title = contest.get("title", "")
+            for s in known_states:
+                if s.lower() in title.lower():
+                    state = s
+                    detection_log.append(f"State '{state}' detected from contest title: '{title}'")
+                    break
+            if state:
+                break
+
+    # --- 9. Try to extract state from HTML using NLP entities ---
+    if not state and html:
+        entities = extract_entities(html)
+        gpe_entities = [ent for ent, label in entities if label in ("GPE", "LOC")]
+        for ent in gpe_entities:
+            matches = difflib.get_close_matches(ent.lower(), [s.lower() for s in known_states], n=1, cutoff=0.7)
+            if matches:
+                state = known_states[[s.lower() for s in known_states].index(matches[0])]
+                detection_log.append(f"State '{state}' detected from HTML NLP entity: '{ent}'")
+                break
+
+    # --- 10. Fuzzy match state if still not found ---
+    if not state and url:
+        url_tokens = re.split(r"[\W_]+", url.lower())
+        matches = difflib.get_close_matches(" ".join(url_tokens), [s.lower() for s in known_states], n=1, cutoff=0.6)
+        if matches:
+            state = known_states[[s.lower() for s in known_states].index(matches[0])]
+            detection_log.append(f"State '{state}' fuzzy-matched from URL tokens.")
+
+    # --- 11. If state found but no county, check for available county handlers ---
+    handler_path = None
+    if state and not county:
+        # Check for county handler modules in webapp/parser/handlers/states/{state}/county/
+        state_key = state.lower().replace(" ", "_")
+        county_dir = os.path.join(
+            os.path.dirname(__file__), "..", "handlers", "states", state_key, "county"
+        )
+        county_dir = os.path.abspath(county_dir)
+        available_counties = []
+        if os.path.isdir(county_dir):
+            for fname in os.listdir(county_dir):
+                if fname.endswith(".py") and not fname.startswith("__"):
+                    county_name = fname[:-3].replace("_", " ").title()
+                    available_counties.append(county_name)
+            detection_log.append(f"Available county handlers for state '{state}': {available_counties}")
+            # Try to match county from URL or HTML context to available counties
+            url_and_html = (url + " " + html).lower()
+            for c in available_counties:
+                c_norm = c.lower().replace(" ", "_")
+                if c_norm in url_and_html:
+                    county = c
+                    detection_log.append(f"County '{county}' matched to available handler from URL/HTML context.")
+                    break
+            if not county and available_counties:
+                detection_log.append("No matching county handler found in URL/HTML; will use state handler.")
+        else:
+            detection_log.append(f"No county handler directory found for state '{state}'.")
+
+        # Set handler path
+        if county:
+            handler_path = f"webapp.parser.handlers.states.{state_key}.county.{county.lower().replace(' ', '_')}"
+        else:
+            handler_path = f"webapp.parser.handlers.states.{state_key}"
+
+    # --- 12. If both found, set handler path ---
+    if state and county:
+        state_key = state.lower().replace(" ", "_")
+        county_key = county.lower().replace(" ", "_")
+        handler_path = f"webapp.parser.handlers.states.{state_key}.county.{county_key}"
+
+    # --- 13. If only state found, fallback to state handler ---
+    if state and not county and not handler_path:
+        state_key = state.lower().replace(" ", "_")
+        handler_path = f"webapp.parser.handlers.states.{state_key}"
+
+    # --- 14. Final fallback ---
+    if not county:
+        detection_log.append("County could not be detected.")
+    if not state:
+        detection_log.append("State could not be detected.")
+
+    if debug:
+        for log in detection_log:
+            print("[dynamic_state_county_detection]", log)
+
+    return county, state, handler_path, detection_log
 
 # --- Alert Monitoring (run in production) ---
 def start_alert_monitoring():

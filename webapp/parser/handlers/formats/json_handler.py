@@ -5,7 +5,7 @@ from ...utils.logger_instance import logger
 from ...utils.shared_logger import rprint
 from ...utils.output_utils import finalize_election_output
 from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
-from ...utils.shared_logic import normalize_text
+import inspect
 from collections import defaultdict
 
 def detect_json_files(input_folder="input"):
@@ -33,7 +33,7 @@ def prompt_file_selection(json_files):
         rprint("[red]Invalid index. Skipping JSON parsing.[/red]")
         return None
 
-def parse(page, html_context):
+def parse(page, coordinator=None, html_context=None, non_interactive=False, **kwargs):
     # Respect early skip signal from calling context
     if html_context.get("skip_format") or html_context.get("manual_skip"):
         return None, None, None, {"skipped": True}
@@ -67,8 +67,12 @@ def parse(page, html_context):
         handler = get_handler(html_context) or get_handler(html_context.get("source_url", ""))
         if handler and hasattr(handler, "parse_json"):
             logger.info(f"Using custom state handler '{handler.__name__}' for JSON parsing.")
-            return handler.parse_json(data, html_context)
-
+            sig = inspect.signature(handler.parse_json)
+            if "coordinator" in sig.parameters:
+                return handler.parse_json(data, coordinator, html_context)
+            else:
+                return handler.parse_json(data, html_context)
+            
         # Fallback: generic JSON structure
         ballot_items = data.get("results", {}).get("ballotItems", [])
         if not ballot_items:

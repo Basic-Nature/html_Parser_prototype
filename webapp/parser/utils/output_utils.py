@@ -5,10 +5,10 @@ from datetime import datetime
 from ..utils.shared_logger import rprint
 from ..utils.logger_instance import logger
 from ..utils.table_builder import format_table_data_for_output, review_and_fill_missing_data
-
+from ..config import CONTEXT_DB_PATH, BASE_DIR
 from ..utils.user_prompt import prompt_yes_no
 
-CACHE_FILE = ".output_cache.jsonl"
+CACHE_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
 
 def get_output_path(metadata, subfolder="parsed"):
     """
@@ -67,12 +67,35 @@ def update_output_cache(metadata, output_path, cache_file=CACHE_FILE):
 def check_existing_output(metadata, cache_file=CACHE_FILE):
     """
     Check if output for this context already exists in the cache.
+    Handles both JSONL (one JSON object per line) and JSON array formats.
     """
     if not os.path.exists(cache_file):
         return None
     with open(cache_file, "r", encoding="utf-8") as f:
-        for line in f:
-            entry = json.loads(line)
+        content = f.read().strip()
+        if not content:
+            return None
+        entries = []
+        # Try JSON array first
+        try:
+            if content.startswith("["):
+                arr = json.loads(content)
+                if isinstance(arr, list):
+                    entries = arr
+            else:
+                raise ValueError("Not a JSON array")
+        except Exception:
+            # Fallback: treat as JSONL
+            entries = []
+            for line in content.splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except Exception as e:
+                    print(f"[DEBUG] Failed to parse line as JSON: {line!r}")
+                    continue
+        for entry in entries:
             meta = entry.get("metadata", {})
             # Compare key fields for deduplication
             if (
@@ -84,7 +107,7 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
                 return entry
     return None
 
-def finalize_election_output(headers, data, contest_title, metadata, handler_options=None, batch_manifest=None):
+def finalize_election_output(headers, data, coordinator, contest_title, handler_options, state, county):
     """
     Writes the parsed election data and metadata to CSV and JSON files.
     Updates the persistent context library and output cache.
@@ -92,19 +115,19 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     """
     from ..Context_Integration.context_organizer import append_to_context_library, organize_context
     # 1. Enrich metadata using context organizer
-    organized = organize_context(metadata)
-    enriched_meta = organized.get("metadata", metadata)
+    organized = organize_context(handler_options)
+    enriched_meta = organized.get("metadata", handler_options)
     # Defensive: ensure 'race' is present in enriched_meta
     if "race" not in enriched_meta:
-        enriched_meta["race"] = metadata.get("race", "Unknown")
+        enriched_meta["race"] = handler_options.get("race", "Unknown")
     # Defensive: ensure 'year' is present and valid
     if "year" not in enriched_meta or not (str(enriched_meta["year"]).isdigit() and len(str(enriched_meta["year"])) == 4):
         enriched_meta["year"] = "Unknown"
     # Defensive: ensure 'state' and 'county' are present
     if "state" not in enriched_meta:
-        enriched_meta["state"] = metadata.get("state", "Unknown")
+        enriched_meta["state"] = handler_options.get("state", "Unknown")
     if "county" not in enriched_meta:
-        enriched_meta["county"] = metadata.get("county", "Unknown")
+        enriched_meta["county"] = handler_options.get("county", "Unknown")
     # 2. Optionally append output info to context library
     append_to_context_library({"metadata": enriched_meta})
 
@@ -144,7 +167,7 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     filepath = os.path.join(output_path, filename)
 
     # --- Final Data Clean-up and Structure ---
-    headers, data = format_table_data_for_output(headers, data, handler_options=handler_options)
+    headers, data = format_table_data_for_output(headers, data, coordinator, handler_options=handler_options)
     headers, data = review_and_fill_missing_data(headers, data)
     preferred_order = ["Precinct", "% Precincts Reporting", "Candidate", "Party", "Method", "Votes"]
     sorted_headers = [h for h in preferred_order if h in headers] + [h for h in headers if h not in preferred_order]
@@ -179,8 +202,8 @@ def finalize_election_output(headers, data, contest_title, metadata, handler_opt
     metadata_out["csv_file"] = filename
     metadata_out["headers"] = sorted_headers
     metadata_out["row_count"] = len(data)
-    if batch_manifest:
-        metadata_out["batch_manifest"] = batch_manifest
+    if county:
+        metadata_out["batch_manifest"] = county
     with open(json_meta_path, "w", encoding="utf-8") as jf:
         json.dump(metadata_out, jf, indent=2)
 

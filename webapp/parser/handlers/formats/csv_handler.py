@@ -60,7 +60,7 @@ def detect_headers_and_skip_metadata(f, handler_keywords):
         f.seek(f.tell())
     return True
 
-def parse(page, html_context):
+def parse(page, coordinator=None, html_context=None, non_interactive=False, **kwargs):
     """
     Parses the most recent CSV file in the input folder if available.
     Provides a prompt to continue or fallback. Does not use hardcoded filenames.

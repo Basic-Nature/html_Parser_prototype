@@ -10,12 +10,211 @@ import time
 from ..utils.logger_instance import logger
 from ..utils.shared_logger import rprint
 from ..utils.user_prompt import prompt_user_input
-
+from ..config import BASE_DIR
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+def load_state_county_mappings():
+    context_lib_path = os.path.join(
+        os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
+    )
+    if os.path.exists(context_lib_path):
+        with open(context_lib_path, "r", encoding="utf-8") as f:
+            context_lib = json.load(f)
+        state_map = context_lib.get("state_module_map", {})
+        county_map = context_lib.get("Known_state_to_county_map", {})
+        return state_map, county_map
+    return {}, {}
+
+STATE_ABBR = {
+    "al": "alabama", "ala": "alabama",
+    "ak": "alaska",
+    "az": "arizona", "ariz": "arizona",
+    "ar": "arkansas", "ark": "arkansas",
+    "ca": "california", "calif": "california",
+    "co": "colorado", "colo": "colorado",
+    "ct": "connecticut", "conn": "connecticut",
+    "de": "delaware", "del": "delaware",
+    "dc": "district_of_columbia", "d.c.": "district_of_columbia",
+    "fl": "florida", "fla": "florida",
+    "ga": "georgia", "ga.": "georgia",
+    "hi": "hawaii",
+    "id": "idaho",
+    "il": "illinois", "ill": "illinois",
+    "in": "indiana", "ind": "indiana",
+    "ia": "iowa",
+    "ks": "kansas", "kans": "kansas",
+    "ky": "kentucky", "ky.": "kentucky",
+    "la": "louisiana", "la.": "louisiana",
+    "me": "maine",
+    "md": "maryland", "md.": "maryland",
+    "ma": "massachusetts", "mass": "massachusetts",
+    "mi": "michigan", "mich.": "michigan",
+    "mn": "minnesota", "minn": "minnesota",
+    "ms": "mississippi", "miss": "mississippi",
+    "mo": "missouri", "mo.": "missouri",
+    "mt": "montana", "mont": "montana",
+    "ne": "nebraska", "nebr": "nebraska",
+    "nv": "nevada", "nev": "nevada",
+    "nh": "new_hampshire", "n.h.": "new_hampshire",
+    "nj": "new_jersey", "n.j.": "new_jersey",
+    "nm": "new_mexico", "n. mex.": "new_mexico",
+    "ny": "new_york", "n.y.": "new_york",
+    "nc": "north_carolina", "n.c.": "north_carolina",
+    "nd": "north_dakota", "n. dak.": "north_dakota",
+    "oh": "ohio",
+    "ok": "oklahoma", "okla": "oklahoma",
+    "or": "oregon", "ore": "oregon",
+    "pa": "pennsylvania", "pa.": "pennsylvania",
+    "ri": "rhode_island", "r.i.": "rhode_island",
+    "sc": "south_carolina", "s.c.": "south_carolina",
+    "sd": "south_dakota", "s. dak.": "south_dakota",
+    "tn": "tennessee", "tenn": "tennessee",
+    "tx": "texas", "tex": "texas",
+    "ut": "utah",
+    "vt": "vermont", "vt.": "vermont",
+    "va": "virginia", "va.": "virginia",
+    "wa": "washington", "wash": "washington",
+    "wv": "west_virginia", "w. va.": "west_virginia",
+    "wi": "wisconsin", "wis": "wisconsin",
+    "wy": "wyoming", "wyo": "wyoming"
+}
+def normalize_state_name(name):
+    """
+    Normalize state names and abbreviations to snake_case full state name.
+    Handles abbreviations, full names, snake_case, and embedded state names in longer strings.
+    E.g. 'ny', 'NY', 'New York', 'new york', 'new_york', 'ElecResultsFL.xls' -> 'new_york' or 'florida'
+    """
+    if not name:
+        return None
+    name = name.strip().lower().replace(" ", "_")
+    # Try abbreviation lookup first
+    if name in STATE_ABBR:
+        return STATE_ABBR[name]
+    # Try to match snake_case full name
+    for full_name in STATE_ABBR.values():
+        if name == full_name:
+            return full_name
+    # Try to match with spaces replaced by underscores
+    for full_name in STATE_ABBR.values():
+        if name.replace("_", " ") == full_name.replace("_", " "):
+            return full_name
+    # Try to find state abbreviation or name inside a longer string (e.g., filenames)
+    for abbr, full_name in STATE_ABBR.items():
+        pattern = r'\b' + re.escape(abbr) + r'\b'
+        if re.search(pattern, name):
+            return full_name
+        pattern_snake = r'\b' + re.escape(full_name) + r'\b'
+        if re.search(pattern_snake, name.replace("_", " ")):
+            return full_name
+    # Try to match state abbreviation at end of string (e.g., ElecResultsFL.xls)
+    for abbr, full_name in STATE_ABBR.items():
+        if name.endswith(abbr):
+            return full_name
+        if name.endswith("_" + abbr):
+            return full_name
+    return name
+
+def normalize_county_name(name):
+    """
+    Normalize county names for comparison.
+    Handles embedded county names, removes 'county' suffix, underscores, dashes, and extra spaces.
+    E.g. 'Miami-Dade County', 'miami_dade-county', 'ResultsMiamiDadeCounty2024' -> 'miami dade'
+    """
+    if not name:
+        return None
+    name = name.lower().replace("_", " ").replace("-", " ").strip()
+    # Remove 'county' suffix if present
+    name = re.sub(r"\s+county$", "", name)
+    name = re.sub(r"\s+", " ", name)
+    # Try to extract county name from within a longer string (e.g., ResultsMiamiDadeCounty2024)
+    match = re.search(r'([a-z ]+?)\s*county', name)
+    if match:
+        name = match.group(1).strip()
+    # Remove any leading/trailing non-alpha chars
+    name = re.sub(r"^[^a-z]+|[^a-z]+$", "", name)
+    return name
+
+
+def infer_state_county_from_url(url: str):
+    """
+    Robustly infer state and county from a URL using regex, mappings, and context library.
+    Returns (state, county) or (None, None) if not found.
+    """
+    url = url.lower()
+    url_norm = url.replace("-", "_").replace(" ", "_")
+    state_map, county_map = load_state_county_mappings()
+    IGNORED_TLDS = {
+        "com", "org", "net", "gov", "edu", "co", "us", "info", "biz", "io", "me", "ca", "uk", "de", "fr", "jp"
+    }
+    state = None
+    county = None
+
+    # Try all state abbreviations and names (robust patterns)
+    for abbr, name in STATE_ABBR.items():
+        abbr_pattern = rf"/{abbr}(/|_|-|$)"
+        name_repl = name.replace(' ', '[_\\-_]?')
+        name_pattern = rf"/{name_repl}(/|_|-|$)"
+        if re.search(abbr_pattern, url_norm) or re.search(name_pattern, url_norm):
+            state = name
+            break
+
+    # Try mapping from context library
+    if not state and state_map:
+        for key in state_map:
+            key_repl = key.replace(' ', '[_\\-_]?')
+            key_pattern = rf"/{key_repl}(/|_|-|$)"
+            mapped_repl = state_map[key].replace(' ', '[_\\-_]?')
+            mapped_pattern = rf"/{mapped_repl}(/|_|-|$)"
+            if re.search(key_pattern, url_norm) or re.search(mapped_pattern, url_norm):
+                state = key
+                break
+
+    # Fuzzy match as last resort, but skip TLDs and common suffixes
+    if not state:
+        all_states = set(list(STATE_ABBR.values()) + list(state_map.keys()) + list(STATE_ABBR.keys()))
+        url_parts = re.split(r'[/_.\-]', url_norm)
+        url_parts = [part for part in url_parts if part and part not in IGNORED_TLDS]
+        for part in url_parts:
+            matches = difflib.get_close_matches(part, all_states, n=1, cutoff=0.8)
+            if matches:
+                match = matches[0]
+                # If match is an abbreviation, convert to full name
+                state = STATE_ABBR.get(match, match)
+                break
+
+    # --- 2. Try to match county (only if state is found) ---
+    if state:
+        counties = county_map.get(state, [])
+        counties_norm = [normalize_county_name(c) for c in counties]
+        # Try to match "-county" or "_county" in URL
+        county_match = re.search(r'/([a-z0-9_\-]+)[-_]?county', url_norm)
+        if county_match:
+            county_candidate = normalize_county_name(county_match.group(1))
+            # Exact or fuzzy match
+            if county_candidate in counties_norm:
+                county = counties[counties_norm.index(county_candidate)]
+            else:
+                matches = difflib.get_close_matches(county_candidate, counties_norm, n=1, cutoff=0.7)
+                if matches:
+                    county = counties[counties_norm.index(matches[0])]
+        # Try to match county names directly in URL
+        if not county:
+            for i, c_norm in enumerate(counties_norm):
+                if c_norm and c_norm in url_norm:
+                    county = counties[i]
+                    break
+
+    # Normalize before returning
+    if state:
+        state = normalize_state_name(state)
+    if county:
+        county = normalize_county_name(county)
+
+    return state, county
+
 
 def scan_environment():
     return {

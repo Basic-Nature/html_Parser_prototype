@@ -3,33 +3,34 @@ from sklearn.ensemble import IsolationForest
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import LabelEncoder
 import matplotlib
-# Ensure matplotlib uses a non-GUI backend for environments without display
 matplotlib.use('Agg')  # Use Agg backend for non-GUI environments
 import matplotlib.pyplot as plt
 import threading
-import sqlite3
 import json
 import time
+import sqlite3
+from pathlib import Path
 from ..utils.shared_logger import rprint
 from typing import List, Dict, Any, Tuple, Optional
 from ..utils.spacy_utils import extract_dates   
+from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
+from ..utils import db_utils
 
-DB_PATH = "context_elections.db"  # Update path as needed
-
-# --- Anomaly Detection & Clustering ---
-
-conn = sqlite3.connect("context_elections.db")
-conn.execute("""
-CREATE TABLE IF NOT EXISTS alerts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    level TEXT,
-    msg TEXT,
-    context TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-""")
-conn.commit()
-conn.close()
+def _ensure_alerts_table(db_path=None):
+    path = db_utils._safe_db_path(db_path or CONTEXT_DB_PATH)
+    conn = sqlite3.connect(path)
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        level TEXT,
+        msg TEXT,
+        context TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+    conn.commit()
+    conn.close()
+_ensure_alerts_table()
 
 def find_date_anomalies(contests, expected_year=None):
     """
@@ -81,6 +82,8 @@ def detect_anomalies_with_ml(
     return anomalies, clusters
 
 feature_names = ["state", "county", "year", "title_length"]
+
+# --- (Plotting functions) ---
 def plot_clusters(
     X: np.ndarray,
     clusters: np.ndarray,
@@ -460,6 +463,9 @@ def analyze_contest_titles(contests, expected_year=None, context_library_path=No
     integrity_issues = election_integrity_checks(contests)
     date_anomalies = find_date_anomalies(contests, expected_year=expected_year)
     anomalies, clusters = detect_anomalies_with_ml(contests)
+    # Use the provided context_library_path, or fall back to the config default
+    if context_library_path is None:
+        context_library_path = CONTEXT_LIBRARY_PATH
     flagged = flag_suspicious_contests(contests, context_library_path=context_library_path)
     return {
         "integrity_issues": integrity_issues,
@@ -469,18 +475,18 @@ def analyze_contest_titles(contests, expected_year=None, context_library_path=No
         "flagged_suspicious": flagged,
     }
 
-def monitor_db_for_alerts(db_path: str = DB_PATH, poll_interval: int = 10):
+
+def monitor_db_for_alerts(db_path: str = None, poll_interval: int = 10):
     """
     Monitor the alerts table in the database for new alerts and print them in real time.
+    Uses db_utils._safe_db_path for robust path validation.
     """
-    if db_path is None:
-        from ..utils.db_utils import DB_PATH
-        db_path = DB_PATH
+    path = db_utils._safe_db_path(db_path or CONTEXT_DB_PATH)
     def monitor():
         last_alert_id = 0
         while True:
             try:
-                conn = sqlite3.connect(db_path)
+                conn = sqlite3.connect(path)
                 cursor = conn.cursor()
                 cursor.execute("SELECT id, level, msg, context, created_at FROM alerts WHERE id > ? ORDER BY id ASC", (last_alert_id,))
                 rows = cursor.fetchall()
@@ -496,10 +502,16 @@ def monitor_db_for_alerts(db_path: str = DB_PATH, poll_interval: int = 10):
 
 # --- Utility: Audit Logging ---
 
-def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str = "integrity_issues.log"):
+def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str = None):
     """
     Log integrity issues to a file for audit purposes.
+    Uses db_utils._safe_db_path to validate log_path if provided.
     """
+    if log_path:
+        # Only allow logging in the same directory as CONTEXT_DB_PATH
+        log_path = db_utils._safe_db_path(log_path)
+    else:
+        log_path = str((Path(CONTEXT_DB_PATH).parent / "integrity_issues.log").resolve())
     with open(log_path, "a", encoding="utf-8") as f:
         for issue_type, contest in issues:
             f.write(json.dumps({"issue": issue_type, "contest": contest}) + "\n")

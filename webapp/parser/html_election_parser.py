@@ -25,25 +25,19 @@ from playwright.sync_api import sync_playwright, Page
 
 # --- Local imports (all logic is modularized) ---
 from .Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
-from .Context_Integration.context_organizer import append_to_context_library, CONTEXT_LIBRARY_PATH, load_context_library, organize_context
+from .Context_Integration.context_organizer import append_to_context_library, load_context_library, organize_context
+from .config import BASE_DIR, CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
 from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler as get_state_handler
-from .utils.browser_utils import (
-    launch_browser_with_stealth,
-    relaunch_browser_fullscreen_if_needed,
-    relaunch_browser_stealth,
-    detect_environment_for_captcha,
-)
-from .utils.captcha_tools import (
-    is_cloudflare_captcha_present,
-    wait_for_user_to_solve_captcha,
-)
+from .utils.browser_utils import browser_pipeline
 from .utils.db_utils import append_to_context_library, load_processed_urls
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
-from .utils.format_router import detect_format_from_links, prompt_user_for_format, route_format_handler
+from .utils.format_router import route_format_handler
+
+
 from .utils.html_scanner import scan_html_for_context
 from .utils.logger_instance import logger
-from .utils.shared_logic import safe_join
+from .utils.shared_logic import infer_state_county_from_url, safe_join
 from .utils.user_prompt import prompt_user_input, PromptCancelled
 
 
@@ -56,11 +50,14 @@ except ImportError:
 # --- Environment & Path Setup ---
 load_dotenv()
 console = Console()
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-INPUT_DIR = BASE_DIR / "input"
-OUTPUT_DIR = BASE_DIR / "output"
-URL_LIST_FILE = BASE_DIR / "webapp/parser/urls.txt"
-PROCESSED_URLS_FILE = BASE_DIR / ".processed_urls"
+INPUT_DIR = os.path.join(BASE_DIR, "input")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+URL_LIST_FILE = os.path.join(BASE_DIR, "parser", "urls.txt")
+PROCESSED_URLS_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
+
+# Convert to Path objects for .exists() and .write_text()
+URL_LIST_FILE = Path(URL_LIST_FILE)
+PROCESSED_URLS_FILE = Path(PROCESSED_URLS_FILE)
 
 # --- Config Flags ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
@@ -75,45 +72,6 @@ ENABLE_PARALLEL = os.getenv("ENABLE_PARALLEL", "false").lower() == "true"
 ENABLE_AI_ANALYSIS = os.getenv("ENABLE_AI_ANALYSIS", "false").lower() == "true"
 ENABLE_REALTIME_STREAM = os.getenv("ENABLE_REALTIME_STREAM", "false").lower() == "true"
 ENABLE_BOT_TASKS = os.getenv("ENABLE_BOT_TASKS", "false").lower() == "true"
-
-def handle_cloudflare_captcha(playwright, page_or_driver, url, timeout=TIMEOUT_SEC, proxy=None, backend="playwright"):
-    """
-    Handles Cloudflare CAPTCHA detection and user intervention.
-    If persistent CAPTCHA is detected, relaunches browser in GUI mode for manual solve,
-    and if still persistent, relaunches in stealth mode.
-    Returns (browser, context, page, user_agent) if browser was relaunched, else None.
-    """
-    logger.info("[CAPTCHA] Checking for Cloudflare CAPTCHA...")
-    if not is_cloudflare_captcha_present(page_or_driver):
-        logger.info("[CAPTCHA] No CAPTCHA detected.")
-        return None
-
-    logger.warning("[CAPTCHA] CAPTCHA detected! Attempting user intervention.")
-    solved = wait_for_user_to_solve_captcha(page_or_driver, timeout=timeout)
-    if solved:
-        logger.info("[CAPTCHA] CAPTCHA solved by user.")
-        return None
-
-    # If still not solved, relaunch in GUI mode for manual solve
-    logger.warning("[CAPTCHA] Persistent CAPTCHA. Relaunching browser in GUI mode for manual solve.")
-    browser, context, page, user_agent = relaunch_browser_fullscreen_if_needed(
-        playwright, url, timeout=timeout, proxy=proxy, backend=backend
-    )
-    if not page:
-        logger.error("[CAPTCHA] Failed to relaunch browser for CAPTCHA resolution.")
-        return None
-
-    solved = wait_for_user_to_solve_captcha(page, timeout=timeout)
-    if solved:
-        logger.info("[CAPTCHA] CAPTCHA solved after relaunch.")
-        return browser, context, page, user_agent
-
-    # If still persistent, relaunch in stealth mode
-    logger.error("[CAPTCHA] CAPTCHA still persistent after GUI intervention. Relaunching in stealth mode.")
-    browser, context, page, user_agent = relaunch_browser_stealth(
-        playwright, url, proxy=proxy, backend=backend
-    )
-    return browser, context, page, user_agent
 
 def safe_filename(name):
     return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
@@ -133,18 +91,17 @@ def load_urls() -> List[str]:
             URL_LIST_FILE.write_text(url + "\n")
             logging.info(f"Appended URL to urls.txt: {url}")
         return [url] if url else []
-    with open(URL_LIST_FILE, 'r') as f:
+    with URL_LIST_FILE.open('r') as f:
         lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
         if not lines:
             console.print("[bold red]\nurls.txt has no usable URLs. Please input a URL to append:")
             url = prompt_user_input("URL: ").strip()
             if url:
-                with open(URL_LIST_FILE, 'a') as f_append:
+                with URL_LIST_FILE.open('a') as f_append:
                     f_append.write(url + "\n")
                 logging.info(f"Appended URL to urls.txt: {url}")
                 return [url]
         return lines
-
 
 
 def mark_url_processed(url, status="success", **metadata):
@@ -251,11 +208,6 @@ def organize_context_with_cache(raw_context, button_features=None, panel_feature
 
     return organized
 
-
-        # Deduplicate panels and tables similarly...
-
-    return organized
-
 def get_urls_by_status(processed, status):
     """Return a list of URLs with the given status."""
     return [url for url, meta in processed.items() if meta.get("status") == status]
@@ -285,31 +237,6 @@ def prompt_url_selection(urls: List[str], processed: Dict[str, Any]) -> List[str
     indices = [int(i) - 1 for i in user_input.split(',') if i.strip().isdigit()]
     return [urls[i] for i in indices if 0 <= i < len(urls)]
 
-# --- Handler Resolution: State/County/Format Routing ---
-def resolve_and_parse(page, context, url):
-    """
-    Given a Playwright page, context, and URL, route to the correct handler.
-    Tries state/county handler, then HTML handler, then fallback.
-    """
-    from .Context_Integration.context_coordinator import ContextCoordinator    
-    context["source_url"] = url
-    state = context.get("state")
-    county = context.get("county")
-    handler = get_state_handler({"state": state, "county": county})
-    if handler and hasattr(handler, 'parse'):
-        logging.info(f"[State Router] Matched — routing to {handler.__name__}")
-        return handler.parse(page=page, coordinator=coordinator, html_context=context)
-    if handler and hasattr(handler, 'parse_fallback'):
-        logging.info(f"[State Router] Matched — routing to {handler.__name__} fallback")
-        return handler.parse_fallback(page=page, coordinator=coordinator, html_context=context)
-    if hasattr(html_handler, 'parse'):
-        logging.info("[State Router] No match — routing to HTML handler")
-        coordinator = ContextCoordinator()
-        coordinator.organize_and_enrich(context)
-        return html_handler(page=page, coordinator=coordinator, html_context=context)
-    coordinator = ContextCoordinator()
-    coordinator.organize_and_enrich(context)
-    return html_handler(page=page, coordinator=coordinator, html_context=context)
 
 # --- Manual Format Override (for direct file parsing) ---
 def process_format_override():
@@ -390,24 +317,46 @@ def stream_results(headers, data, contest_title, metadata):
 
 # --- Main URL Processing Logic ---
 def process_url(target_url, processed_info):
+    from .Context_Integration.context_coordinator import dynamic_state_county_detection, ContextCoordinator
+
     logging.info(f"Navigating to: {target_url}")
-    with sync_playwright() as p:
-        try:
-            browser, context, page, user_agent = launch_browser_with_stealth(
-                p, headless=HEADLESS_DEFAULT, minimized=HEADLESS_DEFAULT
+
+    browser = context = page = user_agent = None
+    try:
+        with sync_playwright() as p:
+            browser, context, page, user_agent = browser_pipeline(
+                p, target_url, cache_exit_callback=mark_url_processed
             )
-            page.goto(target_url, timeout=60000)
-            # --- CAPTCHA handling and environment detection ---
-            backend = detect_environment_for_captcha(page)
-            captcha_result = handle_cloudflare_captcha(p, page, target_url, timeout=TIMEOUT_SEC, backend=backend)
-            if captcha_result:
-                browser, context, page, user_agent = captcha_result
-            # Scan for context (state, county, races, etc.)
-            html_context = scan_html_for_context(page)
+            if not page:
+                # Session ended due to CAPTCHA or user exit
+                return
+           # --- HTML SCAN & FORMAT DETECTION ---
+            html_context = scan_html_for_context(target_url, page, debug=True)
             logger.debug(f"html_context after scan: {html_context}")
             html_context["source_url"] = target_url
 
-            # Organize context with cache for learning/deduplication
+            # --- Robust state/county inference and validation ---
+            state, county = infer_state_county_from_url(target_url)
+            if state and not html_context.get("state"):
+                html_context["state"] = state
+            if county and not html_context.get("county"):
+                html_context["county"] = county
+
+            # Validate state/county using context library (for enrichment, not routing)
+            context_library = load_context_library()
+            validated_county, validated_state, handler_path, issues = dynamic_state_county_detection(
+                html_context,  # this is your context dict
+                html_context.get("raw_html", ""),  # this is the HTML string
+                context_library
+            )
+            if validated_state and not html_context.get("state"):
+                html_context["state"] = validated_state
+            if validated_county and not html_context.get("county"):
+                html_context["county"] = validated_county
+            if issues:
+                logger.warning(f"[STATE/COUNTY VALIDATION] {issues}")
+
+            # --- Organize context for ML/metadata enrichment ---
             organized_context = organize_context(html_context, cache=processed_info)
             try:
                 nlp_report = analyze_contest_titles(organized_context.get("contests", []))
@@ -416,76 +365,84 @@ def process_url(target_url, processed_info):
                 logger.info(f"[NLP] Entity Summary: {entity_summary}")
             except Exception as e:
                 logger.warning(f"[NLP] Context coordinator analysis failed: {e}")
-            # --- Format Detection (JSON/CSV/PDF) ---
-            FORMAT_DETECTION_ENABLED = os.getenv("FORMAT_DETECTION_ENABLED", "true").lower() == "true"
-            result = None
-            if FORMAT_DETECTION_ENABLED:
-                auto_confirm = os.getenv("FORMAT_AUTO_CONFIRM", "true").lower() == "true"
-                confirmed = detect_format_from_links(page, target_url, auto_confirm=auto_confirm)
-                try:
-                    fmt, local_file = prompt_user_for_format(confirmed, logger=logging)
-                except PromptCancelled:
-                    rprint("[bold yellow][EXIT][/bold yellow] User cancelled the prompt. Exiting gracefully.")
-                    mark_url_processed(target_url, status="cancelled")
-                    return  # Clean exit for this URL
-                if fmt and local_file:
-                    format_handler = route_format_handler(fmt)
-                    if format_handler and hasattr(format_handler, "parse"):
-                        # add format handler logic here if needed
-                        pass
-                else:
-                    logging.info("[INFO] No format selected or skipped by user. Falling back to HTML parsing.")
-            if not result:
-                result = resolve_and_parse(page, html_context, target_url)
-                if not isinstance(result, tuple) or len(result) != 4:
-                    logging.error(f"[ERROR] Handler returned unexpected structure: expected 4 values, got {len(result) if isinstance(result, tuple) else 'non-tuple'}")
-                    mark_url_processed(target_url, status="fail")
-                    return
-            # --- Batch Mode: Multiple Races ---
+
+            # --- Route to state/county/HTML handler ---
+            result = resolve_and_parse(page, html_context, target_url)
+            if not isinstance(result, tuple) or len(result) != 4:
+                logging.error("Handler did not return a valid result tuple.")
+                mark_url_processed(target_url, status="fail")
+                return
+
+            headers, data, contest_title, metadata = result
+
+            # --- Batch Mode: Hand off to coordinator if needed ---
             if html_context.get("batch_mode") and "selected_races" in html_context:
-                for race_title in html_context["selected_races"]:
-                    if "filter_race_type" in html_context:
-                        if html_context["filter_race_type"].lower() not in race_title.lower():
-                            logging.info(f"[Batch Mode] Skipped (filter mismatch): {race_title}")
-                            continue
-                    sub_context = dict(html_context)
-                    sub_context["selected_race"] = race_title
-                    logging.info(f"[Batch Mode] Parsing: {race_title}")
-                    result = resolve_and_parse(page, sub_context, target_url)
-                    if not isinstance(result, tuple) or len(result) != 4:
-                        logging.warning(f"[Batch Mode] Skipped: {race_title} — Handler error.")
-                        continue
-                    headers, data, contest_title, metadata = result
-                    if all([headers, data, contest_title, metadata]):
-                        ai_analyze_results(headers, data, contest_title, metadata)
-                        stream_results(headers, data, contest_title, metadata)
-                        output_file = metadata.get("output_file")
-                        if output_file:
-                            if os.path.exists(output_file):
-                                logging.info(f"[OUTPUT] CSV written to: {output_file}")
-                            else:
-                                logging.warning(f"[WARN] Output file path returned but file does not exist: {output_file}")
-                        else:
-                            # Check if output_utils or handler wrote the file but didn't return the path
-                            output_dir = metadata.get("output_dir") or OUTPUT_DIR
-                            possible_files = []
-                            if os.path.isdir(output_dir):
-                                for f in os.listdir(output_dir):
-                                    if f.endswith(".csv") or f.endswith(".json"):
-                                        possible_files.append(os.path.join(output_dir, f))
-                            if possible_files:
-                                logging.warning(f"[WARN] No output file path returned from parser, but found files: {possible_files[-3:]}")
-                            else:
-                                logging.warning("[WARN] No output file path returned from parser and no output files found.")
-                        mark_url_processed(target_url, status="success")
+                coordinator = ContextCoordinator()
+                try:
+                    coordinator.handle_batch(
+                        page=page,
+                        context=html_context,
+                        target_url=target_url,
+                        processed_info=processed_info,
+                        ai_analyze_results=ai_analyze_results,
+                        stream_results=stream_results,
+                        mark_url_processed=mark_url_processed,
+                        output_dir=OUTPUT_DIR
+                    )
+                except Exception as e:
+                    logging.error(f"[Batch Mode] Coordinator batch handling failed: {e}", exc_info=True)
+                    mark_url_processed(target_url, status="error")
+                return  # End after batch mode
+
+            # --- Single result (non-batch) ---
+            if all([headers, data, contest_title, metadata]):
+                ai_analyze_results(headers, data, contest_title, metadata)
+                stream_results(headers, data, contest_title, metadata)
+                output_file = metadata.get("output_file")
+                if output_file:
+                    if os.path.exists(output_file):
+                        logging.info(f"[OUTPUT] CSV written to: {output_file}")
                     else:
-                        logging.warning("Incomplete result structure — skipping CSV write.")
-                        mark_url_processed(target_url, status="partial")
+                        logging.warning(f"[WARN] Output file path returned but file does not exist: {output_file}")
+                else:
+                    output_dir = metadata.get("output_dir") or OUTPUT_DIR
+                    possible_files = []
+                    if os.path.isdir(output_dir):
+                        for f in os.listdir(output_dir):
+                            if f.endswith(".csv") or f.endswith(".json"):
+                                possible_files.append(os.path.join(output_dir, f))
+                    if possible_files:
+                        logging.warning(f"[WARN] No output file path returned from parser, but found files: {possible_files[-3:]}")
+                    else:
+                        logging.warning("[WARN] No output file path returned from parser and no output files found.")
+                mark_url_processed(target_url, status="success")
+            else:
+                logging.warning("Incomplete result structure — skipping CSV write.")
+                mark_url_processed(target_url, status="partial")
 
-        except Exception as e:
-            logging.error(f"Failed to process {target_url}: {e}", exc_info=True)
-            mark_url_processed(target_url, status="error")
-
+    except Exception as e:
+        logging.error(f"[ERROR] Exception while processing {target_url}: {e}", exc_info=True)
+        mark_url_processed(target_url, status="error")
+    finally:
+        # Ensure browser is closed to prevent resource leaks
+        try:
+            if browser:
+                browser.close()
+        except Exception:
+            pass
+    
+def resolve_and_parse(page, context, url):
+    from .Context_Integration.context_coordinator import ContextCoordinator
+    state = context.get("state")
+    county = context.get("county")
+    handler = get_state_handler({"state": state, "county": county})
+    coordinator = ContextCoordinator()
+    coordinator.organize_and_enrich(context)
+    if handler and hasattr(handler, 'parse'):
+        return handler.parse(page, coordinator, context)
+    if hasattr(html_handler, 'parse'):
+        return html_handler(page, coordinator, context)
+    return html_handler(page, coordinator, context)                
 # --- Main Entry Point ---
 def main():
     # --- Bot integration: run bot tasks if enabled ---

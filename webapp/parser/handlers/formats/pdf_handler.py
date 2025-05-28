@@ -106,7 +106,7 @@ def infer_headers_and_methods(lines, table_hints):
         headers = [h.strip() for h in headers if h.strip()]
     return headers, header_candidates
 
-def parse(page, html_context):
+def parse(page, coordinator=None, html_context=None, non_interactive=False, **kwargs):
     # Respect early skip signal from calling context
     if html_context.get("skip_format") or html_context.get("manual_skip"):
         logger.info("[SKIP] PDF parsing intentionally skipped via context flag.")

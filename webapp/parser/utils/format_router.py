@@ -6,13 +6,11 @@ from ..utils.logger_instance import logger
 from ..utils.shared_logger import rprint
 from ..utils.user_prompt import prompt_user_input
 from urllib.parse import urljoin
-
+from ..config import CONTEXT_LIBRARY_PATH
 load_dotenv()
 
 # --- Load supported formats from .env or context library ---
-CONTEXT_LIBRARY_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
-)
+
 if os.path.exists(CONTEXT_LIBRARY_PATH):
     with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
         CONTEXT_LIBRARY = json.load(f)

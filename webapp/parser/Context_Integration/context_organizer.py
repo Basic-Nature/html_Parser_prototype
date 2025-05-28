@@ -12,13 +12,9 @@ import json
 import logging
 import matplotlib.pyplot as plt
 import platform
-import sqlite3
 from collections import defaultdict
 from ..utils.shared_logger import rprint
-# if you want to suppress tqdm globally
-# sys.stderr = open(os.devnull, 'w')
 from sentence_transformers import SentenceTransformer
-# sys.stderr = sys.__stderr__
 
 from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest
@@ -26,12 +22,21 @@ from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
-from ..utils.db_utils import append_to_context_library, load_processed_urls, load_output_cache, normalize_label
+from ..config import CONTEXT_DB_PATH
+from ..utils.db_utils import (
+    append_to_context_library,
+    load_processed_urls,
+    load_output_cache,
+    normalize_label,
+    _safe_db_path,
+    update_contest_in_db,
+)
 from ..utils.shared_logic import get_title_embedding_features, load_context_library, scan_environment
 from .Integrity_check import (
     detect_anomalies_with_ml, plot_clusters,
     auto_tune_contamination, election_integrity_checks, monitor_db_for_alerts
 )
+import sqlite3
 
 # If you want to suppress the progress bar from SentenceTransformer
 # os.environ["TRANSFORMERS_NO_PROGRESS_BAR"] = "1"
@@ -40,25 +45,19 @@ logging.basicConfig(
     level=logging.INFO,
     format="\n[%(levelname)s] %(message)s\n"
 )
-
+from ..config import BASE_DIR, CONTEXT_LIBRARY_PATH
 # Paths
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-CONTEXT_LIBRARY_PATH = os.path.join(
-    BASE_DIR, "Context_Library", "context_library.json"
-)
-DB_PATH = os.path.join(BASE_DIR, "context_elections.db")
-PROCESSED_URLS_CACHE = os.path.join(
-    os.path.dirname(__file__), "..", "..", ".processed_urls"
-)
-OUTPUT_CACHE = os.path.join(
-    os.path.dirname(__file__), "..", "utils", ".output_cache.jsonl"
-)
-INPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "input")
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "output")
+
+
+PROCESSED_URLS_CACHE = os.path.join(BASE_DIR, ".processed_urls")
+OUTPUT_CACHE = os.path.join(BASE_DIR, ".output_cache.jsonl")
+INPUT_DIR = os.path.join(BASE_DIR, "input")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 
 # --- DB Schema Setup ---
 def ensure_db_schema():
-    conn = sqlite3.connect(DB_PATH)
+    path = _safe_db_path(CONTEXT_DB_PATH)
+    conn = sqlite3.connect(path)
     cursor = conn.cursor()
     cursor.executescript("""
     CREATE TABLE IF NOT EXISTS contests (
@@ -84,9 +83,8 @@ def ensure_db_schema():
 
 ensure_db_schema()
 
-
-
-
+processed_urls = load_processed_urls()
+output_cache = load_output_cache()
 
 def build_dom_tree(segments):
     """
@@ -94,9 +92,6 @@ def build_dom_tree(segments):
     Each node contains: tag, attrs, classes, id, html, children, parent_idx.
     Returns the root nodes (usually head/body) and a flat list with parent/child relationships.
     """
-    # Sort segments by their position in the original HTML for hierarchy
-    # We'll use the index of the segment's start in the HTML as a proxy for order
-    # (Assumes segments are non-overlapping and in order)
     nodes = []
     for idx, seg in enumerate(segments):
         node = dict(seg)
@@ -105,28 +100,21 @@ def build_dom_tree(segments):
         node["_idx"] = idx
         nodes.append(node)
 
-    # Build parent-child relationships by containment (simple, not perfect for malformed HTML)
     for i, node in enumerate(nodes):
         node_html = node["html"]
-        node_start = node_html
         for j, possible_parent in enumerate(nodes):
             if i == j:
                 continue
             parent_html = possible_parent["html"]
             if node_html in parent_html and len(parent_html) > len(node_html):
-                # Prefer the smallest parent (closest ancestor)
                 if node["parent_idx"] is None or len(nodes[node["parent_idx"]]["html"]) > len(parent_html):
                     node["parent_idx"] = j
 
-    # Assign children
     for node in nodes:
         if node["parent_idx"] is not None:
             nodes[node["parent_idx"]]["children"].append(node["_idx"])
 
-    # Find root nodes (no parent)
     roots = [node for node in nodes if node["parent_idx"] is None]
-
-    # Optionally, group by major wrappers
     dom_tree = {
         "roots": [node["_idx"] for node in roots],
         "nodes": nodes
@@ -145,7 +133,6 @@ def expose_dom_parts(dom_tree):
     tables = [n for n in nodes if n["tag"].lower() == "table"]
     buttons = [n for n in nodes if n.get("is_button")]
     clickable = [n for n in nodes if n.get("is_clickable")]
-    # Expose direct parent for each node
     for n in nodes:
         n["direct_parent"] = nodes[n["parent_idx"]]["tag"] if n["parent_idx"] is not None else None
     return {
@@ -214,21 +201,33 @@ def organize_context(
         "known_districts": [],
         "known_cities": [],
         "precinct_header_tags": [],
-        "default_noisy_labels": []
+        "default_noisy_labels": [],
+        "download_links": []
     }
-    processed_urls = load_processed_urls()
-    output_cache = load_output_cache()
 
-    # Defensive fix: ensure panels is a dict
     if "panels" in raw_context and isinstance(raw_context["panels"], list):
         raw_context["panels"] = {}
 
-    # --- DOM Tree Construction ---
     tagged_segments = raw_context.get("tagged_segments_with_attrs", [])
+    url_value = raw_context.get("url", "")
+    virtual_root = {
+        "tag": "url_root",
+        "attrs": {},
+        "classes": [],
+        "id": "url_root",
+        "html": url_value,
+        "is_button": False,
+        "is_clickable": False,
+        "children": [],
+        "parent_idx": None,
+        "_idx": -1
+    }
+    tagged_segments = [virtual_root] + tagged_segments
+
     dom_tree = build_dom_tree(tagged_segments)
+    dom_tree["source_url"] = url_value
     dom_parts = expose_dom_parts(dom_tree)
 
-    # --- Contest Extraction (legacy, keep for now) ---
     contests = []
     contest_titles = set()
     for c in raw_context.get("contests", []):
@@ -250,7 +249,6 @@ def organize_context(
             contests.append(c)
             contest_titles.add(norm_title)
 
-    # --- ML Feature Engineering ---
     features = []
     le_state = LabelEncoder()
     le_county = LabelEncoder()
@@ -269,7 +267,6 @@ def organize_context(
     embedding_features = get_title_embedding_features(contests, model_name=embedding_model)
     X = np.hstack([features, embedding_features])
 
-    # --- Adaptive ML parameter tuning ---
     if contamination is None:
         if len(X) > 10:
             contamination = auto_tune_contamination(X, plot=plot_anomalies)
@@ -328,7 +325,6 @@ def organize_context(
         "environment": scan_environment(),
     }
 
-    # --- ML anomaly detection & clustering ---
     anomalies, clusters = [], []
     if enable_ml and len(contests) > 0:
         try:
@@ -348,7 +344,6 @@ def organize_context(
         except Exception as e:
             rprint(f"[bold red][ML] Anomaly detection failed:[/bold red] {e}")
 
-    # --- Election integrity checks ---
     integrity_issues = election_integrity_checks(contests)
     for issue, contest in integrity_issues:
         if issue == "duplicate":
@@ -389,7 +384,8 @@ def organize_context(
     )
 
     # Insert contests into DB for persistent storage and future ML
-    conn = sqlite3.connect(DB_PATH)
+    db_path = _safe_db_path(CONTEXT_DB_PATH)
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     for c in contests:
         cursor.execute("""
@@ -409,3 +405,83 @@ def organize_context(
     return organized
 
 monitor_db_for_alerts(poll_interval=10)
+
+def safe_filename(s):
+    """Sanitize a string to be safe for use as a filename or path component."""
+    s = str(s)
+    s = s.replace("..", "").replace("/", "").replace("\\", "")
+    return "".join(c if c.isalnum() or c in " _-" else "_" for c in s).strip() or "Unknown"
+
+def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
+    # Default structure with all expected keys
+    default_library = {
+        "contests": [],
+        "buttons": [],
+        "panels": [],
+        "tables": [],
+        "alerts": [],
+        "labels": [],
+        "election": [],
+        "regex": [],
+        "common_output_headers": [],
+        "common_error_patterns": [],
+        "domain_selectors": {},
+        "domain_scrolls": {},
+        "button_keywords": [],
+        "contest_type_patterns": [],
+        "vote_method_patterns": [],
+        "precinct_patterns": [],
+        "reporting_status_patterns": [],
+        "anomaly_log": [],
+        "user_feedback": [],
+        "download_link_patterns": [],
+        "panel_tags": [],
+        "table_tags": [],
+        "section_keywords": [],
+        "output_file_patterns": [],
+        "active_domains": [],
+        "inactive_domains": [],
+        "captcha_patterns": [],
+        "captcha_solutions": {},
+        "last_updated": None,
+        "version": "1.2.0",
+        "Known_state_to_county_map": {},
+        "Known_county_to_district_map": {},
+        "state_module_map": {},
+        "selectors": {},
+        "known_states": [],
+        "known_counties": [],
+        "known_districts": [],
+        "known_cities": [],
+        "precinct_header_tags": [],
+        "default_noisy_labels": [],
+        "download_links": []
+    }
+
+    # Load or initialize the library
+    if os.path.exists(path):
+        with open(path, "r+", encoding="utf-8") as f:
+            try:
+                library = json.load(f)
+            except Exception:
+                library = default_library.copy()
+    else:
+        library = default_library.copy()
+
+    # Ensure all keys exist
+    for key, default_val in default_library.items():
+        if key not in library:
+            library[key] = default_val
+
+    # Merge download_links (deduplicate by (href, format))
+    existing_links = { (safe_filename(l.get("href", "")), l.get("format", "")): l for l in library.get("download_links", []) }
+    new_links = { (safe_filename(l.get("href", "")), l.get("format", "")): l for l in new_data.get("metadata", {}).get("download_links", []) }
+    merged_links = list({**existing_links, **new_links}.values())
+    library["download_links"] = merged_links
+
+    # Optionally sanitize other filename/path fields in new_data if needed
+    # (e.g., for contests, tables, etc.)
+
+    # Write back to file
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(library, f, indent=2)

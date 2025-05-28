@@ -10,10 +10,11 @@ import csv
 from ....utils.logger_instance import logger
 from ....utils.shared_logger import rprint
 from ....utils.output_utils import finalize_election_output
-
+from ....config import CONTEXT_DB_PATH, BASE_DIR
 # Use BASE_DIR and INPUT_DIR for robust path handling
-BASE_DIR = Path(__file__).parents[3]
-INPUT_DIR = BASE_DIR / "input"
+
+INPUT_DIR = os.path.join(BASE_DIR, "input")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 
 def apply_navigation_steps(page, config):
     steps = config.get("nav_actions", [])

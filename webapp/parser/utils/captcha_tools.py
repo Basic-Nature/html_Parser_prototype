@@ -9,11 +9,9 @@ import platform
 from ..utils.logger_instance import logger
 from ..utils.shared_logger import rprint
 import json
+from ..config import CONTEXT_LIBRARY_PATH
 
 # Load CAPTCHA indicators from context library
-CONTEXT_LIBRARY_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
-)
 if os.path.exists(CONTEXT_LIBRARY_PATH):
     with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
         CONTEXT_LIBRARY = json.load(f)

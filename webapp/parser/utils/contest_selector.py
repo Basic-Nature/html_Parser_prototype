@@ -1,5 +1,6 @@
 import re
 from ..utils.shared_logger import rprint
+from ..utils.shared_logic import normalize_state_name, normalize_county_name 
 from ..utils.logger_instance import logger
 from ..utils.user_prompt import prompt_user_input, PromptCancelled
 
@@ -40,12 +41,14 @@ def select_contest(
     selector_data = coordinator.get_for_selector()
     contests = selector_data["contests"]
     noisy_patterns = selector_data["noisy_patterns"]
+    norm_state = normalize_state_name(state)
+    norm_county = normalize_county_name(county)
 
     # Filter contests by state/county/year and remove noisy patterns
     filtered_contests = [
         c for c in contests
-        if (not state or c.get("state", "").lower() == state.lower())
-        and (not county or c.get("county", "").lower() == county.lower())
+        if (not norm_state or normalize_state_name(c.get("state", "")) == norm_state)
+        and (not norm_county or normalize_county_name(c.get("county", "")) == norm_county)
         and (not year or str(c.get("year", "")) == str(year))
         and not any(pat.lower() in c.get("title", "").lower() for pat in noisy_patterns)
     ]

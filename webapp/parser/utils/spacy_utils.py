@@ -10,7 +10,7 @@ from typing import List, Tuple, Dict, Any, Set, Optional
 import re
 import os
 import json
-
+from ..config import CONTEXT_LIBRARY_PATH
 # Load spaCy model globally for efficiency, auto-download if missing
 try:
     nlp = spacy.load("en_core_web_sm")
@@ -113,6 +113,7 @@ def load_known_states_counties(context_library_path: Optional[str] = None) -> Tu
             os.path.dirname(__file__), "context_library.json"
         )
     states, counties = set(), set()
+
     if os.path.exists(context_library_path):
         with open(context_library_path, "r", encoding="utf-8") as f:
             lib = json.load(f)

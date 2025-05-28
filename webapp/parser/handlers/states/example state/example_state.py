@@ -9,11 +9,14 @@ from ....utils.output_utils import finalize_election_output
 from ....utils.contest_selector import select_contest
 from ....utils.table_builder import extract_table_data, calculate_grand_totals
 from ....utils.html_scanner import scan_html_for_context
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from ....Context_Integration.context_coordinator import ContextCoordinator
 def parse(
     page: Page,
+    coordinator: "ContextCoordinator",
     html_context: Optional[dict] = None,
-    coordinator=None,
     non_interactive: bool = False
 ) -> Tuple[Any, Any, Any, dict]:
     """
@@ -22,7 +25,6 @@ def parse(
     - Otherwise, handles all counties within a single webpage.
     Returns (headers, data, contest_title, metadata).
     """
-    from ....Context_Integration.context_coordinator import ContextCoordinator
     if html_context is None:
         html_context = {}
 

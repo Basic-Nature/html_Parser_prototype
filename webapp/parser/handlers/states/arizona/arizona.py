@@ -10,17 +10,18 @@ from ....utils.shared_logger import log_info, log_debug, log_warning, log_error
 from ....utils.shared_logger import rprint
 from ....Context_Integration.context_organizer import organize_context
 from ....utils.output_utils import finalize_election_output
+from ....config import CONTEXT_LIBRARY_PATH
+# Load config from context library if available
+# Debug: Print the path being checked and whether it exists
 
 # Load config from context library if available
-CONTEXT_LIBRARY_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "..", "Context_Integration", "context_library.json"
-)
 if os.path.exists(CONTEXT_LIBRARY_PATH):
     with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
         CONTEXT_LIBRARY = json.load(f)
     STATE_CONFIGS = CONTEXT_LIBRARY.get("state_configs", {})
     config = STATE_CONFIGS.get("arizona", {})
 else:
+    log_warning("[WARN] context_library.json not found. Using fallback config for Arizona handler.")
     config = {}
 
 # Fallback defaults if not set in context library

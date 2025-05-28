@@ -9,7 +9,8 @@ import os
 import importlib
 from typing import Optional, Dict, Any, List, Tuple
 from .utils.logger_instance import logger
-
+from .config import CONTEXT_LIBRARY_PATH
+ 
 import json
 
 def import_handler(module_path: str):
@@ -26,10 +27,7 @@ def import_handler(module_path: str):
     except Exception as e:
         logger.debug(f"[Router] Could not import {module_path}: {e}")
         return None
-
-CONTEXT_LIBRARY_PATH = os.path.join(
-    os.path.dirname(__file__), "Context_Integration", "context_library.json"
-)
+    
 if os.path.exists(CONTEXT_LIBRARY_PATH):
     with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
         CONTEXT_LIBRARY = json.load(f)
@@ -47,66 +45,58 @@ STATE_HANDLER_BASE_PATH = os.path.join(
 def get_handler(context: Dict[str, Any], url: Optional[str] = None) -> Optional[Any]:
     """
     Dynamically resolves and returns the best handler module for the given context.
-    - Uses ContextCoordinator to enrich and normalize context.
-    - Tries state/county from context, filename, or URL.
-    - Logs all routing attempts and fallbacks.
+    Uses dynamic_state_county_detection for robust detection.
+    Logs all routing attempts and fallbacks.
     """
-    from .Context_Integration.context_coordinator import ContextCoordinator
+    import importlib
+    from .Context_Integration.context_coordinator import ContextCoordinator, dynamic_state_county_detection
+
     # Step 1: Enrich context using the coordinator (NLP, ML, etc.)
     coordinator = ContextCoordinator(use_library=True, enable_ml=False, alert_monitor=False)
     enriched = coordinator.organize_and_enrich(context)
-    state = context.get("state") or (enriched.get("metadata", {}).get("state") if enriched else None)
-    county = context.get("county") or (enriched.get("metadata", {}).get("county") if enriched else None)
+    # Try to get raw_html for NLP if available
+    html = context.get("raw_html", "") or (enriched.get("raw_html") if enriched else "")
+    # Load context library for detection
+    context_library = coordinator.library
 
-    # Step 2: Try to infer state/county from filename if missing
-    if not state:
-        filename = context.get("filename", "").lower()
-        tokens = filename.replace("_", " ").split()
-        for token in tokens:
-            if token in STATE_MODULE_MAP:
-                state = token
-                context["state"] = token
-                logger.info(f"[Router] Inferred state '{state}' from filename: {filename}")
-                break
+    # Step 2: Use dynamic_state_county_detection for best guess
+    county, state, handler_path, detection_log = dynamic_state_county_detection(
+        context, html, context_library, debug=True
+    )
 
-    # Step 3: Try to infer state/county from URL if still missing
-    if not state and url:
-        # Example: look for '/ny/' or '/new_york/' in the URL
-        for key in STATE_MODULE_MAP:
-            if f"/{key}/" in url or f"/{STATE_MODULE_MAP[key]}/" in url:
-                state = key
-                context["state"] = key
-                logger.info(f"[Router] Inferred state '{state}' from URL: {url}")
-                break
-
-    if not state:
-        logger.warning("[Router] No state provided in context, filename, or URL.")
-        return None
-
-    # Step 4: Normalize for module path
-    normalized_state = state.strip().lower().replace(" ", "_")
-    state_key = STATE_MODULE_MAP.get(normalized_state, normalized_state)
-    module_path = f"webapp.parser.handlers.states.{state_key}"
-
-    # Step 5: Try county-level handler first
+    # Step 3: Update context with detected values for downstream use
+    if state:
+        context["state"] = state
     if county:
-        normalized_county = county.strip().lower().replace(" ", "_")
-        composite_path = f"{module_path}.county.{normalized_county}"
-        logger.debug(f"[Router] Attempting county-level handler: {composite_path}")
-        module = import_handler(composite_path)
+        context["county"] = county
+
+    # Step 4: Log detection steps
+    logger.info("[Router] Detection log:")
+    for log_entry in detection_log:
+        logger.info(f"    {log_entry}")
+
+    # Step 5: Attempt to import the handler module
+    if handler_path:
+        logger.info(f"[Router] Attempting to import handler: {handler_path}")
+        module = import_handler(handler_path)
         if module:
-            logger.info(f"[Router] Routed to handler for {state_key}_{normalized_county}")
+            logger.info(f"[Router] Routed to handler: {handler_path}")
+            return module
+        else:
+            logger.warning(f"[Router] Could not import handler: {handler_path}")
+
+    # Step 6: Fallback to state-level handler if county handler not found
+    if state:
+        normalized_state = state.strip().lower().replace(" ", "_")
+        fallback_path = f"webapp.parser.handlers.states.{normalized_state}"
+        logger.info(f"[Router] Attempting fallback to state handler: {fallback_path}")
+        module = import_handler(fallback_path)
+        if module:
+            logger.info(f"[Router] Routed to fallback state handler: {fallback_path}")
             return module
 
-    # Step 6: Fallback to state-level handler
-    module = import_handler(module_path)
-    if module:
-        logger.info(f"[Router] Routed to state handler for {state_key}")
-        return module
-
-    logger.warning(f"[Router] Could not import module for state '{state}'")
+    logger.warning("[Router] No suitable handler found for context.")
     return None
-# --- CLI Utilities (optional, can be removed if not needed) ---
 
 def list_available_states() -> List[str]:
     """List all available state handler modules."""

@@ -2,8 +2,8 @@ import importlib
 import json
 import os
 from difflib import get_close_matches
+from .config import BASE_DIR
 
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 PARSER_DIR = os.path.join(os.path.dirname(__file__))
 INPUT_FOLDER = os.path.join(BASE_DIR, "input")
 OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")

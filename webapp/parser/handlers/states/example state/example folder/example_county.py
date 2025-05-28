@@ -1,7 +1,6 @@
 from playwright.sync_api import Page
 from .....utils.logger_instance import logger
 from .....utils.shared_logger import rprint
-
 from .....utils.output_utils import finalize_election_output
 from .....utils.table_builder import extract_table_data, calculate_grand_totals
 from .....utils.html_scanner import scan_html_for_context
@@ -18,31 +17,31 @@ def parse(
     non_interactive: bool = False
 ):
     """
-    Example county handler, fully integrated.
-    Handles all contests/races for this county, using shared utilities and context coordinator.
-    Returns (headers, data, contest_title, metadata).
+    Main entry point for Example County handler.
+    - Scans HTML for context and contests
+    - Lets user select contest(s)
+    - Parses each contest and outputs results
+    Returns (headers, data, contest_title, metadata) or a list of such tuples.
     """
-    from .....Context_Integration.context_coordinator import ContextCoordinator
     if html_context is None:
         html_context = {}
 
     rprint("[bold cyan][Example County Handler] Parsing county results page...[/bold cyan]")
 
-    # --- 1. Scan HTML for context and contests ---
+    # 1. Scan HTML for context and update html_context
     context = scan_html_for_context(page)
     html_context.update(context)
     state = html_context.get("state", "EX")
     county = html_context.get("county", "Example County")
 
-    # --- 2. Organize and enrich context with coordinator ---
+    # 2. Organize and enrich context with coordinator
     if coordinator is None:
+        from .....Context_Integration.context_coordinator import ContextCoordinator
         coordinator = ContextCoordinator()
+    if not getattr(coordinator, "organized", None):
         coordinator.organize_and_enrich(html_context)
-    else:
-        if not coordinator.organized:
-            coordinator.organize_and_enrich(html_context)
 
-    # --- 3. Contest selection using coordinator ---
+    # 3. Contest selection using coordinator
     selected = select_contest(
         coordinator,
         state=state,
@@ -54,7 +53,7 @@ def parse(
         rprint("[red]No contest selected. Skipping.[/red]")
         return None, None, None, {"skipped": True}
 
-    # If multiple contests, process each (aggregate or return first)
+    # 4. If multiple contests, process each (aggregate or return first)
     if isinstance(selected, list):
         results = []
         for contest in selected:
@@ -72,6 +71,7 @@ def parse(
 def parse_single_contest(page, html_context, state, county, coordinator):
     """
     Parses a single contest (race) from the county page.
+    If no contest panel is found, prompts user for manual correction.
     """
     contest_title = html_context.get("selected_race")
     rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
@@ -79,7 +79,20 @@ def parse_single_contest(page, html_context, state, county, coordinator):
     contest_panel = extract_contest_panel(page, contest_title)
     if not contest_panel:
         rprint("[red][ERROR] Contest panel not found. Skipping.[/red]")
-        return None, None, None, {"skipped": True}
+        # --- FEEDBACK UI: Prompt user for manual correction ---
+        print("\n[FEEDBACK] Could not find contest panel. Please enter the correct contest title or leave blank to skip:")
+        user_input = input("Contest title: ").strip()
+        if user_input:
+            html_context["selected_race"] = user_input
+            rprint(f"[bold green][FEEDBACK] You entered: '{user_input}'[/bold green]")
+            # Try again with user input
+            contest_panel = extract_contest_panel(page, user_input)
+            if not contest_panel:
+                rprint("[red][ERROR] Still could not find contest panel. Skipping.[/red]")
+                return None, None, None, {"skipped": True}
+        else:
+            rprint("[yellow][FEEDBACK] Skipped manual correction.[/yellow]")
+            return None, None, None, {"skipped": True}
 
     precinct_tables = extract_precinct_tables(contest_panel)
     data = []
@@ -109,6 +122,10 @@ def parse_single_contest(page, html_context, state, county, coordinator):
 def finalize_and_output(headers, data, contest_title, metadata):
     """
     Cleans, finalizes, and writes output using shared output utilities.
+    - Removes empty/all-NA rows
+    - Appends grand totals row
+    - Recomputes headers
+    - Writes output and metadata
     """
     # Remove empty or all-NA rows
     data = [row for row in data if any(str(v).strip() for v in row.values())]
