@@ -3,9 +3,8 @@ import os
 from ...state_router import get_handler
 from ...utils.logger_instance import logger
 from ...utils.shared_logger import rprint
-from ...utils.output_utils import finalize_election_output
+from ...utils.output_utils import get_output_path, format_timestamp
 from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
-import inspect
 from collections import defaultdict
 
 def detect_json_files(input_folder="input"):
@@ -34,7 +33,13 @@ def prompt_file_selection(json_files):
         return None
 
 def parse(page, coordinator=None, html_context=None, non_interactive=False, **kwargs):
-    # Respect early skip signal from calling context
+    """
+    Standardized JSON handler for election results.
+    Returns (headers, data, contest_title, metadata) with output_file and metadata_path.
+    """
+    html_context = html_context or {}
+
+    # Early skip
     if html_context.get("skip_format") or html_context.get("manual_skip"):
         return None, None, None, {"skipped": True}
 
@@ -51,10 +56,11 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
     try:
         rprint("[yellow]Available JSON file detected:[/yellow]")
         rprint(f"  [bold cyan]{os.path.basename(json_path)}[/bold cyan]")
-        user_input = input("[PROMPT] Parse this file? (y/n): ").strip().lower()
-        if user_input != 'y':
-            logger.info("[INFO] User declined JSON parse. Skipping.")
-            return None, None, None, {"skip_json": True}
+        if not non_interactive:
+            user_input = input("[PROMPT] Parse this file? (y/n): ").strip().lower()
+            if user_input != 'y':
+                logger.info("[INFO] User declined JSON parse. Skipping.")
+                return None, None, None, {"skip_json": True}
     except Exception as e:
         logger.warning(f"[WARN] Skipping user input prompt due to error: {e}")
         return None, None, None, {"error": str(e)}
@@ -67,12 +73,13 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
         handler = get_handler(html_context) or get_handler(html_context.get("source_url", ""))
         if handler and hasattr(handler, "parse_json"):
             logger.info(f"Using custom state handler '{handler.__name__}' for JSON parsing.")
+            import inspect
             sig = inspect.signature(handler.parse_json)
             if "coordinator" in sig.parameters:
                 return handler.parse_json(data, coordinator, html_context)
             else:
                 return handler.parse_json(data, html_context)
-            
+
         # Fallback: generic JSON structure
         ballot_items = data.get("results", {}).get("ballotItems", [])
         if not ballot_items:
@@ -81,23 +88,30 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
 
         # Detect available contests and prompt user
         contests = sorted({item.get("name", "").strip() for item in ballot_items if item.get("name")})
-        rprint("\n[yellow]Available contests:[/yellow]")
-        for i, name in enumerate(contests, 1):
-            rprint(f" [bold cyan]{i:2d}[/bold cyan]. {name}")
-        rprint("\nEnter the contest name (exactly as shown), or type its number:")
-        user_input = input("> ").strip()
-        if user_input.isdigit():
-            idx = int(user_input)
-            try:
-                target_contest = contests[idx - 1]
-            except IndexError:
-                rprint("[red]Invalid contest number.[/red]")
-                return None, None, None, {"error": "Invalid contest number"}
+        if not contests:
+            rprint("[red][ERROR] No contest names found in JSON.[/red]")
+            return None, None, None, {"error": "No contest names in JSON"}
+
+        if non_interactive and "selected_race" in html_context:
+            target_contest = html_context["selected_race"]
         else:
-            if user_input not in contests:
-                rprint(f"[red][ERROR] Contest name '{user_input}' not found.[/red]")
-                return None, None, None, {"error": "Contest name not found"}
-            target_contest = user_input
+            rprint("\n[yellow]Available contests:[/yellow]")
+            for i, name in enumerate(contests, 1):
+                rprint(f" [bold cyan]{i:2d}[/bold cyan]. {name}")
+            rprint("\nEnter the contest name (exactly as shown), or type its number:")
+            user_input = input("> ").strip()
+            if user_input.isdigit():
+                idx = int(user_input)
+                try:
+                    target_contest = contests[idx - 1]
+                except IndexError:
+                    rprint("[red]Invalid contest number.[/red]")
+                    return None, None, None, {"error": "Invalid contest number"}
+            else:
+                if user_input not in contests:
+                    rprint(f"[red][ERROR] Contest name '{user_input}' not found.[/red]")
+                    return None, None, None, {"error": "Contest name not found"}
+                target_contest = user_input
 
         # --- Data normalization and cleaning logic ---
         group_rename = {
@@ -107,7 +121,6 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
             "Mail-In": "Absentee Mail",
             "Provisional": "Provisional"
         }
-        vote_methods = list(group_rename.values())
         raw_candidates = {}
         for item in ballot_items:
             if item["name"].strip() != target_contest:
@@ -158,24 +171,51 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
         grand_total = calculate_grand_totals(data_rows)
         data_rows.append(grand_total)
 
-        # Metadata
-        metadata = {
-            "state": html_context.get("state", "Unknown"),
-            "county": html_context.get("county", "Unknown"),
+        # --- Output path and metadata ---
+        state = html_context.get("state", "Unknown")
+        county = html_context.get("county", "Unknown")
+        year = html_context.get("year", "Unknown")
+        election_type = html_context.get("election_type", "")
+        timestamp = format_timestamp()
+        output_path = get_output_path({
+            "state": state,
+            "county": county,
+            "year": year,
             "race": target_contest,
+            "election_type": election_type
+        }, subfolder="parsed")
+        safe_title = "".join([c if c.isalnum() or c in " _-" else "_" for c in target_contest]).replace(" ", "_")
+        filename = f"{year}_{state.lower()}_{county.lower()}_{election_type.lower()}_{safe_title}_results_{timestamp}.json"
+        filepath = os.path.join(output_path, filename)
+
+        # Write JSON data
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data_rows, f, indent=2)
+
+        # Write metadata JSON
+        metadata_path = filepath.replace(".json", "_metadata.json")
+        metadata = {
+            "state": state,
+            "county": county,
+            "year": year,
+            "race": target_contest,
+            "election_type": election_type,
+            "output_file": filepath,
+            "metadata_path": metadata_path,
+            "headers": headers,
+            "row_count": len(data_rows),
+            "timestamp": timestamp,
             "handler": "json_handler",
             "source": json_path
         }
+        with open(metadata_path, "w", encoding="utf-8") as mf:
+            json.dump(metadata, mf, indent=2)
 
-        # Output via finalize_election_output
-        from ...Context_Integration.context_organizer import organize_context
-        organized = organize_context(metadata)
-        metadata = organized.get("metadata", metadata)
-        result = finalize_election_output(headers, data_rows, target_contest, metadata)
-        contest_title = result.get("contest_title", target_contest)
-        metadata = result.get("metadata", metadata)
-        return headers, data_rows, contest_title, metadata
-    
+        rprint(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data_rows)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
+        rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{metadata_path}[/cyan]")
+
+        return headers, data_rows, target_contest, metadata
+
     except Exception as e:
         logger.error(f"[ERROR] Failed to parse JSON: {e}")
         return None, None, None, {"error": str(e)}
