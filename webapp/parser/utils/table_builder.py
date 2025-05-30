@@ -215,23 +215,38 @@ def build_dynamic_table(
     max_feedback_loops: int = 3
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
-    Main entry: builds a uniform, context-aware table with dynamic verification and feedback.
+    Builds a uniform, context-aware table with dynamic verification and feedback.
+    Handles candidate-major, precinct-major, and flat tables robustly.
     """
-    # --- Detect and transpose candidate-major tables ---
-    # If first header is "Candidate" and the rest are vote types, transpose
-    candidate_headers = {"candidate", "candidates"}
-    if headers and normalize_text(headers[0]) in candidate_headers:
+    def is_candidate_major(headers):
+        # First column is candidate, rest are vote types or totals
+        return headers and normalize_text(headers[0]) in {"candidate", "candidates"}
+
+    def is_precinct_major(headers):
+        # First column is location, rest are candidates or totals
+        location_patterns = coordinator.library.get("location_patterns", [
+            "precinct", "ward", "district", "city", "municipal", "location", "area"
+        ])
+        return headers and any(normalize_text(headers[0]) == normalize_text(pat) for pat in location_patterns)
+
+    def is_flat_candidate_table(headers):
+        # Only candidate and total columns
+        return headers and normalize_text(headers[0]) in {"candidate", "candidates"} and all(
+            "total" in normalize_text(h) or normalize_text(h) == "candidate" for h in headers
+        )
+
+    # --- 1. Candidate-major table ---
+    if is_candidate_major(headers):
         # Transpose: each candidate becomes a column, each row is a location (Precinct, etc.)
-        new_headers = [headers[0]]  # Candidate
-        locations = headers[1:]     # e.g., ["Election Day", "Early Voting", ...]
+        locations = headers[1:]
         transposed_data = []
         for row in data:
             candidate = row.get(headers[0], "")
             for loc in locations:
                 value = row.get(loc, "")
-                transposed_row = { "Candidate": candidate, "Vote Type": loc, "Votes": value }
+                transposed_row = {"Candidate": candidate, "Vote Type": loc, "Votes": value}
                 transposed_data.append(transposed_row)
-        # Now, pivot so each Vote Type becomes a column, Candidate as row
+        # Pivot so each Vote Type becomes a column, Candidate as row
         from collections import defaultdict
         pivot = defaultdict(dict)
         candidates = set()
@@ -252,6 +267,32 @@ def build_dynamic_table(
             new_data.append(row)
         headers = new_headers
         data = new_data
+        logger.info("[TABLE BUILDER] Detected candidate-major table and transposed.")
+
+    # --- 2. Precinct-major table (already in desired format) ---
+    elif is_precinct_major(headers):
+        logger.info("[TABLE BUILDER] Detected precinct-major table, using as is.")
+
+    # --- 3. Flat candidate table (totals only, no locations) ---
+    elif is_flat_candidate_table(headers):
+        # Add a dummy location column for uniformity
+        for row in data:
+            row["Precinct"] = "All"
+        headers = ["Precinct"] + headers
+        logger.info("[TABLE BUILDER] Detected flat candidate table, added dummy location.")
+
+    # --- 4. Ambiguous or wide/summary table ---
+    else:
+        # Try to infer structure: if only one row, treat as totals
+        if len(data) == 1:
+            data[0]["Precinct"] = "All"
+            headers = ["Precinct"] + headers
+            logger.warning("[TABLE BUILDER] Only one row found, treating as totals for all locations.")
+        else:
+            # Fallback: treat first column as location, rest as candidates/votes
+            logger.warning("[TABLE BUILDER] Ambiguous table structure, treating first column as location.")
+            # Optionally, try to guess candidate columns by regex
+            # (You can expand this logic as needed)
 
     # 1. Detect location and percent headers
     location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
@@ -271,7 +312,6 @@ def build_dynamic_table(
             logger.warning("[TABLE BUILDER] Feedback loop triggered: retrying header/data extraction.")
 
     # 4. Build uniform wide-format table
-    # Columns: [percent_header, location_header, ...candidates grouped by party and ballot type..., totals]
     output_headers = []
     if percent_header:
         output_headers.append(percent_header)
