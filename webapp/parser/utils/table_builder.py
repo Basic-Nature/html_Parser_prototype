@@ -15,9 +15,436 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
+
+
+# --- Robust Table Type Detection Helpers ---
 BALLOT_TYPES = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
 ]
+CANDIDATE_KEYWORDS = {"candidate", "candidates", "name", "nominee"}
+LOCATION_KEYWORDS = {"precinct", "ward", "district", "location", "area", "city", "municipal"}
+TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all"}
+BALLOT_TYPE_KEYWORDS = {"election day", "early voting", "absentee", "mail", "provisional", "affidavit", "other", "void"}
+MISC_FOOTER_KEYWORDS = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
+
+def is_candidate_major_row(headers, data):
+    # First column is candidate, rest are vote types or totals
+    if not headers or not data:
+        return False
+    first_col = normalize_text(headers[0])
+    return first_col in CANDIDATE_KEYWORDS and len(data) > 1
+
+def is_candidate_major_col(headers, data):
+    # First row is vote type, columns are candidates (not location)
+    if not headers or not data:
+        return False
+    return (
+        all(normalize_text(h) not in LOCATION_KEYWORDS for h in headers)
+        and any(normalize_text(h) in CANDIDATE_KEYWORDS for h in headers)
+    )
+
+def is_precinct_major(headers, coordinator):
+    # First column is a location/precinct/district
+    location_patterns = set(coordinator.library.get("location_patterns", LOCATION_KEYWORDS))
+    return headers and normalize_text(headers[0]) in location_patterns
+
+def is_flat_candidate_table(headers):
+    # Only candidate and total columns (no locations)
+    if not headers:
+        return False
+    first_col = normalize_text(headers[0])
+    return (
+        first_col in CANDIDATE_KEYWORDS and
+        all(
+            any(kw in normalize_text(h) for kw in TOTAL_KEYWORDS.union(CANDIDATE_KEYWORDS))
+            for h in headers
+        )
+    )
+
+def is_single_row_summary(data):
+    # Only one row, likely a summary
+    return len(data) == 1
+
+def is_candidate_footer(data):
+    # Last row contains candidate or misc footer keywords
+    if not data or not data[-1]:
+        return False
+    last_row = data[-1]
+    return any(
+        any(kw in normalize_text(str(v)) for kw in CANDIDATE_KEYWORDS.union(MISC_FOOTER_KEYWORDS))
+        for v in last_row.values()
+    )
+
+def build_dynamic_table(
+    headers: List[str],
+    data: List[Dict[str, Any]],
+    coordinator: "ContextCoordinator",
+    context: dict = None,
+    max_feedback_loops: int = 3
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Robustly builds a uniform, context-aware table with dynamic verification and feedback.
+    Handles candidate-major, precinct-major, flat, wide, ambiguous, and edge-case tables.
+    """
+
+    # Always ensure context is a dict
+    if context is None:
+        context = {}
+
+    # Dynamically detect the location header
+    location_header, _ = dynamic_detect_location_header(headers, coordinator)
+
+    # If location header is not present in headers, add it as the first column
+    if location_header and location_header not in headers:
+        headers = [location_header] + headers
+
+    # For each row, if location header is missing or empty, fill from context if available
+    for row in data:
+        if location_header and (location_header not in row or not row.get(location_header)):
+            context_val = context.get("precinct") or context.get("location")
+            if context_val:
+                row[location_header] = context_val
+
+    # --- Special case: Proposition/Response tables ---
+    if headers and normalize_text(headers[0]) in {"response", "choice", "option"}:
+        precinct_val = context.get("precinct") or context.get("location")
+        if not precinct_val:
+            precinct_val = data[0].get(location_header) if data and location_header in data[0] else "All"
+        wide_row = {}
+        # Only fill location if missing
+        if location_header not in wide_row or not wide_row.get(location_header):
+            wide_row[location_header] = precinct_val
+        for row in data:
+            response = row[headers[0]].strip()
+            for h in headers[1:]:
+                colname = f"{response} - {h}"
+                # Only fill if not already present
+                if colname not in wide_row:
+                    wide_row[colname] = row[h]
+        headers = [location_header] + [
+            f"{row[headers[0]].strip()} - {h}"
+            for row in data for h in headers[1:]
+        ]
+        data = [wide_row]
+        logger.info("[TABLE BUILDER] Handled proposition/response-major table (pivoted Yes/No responses).")
+    else:
+        # --- 1. Candidate-major table (candidates as rows, vote types as columns) ---
+        if is_candidate_major_row(headers, data):
+            wide_row = {}
+            for row in data:
+                candidate = row[headers[0]]
+                candidate_clean = candidate.replace('\n', ' ').strip()
+                for h in headers[1:]:
+                    colname = f"{candidate_clean} - {h}"
+                    wide_row[colname] = row[h]
+            wide_row[location_header] = context.get("precinct", "All")
+            headers = [location_header] + [
+                "{} - {}".format(row[headers[0]].replace('\n', ' ').strip(), h)
+                for row in data for h in headers[1:]
+            ]
+            data = [wide_row]
+            logger.info("[TABLE BUILDER] Handled candidate-as-row table (vertical candidate-major).")
+
+        # --- 2. Candidate-major table (candidates as columns, vote types as rows) ---
+        elif is_candidate_major_col(headers, data):
+            vote_type_col = headers[0]
+            candidate_headers = headers[1:]
+            wide_row = {}
+            for row in data:
+                vote_type = row[vote_type_col]
+                for candidate in candidate_headers:
+                    colname = f"{candidate} - {vote_type}"
+                    wide_row[colname] = row[candidate]
+            wide_row[location_header] = context.get("precinct", "All")
+            headers = [location_header] + [
+                "{} - {}".format(candidate, row[vote_type_col])
+                for row in data for candidate in candidate_headers
+            ]
+            data = [wide_row]
+            logger.info("[TABLE BUILDER] Handled candidate-as-column table (horizontal candidate-major).")
+
+        # --- 3. Candidate names in footer (last row) ---
+        elif is_candidate_footer(data):
+            candidate_row = data[-1]
+            vote_type_rows = data[:-1]
+            wide_row = {}
+            for row in vote_type_rows:
+                for k, v in row.items():
+                    candidate = candidate_row.get(k, "").replace("\n", " ").strip()
+                    if candidate:
+                        colname = f"{candidate} - {k}"
+                        wide_row[colname] = v
+            wide_row[location_header] = context.get("precinct", "All")
+            headers = [location_header] + [
+                "{} - {}".format(candidate_row.get(k, '').replace('\n', ' ').strip(), k)
+                for k in candidate_row if candidate_row.get(k, "")
+            ]
+            data = [wide_row]
+            logger.info("[TABLE BUILDER] Handled candidate-footer table.")
+
+        # --- 4. Precinct-major table (precinct/location as rows, candidates as columns) ---
+        elif is_precinct_major(headers, coordinator):
+            logger.info("[TABLE BUILDER] Detected precinct-major table, using as is.")
+            headers, data = pivot_precinct_major_to_wide(headers, data, coordinator, context)
+            return headers, data
+
+        # --- 5. Flat candidate table (totals only, no locations) ---
+        elif is_flat_candidate_table(headers):
+            for row in data:
+                if location_header not in row or not row.get(location_header):
+                    row[location_header] = "All"
+            if location_header not in headers:
+                headers = [location_header] + headers
+            logger.info("[TABLE BUILDER] Detected flat candidate table, added dummy location.")
+
+        # --- 6. Single-row summary table ---
+        elif is_single_row_summary(data):
+            if location_header not in data[0] or not data[0].get(location_header):
+                data[0][location_header] = "All"
+            if location_header not in headers:
+                headers = [location_header] + headers
+            logger.warning("[TABLE BUILDER] Only one row found, treating as totals for all locations.")
+
+        # --- 7. Ambiguous or wide/summary table ---
+        else:
+            known_candidates = coordinator.get_candidates(context.get("selected_race", ""))
+            if headers and any(normalize_text(headers[0]) == normalize_text(c) for c in known_candidates):
+                logger.info("[TABLE BUILDER] Ambiguous table: treating as candidate-major based on known candidates.")
+                # Example: only fill guessed columns if missing
+                for row in data:
+                    for candidate in known_candidates:
+                        if candidate not in row or not row.get(candidate):
+                            row[candidate] = ""
+            else:
+                logger.warning("[TABLE BUILDER] Ambiguous table structure, treating first column as location.")
+
+        # Continue with your existing logic...
+        location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
+        logger.info(f"[TABLE BUILDER] Detected location header: {location_header}, percent header: {percent_header}")
+
+        candidate_party_map = extract_candidates_and_parties(headers, coordinator)
+
+        # 3. Rescan and verify headers/data, feedback loop
+        feedback_loops = 0
+        passed = False
+        while not passed and feedback_loops < max_feedback_loops:
+            headers, data, passed = rescan_and_verify(headers, data, coordinator, context)
+            logger.info(f"[TABLE BUILDER] Verification pass {feedback_loops+1}: {'PASS' if passed else 'FAIL'} (score threshold met: {passed})")
+            feedback_loops += 1
+            if not passed:
+                logger.warning("[TABLE BUILDER] Feedback loop triggered: retrying header/data extraction.")
+
+        # 4. Build uniform wide-format table
+        output_headers = []
+        if percent_header:
+            if percent_header not in rows_by_location[location] or not rows_by_location[location][percent_header]:
+                rows_by_location[location][percent_header] = row.get(percent_header, "Unknown")
+            output_headers.append(percent_header)
+        output_headers.append(location_header)
+
+        # Build candidate columns: party -> candidate -> ballot types
+        for party in sorted(candidate_party_map.keys()):
+            for candidate in sorted(candidate_party_map[party].keys()):
+                for ballot_type in BALLOT_TYPES:
+                    col = f"{candidate} ({party}) - {ballot_type}"
+                    if col not in output_headers:
+                        output_headers.append(col)
+                # Candidate total
+                total_col = f"{candidate} ({party}) - Total"
+                if total_col not in output_headers:
+                    output_headers.append(total_col)
+            # Party total
+            party_total_col = f"{party} - Total"
+            if party_total_col not in output_headers:
+                output_headers.append(party_total_col)
+
+        # Grand total
+        if "Grand Total" not in output_headers:
+            output_headers.append("Grand Total")
+
+        # 5. Build rows: one per location (district/precinct/etc.)
+        rows_by_location = {}
+        for row in data:
+            location = row.get(location_header, "")
+            if location not in rows_by_location:
+                rows_by_location[location] = {h: "" for h in output_headers}
+                if percent_header:
+                    rows_by_location[location][percent_header] = row.get(percent_header, "")
+                rows_by_location[location][location_header] = location
+
+            # Fill candidate/party/ballot type values
+            for party in candidate_party_map:
+                for candidate in candidate_party_map[party]:
+                    candidate_total = 0
+                    for ballot_type in BALLOT_TYPES:
+                        col = f"{candidate} ({party}) - {ballot_type}"
+                        # Only fill if not already present
+                        if not rows_by_location[location][col]:
+                            value = ""
+                            for h in headers:
+                                if candidate in h and party in h and ballot_type in h:
+                                    value = row.get(h, "")
+                                    break
+                            rows_by_location[location][col] = value
+                        try:
+                            candidate_total += int(rows_by_location[location][col].replace(",", "")) if rows_by_location[location][col] else 0
+                        except Exception:
+                            pass
+                    # Candidate total
+                    total_col = f"{candidate} ({party}) - Total"
+                    rows_by_location[location][total_col] = str(candidate_total)
+                # Party total
+                party_total_col = f"{party} - Total"
+                party_total = sum(
+                    int(rows_by_location[location][f"{candidate} ({party}) - Total"] or 0)
+                    for candidate in candidate_party_map[party]
+                )
+                rows_by_location[location][party_total_col] = str(party_total)
+            # Grand total
+            grand_total = sum(
+                int(rows_by_location[location][f"{candidate} ({party}) - Total"] or 0)
+                for party in candidate_party_map
+                for candidate in candidate_party_map[party]
+            )
+            rows_by_location[location]["Grand Total"] = str(grand_total)
+
+        # 6. Return harmonized output
+        output_data = [rows_by_location[loc] for loc in rows_by_location]
+        output_headers, output_data = harmonize_headers_and_data(output_headers, output_data)
+        logger.info(f"[TABLE BUILDER] Built {len(output_data)} rows with {len(output_headers)} columns.")
+
+        return output_headers, output_data
+
+def pivot_precinct_major_to_wide(
+    headers: List[str],
+    data: List[Dict[str, Any]],
+    coordinator: "ContextCoordinator",
+    context: dict
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Pivot a precinct-major table to wide format:
+    Precinct | Percent Reported | [Candidate (Party) - BallotType ... Total Votes] | [Misc Totals] | Grand Total
+    Handles variable ballot types and miscellaneous columns.
+    """
+    location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
+    if not percent_header:
+        percent_header = "Percent Reported"
+
+    # Parse headers
+    candidate_party_ballot = {}  # (candidate, party) -> {ballot_type: header}
+    ballot_types_set = set()
+    misc_columns = []
+    candidate_party_set = set()
+
+    for h in headers:
+        m = re.match(r"(.+?)\s*\((.+?)\)\s*-\s*(.+)", h)
+        if m:
+            candidate, party, ballot_type = m.groups()
+            candidate = candidate.strip()
+            party = party.strip()
+            ballot_type = ballot_type.strip()
+            candidate_party_set.add((candidate, party))
+            ballot_types_set.add(ballot_type)
+            candidate_party_ballot.setdefault((candidate, party), {})[ballot_type] = h
+        else:
+            # Try: Candidate - BallotType
+            m = re.match(r"(.+?)\s*-\s*(.+)", h)
+            if m:
+                candidate, ballot_type = m.groups()
+                candidate = candidate.strip()
+                party = ""
+                ballot_type = ballot_type.strip()
+                candidate_party_set.add((candidate, party))
+                ballot_types_set.add(ballot_type)
+                candidate_party_ballot.setdefault((candidate, party), {})[ballot_type] = h
+            else:
+                # Try: BallotType only (miscellaneous totals)
+                ballot_type = h.strip()
+                ballot_types_set.add(ballot_type)
+                misc_columns.append(h)
+
+    # Remove location and percent headers from ballot_types/misc
+    for col in [location_header, percent_header]:
+        if col in ballot_types_set:
+            ballot_types_set.remove(col)
+        if col in misc_columns:
+            misc_columns.remove(col)
+
+    # Remove candidate columns from misc_columns
+    for (candidate, party), bt_map in candidate_party_ballot.items():
+        for bt, h in bt_map.items():
+            if h in misc_columns:
+                misc_columns.remove(h)
+
+    # Sort ballot types: Election Day, Early Voting, Absentee, ...rest alphabetically
+    ballot_types = []
+    for bt in ["Election Day", "Early Voting", "Absentee"]:
+        if bt in ballot_types_set:
+            ballot_types.append(bt)
+    for bt in sorted(ballot_types_set):
+        if bt not in ballot_types:
+            ballot_types.append(bt)
+
+    # Build output headers
+    output_headers = [location_header, percent_header]
+    candidate_columns = []
+    for candidate, party in sorted(candidate_party_set):
+        for bt in ballot_types:
+            candidate_columns.append(f"{candidate} ({party}) - {bt}")
+        candidate_columns.append(f"{candidate} ({party}) - Total Votes")
+    output_headers.extend(candidate_columns)
+    output_headers.extend(misc_columns)
+    output_headers.append("Grand Total")
+
+    # Build output rows
+    output_rows = []
+    for row in data:
+        out_row = {}
+        out_row[location_header] = row.get(location_header, "")
+        out_row[percent_header] = row.get(percent_header, "Fully Reported")
+        grand_total = 0
+        # Candidate columns
+        for candidate, party in sorted(candidate_party_set):
+            cand_total = 0
+            bt_map = candidate_party_ballot.get((candidate, party), {})
+            for bt in ballot_types:
+                col = f"{candidate} ({party}) - {bt}"
+                val = row.get(bt_map.get(bt, ""), "")
+                try:
+                    ival = int(val.replace(",", "")) if val else 0
+                except Exception:
+                    ival = 0
+                out_row[col] = str(ival) if val != "" else ""
+                cand_total += ival
+            out_row[f"{candidate} ({party}) - Total Votes"] = str(cand_total)
+            grand_total += cand_total
+        # Misc columns
+        for h in misc_columns:
+            out_row[h] = row.get(h, "")
+            try:
+                grand_total += int(row.get(h, "0").replace(",", "")) if row.get(h, "") else 0
+            except Exception:
+                pass
+        out_row["Grand Total"] = str(grand_total)
+        output_rows.append(out_row)
+
+    # Add totals row
+    totals_row = {h: "" for h in output_headers}
+    totals_row[location_header] = "TOTAL"
+    totals_row[percent_header] = ""
+    for h in candidate_columns + misc_columns + ["Grand Total"]:
+        try:
+            # Only sum if all values are numeric or empty
+            values = [r.get(h, "0").replace(",", "") for r in output_rows]
+            if all(v == "" or v.isdigit() or (v.startswith('-') and v[1:].isdigit()) for v in values):
+                totals_row[h] = str(sum(int(v) for v in values if v != ""))
+            else:
+                totals_row[h] = ""
+        except Exception:
+            totals_row[h] = ""
+    output_rows.append(totals_row)
+
+    return output_headers, output_rows
 
 def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoordinator") -> Tuple[str, str]:
     """
@@ -96,6 +523,7 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
 
     logger.info(f"[TABLE BUILDER] Location header detected: {location_header}, Percent header detected: {percent_header}")
     return location_header, percent_header
+
 
 def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoordinator") -> Dict[str, Dict[str, List[str]]]:
     """
@@ -206,214 +634,3 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
                 row[headers[j]] = cells.nth(j).inner_text().strip()
         data.append(row)
     return headers, data
-
-def build_dynamic_table(
-    headers: List[str],
-    data: List[Dict[str, Any]],
-    coordinator: "ContextCoordinator",
-    context: dict,
-    max_feedback_loops: int = 3
-) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """
-    Builds a uniform, context-aware table with dynamic verification and feedback.
-    Handles candidate-major, precinct-major, and flat tables robustly.
-    """
-    def is_candidate_major(headers):
-        # First column is candidate, rest are vote types or totals
-        return headers and normalize_text(headers[0]) in {"candidate", "candidates"}
-
-    def is_precinct_major(headers):
-        # First column is location, rest are candidates or totals
-        location_patterns = coordinator.library.get("location_patterns", [
-            "precinct", "ward", "district", "city", "municipal", "location", "area"
-        ])
-        return headers and any(normalize_text(headers[0]) == normalize_text(pat) for pat in location_patterns)
-
-    def is_flat_candidate_table(headers):
-        # Only candidate and total columns
-        return headers and normalize_text(headers[0]) in {"candidate", "candidates"} and all(
-            "total" in normalize_text(h) or normalize_text(h) == "candidate" for h in headers
-        )
-
-    # --- 1. Candidate-major table ---
-    if is_candidate_major(headers):
-        # Transpose: each candidate becomes a column, each row is a location (Precinct, etc.)
-        locations = headers[1:]
-        transposed_data = []
-        for row in data:
-            candidate = row.get(headers[0], "")
-            for loc in locations:
-                value = row.get(loc, "")
-                transposed_row = {"Candidate": candidate, "Vote Type": loc, "Votes": value}
-                transposed_data.append(transposed_row)
-        # Pivot so each Vote Type becomes a column, Candidate as row
-        from collections import defaultdict
-        pivot = defaultdict(dict)
-        candidates = set()
-        vote_types = set()
-        for row in transposed_data:
-            candidate = row["Candidate"]
-            vote_type = row["Vote Type"]
-            votes = row["Votes"]
-            pivot[candidate][vote_type] = votes
-            candidates.add(candidate)
-            vote_types.add(vote_type)
-        new_headers = ["Candidate"] + sorted(vote_types)
-        new_data = []
-        for candidate in sorted(candidates):
-            row = {"Candidate": candidate}
-            for vt in vote_types:
-                row[vt] = pivot[candidate].get(vt, "")
-            new_data.append(row)
-        headers = new_headers
-        data = new_data
-        logger.info("[TABLE BUILDER] Detected candidate-major table and transposed.")
-
-    # --- 2. Precinct-major table (already in desired format) ---
-    elif is_precinct_major(headers):
-        logger.info("[TABLE BUILDER] Detected precinct-major table, using as is.")
-
-    # --- 3. Flat candidate table (totals only, no locations) ---
-    elif is_flat_candidate_table(headers):
-        # Add a dummy location column for uniformity
-        for row in data:
-            row["Precinct"] = "All"
-        headers = ["Precinct"] + headers
-        logger.info("[TABLE BUILDER] Detected flat candidate table, added dummy location.")
-
-    # --- 4. Ambiguous or wide/summary table ---
-    else:
-        # Try to infer structure: if only one row, treat as totals
-        if len(data) == 1:
-            data[0]["Precinct"] = "All"
-            headers = ["Precinct"] + headers
-            logger.warning("[TABLE BUILDER] Only one row found, treating as totals for all locations.")
-        else:
-            # Fallback: treat first column as location, rest as candidates/votes
-            logger.warning("[TABLE BUILDER] Ambiguous table structure, treating first column as location.")
-            # Optionally, try to guess candidate columns by regex
-            # (You can expand this logic as needed)
-
-    # 1. Detect location and percent headers
-    location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
-    logger.info(f"[TABLE BUILDER] Detected location header: {location_header}, percent header: {percent_header}")
-
-    # 2. Extract candidate/party/ballot type structure
-    candidate_party_map = extract_candidates_and_parties(headers, coordinator)
-
-    # 3. Rescan and verify headers/data, feedback loop
-    feedback_loops = 0
-    passed = False
-    while not passed and feedback_loops < max_feedback_loops:
-        headers, data, passed = rescan_and_verify(headers, data, coordinator, context)
-        logger.info(f"[TABLE BUILDER] Verification pass {feedback_loops+1}: {'PASS' if passed else 'FAIL'} (score threshold met: {passed})")
-        feedback_loops += 1
-        if not passed:
-            logger.warning("[TABLE BUILDER] Feedback loop triggered: retrying header/data extraction.")
-
-    # 4. Build uniform wide-format table
-    output_headers = []
-    if percent_header:
-        output_headers.append(percent_header)
-    output_headers.append(location_header)
-
-    # Build candidate columns: party -> candidate -> ballot types
-    for party in sorted(candidate_party_map.keys()):
-        for candidate in sorted(candidate_party_map[party].keys()):
-            for ballot_type in BALLOT_TYPES:
-                col = f"{candidate} ({party}) - {ballot_type}"
-                output_headers.append(col)
-            # Candidate total
-            output_headers.append(f"{candidate} ({party}) - Total")
-        # Party total
-        output_headers.append(f"{party} - Total")
-
-    # Grand total
-    output_headers.append("Grand Total")
-
-    # 5. Build rows: one per location (district/precinct/etc.)
-    rows_by_location = {}
-    for row in data:
-        location = row.get(location_header, "")
-        if location not in rows_by_location:
-            rows_by_location[location] = {h: "" for h in output_headers}
-            if percent_header:
-                rows_by_location[location][percent_header] = row.get(percent_header, "")
-            rows_by_location[location][location_header] = location
-
-        # Fill candidate/party/ballot type values
-        for party in candidate_party_map:
-            for candidate in candidate_party_map[party]:
-                candidate_total = 0
-                for ballot_type in BALLOT_TYPES:
-                    col = f"{candidate} ({party}) - {ballot_type}"
-                    # Try to find matching header in original data
-                    value = ""
-                    for h in headers:
-                        if candidate in h and party in h and ballot_type in h:
-                            value = row.get(h, "")
-                            break
-                    rows_by_location[location][col] = value
-                    try:
-                        candidate_total += int(value.replace(",", "")) if value else 0
-                    except Exception:
-                        pass
-                # Candidate total
-                rows_by_location[location][f"{candidate} ({party}) - Total"] = str(candidate_total)
-            # Party total
-            party_total = sum(
-                int(rows_by_location[location][f"{candidate} ({party}) - Total"] or 0)
-                for candidate in candidate_party_map[party]
-            )
-            rows_by_location[location][f"{party} - Total"] = str(party_total)
-        # Grand total
-        grand_total = sum(
-            int(rows_by_location[location][f"{candidate} ({party}) - Total"] or 0)
-            for party in candidate_party_map
-            for candidate in candidate_party_map[party]
-        )
-        rows_by_location[location]["Grand Total"] = str(grand_total)
-
-    # 6. Return harmonized output
-    output_data = [rows_by_location[loc] for loc in rows_by_location]
-    output_headers, output_data = harmonize_headers_and_data(output_headers, output_data)
-    logger.info(f"[TABLE BUILDER] Built {len(output_data)} rows with {len(output_headers)} columns.")
-
-    return output_headers, output_data
-
-# Example usage for integration/testing
-if __name__ == "__main__":
-    from ..Context_Integration.context_coordinator import ContextCoordinator
-    # Simulate a coordinator and a table extraction
-    coordinator = ContextCoordinator()
-    # Simulate headers/data from a table extraction
-    headers = [
-        "Precinct", "% Precincts Reporting",
-        "John Doe (Democratic) - Election Day", "John Doe (Democratic) - Early Voting",
-        "Jane Smith (Republican) - Election Day", "Jane Smith (Republican) - Early Voting",
-        "Write-In (Other) - Election Day"
-    ]
-    data = [
-        {
-            "Precinct": "Ward 1",
-            "% Precincts Reporting": "100%",
-            "John Doe (Democratic) - Election Day": "120",
-            "John Doe (Democratic) - Early Voting": "30",
-            "Jane Smith (Republican) - Election Day": "110",
-            "Jane Smith (Republican) - Early Voting": "25",
-            "Write-In (Other) - Election Day": "2"
-        },
-        {
-            "Precinct": "Ward 2",
-            "% Precincts Reporting": "100%",
-            "John Doe (Democratic) - Election Day": "140",
-            "John Doe (Democratic) - Early Voting": "35",
-            "Jane Smith (Republican) - Election Day": "100",
-            "Jane Smith (Republican) - Early Voting": "20",
-            "Write-In (Other) - Election Day": "1"
-        }
-    ]
-    context = {"state": "NY", "county": "Rockland"}
-    output_headers, output_data = build_dynamic_table(headers, data, coordinator, context)
-    print("Output headers:", output_headers)
-    print("Output data:", json.dumps(output_data, indent=2))

@@ -154,11 +154,12 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     for precinct_name, table in precinct_tables:
         if not table or not precinct_name:
             continue
-        # Extract headers and rows from the current table
         headers, data_rows = extract_table_data(table)
-        print("DEBUG: Extracted headers:", headers)
-        print("DEBUG: First data row:", data_rows[0] if data_rows else None)        
-        headers, rows = build_dynamic_table(headers, data_rows, coordinator, html_context)
+        # Pass precinct_name in context for this table
+        table_context = dict(html_context)
+        table_context["precinct"] = precinct_name
+        headers, rows = build_dynamic_table(headers, data_rows, coordinator, table_context)
+        data.extend(rows)
         for row in rows:
             row["Precinct"] = precinct_name
             data.append(row)
