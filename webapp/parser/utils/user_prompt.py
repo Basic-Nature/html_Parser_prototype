@@ -288,3 +288,24 @@ def prompt_user_for_button(page, candidates, toggle_name):
     except Exception as e:
         rprint(f"[red][FEEDBACK ERROR] {e}[/red]")
         return None, None
+
+def confirm_button_callback(candidate):
+    """
+    Prompt the user to confirm the button selection.
+    Returns True if confirmed, False if rejected.
+    """
+    label = candidate.get("label", "")
+    selector = candidate.get("selector", "")
+    print(f"\n[CONFIRMATION] Candidate button found: '{label}'\nSelector: {selector}")
+    try:
+        resp = prompt_user_input(
+            f"Do you want to click this button? (y/n): ",
+            default="y",
+            validator=lambda x: x.lower() in {"y", "n", "yes", "no"},
+            allow_cancel=True,
+            header="BUTTON CONFIRMATION"
+        ).strip().lower()
+    except PromptCancelled:
+        print("[yellow]Button confirmation cancelled by user.[/yellow]")
+        return False
+    return resp in {"y", "yes"}

@@ -7,34 +7,14 @@ from .....utils.output_utils import finalize_election_output
 from .....utils.logger_instance import logger
 from .....utils.shared_logger import rprint
 from .....utils.shared_logic import autoscroll_until_stable
-from .....utils.user_prompt import prompt_user_for_button
+from .....utils.user_prompt import prompt_user_for_button, confirm_button_callback
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .....Context_Integration.context_coordinator import ContextCoordinator
 
 BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
 
-def confirm_button_callback(candidate):
-    """
-    Prompt the user to confirm the button selection.
-    Returns True if confirmed, False if rejected.
-    """
-    from .....utils.user_prompt import prompt_user_input, PromptCancelled
-    label = candidate.get("label", "")
-    selector = candidate.get("selector", "")
-    print(f"\n[CONFIRMATION] Candidate button found: '{label}'\nSelector: {selector}")
-    try:
-        resp = prompt_user_input(
-            f"Do you want to click this button? (y/n): ",
-            default="y",
-            validator=lambda x: x.lower() in {"y", "n", "yes", "no"},
-            allow_cancel=True,
-            header="BUTTON CONFIRMATION"
-        ).strip().lower()
-    except PromptCancelled:
-        print("[yellow]Button confirmation cancelled by user.[/yellow]")
-        return False
-    return resp in {"y", "yes"}
+
 
 def find_and_click_best_button(
     page,
@@ -53,7 +33,7 @@ def find_and_click_best_button(
         contest_title=contest_title,
         keywords=keywords,
         context=context or {"toggle_name": toggle_name},
-        confirm_button_callback=confirm_button_callback,
+        # confirm_button_callback=confirm_button_callback, # Uncomment if you auto button click is giving wrong button
         prompt_user_for_button=prompt_user_for_button
     )
     if btn:

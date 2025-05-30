@@ -10,7 +10,7 @@ import json
 from typing import List, Dict, Tuple, Any, Optional
 from .logger_instance import logger
 from .shared_logic import normalize_text
-
+from ..config import CONTEXT_LIBRARY_PATH
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -25,34 +25,38 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     Uses context, regex, NER, and library.
     Returns (location_header, percent_reported_header)
     """
-    # Try context library patterns
-    location_patterns = coordinator.library.get("precinct_patterns", []) + \
-                        ["precinct", "ward", "district", "city", "municipal", "location", "area"]
-    percent_patterns = ["% precincts reporting", "% reporting", "percent reporting"]
+    # Use patterns from the context library if available
+    location_patterns = coordinator.library.get("location_patterns", [
+        "precinct", "ward", "district", "city", "municipal", "location", "area"
+    ])
+    percent_patterns = coordinator.library.get("percent_patterns", [
+        "% precincts reporting", "% reporting", "percent reporting"
+    ])
 
-    # Normalize headers for matching
     norm_headers = [normalize_text(h) for h in headers]
     location_header = None
     percent_header = None
 
-    # 1. Try regex/library patterns
+    # 1. Try exact match (case-insensitive)
     for idx, h in enumerate(norm_headers):
         for pat in location_patterns:
-            if pat.lower() in h:
+            if normalize_text(pat) == h:
                 location_header = headers[idx]
                 break
         if location_header:
             break
 
-    for idx, h in enumerate(norm_headers):
-        for pat in percent_patterns:
-            if pat.lower() in h:
-                percent_header = headers[idx]
+    # 2. Try substring match
+    if not location_header:
+        for idx, h in enumerate(norm_headers):
+            for pat in location_patterns:
+                if normalize_text(pat) in h:
+                    location_header = headers[idx]
+                    break
+            if location_header:
                 break
-        if percent_header:
-            break
 
-    # 2. Try spaCy NER if not found
+    # 3. Try spaCy NER if available
     if not location_header:
         for idx, h in enumerate(headers):
             entities = coordinator.extract_entities(h)
@@ -63,12 +67,34 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
             if location_header:
                 break
 
-    # 3. Fallback to first column
+    # 4. Fallback to first column
     if not location_header and headers:
         location_header = headers[0]
+
+    # Percent header: exact match first
+    for idx, h in enumerate(norm_headers):
+        for pat in percent_patterns:
+            if normalize_text(pat) == h:
+                percent_header = headers[idx]
+                break
+        if percent_header:
+            break
+
+    # Percent header: substring match
+    if not percent_header:
+        for idx, h in enumerate(norm_headers):
+            for pat in percent_patterns:
+                if normalize_text(pat) in h:
+                    percent_header = headers[idx]
+                    break
+            if percent_header:
+                break
+
+    # Fallback: any header with '%' in it
     if not percent_header and headers:
         percent_header = next((h for h in headers if "%" in h), None)
 
+    logger.info(f"[TABLE BUILDER] Location header detected: {location_header}, Percent header detected: {percent_header}")
     return location_header, percent_header
 
 def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoordinator") -> Dict[str, Dict[str, List[str]]]:

@@ -1053,7 +1053,7 @@
     "Soil and Water Conservation District Board",
     "Soil and Water Conservation District Commissioner"
   ],
-  "precinct_patterns": [
+  "location_patterns": [
     "Precinct",
     "Ward",
     "District",
@@ -1272,7 +1272,7 @@
     "proposition",
     "referendum"
   ],
-  "reporting_status_patterns": [
+  "reporting_patterns": [
     "100% Reporting",
     "Partial",
     "Unofficial",
