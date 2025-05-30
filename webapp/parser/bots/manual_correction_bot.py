@@ -29,7 +29,7 @@ import argparse
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
-
+from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
 import importlib
 
 try:

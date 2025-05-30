@@ -1131,7 +1131,7 @@
     "yes",
     "no"
   ],
-  "default_noisy_label_patterns": [
+  "HTML_SPECIFIC_PATTERNS": [
     "view results? by election district\\s*[:\\n]?$",
     "summary by method\\s*[:\\n]?$",
     "download\\s*[:\\n]?$",
@@ -1259,7 +1259,7 @@
     "app.enhancedvoting.com": {
       "max_scrolls": 1,
       "step": 8000,
-      "last_used": "2025-05-29T04:36:11.925891"
+      "last_used": "2025-05-30T11:06:56.337776"
     }
   },
   "contest_type_patterns": [
@@ -1272,8 +1272,14 @@
     "proposition",
     "referendum"
   ],
-  "reporting_patterns": [
+  "percent_patterns": [
     "100% Reporting",
+    "% reporting",
+    "% of precincts reporting",
+    "% of votes counted",
+    "% of ballots counted",
+    "% of votes cast",
+    "Fully Reported",
     "Partial",
     "Unofficial",
     "Final",
