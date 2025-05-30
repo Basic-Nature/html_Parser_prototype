@@ -217,6 +217,42 @@ def build_dynamic_table(
     """
     Main entry: builds a uniform, context-aware table with dynamic verification and feedback.
     """
+    # --- Detect and transpose candidate-major tables ---
+    # If first header is "Candidate" and the rest are vote types, transpose
+    candidate_headers = {"candidate", "candidates"}
+    if headers and normalize_text(headers[0]) in candidate_headers:
+        # Transpose: each candidate becomes a column, each row is a location (Precinct, etc.)
+        new_headers = [headers[0]]  # Candidate
+        locations = headers[1:]     # e.g., ["Election Day", "Early Voting", ...]
+        transposed_data = []
+        for row in data:
+            candidate = row.get(headers[0], "")
+            for loc in locations:
+                value = row.get(loc, "")
+                transposed_row = { "Candidate": candidate, "Vote Type": loc, "Votes": value }
+                transposed_data.append(transposed_row)
+        # Now, pivot so each Vote Type becomes a column, Candidate as row
+        from collections import defaultdict
+        pivot = defaultdict(dict)
+        candidates = set()
+        vote_types = set()
+        for row in transposed_data:
+            candidate = row["Candidate"]
+            vote_type = row["Vote Type"]
+            votes = row["Votes"]
+            pivot[candidate][vote_type] = votes
+            candidates.add(candidate)
+            vote_types.add(vote_type)
+        new_headers = ["Candidate"] + sorted(vote_types)
+        new_data = []
+        for candidate in sorted(candidates):
+            row = {"Candidate": candidate}
+            for vt in vote_types:
+                row[vt] = pivot[candidate].get(vt, "")
+            new_data.append(row)
+        headers = new_headers
+        data = new_data
+
     # 1. Detect location and percent headers
     location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
     logger.info(f"[TABLE BUILDER] Detected location header: {location_header}, percent header: {percent_header}")

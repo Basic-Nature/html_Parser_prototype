@@ -156,6 +156,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             continue
         # Extract headers and rows from the current table
         headers, data_rows = extract_table_data(table)
+        print("DEBUG: Extracted headers:", headers)
+        print("DEBUG: First data row:", data_rows[0] if data_rows else None)        
         headers, rows = build_dynamic_table(headers, data_rows, coordinator, html_context)
         for row in rows:
             row["Precinct"] = precinct_name
