@@ -11,7 +11,7 @@
 import sys
 import threading
 import datetime
-from ..utils.shared_logger import log_warning
+from ..utils.shared_logger import rprint
 class PromptCancelled(Exception):
     """Raised when the user cancels a prompt."""
     pass
@@ -260,3 +260,31 @@ def prompt_resolve_conflict(conflict_type, options):
         validator=lambda x: x.isdigit() and 0 <= int(x) < len(options)
     )
     return options[int(idx)]
+from ..utils.shared_logger import rprint
+def prompt_user_for_button(page, candidates, toggle_name):
+    """
+    Feedback UI: Prompt user to select the correct button from candidates.
+    """
+    print(f"\n[FEEDBACK] Please select the correct button for '{toggle_name}':")
+    for idx, btn in enumerate(candidates):
+        print(
+            f"{idx}: label='{btn.get('label', '')}'"
+            f" | class='{btn.get('class', '')}'"
+            f" | tag='{btn.get('tag', '')}'"
+            f" | context_heading='{btn.get('context_heading', '')}'"
+            f" | context_anchor='{btn.get('context_anchor', '')}'"
+            f" | visible={btn.get('is_visible', False)}"
+            f" | enabled={btn.get('is_clickable', False)}"
+        )
+    try:
+        choice = int(input("Enter the number of the correct button (or -1 to skip): "))
+        if 0 <= choice < len(candidates):
+            chosen_btn = candidates[choice]
+            rprint(f"[bold green][FEEDBACK] You selected: '{chosen_btn.get('label', '')}'[/bold green]")
+            return chosen_btn, choice
+        else:
+            rprint("[yellow][FEEDBACK] Skipped manual correction.[/yellow]")
+            return None, None
+    except Exception as e:
+        rprint(f"[red][FEEDBACK ERROR] {e}[/red]")
+        return None, None

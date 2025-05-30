@@ -33,10 +33,14 @@ from ..utils.db_utils import (
 )
 from ..utils.shared_logic import get_title_embedding_features, load_context_library, scan_environment
 from .Integrity_check import (
-    detect_anomalies_with_ml, plot_clusters,
+    detect_anomalies_with_ml, print_ml_anomalies,
     auto_tune_contamination, election_integrity_checks, monitor_db_for_alerts
 )
 import sqlite3
+
+from rich.console import Console
+
+console = Console()
 
 # If you want to suppress the progress bar from SentenceTransformer
 # os.environ["TRANSFORMERS_NO_PROGRESS_BAR"] = "1"
@@ -340,7 +344,7 @@ def organize_context(
                     title = contest.get('title', str(contest))
                     rprint(f"[bold magenta][ML][/bold magenta] Context anomaly detected: [bold yellow]{title}[/bold yellow]\n  [dim]Context:[/dim] {contest}")
             if plot_clusters_flag:
-                plot_clusters(X, clusters, anomalies=anomalies)
+                plot_clusters_flag =print_ml_anomalies(anomalies, contests)
         except Exception as e:
             rprint(f"[bold red][ML] Anomaly detection failed:[/bold red] {e}")
 
@@ -405,6 +409,35 @@ def organize_context(
     return organized
 
 monitor_db_for_alerts(poll_interval=10)
+
+def correct_and_update_contest(self, contest_id, correction_data):
+    """
+    Update a contest in the DB and context library, then re-organize context.
+    """
+    from ..utils.db_utils import update_contest_in_db
+    # 1. Update DB
+    update_contest_in_db({"id": contest_id, **correction_data})
+    # 2. Update context library if needed
+    for key, value in correction_data.items():
+        # Example: add new county/state mapping if not present
+        if key == "county" and value not in self.library.get("known_counties", []):
+            self.library.setdefault("known_counties", []).append(value)
+        # Add similar logic for other fields as needed
+    # 3. Save updated context library (if you persist it)
+    # save_context_library(self.library)
+    # 4. Re-organize context
+    self.organized = None
+    # 5. Log correction
+    self.log_field_selection(
+        field_type="contest",
+        field_name="correction",
+        extracted_value=correction_data,
+        method="manual",
+        score=1.0,
+        result="manual_pass",
+        context={"contest_id": contest_id},
+        user_feedback=None
+    )
 
 def safe_filename(s):
     """Sanitize a string to be safe for use as a filename or path component."""

@@ -13,7 +13,7 @@ from ...utils.shared_logger import rprint
 from ...state_router import get_handler
 from ...utils.output_utils import finalize_election_output
 from ...utils.logger_instance import logger
-from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
+from ...utils.table_builder import rescan_and_verify, build_dynamic_table, extract_table_data
 
 try:
     import fitz  # PyMuPDF
@@ -238,7 +238,7 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
             for row in data:
                 wide_row = {reporting_unit_col: row.get(reporting_unit_col, "")}
                 for cand_col in candidate_cols:
-                    candidate = clean_candidate_name(row.get(cand_col, ""))
+                    candidate = extract_table_data(row.get(cand_col, ""))
                     for method_col in method_cols:
                         val = row.get(method_col, "")
                         col_name = f"{candidate} - {method_col}"
@@ -258,8 +258,8 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
             headers = [reporting_unit_col] + sorted([k for k in all_keys if k != reporting_unit_col])
 
             # Harmonize and add grand total
-            wide_data = harmonize_rows(headers, wide_data)
-            wide_data.append(calculate_grand_totals(wide_data))
+            wide_data = rescan_and_verify(headers, wide_data)
+            wide_data.append(build_dynamic_table(wide_data))
 
             contest_title = os.path.basename(pdf_path).replace(".pdf", "")
 

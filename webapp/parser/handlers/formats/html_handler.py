@@ -7,7 +7,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     from ...Context_Integration.context_coordinator import ContextCoordinator
     from ...state_router import get_handler
     from ...utils.contest_selector import select_contest
-    from ...utils.table_builder import extract_table_data, calculate_grand_totals
+    from ...utils.table_builder import build_dynamic_table, rescan_and_verify
     from ...utils.shared_logic import  find_and_click_toggle
     from ...utils.logger_instance import logger
 
@@ -90,7 +90,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
         else:
             precinct_tables = []
         for precinct_name, table in precinct_tables:
-            table_headers, rows = extract_table_data(table)
+            table_headers, rows = build_dynamic_table(table)
             for row in rows:
                 row["District"] = precinct_name
                 data.append(row)
@@ -100,7 +100,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
         # Fallback: extract first table on the page
         table = page.locator("table")
         if table.count() > 0:
-            headers, data = extract_table_data(table.first)
+            headers, data = build_dynamic_table(table.first)
 
     # 7. Organize output for wide format and downstream use
     # Ensure all required fields are present and categorized
@@ -114,7 +114,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     headers = [h for h in preferred_order if h in all_keys] + [h for h in all_keys if h not in preferred_order]
     # Add grand totals row if data exists
     if data:
-        data.append(calculate_grand_totals(data))
+        data.append(rescan_and_verify(data))
 
     # 8. Build metadata for output
     contest_info = next((c for c in contests if c.get("title") == contest_title), {})

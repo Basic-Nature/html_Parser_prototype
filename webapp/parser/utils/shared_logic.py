@@ -731,3 +731,47 @@ def parse_text_block_to_rows(text):
             headers.update(row.keys())
             rows.append(row)
     return list(headers), rows
+
+def scan_buttons_with_progress(buttons, scan_callback=None):
+    """
+    Scan a list of buttons with a single-line progress bar.
+    Optionally, provide a scan_callback(button, idx) for custom logic.
+    """
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        "[progress.percentage]{task.percentage:>3.0f}%",
+        TimeElapsedColumn(),
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Scanning buttons...", total=len(buttons))
+        for idx, btn in enumerate(buttons):
+            label = ""
+            try:
+                label = btn.inner_text()[:60]
+            except Exception:
+                label = str(btn)[:60]
+            progress.update(task, advance=1, description=f"Scanning: {label}")
+            if scan_callback:
+                scan_callback(btn, idx)
+
+def keyphrase_match(label, keyphrase, min_words=2, fuzzy_cutoff=0.8):
+    """
+    Returns True if the label matches the keyphrase as a whole (regex or fuzzy),
+    or if at least min_words from the keyphrase are present in the label.
+    """
+    label_norm = label.lower().strip()
+    keyphrase_norm = keyphrase.lower().strip()
+    # 1. Try full phrase regex (allowing whitespace, punctuation, : or \n at end)
+    pattern = re.sub(r"\s+", r"\\s+", re.escape(keyphrase_norm)) + r"[\s:]*$"
+    if re.search(pattern, label_norm):
+        return True
+    # 2. Try fuzzy full phrase
+    if difflib.SequenceMatcher(None, label_norm, keyphrase_norm).ratio() >= fuzzy_cutoff:
+        return True
+    # 3. Require at least min_words from keyphrase to be present
+    words = [w for w in re.split(r"\W+", keyphrase_norm) if w]
+    matches = sum(1 for w in words if w in label_norm)
+    if len(words) >= min_words and matches >= min_words:
+        return True
+    return False

@@ -6,270 +6,312 @@
 
 import re
 import os
+import json
 from typing import List, Dict, Tuple, Any, Optional
 from .logger_instance import logger
 from .shared_logic import normalize_text
-
-
-import json
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
-def get_precinct_headers(coordinator: "ContextCoordinator", state=None, county=None) -> List[str]:
-    """
-    Get precinct/district headers using the ContextCoordinator.
-    """
-    if coordinator is not None:
-        from ..Context_Integration.context_coordinator import ContextCoordinator
-        # Try to get from coordinator's library (state/county aware)
-        headers = coordinator.library.get("precinct_header_tags", [])
-        # Optionally, filter by state/county if your library supports it
-        return headers
-    # Fallback: use a default set
-    return ["Precinct", "District", "Ward", "Division", "Area"]
+BALLOT_TYPES = [
+    "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
+]
 
-def is_precinct_header(header: str, coordinator: "ContextCoordinator", state=None, county=None ) -> bool:
-    """Check if a header is a precinct/district header using coordinator."""
-    from ..Context_Integration.context_coordinator import ContextCoordinator
-    precinct_headers = get_precinct_headers(state=state, county=county, coordinator=coordinator)
-    return normalize_text(header) in [normalize_text(h) for h in precinct_headers]
-
-def extract_table_data(table_locator) -> Tuple[List[str], List[Dict[str, Any]]]:
+def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoordinator") -> Tuple[str, str]:
     """
-    Extracts headers and row data from a Playwright Locator for a table element.
-    Returns (headers, data) where headers is a list of column names,
-    and data is a list of dicts mapping headers to cell values.
-    Ensures all rows have the same headers.
+    Dynamically detect the first and second location columns (e.g., precinct, ward, city, district, municipal).
+    Uses context, regex, NER, and library.
+    Returns (location_header, percent_reported_header)
     """
-    try:
-        # Try to get headers from thead first, then from first tbody row
-        headers = []
-        header_locator = table_locator.locator("thead tr th")
-        if header_locator.count() == 0:
-            header_locator = table_locator.locator("tbody tr:first-child th")
-        for i in range(header_locator.count()):
-            headers.append(header_locator.nth(i).inner_text().strip())
-        if not headers:
-            raise RuntimeError("No headers found in the table.")
+    # Try context library patterns
+    location_patterns = coordinator.library.get("precinct_patterns", []) + \
+                        ["precinct", "ward", "district", "city", "municipal", "location", "area"]
+    percent_patterns = ["% precincts reporting", "% reporting", "percent reporting"]
 
-        data = []
-        row_locator = table_locator.locator("tbody tr")
-        for r_idx in range(row_locator.count()):
-            r = row_locator.nth(r_idx)
-            # Skip header rows in tbody
-            if r.locator("th").count() > 0 and r.locator("td").count() == 0:
-                continue
-            cell_locator = r.locator("td")
-            if cell_locator.count() == 0:
-                continue
-            cells = [cell_locator.nth(i).inner_text().strip() for i in range(cell_locator.count())]
-            row_data = {headers[i]: cells[i] for i in range(min(len(headers), len(cells)))}
-            data.append(row_data)
-        if not data:
-            logger.info(f"[TABLE BUILDER] Extracted 0 rows from the table.")
-            raise RuntimeError("No rows found in the table.")
-        # Harmonize all rows to have the same headers
-        data = harmonize_rows(headers, data)
-        return headers, data
-    except Exception as e:
-        logger.error(f"[ERROR] Failed to extract table from page: {e}")
-        return [], []
+    # Normalize headers for matching
+    norm_headers = [normalize_text(h) for h in headers]
+    location_header = None
+    percent_header = None
 
-def harmonize_rows(headers: List[str], data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    # 1. Try regex/library patterns
+    for idx, h in enumerate(norm_headers):
+        for pat in location_patterns:
+            if pat.lower() in h:
+                location_header = headers[idx]
+                break
+        if location_header:
+            break
+
+    for idx, h in enumerate(norm_headers):
+        for pat in percent_patterns:
+            if pat.lower() in h:
+                percent_header = headers[idx]
+                break
+        if percent_header:
+            break
+
+    # 2. Try spaCy NER if not found
+    if not location_header:
+        for idx, h in enumerate(headers):
+            entities = coordinator.extract_entities(h)
+            for ent, label in entities:
+                if label in {"GPE", "LOC", "FAC"}:
+                    location_header = headers[idx]
+                    break
+            if location_header:
+                break
+
+    # 3. Fallback to first column
+    if not location_header and headers:
+        location_header = headers[0]
+    if not percent_header and headers:
+        percent_header = next((h for h in headers if "%" in h), None)
+
+    return location_header, percent_header
+
+def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoordinator") -> Dict[str, Dict[str, List[str]]]:
+    """
+    Returns a dict: {party: {candidate: [ballot_types]}}
+    """
+    # Use coordinator to extract all known parties and ballot types
+    known_parties = ["Democratic", "Republican", "Working Families", "Conservative", "Green", "Libertarian", "Independent", "Write-In", "Other"]
+    ballot_types = BALLOT_TYPES
+
+    # Group headers by candidate/party/ballot type
+    candidate_party_map = {}
+    for h in headers:
+        # Try to parse: Candidate (Party) - BallotType
+        m = re.match(r"(.+?)\s*\((.+?)\)\s*-\s*(.+)", h)
+        if m:
+            candidate, party, ballot_type = m.groups()
+        else:
+            # Try: Candidate - BallotType
+            m = re.match(r"(.+?)\s*-\s*(.+)", h)
+            if m:
+                candidate, ballot_type = m.groups()
+                party = ""
+            else:
+                candidate, party, ballot_type = h, "", ""
+        candidate = candidate.strip()
+        party = party.strip()
+        ballot_type = ballot_type.strip()
+        # Fuzzy match party
+        if party:
+            best_party, score = max(((p, coordinator.fuzzy_score(party, p)) for p in known_parties), key=lambda x: x[1])
+            if score > 80:
+                party = best_party
+        else:
+            # Try to infer party from candidate name using NER
+            entities = coordinator.extract_entities(candidate)
+            for ent, label in entities:
+                if label in {"ORG", "NORP"}:
+                    party = ent
+                    break
+        if not party:
+            party = "Other"
+        if party not in candidate_party_map:
+            candidate_party_map[party] = {}
+        if candidate not in candidate_party_map[party]:
+            candidate_party_map[party][candidate] = []
+        if ballot_type and ballot_type not in candidate_party_map[party][candidate]:
+            candidate_party_map[party][candidate].append(ballot_type)
+    return candidate_party_map
+
+def harmonize_headers_and_data(headers: List[str], data: List[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Ensures all rows have the same headers, filling missing fields with empty string.
     """
-    return [{h: row.get(h, "") for h in headers} for row in data]
+    all_headers = list(headers)
+    for row in data:
+        for k in row.keys():
+            if k not in all_headers:
+                all_headers.append(k)
+    harmonized = [{h: row.get(h, "") for h in all_headers} for row in data]
+    return all_headers, harmonized
 
-def clean_candidate_name(name: str) -> str:
+def rescan_and_verify(headers: List[str], data: List[Dict[str, Any]], coordinator: "ContextCoordinator", context: dict, threshold: float = 0.85) -> Tuple[List[str], List[Dict[str, Any]], bool]:
     """
-    Cleans and normalizes candidate names:
-    - Strips whitespace and punctuation
-    - Handles suffixes (Jr., Sr., II, III, etc.)
-    - Capitalizes names properly
-    - Removes party abbreviations if attached
+    Rescans headers and data, verifies with ML/NER, and retries if below threshold.
+    Returns (headers, data, passed)
     """
-    name = name.strip()
-    name = re.sub(r"[^\w\s\-\']", '', name)
-    suffixes = ['Jr', 'Sr', 'II', 'III', 'IV', 'V']
-    parts = name.split()
-    if parts and parts[-1].replace('.', '') in suffixes:
-        suffix = parts.pop(-1)
-        name = ' '.join(parts)
-        name = f"{name} {suffix}"
-    else:
-        name = ' '.join(parts)
-    def smart_cap(word):
-        if word.lower().startswith("mc") and len(word) > 2:
-            return "Mc" + word[2:].capitalize()
-        if word.lower().startswith("mac") and len(word) > 3:
-            return "Mac" + word[3:].capitalize()
-        if "'" in word:
-            return "'".join([w.capitalize() for w in word.split("'")])
-        if "-" in word:
-            return "-".join([w.capitalize() for w in word.split("-")])
-        return word.capitalize()
-    name = ' '.join(smart_cap(w) for w in name.split())
-    return name
+    # Use coordinator's ML/NER to score headers
+    scores = []
+    for h in headers:
+        score = coordinator.score_header(h, context)
+        scores.append(score)
+    avg_score = sum(scores) / len(scores) if scores else 0
+    passed = avg_score >= threshold
+    if not passed:
+        # Attempt to re-extract or re-map headers using NER/ML
+        new_headers = []
+        for h in headers:
+            entities = coordinator.extract_entities(h)
+            if entities:
+                # Use the most likely entity label
+                ent, label = entities[0]
+                new_headers.append(ent)
+            else:
+                new_headers.append(h)
+        headers = new_headers
+        # Optionally, re-harmonize data
+        headers, data = harmonize_headers_and_data(headers, data)
+    return headers, data, passed
 
-def parse_candidate_col(col: str) -> Tuple[str, str, str]:
-    """
-    Attempts to parse a column header into (candidate, party, method).
-    """
-    m = re.match(r"(.+?)\s+\((.+?)\)\s*-\s*(.+)", col)
-    if m:
-        return m.groups()
-    parts = col.rsplit(" - ", 2)
-    if len(parts) == 2:
-        return parts[0], "", parts[1]
-    return col, "", ""
+from typing import List, Dict, Any, Tuple
 
-def detect_table_orientation(headers: List[str], data: List[Dict[str, Any]], coordinator=None, state=None, county=None) -> str:
-    """
-    Returns 'precincts_in_rows' if first header is a precinct/district,
-    'candidates_in_rows' if first header is a candidate, else 'unknown'.
-    """
-    from ..Context_Integration.context_coordinator import ContextCoordinator
-    if headers and is_precinct_header(headers[0], state=state, county=county, coordinator=coordinator):
-        return 'precincts_in_rows'
-    return 'unknown'
+def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
+    headers = []
+    data = []
+    # Extract headers
+    header_cells = table.locator("thead tr th")
+    if header_cells.count() == 0:
+        header_cells = table.locator("tr").nth(0).locator("th, td")
+    for i in range(header_cells.count()):
+        headers.append(header_cells.nth(i).inner_text().strip())
+    # Extract rows
+    rows = table.locator("tbody tr")
+    for i in range(rows.count()):
+        row = {}
+        cells = rows.nth(i).locator("td")
+        for j in range(cells.count()):
+            if j < len(headers):
+                row[headers[j]] = cells.nth(j).inner_text().strip()
+        data.append(row)
+    return headers, data
 
-def normalize_header(header: str) -> str:
-    return re.sub(r'\s+', ' ', header.strip().lower())
-
-def format_table_data_for_output(
+def build_dynamic_table(
     headers: List[str],
     data: List[Dict[str, Any]],
     coordinator: "ContextCoordinator",
-    handler_options: Optional[dict] = None,    
-    state=None,
-    county=None
+    context: dict,
+    max_feedback_loops: int = 3
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
-    Returns (headers, data) in either wide or long format, based on .env OUTPUT_LONG_FORMAT or handler_options.
-    Dynamically detects if the first column is a precinct/district and pivots accordingly.
-    handler_options: dict for handler-specific overrides.
+    Main entry: builds a uniform, context-aware table with dynamic verification and feedback.
     """
-    output_long = os.getenv("OUTPUT_LONG_FORMAT", "false").lower() == "true"
-    if handler_options and "output_long" in handler_options:
-        output_long = handler_options["output_long"]
-    if not output_long:
-        logger.info("[TABLE BUILDER] Outputting in wide format.")
-        return headers, data  # Wide format
+    # 1. Detect location and percent headers
+    location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
+    logger.info(f"[TABLE BUILDER] Detected location header: {location_header}, percent header: {percent_header}")
 
-    orientation = detect_table_orientation(headers, data, coordinator=coordinator, state=state, county=county)
-    logger.info(f"[TABLE BUILDER] Detected table orientation: {orientation}")
+    # 2. Extract candidate/party/ballot type structure
+    candidate_party_map = extract_candidates_and_parties(headers, coordinator)
 
-    if orientation == 'precincts_in_rows':
-        # Candidates are in columns, precincts in rows
-        first_header = headers[0]
-        long_rows = []
-        for row in data:
-            precinct = row.get(first_header, "")
-            for col in headers[1:]:
-                candidate, party, method = parse_candidate_col(col)
-                value = row.get(col, "")
-                if value and value.strip() not in {"", "-", "0"}:
-                    long_rows.append({
-                        first_header: precinct,
-                        "Candidate": clean_candidate_name(candidate.strip()),
-                        "Party": party.strip(),
-                        "Method": method.strip(),
-                        "Votes": value
-                    })
-        logger.info(f"[TABLE BUILDER] Converted {len(data)} wide rows to {len(long_rows)} long rows.")
-        return [first_header, "Candidate", "Party", "Method", "Votes"], long_rows
+    # 3. Rescan and verify headers/data, feedback loop
+    feedback_loops = 0
+    passed = False
+    while not passed and feedback_loops < max_feedback_loops:
+        headers, data, passed = rescan_and_verify(headers, data, coordinator, context)
+        logger.info(f"[TABLE BUILDER] Verification pass {feedback_loops+1}: {'PASS' if passed else 'FAIL'} (score threshold met: {passed})")
+        feedback_loops += 1
+        if not passed:
+            logger.warning("[TABLE BUILDER] Feedback loop triggered: retrying header/data extraction.")
 
-    else:
-        logger.warning("[TABLE BUILDER] Unknown table orientation; outputting in wide format.")
-        return headers, data
+    # 4. Build uniform wide-format table
+    # Columns: [percent_header, location_header, ...candidates grouped by party and ballot type..., totals]
+    output_headers = []
+    if percent_header:
+        output_headers.append(percent_header)
+    output_headers.append(location_header)
 
-def review_and_fill_missing_data(headers: List[str], data: List[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """
-    Review process to catch and fill missing data after initial break.
-    Ensures all rows have all headers and attempts to fill missing values with empty string.
-    Summarizes missing data warnings at the end.
-    """
-    data = harmonize_rows(headers, data)
-    missing_summary = []
-    for idx, row in enumerate(data):
-        missing = [h for h in headers if not row.get(h)]
-        if missing:
-            # Collect warning instead of logging immediately
-            missing_summary.append((idx, missing))
-    # Log up to 5 individual warnings, then a summary
-    for idx, missing in missing_summary[:5]:
-        logger.warning(f"[TABLE BUILDER] Row {idx} missing data for columns: {missing}")
-    if len(missing_summary) > 5:
-        logger.warning(f"[TABLE BUILDER] {len(missing_summary)} rows had missing data (showing first 5).")
-    elif missing_summary:
-        logger.warning(f"[TABLE BUILDER] {len(missing_summary)} rows had missing data.")
-    return headers, data
+    # Build candidate columns: party -> candidate -> ballot types
+    for party in sorted(candidate_party_map.keys()):
+        for candidate in sorted(candidate_party_map[party].keys()):
+            for ballot_type in BALLOT_TYPES:
+                col = f"{candidate} ({party}) - {ballot_type}"
+                output_headers.append(col)
+            # Candidate total
+            output_headers.append(f"{candidate} ({party}) - Total")
+        # Party total
+        output_headers.append(f"{party} - Total")
 
-def score_and_break_on_match(
-    candidates: List[Tuple[float, Any]],
-    threshold: float,
-    logger=None
-) -> Optional[Any]:
-    """
-    Given a list of (score, element) tuples, returns the first element above threshold.
-    If none found, returns None. Logs diagnostics.
-    """
-    candidates = sorted(candidates, reverse=True, key=lambda x: x[0])
-    for score, el in candidates:
-        if score >= threshold:
-            if logger:
-                logger.info(f"[TABLE BUILDER] Match found with score {score:.2f}. Breaking early.")
-            return el
-    if logger:
-        logger.warning(f"[TABLE BUILDER] No match found above threshold {threshold}.")
-    return None
+    # Grand total
+    output_headers.append("Grand Total")
 
-def calculate_grand_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Sums all numeric columns across a list of parsed precinct rows.
-    Returns a 'Grand Total' row.
-    Skips fields like 'Precinct' and '% Precincts Reporting'.
-    Ensures all keys present in any row are included in the grand total row.
-    """
-    skip_fields = {"Precinct", "% Precincts Reporting"}
-    totals = {}
+    # 5. Build rows: one per location (district/precinct/etc.)
+    rows_by_location = {}
+    for row in data:
+        location = row.get(location_header, "")
+        if location not in rows_by_location:
+            rows_by_location[location] = {h: "" for h in output_headers}
+            if percent_header:
+                rows_by_location[location][percent_header] = row.get(percent_header, "")
+            rows_by_location[location][location_header] = location
 
-    all_keys = set()
-    for row in rows:
-        if isinstance(row, dict):
-            all_keys.update(row.keys())
-    for key in all_keys:
-        if key in skip_fields:
-            continue
-        totals[key] = 0.0
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        for k in all_keys:
-            if k in skip_fields:
-                continue
-            v = row.get(k, "")
-            if not isinstance(v, str) or not v.strip():
-                continue
-            try:
-                val = float(v.replace(",", "").replace("-", "0"))
-            except Exception:
-                continue
-            totals[k] = totals.get(k, 0) + val
-    totals["Precinct"] = "Grand Total"
-    totals["% Precincts Reporting"] = "100.00%"
-    if "Total" in totals:
-        totals["Total"] = str(int(totals["Total"]))
-    return {k: (str(int(v)) if isinstance(v, float) and v.is_integer() else str(v)) for k, v in totals.items()}
+        # Fill candidate/party/ballot type values
+        for party in candidate_party_map:
+            for candidate in candidate_party_map[party]:
+                candidate_total = 0
+                for ballot_type in BALLOT_TYPES:
+                    col = f"{candidate} ({party}) - {ballot_type}"
+                    # Try to find matching header in original data
+                    value = ""
+                    for h in headers:
+                        if candidate in h and party in h and ballot_type in h:
+                            value = row.get(h, "")
+                            break
+                    rows_by_location[location][col] = value
+                    try:
+                        candidate_total += int(value.replace(",", "")) if value else 0
+                    except Exception:
+                        pass
+                # Candidate total
+                rows_by_location[location][f"{candidate} ({party}) - Total"] = str(candidate_total)
+            # Party total
+            party_total = sum(
+                int(rows_by_location[location][f"{candidate} ({party}) - Total"] or 0)
+                for candidate in candidate_party_map[party]
+            )
+            rows_by_location[location][f"{party} - Total"] = str(party_total)
+        # Grand total
+        grand_total = sum(
+            int(rows_by_location[location][f"{candidate} ({party}) - Total"] or 0)
+            for party in candidate_party_map
+            for candidate in candidate_party_map[party]
+        )
+        rows_by_location[location]["Grand Total"] = str(grand_total)
+
+    # 6. Return harmonized output
+    output_data = [rows_by_location[loc] for loc in rows_by_location]
+    output_headers, output_data = harmonize_headers_and_data(output_headers, output_data)
+    logger.info(f"[TABLE BUILDER] Built {len(output_data)} rows with {len(output_headers)} columns.")
+
+    return output_headers, output_data
 
 # Example usage for integration/testing
 if __name__ == "__main__":
     from ..Context_Integration.context_coordinator import ContextCoordinator
     # Simulate a coordinator and a table extraction
     coordinator = ContextCoordinator()
-    # You would pass a real Playwright table_locator in production
-    # For demo, just print the precinct headers
-    print("Precinct headers from coordinator:", get_precinct_headers(coordinator=coordinator))
+    # Simulate headers/data from a table extraction
+    headers = [
+        "Precinct", "% Precincts Reporting",
+        "John Doe (Democratic) - Election Day", "John Doe (Democratic) - Early Voting",
+        "Jane Smith (Republican) - Election Day", "Jane Smith (Republican) - Early Voting",
+        "Write-In (Other) - Election Day"
+    ]
+    data = [
+        {
+            "Precinct": "Ward 1",
+            "% Precincts Reporting": "100%",
+            "John Doe (Democratic) - Election Day": "120",
+            "John Doe (Democratic) - Early Voting": "30",
+            "Jane Smith (Republican) - Election Day": "110",
+            "Jane Smith (Republican) - Early Voting": "25",
+            "Write-In (Other) - Election Day": "2"
+        },
+        {
+            "Precinct": "Ward 2",
+            "% Precincts Reporting": "100%",
+            "John Doe (Democratic) - Election Day": "140",
+            "John Doe (Democratic) - Early Voting": "35",
+            "Jane Smith (Republican) - Election Day": "100",
+            "Jane Smith (Republican) - Early Voting": "20",
+            "Write-In (Other) - Election Day": "1"
+        }
+    ]
+    context = {"state": "NY", "county": "Rockland"}
+    output_headers, output_data = build_dynamic_table(headers, data, coordinator, context)
+    print("Output headers:", output_headers)
+    print("Output data:", json.dumps(output_data, indent=2))

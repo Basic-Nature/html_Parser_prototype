@@ -1,28 +1,110 @@
 import re
 from ..utils.shared_logger import rprint
-from ..utils.shared_logic import normalize_state_name, normalize_county_name 
+from ..utils.shared_logic import normalize_state_name, normalize_county_name
 from ..utils.logger_instance import logger
 from ..utils.user_prompt import prompt_user_input, PromptCancelled
+from collections import defaultdict
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
 def normalize_race_name(name):
-    # Simple normalization for deduplication
     import re
     return re.sub(r"\W+", "", name.strip().lower()) if name else ""
 
 def normalize_contest_title(title: str) -> str:
-    """
-    Normalize contest titles by removing 'Vote for X' and extra whitespace.
-    """
     if not title:
         return ""
-    # Remove 'Vote for X' (case-insensitive)
     title = re.sub(r'\s*[\r\n]*Vote for \d+\s*', '', title, flags=re.IGNORECASE)
-    # Remove extra whitespace
     return title.strip()
+
+def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator", context: dict, threshold: float = 0.85) -> bool:
+    """
+    Use ML/NER to verify if the contest's year/type/title are likely correct.
+    Returns True if above threshold, False otherwise.
+    """
+    title = contest.get("title", "")
+    year = contest.get("year", "")
+    ctype = contest.get("type", "")
+    # Score year: must match a valid election year, not a timestamp
+    year_score = 0.0
+    if year and re.match(r"^(19|20)\d{2}$", str(year)):
+        year_score = 1.0
+    else:
+        # Try to extract year from title using NER
+        entities = coordinator.extract_entities(title)
+        for ent, label in entities:
+            if label == "DATE" and re.match(r"^(19|20)\d{2}$", ent):
+                year_score = 0.9
+                break
+    # Score type: must match known election types
+    known_types = [t.lower() for t in coordinator.get_election_types()]
+    type_score = 1.0 if ctype and ctype.lower() in known_types else 0.0
+    # Score title: must contain a known contest/election phrase
+    contest_keywords = ["president", "senate", "congress", "governor", "mayor", "school board", "proposition", "referendum", "assembly", "council", "trustee", "justice", "clerk"]
+    title_score = 1.0 if any(kw in title.lower() for kw in contest_keywords) else 0.0
+    # ML/NER score for the whole header
+    ml_score = coordinator.score_header(title, context)
+    # Weighted average
+    score = 0.4 * year_score + 0.2 * type_score + 0.2 * title_score + 0.2 * ml_score
+    return score >= threshold
+
+def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "ContextCoordinator", context: dict, max_loops: int = 3, threshold: float = 0.85) -> List[Dict[str, Any]]:
+    """
+    Feedback loop: rescans and verifies contests using ML/NER, retries if below threshold.
+    Prompts user for clarification if still ambiguous after max_loops.
+    """
+    for loop in range(max_loops):
+        verified = []
+        for c in contests:
+            if ml_verify_contest(c, coordinator, context, threshold=threshold):
+                verified.append(c)
+        if verified:
+            logger.info(f"[CONTEST SELECTOR] Feedback loop {loop+1}: {len(verified)} contests passed ML/NER verification.")
+            return verified
+        logger.warning(f"[CONTEST SELECTOR] Feedback loop {loop+1}: No contests passed ML/NER verification. Retrying...")
+    # If still ambiguous, prompt user for clarification
+    rprint("[yellow]Unable to confidently identify valid contests after feedback loop. Please clarify selection.[/yellow]")
+    grouped = defaultdict(list)
+    for idx, c in enumerate(contests):
+        grouped[(c.get('year', ''), c.get('type', ''))].append((idx, c))
+
+    for (year, ctype), items in sorted(grouped.items()):
+        rprint(f"[bold cyan]Year: {year or 'Unknown'}, Type: {ctype or 'Unknown'}[/bold cyan]")
+        for idx, c in items:
+            rprint(f"  [{idx}] {c.get('title', '')}")
+    try:
+        choice = prompt_user_input(
+            "[PROMPT] Enter contest indices (comma-separated), 'all', 'skip', or leave blank to skip: ",
+            default="all",
+            validator=lambda x: x == "all" or x == "skip" or all(
+                p.strip().isdigit() and 0 <= int(p.strip()) < len(contests)
+                for p in x.split(",") if p.strip()
+            ),
+            allow_cancel=True,
+            header="CONTEST FEEDBACK",
+        ).strip().lower()
+    except PromptCancelled:
+        rprint("[yellow]Contest selection cancelled by user.[/yellow]")
+        return []
+    if not choice or choice == "skip":
+        rprint("[yellow]No contest selected. Skipping.[/yellow]")
+        return []
+    if choice == "all":
+        return contests
+    indices = []
+    for part in choice.split(","):
+        part = part.strip()
+        if part.isdigit():
+            idx = int(part)
+            if 0 <= idx < len(contests):
+                indices.append(idx)
+    selected = [contests[i] for i in indices]
+    # Log user feedback for ML improvement
+    for c in selected:
+        coordinator.submit_user_feedback("contest", "contest_title", c.get("title", ""), context)
+    return selected
 
 def select_contest(
     coordinator: "ContextCoordinator",
@@ -36,6 +118,7 @@ def select_contest(
 ):
     """
     Prompts the user to select contests from the organized context, filtering out noisy/generic labels.
+    Uses ML/NER/regex feedback loop to verify correct year/type/title.
     Returns a list of selected contest dicts or None if skipped/cancelled.
     """
     selector_data = coordinator.get_for_selector()
@@ -73,18 +156,29 @@ def select_contest(
         rprint("[yellow]No valid contests detected after deduplication. Skipping.[/yellow]")
         return None
 
+    # --- Feedback loop: ML/NER verification of contests ---
+    context = {"state": state, "county": county, "year": year}
+    verified_contests = feedback_loop_verify_contests(filtered_contests, coordinator, context)
+    if not verified_contests:
+        rprint("[yellow]No contests passed ML/NER verification. Skipping.[/yellow]")
+        return None
+
     # Group by (year, type)
-    from collections import defaultdict
+    
     grouped = defaultdict(list)
-    for c in filtered_contests:
+    for c in verified_contests:
         grouped[(c.get("year"), c.get("type"))].append(c)
 
-    # Display headings and contests
+    # --- Dynamic titling for selection prompt ---
     idx = 0
     contest_indices = []
-    for (year, etype), contests_in_group in sorted(grouped.items()):
-        label = f"{year or 'Unknown'} {etype or 'Unknown'}"
-        rprint(f"[bold cyan]{label}[/bold cyan]")
+    for (year_val, etype), contests_in_group in sorted(grouped.items()):
+        # If multiple years, show state/county as heading
+        if len(grouped) > 1:
+            label = f"{state or 'Unknown State'} {county or ''} {year_val or 'Unknown'} {etype or 'Unknown'}"
+        else:
+            label = f"{year_val or 'Unknown'} {etype or 'Unknown'}"
+        rprint(f"[bold cyan]{label.strip()}[/bold cyan]")
         for c in contests_in_group:
             rprint(f"  [{idx}] {c.get('title', '')}")
             contest_indices.append(c)
@@ -92,16 +186,16 @@ def select_contest(
     logger.debug(f"[DEBUG] Number of contests displayed: {idx}")
 
     # Auto-select if only one contest
-    if len(filtered_contests) == 1:
-        rprint(f"[green]Only one contest found. Auto-selecting: {filtered_contests[0]['title']}[/green]")
+    if len(verified_contests) == 1:
+        rprint(f"[green]Only one contest found. Auto-selecting: {verified_contests[0]['title']}[/green]")
         if log_func:
-            log_func(f"[CONTEST] Auto-selected: {filtered_contests[0]['title']}")
-        return [filtered_contests[0]]
+            log_func(f"[CONTEST] Auto-selected: {verified_contests[0]['title']}")
+        return [verified_contests[0]]
 
     if non_interactive:
         if log_func:
             log_func(f"[CONTEST] Non-interactive mode: selecting all contests.")
-        return filtered_contests
+        return verified_contests
 
     try:
         choice = prompt_user_input(
@@ -130,7 +224,7 @@ def select_contest(
     if choice == "all":
         if log_func:
             log_func("[CONTEST] User selected all contests.")
-        return filtered_contests
+        return verified_contests
 
     # Parse comma-separated indices
     indices = []
@@ -162,6 +256,8 @@ if __name__ == "__main__":
             {"title": "2022 Senate Race - California", "year": 2022, "type": "Senate", "state": "California"},
             {"title": "2024 Mayoral Election - Houston, TX", "year": 2024, "type": "Mayoral", "state": "Texas"},
             {"title": "2023 School Board - Miami", "year": 2023, "type": "School Board", "state": "Florida"},
+            {"title": "2024 General Election - Miami", "year": 2024, "type": "General", "state": "Florida"},
+            {"title": "2022 Special Election - Miami", "year": 2022, "type": "Special", "state": "Florida"},
         ],
         "buttons": [
             {"label": "Show Results", "is_clickable": True, "is_visible": True},
@@ -171,5 +267,5 @@ if __name__ == "__main__":
     }
     coordinator = ContextCoordinator()
     coordinator.organize_and_enrich(sample_context)
-    selected = select_contest(coordinator, state="New York", year=2024)
+    selected = select_contest(coordinator, state="Florida", year=2024)
     rprint(f"[bold green]Selected contests:[/bold green] {selected}")

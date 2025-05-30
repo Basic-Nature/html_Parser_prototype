@@ -1131,7 +1131,7 @@
     "yes",
     "no"
   ],
-  "default_noisy_label_patterns": [
+  "HTML_SPECIFIC_PATTERNS": [
     "view results? by election district\\s*[:\\n]?$",
     "summary by method\\s*[:\\n]?$",
     "download\\s*[:\\n]?$",
@@ -1259,7 +1259,7 @@
     "app.enhancedvoting.com": {
       "max_scrolls": 1,
       "step": 8000,
-      "last_used": "2025-05-28T20:38:48.711111"
+      "last_used": "2025-05-30T05:15:53.061632"
     }
   },
   "contest_type_patterns": [

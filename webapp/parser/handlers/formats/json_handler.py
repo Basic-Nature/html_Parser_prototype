@@ -4,7 +4,7 @@ from ...state_router import get_handler
 from ...utils.logger_instance import logger
 from ...utils.shared_logger import rprint
 from ...utils.output_utils import get_output_path, format_timestamp
-from ...utils.table_builder import harmonize_rows, calculate_grand_totals, clean_candidate_name
+from ...utils.table_builder import rescan_and_verify, build_dynamic_table, extract_table_data
 from collections import defaultdict
 
 def detect_json_files(input_folder="input"):
@@ -69,18 +69,19 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # Try to resolve a state-specific handler
-        handler = get_handler(html_context) or get_handler(html_context.get("source_url", ""))
-        if handler and hasattr(handler, "parse_json"):
-            logger.info(f"Using custom state handler '{handler.__name__}' for JSON parsing.")
-            import inspect
-            sig = inspect.signature(handler.parse_json)
-            if "coordinator" in sig.parameters:
-                return handler.parse_json(data, coordinator, html_context)
+        # If data is a list, wrap it in a dict for compatibility
+        if isinstance(data, list):
+            # Try to guess structure
+            if data and isinstance(data[0], dict) and "results" in data[0]:
+                data = data[0]
             else:
-                return handler.parse_json(data, html_context)
+                logger.error("[ERROR] JSON file is a list, not a dict with 'results'.")
+                return None, None, None, {"error": "JSON file is a list, not a dict with 'results'."}
 
-        # Fallback: generic JSON structure
+        if not isinstance(data, dict):
+            logger.error("[ERROR] JSON file is not a dict at the top level.")
+            return None, None, None, {"error": "JSON file is not a dict at the top level."}
+
         ballot_items = data.get("results", {}).get("ballotItems", [])
         if not ballot_items:
             rprint("[red][ERROR] No contests found in JSON structure.[/red]")
@@ -128,7 +129,7 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
             for opt in item.get("ballotOptions", []):
                 raw = opt.get("name", "").strip()
                 party = opt.get("politicalParty", "Unknown")
-                label = f"{clean_candidate_name(raw)} ({party})"
+                label = f"{extract_table_data(raw)} ({party})"
                 raw_candidates[raw] = label
 
         normalization_map = raw_candidates.copy()
@@ -167,8 +168,8 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
         headers = ["Precinct"] + sorted([h for h in headers if h != "Precinct"])
 
         # Harmonize rows and add grand total
-        data_rows = harmonize_rows(headers, data_rows)
-        grand_total = calculate_grand_totals(data_rows)
+        data_rows = rescan_and_verify(headers, data_rows)
+        grand_total = build_dynamic_table(data_rows)
         data_rows.append(grand_total)
 
         # --- Output path and metadata ---

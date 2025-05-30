@@ -3,7 +3,9 @@ from sklearn.ensemble import IsolationForest
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import LabelEncoder
 import matplotlib
-matplotlib.use('Agg')  # Use Agg backend for non-GUI environments
+# Use Agg backend for non-GUI environments # (e.g., servers, CI/CD pipelines)
+matplotlib.use('Agg')
+#/ comment out to see plots
 import matplotlib.pyplot as plt
 import threading
 import json
@@ -12,9 +14,15 @@ import sqlite3
 from pathlib import Path
 from ..utils.shared_logger import rprint
 from typing import List, Dict, Any, Tuple, Optional
-from ..utils.spacy_utils import extract_dates   
+from ..utils.spacy_utils import extract_dates
 from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
 from ..utils import db_utils
+# --- Rich imports for CLI output ---
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+
+console = Console()
 
 def _ensure_alerts_table(db_path=None):
     path = db_utils._safe_db_path(db_path or CONTEXT_DB_PATH)
@@ -32,10 +40,9 @@ def _ensure_alerts_table(db_path=None):
     conn.close()
 _ensure_alerts_table()
 
+# --- Data Processing Functions (unchanged) ---
+
 def find_date_anomalies(contests, expected_year=None):
-    """
-    Find contests whose extracted dates do not match the expected year.
-    """
     anomalies = []
     for c in contests:
         dates = extract_dates(c.get("title", ""))
@@ -49,10 +56,6 @@ def detect_anomalies_with_ml(
     n_estimators: int = 100,
     random_state: int = 42
 ) -> Tuple[List[int], np.ndarray]:
-    """
-    Detect anomalies and clusters in contest data using IsolationForest and DBSCAN.
-    Returns indices of anomalies and cluster labels.
-    """
     if not contexts:
         return [], np.array([])
     features = []
@@ -83,333 +86,7 @@ def detect_anomalies_with_ml(
 
 feature_names = ["state", "county", "year", "title_length"]
 
-# --- (Plotting functions) ---
-def plot_clusters(
-    X: np.ndarray,
-    clusters: np.ndarray,
-    anomalies: Optional[List[int]] = None,
-    title: str = "PCA Cluster Visualization",
-    save_path: Optional[str] = None,
-    show: bool = True,
-    pca_components: int = 2,
-    feature_indices: Optional[List[int]] = None,
-    feature_names: Optional[List[str]] = None,
-    highlight_color: str = "#D55E00",
-    cluster_palette: str = "tab20",
-    style: str = "seaborn-v0_8-darkgrid",
-    annotate_points: bool = False,
-    context: Optional[dict] = None,
-    **kwargs
-):
-    """
-    Robust cluster plot with PCA, feature selection, context-aware titles/labels, and anomaly highlighting.
-    - feature_indices: which columns of X to use for PCA (default: all)
-    - feature_names: names of features (for axis labels)
-    - annotate_points: if True, annotate each point with its index
-    - context: dict with keys like 'state', 'county', 'year' to enrich title
-    - kwargs: passed to plt.scatter for further customization
-    """
-    import matplotlib.pyplot as plt
-    import threading
-    from sklearn.decomposition import PCA
-
-    plt.style.use(style)
-    # Select features for plotting
-    if feature_indices is not None:
-        X_plot = X[:, feature_indices]
-        used_feature_names = [feature_names[i] for i in feature_indices] if feature_names else [f"Feature {i}" for i in feature_indices]
-    else:
-        X_plot = X
-        used_feature_names = feature_names if feature_names else [f"Feature {i}" for i in range(X.shape[1])]
-
-    # PCA for dimensionality reduction
-    pca = PCA(n_components=pca_components)
-    X_pca = pca.fit_transform(X_plot)
-
-    plt.figure(figsize=kwargs.get("figsize", (10, 8)))
-    scatter = plt.scatter(
-        X_pca[:, 0], X_pca[:, 1],
-        c=clusters, cmap=cluster_palette, alpha=0.8, s=90, edgecolor='k', label='Cluster', **kwargs
-    )
-
-    # Highlight anomalies
-    if anomalies is not None and len(anomalies) > 0:
-        plt.scatter(
-            X_pca[anomalies, 0], X_pca[anomalies, 1],
-            color=highlight_color, marker='X', s=200, linewidths=2, label='Anomaly', zorder=5, edgecolor='black'
-        )
-
-    # Annotate points if requested
-    if annotate_points:
-        for idx, (x, y) in enumerate(zip(X_pca[:, 0], X_pca[:, 1])):
-            plt.annotate(str(idx), (x, y), fontsize=8, alpha=0.7)
-
-    # Build context-aware title
-    context_title = title
-    if context:
-        parts = []
-        for k in ('state', 'county', 'year'):
-            v = context.get(k)
-            if v:
-                parts.append(str(v))
-        if parts:
-            context_title += " (" + ", ".join(parts) + ")"
-    plt.title(context_title, fontsize=17, fontweight='bold')
-
-    # Axis labels
-    xlabel = f"PCA Component 1 ({', '.join(used_feature_names)})"
-    ylabel = "PCA Component 2"
-    plt.xlabel(xlabel, fontsize=13)
-    plt.ylabel(ylabel, fontsize=13)
-    plt.grid(True, linestyle=':', alpha=0.6)
-    plt.legend(fontsize=12)
-    plt.tight_layout()
-
-    # Colorbar with cluster labels
-    unique_clusters = set(clusters)
-    if len(unique_clusters) > 1 or (-1 in unique_clusters):
-        cbar = plt.colorbar(scatter, ticks=sorted([c for c in unique_clusters if c != -1]))
-        cbar.set_label('Cluster Label')
-        if -1 in unique_clusters:
-            cbar.ax.plot([], [], color='gray', label='Noise/Outlier')
-
-    # Thread-safe display/save
-    if save_path or threading.current_thread() is not threading.main_thread() or not show:
-        out_path = save_path or "cluster_plot.png"
-        plt.savefig(out_path, dpi=180)
-        print(f"[INFO] Cluster plot saved to {out_path}")
-    else:
-        plt.show()
-    plt.close()
-
-def plot_clusters(
-    X: np.ndarray,
-    clusters: np.ndarray,
-    anomalies: Optional[List[int]] = None,
-    title: str = "PCA Cluster Visualization",
-    save_path: Optional[str] = None,
-    show: bool = True,
-    pca_components: int = 2,
-    feature_indices: Optional[List[int]] = None,
-    highlight_color: str = "#D55E00",
-    cluster_palette: str = "plasma",
-    style: str = "seaborn-v0_8-darkgrid",
-    **kwargs
-):
-    """
-    Plot clusters and highlight anomalies using PCA for dimensionality reduction.
-    - anomalies: list of indices to highlight (e.g., detected anomalies)
-    - feature_indices: which features to use for PCA (default: all)
-    - save_path: if provided, saves the plot to this file
-    - show: if True, attempts to show the plot (main thread only)
-    - style: matplotlib style to use
-    - kwargs: passed to plt.scatter for further customization
-    """
-    import matplotlib.pyplot as plt
-    import threading
-    from sklearn.decomposition import PCA
-
-    plt.style.use(style)
-    if feature_indices is not None:
-        X_plot = X[:, feature_indices]
-    else:
-        X_plot = X
-
-    pca = PCA(n_components=pca_components)
-    X_pca = pca.fit_transform(X_plot)
-
-    plt.figure(figsize=kwargs.get("figsize", (10, 8)))
-    scatter = plt.scatter(
-        X_pca[:, 0], X_pca[:, 1],
-        c=clusters, cmap=cluster_palette, alpha=0.75, s=80, edgecolor='k', label='Cluster', **kwargs
-    )
-
-    if anomalies is not None and len(anomalies) > 0:
-        plt.scatter(
-            X_pca[anomalies, 0], X_pca[anomalies, 1],
-            color=highlight_color, marker='X', s=180, linewidths=2, label='Anomaly', zorder=5, edgecolor='black'
-        )
-
-    plt.title(title, fontsize=17, fontweight='bold')
-    plt.xlabel('PCA Component 1', fontsize=13)
-    plt.ylabel('PCA Component 2', fontsize=13)
-    plt.grid(True, linestyle=':', alpha=0.6)
-    plt.legend(fontsize=12)
-    plt.tight_layout()
-
-    # Add colorbar for clusters if more than 1 cluster
-    if len(set(clusters)) > 1:
-        cbar = plt.colorbar(scatter, ticks=range(int(np.max(clusters)) + 1))
-        cbar.set_label('Cluster Label')
-
-    if save_path or threading.current_thread() is not threading.main_thread() or not show:
-        out_path = save_path or "cluster_plot.png"
-        plt.savefig(out_path, dpi=180)
-        print(f"[INFO] Cluster plot saved to {out_path}")
-    else:
-        plt.show()
-    plt.close()
-    """
-    **Example Usage:**
-    ## for the _plot_anomaly_scores_ and _plot_clusters_ functions, you can use them as follows:
-    
-    ## To show interactively (main thread)
-    
-    plot_anomaly_scores(scores, cutoff=0.5, highlight=anomaly_indices)
-    plot_clusters(X, clusters, anomalies=anomaly_indices)
-    
-    
-    ## To save to files without showing (background thread)
-    
-    plot_anomaly_scores(scores, cutoff=0.5, highlight=anomaly_indices, save_path="my_scores.png", show=False)
-    plot_clusters(X, clusters, anomalies=anomaly_indices, save_path="my_clusters.png", show=False)
-
-    ## To customize style
-    plot_anomaly_scores(scores, color='green', marker='s', figsize=(14,6))
-    plot_clusters(X, clusters, cluster_palette="plasma", highlight_color="red")
-
-    """    
-def plot_anomaly_scores(
-    scores: np.ndarray,
-    cutoff: Optional[float] = None,
-    highlight: Optional[List[int]] = None,
-    title: str = "IsolationForest Anomaly Scores",
-    xlabel: str = "Sample Index (sorted)",
-    ylabel: str = "Anomaly Score",
-    save_path: Optional[str] = None,
-    show: bool = True,
-    style: str = "seaborn-v0_8-darkgrid",
-    highlight_color: str = "#CC79A7",
-    score_color: str = "#0072B2",
-    cutoff_color: str = "#D55E00",
-    **kwargs
-):
-    """
-    Plot anomaly scores for visual inspection.
-    - highlight: list of indices to highlight (e.g., detected anomalies)
-    - save_path: if provided, saves the plot to this file
-    - show: if True, attempts to show the plot (main thread only)
-    - style: matplotlib style to use
-    - kwargs: passed to plt.plot for further customization
-    """
-    import matplotlib.pyplot as plt
-    import threading
-
-    plt.style.use(style)
-    sorted_indices = np.argsort(scores)
-    sorted_scores = np.array(scores)[sorted_indices]
-
-    plt.figure(figsize=kwargs.get("figsize", (13, 6)))
-    plt.plot(sorted_scores, marker='o', linestyle='-', color=score_color, label='Anomaly Score', **kwargs)
-
-    if cutoff is not None:
-        plt.axhline(cutoff, color=cutoff_color, linestyle='--', linewidth=2, label=f'Cutoff ({cutoff:.2f})')
-
-    if highlight is not None and len(highlight) > 0:
-        highlight_sorted = [np.where(sorted_indices == idx)[0][0] for idx in highlight if idx in sorted_indices]
-        plt.scatter(highlight_sorted, sorted_scores[highlight_sorted], color=highlight_color, s=100, marker='X', label='Anomaly', zorder=5, edgecolor='black')
-
-    plt.title(title, fontsize=17, fontweight='bold')
-    plt.xlabel(xlabel, fontsize=13)
-    plt.ylabel(ylabel, fontsize=13)
-    plt.grid(True, linestyle=':', alpha=0.7)
-    plt.legend(fontsize=12)
-    plt.tight_layout()
-
-    if save_path or threading.current_thread() is not threading.main_thread() or not show:
-        out_path = save_path or "anomaly_scores.png"
-        plt.savefig(out_path, dpi=180)
-        print(f"[INFO] Anomaly score plot saved to {out_path}")
-    else:
-        plt.show()
-    plt.close()    
-
-def plot_clusters(
-    X: np.ndarray,
-    clusters: np.ndarray,
-    anomalies: Optional[List[int]] = None,
-    title: str = "PCA Cluster Visualization",
-    save_path: Optional[str] = None,
-    show: bool = True,
-    pca_components: int = 2,
-    highlight_color: str = "#D55E00",
-    cluster_palette: str = "tab10",
-    **kwargs
-):
-    """
-    Plot clusters and highlight anomalies using PCA for dimensionality reduction.
-    - anomalies: list of indices to highlight (e.g., detected anomalies)
-    - save_path: if provided, saves the plot to this file
-    - show: if True, attempts to show the plot (main thread only)
-    - kwargs: passed to plt.scatter for further customization
-    """
-    import matplotlib.pyplot as plt
-    import threading
-    from sklearn.decomposition import PCA
-
-    pca = PCA(n_components=pca_components)
-    X_pca = pca.fit_transform(X)
-
-    plt.figure(figsize=kwargs.get("figsize", (9, 7)))
-    scatter = plt.scatter(
-        X_pca[:, 0], X_pca[:, 1],
-        c=clusters, cmap=cluster_palette, alpha=0.7, s=60, edgecolor='k', label='Cluster', **kwargs
-    )
-
-    if anomalies is not None and len(anomalies) > 0:
-        plt.scatter(
-            X_pca[anomalies, 0], X_pca[anomalies, 1],
-            color=highlight_color, marker='x', s=120, linewidths=2, label='Anomaly'
-        )
-
-    plt.title(title, fontsize=15, fontweight='bold')
-    plt.xlabel('PCA Component 1', fontsize=12)
-    plt.ylabel('PCA Component 2', fontsize=12)
-    plt.grid(True, linestyle=':', alpha=0.5)
-    plt.legend()
-    plt.tight_layout()
-
-    # Add colorbar for clusters if more than 1 cluster
-    if len(set(clusters)) > 1:
-        cbar = plt.colorbar(scatter, ticks=range(int(np.max(clusters)) + 1))
-        cbar.set_label('Cluster Label')
-
-    if save_path or threading.current_thread() is not threading.main_thread() or not show:
-        out_path = save_path or "cluster_plot.png"
-        plt.savefig(out_path, dpi=150)
-        print(f"[INFO] Cluster plot saved to {out_path}")
-    else:
-        plt.show()
-    plt.close()
-    
-def auto_tune_contamination(
-    X: np.ndarray,
-    initial_contamination: float = 0.2,
-    min_contamination: float = 0.01,
-    max_contamination: float = 0.2,
-    plot: bool = False
-) -> float:
-    """
-    Automatically tune the contamination parameter for IsolationForest.
-    """
-    clf = IsolationForest(contamination=initial_contamination, random_state=42)
-    clf.fit(X)
-    scores = -clf.decision_function(X)
-    cutoff = np.percentile(scores, 90)
-    n_anomalies = np.sum(scores >= cutoff)
-    contamination = n_anomalies / len(scores)
-    contamination = max(min_contamination, min(max_contamination, contamination))
-    if plot:
-        plot_anomaly_scores(scores, cutoff=cutoff)
-    return contamination
-
-# --- Integrity Checks ---
-
 def election_integrity_checks(contests: List[Dict[str, Any]]) -> List[Tuple[str, Dict[str, Any]]]:
-    """
-    Basic integrity checks for contest data.
-    Returns a list of (issue_type, contest) tuples.
-    """
     seen = set()
     issues = []
     for c in contests:
@@ -425,31 +102,17 @@ def election_integrity_checks(contests: List[Dict[str, Any]]) -> List[Tuple[str,
     return issues
 
 def advanced_cross_field_validation(contests: List[Dict[str, Any]]) -> List[Tuple[str, Dict[str, Any]]]:
-    """
-    Advanced cross-field validation for logical inconsistencies.
-    Returns a list of (issue_type, contest) tuples.
-    """
     issues = []
     for c in contests:
-        # Example: Check for logical inconsistencies
         if c.get("type") == "Presidential" and c.get("state") not in ("us", "USA", "United States"):
             issues.append(("presidential_state_mismatch", c))
-        # Add more advanced checks as needed
-        # Example: Check for negative vote counts
         if "votes" in c and isinstance(c["votes"], (int, float)) and c["votes"] < 0:
             issues.append(("negative_votes", c))
     return issues
 
-# --- Real-Time Monitoring ---
-
 def summarize_context_entities(contests):
-    """
-    Summarize named entities found in contest titles.
-    Returns a dict: entity label -> count.
-    """
     from collections import Counter
     from ..utils.spacy_utils import extract_entities
-
     entity_counter = Counter()
     for c in contests:
         title = c.get("title", "")
@@ -463,7 +126,6 @@ def analyze_contest_titles(contests, expected_year=None, context_library_path=No
     integrity_issues = election_integrity_checks(contests)
     date_anomalies = find_date_anomalies(contests, expected_year=expected_year)
     anomalies, clusters = detect_anomalies_with_ml(contests)
-    # Use the provided context_library_path, or fall back to the config default
     if context_library_path is None:
         context_library_path = CONTEXT_LIBRARY_PATH
     flagged = flag_suspicious_contests(contests, context_library_path=context_library_path)
@@ -475,12 +137,106 @@ def analyze_contest_titles(contests, expected_year=None, context_library_path=No
         "flagged_suspicious": flagged,
     }
 
+def auto_tune_contamination(
+    X: np.ndarray,
+    initial_contamination: float = 0.2,
+    min_contamination: float = 0.01,
+    max_contamination: float = 0.2,
+    plot: bool = False
+) -> float:
+    clf = IsolationForest(contamination=initial_contamination, random_state=42)
+    clf.fit(X)
+    scores = -clf.decision_function(X)
+    cutoff = np.percentile(scores, 90)
+    n_anomalies = np.sum(scores >= cutoff)
+    contamination = n_anomalies / len(scores)
+    contamination = max(min_contamination, min(max_contamination, contamination))
+    return contamination
+
+# --- Rich Output Functions for CLI ---
+
+def print_issues_table(issues, title="Issues"):
+    if not issues:
+        console.print(f"[bold green]No {title.lower()} found.[/bold green]")
+        return
+    table = Table(title=title, show_lines=True)
+    table.add_column("Issue Type", style="red")
+    table.add_column("Title", style="cyan")
+    table.add_column("Year", style="green")
+    table.add_column("State", style="yellow")
+    table.add_column("County", style="blue")
+    for issue_type, contest in issues:
+        table.add_row(
+            issue_type,
+            contest.get("title", ""),
+            str(contest.get("year", "")),
+            contest.get("state", ""),
+            contest.get("county", "")
+        )
+    console.print(table)
+
+def print_entity_summary(entity_summary):
+    table = Table(title="Entity Label Summary")
+    table.add_column("Entity Label", style="cyan")
+    table.add_column("Count", style="magenta")
+    for label, count in entity_summary.items():
+        table.add_row(label, str(count))
+    console.print(table)
+
+def print_ml_anomalies(anomaly_indices, contests):
+    if not anomaly_indices:
+        console.print("[bold green]No ML anomalies detected.[/bold green]")
+        return
+    table = Table(title="ML Detected Anomalies", show_lines=True)
+    table.add_column("Index", style="magenta")
+    table.add_column("Title", style="cyan")
+    table.add_column("Year", style="green")
+    table.add_column("State", style="yellow")
+    table.add_column("County", style="blue")
+    for idx in anomaly_indices:
+        c = contests[idx]
+        table.add_row(
+            str(idx),
+            c.get("title", ""),
+            str(c.get("year", "")),
+            c.get("state", ""),
+            c.get("county", "")
+        )
+    console.print(table)
+
+def print_date_anomalies(date_anomalies):
+    if not date_anomalies:
+        console.print("[bold green]No date anomalies found.[/bold green]")
+        return
+    table = Table(title="Date Anomalies", show_lines=True)
+    table.add_column("Title", style="cyan")
+    table.add_column("Year", style="green")
+    table.add_column("State", style="yellow")
+    table.add_column("County", style="blue")
+    for contest in date_anomalies:
+        table.add_row(
+            contest.get("title", ""),
+            str(contest.get("year", "")),
+            contest.get("state", ""),
+            contest.get("county", "")
+        )
+    console.print(table)
+
+def print_auto_tune_result(contamination):
+    console.print(Panel(f"Auto-tuned contamination: [bold green]{contamination:.4f}[/bold green]", title="IsolationForest Auto-Tune"))
+
+def print_analyze_contest_titles(results):
+    print_issues_table(results["integrity_issues"], title="Integrity Issues")
+    print_date_anomalies(results["date_anomalies"])
+    print_ml_anomalies(results["ml_anomalies"], results.get("contests", []))
+    if results.get("flagged_suspicious"):
+        console.print(Panel(f"[yellow]{len(results['flagged_suspicious'])} suspicious contests flagged[/yellow]: {results['flagged_suspicious']}", title="Suspicious Contests"))
+    else:
+        console.print("[bold green]No suspicious contests flagged.[/bold green]")
+
+# --- Real-Time Monitoring (unchanged) ---
 
 def monitor_db_for_alerts(db_path: str = None, poll_interval: int = 10):
-    """
-    Monitor the alerts table in the database for new alerts and print them in real time.
-    Uses db_utils._safe_db_path for robust path validation.
-    """
     path = db_utils._safe_db_path(db_path or CONTEXT_DB_PATH)
     def monitor():
         last_alert_id = 0
@@ -500,15 +256,10 @@ def monitor_db_for_alerts(db_path: str = None, poll_interval: int = 10):
     thread = threading.Thread(target=monitor, daemon=True)
     thread.start()
 
-# --- Utility: Audit Logging ---
+# --- Utility: Audit Logging (unchanged) ---
 
 def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str = None):
-    """
-    Log integrity issues to a file for audit purposes.
-    Uses db_utils._safe_db_path to validate log_path if provided.
-    """
     if log_path:
-        # Only allow logging in the same directory as CONTEXT_DB_PATH
         log_path = db_utils._safe_db_path(log_path)
     else:
         log_path = str((Path(CONTEXT_DB_PATH).parent / "integrity_issues.log").resolve())
@@ -516,16 +267,10 @@ def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str
         for issue_type, contest in issues:
             f.write(json.dumps({"issue": issue_type, "contest": contest}) + "\n")
 
-# --- Utility: Statistical Outlier Detection ---
-
 def detect_statistical_outliers(
     values: List[float],
     threshold: float = 3.0
 ) -> List[int]:
-    """
-    Detect outliers in a list of numerical values using z-score.
-    Returns indices of outliers.
-    """
     if not values:
         return []
     arr = np.array(values)
@@ -537,4 +282,55 @@ def detect_statistical_outliers(
     return [i for i, z in enumerate(z_scores) if z > threshold]
 
 # --- Example Usage ---
-# Import and use these functions in context_organizer or context_coordinator as needed.
+# After calling any processing function, call the corresponding print_* function for rich output.
+# For example:
+# results = analyze_contest_titles(contests)
+# print_analyze_contest_titles(results)
+# entity_summary = summarize_context_entities(contests)
+# print_entity_summary(entity_summary)
+# issues = advanced_cross_field_validation(contests)
+# print_issues_table(issues, title="Advanced Cross-Field Validation Issues")
+# contamination = auto_tune_contamination(X)
+# print_auto_tune_result(contamination)
+# anomalies, clusters = detect_anomalies_with_ml(contests)
+# print_ml_anomalies(anomalies, contests)
+"""
+    from .Integrity_check import print_integrity_summary
+
+    print_integrity_summary(contests, expected_year=2024)
+    # or, if you have X:
+    # print_integrity_summary(contests, expected_year=2024, X=X)
+"""
+
+
+def print_integrity_summary(contests, expected_year=None, X=None):
+    """
+    Print a full integrity summary using rich tables and panels.
+    - contests: list of contest dicts
+    - expected_year: optional, for date anomaly checks
+    - X: optional, feature matrix for auto_tune_contamination
+    """
+    # Analyze contest titles (integrity, date, ML, suspicious)
+    results = analyze_contest_titles(contests, expected_year=expected_year)
+    # Add contests to results for ML anomaly printing
+    results["contests"] = contests
+
+    console.rule("[bold blue]Election Data Integrity Summary[/bold blue]")
+
+    # Print integrity issues, date anomalies, ML anomalies, suspicious contests
+    print_analyze_contest_titles(results)
+
+    # Print entity summary
+    entity_summary = summarize_context_entities(contests)
+    print_entity_summary(entity_summary)
+
+    # Print advanced cross-field validation issues
+    issues = advanced_cross_field_validation(contests)
+    print_issues_table(issues, title="Advanced Cross-Field Validation Issues")
+
+    # Print auto-tuned contamination if X is provided
+    if X is not None:
+        contamination = auto_tune_contamination(X)
+        print_auto_tune_result(contamination)
+
+    console.rule("[bold blue]End of Integrity Summary[/bold blue]")
