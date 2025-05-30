@@ -239,7 +239,14 @@ class ContextCoordinator:
             c["entities"] = extract_entities(title)
             c["locations"] = extract_locations(title)
             c["dates"] = extract_dates(title) 
-                
+
+    def fuzzy_score(self, a, b):
+        """
+        Compute a fuzzy string similarity score between two strings.
+        """
+        from fuzzywuzzy import fuzz
+        return fuzz.ratio(str(a), str(b))
+               
     def log_field_selection(
         self,
         field_type,
