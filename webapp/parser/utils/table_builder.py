@@ -770,11 +770,24 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
 
     results = []
 
-    def extract_text_from_html(html):
-        # Extract visible text from HTML string
+    def extract_text_from_html(html: str) -> str:
+        """
+        Extracts visible text from an HTML string.
+        - Handles tags like <span>, <div>, <a>, <li>, <b>, <strong>, <em>, <u>, <i>, <p>, <br>, <th>, <td>, <button>, <label>, <h1>-<h6>.
+        - Strips all tags and returns the concatenated text.
+        - Handles nested tags and ignores script/style.
+        """
         import re
-        m = re.search(r">([^<]+)<", html)
-        return m.group(1).strip() if m else html
+
+        # Remove script and style blocks
+        html = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
+        # Replace <br> and <br/> with newlines
+        html = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
+        # Remove all other tags, keeping their content
+        text = re.sub(r"<[^>]+>", "", html)
+        # Collapse whitespace
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
 
     if dom_segments:
         tables = [seg for seg in dom_segments if seg.get("tag") == "table"]

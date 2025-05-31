@@ -89,51 +89,44 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     if not selected:
         rprint("[red]No contest selected. Skipping.[/red]")
         return None, None, None, {"skipped": True}
-
     # If multiple contests, process each (return first result or aggregate as needed)
-    if isinstance(selected, list):
-        selected = selected[0]
-
-    contest_title = selected.get("title") if isinstance(selected, dict) else selected
-    html_context["selected_race"] = contest_title
-    rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
-
     # --- 5. Toggle "View results by election district" ---
-    contest_title_for_button = contest_title if contest_title else None
-    election_district_keywords = [
-        r"view results? by election district[\s:]*$", "View results by election district", 
-        "results by election district",  "election district", 
-        "View results by"
-    ]
-    find_and_click_best_button(
-        page,
-        coordinator,
-        contest_title_for_button,
-        election_district_keywords,
-        toggle_name="View results by election district",
-        context={**html_context, "toggle_name": "View results by election district"}
-    )
-    rprint(f"[DEBUG] find_and_click_best_button ({contest_title_for_button}) returned: {election_district_keywords}")
-    # --- 6. Autoscroll to ensure table loads ---
-    autoscroll_until_stable(page, wait_for_selector="table")
+    if isinstance(selected, list):
+        results = []
+        for contest in selected:
+            contest_title = contest.get("title") if isinstance(contest, dict) else contest
+            html_context["selected_race"] = contest_title
+            rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
 
-    # --- 7. Toggle "Vote Method" if present ---
-    vote_method_keywords = [
-        "vote method", "Vote Method", "Vote method", "Method"
-    ]
-    find_and_click_best_button(
-        page,
-        coordinator,
-        contest_title_for_button,
-        vote_method_keywords,
-        toggle_name="Vote Method",
-        context={**html_context, "toggle_name": "Vote Method"}
-    )
-    # --- 8. Autoscroll again if needed ---
-    autoscroll_until_stable(page)
+            # --- Button toggles for this contest ---
+            contest_title_for_button = contest_title if contest_title else None
+            election_district_keywords = [
+                r"view results? by election district[\s:]*$", "View results by election district", 
+                "results by election district",  "election district", 
+                "View results by"
+            ]
+            find_and_click_best_button(
+                page,
+                coordinator,
+                contest_title_for_button,
+                election_district_keywords,
+                toggle_name="View results by election district",
+                context={**html_context, "toggle_name": "View results by election district"}
+            )
+            autoscroll_until_stable(page, wait_for_selector="table")
 
-    tables = page.locator("table")
-    print(f"DEBUG: Number of tables found after autoscroll: {tables.count()}")
+            vote_method_keywords = [
+                "vote method", "Vote Method", "Vote method", "Method"
+            ]
+            find_and_click_best_button(
+                page,
+                coordinator,
+                contest_title_for_button,
+                vote_method_keywords,
+                toggle_name="Vote Method",
+                context={**html_context, "toggle_name": "Vote Method"}
+            )
+            autoscroll_until_stable(page)
 
     # --- 9. Extract precinct tables robustly using DOM scan and heading association ---
     segments = html_context.get("tagged_segments_with_attrs", [])
