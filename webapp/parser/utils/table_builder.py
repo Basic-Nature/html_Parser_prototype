@@ -777,8 +777,6 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
         - Strips all tags and returns the concatenated text.
         - Handles nested tags and ignores script/style.
         """
-        import re
-
         # Remove script and style blocks
         html = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
         # Replace <br> and <br/> with newlines
