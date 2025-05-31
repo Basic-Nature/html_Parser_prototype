@@ -1,5 +1,5 @@
 from playwright.sync_api import Page
-import os
+
 from .....utils.html_scanner import scan_html_for_context
 from .....utils.contest_selector import select_contest
 from .....utils.table_builder import build_dynamic_table, extract_table_data
@@ -11,7 +11,7 @@ from .....utils.user_prompt import prompt_user_for_button, confirm_button_callba
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .....Context_Integration.context_coordinator import ContextCoordinator
-
+import numpy as e
 BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
 
 
@@ -134,6 +134,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
 
     # --- 9. Extract precinct tables ---
     tables = page.locator("table")
+    print("DEBUG: Number of tables found:", tables.count())
     precinct_tables = []
     for i in range(tables.count()):
         table = tables.nth(i)
@@ -143,6 +144,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             if header_locator.count() > 0:
                 precinct_name = header_locator.nth(0).inner_text().strip()
         except Exception:
+            rprint(f"[yellow][DEBUG] Exception while finding precinct header: {e}[/yellow]")
             pass
         if not precinct_name:
             precinct_name = f"Precinct {i+1}"

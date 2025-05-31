@@ -1018,11 +1018,37 @@ class ContextCoordinator:
         # --- 1. Learning mode: check log/DB for confirmed button ---
         if learning_mode:
             learned_btn = self._get_confirmed_button_from_log(contest_title, keywords, context)
-            # PATCH: Skip if already clicked in this session
+            # PATCH: Only use learned_btn if it can be matched to a DOM element
             if learned_btn and learned_btn.get("selector") not in self.clicked_button_selectors:
-                rprint(f"[green][LEARNING] Auto-applying learned button: {learned_btn['label']}[/green]")
-                self.clicked_button_selectors.add(learned_btn.get("selector"))
-                return learned_btn, 0
+                # Try to find the corresponding DOM element
+                selector_html = learned_btn.get("selector", "")
+                dom_candidates = []
+                BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
+                button_features = page.locator(BUTTON_SELECTORS)
+                for i in range(button_features.count()):
+                    btn = button_features.nth(i)
+                    try:
+                        btn_html = btn.evaluate("el => el.outerHTML")
+                        if btn_html == selector_html:
+                            # Found the DOM element for the learned button
+                            learned_btn["element_handle"] = btn
+                            learned_btn["is_visible"] = btn.is_visible()
+                            learned_btn["is_clickable"] = btn.is_enabled()
+                            break
+                    except Exception:
+                        continue
+                # Only proceed if element_handle is found and clickable
+                if learned_btn.get("element_handle") and learned_btn.get("is_visible") and learned_btn.get("is_clickable"):
+                    rprint(f"[green][LEARNING] Auto-applying learned button: {learned_btn['label']}[/green]")
+                    try:
+                        learned_btn["element_handle"].click()
+                        page.wait_for_timeout(1500)
+                        self.clicked_button_selectors.add(learned_btn.get("selector"))
+                        return learned_btn, 0
+                    except Exception:
+                        rprint("[red][ERROR] Failed to click learned button element.[/red]")
+                else:
+                    rprint("[red][ERROR] No element_handle found for the learned button candidate.[/red]")
 
         # --- 2. Gather candidates from memory/log ---
         memory_candidates = []
