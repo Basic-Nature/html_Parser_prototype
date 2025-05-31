@@ -262,56 +262,6 @@ def get_page_hash(page):
     content = page.content()
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
-def extract_tagged_segments_with_attrs(html: str) -> List[Dict[str, Any]]:
-    """
-    Uses selectolax to walk the DOM and extract segments with parent/child relationships and accurate indices.
-    """
-    tree = HTMLParser(html)
-    segments = []
-
-    def walk(node, parent_idx=None):
-        tag = node.tag
-        if not tag or tag.lower() not in HTML_TAGS:
-            for child in node.iter():
-                if child.parent is node:
-                    walk(child, parent_idx)
-            return
-
-        attrs = dict(node.attributes)
-        classes = attrs.get("class", "").split() if "class" in attrs else []
-        id_ = attrs.get("id", "")
-        is_button = tag == "button" or (tag == "input" and attrs.get("type", "").lower() in ["button", "submit"])
-        is_clickable = is_button or tag == "a" or "onclick" in attrs or "btn" in classes or "button" in classes
-
-        seg = {
-            "tag": tag.lower(),
-            "attrs": attrs,
-            "classes": classes,
-            "id": id_,
-            "html": html[node.start:node.end] if node.start is not None and node.end is not None else "",
-            "is_button": is_button,
-            "is_clickable": is_clickable,
-            "parent_idx": parent_idx,
-            "children": [],
-            "start": node.start,
-            "end": node.end,
-            "_idx": len(segments)
-        }
-        segments.append(seg)
-        this_idx = seg["_idx"]
-
-        for child in node.iter():
-            if child.parent is node:
-                child_idx = walk(child, this_idx)
-                if child_idx is not None:
-                    seg["children"].append(child_idx)
-        return this_idx
-
-    # Start from <html> or <body> if present, else root
-    root = tree.body or tree.html or tree.root
-    walk(root)
-    return segments
-
 def extract_download_links_from_html(html, exts=(".csv", ".json", ".pdf")):
     pattern = re.compile(r'<a[^>]+href=["\']([^"\']+\.(?:csv|json|pdf))["\']', re.IGNORECASE)
     links = []

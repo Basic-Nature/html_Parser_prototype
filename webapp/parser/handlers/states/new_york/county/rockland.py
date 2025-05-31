@@ -33,7 +33,7 @@ def find_and_click_best_button(
         contest_title=contest_title,
         keywords=keywords,
         context=context or {"toggle_name": toggle_name},
-        # confirm_button_callback=confirm_button_callback, # Uncomment if you auto button click is giving wrong button
+        confirm_button_callback=confirm_button_callback, # Uncomment if you auto button click is giving wrong button
         prompt_user_for_button=prompt_user_for_button
     )
     if btn:
@@ -111,7 +111,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         contest_title_for_button,
         election_district_keywords,
         toggle_name="View results by election district",
-        context=html_context
+        context={**html_context, "toggle_name": "View results by election district"}
     )
     rprint(f"[DEBUG] find_and_click_best_button ({contest_title_for_button}) returned: {election_district_keywords}")
     # --- 6. Autoscroll to ensure table loads ---
@@ -127,9 +127,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         contest_title_for_button,
         vote_method_keywords,
         toggle_name="Vote Method",
-        context=html_context
+        context={**html_context, "toggle_name": "Vote Method"}
     )
-
     # --- 8. Autoscroll again if needed ---
     autoscroll_until_stable(page)
 
@@ -152,11 +151,16 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     # --- Collect all data rows from all precincts ---
     all_data_rows = []
     headers = None
+    last_table_with_no_headers = None  # Track the last table for debugging
+
     for precinct_name, table in precinct_tables:
         if not table or not precinct_name:
             continue
         headers, data_rows = extract_table_data(table)
         print("DEBUG: Extracted headers:", headers)
+        if not headers:
+            last_table_with_no_headers = table  # Save for debugging
+            continue
         # Patch: If the first header is "Candidate" and the values look like precincts, rename to "Precinct"
         if headers and headers[0].lower() == "candidate":
             candidate_col = [row.get("Candidate", "") for row in data_rows]
@@ -169,6 +173,16 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         all_data_rows.extend(data_rows)
 
     # --- Now call build_dynamic_table ONCE for all precincts ---
+    if not headers:
+        if last_table_with_no_headers:
+            try:
+                table_html = last_table_with_no_headers.inner_html()
+            except Exception:
+                table_html = "[unavailable]"
+            rprint(f"[red][ERROR] No headers found in any table. Example table HTML:\n{table_html}[/red]")
+        else:
+            rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+        return None, None, None, {"skipped": True}
     headers, rows = build_dynamic_table(headers, all_data_rows, coordinator, html_context)
     data = rows
 

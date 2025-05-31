@@ -9,6 +9,7 @@ import os
 import json
 from typing import List, Dict, Tuple, Any, Optional
 from .logger_instance import logger
+from .shared_logger import rprint
 from .shared_logic import normalize_text
 from ..config import CONTEXT_LIBRARY_PATH
 from typing import TYPE_CHECKING
@@ -51,6 +52,7 @@ def is_precinct_major(headers, coordinator):
 def is_flat_candidate_table(headers):
     # Only candidate and total columns (no locations)
     if not headers:
+        rprint("[red][ERROR] No headers extracted from table. Skipping this table.[/red]")
         return False
     first_col = normalize_text(headers[0])
     return (
@@ -703,19 +705,54 @@ from typing import List, Dict, Any, Tuple
 def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
     headers = []
     data = []
-    # Extract headers
+
+    # Try to extract headers from <thead>
     header_cells = table.locator("thead tr th")
     if header_cells.count() == 0:
-        header_cells = table.locator("tr").nth(0).locator("th, td")
+        # Try first row for <th> or <td>
+        first_row = table.locator("tr").first
+        header_cells = first_row.locator("th, td")
     for i in range(header_cells.count()):
-        headers.append(header_cells.nth(i).inner_text().strip())
-    # Extract rows
+        text = header_cells.nth(i).inner_text().strip()
+        headers.append(text if text else f"Column {i+1}")
+
+    # Try to extract rows from <tbody>, else all <tr> except header
     rows = table.locator("tbody tr")
+    if rows.count() == 0:
+        # Fallback: all <tr> except the first (header)
+        all_rows = table.locator("tr")
+        if all_rows.count() > 1:
+            rows = all_rows.nth(1).locator("xpath=following-sibling::tr")
+        else:
+            rows = all_rows  # Only one row
+
     for i in range(rows.count()):
         row = {}
-        cells = rows.nth(i).locator("td")
+        cells = rows.nth(i).locator("td, th")
+        # Skip empty rows
+        if cells.count() == 0:
+            continue
         for j in range(cells.count()):
             if j < len(headers):
                 row[headers[j]] = cells.nth(j).inner_text().strip()
-        data.append(row)
+            else:
+                # Extra columns: add generic header
+                row[f"Extra_{j+1}"] = cells.nth(j).inner_text().strip()
+        # Only add non-empty rows
+        if any(v for v in row.values()):
+            data.append(row)
+
+    # Fallback: if no headers but there is data, use "Column 1", "Column 2", etc.
+    if not headers and data:
+        max_cols = max(len(row) for row in data)
+        headers = [f"Column {i+1}" for i in range(max_cols)]
+        # Re-map data to use these headers
+        new_data = []
+        for row in data:
+            new_row = {}
+            for idx, h in enumerate(headers):
+                new_row[h] = list(row.values())[idx] if idx < len(row) else ""
+            new_data.append(new_row)
+        data = new_data
+
     return headers, data

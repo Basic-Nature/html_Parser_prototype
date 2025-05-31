@@ -157,7 +157,8 @@ class ContextCoordinator:
         self.enable_ml = enable_ml
         self.alert_monitor = alert_monitor
         self.organized = None
-        self.last_raw_context = None  # <-- Add this line
+        self.last_raw_context = None 
+        self.clicked_button_selectors = set()
         if alert_monitor:
             self.start_alert_monitoring()
 
@@ -1017,8 +1018,10 @@ class ContextCoordinator:
         # --- 1. Learning mode: check log/DB for confirmed button ---
         if learning_mode:
             learned_btn = self._get_confirmed_button_from_log(contest_title, keywords, context)
-            if learned_btn:
+            # PATCH: Skip if already clicked in this session
+            if learned_btn and learned_btn.get("selector") not in self.clicked_button_selectors:
                 rprint(f"[green][LEARNING] Auto-applying learned button: {learned_btn['label']}[/green]")
+                self.clicked_button_selectors.add(learned_btn.get("selector"))
                 return learned_btn, 0
 
         # --- 2. Gather candidates from memory/log ---
@@ -1064,6 +1067,7 @@ class ContextCoordinator:
 
         # --- 4. Merge, deduplicate, and rank all candidates ---
         all_candidates = merge_and_rank_candidates(memory_candidates, dom_candidates, context, keywords, model)
+        all_candidates = [c for c in all_candidates if c.get("selector") not in self.clicked_button_selectors]
 
         # --- 5. Adaptive threshold: try high, then lower if no match ---
         excluded_labels = set()
@@ -1083,6 +1087,13 @@ class ContextCoordinator:
                             self._log_button_memory(cand, contest_title, f"confirmed_pass_{cand['combined_score']:.2f}")
                             if learning_mode:
                                 self._log_confirmed_button_for_learning(cand, contest_title, context)
+                            self.clicked_button_selectors.add(cand.get("selector"))  # <-- Mark as clicked
+                            # PATCH: Wait for page update after click
+                            try:
+                                cand["element_handle"].click()
+                                page.wait_for_timeout(1500)  # Wait 1.5 seconds for page to update
+                            except Exception:
+                                pass
                             return cand, idx
                         else:
                             excluded_labels.add(cand["label"])
