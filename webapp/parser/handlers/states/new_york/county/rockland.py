@@ -2,7 +2,7 @@ from playwright.sync_api import Page
 
 from .....utils.html_scanner import scan_html_for_context
 from .....utils.contest_selector import select_contest
-from .....utils.table_builder import build_dynamic_table, extract_table_data, find_tables_with_headings
+from .....utils.table_builder import build_dynamic_table, extract_table_data, extract_ballot_option_divs
 from .....utils.output_utils import finalize_election_output
 from .....utils.logger_instance import logger
 from .....utils.shared_logger import rprint
@@ -130,7 +130,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
 
     # --- 9. Extract precinct tables robustly using DOM scan and heading association ---
     segments = html_context.get("tagged_segments_with_attrs", [])
-    precinct_tables = find_tables_with_headings(page, dom_segments=segments)
+    precinct_tables = extract_ballot_option_divs(page)
 
     all_data_rows = []
     headers = None

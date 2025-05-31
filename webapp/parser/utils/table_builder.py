@@ -886,3 +886,21 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
                 heading = f"{section_context}: {heading}"
             results.append((heading, table))
     return results
+
+def extract_ballot_option_divs(page):
+    """
+    Extracts results from Enhanced Voting-style markup (div.ballot-option).
+    Returns (headers, data) or ([], []) if not found.
+    """
+    results = []
+    ballot_options = page.locator("div.ballot-option")
+    if ballot_options.count() == 0:
+        return [], []
+    for i in range(ballot_options.count()):
+        option = ballot_options.nth(i)
+        candidate = option.locator(".candidate").inner_text() if option.locator(".candidate").count() else ""
+        party = option.locator(".party").inner_text() if option.locator(".party").count() else ""
+        votes = option.locator(".vote-total").inner_text() if option.locator(".vote-total").count() else ""
+        results.append({"Candidate": candidate, "Party": party, "Votes": votes})
+    headers = ["Candidate", "Party", "Votes"]
+    return headers, results
