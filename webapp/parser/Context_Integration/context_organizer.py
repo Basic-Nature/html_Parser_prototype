@@ -92,31 +92,37 @@ output_cache = load_output_cache()
 
 def build_dom_tree(segments):
     """
-    Build a DOM tree from a flat list of segments.
-    Each node contains: tag, attrs, classes, id, html, children, parent_idx.
-    Returns the root nodes (usually head/body) and a flat list with parent/child relationships.
+    Build a DOM tree from a list of segments that already include parent/child relationships and indices.
+    Each node contains: tag, attrs, classes, id, html, children, parent_idx, start, end, _idx.
+    Returns the root nodes (usually head/body/url_root) and a flat list with parent/child relationships.
+    Ensures parent/child consistency and logs any inconsistencies.
     """
     nodes = []
-    for idx, seg in enumerate(segments):
+    idx_map = {}
+    for i, seg in enumerate(segments):
         node = dict(seg)
-        node["children"] = []
-        node["parent_idx"] = None
-        node["_idx"] = idx
+        node.setdefault("children", [])
+        node.setdefault("parent_idx", None)
+        node.setdefault("_idx", i)
+        node.setdefault("start", None)
+        node.setdefault("end", None)
         nodes.append(node)
+        idx_map[node["_idx"]] = node
 
-    for i, node in enumerate(nodes):
-        node_html = node["html"]
-        for j, possible_parent in enumerate(nodes):
-            if i == j:
-                continue
-            parent_html = possible_parent["html"]
-            if node_html in parent_html and len(parent_html) > len(node_html):
-                if node["parent_idx"] is None or len(nodes[node["parent_idx"]]["html"]) > len(parent_html):
-                    node["parent_idx"] = j
-
+    # Fix up children and parent_idx in case they're not integers
     for node in nodes:
-        if node["parent_idx"] is not None:
-            nodes[node["parent_idx"]]["children"].append(node["_idx"])
+        node["children"] = [c if isinstance(c, int) else getattr(c, "_idx", None) for c in node.get("children", [])]
+        node["children"] = [c for c in node["children"] if c is not None]
+        if isinstance(node.get("parent_idx"), dict):
+            node["parent_idx"] = node["parent_idx"].get("_idx")
+        elif not (isinstance(node.get("parent_idx"), int) or node.get("parent_idx") is None):
+            node["parent_idx"] = None
+
+    # Parent/child consistency check
+    for node in nodes:
+        for child_idx in node["children"]:
+            if child_idx >= len(nodes) or nodes[child_idx].get("parent_idx") != node["_idx"]:
+                logging.warning(f"Inconsistent parent/child: node {node['_idx']} child {child_idx}")
 
     roots = [node for node in nodes if node["parent_idx"] is None]
     dom_tree = {
@@ -125,10 +131,56 @@ def build_dom_tree(segments):
     }
     return dom_tree
 
+def extract_html_by_idx(nodes, idx, full_html):
+    """
+    Extract the exact HTML for a node using its start/end indices.
+    """
+    node = nodes[idx]
+    if node.get("start") is not None and node.get("end") is not None:
+        return full_html[node["start"]:node["end"]]
+    return node.get("html", "")
+
+def extract_subtree_html(nodes, idx, full_html):
+    """
+    Recursively extract the HTML for a node and all its descendants.
+    """
+    node = nodes[idx]
+    if not node["children"]:
+        return extract_html_by_idx(nodes, idx, full_html)
+    # Get the minimal start and maximal end among all descendants
+    indices = [idx]
+    stack = list(node["children"])
+    while stack:
+        child_idx = stack.pop()
+        indices.append(child_idx)
+        stack.extend(nodes[child_idx]["children"])
+    starts = [nodes[i]["start"] for i in indices if nodes[i].get("start") is not None]
+    ends = [nodes[i]["end"] for i in indices if nodes[i].get("end") is not None]
+    if starts and ends:
+        return full_html[min(starts):max(ends)]
+    return node.get("html", "")
+
+def group_nodes_by_label(nodes, label_field="ml_label"):
+    """
+    Group nodes by a given label field (e.g., ml_label or semantic_tags).
+    Returns a dict: label -> list of nodes.
+    """
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for node in nodes:
+        label = node.get(label_field)
+        if isinstance(label, list):
+            for l in label:
+                groups[l].append(node)
+        elif label:
+            groups[label].append(node)
+    return dict(groups)
+
 def expose_dom_parts(dom_tree):
     """
     Expose organized DOM parts for downstream use.
     Returns dicts for head, body, wrappers, tables, buttons, etc.
+    Adds 'direct_parent' field for each node.
     """
     nodes = dom_tree["nodes"]
     head_nodes = [n for n in nodes if n["tag"].lower() == "head"]
@@ -164,6 +216,10 @@ def organize_context(
     plot_anomalies=True,
     plot_clusters_flag=True
 ):
+    """
+    Organizes the context for a parsed HTML page, including DOM structure, contests, panels, buttons, tables, and ML features.
+    Leverages accurate DOM indices and relationships for downstream ML and semantic analysis.
+    """
     ensure_db_schema()
     library = load_context_library() if use_library else {
         "contests": [],
@@ -174,6 +230,7 @@ def organize_context(
         "labels": [],
         "election": [],
         "regex": [],
+        "HTML_TAGS": [],
         "common_output_headers": [],
         "common_error_patterns": [],
         "domain_selectors": {},
@@ -214,6 +271,8 @@ def organize_context(
 
     tagged_segments = raw_context.get("tagged_segments_with_attrs", [])
     url_value = raw_context.get("url", "")
+
+    # --- Virtual root handling: _idx=0, all real roots point to it as parent ---
     virtual_root = {
         "tag": "url_root",
         "attrs": {},
@@ -224,8 +283,18 @@ def organize_context(
         "is_clickable": False,
         "children": [],
         "parent_idx": None,
-        "_idx": -1
+        "start": None,
+        "end": None,
+        "_idx": 0
     }
+    # Shift all indices by 1 to accommodate virtual root at _idx=0
+    for seg in tagged_segments:
+        seg["_idx"] = seg.get("_idx", 0) + 1
+        if seg.get("parent_idx") is None:
+            seg["parent_idx"] = 0  # Point to virtual root
+        elif isinstance(seg["parent_idx"], int):
+            seg["parent_idx"] += 1
+        seg["children"] = [c + 1 if isinstance(c, int) else c for c in seg.get("children", [])]
     tagged_segments = [virtual_root] + tagged_segments
 
     dom_tree = build_dom_tree(tagged_segments)
@@ -370,7 +439,10 @@ def organize_context(
         "clusters": clusters.tolist() if hasattr(clusters, "tolist") else clusters,
         "integrity_issues": integrity_issues,
         "dom_tree": dom_tree,
-        "dom_parts": dom_parts
+        "dom_parts": dom_parts,
+        "extract_html_by_idx": lambda idx, html=raw_context.get("raw_html", ""): extract_html_by_idx(dom_tree["nodes"], idx, html),
+        "extract_subtree_html": lambda idx, html=raw_context.get("raw_html", ""): extract_subtree_html(dom_tree["nodes"], idx, html),
+        "group_nodes_by_label": lambda label_field="ml_label": group_nodes_by_label(dom_tree["nodes"], label_field),
     }
     valid_years = [
         c.get("year")
@@ -456,6 +528,7 @@ def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
         "labels": [],
         "election": [],
         "regex": [],
+        "HTML_TAGS": [],
         "common_output_headers": [],
         "common_error_patterns": [],
         "domain_selectors": {},

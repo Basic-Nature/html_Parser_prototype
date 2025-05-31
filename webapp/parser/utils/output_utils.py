@@ -259,6 +259,8 @@ def finalize_election_output(headers, data, coordinator, contest_title, state, c
     # Remove any 'cwd' or similar keys
     if "cwd" in metadata_out:
         del metadata_out["cwd"]
+    if "environment" in metadata_out and isinstance(metadata_out["environment"], dict):
+        metadata_out["environment"].pop("cwd", None)
 
     with open(json_meta_path, "w", encoding="utf-8") as jf:
         json.dump(metadata_out, jf, indent=2)
@@ -268,6 +270,20 @@ def finalize_election_output(headers, data, coordinator, contest_title, state, c
 
     rprint(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
     rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
+
+    # --- User prompt for feedback/corrections ---
+    feedback_log_path = os.path.join(output_path, "user_feedback_log.jsonl")
+    feedback = input("\n[Feedback] Would you like to provide feedback or corrections for this output? (Leave blank to skip):\n> ").strip()
+    if feedback:
+        feedback_entry = {
+            "timestamp": format_timestamp(),
+            "file": filepath,
+            "metadata": metadata_out,
+            "feedback": feedback
+        }
+        with open(feedback_log_path, "a", encoding="utf-8") as fb:
+            fb.write(json.dumps(feedback_entry) + "\n")
+        rprint(f"[bold blue][FEEDBACK][/bold blue] Feedback logged to {feedback_log_path}")
 
     return {"csv_path": filepath, 
             "metadata_path": json_meta_path,

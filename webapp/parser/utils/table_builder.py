@@ -80,16 +80,35 @@ def build_dynamic_table(
     data: List[Dict[str, Any]],
     coordinator: "ContextCoordinator",
     context: dict = None,
-    max_feedback_loops: int = 3
+    max_feedback_loops: int = 3,
+    learning_mode: bool = True,
+    confirm_table_structure_callback=None # Optional callback for confirming table structure
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Robustly builds a uniform, context-aware table with dynamic verification and feedback.
     Handles candidate-major, precinct-major, flat, wide, ambiguous, and edge-case tables.
+    Now supports table structure learning and auto-application.
     """
+    if not headers:
+        raise ValueError("No headers provided to build_dynamic_table. Cannot build table.")
 
     # Always ensure context is a dict
     if context is None:
         context = {}
+
+    contest_title = context.get("selected_race") or context.get("contest_title") or context.get("title", "")
+
+    # --- 0. Learning mode: check for confirmed table structure ---
+    if learning_mode and hasattr(coordinator, "get_table_structure"):
+        learned_headers = coordinator.get_table_structure(contest_title, context=context, learning_mode=True)
+        if learned_headers:
+            # Optionally remap your data to match learned_headers
+            # (Here, just reorder columns if possible)
+            headers = [h for h in learned_headers if h in headers] + [h for h in headers if h not in learned_headers]
+            # Optionally, harmonize data as well
+            data = [{h: row.get(h, "") for h in headers} for row in data]
+            logger.info(f"[TABLE BUILDER] Applied learned table structure for '{contest_title}'.")
+            return headers, data
 
     # Dynamically detect the location header
     location_header, _ = dynamic_detect_location_header(headers, coordinator)
@@ -218,7 +237,6 @@ def build_dynamic_table(
             else:
                 logger.warning("[TABLE BUILDER] Ambiguous table structure, treating first column as location.")
 
-        # Continue with your existing logic...
         location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
         logger.info(f"[TABLE BUILDER] Detected location header: {location_header}, percent header: {percent_header}")
 
@@ -313,7 +331,26 @@ def build_dynamic_table(
         output_headers, output_data = harmonize_headers_and_data(output_headers, output_data)
         logger.info(f"[TABLE BUILDER] Built {len(output_data)} rows with {len(output_headers)} columns.")
 
-        return output_headers, output_data
+    if learning_mode and hasattr(coordinator, "log_table_structure"):
+        coordinator.log_table_structure(contest_title, headers, context=context)
+        logger.info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest_title}'.")
+
+    if learning_mode and hasattr(coordinator, "log_table_structure"):
+        should_log = True
+        if confirm_table_structure_callback:
+            should_log = confirm_table_structure_callback(headers)
+        else:
+            # Simple CLI prompt fallback
+            print(f"\n[Table Builder] Learned headers for '{contest_title}':\n{headers}")
+            resp = input("Log this table structure for future auto-application? [Y/n]: ").strip().lower()
+            should_log = (resp in ("", "y", "yes"))
+        if should_log:
+            coordinator.log_table_structure(contest_title, headers, context=context)
+            logger.info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest_title}'.")
+        else:
+            logger.info(f"[TABLE BUILDER] User declined to log table structure for '{contest_title}'.")
+
+    return output_headers, output_data
 
 def pivot_precinct_major_to_wide(
     headers: List[str],
@@ -378,7 +415,7 @@ def pivot_precinct_major_to_wide(
 
     # Sort ballot types: Election Day, Early Voting, Absentee, ...rest alphabetically
     ballot_types = []
-    for bt in ["Election Day", "Early Voting", "Absentee"]:
+    for bt in ["Election Day", "Early Voting", "Absentee", "Mail", "Absentee Mail"]:
         if bt in ballot_types_set:
             ballot_types.append(bt)
     for bt in sorted(ballot_types_set):
@@ -428,13 +465,12 @@ def pivot_precinct_major_to_wide(
         out_row["Grand Total"] = str(grand_total)
         output_rows.append(out_row)
 
-    # Add totals row
+    # Add a single totals row at the end
     totals_row = {h: "" for h in output_headers}
     totals_row[location_header] = "TOTAL"
     totals_row[percent_header] = ""
     for h in candidate_columns + misc_columns + ["Grand Total"]:
         try:
-            # Only sum if all values are numeric or empty
             values = [r.get(h, "0").replace(",", "") for r in output_rows]
             if all(v == "" or v.isdigit() or (v.startswith('-') and v[1:].isdigit()) for v in values):
                 totals_row[h] = str(sum(int(v) for v in values if v != ""))
@@ -445,6 +481,55 @@ def pivot_precinct_major_to_wide(
     output_rows.append(totals_row)
 
     return output_headers, output_rows
+
+def review_learned_table_structures(log_path="log/table_structure_learning_log.jsonl"):
+    """
+    CLI to review/edit learned table structures.
+    """
+    if not os.path.exists(log_path):
+        print("No learned table structures found.")
+        return
+
+    entries = []
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                entry = json.loads(line)
+                entries.append(entry)
+            except Exception:
+                continue
+
+    for idx, entry in enumerate(entries):
+        print(f"\n[{idx}] Contest: {entry.get('contest_title')}")
+        print(f"    Headers: {entry.get('headers')}")
+        print(f"    Context: {entry.get('context')}")
+        print(f"    Result: {entry.get('result')}")
+        print("-" * 40)
+
+    while True:
+        cmd = input("\nEnter entry number to delete/edit, or 'q' to quit: ").strip()
+        if cmd.lower() == "q":
+            break
+        if cmd.isdigit():
+            idx = int(cmd)
+            if 0 <= idx < len(entries):
+                action = input("Delete (d) or Edit (e) this entry? [d/e]: ").strip().lower()
+                if action == "d":
+                    entries.pop(idx)
+                    print("Entry deleted.")
+                elif action == "e":
+                    new_headers = input("Enter new headers as comma-separated values: ").strip().split(",")
+                    entries[idx]["headers"] = [h.strip() for h in new_headers]
+                    print("Headers updated.")
+                else:
+                    print("Unknown action.")
+            else:
+                print("Invalid entry number.")
+        # Save changes
+        with open(log_path, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+        print("Changes saved.")
 
 def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoordinator") -> Tuple[str, str]:
     """

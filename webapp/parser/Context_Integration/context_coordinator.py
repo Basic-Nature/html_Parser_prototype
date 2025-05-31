@@ -20,6 +20,7 @@ from ..utils.shared_logic import (
 )
 from sentence_transformers import SentenceTransformer, util
 from sklearn.preprocessing import LabelEncoder
+import subprocess
 from rich.console import Console
 
 console = Console()
@@ -992,18 +993,18 @@ class ContextCoordinator:
         context=None,
         fuzzy_thresholds=None,
         prompt_user_for_button=None,
-        confirm_button_callback=None  # <-- Add a callback for confirmation
+        confirm_button_callback=None,
+        learning_mode=True
     ):
         """
         Advanced button selection: combines memory, DOM, semantic similarity, adaptive threshold, and feedback.
-        Now supports confirmation and exclusion of rejected buttons.
+        Now supports confirmation, exclusion of rejected buttons, and learning mode (auto-apply corrections from log/DB).
         """
         if fuzzy_thresholds is None:
             fuzzy_thresholds = [0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5]
         if not hasattr(self, "_semantic_model"):
             self._semantic_model = SentenceTransformer("all-MiniLM-L6-v2")
         model = self._semantic_model
-        html_patterns = self.library.get("HTML_SPECIFIC_PATTERNS", [])
         context = context or {}
         context.update({
             "contest_title": contest_title,
@@ -1013,7 +1014,14 @@ class ContextCoordinator:
             "state": context.get("state", "")
         })
 
-        # 1. Gather candidates from memory/log
+        # --- 1. Learning mode: check log/DB for confirmed button ---
+        if learning_mode:
+            learned_btn = self._get_confirmed_button_from_log(contest_title, keywords, context)
+            if learned_btn:
+                rprint(f"[green][LEARNING] Auto-applying learned button: {learned_btn['label']}[/green]")
+                return learned_btn, 0
+
+        # --- 2. Gather candidates from memory/log ---
         memory_candidates = []
         logged_buttons = self.get_buttons(contest_title=contest_title)
         if logged_buttons:
@@ -1022,7 +1030,7 @@ class ContextCoordinator:
                 btn["source"] = "memory"
                 memory_candidates.append(btn)
 
-        # 2. Gather live candidates from DOM
+        # --- 3. Gather live candidates from DOM ---
         dom_candidates = []
         BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
         button_features = page.locator(BUTTON_SELECTORS)
@@ -1035,23 +1043,7 @@ class ContextCoordinator:
                 tag = btn.evaluate("el => el.tagName").lower()
                 is_visible = btn.is_visible()
                 is_enabled = btn.is_enabled()
-                selector = None
-                try:
-                    selector = btn.evaluate("el => el.outerHTML")
-                except Exception:
-                    selector = ""
-                context_heading = ""
-                context_anchor = ""
-                try:
-                    heading_locator = btn.locator("xpath=preceding::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
-                    if heading_locator.count() > 0:
-                        context_heading = heading_locator.nth(0).inner_text().strip()
-                    anchor_locator = btn.locator("xpath=ancestor::a[1]")
-                    if anchor_locator.count() > 0:
-                        context_anchor = anchor_locator.nth(0).inner_text().strip()
-                except Exception:
-                    pass
-
+                selector = btn.evaluate("el => el.outerHTML") if btn else ""
                 candidate = {
                     "label": label,
                     "class": class_name,
@@ -1061,8 +1053,6 @@ class ContextCoordinator:
                     "is_visible": is_visible,
                     "is_clickable": is_enabled,
                     "source": "dom",
-                    "context_heading": context_heading,
-                    "context_anchor": context_anchor,
                     "element_handle": btn,
                 }
                 dom_candidates.append(candidate)
@@ -1072,10 +1062,10 @@ class ContextCoordinator:
 
         scan_buttons_with_progress([button_features.nth(i) for i in range(button_features.count())], scan_callback=scan_btn)
 
-        # 3. Merge, deduplicate, and rank all candidates
+        # --- 4. Merge, deduplicate, and rank all candidates ---
         all_candidates = merge_and_rank_candidates(memory_candidates, dom_candidates, context, keywords, model)
 
-        # 4. Adaptive threshold: try high, then lower if no match
+        # --- 5. Adaptive threshold: try high, then lower if no match ---
         excluded_labels = set()
         while True:
             found = False
@@ -1091,6 +1081,8 @@ class ContextCoordinator:
                         if confirmed:
                             rprint(f"[bold green][Coordinator] Confirmed button: '{cand['label']}' (score={cand['combined_score']:.2f})[/bold green]")
                             self._log_button_memory(cand, contest_title, f"confirmed_pass_{cand['combined_score']:.2f}")
+                            if learning_mode:
+                                self._log_confirmed_button_for_learning(cand, contest_title, context)
                             return cand, idx
                         else:
                             excluded_labels.add(cand["label"])
@@ -1103,16 +1095,57 @@ class ContextCoordinator:
                 # No more candidates to try
                 break
 
-        # 5. Feedback UI: Prompt user for manual correction
+        # --- 6. Feedback UI: Prompt user for manual correction ---
         if prompt_user_for_button:
             chosen_btn, chosen_idx = prompt_user_for_button(page, all_candidates, context.get("toggle_name", ""))
             if chosen_btn and chosen_idx is not None:
                 chosen_btn["context"] = context
                 self._log_button_memory(chosen_btn, contest_title, "manual_correction")
+                if learning_mode:
+                    self._log_confirmed_button_for_learning(chosen_btn, contest_title, context)
                 return chosen_btn, chosen_idx
 
         rprint(f"[red][ERROR] No suitable button could be clicked for '{context.get('toggle_name', '')}'.[/red]")
         return None, None
+
+    def _log_confirmed_button_for_learning(self, button, contest_title, context):
+        """
+        Log confirmed button for learning mode (auto-apply next time).
+        """
+        log_entry = {
+            "contest_title": contest_title,
+            "button_label": button.get("label"),
+            "selector": button.get("selector"),
+            "context": context,
+            "result": "learning_confirmed"
+        }
+        log_dir = "log"
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "button_learning_log.jsonl")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry) + "\n")
+
+    def _get_confirmed_button_from_log(self, contest_title, keywords, context):
+        """
+        Retrieve a previously confirmed button from the learning log.
+        """
+        log_path = os.path.join("log", "button_learning_log.jsonl")
+        if not os.path.exists(log_path):
+            return None
+        with open(log_path, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                if entry.get("contest_title") == contest_title and entry.get("result") == "learning_confirmed":
+                    return {
+                        "label": entry.get("button_label"),
+                        "selector": entry.get("selector"),
+                        "context": entry.get("context"),
+                        "source": "learning"
+                    }
+        return None
    
     def _log_button_memory(self, button, contest_title, result):
         """
@@ -1129,6 +1162,62 @@ class ContextCoordinator:
         log_path = os.path.join(log_dir, "button_selection_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry) + "\n")
+
+    # --- Table structure learning/lookup ---
+    def get_table_structure(self, contest_title, context=None, learning_mode=True):
+        """
+        Retrieve or learn the expected table structure for a contest.
+        """
+        log_path = os.path.join("log", "table_structure_learning_log.jsonl")
+        # 1. Learning mode: check log for confirmed structure
+        if learning_mode and os.path.exists(log_path):
+            with open(log_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                    except Exception:
+                        continue
+                    if entry.get("contest_title") == contest_title and entry.get("result") == "learning_confirmed":
+                        return entry.get("headers")
+        # 2. Fallback: return None (caller should trigger extraction and confirmation)
+        return None
+
+    def log_table_structure(self, contest_title, headers, context=None):
+        """
+        Log confirmed table structure for learning mode.
+        """
+        log_entry = {
+            "contest_title": contest_title,
+            "headers": headers,
+            "context": context,
+            "result": "learning_confirmed"
+        }
+        log_dir = "log"
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "table_structure_learning_log.jsonl")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry) + "\n")
+
+    # --- CLI for reviewing/editing corrections and feedback ---
+    def review_and_edit_corrections(self, field_type="buttons"):
+        """
+        Launch the manual_correction_bot CLI for reviewing/editing corrections and feedback.
+        """
+        script_path = os.path.join(os.path.dirname(__file__), "..", "bots", "manual_correction_bot.py")
+        subprocess.run(["python", script_path, "--fields", field_type, "--feedback", "--enhanced"])
+
+    # --- Learning mode: auto-apply corrections from log/database ---
+    def enable_learning_mode(self):
+        """
+        Enable learning mode for auto-applying corrections from logs/database.
+        """
+        self.learning_mode = True
+
+    def disable_learning_mode(self):
+        """
+        Disable learning mode.
+        """
+        self.learning_mode = False
             
     def get_panel(self, contest_title):
         """

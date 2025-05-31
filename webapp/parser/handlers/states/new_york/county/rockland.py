@@ -149,20 +149,28 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             precinct_name = f"Precinct {i+1}"
         precinct_tables.append((precinct_name, table))
 
-    data = []
+    # --- Collect all data rows from all precincts ---
+    all_data_rows = []
     headers = None
     for precinct_name, table in precinct_tables:
         if not table or not precinct_name:
             continue
         headers, data_rows = extract_table_data(table)
-        # Pass precinct_name in context for this table
-        table_context = dict(html_context)
-        table_context["precinct"] = precinct_name
-        headers, rows = build_dynamic_table(headers, data_rows, coordinator, table_context)
-        data.extend(rows)
-        for row in rows:
-            row["Precinct"] = precinct_name
-            data.append(row)
+        print("DEBUG: Extracted headers:", headers)
+        # Patch: If the first header is "Candidate" and the values look like precincts, rename to "Precinct"
+        if headers and headers[0].lower() == "candidate":
+            candidate_col = [row.get("Candidate", "") for row in data_rows]
+            if sum(1 for v in candidate_col if "precinct" in v.lower() or "ed" in v.lower() or v.strip().isdigit()) > len(candidate_col) // 2:
+                headers[0] = "Precinct"
+                for row in data_rows:
+                    row["Precinct"] = row.pop("Candidate")
+        for row in data_rows:
+            row["Precinct"] = precinct_name  # Always set the correct precinct name
+        all_data_rows.extend(data_rows)
+
+    # --- Now call build_dynamic_table ONCE for all precincts ---
+    headers, rows = build_dynamic_table(headers, all_data_rows, coordinator, html_context)
+    data = rows
 
     if not data:
         rprint(f"[yellow][DEBUG] precinct_tables: {precinct_tables}[/yellow]")
@@ -172,6 +180,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
 
     # --- 10. Assemble headers and finalize output ---
     headers = sorted(set().union(*(row.keys() for row in data)))
+    print("DEBUG: Finalized headers:", headers)
     metadata = {
         "state": state or "Unknown",
         "county": county or "Unknown",
