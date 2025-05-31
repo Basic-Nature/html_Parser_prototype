@@ -756,3 +756,122 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
         data = new_data
 
     return headers, data
+
+def find_tables_with_headings(page, dom_segments=None, heading_tags=None, include_section_context=True):
+    """
+    Finds all tables on the page and pairs each with its nearest heading or ARIA landmark.
+    - If dom_segments is provided (from scan_html_for_context), uses that for robust matching.
+    - Otherwise, falls back to Playwright DOM traversal.
+    - Supports nested sections, ARIA landmarks, and fieldset legends.
+    Returns a list of (heading, table_locator) tuples.
+    """
+    if heading_tags is None:
+        heading_tags = ("h1", "h2", "h3", "h4", "h5", "h6")
+
+    results = []
+
+    def extract_text_from_html(html):
+        # Extract visible text from HTML string
+        import re
+        m = re.search(r">([^<]+)<", html)
+        return m.group(1).strip() if m else html
+
+    if dom_segments:
+        tables = [seg for seg in dom_segments if seg.get("tag") == "table"]
+        for i, table_seg in enumerate(tables):
+            heading = None
+            section_context = None
+            idx = table_seg.get("_idx", None)
+            # 1. Walk backwards for nearest heading
+            if idx is not None:
+                for j in range(idx-1, -1, -1):
+                    tag = dom_segments[j].get("tag", "")
+                    if tag in heading_tags:
+                        heading_html = dom_segments[j].get("html", "")
+                        heading = extract_text_from_html(heading_html)
+                        break
+            # 2. If not found, walk up for ARIA landmarks or section/fieldset
+            if not heading and idx is not None:
+                # Walk up the DOM tree for section/fieldset/region
+                parent_idx = table_seg.get("_parent_idx", None)
+                visited = set()
+                while parent_idx is not None and parent_idx not in visited:
+                    visited.add(parent_idx)
+                    parent_seg = dom_segments[parent_idx]
+                    tag = parent_seg.get("tag", "")
+                    attrs = parent_seg.get("attrs", {})
+                    # ARIA region/landmark
+                    aria_label = attrs.get("aria-label") or attrs.get("aria-labelledby")
+                    role = attrs.get("role", "")
+                    if role in ("region", "complementary", "main", "navigation", "search") or aria_label:
+                        section_context = aria_label or role
+                        break
+                    # Section/fieldset/legend
+                    if tag in ("section", "fieldset"):
+                        # Try to find a legend or heading inside this section
+                        for k in range(parent_idx+1, len(dom_segments)):
+                            if dom_segments[k].get("_parent_idx") == parent_idx:
+                                child_tag = dom_segments[k].get("tag", "")
+                                if child_tag == "legend":
+                                    heading = extract_text_from_html(dom_segments[k].get("html", ""))
+                                    break
+                                if child_tag in heading_tags:
+                                    heading = extract_text_from_html(dom_segments[k].get("html", ""))
+                                    break
+                        if heading:
+                            break
+                        section_context = tag
+                        break
+                    parent_idx = parent_seg.get("_parent_idx", None)
+            # 3. Compose heading with section context if desired
+            if not heading:
+                heading = f"Precinct {i+1}"
+            if include_section_context and section_context:
+                heading = f"{section_context}: {heading}"
+            # Use Playwright to get the table locator by index
+            table_locator = page.locator("table").nth(i)
+            results.append((heading, table_locator))
+    else:
+        # Fallback: Use Playwright only
+        tables = page.locator("table")
+        for i in range(tables.count()):
+            table = tables.nth(i)
+            heading = None
+            section_context = None
+            try:
+                # Try ARIA landmarks/regions
+                parent = table
+                for _ in range(5):  # Walk up to 5 ancestors
+                    parent = parent.locator("xpath=..")
+                    attrs = parent.evaluate("el => ({'role': el.getAttribute('role'), 'aria-label': el.getAttribute('aria-label'), 'aria-labelledby': el.getAttribute('aria-labelledby'), 'tag': el.tagName.toLowerCase()})")
+                    if attrs.get("role") in ("region", "complementary", "main", "navigation", "search") or attrs.get("aria-label"):
+                        section_context = attrs.get("aria-label") or attrs.get("role")
+                        break
+                    if attrs.get("tag") in ("section", "fieldset"):
+                        # Try to find a legend or heading inside this section
+                        legend = parent.locator("legend")
+                        if legend.count() > 0:
+                            heading = legend.nth(0).inner_text().strip()
+                            break
+                        for tag in heading_tags:
+                            h = parent.locator(tag)
+                            if h.count() > 0:
+                                heading = h.nth(0).inner_text().strip()
+                                break
+                        if heading:
+                            break
+                        section_context = attrs.get("tag")
+                        break
+                # Try previous heading sibling
+                if not heading:
+                    header_locator = table.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
+                    if header_locator.count() > 0:
+                        heading = header_locator.nth(0).inner_text().strip()
+            except Exception:
+                pass
+            if not heading:
+                heading = f"Precinct {i+1}"
+            if include_section_context and section_context:
+                heading = f"{section_context}: {heading}"
+            results.append((heading, table))
+    return results

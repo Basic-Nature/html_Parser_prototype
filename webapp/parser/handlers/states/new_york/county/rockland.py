@@ -2,7 +2,7 @@ from playwright.sync_api import Page
 
 from .....utils.html_scanner import scan_html_for_context
 from .....utils.contest_selector import select_contest
-from .....utils.table_builder import build_dynamic_table, extract_table_data
+from .....utils.table_builder import build_dynamic_table, extract_table_data, find_tables_with_headings
 from .....utils.output_utils import finalize_election_output
 from .....utils.logger_instance import logger
 from .....utils.shared_logger import rprint
@@ -132,28 +132,16 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     # --- 8. Autoscroll again if needed ---
     autoscroll_until_stable(page)
 
-    # --- 9. Extract precinct tables ---
     tables = page.locator("table")
-    print("DEBUG: Number of tables found:", tables.count())
-    precinct_tables = []
-    for i in range(tables.count()):
-        table = tables.nth(i)
-        precinct_name = None
-        try:
-            header_locator = table.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
-            if header_locator.count() > 0:
-                precinct_name = header_locator.nth(0).inner_text().strip()
-        except Exception:
-            rprint(f"[yellow][DEBUG] Exception while finding precinct header: {e}[/yellow]")
-            pass
-        if not precinct_name:
-            precinct_name = f"Precinct {i+1}"
-        precinct_tables.append((precinct_name, table))
+    print(f"DEBUG: Number of tables found after autoscroll: {tables.count()}")
 
-    # --- Collect all data rows from all precincts ---
+    # --- 9. Extract precinct tables robustly using DOM scan and heading association ---
+    segments = html_context.get("tagged_segments_with_attrs", [])
+    precinct_tables = find_tables_with_headings(page, dom_segments=segments)
+
     all_data_rows = []
     headers = None
-    last_table_with_no_headers = None  # Track the last table for debugging
+    last_table_with_no_headers = None
 
     for precinct_name, table in precinct_tables:
         if not table or not precinct_name:
@@ -161,7 +149,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         headers, data_rows = extract_table_data(table)
         print("DEBUG: Extracted headers:", headers)
         if not headers:
-            last_table_with_no_headers = table  # Save for debugging
+            last_table_with_no_headers = table
             continue
         # Patch: If the first header is "Candidate" and the values look like precincts, rename to "Precinct"
         if headers and headers[0].lower() == "candidate":
