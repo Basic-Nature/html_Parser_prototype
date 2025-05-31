@@ -83,14 +83,6 @@ def extract_tagged_segments_with_attrs(
     Uses selectolax to walk the DOM and extract segments with parent/child relationships and accurate indices.
     Falls back to BeautifulSoup if selectolax fails.
     """
-    def walk(node, parent_idx=None):
-        tag = node.tag
-        if not tag or tag.lower() not in HTML_TAGS:
-            for child in node.iter():
-                if child.parent is node:
-                    walk(child, parent_idx)
-            return
-        attrs = dict(node.attributes)    
     start_time = time.time()
     segments: List[Dict[str, Any]] = []
     try:
@@ -131,14 +123,7 @@ def extract_tagged_segments_with_attrs(
                 except Exception:
                     seg["html"] = html[node.start:node.end]
             else:
-                seg["html"] = ""            
-            # Unicode/byte offset-safe extraction
-            if node.start is not None and node.end is not None:
-                html_bytes = html.encode("utf-8")
-                try:
-                    seg["html"] = html_bytes[node.start:node.end].decode("utf-8", errors="replace")
-                except Exception:
-                    seg["html"] = html[node.start:node.end]
+                seg["html"] = ""
             segments.append(seg)
             this_idx = seg["_idx"]
             for child in node.iter():
