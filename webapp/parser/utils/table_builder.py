@@ -889,18 +889,45 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
 
 def extract_ballot_option_divs(page):
     """
-    Extracts results from Enhanced Voting-style markup (div.ballot-option).
-    Returns (headers, data) or ([], []) if not found.
+    Extracts Enhanced Voting-style results from div.ballot-option containers.
+    Returns a list of (precinct_name, ballot_option_locator) tuples.
+    Tries to find a precinct/district label near each ballot-option group.
     """
     results = []
-    ballot_options = page.locator("div.ballot-option")
-    if ballot_options.count() == 0:
-        return [], []
-    for i in range(ballot_options.count()):
-        option = ballot_options.nth(i)
-        candidate = option.locator(".candidate").inner_text() if option.locator(".candidate").count() else ""
-        party = option.locator(".party").inner_text() if option.locator(".party").count() else ""
-        votes = option.locator(".vote-total").inner_text() if option.locator(".vote-total").count() else ""
-        results.append({"Candidate": candidate, "Party": party, "Votes": votes})
-    headers = ["Candidate", "Party", "Votes"]
-    return headers, results
+    # Find all ballot-option containers (these may be grouped by precinct)
+    ballot_option_groups = page.locator("div.ballot-options, div.ballot-option-group, div.results-table, div.precinct, div.district")
+    used = set()
+    for i in range(ballot_option_groups.count()):
+        group = ballot_option_groups.nth(i)
+        # Try to find a precinct/district label near this group
+        precinct_name = ""
+        # Look for a heading or label above the group
+        heading = group.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
+        if heading.count() > 0:
+            precinct_name = heading.nth(0).inner_text().strip()
+        else:
+            # Try to find a label inside the group
+            label = group.locator("div.precinct-label, div.district-label, span.precinct-label, span.district-label")
+            if label.count() > 0:
+                precinct_name = label.nth(0).inner_text().strip()
+        # Fallback: use index if no label found
+        if not precinct_name:
+            precinct_name = f"Precinct {i+1}"
+        # Find all ballot-option divs inside this group
+        ballot_options = group.locator("div.ballot-option")
+        for j in range(ballot_options.count()):
+            option = ballot_options.nth(j)
+            # Avoid duplicates if ballot-option is nested in multiple groups
+            option_id = option.evaluate("el => el.outerHTML")
+            if option_id in used:
+                continue
+            used.add(option_id)
+            results.append((precinct_name, option))
+    # If no groups found, fallback to all ballot-option divs on page
+    if not results:
+        ballot_options = page.locator("div.ballot-option")
+        for i in range(ballot_options.count()):
+            option = ballot_options.nth(i)
+            precinct_name = f"Precinct {i+1}"
+            results.append((precinct_name, option))
+    return results
