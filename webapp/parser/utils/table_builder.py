@@ -16,7 +16,17 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
+from ..config import BASE_DIR
 
+def get_safe_log_path(filename="dom_pattern_log.jsonl"):
+    """
+    Returns a safe log path inside the BASE_DIR/log directory.
+    Prevents path-injection and directory traversal.
+    """
+    log_dir = os.path.join(BASE_DIR, "log")
+    os.makedirs(log_dir, exist_ok=True)
+    safe_filename = os.path.basename(filename)
+    return os.path.join(log_dir, safe_filename)
 
 # --- Robust Table Type Detection Helpers ---
 BALLOT_TYPES = [
@@ -84,7 +94,7 @@ def build_dynamic_table(
     context: dict = None,
     max_feedback_loops: int = 3,
     learning_mode: bool = True,
-    confirm_table_structure_callback=None # Optional callback for confirming table structure
+    confirm_table_structure_callback=None
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Robustly builds a uniform, context-aware table with dynamic verification and feedback.
@@ -112,12 +122,64 @@ def build_dynamic_table(
             logger.info(f"[TABLE BUILDER] Applied learned table structure for '{contest_title}'.")
             return headers, data
 
+
+
     # Dynamically detect the location header
     location_header, _ = dynamic_detect_location_header(headers, coordinator)
 
     # If location header is not present in headers, add it as the first column
     if location_header and location_header not in headers:
         headers = [location_header] + headers
+
+    # --- Pattern-driven extraction ---
+    if context and context.get("page"):
+        page = context["page"]
+        pattern_rows = extract_with_patterns(page, context)
+        if pattern_rows:
+            headers = []
+            data = []
+            for heading, row, pat in pattern_rows:
+                cell_selectors = pat.get("cell_selectors") or [pat.get("cell_selector", "> *")]
+                row_data = {}
+                for cell_selector in cell_selectors:
+                    cells = row.locator(cell_selector)
+                    for idx in range(cells.count()):
+                        cell_text = cells.nth(idx).inner_text().strip()
+                        header = f"Column {idx+1}"
+                        row_data[header] = cell_text
+                        if header not in headers:
+                            headers.append(header)
+                if row_data:
+                    data.append(row_data)
+            headers, data = extract_table_from_headers(headers, data)
+            # Log this structure as a new pattern if not already present
+            if context.get("last_selector"):
+                log_new_dom_pattern(context.get("last_html", ""), context["last_selector"], context)
+                auto_approve_dom_pattern(context["last_selector"])
+            return headers, data
+
+    # --- Fallback: try repeated DOM structures if no table or pattern found ---
+    if context and context.get("page") and not headers:
+        page = context["page"]
+        repeated_rows = extract_repeated_dom_structures(page)
+        if repeated_rows:
+            headers = []
+            data = []
+            for heading, row in repeated_rows:
+                cells = row.locator("> *")
+                row_data = {}
+                for idx in range(cells.count()):
+                    cell_text = cells.nth(idx).inner_text().strip()
+                    header = f"Column {idx+1}"
+                    row_data[header] = cell_text
+                    if header not in headers:
+                        headers.append(header)
+                if row_data:
+                    data.append(row_data)
+            headers, data = extract_table_from_headers(headers, data)
+            # Log this structure as a new pattern
+            log_new_dom_pattern(row.inner_html(), "> *", context)
+            return headers, data
 
     # For each row, if location header is missing or empty, fill from context if available
     for row in data:
@@ -243,6 +305,11 @@ def build_dynamic_table(
         logger.info(f"[TABLE BUILDER] Detected location header: {location_header}, percent header: {percent_header}")
 
         candidate_party_map = extract_candidates_and_parties(headers, coordinator)
+
+
+    if context and context.get("last_selector"):
+        log_new_dom_pattern(context.get("last_html", ""), context["last_selector"], context)
+        auto_approve_dom_pattern(context["last_selector"])
 
         # 3. Rescan and verify headers/data, feedback loop
         feedback_loops = 0
@@ -887,3 +954,174 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
             results.append((heading, table))
     return results
 
+def extract_repeated_dom_structures(page, container_selectors=None, min_row_count=2):
+    """
+    Scans the DOM for repeated structures (divs, uls, etc.) that look like tabular data.
+    Returns a list of (section_heading, row_locator) tuples.
+    """
+    if container_selectors is None:
+        container_selectors = [
+            "div[class*='row']",
+            "div[class*='option']",
+            "div[class*='result']",
+            "ul",
+            "ol"
+        ]
+    results = []
+    for selector in container_selectors:
+        containers = page.locator(selector)
+        for i in range(containers.count()):
+            container = containers.nth(i)
+            # Heuristic: look for multiple direct children with similar tag/class
+            children = container.locator("> *")
+            if children.count() >= min_row_count:
+                # Try to find a heading above the container
+                heading = ""
+                heading_loc = container.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
+                if heading_loc.count() > 0:
+                    heading = heading_loc.nth(0).inner_text().strip()
+                else:
+                    heading = f"Section {i+1}"
+                # Each child is a "row"
+                for j in range(children.count()):
+                    row = children.nth(j)
+                    results.append((heading, row))
+    return results
+
+def log_new_dom_pattern(example_html, selector, context=None, log_path=None):
+    """
+    Logs a new DOM pattern for future learning/updating of extraction logic.
+    Uses a safe log path.
+    """
+    if log_path is None:
+        log_path = get_safe_log_path()
+    entry = {
+        "selector": selector,
+        "example_html": example_html,
+        "context": context or {}
+    }
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+def review_dom_patterns(log_path=None):
+    """
+    CLI to review, approve, or delete learned DOM patterns.
+    """
+    if log_path is None:
+        log_path = get_safe_log_path()
+    if not os.path.exists(log_path):
+        print("No learned DOM patterns found.")
+        return
+
+    with open(log_path, "r", encoding="utf-8") as f:
+        entries = [json.loads(line) for line in f if line.strip()]
+
+    for idx, entry in enumerate(entries):
+        print(f"\n[{idx}] Selector: {entry.get('selector')}")
+        print(f"    Example HTML: {entry.get('example_html')[:200]}...")
+        print(f"    Context: {entry.get('context')}")
+        print("-" * 40)
+
+    while True:
+        cmd = input("\nEnter entry number to approve/delete, or 'q' to quit: ").strip()
+        if cmd.lower() == "q":
+            break
+        if cmd.isdigit():
+            idx = int(cmd)
+            if 0 <= idx < len(entries):
+                action = input("Approve (a) or Delete (d) this entry? [a/d]: ").strip().lower()
+                if action == "d":
+                    entries.pop(idx)
+                    print("Entry deleted.")
+                elif action == "a":
+                    entries[idx]["approved"] = True
+                    print("Entry approved.")
+                else:
+                    print("Unknown action.")
+            else:
+                print("Invalid entry number.")
+        # Save changes
+        with open(log_path, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+        print("Changes saved.")
+
+def load_dom_patterns(log_path=None):
+    """
+    Loads all DOM patterns, returns a list of dicts.
+    """
+    if log_path is None:
+        log_path = get_safe_log_path()
+    if not os.path.exists(log_path):
+        return []
+    with open(log_path, "r", encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+def auto_approve_dom_pattern(selector, log_path=None, min_count=2):
+    """
+    Auto-approves a pattern if it appears at least min_count times.
+    """
+    patterns = load_dom_patterns(log_path)
+    count = sum(1 for p in patterns if p.get("selector") == selector)
+    for p in patterns:
+        if p.get("selector") == selector and count >= min_count:
+            p["approved"] = True
+    # Save back
+    if log_path is None:
+        log_path = get_safe_log_path()
+    with open(log_path, "w", encoding="utf-8") as f:
+        for p in patterns:
+            f.write(json.dumps(p) + "\n")
+
+def extract_with_patterns(page, context=None, log_path=None):
+    """
+    Attempts to extract tabular data using approved DOM patterns.
+    Returns list of (heading, row_locator, pattern_used)
+    """
+    patterns = load_dom_patterns(log_path)
+    approved = [p for p in patterns if p.get("approved")]
+    results = []
+    for pat in approved:
+        selector = pat["selector"]
+        # Support multiple cell selectors for robustness
+        cell_selectors = pat.get("cell_selectors") or [pat.get("cell_selector", "> *")]
+        containers = page.locator(selector)
+        for i in range(containers.count()):
+            container = containers.nth(i)
+            heading = pat.get("heading") or f"Pattern: {selector} #{i+1}"
+            for cell_selector in cell_selectors:
+                children = container.locator(cell_selector)
+                if children.count() > 0:
+                    for j in range(children.count()):
+                        row = children.nth(j)
+                        # Optionally, filter by tag/class/text if specified
+                        if "row_tag" in pat:
+                            tag = row.evaluate("el => el.tagName.toLowerCase()")
+                            if tag != pat["row_tag"]:
+                                continue
+                        if "row_class" in pat:
+                            classes = row.evaluate("el => el.className")
+                            if pat["row_class"] not in classes:
+                                continue
+                        if "row_text_contains" in pat:
+                            text = row.inner_text().strip()
+                            if pat["row_text_contains"] not in text:
+                                continue
+                        results.append((heading, row, pat))
+    return results
+
+def extract_table_from_headers(headers, data):
+    """
+    Converts headers and data into a uniform table format.
+    Harmonizes all rows to the union of all keys, preserving order.
+    """
+    if not headers or not data:
+        return [], []
+    # Use the order of the first row's keys if possible
+    all_headers = list(headers)
+    for row in data:
+        for k in row.keys():
+            if k not in all_headers:
+                all_headers.append(k)
+    harmonized = [{h: row.get(h, "") for h in all_headers} for row in data]
+    return all_headers, harmonized

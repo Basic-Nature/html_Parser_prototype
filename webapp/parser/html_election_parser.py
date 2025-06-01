@@ -39,7 +39,7 @@ from .utils.html_scanner import scan_html_for_context
 from .utils.logger_instance import logger
 from .utils.shared_logic import infer_state_county_from_url, safe_join
 from .utils.user_prompt import prompt_user_input, PromptCancelled
-
+import hashlib
 
 # Optional: Bot integration and future AI/ML hooks
 try:
@@ -73,6 +73,8 @@ ENABLE_AI_ANALYSIS = os.getenv("ENABLE_AI_ANALYSIS", "false").lower() == "true"
 ENABLE_REALTIME_STREAM = os.getenv("ENABLE_REALTIME_STREAM", "false").lower() == "true"
 ENABLE_BOT_TASKS = os.getenv("ENABLE_BOT_TASKS", "false").lower() == "true"
 
+context_cache = {}
+
 def safe_filename(name):
     return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
 
@@ -103,6 +105,10 @@ def load_urls() -> List[str]:
                 return [url]
         return lines
 
+def get_page_hash(page):
+    """Returns a hash of the page's HTML content."""
+    html = page.content() if hasattr(page, "content") else page.inner_html("html")
+    return hashlib.sha256(html.encode("utf-8")).hexdigest()
 
 def mark_url_processed(url, status="success", **metadata):
     """Append or update a processed URL with rich metadata, storing all entries in a JSON array."""
@@ -328,11 +334,12 @@ def process_url(target_url, processed_info):
                 p, target_url, cache_exit_callback=mark_url_processed
             )
             if not page:
-                # Session ended due to CAPTCHA or user exit
                 return
-           # --- HTML SCAN & FORMAT DETECTION ---
-            html_context = scan_html_for_context(target_url, page, debug=True)
-            logger.debug(f"html_context after scan: {html_context}")
+
+            coordinator = ContextCoordinator()
+
+            # --- Detect page hash and use context cache ---
+            html_context = get_or_scan_context(page, coordinator)
             html_context["source_url"] = target_url
 
             # --- Robust state/county inference and validation ---
@@ -342,11 +349,10 @@ def process_url(target_url, processed_info):
             if county and not html_context.get("county"):
                 html_context["county"] = county
 
-            # Validate state/county using context library (for enrichment, not routing)
             context_library = load_context_library()
             validated_county, validated_state, handler_path, issues = dynamic_state_county_detection(
-                html_context,  # this is your context dict
-                html_context.get("raw_html", ""),  # this is the HTML string
+                html_context,
+                html_context.get("raw_html", ""),
                 context_library
             )
             if validated_state and not html_context.get("state"):
@@ -356,8 +362,8 @@ def process_url(target_url, processed_info):
             if issues:
                 logger.warning(f"[STATE/COUNTY VALIDATION] {issues}")
 
-            # --- Organize context for ML/metadata enrichment ---
-            organized_context = organize_context(html_context, cache=processed_info)
+            # --- Organize and enrich context with ML/NER ---
+            organized_context = coordinator.organize_and_enrich(html_context)
             try:
                 nlp_report = analyze_contest_titles(organized_context.get("contests", []))
                 entity_summary = summarize_context_entities(organized_context.get("contests", []))
@@ -377,7 +383,6 @@ def process_url(target_url, processed_info):
 
             # --- Batch Mode: Hand off to coordinator if needed ---
             if html_context.get("batch_mode") and "selected_races" in html_context:
-                coordinator = ContextCoordinator()
                 try:
                     coordinator.handle_batch(
                         page=page,
@@ -392,7 +397,7 @@ def process_url(target_url, processed_info):
                 except Exception as e:
                     logging.error(f"[Batch Mode] Coordinator batch handling failed: {e}", exc_info=True)
                     mark_url_processed(target_url, status="error")
-                return  # End after batch mode
+                return
 
             # --- Single result (non-batch) ---
             if all([headers, data, contest_title, metadata]):
@@ -424,7 +429,6 @@ def process_url(target_url, processed_info):
         logging.error(f"[ERROR] Exception while processing {target_url}: {e}", exc_info=True)
         mark_url_processed(target_url, status="error")
     finally:
-        # Ensure browser is closed to prevent resource leaks
         try:
             if browser:
                 browser.close()
@@ -484,6 +488,17 @@ def main():
         for url in selected_urls:
             process_url(url, processed_info)            
 
+def get_or_scan_context(page, coordinator):
+    page_hash = get_page_hash(page)
+    if page_hash in context_cache:
+        html_context = context_cache[page_hash]
+        logger.info(f"[CONTEXT] Using cached context for hash {page_hash}")
+    else:
+        html_context = scan_html_for_context(page.url, page)
+        html_context = coordinator.organize_and_enrich(html_context)
+        context_cache[page_hash] = html_context
+        logger.info(f"[CONTEXT] Scanned and cached context for hash {page_hash}")
+    return html_context
 
 if __name__ == "__main__":
     main()

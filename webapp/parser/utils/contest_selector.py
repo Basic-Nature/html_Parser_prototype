@@ -102,7 +102,9 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
                 indices.append(idx)
     selected = [contests[i] for i in indices]
     # Log user feedback for ML improvement
+    logger.debug(f"norm_state: {context.get('state')}, norm_county: {context.get('county')}, year: {context.get('year')}")
     for c in selected:
+        logger.debug(f"Contest: {c.get('title', '')}, state: {c.get('state', '')}, county: {c.get('county', '')}, year: {c.get('year', '')}")
         coordinator.submit_user_feedback("contest", "contest_title", c.get("title", ""), context)
     return selected
 
@@ -127,11 +129,27 @@ def select_contest(
     norm_state = normalize_state_name(state)
     norm_county = normalize_county_name(county)
 
-    # Filter contests by state/county/year and remove noisy patterns
+    # Load district mapping
+    context_library = coordinator.library if hasattr(coordinator, "library") else {}
+    known_county_to_district = context_library.get("Known_county_to_district_map", {})
+
+    def county_matches(contest_county):
+        contest_county_norm = normalize_county_name(contest_county)
+        if not norm_county:
+            return True
+        if contest_county_norm == norm_county:
+            return True
+        # Check if contest county is a district of the selected county
+        for parent_county, districts in known_county_to_district.items():
+            if normalize_county_name(parent_county) == norm_county:
+                if contest_county_norm in [normalize_county_name(d) for d in districts]:
+                    return True
+        return False
+
     filtered_contests = [
         c for c in contests
         if (not norm_state or normalize_state_name(c.get("state", "")) == norm_state)
-        and (not norm_county or normalize_county_name(c.get("county", "")) == norm_county)
+        and county_matches(c.get("county", ""))
         and (not year or str(c.get("year", "")) == str(year))
         and not any(pat.lower() in c.get("title", "").lower() for pat in noisy_patterns)
     ]
@@ -157,7 +175,7 @@ def select_contest(
         return None
 
     # --- Feedback loop: ML/NER verification of contests ---
-    context = {"state": state, "county": county, "year": year}
+    context = {"state": norm_state, "county": norm_county, "year": year}
     verified_contests = feedback_loop_verify_contests(filtered_contests, coordinator, context)
     if not verified_contests:
         rprint("[yellow]No contests passed ML/NER verification. Skipping.[/yellow]")

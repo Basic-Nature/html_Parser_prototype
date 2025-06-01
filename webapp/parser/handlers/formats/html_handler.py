@@ -1,17 +1,19 @@
 def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs):
     """
-    Generic HTML handler: organizes context, delegates to state/county handler if available,
-    and ensures all key election data is extracted and categorized for downstream use.
-    Returns headers, data, contest_title, metadata.
+    Generic HTML handler: organizes context, attempts to route to the correct state/county handler,
+    and ensures all key election data is transferred to the appropriate downstream handler.
+    If no handler is found, uses ML/NLP and user feedback to improve routing, and logs all attempts.
+    No extraction is performed here.
     """
     from ...Context_Integration.context_coordinator import ContextCoordinator
-    from ...state_router import get_handler
-    from ...utils.contest_selector import select_contest
-    from ...utils.table_builder import build_dynamic_table, rescan_and_verify
-    from ...utils.shared_logic import  find_and_click_toggle
+    from ...state_router import get_handler, list_available_handlers, fuzzy_match_handler
+    from ...utils.shared_logic import normalize_state_name, normalize_county_name
     from ...utils.logger_instance import logger
+    from ...utils.user_prompt import prompt_user_input
+    import json
+    import os
 
-    # 1. Scan and enrich HTML context
+    # 1. Organize and enrich context
     html_context = context or {}
     if context:
         html_context.update(context)
@@ -23,113 +25,187 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     coordinator.organize_and_enrich(html_context)
     organized = coordinator.organized or {}
 
-    # 3. Route to state/county handler if available
+    # 3. Attempt to find handler (first pass)
+    # Normalize state/county before passing to get_handler
+    if "state" in html_context:
+        html_context["state"] = normalize_state_name(html_context["state"])
+    if "county" in html_context:
+        html_context["county"] = normalize_county_name(html_context["county"])
     handler = get_handler(html_context, url=getattr(page, "url", None))
-    if handler and hasattr(handler, "parse") and handler is not parse:
+    handler_found = handler and hasattr(handler, "parse") and handler is not parse
+
+    # --- Routing diagnostics ---
+    routing_trace = []
+    routing_trace.append(f"Initial state: {html_context.get('state')}, county: {html_context.get('county')}")
+    attempts = []
+
+    # 4. Feedback loop: If handler not found, try ML/NLP and prompt user
+    if not handler_found:
+        logger.warning("[HTML Handler] No state/county handler found. Attempting ML/NLP feedback loop.")
+
+        # --- ML/NLP: Try to infer state/county from context/entities ---
+        state = normalize_state_name(html_context.get("state"))
+        county = normalize_county_name(html_context.get("county"))
+        url = getattr(page, "url", None) or html_context.get("source_url", "")
+        contests = organized.get("contests", [])
+        entities = []
+        for c in contests:
+            entities.extend(c.get("entities", []))
+        ml_suggestions = coordinator.validate_and_check_integrity()
+        suggested_state = normalize_state_name(state or (ml_suggestions.get("integrity_issues") or [{}])[0].get("state"))
+        suggested_county = normalize_county_name(county or (ml_suggestions.get("integrity_issues") or [{}])[0].get("county"))
+        attempts.append({
+            "method": "ml_nlp",
+            "suggested_state": suggested_state,
+            "suggested_county": suggested_county,
+            "entities": entities,
+            "url": url
+        })
+        routing_trace.append(f"ML/NLP suggestions: state={suggested_state}, county={suggested_county}")
+
+        # --- Handler discovery and fuzzy suggestions ---
+        available_states = list_available_handlers(level="state")
+        available_counties = list_available_handlers(level="county", state=suggested_state or state)
+        logger.info(f"[HTML Handler] Available states: {available_states}")
+        logger.info(f"[HTML Handler] Available counties for state '{suggested_state or state}': {available_counties}")
+
+        # Fuzzy match for county if not found
+        if county and county not in available_counties:
+            matches = fuzzy_match_handler(county, available_counties)
+            logger.warning(f"[HTML Handler] County '{county}' not found. Closest matches: {matches}")
+            routing_trace.append(f"Fuzzy county matches for '{county}': {matches}")
+
+        # --- Context consistency check ---
+        if county and (county not in available_counties):
+            logger.warning(f"[HTML Handler] Detected county '{county}' is not in known counties for state '{suggested_state or state}'.")
+            routing_trace.append(f"County '{county}' not in known counties for state '{suggested_state or state}'.")
+
+        # --- Prompt user for manual override ---
+        if not non_interactive:
+            logger.info("[HTML Handler] Prompting user for manual state/county selection.")
+            while True:
+                user_state = prompt_user_input(
+                    f"Enter state (or leave blank to keep '{suggested_state or state}'): "
+                ).strip() or (suggested_state or state)
+                user_state = normalize_state_name(user_state)
+                available_states = list_available_handlers(level="state")
+                if user_state not in available_states:
+                    matches = fuzzy_match_handler(user_state, available_states)
+                    logger.warning(f"[HTML Handler] State '{user_state}' not found. Closest matches: {matches}")
+                    if matches:
+                        confirm = prompt_user_input(
+                            f"Did you mean '{matches[0]}'? (y/n): "
+                        ).strip().lower()
+                        if confirm == "y":
+                            user_state = matches[0]
+                        else:
+                            continue
+                    else:
+                        logger.error(f"[HTML Handler] No valid state handler found for '{user_state}'. Try again.")
+                        continue
+
+                available_counties = list_available_handlers(level="county", state=user_state)
+                user_county = prompt_user_input(
+                    f"Enter county (or leave blank to keep '{suggested_county or county}'): "
+                ).strip() or (suggested_county or county)
+                user_county = normalize_county_name(user_county)
+                if user_county not in available_counties:
+                    # Check if county is a district mapped in context library
+                    from ...Context_Integration.context_coordinator import ContextCoordinator
+                    coordinator = ContextCoordinator()
+                    context_library = coordinator.library
+                    known_county_to_district = context_library.get("Known_county_to_district_map", {})
+                    mapped_county = None
+                    for county_name, districts in known_county_to_district.items():
+                        if user_county in [normalize_county_name(d) for d in districts]:
+                            mapped_county = normalize_county_name(county_name)
+                            logger.info(f"[HTML Handler] '{user_county}' matched as district of county '{county_name}'. Using '{county_name}'.")
+                            user_county = mapped_county
+                            break
+                    if not mapped_county:
+                        matches = fuzzy_match_handler(user_county, available_counties)
+                        logger.warning(f"[HTML Handler] County '{user_county}' not found. Closest matches: {matches}")
+                        if matches:
+                            confirm = prompt_user_input(
+                                f"Did you mean '{matches[0]}'? (y/n): "
+                            ).strip().lower()
+                            if confirm == "y":
+                                user_county = matches[0]
+                            else:
+                                continue
+                        else:
+                            logger.error(f"[HTML Handler] No valid county handler found for '{user_county}'. Try again.")
+                            continue
+
+                # If we get here, both state and county are valid
+                html_context["state"] = user_state
+                html_context["county"] = user_county
+                handler = get_handler(html_context, url=url)
+                handler_found = handler and hasattr(handler, "parse") and handler is not parse
+                attempts.append({
+                    "method": "manual_prompt",
+                    "user_state": user_state,
+                    "user_county": user_county
+                })
+                routing_trace.append(f"User override: state={user_state}, county={user_county}")
+                break
+
+            # Optionally allow user to specify handler path directly
+            if not handler_found:
+                handler_path = prompt_user_input("Enter handler path manually (or leave blank to skip): ").strip()
+                if handler_path:
+                    try:
+                        import importlib
+                        handler_mod = importlib.import_module(handler_path)
+                        handler = getattr(handler_mod, "parse", None)
+                        handler_found = handler is not None
+                        attempts.append({
+                            "method": "manual_handler_path",
+                            "handler_path": handler_path
+                        })
+                        routing_trace.append(f"User specified handler path: {handler_path}")
+                    except Exception as e:
+                        logger.error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
+                        routing_trace.append(f"Failed manual handler import: {handler_path} ({e})")
+                        
+    # 5. If handler found after feedback, route and return
+    if handler_found:
         logger.info(f"[HTML Handler] Routing to state/county handler: {handler.__name__}")
+        logger.info(f"[HTML Handler] Routing trace: {routing_trace}")
         # Pass enriched context and coordinator downstream
         return handler.parse(page, coordinator, html_context, non_interactive=non_interactive, **kwargs)
 
-    # 4. Contest selection (Elector Race, Election Type, Year, Districts)
-    contests = organized.get("contests", [])
-    contest_title = html_context.get("selected_race")
-    if not contest_title:
-        selected = select_contest(
-            coordinator,
-            state=html_context.get("state"),
-            county=html_context.get("county"),
-            year=html_context.get("year"),
-            non_interactive=non_interactive
-        )
-        if not selected:
-            logger.warning("[HTML Handler] No contest selected. Skipping.")
-            return None, None, None, {"skipped": True}
-        # Support multiple contests (e.g., multiple years/types)
-        if isinstance(selected, list) and selected:
-            contest_title = selected[0].get("title", "") if isinstance(selected[0], dict) else selected[0]
-        else:
-            contest_title = selected
-        html_context["selected_race"] = contest_title
+    # 6. If still not found, log all attempts and provide actionable error
+    log_dir = "log"
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "html_handler_routing_failures.jsonl")
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps({
+            "url": getattr(page, "url", None) or html_context.get("source_url", ""),
+            "context": html_context,
+            "attempts": attempts,
+            "routing_trace": routing_trace
+        }, ensure_ascii=False) + "\n")
 
-    # 5. Find and click the correct toggle/button for the contest (using NLP/spaCy if needed)
-    # Use coordinator/library to get best button for this contest
-    button = coordinator.get_best_button(contest_title, keywords=["View Results", "Vote Method", "Show Results"])
-    if button:
-        clicked = find_and_click_toggle(
-            page,
-            coordinator,
-            container=None,
-            handler_keywords=[button.get("label")],
-            logger=logger,
-            verbose=True,
-        )
-        if not clicked:
-            logger.warning("[HTML Handler] Could not click contest toggle/button automatically.")
-    else:
-        logger.warning("[HTML Handler] No suitable button found for contest.")
+    # Offer to export context for manual review
+    if not non_interactive:
+        export = prompt_user_input("Routing failed. Export organized context for debugging? (y/n): ").strip().lower()
+        if export == "y":
+            export_path = os.path.join(log_dir, "html_handler_failed_context.json")
+            with open(export_path, "w", encoding="utf-8") as ef:
+                json.dump(html_context, ef, ensure_ascii=False, indent=2)
+            logger.info(f"[HTML Handler] Context exported to {export_path}")
 
-    # 6. Extract contest panel and tables (districts, candidates, results)
-    # Try to find a contest panel for the selected contest
-    contest_panel = None
-    if hasattr(handler, "extract_contest_panel"):
-        contest_panel = handler.extract_contest_panel(page, contest_title)
-    if not contest_panel:
-        # Fallback: try generic panel extraction
-        contest_panel = page.locator("div, section, article").filter(has_text=contest_title)
-        if contest_panel.count() > 0:
-            contest_panel = contest_panel.first
-        else:
-            contest_panel = None
+    logger.error("[HTML Handler] No suitable handler could be found after all attempts. Routing failed.")
+    logger.info(f"[HTML Handler] Routing trace: {routing_trace}")
+    logger.info(f"[HTML Handler] Entities used for routing: {entities}")
+    logger.info(f"[HTML Handler] Available handlers for state '{html_context.get('state')}': {available_counties}")
 
-    # Extract tables (districts, candidates, results)
-    headers, data = [], []
-    if contest_panel:
-        # Try to extract precinct tables (districts)
-        if hasattr(handler, "extract_precinct_tables"):
-            precinct_tables = handler.extract_precinct_tables(contest_panel)
-        else:
-            precinct_tables = []
-        for precinct_name, table in precinct_tables:
-            table_headers, rows = build_dynamic_table(table)
-            for row in rows:
-                row["District"] = precinct_name
-                data.append(row)
-            if table_headers:
-                headers = table_headers
-    else:
-        # Fallback: extract first table on the page
-        table = page.locator("table")
-        if table.count() > 0:
-            headers, data = build_dynamic_table(table.first)
-
-    # 7. Organize output for wide format and downstream use
-    # Ensure all required fields are present and categorized
-    all_keys = set()
-    for row in data:
-        all_keys.update(row.keys())
-    # Wide format: District, %Reported, Candidate, Party, Ballot Type, Votes, etc.
-    preferred_order = [
-        "District", "% Precincts Reporting", "Candidate", "Party", "Ballot Type", "Votes"
-    ]
-    headers = [h for h in preferred_order if h in all_keys] + [h for h in all_keys if h not in preferred_order]
-    # Add grand totals row if data exists
-    if data:
-        data.append(rescan_and_verify(data))
-
-    # 8. Build metadata for output
-    contest_info = next((c for c in contests if c.get("title") == contest_title), {})
-    metadata = {
-        "state": html_context.get("state", contest_info.get("state", "Unknown")),
-        "county": html_context.get("county", contest_info.get("county", "Unknown")),
-        "year": html_context.get("year", contest_info.get("year", "Unknown")),
-        "election_type": contest_info.get("type", html_context.get("election_type", "Unknown")),
-        "race": contest_title or contest_info.get("title", "Unknown"),
-        "districts": [row.get("District") for row in data if "District" in row],
-        "candidates": list({row.get("Candidate") for row in data if "Candidate" in row}),
-        "parties": list({row.get("Party") for row in data if "Party" in row}),
-        "ballot_types": list({row.get("Ballot Type") for row in data if "Ballot Type" in row}),
-        "source": getattr(page, "url", html_context.get("source_url", "Unknown")),
-        "handler": "html_handler"
+    return None, None, None, {
+        "skipped": True,
+        "reason": "No suitable handler found after ML/NLP/user feedback.",
+        "context": html_context,
+        "attempts": attempts,
+        "routing_trace": routing_trace,
+        "available_handlers": available_counties
     }
-
-    return headers, data, contest_title, metadata

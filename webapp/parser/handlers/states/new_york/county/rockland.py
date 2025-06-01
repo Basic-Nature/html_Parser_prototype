@@ -13,52 +13,51 @@ if TYPE_CHECKING:
     from .....Context_Integration.context_coordinator import ContextCoordinator
 import numpy as e
 BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
+context_cache = {}
 
-
-
-def find_and_click_best_button(
+def handle_toggle_and_rescan(
     page,
     coordinator,
+    context_cache,
     contest_title,
     keywords,
     toggle_name,
-    context=None
+    html_context,
+    extra_context=None
 ):
     """
-    Minimal handler: delegates all button logic to ContextCoordinator.
-    Returns True if a button was clicked, else False.
+    Clicks the best button for the toggle, waits for page change, and re-scans context if changed.
+    Always uses the coordinator's learned button logic.
     """
+    from .....html_election_parser import get_page_hash, get_or_scan_context
+
+    prev_hash = get_page_hash(page)
+    # Always use the advanced button logic (learned button first)
     btn, idx = coordinator.get_best_button_advanced(
         page=page,
         contest_title=contest_title,
         keywords=keywords,
-        context=context or {"toggle_name": toggle_name},
-        confirm_button_callback=confirm_button_callback, # Uncomment if you auto button click is giving wrong button
-        prompt_user_for_button=prompt_user_for_button
+        context={**(extra_context or {}), **(html_context or {}), "toggle_name": toggle_name},
+        confirm_button_callback=confirm_button_callback,
+        prompt_user_for_button=prompt_user_for_button,
+        learning_mode=True
     )
-    if btn:
-        # Debug print: show candidate info before clicking
-        rprint(f"[bold yellow][DEBUG] About to click button:[/bold yellow]")
-        rprint(f"  Label: {btn.get('label')}")
-        rprint(f"  Selector: {btn.get('selector')}")
-        rprint(f"  Class: {btn.get('class')}")
-        rprint(f"  Tag: {btn.get('tag')}")
-        rprint(f"  Context Heading: {btn.get('context_heading')}")
-        rprint(f"  Context Anchor: {btn.get('context_anchor')}")
-        # Print element handle debug info
-        if "element_handle" in btn:
-            rprint(f"  Element Handle ID: {id(btn['element_handle'])}")
-            try:
-                outer_html = btn["element_handle"].evaluate("el => el.outerHTML")
-                rprint(f"  Outer HTML: {outer_html}")
-            except Exception:
-                rprint("  Outer HTML: [unavailable]")
-            btn["element_handle"].click()
-            return True
-        else:
-            rprint("[red][ERROR] No element_handle found for the selected button candidate.[/red]")
-    rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
-    return False
+    if btn and "element_handle" in btn:
+        btn["element_handle"].click()
+    else:
+        rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
+        return html_context  # Return unchanged context if no button
+
+    autoscroll_until_stable(page)
+    new_hash = get_page_hash(page)
+    if new_hash != prev_hash:
+        # Use the orchestrator's context cache and loader
+        html_context = get_or_scan_context(page, coordinator)
+        context_cache[new_hash] = html_context
+        rprint(f"[green][TOGGLE] Page changed after '{toggle_name}' toggle. Context re-scanned.[/green]")
+    else:
+        rprint(f"[yellow][TOGGLE] Page did not change after '{toggle_name}' toggle. Skipping re-scan.[/yellow]")
+    return html_context
 
 def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, non_interactive=False):
     """
@@ -105,26 +104,31 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 "results by election district",  "election district", 
                 "View results by"
             ]
-            find_and_click_best_button(
+    # --- 5. Toggle "View results by election district" ---
+            html_context = handle_toggle_and_rescan(
                 page,
                 coordinator,
+                context_cache,
                 contest_title_for_button,
                 election_district_keywords,
-                toggle_name="View results by election district",
-                context={**html_context, "toggle_name": "View results by election district"}
+                "View results by election district",
+                html_context,
+                extra_context={"toggle_name": "View results by election district"}
             )
-            autoscroll_until_stable(page, wait_for_selector="table")
+            autoscroll_until_stable(page, scroll_to_bottom=True)
 
             vote_method_keywords = [
                 "vote method", "Vote Method", "Vote method", "Method"
             ]
-            find_and_click_best_button(
+            html_context = handle_toggle_and_rescan(
                 page,
                 coordinator,
+                context_cache,
                 contest_title_for_button,
                 vote_method_keywords,
-                toggle_name="Vote Method",
-                context={**html_context, "toggle_name": "Vote Method"}
+                "Vote Method",
+                html_context,
+                extra_context={"toggle_name": "Vote Method"}
             )
             autoscroll_until_stable(page)
 
