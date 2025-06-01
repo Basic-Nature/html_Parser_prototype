@@ -199,7 +199,42 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     # Pick the highest scoring table(s)
     scored_tables.sort(reverse=True, key=lambda x: x[0])
     if not scored_tables:
-        rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+        logger.warning(f"[TABLE EXTRACTION] No suitable table found for contest: {html_context.get('selected_race')}")
+        # Try to extract data from first table even if headers are missing
+        if precinct_tables:
+            first_table = precinct_tables[0][1]
+            headers, data_rows = extract_table_data(first_table)
+            if data_rows:
+                headers = headers or [f"Column {i+1}" for i in range(len(data_rows[0]))]
+                rprint(f"[yellow][WARNING] No headers found, using generic headers: {headers}[/yellow]")
+                # Proceed with build_dynamic_table
+                headers, rows = build_dynamic_table(headers, data_rows, coordinator, html_context)
+                if rows:
+                    data = rows
+                    # ...finalize output as usual...
+                    # (copy the rest of your output logic here)
+                    # return headers, data, contest_title, metadata
+                else:
+                    rprint(f"[red][ERROR] No data could be parsed from fallback table.[/red]")
+            else:
+                rprint(f"[red][ERROR] No data found in fallback table.[/red]")
+        else:
+            rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+        return None, None, None, {"skipped": True}
+
+    if not scored_tables and precinct_tables:
+        rprint("[yellow][PROMPT] No headers found. Please select a table to inspect:")
+        for idx, (heading, table) in enumerate(precinct_tables):
+            preview = table.inner_text()[:120].replace("\n", " ")
+            rprint(f"[{idx}] Heading: {heading} | Preview: {preview}...")
+        sel = input("Enter table index to inspect (or blank to skip): ").strip()
+        if sel.isdigit():
+            idx = int(sel)
+            if 0 <= idx < len(precinct_tables):
+                table = precinct_tables[idx][1]
+                headers, data_rows = extract_table_data(table)
+                rprint(f"[yellow][DEBUG] Table headers: {headers}")
+                rprint(f"[yellow][DEBUG] First row: {data_rows[0] if data_rows else None}")
         return None, None, None, {"skipped": True}
 
     # Optionally, you can aggregate data from all high-scoring tables, or just use the top one
