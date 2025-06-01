@@ -168,14 +168,14 @@ def ml_suggest_field(entry, coordinator=None):
 # --- Config ---
 from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
 
-SEGMENT_FEEDBACK_LOG = Path(BASE_DIR) / "log" / "segment_feedback_log.jsonl"
-PATTERN_KB_FILE = Path(BASE_DIR) / "log" / "dom_pattern_kb.jsonl"
-DOWNLOAD_LINKS_LOG = Path(BASE_DIR) / "log" / "download_links_log.jsonl"
-ANOMALY_LOG = Path(BASE_DIR) / "log" / "anomaly_log.jsonl"
-EXPORT_DIR = Path(BASE_DIR) / "log" / "correction_exports"
+SEGMENT_FEEDBACK_LOG = Path(BASE_DIR).parent / "log" / "segment_feedback_log.jsonl"
+PATTERN_KB_FILE = Path(BASE_DIR).parent / "log" / "dom_pattern_kb.jsonl"
+DOWNLOAD_LINKS_LOG = Path(BASE_DIR).parent / "log" / "download_links_log.jsonl"
+ANOMALY_LOG = Path(BASE_DIR).parent / "log" / "anomaly_log.jsonl"
+EXPORT_DIR = Path(BASE_DIR).parent / "log" / "correction_exports"
 SAFE_DIR = Path(BASE_DIR).resolve()
 DEFAULT_CONTEXT_LIBRARY_FILE = Path(CONTEXT_LIBRARY_PATH)
-LOG_DIR = Path(BASE_DIR) / "log"
+LOG_DIR = Path(BASE_DIR).parent / "log"
 FIELD_LOG_SUFFIX = "_selection_log.jsonl"
 SUCCESS_RESULTS = {"pass", "fuzzy_pass", "manual_correction", "user_corrected"}
 ALL_FIELDS = [

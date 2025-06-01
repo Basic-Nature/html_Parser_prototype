@@ -15,7 +15,7 @@ from ..config import CONTEXT_LIBRARY_PATH
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
-
+context_cache = {}
 from ..config import BASE_DIR
 
 def get_safe_log_path(filename="dom_pattern_log.jsonl"):
@@ -28,6 +28,18 @@ def get_safe_log_path(filename="dom_pattern_log.jsonl"):
     safe_filename = os.path.basename(filename)
     return os.path.join(log_dir, safe_filename)
 
+def infer_column_types(headers, data):
+    types = {}
+    for h in headers:
+        col_vals = [row.get(h, "") for row in data]
+        if all(re.fullmatch(r"\d{1,3}(,\d{3})*", v) or v == "" for v in col_vals):
+            types[h] = "int"
+        elif all(re.fullmatch(r"\d+(\.\d+)?%", v) or v == "" for v in col_vals):
+            types[h] = "percent"
+        else:
+            types[h] = "str"
+    return types
+
 # --- Robust Table Type Detection Helpers ---
 BALLOT_TYPES = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
@@ -38,16 +50,162 @@ TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all"}
 BALLOT_TYPE_KEYWORDS = {"election day", "early voting", "absentee", "mail", "provisional", "affidavit", "other", "void"}
 MISC_FOOTER_KEYWORDS = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
 
-def is_candidate_major_row(headers, data):
+
+
+def merge_table_data(headers_list, data_list):
+    """
+    Merge multiple (headers, data) pairs into a single (headers, data).
+    Later data fills in missing values from earlier data.
+    """
+    all_headers = []
+    for headers in headers_list:
+        for h in headers:
+            if h not in all_headers:
+                all_headers.append(h)
+    merged_data = []
+    for data in data_list:
+        for row in data:
+            if len(row) != len(headers):
+                logger.warning(f"[TABLE BUILDER] merge_table_data Row length mismatch: {row}")
+            # Try to find a matching row (by candidate or location, if possible)
+            match = None
+            for mrow in merged_data:
+                # Simple heuristic: match on all overlapping keys
+                if any(row.get(k) == mrow.get(k) and row.get(k) for k in all_headers):
+                    match = mrow
+                    break
+            if match:
+                for h in all_headers:
+                    if not match.get(h) and row.get(h):
+                        match[h] = row[h]
+            else:
+                merged_data.append({h: row.get(h, "") for h in all_headers})
+    return all_headers, merged_data
+
+EXTRACTION_ATTEMPTS = [
+    # 1. Standard HTML table extraction
+    lambda page, context: extract_table_data(page.locator("table").first) if page.locator("table").count() > 0 else ([], []),
+    # 2. Pattern-based extraction using learned DOM patterns
+    lambda page, context: (
+        (lambda pr: (
+            guess_headers_from_row(pr[0][1]),
+            [
+                {
+                    guess_headers_from_row(pr[0][1])[idx] if idx < len(guess_headers_from_row(pr[0][1])) else f"Column {idx+1}": row.locator("> *").nth(idx).inner_text().strip()
+                    for idx in range(row.locator("> *").count())
+                }
+                for _, row, _ in pr
+            ]
+        ) if pr else ([], []))(extract_with_patterns(page, context))
+    ),
+    # 3. Extraction from repeated DOM structures (divs, lists, etc.)
+    lambda page, context: extract_rows_and_headers_from_dom(page),
+    # 4. NLP/keyword-based fallback extraction
+    lambda page, context: fallback_nlp_candidate_vote_scan(page),
+]
+
+def robust_table_extraction(page, context=None):
+    """
+    Attempts all extraction strategies in order, merging partial results.
+    Logs which methods succeeded, how many rows/columns were found, and any issues.
+    Handles edge cases and supports extensibility.
+    """
+    headers_list = []
+    data_list = []
+    extraction_logs = []
+    attempt_names = ["table", "pattern", "repeated_dom", "nlp_fallback"]
+
+    # Try each extraction attempt and log results
+    for i, attempt in enumerate(EXTRACTION_ATTEMPTS):
+        try:
+            headers, data = attempt(page, context)
+            extraction_logs.append({
+                "method": attempt_names[i],
+                "headers": headers,
+                "rows": len(data),
+                "columns": len(headers),
+                "success": bool(headers and data)
+            })
+            logger.info(f"[TABLE BUILDER] Extraction attempt '{attempt_names[i]}' produced {len(data)} rows and {len(headers)} headers.")
+            if headers and data:
+                headers_list.append(headers)
+                data_list.append(data)
+        except Exception as e:
+            logger.error(f"[TABLE BUILDER] Extraction attempt '{attempt_names[i]}' failed: {e}")
+            extraction_logs.append({
+                "method": attempt_names[i],
+                "error": str(e),
+                "success": False
+            })
+
+    # 1. Table extraction
+    tables = page.locator("table")
+    for i in range(tables.count()):
+        headers, data = extract_table_data(tables.nth(i))
+        if headers and data:
+            headers_list.append(headers)
+            data_list.append(data)
+
+    # 2. Pattern-based extraction
+    pattern_rows = extract_with_patterns(page, context)
+    if pattern_rows:
+        headers = guess_headers_from_row(pattern_rows[0][1])
+        data = []
+        for heading, row, pat in pattern_rows:
+            cells = row.locator("> *")
+            row_data = {}
+            for idx in range(cells.count()):
+                row_data[headers[idx] if idx < len(headers) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
+            if row_data:
+                data.append(row_data)
+        if headers and data:
+            headers_list.append(headers)
+            data_list.append(data)
+
+    # 3. Repeated DOM structures
+    headers, data = extract_rows_and_headers_from_dom(page)
+    if headers and data:
+        headers_list.append(headers)
+        data_list.append(data)
+
+    # 4. NLP/keyword scan
+    headers, data = fallback_nlp_candidate_vote_scan(page)
+    if headers and data:
+        headers_list.append(headers)
+        data_list.append(data)
+
+    # Merge all results
+    if headers_list and data_list:
+        return merge_table_data(headers_list, data_list)
+    attempt_names = ["table", "pattern", "repeated_dom", "nlp_fallback"]
+    for i, attempt in enumerate(EXTRACTION_ATTEMPTS):
+        headers, data = attempt(page, context)
+        logger.info(f"[TABLE BUILDER] Extraction attempt '{attempt_names[i]}' produced {len(data)} rows and {len(headers)} headers.")
+        if headers and data:
+            headers_list.append(headers)
+            data_list.append(data)
+    logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(extraction_logs, indent=2)}")
+
+    if headers_list and data_list:
+        logger.info(f"[TABLE BUILDER] Merging {len(headers_list)} extraction results.")
+        return merge_table_data(headers_list, data_list)
+    logger.warning("[TABLE BUILDER] No extraction method succeeded.")
+    return [], []
+
+def is_candidate_major_row(headers, data, context):
     # First column is candidate, rest are vote types or totals
     if not headers or not data:
-        return False
+        headers, data = robust_table_extraction(context.get("page"), context)
+        if not headers or not data:
+            logger.error("[TABLE BUILDER] No data could be extracted from the page.")
+            return [], []
     first_col = normalize_text(headers[0])
     return first_col in CANDIDATE_KEYWORDS and len(data) > 1
 
-def is_candidate_major_col(headers, data):
+def is_candidate_major_col(headers, data, context):
     # First row is vote type, columns are candidates (not location)
     if not headers or not data:
+        headers, data = robust_table_extraction(context.get("page"), context)
         return False
     return (
         all(normalize_text(h) not in LOCATION_KEYWORDS for h in headers)
@@ -99,11 +257,41 @@ def build_dynamic_table(
     """
     Robustly builds a uniform, context-aware table with dynamic verification and feedback.
     Handles candidate-major, precinct-major, flat, wide, ambiguous, and edge-case tables.
-    Now supports table structure learning and auto-application.
+    Supports table structure learning, user feedback, and multi-table pages.
+    Extraction pipeline:
+      1. Try all extraction strategies (table, pattern, repeated DOM, NLP fallback).
+      2. Merge and harmonize results.
+      3. Handle special cases (candidate-major, precinct-major, etc.).
+      4. Log all steps and issues for debugging.
+      5. Prompt user/context if ambiguous.
+      6. Return harmonized headers and data.
     """
-    if not headers:
-        raise ValueError("No headers provided to build_dynamic_table. Cannot build table.")
+    if not headers or not data:
+        headers, data = robust_table_extraction(context.get("page"), context)
+        if not headers or not data:
+            logger.error("[TABLE BUILDER] No data could be extracted from the page.")
+            return [], []
 
+    # Harmonize and deduplicate headers
+    headers, data = harmonize_headers_and_data(headers, data)
+
+    # Log table shape
+    logger.info(f"[TABLE BUILDER] Initial harmonized table: {len(data)} rows, {len(headers)} columns.")
+
+    # Handle multi-table pages: log all tables found
+    if context and context.get("page"):
+        tables = context["page"].locator("table")
+        if tables.count() > 1:
+            logger.info(f"[TABLE BUILDER] Multi-table page detected: {tables.count()} tables found.")
+            # Optionally, return a list of (headers, data) for each table
+            # Or prompt user/context to select the relevant table
+
+    # User/context feedback for ambiguous extraction
+    if len(headers) > 0 and len(data) > 0 and confirm_table_structure_callback:
+        if not confirm_table_structure_callback(headers):
+            logger.warning("[TABLE BUILDER] User/context rejected extracted table structure.")
+            return [], []
+        
     # Always ensure context is a dict
     if context is None:
         context = {}
@@ -120,6 +308,7 @@ def build_dynamic_table(
             # Optionally, harmonize data as well
             data = [{h: row.get(h, "") for h in headers} for row in data]
             logger.info(f"[TABLE BUILDER] Applied learned table structure for '{contest_title}'.")
+            logger.info(f"[TABLE BUILDER] Harmonized final table: {len(data)} rows, {len(headers)} columns (learned structure).")
             return headers, data
 
 
@@ -156,6 +345,7 @@ def build_dynamic_table(
             if context.get("last_selector"):
                 log_new_dom_pattern(context.get("last_html", ""), context["last_selector"], context)
                 auto_approve_dom_pattern(context["last_selector"])
+            logger.info(f"[TABLE BUILDER] Pattern-driven final table: {len(data)} rows, {len(headers)} columns (learned structure).")
             return headers, data
 
     # --- Fallback: try repeated DOM structures if no table or pattern found ---
@@ -179,10 +369,13 @@ def build_dynamic_table(
             headers, data = extract_table_from_headers(headers, data)
             # Log this structure as a new pattern
             log_new_dom_pattern(row.inner_html(), "> *", context)
+            logger.info(f"[TABLE BUILDER] Repeated DOM structure final table: {len(data)} rows, {len(headers)} columns (learned structure).")
             return headers, data
 
     # For each row, if location header is missing or empty, fill from context if available
     for row in data:
+        if len(row) != len(headers):
+            logger.warning(f"[TABLE BUILDER] location header is missing or empty Row length mismatch: {row}")
         if location_header and (location_header not in row or not row.get(location_header)):
             context_val = context.get("precinct") or context.get("location")
             if context_val:
@@ -198,6 +391,8 @@ def build_dynamic_table(
         if location_header not in wide_row or not wide_row.get(location_header):
             wide_row[location_header] = precinct_val
         for row in data:
+            if len(row) != len(headers):
+                logger.warning(f"[TABLE BUILDER] Proposition/Response tables Row length mismatch: {row}")
             response = row[headers[0]].strip()
             for h in headers[1:]:
                 colname = f"{response} - {h}"
@@ -212,9 +407,11 @@ def build_dynamic_table(
         logger.info("[TABLE BUILDER] Handled proposition/response-major table (pivoted Yes/No responses).")
     else:
         # --- 1. Candidate-major table (candidates as rows, vote types as columns) ---
-        if is_candidate_major_row(headers, data):
+        if is_candidate_major_row(headers, data, context):
             wide_row = {}
             for row in data:
+                if len(row) != len(headers):
+                    logger.warning(f"[TABLE BUILDER] Row length mismatch: {row}")
                 candidate = row[headers[0]]
                 candidate_clean = candidate.replace('\n', ' ').strip()
                 for h in headers[1:]:
@@ -229,11 +426,13 @@ def build_dynamic_table(
             logger.info("[TABLE BUILDER] Handled candidate-as-row table (vertical candidate-major).")
 
         # --- 2. Candidate-major table (candidates as columns, vote types as rows) ---
-        elif is_candidate_major_col(headers, data):
+        elif is_candidate_major_col(headers, data, context):
             vote_type_col = headers[0]
             candidate_headers = headers[1:]
             wide_row = {}
             for row in data:
+                if len(row) != len(headers):
+                    logger.warning(f"[TABLE BUILDER] Candidate-major table Row length mismatch: {row}")
                 vote_type = row[vote_type_col]
                 for candidate in candidate_headers:
                     colname = f"{candidate} - {vote_type}"
@@ -269,11 +468,14 @@ def build_dynamic_table(
         elif is_precinct_major(headers, coordinator):
             logger.info("[TABLE BUILDER] Detected precinct-major table, using as is.")
             headers, data = pivot_precinct_major_to_wide(headers, data, coordinator, context)
+            logger.info(f"[TABLE BUILDER] Precinct-major Final table: {len(data)} rows, {len(headers)} columns (learned structure).")
             return headers, data
 
         # --- 5. Flat candidate table (totals only, no locations) ---
         elif is_flat_candidate_table(headers):
             for row in data:
+                if len(row) != len(headers):
+                    logger.warning(f"[TABLE BUILDER] Flat candidate table Row length mismatch: {row}")
                 if location_header not in row or not row.get(location_header):
                     row[location_header] = "All"
             if location_header not in headers:
@@ -295,6 +497,8 @@ def build_dynamic_table(
                 logger.info("[TABLE BUILDER] Ambiguous table: treating as candidate-major based on known candidates.")
                 # Example: only fill guessed columns if missing
                 for row in data:
+                    if len(row) != len(headers):
+                        logger.warning(f"[TABLE BUILDER] Ambiguous or wide/summary table Row length mismatch: {row}")
                     for candidate in known_candidates:
                         if candidate not in row or not row.get(candidate):
                             row[candidate] = ""
@@ -352,6 +556,8 @@ def build_dynamic_table(
         # 5. Build rows: one per location (district/precinct/etc.)
         rows_by_location = {}
         for row in data:
+            if len(row) != len(headers):
+                logger.warning(f"[TABLE BUILDER] Row length mismatch: {row}")
             location = row.get(location_header, "")
             if location not in rows_by_location:
                 rows_by_location[location] = {h: "" for h in output_headers}
@@ -418,8 +624,12 @@ def build_dynamic_table(
             logger.info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest_title}'.")
         else:
             logger.info(f"[TABLE BUILDER] User declined to log table structure for '{contest_title}'.")
+        logger.info(f"[TABLE BUILDER] Pivoted final table: {len(output_data)} rows, {len(output_headers)} columns.")
+        return output_headers, output_data
 
-    return output_headers, output_data
+    # If not in the above block, add a fallback return at the end:
+    logger.info(f"[TABLE BUILDER] Final table: {len(data)} rows, {len(headers)} columns.")
+    return headers, data
 
 def pivot_precinct_major_to_wide(
     headers: List[str],
@@ -505,6 +715,8 @@ def pivot_precinct_major_to_wide(
     # Build output rows
     output_rows = []
     for row in data:
+        if len(row) != len(headers):
+            logger.warning(f"[TABLE BUILDER] pivot_precinct_major_to_wide Row length mismatch: {row}")
         out_row = {}
         out_row[location_header] = row.get(location_header, "")
         out_row[percent_header] = row.get(percent_header, "Fully Reported")
@@ -548,7 +760,7 @@ def pivot_precinct_major_to_wide(
         except Exception:
             totals_row[h] = ""
     output_rows.append(totals_row)
-
+    logger.info(f"[TABLE BUILDER] Build dynamic tables Final table: {len(output_rows)} rows, {len(output_headers)} columns.")
     return output_headers, output_rows
 
 def review_learned_table_structures(log_path="log/table_structure_learning_log.jsonl"):
@@ -733,6 +945,8 @@ def harmonize_headers_and_data(headers: List[str], data: List[Dict[str, Any]]) -
     """
     all_headers = list(headers)
     for row in data:
+        if len(row) != len(headers):
+            logger.warning(f"[TABLE BUILDER] harmonize_headers_and_data Row length mismatch: {row}")
         for k in row.keys():
             if k not in all_headers:
                 all_headers.append(k)
@@ -765,63 +979,67 @@ def rescan_and_verify(headers: List[str], data: List[Dict[str, Any]], coordinato
         headers = new_headers
         # Optionally, re-harmonize data
         headers, data = harmonize_headers_and_data(headers, data)
+    logger.info(f"[TABLE BUILDER] Rescan and verify final table: {len(data)} rows, {len(headers)} columns (learned structure).")
     return headers, data, passed
 
 from typing import List, Dict, Any, Tuple
 
 def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Extracts headers and data from a Playwright table locator.
+    Handles malformed HTML, empty tables, and logs errors.
+    """
     headers = []
     data = []
+    try:
+        header_cells = table.locator("thead tr th")
+        if header_cells.count() == 0:
+            first_row = table.locator("tr").first
+            header_cells = first_row.locator("th, td")
+        for i in range(header_cells.count()):
+            text = header_cells.nth(i).inner_text().strip()
+            headers.append(text if text else f"Column {i+1}")
 
-    # Try to extract headers from <thead>
-    header_cells = table.locator("thead tr th")
-    if header_cells.count() == 0:
-        # Try first row for <th> or <td>
-        first_row = table.locator("tr").first
-        header_cells = first_row.locator("th, td")
-    for i in range(header_cells.count()):
-        text = header_cells.nth(i).inner_text().strip()
-        headers.append(text if text else f"Column {i+1}")
-
-    # Try to extract rows from <tbody>, else all <tr> except header
-    rows = table.locator("tbody tr")
-    if rows.count() == 0:
-        # Fallback: all <tr> except the first (header)
-        all_rows = table.locator("tr")
-        if all_rows.count() > 1:
-            rows = all_rows.nth(1).locator("xpath=following-sibling::tr")
-        else:
-            rows = all_rows  # Only one row
-
-    for i in range(rows.count()):
-        row = {}
-        cells = rows.nth(i).locator("td, th")
-        # Skip empty rows
-        if cells.count() == 0:
-            continue
-        for j in range(cells.count()):
-            if j < len(headers):
-                row[headers[j]] = cells.nth(j).inner_text().strip()
+        rows = table.locator("tbody tr")
+        if rows.count() == 0:
+            all_rows = table.locator("tr")
+            if all_rows.count() > 1:
+                rows = all_rows.nth(1).locator("xpath=following-sibling::tr")
             else:
-                # Extra columns: add generic header
-                row[f"Extra_{j+1}"] = cells.nth(j).inner_text().strip()
-        # Only add non-empty rows
-        if any(v for v in row.values()):
-            data.append(row)
+                rows = all_rows
 
-    # Fallback: if no headers but there is data, use "Column 1", "Column 2", etc.
-    if not headers and data:
-        max_cols = max(len(row) for row in data)
-        headers = [f"Column {i+1}" for i in range(max_cols)]
-        # Re-map data to use these headers
-        new_data = []
-        for row in data:
-            new_row = {}
-            for idx, h in enumerate(headers):
-                new_row[h] = list(row.values())[idx] if idx < len(row) else ""
-            new_data.append(new_row)
-        data = new_data
+        for i in range(rows.count()):
+            row = {}
+            cells = rows.nth(i).locator("td, th")
+            if cells.count() == 0:
+                continue
+            for j in range(cells.count()):
+                if j < len(headers):
+                    row[headers[j]] = cells.nth(j).inner_text().strip()
+                else:
+                    row[f"Extra_{j+1}"] = cells.nth(j).inner_text().strip()
+            if any(v for v in row.values()):
+                data.append(row)
 
+        if not headers and data:
+            max_cols = max(len(row) for row in data)
+            headers = [f"Column {i+1}" for i in range(max_cols)]
+            new_data = []
+            for row in data:
+                if len(row) != len(headers):
+                    logger.warning(f"[TABLE BUILDER] No headers but there is data Row length mismatch: {row}")
+                new_row = {}
+                for idx, h in enumerate(headers):
+                    new_row[h] = list(row.values())[idx] if idx < len(row) else ""
+                new_data.append(new_row)
+            data = new_data
+
+        if not headers and not data:
+            logger.warning("[TABLE BUILDER] Empty table encountered.")
+    except Exception as e:
+        logger.error(f"[TABLE BUILDER] Malformed HTML or extraction error: {e}")
+        return [], []
+    logger.info(f"[TABLE BUILDER] Extracted final table: {len(data)} rows, {len(headers)} columns (learned structure).")
     return headers, data
 
 def find_tables_with_headings(page, dom_segments=None, heading_tags=None, include_section_context=True):
@@ -954,25 +1172,18 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
             results.append((heading, table))
     return results
 
-def extract_repeated_dom_structures(page, container_selectors=None, min_row_count=2):
+def extract_repeated_dom_structures(page, container_selectors=None, min_row_count=2, extra_keywords=None):
     """
     Scans the DOM for repeated structures (divs, uls, etc.) that look like tabular data.
     Returns a list of (section_heading, row_locator) tuples.
     """
     if container_selectors is None:
-        container_selectors = [
-            "div[class*='row']",
-            "div[class*='option']",
-            "div[class*='result']",
-            "ul",
-            "ol"
-        ]
+        container_selectors = discover_container_selectors(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
     results = []
     for selector in container_selectors:
         containers = page.locator(selector)
         for i in range(containers.count()):
             container = containers.nth(i)
-            # Heuristic: look for multiple direct children with similar tag/class
             children = container.locator("> *")
             if children.count() >= min_row_count:
                 # Try to find a heading above the container
@@ -982,7 +1193,6 @@ def extract_repeated_dom_structures(page, container_selectors=None, min_row_coun
                     heading = heading_loc.nth(0).inner_text().strip()
                 else:
                     heading = f"Section {i+1}"
-                # Each child is a "row"
                 for j in range(children.count()):
                     row = children.nth(j)
                     results.append((heading, row))
@@ -1110,18 +1320,137 @@ def extract_with_patterns(page, context=None, log_path=None):
                         results.append((heading, row, pat))
     return results
 
-def extract_table_from_headers(headers, data):
+def extract_table_from_headers(headers, data, context):
     """
     Converts headers and data into a uniform table format.
     Harmonizes all rows to the union of all keys, preserving order.
     """
     if not headers or not data:
-        return [], []
+        headers, data = robust_table_extraction(context.get("page"), context)
+        if not headers or not data:
+            logger.error("[TABLE BUILDER] No data could be extracted from the page.")
+            return [], []
     # Use the order of the first row's keys if possible
     all_headers = list(headers)
     for row in data:
+        if len(row) != len(headers):
+            logger.warning(f"[TABLE BUILDER] extracttable_from_headers Row length mismatch: {row}")
         for k in row.keys():
             if k not in all_headers:
                 all_headers.append(k)
     harmonized = [{h: row.get(h, "") for h in all_headers} for row in data]
     return all_headers, harmonized
+def discover_container_selectors(page, extra_keywords=None, min_row_count=2):
+    """
+    Dynamically discovers container selectors (divs, sections, etc.) with relevant keywords or tabular structure.
+    Returns a list of selectors, ranked by likelihood.
+    """
+    if extra_keywords is None:
+        extra_keywords = ["vote", "result", "candidate", "precinct", "choice", "option", "ballot", "row", "table", "summary"]
+    selectors = set()
+    class_scores = {}
+
+    all_divs = page.locator("div")
+    for i in range(all_divs.count()):
+        div = all_divs.nth(i)
+        cls = div.get_attribute("class") or ""
+        id_ = div.get_attribute("id") or ""
+        text = div.inner_text().strip().lower()
+        score = 0
+
+        # Score based on keywords in class/id/text
+        for kw in extra_keywords:
+            if kw in cls.lower() or kw in id_.lower() or kw in text:
+                score += 2
+        # Score based on number of children (tabular structure)
+        children = div.locator("> *")
+        if children.count() >= min_row_count:
+            score += 2
+        # Score based on presence of numbers (votes)
+        if any(char.isdigit() for char in text):
+            score += 1
+
+        # Build selector and store score
+        if cls:
+            sel = "div." + ".".join(cls.split())
+            class_scores[sel] = class_scores.get(sel, 0) + score
+        if id_:
+            sel = f"div#{id_}"
+            class_scores[sel] = class_scores.get(sel, 0) + score
+
+    # Return selectors sorted by score
+    sorted_selectors = [sel for sel, _ in sorted(class_scores.items(), key=lambda x: -x[1])]
+    # Add some generic selectors as fallback
+    sorted_selectors += ["section", "ul", "ol"]
+    return sorted_selectors
+
+def guess_headers_from_row(row, known_keywords=None):
+    """
+    Attempts to guess headers from a row's children using keywords or context.
+    """
+    if known_keywords is None:
+        known_keywords = ["candidate", "votes", "party", "precinct", "choice", "option", "response", "total"]
+    cells = row.locator("> *")
+    headers = []
+    for i in range(cells.count()):
+        text = cells.nth(i).inner_text().strip().lower()
+        # Use keyword if present, else generic
+        header = None
+        for kw in known_keywords:
+            if kw in text:
+                header = kw.capitalize()
+                break
+        if not header:
+            header = f"Column {i+1}"
+        headers.append(header)
+    return headers
+
+def fallback_nlp_candidate_vote_scan(page):
+    """
+    Fallback: scan for elements with candidate-like names and vote-like numbers nearby.
+    Returns headers, data.
+    """
+    import re
+    candidate_pattern = re.compile(r"[A-Z][a-z]+ [A-Z][a-z]+")  # crude: "Firstname Lastname"
+    vote_pattern = re.compile(r"\d{1,3}(,\d{3})*")
+    elements = page.locator("*")
+    candidates = []
+    votes = []
+    for i in range(elements.count()):
+        text = elements.nth(i).inner_text().strip()
+        if candidate_pattern.match(text):
+            candidates.append((i, text))
+        elif vote_pattern.fullmatch(text.replace(",", "")):
+            votes.append((i, text))
+    # Pair candidates and votes by proximity
+    data = []
+    for idx, cand in candidates:
+        # Find nearest vote after candidate
+        nearest_vote = next((v for j, v in votes if j > idx), None)
+        if nearest_vote:
+            data.append({"Candidate": cand, "Votes": nearest_vote})
+    headers = ["Candidate", "Votes"]
+    logger.info(f"[TABLE BUILDER] nlp candidate vote Final table: {len(data)} rows, {len(headers)} columns (learned structure).")
+    return headers, data
+
+def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2):
+    """
+    Attempts to extract tabular data from repeated DOM structures (divs, etc.).
+    Returns headers, data.
+    """
+    repeated_rows = extract_repeated_dom_structures(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
+    if not repeated_rows:
+        return [], []
+    # Use the first row to guess headers
+    first_heading, first_row = repeated_rows[0]
+    headers = guess_headers_from_row(first_row)
+    data = []
+    for heading, row in repeated_rows:
+        cells = row.locator("> *")
+        row_data = {}
+        for idx in range(cells.count()):
+            row_data[headers[idx] if idx < len(headers) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
+        if row_data:
+            data.append(row_data)
+    logger.info(f"[TABLE BUILDER] Extracted rows and headers from DOMFinal table: {len(data)} rows, {len(headers)} columns (learned structure).")
+    return headers, data

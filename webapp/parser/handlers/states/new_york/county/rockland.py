@@ -206,20 +206,33 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             headers, data_rows = extract_table_data(first_table)
             if data_rows:
                 headers = headers or [f"Column {i+1}" for i in range(len(data_rows[0]))]
-                rprint(f"[yellow][WARNING] No headers found, using generic headers: {headers}[/yellow]")
-                # Proceed with build_dynamic_table
                 headers, rows = build_dynamic_table(headers, data_rows, coordinator, html_context)
                 if rows:
                     data = rows
                     # ...finalize output as usual...
-                    # (copy the rest of your output logic here)
                     # return headers, data, contest_title, metadata
+                    # (copy the rest of your output logic here)
+                    pass
                 else:
                     rprint(f"[red][ERROR] No data could be parsed from fallback table.[/red]")
             else:
                 rprint(f"[red][ERROR] No data found in fallback table.[/red]")
         else:
-            rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+            # --- PATCH: Try robust_table_extraction as a last resort ---
+            rprint(f"[yellow][WARNING] No tables found by heading association. Trying robust_table_extraction...[/yellow]")
+            from .....utils.table_builder import robust_table_extraction
+            headers, data_rows = robust_table_extraction(page, html_context)
+            if headers and data_rows:
+                headers, rows = build_dynamic_table(headers, data_rows, coordinator, html_context)
+                if rows:
+                    data = rows
+                    # ...finalize output as usual...
+                    # return headers, data, contest_title, metadata
+                    pass
+                else:
+                    rprint(f"[red][ERROR] No data could be parsed from robust_table_extraction.[/red]")
+            else:
+                rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
         return None, None, None, {"skipped": True}
 
     if not scored_tables and precinct_tables:

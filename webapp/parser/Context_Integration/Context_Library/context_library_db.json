@@ -649,7 +649,8 @@
       "cortland",
       "delaware",
       "dutchess",
-      "erie"
+      "erie",
+      "rockland"
     ],
     "north_carolina": [
       "alamance",
@@ -1259,7 +1260,7 @@
     "app.enhancedvoting.com": {
       "max_scrolls": 1,
       "step": 8000,
-      "last_used": "2025-05-30T11:06:56.337776"
+      "last_used": "2025-06-01T05:28:26.898401"
     }
   },
   "contest_type_patterns": [
@@ -1306,6 +1307,34 @@
     "results.csv",
     "summary.json",
     "precincts.pdf"
+  ],
+  "HTML_TAGS": [
+    "html",
+    "head",
+    "title",
+    "body",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "b",
+    "i",
+    "center",
+    "ul",
+    "li",
+    "br",
+    "p",
+    "hr",
+    "img",
+    "a",
+    "span",
+    "div",
+    "button",
+    "input",
+    "form",
+    "table"
   ],
   "panel_tags": [
     "div",
