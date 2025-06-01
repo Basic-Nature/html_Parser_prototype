@@ -124,7 +124,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 html_context,
                 extra_context={"toggle_name": "View results by election district"}
             )
-            autoscroll_until_stable(page, scroll_to_bottom=True)
+            autoscroll_until_stable(page)
 
             vote_method_keywords = [
                 "vote method", "Vote Method", "Vote method", "Method"
