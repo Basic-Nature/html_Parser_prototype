@@ -13,6 +13,7 @@ import os
 import numpy as np
 import json
 import datetime
+import types
 from fuzzywuzzy import fuzz, process
 from ..utils.shared_logger import rprint
 from ..utils.shared_logic import (
@@ -40,6 +41,17 @@ from .context_organizer import organize_context
 import inspect
 # --- Config ---
 SAMPLE_JSON_PATH = os.path.join(os.path.dirname(__file__), "sample.json")
+
+def safe_for_json(obj):
+    """Recursively remove non-serializable items from dicts/lists."""
+    if isinstance(obj, dict):
+        return {k: safe_for_json(v) for k, v in obj.items() if not isinstance(v, types.FunctionType)}
+    elif isinstance(obj, list):
+        return [safe_for_json(i) for i in obj if not isinstance(i, types.FunctionType)]
+    elif isinstance(obj, types.FunctionType):
+        return None
+    else:
+        return obj
 
 def get_Known_state_to_county_map(self):
     return [s.lower().replace(" ", "_") for s in self.library.get("Known_state_to_county_map", [])]
@@ -288,8 +300,8 @@ class ContextCoordinator:
         }
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
- 
+            f.write(json.dumps(safe_for_json(log_entry), ensure_ascii=False) + "\n")
+
     def extract_entities(self, text):
         """
         Extract entities from text using spaCy or your preferred NER model.
@@ -985,7 +997,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "pattern_attempts_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def get_best_button_advanced(
         self,
@@ -1161,7 +1173,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "button_learning_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def _get_confirmed_button_from_log(self, contest_title, keywords, context):
         """
@@ -1199,7 +1211,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "button_selection_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     # --- Table structure learning/lookup ---
     def get_table_structure(self, contest_title, context=None, learning_mode=True):
@@ -1234,7 +1246,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "table_structure_learning_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     # --- CLI for reviewing/editing corrections and feedback ---
     def review_and_edit_corrections(self, field_type="buttons"):
@@ -1331,7 +1343,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_contests_access_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def _log_get_buttons_access(self, contest_title, keyword, url):
         log_entry = {
@@ -1346,7 +1358,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_buttons_access_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def _log_get_best_button_access(self, contest_title, keywords, class_hint, url):
         log_entry = {
@@ -1361,7 +1373,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_best_button_access_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def _log_get_panel_access(self, contest_title):
         log_entry = {
@@ -1373,7 +1385,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_panel_access_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def _log_get_tables_access(self, contest_title):
         log_entry = {
@@ -1385,7 +1397,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_tables_access_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def _log_get_candidates_access(self, contest_title):
         log_entry = {
@@ -1397,7 +1409,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_candidates_access_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def _log_get_districts_access(self, state, county):
         log_entry = {
@@ -1410,7 +1422,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_districts_access_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def _log_get_states_access(self):
         log_entry = {
@@ -1421,7 +1433,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_states_access_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def _log_get_election_types_access(self):
         log_entry = {
@@ -1432,7 +1444,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_election_types_access_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def _log_get_years_access(self):
         log_entry = {
@@ -1443,7 +1455,7 @@ class ContextCoordinator:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_years_access_log.jsonl")
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
 
     def start_alert_monitoring(self, db_path=None, poll_interval=10):
         """
@@ -1718,15 +1730,16 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
     if not county and context.get("contests"):
         for contest in context["contests"]:
             title = contest.get("title", "")
-            # Try to match any county or district in the title
+            # Try to match any county as a whole word in the title
             for c in all_counties:
-                if c in title.lower():
+                if re.search(rf"\b{re.escape(c)}\b", title.lower()):
                     county = c
                     detection_log.append(f"County '{county}' detected from contest title: '{title}'")
                     break
             if not county:
+                # Try to match any district as a whole word in the title
                 for d in all_districts:
-                    if d in title.lower():
+                    if re.search(rf"\b{re.escape(d)}\b", title.lower()):
                         # Map up to parent county
                         for c, districts in county_to_district.items():
                             if d in [normalize_county_name(x) for x in districts]:

@@ -41,7 +41,29 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
 
     # 4. Feedback loop: If handler not found, try ML/NLP and prompt user
     if not handler_found:
-        logger.warning("[HTML Handler] No state/county handler found. Attempting ML/NLP feedback loop.")
+        handler_path = prompt_user_input("Enter handler path manually (or leave blank to skip): ").strip()
+        if handler_path:
+            try:
+                import importlib
+                handler_mod = importlib.import_module(handler_path)
+                # If the module itself is callable (function), use it directly
+                if callable(handler_mod):
+                    handler = handler_mod
+                    handler_found = True
+                # Otherwise, look for a .parse method
+                elif hasattr(handler_mod, "parse"):
+                    handler = handler_mod.parse
+                    handler_found = True
+                else:
+                    handler_found = False
+                attempts.append({
+                    "method": "manual_handler_path",
+                    "handler_path": handler_path
+                })
+                routing_trace.append(f"User specified handler path: {handler_path}")
+            except Exception as e:
+                logger.error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
+                routing_trace.append(f"Failed manual handler import: {handler_path} ({e})")
 
         # --- ML/NLP: Try to infer state/county from context/entities ---
         state = normalize_state_name(html_context.get("state"))
