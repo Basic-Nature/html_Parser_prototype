@@ -43,7 +43,16 @@ def handle_toggle_and_rescan(
         learning_mode=True
     )
     if btn and "element_handle" in btn:
-        btn["element_handle"].click()
+        element = btn["element_handle"]
+        if element.is_visible() and element.is_enabled():
+            try:
+                element.click(timeout=5000)  # Shorter timeout, fail fast if not clickable
+            except Exception as e:
+                rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+                return html_context  # Return unchanged context if click fails
+        else:
+            rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
+            return html_context  # Return unchanged context if not clickable
     else:
         rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
         return html_context  # Return unchanged context if no button
