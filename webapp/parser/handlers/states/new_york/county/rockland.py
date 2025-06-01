@@ -237,6 +237,15 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 rprint(f"[yellow][DEBUG] First row: {data_rows[0] if data_rows else None}")
         return None, None, None, {"skipped": True}
 
+    if not precinct_tables:
+        # Fallback: try all tables on the page
+        all_tables = page.locator("table")
+        for i in range(all_tables.count()):
+            table = all_tables.nth(i)
+            headers, data_rows = extract_table_data(table)
+            if headers or data_rows:
+                rprint(f"[yellow][DEBUG] Fallback table #{i}: headers={headers}, first row={data_rows[0] if data_rows else None}")
+
     # Optionally, you can aggregate data from all high-scoring tables, or just use the top one
     top_score = scored_tables[0][0]
     top_tables = [t for t in scored_tables if t[0] == top_score]
