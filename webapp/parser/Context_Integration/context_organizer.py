@@ -518,6 +518,8 @@ def safe_filename(s):
     return "".join(c if c.isalnum() or c in " _-" else "_" for c in s).strip() or "Unknown"
 
 def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
+    # Normalize the path to remove any double slashes/backslashes
+    path = os.path.normpath(path)
     # Default structure with all expected keys
     default_library = {
         "contests": [],

@@ -13,6 +13,8 @@ from .shared_logger import rprint
 from .shared_logic import normalize_text
 from ..config import CONTEXT_LIBRARY_PATH
 from typing import TYPE_CHECKING
+from rich.table import Table
+
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 context_cache = {}
@@ -297,6 +299,11 @@ def build_dynamic_table(
         context = {}
 
     contest_title = context.get("selected_race") or context.get("contest_title") or context.get("title", "")
+
+    # Ensure contest_title is always meaningful
+    if not contest_title or not contest_title.strip():
+        contest_title = context.get("url") or context.get("source_url") or "Unknown Contest"
+        logger.warning(f"[TABLE BUILDER] No contest title found in context, using fallback: '{contest_title}'")
 
     # --- 0. Learning mode: check for confirmed table structure ---
     if learning_mode and hasattr(coordinator, "get_table_structure"):
@@ -607,25 +614,34 @@ def build_dynamic_table(
         logger.info(f"[TABLE BUILDER] Built {len(output_data)} rows with {len(output_headers)} columns.")
 
     if learning_mode and hasattr(coordinator, "log_table_structure"):
-        coordinator.log_table_structure(contest_title, headers, context=context)
-        logger.info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest_title}'.")
-
-    if learning_mode and hasattr(coordinator, "log_table_structure"):
         should_log = True
         if confirm_table_structure_callback:
             should_log = confirm_table_structure_callback(headers)
         else:
-            # Simple CLI prompt fallback
-            print(f"\n[Table Builder] Learned headers for '{contest_title}':\n{headers}")
-            resp = input("Log this table structure for future auto-application? [Y/n]: ").strip().lower()
+            # Use rprint for a nice preview
+            rprint(f"\n[bold yellow][Table Builder] Learned headers for '{contest_title}':[/bold yellow]")
+            # Show headers and a sample of the data as a table
+            preview_table = Table(show_header=True, header_style="bold magenta")
+            for h in headers:
+                preview_table.add_column(h)
+            for row in data[:5]:  # Show up to 5 rows as preview
+                preview_table.add_row(*(str(row.get(h, "")) for h in headers))
+            rprint(preview_table)
+            rprint("[bold cyan]If this looks correct, log this table structure for future auto-application?[/bold cyan] [Y/n]: ", end="")
+            resp = input().strip().lower()
             should_log = (resp in ("", "y", "yes"))
         if should_log:
             coordinator.log_table_structure(contest_title, headers, context=context)
             logger.info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest_title}'.")
+            # Only define and return output_data/output_headers here
+            output_data = data
+            output_headers = headers
+            logger.info(f"[TABLE BUILDER] Pivoted final table: {len(output_data)} rows, {len(output_headers)} columns.")
+            return output_headers, output_data
         else:
             logger.info(f"[TABLE BUILDER] User declined to log table structure for '{contest_title}'.")
-        logger.info(f"[TABLE BUILDER] Pivoted final table: {len(output_data)} rows, {len(output_headers)} columns.")
-        return output_headers, output_data
+            # Just return the current headers/data, do not reference output_data/output_headers
+            return headers, data
 
     # If not in the above block, add a fallback return at the end:
     logger.info(f"[TABLE BUILDER] Final table: {len(data)} rows, {len(headers)} columns.")

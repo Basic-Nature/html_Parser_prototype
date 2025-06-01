@@ -40,7 +40,8 @@ def extend_html_tags(new_tags: List[str]):
 def safe_log_path(filename: str, log_dir: str = "log") -> str:
     from ..config import BASE_DIR
     filename = _sanitize_log_filename(filename)
-    log_folder = os.path.join(BASE_DIR, log_dir)
+    parent_dir = os.path.dirname(BASE_DIR)
+    log_folder = os.path.join(parent_dir, log_dir)
     os.makedirs(log_folder, exist_ok=True)
     full_path = os.path.join(log_folder, filename)
     if not os.path.abspath(full_path).startswith(os.path.abspath(log_folder)):
