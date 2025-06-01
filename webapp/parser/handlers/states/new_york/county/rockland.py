@@ -15,6 +15,36 @@ import numpy as e
 BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
 context_cache = {}
 
+def score_table(table, context, coordinator):
+    """
+    Score a table based on known district/precinct names, result keywords, and table size.
+    """
+    headers, data = extract_table_data(table)
+    score = 0
+    # 1. Known district/precinct names in first column
+    known_districts = set()
+    if hasattr(coordinator, "get_districts"):
+        known_districts = set(coordinator.get_districts(
+            state=context.get("state"), county=context.get("county")
+        ) or [])
+    if headers and data:
+        first_col = [row.get(headers[0], "") for row in data]
+        matches = sum(1 for val in first_col if any(str(d).lower() in str(val).lower() for d in known_districts))
+        score += matches * 3  # weight matches higher
+    # 2. Known result keywords in headers
+    result_keywords = {"votes", "candidate", "precinct", "total"}
+    score += sum(2 for h in headers if any(kw in h.lower() for kw in result_keywords))
+    # 3. Table size
+    score += len(data)
+    # 4. Prefer tables with more numeric columns (likely results)
+    if headers and data:
+        numeric_cols = sum(
+            1 for h in headers
+            if all(str(row.get(h, "")).replace(",", "").replace(".", "").isdigit() or row.get(h, "") == "" for row in data)
+        )
+        score += numeric_cols
+    return score, headers, data
+
 def handle_toggle_and_rescan(
     page,
     coordinator,
@@ -145,39 +175,59 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     segments = html_context.get("tagged_segments_with_attrs", [])
     precinct_tables = find_tables_with_headings(page, dom_segments=segments)
 
-    all_data_rows = []
-    headers = None
-    last_table_with_no_headers = None
-
+    # Score all tables and pick the best one(s)
+    scored_tables = []
     for precinct_name, table in precinct_tables:
-        if not table or not precinct_name:
+        if not table:
             continue
-        headers, data_rows = extract_table_data(table)
-        print("DEBUG: Extracted headers:", headers)
+        score, headers, data_rows = score_table(table, html_context, coordinator)
         if not headers:
-            last_table_with_no_headers = table
             continue
-        # Patch: If the first header is "Candidate" and the values look like precincts, rename to "Precinct"
+        # Heuristic: If the first header is "Candidate" and values look like precincts, rename to "Precinct"
         if headers and headers[0].lower() == "candidate":
             candidate_col = [row.get("Candidate", "") for row in data_rows]
             if sum(1 for v in candidate_col if "precinct" in v.lower() or "ed" in v.lower() or v.strip().isdigit()) > len(candidate_col) // 2:
                 headers[0] = "Precinct"
                 for row in data_rows:
                     row["Precinct"] = row.pop("Candidate")
-        for row in data_rows:
-            row["Precinct"] = precinct_name  # Always set the correct precinct name
+        # Always set the correct precinct name if available
+        if precinct_name:
+            for row in data_rows:
+                row["Precinct"] = precinct_name
+        scored_tables.append((score, headers, data_rows, precinct_name, table))
+
+    # Pick the highest scoring table(s)
+    scored_tables.sort(reverse=True, key=lambda x: x[0])
+    if not scored_tables:
+        rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+        return None, None, None, {"skipped": True}
+
+    # Optionally, you can aggregate data from all high-scoring tables, or just use the top one
+    top_score = scored_tables[0][0]
+    top_tables = [t for t in scored_tables if t[0] == top_score]
+    all_data_rows = []
+    headers = None
+    for score, hdrs, data_rows, precinct_name, table in top_tables:
+        headers = hdrs
         all_data_rows.extend(data_rows)
 
+    if len(top_tables) > 1:
+        rprint(f"[yellow][DEBUG] Multiple tables tied for top score. Prompting user for selection.[/yellow]")
+        # Show a preview of each table (headers, first row) and prompt user
+        for idx, (score, hdrs, data_rows, precinct_name, table) in enumerate(top_tables):
+            rprint(f"[{idx}] Precinct: {precinct_name}, Headers: {hdrs}, First row: {data_rows[0] if data_rows else None}")
+        sel = input("Select table index (or press Enter for first): ").strip()
+        try:
+            sel_idx = int(sel)
+            headers, all_data_rows = top_tables[sel_idx][1], top_tables[sel_idx][2]
+        except Exception:
+            headers, all_data_rows = top_tables[0][1], top_tables[0][2]
+
+    logger.info(f"[LEARNING] Confirmed table pattern: headers={headers}, num_rows={len(all_data_rows)}")
+       
     # --- Now call build_dynamic_table ONCE for all precincts ---
     if not headers:
-        if last_table_with_no_headers:
-            try:
-                table_html = last_table_with_no_headers.inner_html()
-            except Exception:
-                table_html = "[unavailable]"
-            rprint(f"[red][ERROR] No headers found in any table. Example table HTML:\n{table_html}[/red]")
-        else:
-            rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+        rprint(f"[red][ERROR] No headers found in any table. No suitable table available for debugging.[/red]")
         return None, None, None, {"skipped": True}
     headers, rows = build_dynamic_table(headers, all_data_rows, coordinator, html_context)
     data = rows
