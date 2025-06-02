@@ -872,7 +872,6 @@ def main():
             coordinator.close()
         sys.exit(1)
 
-    main()
     
 def extended_cli():
     parser = argparse.ArgumentParser(description="Manual Correction Bot - Extended CLI")
@@ -904,7 +903,6 @@ def extended_cli():
         return
     # If none of the above, fall back to main
     main()
-
 # --- PATCH: Replace main entry point ---
 if __name__ == "__main__":
     extended_cli()
