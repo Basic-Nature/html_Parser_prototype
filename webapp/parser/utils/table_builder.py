@@ -192,6 +192,21 @@ def robust_table_extraction(page, extraction_context=None):
     data_list = []
     extraction_logs = []
 
+    def log_page_html(page, context, prefix=""):
+        """Save the current page HTML for debugging extraction issues."""
+        try:
+            html = page.content()
+            contest_title = context.get("selected_race") or context.get("contest_title") or "unknown"
+            safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', contest_title)[:40]
+            fname = f"debug_{prefix}{safe_title}.html"
+            fpath = os.path.join(BASE_DIR, "log", fname)
+            with open(fpath, "w", encoding="utf-8") as f:
+                f.write(html)
+            logger.info(f"[TABLE BUILDER] Saved page HTML to {fpath}")
+        except Exception as e:
+            logger.error(f"[TABLE BUILDER] Could not save page HTML: {e}")
+
+
     # 1. Pattern-based extraction (approved DOM patterns, prioritized)
     try:
         pattern_rows = extract_with_patterns(page, extraction_context)
@@ -388,6 +403,7 @@ def build_dynamic_table(
         context = {}
 
     contest_title = context.get("selected_race") or context.get("contest_title") or context.get("title", "")
+    logger.info(f"[TABLE BUILDER] Using contest_title: '{contest_title}'")
 
     # 0. Try to auto-apply a learned structure from the log/database
     learned_structure = None
@@ -736,9 +752,10 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     Uses context, regex, NER, and library.
     Returns (location_header, percent_reported_header)
     """
-    # Use patterns from the context library if available
+     # Use patterns from the context library if available
     location_patterns = coordinator.library.get("location_patterns", [
-        "precinct", "ward", "district", "city", "municipal", "location", "area"
+        "precinct", "ward", "district", "city", "municipal", "location", "area",
+        "ed", "district name", "division", "subdistrict", "polling place"
     ])
     percent_patterns = coordinator.library.get("percent_patterns", [
         "% precincts reporting", "% reporting", "percent reporting"
@@ -1329,13 +1346,21 @@ def fallback_nlp_candidate_vote_scan(page):
     Returns headers, data.
     """
     import re
-    candidate_pattern = re.compile(r"[A-Z][a-z]+ [A-Z][a-z]+")  # crude: "Firstname Lastname"
-    vote_pattern = re.compile(r"\d{1,3}(,\d{3})*")
+    candidate_pattern = re.compile(r"^[A-Z][a-z]+ [A-Z][a-z]+(?: [A-Z][a-z]+)?$")  # "Firstname Lastname" or "Firstname Middlename Lastname"
+    vote_pattern = re.compile(r"^\d{1,3}(,\d{3})*$")
+    skip_phrases = [
+        "Last Updated", "Vote Method", "Fully Reported", "Search", "Reported", "Total", "Precincts Reporting"
+    ]
     elements = page.locator("*")
     candidates = []
     votes = []
     for i in range(elements.count()):
         text = elements.nth(i).inner_text().strip()
+        # Filter out irrelevant or too-short rows
+        if not text or len(text) < 3:
+            continue
+        if any(skip in text for skip in skip_phrases):
+            continue
         if candidate_pattern.match(text):
             candidates.append((i, text))
         elif vote_pattern.fullmatch(text.replace(",", "")):
@@ -1385,7 +1410,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
             repeated_rows = repeated_rows[1:]
 
     # --- Advanced heuristics start here ---
-    location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal"}
+    location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "ed", "division", "subdistrict", "polling place"}
     candidate_keywords = {"candidate", "name", "nominee"}
     vote_keywords = {"votes", "total", "sum"}
     if coordinator and hasattr(coordinator, "library"):
@@ -1443,7 +1468,6 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         location_idx = likely_loc
 
     # --- ADVANCED: Detect "totals" or "footer" rows and remove them ---
-    # If the last row has mostly keywords like "total", "sum", "overall", etc., drop it
     if sample_rows:
         last_row = sample_rows[-1]
         if any(any(kw in normalize_text(str(cell)) for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS)) for cell in last_row):
@@ -1462,7 +1486,6 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         col_stats = [stat for i, stat in enumerate(col_stats) if i not in repeated_val_cols]
 
     # --- ADVANCED: Detect and merge multi-line cells (e.g., candidate name and party in one cell) ---
-    # If a cell contains a newline, split it and try to assign to adjacent columns
     def split_multiline_cells(row):
         new_row = []
         for cell in row:
@@ -1518,7 +1541,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         headers = sample_rows[0]
         sample_rows = sample_rows[1:]
 
-    # --- Build data ---
+    # --- ADVANCED: Remove rows that are all empty or all repeated values ---
     data = []
     for heading, row in repeated_rows:
         cells = row.locator("> *")
@@ -1540,7 +1563,6 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         if row_data and any(v.strip() for v in row_data.values()):
             data.append(row_data)
 
-    # --- ADVANCED: Remove rows that are all empty or all repeated values ---
     filtered_data = []
     for row in data:
         values = list(row.values())
@@ -1548,6 +1570,40 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
             filtered_data.append(row)
     if not filtered_data and data:
         filtered_data = data  # fallback
+
+    # --- ADVANCED: Remove rows that are likely repeated headers (e.g., header row repeated in body) ---
+    filtered_data2 = []
+    header_set = set(normalize_text(h) for h in headers)
+    for row in filtered_data:
+        row_set = set(normalize_text(str(v)) for v in row.values())
+        # If row is too similar to header, skip
+        if len(row_set & header_set) / max(1, len(header_set)) > 0.7:
+            continue
+        filtered_data2.append(row)
+    if filtered_data2:
+        filtered_data = filtered_data2
+
+    # --- ADVANCED: Remove rows with only one non-empty value (likely not real data) ---
+    filtered_data3 = []
+    for row in filtered_data:
+        non_empty = [v for v in row.values() if v.strip()]
+        if len(non_empty) > 1:
+            filtered_data3.append(row)
+    if filtered_data3:
+        filtered_data = filtered_data3
+
+    # --- ADVANCED: If still ambiguous, log a warning and save HTML for manual inspection ---
+    if len(filtered_data) < 2:
+        logger.warning("[TABLE BUILDER] Too few rows after advanced heuristics. Saving HTML for manual inspection.")
+        try:
+            html = page.content()
+            fname = "debug_dom_extract_fallback.html"
+            fpath = os.path.join(BASE_DIR, "log", fname)
+            with open(fpath, "w", encoding="utf-8") as f:
+                f.write(html)
+            logger.info(f"[TABLE BUILDER] Saved fallback HTML to {fpath}")
+        except Exception as e:
+            logger.error(f"[TABLE BUILDER] Could not save fallback HTML: {e}")
 
     logger.info(f"[TABLE BUILDER] Extracted rows and headers from DOM (location-first): {len(filtered_data)} rows, {len(headers)} columns.")
     return headers, filtered_data

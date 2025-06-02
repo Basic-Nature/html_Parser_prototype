@@ -149,6 +149,12 @@ def finalize_election_output(headers, data, coordinator, contest_title, state, c
     """
     from ..Context_Integration.context_organizer import append_to_context_library, organize_context
 
+    # --- DEBUG: Log contest_title and selected_race ---
+    logger.info(f"[OUTPUT_UTILS] finalize_election_output called with contest_title: '{contest_title}'")
+    if hasattr(coordinator, "html_context"):
+        selected_race = coordinator.html_context.get("selected_race", None)
+        logger.info(f"[OUTPUT_UTILS] coordinator.html_context['selected_race']: '{selected_race}'")
+
     meta = {
         "race": contest_title or "Unknown",
         "year": "Unknown",
@@ -213,8 +219,10 @@ def finalize_election_output(headers, data, coordinator, contest_title, state, c
 
     # --- Final Data Clean-up and Structure ---
     headers, data = harmonize_headers_and_data(headers, data)
+    # --- DEBUG: Log contest_title before build_dynamic_table ---
+    logger.info(f"[OUTPUT_UTILS] Passing contest_title '{contest_title}' to build_dynamic_table")
     headers, data = build_dynamic_table(
-        enriched_meta.get("race", "Unknown"),  # domain
+        contest_title or enriched_meta.get("race", "Unknown"),  # domain
         headers,                               # headers
         data,                                  # data
         coordinator,                           # coordinator

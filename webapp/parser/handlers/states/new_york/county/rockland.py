@@ -132,12 +132,12 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     if isinstance(selected, list):
         results = []
         for contest in selected:
-            contest_title = contest.get("title") if isinstance(contest, dict) else contest
-            html_context["selected_race"] = contest_title
-            rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
+            user_selected_title = contest.get("title") if isinstance(contest, dict) else contest
+            html_context["selected_race"] = user_selected_title
+            rprint(f"[cyan][INFO] Processing contest: {user_selected_title}[/cyan]")
 
             # --- Button toggles for this contest ---
-            contest_title_for_button = contest_title if contest_title else None
+            contest_title_for_button = user_selected_title if user_selected_title else None
             election_district_keywords = [
                 r"view results? by election district[\s:]*$", "View results by election district", 
                 "results by election district",  "election district", 
@@ -172,7 +172,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             autoscroll_until_stable(page)
 
             # --- 9. Extract ballot items using DOM scan and context/NLP ---
-            contest_title = html_context.get("selected_race") or html_context.get("title", "")
+            contest_title = user_selected_title
             entities = coordinator.extract_entities(contest_title)
             locations = [ent for ent, label in entities if label in ("GPE", "LOC", "FAC", "ORG") or "district" in ent.lower()]
             expected_location = locations[0] if locations else None
@@ -254,7 +254,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 metadata["election_type"] = html_context["election_type"]
                 print("DEBUG: headers before finalize:", headers)
                 print("DEBUG: first row before finalize:", data[0] if data else None)
-                print("DEBUG: contest_title before finalize:", contest_title)
+            print("DEBUG: contest_title before finalize:", contest_title)
             result = finalize_election_output(headers, data, coordinator, contest_title, state, county)
             if isinstance(result, dict):
                 if "csv_path" in result:

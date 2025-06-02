@@ -108,6 +108,26 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
         coordinator.submit_user_feedback("contest", "contest_title", c.get("title", ""), context)
     return selected
 
+def ensure_contest_title(contest):
+    """
+    Ensures the contest dict has a non-empty 'title' key.
+    Falls back to 'name', or stringifies the contest if needed.
+    """
+    if not isinstance(contest, dict):
+        return {"title": str(contest)}
+    title = contest.get("title")
+    if title and isinstance(title, str) and title.strip():
+        return contest
+    # Try fallback keys
+    for alt in ("name", "contest_name", "label"):
+        alt_val = contest.get(alt)
+        if alt_val and isinstance(alt_val, str) and alt_val.strip():
+            contest["title"] = alt_val
+            return contest
+    # Fallback: stringified dict
+    contest["title"] = str(contest)
+    return contest
+
 def select_contest(
     coordinator: "ContextCoordinator",
     state=None,
@@ -258,7 +278,21 @@ def select_contest(
             log_func("[CONTEST] No valid contest indices selected.")
         return None
 
+    if len(verified_contests) == 1:
+        contest = ensure_contest_title(verified_contests[0])
+        rprint(f"[green]Only one contest found. Auto-selecting: {contest['title']}[/green]")
+        if log_func:
+            log_func(f"[CONTEST] Auto-selected: {contest['title']}")
+        return [contest]
+
+    if non_interactive:
+        if log_func:
+            log_func(f"[CONTEST] Non-interactive mode: selecting all contests.")
+        return [ensure_contest_title(c) for c in verified_contests]
+
+    # ...after parsing indices...
     selected = [contest_indices[i] for i in indices]
+    selected = [ensure_contest_title(c) for c in selected]
     if log_func:
         log_func(f"[CONTEST] User selected contests: {[c.get('title', '') for c in selected]}")
     return selected
