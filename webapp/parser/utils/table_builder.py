@@ -166,11 +166,25 @@ def robust_table_extraction(page, extraction_context=None):
     import types
 
     def safe_json(obj):
-        """Recursively remove non-serializable objects (like functions) from dicts/lists."""
+        """Recursively remove non-serializable objects (like functions, classes, custom objects) from dicts/lists."""
+        import types
         if isinstance(obj, dict):
-            return {k: safe_json(v) for k, v in obj.items() if not isinstance(v, types.FunctionType)}
+            result = {}
+            for k, v in obj.items():
+                # Skip known non-serializable keys
+                if k in ("coordinator", "ContextCoordinator"):
+                    continue
+                # Skip non-serializable objects
+                if isinstance(v, (types.FunctionType, types.ModuleType)) or hasattr(v, "__dict__"):
+                    continue
+                try:
+                    json.dumps(v)
+                    result[k] = safe_json(v)
+                except Exception:
+                    continue
+            return result
         elif isinstance(obj, list):
-            return [safe_json(v) for v in obj if not isinstance(v, types.FunctionType)]
+            return [safe_json(v) for v in obj if not hasattr(v, "__dict__")]
         else:
             return obj
 
