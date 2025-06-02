@@ -18,7 +18,7 @@ pytesseract>=0.3.13
 pdf2image>=1.17.0
 pdfplumber>=0.11.6
 PyMuPDF>=1.23.0
-
+datasets>=3.6.0
 # CLI and ML utilities
 rich_click>=1.8.9
 fuzzywuzzy>=0.18.0
