@@ -393,10 +393,16 @@ def build_dynamic_table(
     learned_structure = None
     if hasattr(coordinator, "get_table_structure"):
         learned_structure = coordinator.get_table_structure(contest_title, context=context, learning_mode=True)
-    # --- NEW: Try DB if not found ---
+    # --- Try DB if not found ---
     if not learned_structure and hasattr(coordinator, "get_table_structure_from_db"):
         learned_structure = coordinator.get_table_structure_from_db(contest_title, context=context)
     if learned_structure:
+        # Defensive: handle list or dict
+        if isinstance(learned_structure, list):
+            if learned_structure and isinstance(learned_structure[0], dict):
+                learned_structure = learned_structure[0]
+            else:
+                learned_structure = {}
         output_headers = learned_structure.get("headers", [])
         output_headers, output_data = harmonize_headers_and_data(output_headers, data)
         logger.info(f"[TABLE BUILDER] Auto-applied learned table structure for '{contest_title}'.")
