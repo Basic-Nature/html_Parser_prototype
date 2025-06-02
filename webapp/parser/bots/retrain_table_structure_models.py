@@ -16,9 +16,8 @@ from spacy.training import Example
 ELECTION_ENTITY_LABELS = [
     "CONTEST", "CANDIDATE", "PARTY", "COUNTY", "STATE", "DISTRICT", "VOTE_METHOD",
     "BALLOT_TYPE", "PRECINCT", "TOTAL", "PERCENT", "YEAR", "ELECTION_TYPE", "OFFICE", "MISC",
-    "BALLOT_MEASURE", "LOCATION", "DATE", "INCUMBENT", "WINNER", "LOSER", "WRITE_IN", "UNOPPOSED", "PROPOSITION", "AMENDMENT", "DISTRICT_TYPE", "JURISDICTION",
-    "VOTER", "VOTING_METHOD", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "ABSENTEE", "EARLY_VOTING", "MAIL_IN", "PROVISIONAL", "AFFIDAVIT", "OTHER"
-    
+    "BALLOT_MEASURE", "LOCATION", "DATE", "INCUMBENT", "WINNER", "LOSER", "WRITE_IN", "UNOPPOSED", "PROPOSITION", 
+    "AMENDMENT", "DISTRICT_TYPE", "JURISDICTION", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "AFFIDAVIT", "OTHER"   
 ]
 
 ENTITY_PATTERNS = [
@@ -43,16 +42,10 @@ ENTITY_PATTERNS = [
     (r"\bunopposed\b", "UNOPPOSED"),  
     (r"\bproposition \d+\b", "PROPOSITION"),
     (r"\bamendment \d+\b", "AMENDMENT"),
-    (r"\bdistrict \d+\b", "DISTRICT_TYPE"),
     (r"\b(jurisdiction|authority|agency|department)\b", "JURISDICTION"),
-    (r"\b(voter|voting|elector|constituent)\b", "VOTER"),
-    (r"\b(voting method|voting system|voting process)\b", "VOTING_METHOD"),
     (r"\belection official\b", "ELECTION_OFFICIAL"),
     (r"\b(results|outcome|tally|count)\b", "RESULTS"),
     (r"\b(vote count|vote total|vote tally)\b", "VOTE_COUNT"),
-    (r"\b(absentee|early voting|mail-in|provisional|affidavit)\b", "VOTE_METHOD"),
-    (r"\b(?:district|ward|precinct|area|region)\b", "DISTRICT"),
-    (r"\b(?:city|town|village|borough|municipality|community)\b", "LOCATION"),
     (r"\b(?:election|vote|poll|referendum|plebiscite)\b", "ELECTION_TYPE"),  
     (r"\b(?:candidate|nominee|aspirant|hopeful)\b", "CANDIDATE"),
     (r"\b(?:election official|poll worker|election judge|inspector)\b", "ELECTION_OFFICIAL"),
@@ -151,10 +144,26 @@ def load_spacy_ner_examples(jsonl_path):
             examples.append((text, {"entities": entities}))
     return examples
 
+def remove_overlapping_entities(entities):
+    """
+    Remove overlapping entities from a list of (start, end, label) tuples.
+    Keeps the longest span first, then next non-overlapping, etc.
+    """
+    # Sort by start, then by longest span (descending)
+    entities = sorted(entities, key=lambda x: (x[0], -(x[1] - x[0])))
+    result = []
+    last_end = -1
+    for start, end, label in entities:
+        if start >= last_end:
+            result.append((start, end, label))
+            last_end = end
+        # else: skip this entity because it overlaps
+    return result
+
 def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model_save_path="fine_tuned_spacy_ner"):
     import spacy
     from spacy.training import Example
-    
+
     nlp = spacy.blank("en")
     if "ner" not in nlp.pipe_names:
         ner = nlp.add_pipe("ner")
@@ -203,6 +212,8 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
         for header in headers:
             entities = auto_label_header(header, context)
             if entities:
+                # PATCH: Remove overlapping entities before adding to train_data
+                entities = remove_overlapping_entities(entities)
                 train_data.append((header, {"entities": entities}))
 
     save_training_data_jsonl(train_data)
@@ -212,6 +223,8 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     examples = []
     for text, annots in train_data:
         doc = nlp.make_doc(text)
+        # PATCH: Remove overlapping entities before creating Example (defensive)
+        annots["entities"] = remove_overlapping_entities(annots["entities"])
         example = Example.from_dict(doc, annots)
         examples.append(example)
 
@@ -245,15 +258,9 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
         "YEAR": list(context_library.get("known_years", [])),
         "MISC": list(context_library.get("known_misc", [])),
         "OFFICE": list(context_library.get("known_offices", [])),
-        "VOTER": list(context_library.get("known_voters", [])),
         "ELECTION_OFFICIAL": list(context_library.get("known_election_officials", [])),
         "RESULTS": list(context_library.get("known_results", [])),
-        "VOTE_COUNT": list(context_library.get("known_vote_counts", [])),
-        "ABSENTEE": list(context_library.get("known_absentee_methods", [])),
-        "EARLY_VOTING": list(context_library.get("known_early_voting_methods", [])),
-        "MAIL_IN": list(context_library.get("known_mail_in_methods", [])),
-        "PROVISIONAL": list(context_library.get("known_provisional_methods", [])),
-        
+        "VOTE_COUNT": list(context_library.get("known_vote_counts", [])),        
     }
     update_db_with_new_entities(new_entities, _safe_db_path(CONTEXT_DB_PATH))
     

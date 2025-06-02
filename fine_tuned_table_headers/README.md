@@ -4,9 +4,35 @@ tags:
 - sentence-similarity
 - feature-extraction
 - generated_from_trainer
-- dataset_size:4
+- dataset_size:85
 - loss:CosineSimilarityLoss
 base_model: sentence-transformers/all-MiniLM-L6-v2
+widget:
+- source_sentence: ''
+  sentences:
+  - WOR Chrissy Knapp (Working Families) - Early Voting
+  - Write (Other) - Election Day
+  - Write-in - Total
+- source_sentence: ''
+  sentences:
+  - '%reported'
+  - Orangetown (Other) - Mail
+  - Precinct (Other) - Total
+- source_sentence: ''
+  sentences:
+  - Grand Total (Grand Total) - Early Voting
+  - Orangetown (Other) - Absentee
+  - DEM Chrissy Knapp (Democratic) - Early Voting
+- source_sentence: ''
+  sentences:
+  - Districts
+  - Grand Total
+  - CON Daniel W. Sullivan (Conservative) - Election Day
+- source_sentence: ''
+  sentences:
+  - WOR Chrissy Knapp (Working Families) - Election Day
+  - Precinct (Other) - Absentee
+  - WOR Chrissy Knapp (Working Families) - Total
 pipeline_tag: sentence-similarity
 library_name: sentence-transformers
 ---
@@ -61,9 +87,9 @@ from sentence_transformers import SentenceTransformer
 model = SentenceTransformer("sentence_transformers_model_id")
 # Run inference
 sentences = [
-    'The weather is lovely today.',
-    "It's so sunny outside!",
-    'He drove to the stadium.',
+    '',
+    'Precinct (Other) - Absentee',
+    'WOR Chrissy Knapp (Working Families) - Election Day',
 ]
 embeddings = model.encode(sentences)
 print(embeddings.shape)
@@ -117,19 +143,19 @@ You can finetune this model on your own dataset.
 
 #### Unnamed Dataset
 
-* Size: 4 training samples
+* Size: 85 training samples
 * Columns: <code>sentence_0</code>, <code>sentence_1</code>, and <code>label</code>
-* Approximate statistics based on the first 4 samples:
-  |         | sentence_0                                                                     | sentence_1                                                                     | label                                                         |
-  |:--------|:-------------------------------------------------------------------------------|:-------------------------------------------------------------------------------|:--------------------------------------------------------------|
-  | type    | string                                                                         | string                                                                         | float                                                         |
-  | details | <ul><li>min: 2 tokens</li><li>mean: 2.0 tokens</li><li>max: 2 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 3.5 tokens</li><li>max: 4 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
+* Approximate statistics based on the first 85 samples:
+  |         | sentence_0                                                                     | sentence_1                                                                        | label                                                         |
+  |:--------|:-------------------------------------------------------------------------------|:----------------------------------------------------------------------------------|:--------------------------------------------------------------|
+  | type    | string                                                                         | string                                                                            | float                                                         |
+  | details | <ul><li>min: 2 tokens</li><li>mean: 2.0 tokens</li><li>max: 2 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 10.27 tokens</li><li>max: 15 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
 * Samples:
-  | sentence_0    | sentence_1               | label            |
-  |:--------------|:-------------------------|:-----------------|
-  | <code></code> | <code>Districts</code>   | <code>1.0</code> |
-  | <code></code> | <code>Candidate</code>   | <code>1.0</code> |
-  | <code></code> | <code>Grand Total</code> | <code>1.0</code> |
+  | sentence_0    | sentence_1                                           | label            |
+  |:--------------|:-----------------------------------------------------|:-----------------|
+  | <code></code> | <code>Precinct (Other) - Total</code>                | <code>1.0</code> |
+  | <code></code> | <code>Percent Reported (Other) - Early Voting</code> | <code>1.0</code> |
+  | <code></code> | <code>Orangetown (Other) - Early Voting</code>       | <code>1.0</code> |
 * Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
   ```json
   {
