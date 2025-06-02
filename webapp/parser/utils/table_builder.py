@@ -12,7 +12,6 @@ from typing import List, Dict, Tuple, Any, Optional
 from .logger_instance import logger
 from .shared_logger import rprint
 from .shared_logic import normalize_text
-from ..config import CONTEXT_LIBRARY_PATH
 from typing import TYPE_CHECKING
 from rich.table import Table
 
@@ -51,7 +50,7 @@ BALLOT_TYPES = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
 ]
 CANDIDATE_KEYWORDS = {"candidate", "candidates", "name", "nominee"}
-LOCATION_KEYWORDS = {"precinct", "ward", "district", "location", "area", "city", "municipal"}
+LOCATION_KEYWORDS = {"precinct", "ward", "district", "location", "area", "city", "municipal", "town"}
 TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all"}
 BALLOT_TYPE_KEYWORDS = {"election day", "early voting", "absentee", "mail", "provisional", "affidavit", "other", "void"}
 MISC_FOOTER_KEYWORDS = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
@@ -848,7 +847,16 @@ def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoor
     Returns a dict: {party: {candidate: [ballot_types]}}
     """
     # Use coordinator to extract all known parties and ballot types
-    known_parties = ["Democratic", "Republican", "Working Families", "Conservative", "Green", "Libertarian", "Independent", "Write-In", "Other"]
+    known_parties = [
+        "Democratic", "DEM", "dem", 
+        "Republican", "REP", "rep", 
+        "Working Families", "WOR", "wor" 
+        "Conservative", "CON", "con", 
+        "Green", "GRN", "grn", 
+        "Libertarian", "LIB", "lib", 
+        "Independent", "IND", "ind",
+        "Larouche", "Write-In", "Other"                     
+    ]
     ballot_types = BALLOT_TYPES
 
     # Group headers by candidate/party/ballot type
@@ -1686,8 +1694,14 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
         # Show ML/NLP confidence and suggestions
         rprint(f"\n[bold yellow][Table Builder] Candidate structure {candidate_idx+1}/{len(structure_candidates)} for '{contest_title}':[/bold yellow]")
         preview_table = Table(show_header=True, header_style="bold magenta")
+        N = min(5, len(data))  # Show up to 5 values, or all if fewer rows
+        rprint(f"[bold green]Column content preview (first {N} rows):[/bold green]")
         for h in candidate_headers:
             preview_table.add_column(h)
+            values = [str(row.get(h, "")) for row in data[:N]]
+            # Show as comma-separated, truncate long values
+            preview_vals = [v if len(v) < 30 else v[:27] + "..." for v in values]
+            rprint(f"[cyan]{h}[/cyan]: {preview_vals}")                       
         for row in data[:5]:
             preview_table.add_row(*(str(row.get(h, "")) for h in candidate_headers))
         rprint(preview_table)

@@ -624,7 +624,7 @@
       "cibola",
       "colfax",
       "de baca",
-      "doña ana",
+      "do\u00f1a ana",
       "eddie",
       "grant",
       "guadalupe",
@@ -1260,7 +1260,7 @@
     "app.enhancedvoting.com": {
       "max_scrolls": 1,
       "step": 8000,
-      "last_used": "2025-06-02T10:17:20.139298"
+      "last_used": "2025-06-02T11:21:09.612443"
     }
   },
   "contest_type_patterns": [

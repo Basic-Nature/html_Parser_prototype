@@ -125,11 +125,11 @@ You can finetune this model on your own dataset.
   | type    | string                                                                         | string                                                                         | float                                                         |
   | details | <ul><li>min: 2 tokens</li><li>mean: 2.0 tokens</li><li>max: 2 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 3.5 tokens</li><li>max: 4 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
 * Samples:
-  | sentence_0    | sentence_1                    | label            |
-  |:--------------|:------------------------------|:-----------------|
-  | <code></code> | <code>Grand Total</code>      | <code>1.0</code> |
-  | <code></code> | <code>Districts</code>        | <code>1.0</code> |
-  | <code></code> | <code>Percent Reported</code> | <code>1.0</code> |
+  | sentence_0    | sentence_1               | label            |
+  |:--------------|:-------------------------|:-----------------|
+  | <code></code> | <code>Districts</code>   | <code>1.0</code> |
+  | <code></code> | <code>Candidate</code>   | <code>1.0</code> |
+  | <code></code> | <code>Grand Total</code> | <code>1.0</code> |
 * Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
   ```json
   {
