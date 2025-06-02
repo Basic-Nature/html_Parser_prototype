@@ -213,8 +213,18 @@ def finalize_election_output(headers, data, coordinator, contest_title, state, c
 
     # --- Final Data Clean-up and Structure ---
     headers, data = harmonize_headers_and_data(headers, data)
-    headers, data = build_dynamic_table(headers, data, coordinator, context=enriched_meta.get("context", {}))
-    preferred_order = ["Precinct", "% Precincts Reporting", "Candidate", "Party", "Method", "Votes"]
+    headers, data = build_dynamic_table(
+        enriched_meta.get("race", "Unknown"),  # domain
+        headers,                               # headers
+        data,                                  # data
+        coordinator,                           # coordinator
+        context=enriched_meta.get("context", {})  # context
+    )
+    preferred_order = [
+        "Precinct", "District", "Area", "Location",
+        "% Precincts Reporting", "Percent Reported",
+        "Candidate", "Party", "Method", "Votes", "Grand Total"
+    ]
     sorted_headers = [h for h in preferred_order if h in headers] + [h for h in headers if h not in preferred_order]
     if "Precinct" not in sorted_headers and any("Precinct" in row for row in data):
         sorted_headers = ["Precinct"] + sorted_headers

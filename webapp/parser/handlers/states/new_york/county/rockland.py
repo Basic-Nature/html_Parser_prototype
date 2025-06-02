@@ -225,7 +225,13 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                     rprint(f"[red][ERROR] No data found for contest '{contest_title}'. Skipping.")
                     results.append((None, None, contest_title, {"skipped": True}))
                     continue
-            headers, data = build_dynamic_table(headers, data_rows, coordinator, html_context)
+            headers, data = build_dynamic_table(
+                contest_title,      # domain
+                headers,            # headers
+                data_rows,          # data
+                coordinator,        # coordinator
+                html_context        # context
+            )
 
             if not data:
                 rprint(f"[red][ERROR] No data could be parsed from ballot items or robust extraction.[/red]")
