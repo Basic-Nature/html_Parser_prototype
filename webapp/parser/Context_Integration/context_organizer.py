@@ -7,6 +7,7 @@ Delegates NLP/semantic logic to the context_coordinator and spacy_utils modules.
 """
 
 import re
+import argparse
 import os
 import json
 import logging
@@ -51,7 +52,6 @@ logging.basicConfig(
 )
 from ..config import BASE_DIR, CONTEXT_LIBRARY_PATH
 # Paths
-
 
 PROCESSED_URLS_CACHE = os.path.join(BASE_DIR, ".processed_urls")
 OUTPUT_CACHE = os.path.join(BASE_DIR, ".output_cache.jsonl")
@@ -214,7 +214,7 @@ def organize_context(
     random_state=42,
     embedding_model="all-MiniLM-L6-v2",
     plot_anomalies=True,
-    plot_clusters_flag=True
+    plot_clusters_flag=True,
 ):
     """
     Organizes the context for a parsed HTML page, including DOM structure, contests, panels, buttons, tables, and ML features.

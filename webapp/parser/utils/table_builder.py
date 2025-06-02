@@ -3,7 +3,8 @@
 # Election Data Cleaner - Table Extraction and Cleaning Utilities
 # Context-integrated version: uses ContextCoordinator for config
 # ===================================================================
-
+import difflib
+import hashlib
 import re
 import os
 import json
@@ -51,8 +52,58 @@ LOCATION_KEYWORDS = {"precinct", "ward", "district", "location", "area", "city",
 TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all"}
 BALLOT_TYPE_KEYWORDS = {"election day", "early voting", "absentee", "mail", "provisional", "affidavit", "other", "void"}
 MISC_FOOTER_KEYWORDS = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
+TABLE_STRUCTURE_CACHE_PATH = os.path.join(BASE_DIR, "parser", "Context_Integration", "Context_Library", "table_structure_cache.json")
 
+def table_signature(headers):
+    return hashlib.md5(json.dumps(headers, sort_keys=True).encode()).hexdigest()
 
+def load_table_structure_cache():
+    if os.path.exists(TABLE_STRUCTURE_CACHE_PATH):
+        with open(TABLE_STRUCTURE_CACHE_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def save_table_structure_cache(cache):
+    with open(TABLE_STRUCTURE_CACHE_PATH, "w", encoding="utf-8") as f:
+        json.dump(cache, f, indent=2)
+
+def cache_table_structure(domain, headers, structure):
+    cache = load_table_structure_cache()
+    sig = f"{domain}:{table_signature(headers)}"
+    cache[sig] = structure
+    save_table_structure_cache(cache)
+
+def get_cached_table_structure(domain, headers):
+    cache = load_table_structure_cache()
+    sig = f"{domain}:{table_signature(headers)}"
+    return cache.get(sig)
+
+def guess_contest_title(table_headers, known_titles):
+    """
+    Try to match table headers to known contest titles using fuzzy matching.
+    """
+    import difflib
+    for header in table_headers:
+        matches = difflib.get_close_matches(header, known_titles, n=1, cutoff=0.7)
+        if matches:
+            return matches[0]
+    return None
+
+def extract_title_from_html_near_table(table_idx, dom_nodes, window=5):
+    """
+    Scan nearby DOM nodes for likely contest titles.
+    """
+    idx_range = range(max(0, table_idx - window), min(len(dom_nodes), table_idx + window + 1))
+    for idx in idx_range:
+        node = dom_nodes[idx]
+        if node.get("tag", "").lower() in {"h1", "h2", "h3", "caption"}:
+            text = node.get("html", "").strip()
+            if text and len(text.split()) > 2:
+                return text
+    return None
+def is_likely_header(row):
+    known_fields = {"candidate", "votes", "percent", "party", "district"}
+    return sum(1 for cell in row if cell.lower() in known_fields) >= 2
 
 def merge_table_data(headers_list, data_list):
     """
@@ -248,6 +299,7 @@ def is_candidate_footer(data):
     )
 
 def build_dynamic_table(
+    domain: str,
     headers: List[str],
     data: List[Dict[str, Any]],
     coordinator: "ContextCoordinator",
@@ -303,21 +355,122 @@ def build_dynamic_table(
     # Ensure contest_title is always meaningful
     if not contest_title or not contest_title.strip():
         contest_title = context.get("url") or context.get("source_url") or "Unknown Contest"
-        logger.warning(f"[TABLE BUILDER] No contest title found in context, using fallback: '{contest_title}'")
+        logger.warning(
+            f"[TABLE BUILDER] No contest title found in context, using fallback: '{contest_title}'. "
+            "Consider improving heading detection or adding manual mapping."
+        )
 
     # --- 0. Learning mode: check for confirmed table structure ---
-    if learning_mode and hasattr(coordinator, "get_table_structure"):
-        learned_headers = coordinator.get_table_structure(contest_title, context=context, learning_mode=True)
-        if learned_headers:
-            # Optionally remap your data to match learned_headers
-            # (Here, just reorder columns if possible)
-            headers = [h for h in learned_headers if h in headers] + [h for h in headers if h not in learned_headers]
-            # Optionally, harmonize data as well
-            data = [{h: row.get(h, "") for h in headers} for row in data]
-            logger.info(f"[TABLE BUILDER] Applied learned table structure for '{contest_title}'.")
-            logger.info(f"[TABLE BUILDER] Harmonized final table: {len(data)} rows, {len(headers)} columns (learned structure).")
-            return headers, data
+    if learning_mode and hasattr(coordinator, "log_table_structure"):
+        should_log = True
+        columns_changed = False
+        new_headers = headers.copy()
+        denied_structures_path = os.path.join(BASE_DIR, "log", "denied_table_structures.json")
+        denied_structures = {}
+        # Load denied structures count
+        if os.path.exists(denied_structures_path):
+            with open(denied_structures_path, "r", encoding="utf-8") as f:
+                denied_structures = json.load(f)
+        sig = f"{domain}:{table_signature(headers)}"
+        denied_count = denied_structures.get(sig, 0)
+        while True:
+            # Show preview
+            rprint(f"\n[bold yellow][Table Builder] Learned headers for '{contest_title}':[/bold yellow]")
+            preview_table = Table(show_header=True, header_style="bold magenta")
+            for h in new_headers:
+                preview_table.add_column(h)
+            for row in data[:5]:
+                preview_table.add_row(*(str(row.get(h, "")) for h in new_headers))
+            rprint(preview_table)
+            rprint("[bold cyan]Options:[/bold cyan]")
+            rprint("  [Y] Accept as correct")
+            rprint("  [N] Reject (log as denied structure)")
+            rprint("  [C] Mark columns as incorrect (remove)")
+            rprint("  [O] Reorder columns")
+            rprint("  [R] Rename columns")
+            rprint("  [A] Add missing columns")
+            resp = input("Accept, Reject, mark Columns, reorder, Rename, or Add? [Y/n/c/o/r/a]: ").strip().lower()
+            if resp in ("", "y", "yes"):
+                should_log = True
+                break
+            elif resp in ("n", "no"):
+                # Log as denied
+                denied_structures[sig] = denied_structures.get(sig, 0) + 1
+                with open(denied_structures_path, "w", encoding="utf-8") as f:
+                    json.dump(denied_structures, f, indent=2)
+                logger.info(f"[TABLE BUILDER] User declined to log table structure for '{contest_title}'. Denied {denied_structures[sig]} times.")
+                # If denied too many times, warn and exit
+                if denied_structures[sig] >= 3:
+                    logger.warning(f"[TABLE BUILDER] Structure for '{contest_title}' denied {denied_structures[sig]} times. Will not auto-apply in future.")
+                # Ask if user wants to retry or exit
+                retry = input("Would you like to retry correction? [y/N]: ").strip().lower()
+                if retry in ("y", "yes"):
+                    continue
+                else:
+                    return headers, data
+            elif resp == "c":
+                rprint("Enter column numbers (comma-separated) that are incorrect (starting from 1):")
+                for idx, h in enumerate(new_headers):
+                    rprint(f"  {idx+1}: {h}")
+                wrong_cols = input("Columns to mark as incorrect: ").strip()
+                if wrong_cols:
+                    wrong_idxs = [int(i)-1 for i in wrong_cols.split(",") if i.strip().isdigit()]
+                    for idx in wrong_idxs:
+                        if 0 <= idx < len(new_headers):
+                            rprint(f"[red]Column '{new_headers[idx]}' marked as incorrect.[/red]")
+                    new_headers = [h for i, h in enumerate(new_headers) if i not in wrong_idxs]
+                    data = [{h: row.get(h, "") for h in new_headers} for row in data]
+                    columns_changed = True
+            elif resp == "o":
+                rprint("Enter new order of columns as space/comma-separated numbers (starting from 1):")
+                for idx, h in enumerate(new_headers):
+                    rprint(f"  {idx+1}: {h}")
+                order = input("New order: ").replace(",", " ").split()
+                try:
+                    new_order = [new_headers[int(i)-1] for i in order if i.strip().isdigit() and 0 < int(i) <= len(new_headers)]
+                    if new_order:
+                        new_headers = new_order
+                        data = [{h: row.get(h, "") for h in new_headers} for row in data]
+                        columns_changed = True
+                        rprint(f"[green]Columns reordered.[/green]")
+                except Exception as e:
+                    rprint(f"[red]Invalid order: {e}[/red]")
+            elif resp == "r":
+                rprint("Enter new names for columns, separated by commas (leave blank to keep current):")
+                for idx, h in enumerate(new_headers):
+                    rprint(f"  {idx+1}: {h}")
+                renames = input("New names (comma-separated): ").split(",")
+                for idx, new_name in enumerate(renames):
+                    if idx < len(new_headers) and new_name.strip():
+                        rprint(f"[yellow]Renamed '{new_headers[idx]}' to '{new_name.strip()}'[/yellow]")
+                        new_headers[idx] = new_name.strip()
+                data = [{h: row.get(h, "") for h in new_headers} for row in data]
+                columns_changed = True
+            elif resp == "a":
+                rprint("Enter names of columns to add, separated by commas:")
+                add_cols = input("Columns to add: ").split(",")
+                for col in add_cols:
+                    col = col.strip()
+                    if col and col not in new_headers:
+                        new_headers.append(col)
+                        for row in data:
+                            row[col] = ""
+                        rprint(f"[green]Added column '{col}'[/green]")
+                columns_changed = True
+            else:
+                rprint("[red]Unknown option. Please try again.[/red]")
 
+        if should_log:
+            coordinator.log_table_structure(contest_title, new_headers, context=context)
+            cache_table_structure(domain, new_headers, new_headers)
+            logger.info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest_title}'.")
+            output_data = data
+            output_headers = new_headers
+            logger.info(f"[TABLE BUILDER] Pivoted final table: {len(output_data)} rows, {len(output_headers)} columns.")
+            return output_headers, output_data
+        else:
+            logger.info(f"[TABLE BUILDER] User declined to log table structure for '{contest_title}'.")
+            return headers, data
 
 
     # Dynamically detect the location header
@@ -632,6 +785,7 @@ def build_dynamic_table(
             should_log = (resp in ("", "y", "yes"))
         if should_log:
             coordinator.log_table_structure(contest_title, headers, context=context)
+            cache_table_structure(domain, headers, headers)
             logger.info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest_title}'.")
             # Only define and return output_data/output_headers here
             output_data = data
@@ -1457,9 +1611,21 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     repeated_rows = extract_repeated_dom_structures(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
     if not repeated_rows:
         return [], []
-    # Use the first row to guess headers
-    first_heading, first_row = repeated_rows[0]
-    headers = guess_headers_from_row(first_row)
+    # --- Heuristic header detection block ---
+    # Try to find a likely header row using is_likely_header
+    for heading, row in repeated_rows[:10]:  # Only check the first few rows
+        cells = row.locator("> *")
+        cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
+        if is_likely_header(cell_texts):
+            headers = cell_texts
+            repeated_rows = repeated_rows[repeated_rows.index((heading, row)) + 1 :]  # Data rows after header
+            break
+    else:
+        headers = guess_headers_from_row(repeated_rows[0][1])    
+    # --- End heuristic header detection block ---
+    if not headers:
+        logger.warning("[TABLE BUILDER] No headers could be detected from repeated DOM structures.")
+        return [], []
     data = []
     for heading, row in repeated_rows:
         cells = row.locator("> *")
@@ -1470,3 +1636,17 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
             data.append(row_data)
     logger.info(f"[TABLE BUILDER] Extracted rows and headers from DOMFinal table: {len(data)} rows, {len(headers)} columns (learned structure).")
     return headers, data
+def write_csv_with_warnings(filename, headers, rows):
+    if not headers:
+        logger.warning(f"Skipped CSV write for {filename}: No headers found.")
+        return
+    import csv
+    with open(filename, "w", newline='', encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        for row in rows:
+            if len(row) != len(headers):
+                logger.warning(f"Row length mismatch in {filename}: {row}")
+                # Pad or truncate row
+                row = (row + ["N/A"] * len(headers))[:len(headers)]
+            writer.writerow(row)

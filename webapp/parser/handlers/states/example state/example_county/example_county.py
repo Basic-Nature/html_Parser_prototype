@@ -2,7 +2,7 @@ from playwright.sync_api import Page
 from .....utils.logger_instance import logger
 from .....utils.shared_logger import rprint
 from .....utils.output_utils import finalize_election_output
-from .....utils.table_builder import extract_table_data, build_dynamic_table, find_tables_with_headings
+from .....utils.table_builder import build_dynamic_table
 from .....utils.html_scanner import scan_html_for_context
 from .....utils.contest_selector import select_contest
 from typing import TYPE_CHECKING
@@ -59,57 +59,75 @@ def parse(
             contest_title = contest.get("title") if isinstance(contest, dict) else contest
             html_context_copy = dict(html_context)
             html_context_copy["selected_race"] = contest_title
-            result = parse_single_contest(page, html_context_copy, state, county, coordinator)
+            result = parse_single_contest_dynamic(page, html_context_copy, state, county, coordinator)
             results.append(result)
         return results[0] if results else (None, None, None, {"skipped": True})
     else:
         contest_title = selected.get("title") if isinstance(selected, dict) else selected
         html_context["selected_race"] = contest_title
-        return parse_single_contest(page, html_context, state, county, coordinator)
+        return parse_single_contest_dynamic(page, html_context, state, county, coordinator)
 
-def parse_single_contest(page, html_context, state, county, coordinator):
+def parse_single_contest_dynamic(page, html_context, state, county, coordinator):
     """
-    Parses a single contest (race) from the county page using robust table/heading association.
+    Parses a single contest (race) from the county page using dynamic, context/NLP-driven extraction.
     """
     contest_title = html_context.get("selected_race")
     rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
 
-    # --- Robust table extraction using heading association ---
-    segments = html_context.get("tagged_segments_with_attrs", [])
-    precinct_tables = find_tables_with_headings(page, dom_segments=segments)
+    # --- Use context/NLP to guide extraction ---
+    entities = coordinator.extract_entities(contest_title)
+    locations = [ent for ent, label in entities if label in ("GPE", "LOC", "FAC", "ORG") or "district" in ent.lower()]
+    expected_location = locations[0] if locations else None
 
-    all_data_rows = []
-    headers = None
-    last_table_with_no_headers = None
+    # --- Try extracting ballot items from div-based containers first ---
+    ballot_items = []
+    selectors = [
+        ".ballot-option", ".candidate-info", ".contest-row", ".result-row", ".header", ".race-row", ".proposition-row"
+    ]
+    for selector in selectors:
+        items = page.locator(selector)
+        for i in range(items.count()):
+            item = items.nth(i)
+            cells = item.locator("> *")
+            row = [cells.nth(j).inner_text().strip() for j in range(cells.count())]
+            if any(row):
+                ballot_items.append(row)
 
-    for precinct_name, table in precinct_tables:
-        if not table or not precinct_name:
-            continue
-        headers, data_rows = extract_table_data(table)
-        if not headers:
-            last_table_with_no_headers = table
-            continue
-        for row in data_rows:
-            row["Precinct"] = precinct_name
-        all_data_rows.extend(data_rows)
-
-    if not headers:
-        if last_table_with_no_headers:
-            try:
-                table_html = last_table_with_no_headers.inner_html()
-            except Exception:
-                table_html = "[unavailable]"
-            rprint(f"[red][ERROR] No headers found in any table. Example table HTML:\n{table_html}[/red]")
+    if ballot_items:
+        first_row = ballot_items[0]
+        known_keywords = ["candidate", "votes", "party", "precinct", "choice", "option", "response", "total"]
+        if sum(1 for cell in first_row if any(kw in cell.lower() for kw in known_keywords)) >= 2:
+            headers = first_row
+            data_rows = [dict(zip(headers, row)) for row in ballot_items[1:]]
         else:
+            headers = []
+            for idx in range(len(first_row)):
+                if expected_location and idx == 0:
+                    headers.append(expected_location)
+                elif idx == 0:
+                    headers.append("Candidate")
+                elif idx == 1:
+                    headers.append("Party")
+                elif idx == 2:
+                    headers.append("Votes")
+                else:
+                    headers.append(f"Column {idx+1}")
+            data_rows = [dict(zip(headers, row)) for row in ballot_items]
+    else:
+        # Fallback: try table-based extraction as a last resort
+        rprint(f"[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+        from .....utils.table_builder import robust_table_extraction
+        headers, data_rows = robust_table_extraction(page, html_context)
+        if not headers or not data_rows:
             rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
-        return None, None, None, {"skipped": True}
+            return None, None, contest_title, {"skipped": True}
 
-    # --- Build dynamic table for all precincts ---
-    headers, data = build_dynamic_table(headers, all_data_rows, coordinator, html_context)
+    # --- Build dynamic table ---
+    headers, data = build_dynamic_table(headers, data_rows, coordinator, html_context)
 
     if not data:
-        rprint("[red][ERROR] No precinct data was parsed.[/red]")
-        return None, None, None, {"skipped": True}
+        rprint("[red][ERROR] No contest data was parsed.[/red]")
+        return None, None, contest_title, {"skipped": True}
 
     # --- Assemble headers and finalize output ---
     headers = sorted(set().union(*(row.keys() for row in data)))

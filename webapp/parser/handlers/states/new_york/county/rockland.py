@@ -2,7 +2,7 @@ from playwright.sync_api import Page
 
 from .....utils.html_scanner import scan_html_for_context
 from .....utils.contest_selector import select_contest
-from .....utils.table_builder import build_dynamic_table, extract_table_data, find_tables_with_headings
+from .....utils.table_builder import build_dynamic_table, extract_table_data, extract_ballot_items
 from .....utils.output_utils import finalize_election_output
 from .....utils.logger_instance import logger
 from .....utils.shared_logger import rprint
@@ -143,7 +143,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 "results by election district",  "election district", 
                 "View results by"
             ]
-    # --- 5. Toggle "View results by election district" ---
+            # --- 5. Toggle "View results by election district" ---
             html_context = handle_toggle_and_rescan(
                 page,
                 coordinator,
@@ -171,155 +171,85 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             )
             autoscroll_until_stable(page)
 
-    # --- 9. Extract precinct tables robustly using DOM scan and heading association ---
-    segments = html_context.get("tagged_segments_with_attrs", [])
-    precinct_tables = find_tables_with_headings(page, dom_segments=segments)
+            # --- 9. Extract ballot items using DOM scan and context/NLP ---
+            contest_title = html_context.get("selected_race") or html_context.get("title", "")
+            entities = coordinator.extract_entities(contest_title)
+            locations = [ent for ent, label in entities if label in ("GPE", "LOC", "FAC", "ORG") or "district" in ent.lower()]
+            expected_location = locations[0] if locations else None
 
-    # Score all tables and pick the best one(s)
-    scored_tables = []
-    for precinct_name, table in precinct_tables:
-        if not table:
-            continue
-        score, headers, data_rows = score_table(table, html_context, coordinator)
-        if not headers:
-            continue
-        # Heuristic: If the first header is "Candidate" and values look like precincts, rename to "Precinct"
-        if headers and headers[0].lower() == "candidate":
-            candidate_col = [row.get("Candidate", "") for row in data_rows]
-            if sum(1 for v in candidate_col if "precinct" in v.lower() or "ed" in v.lower() or v.strip().isdigit()) > len(candidate_col) // 2:
-                headers[0] = "Precinct"
-                for row in data_rows:
-                    row["Precinct"] = row.pop("Candidate")
-        # Always set the correct precinct name if available
-        if precinct_name:
-            for row in data_rows:
-                row["Precinct"] = precinct_name
-        scored_tables.append((score, headers, data_rows, precinct_name, table))
+            ballot_items = []
+            selectors = [
+                ".ballot-option", ".candidate-info", ".contest-row", ".result-row", ".header", ".race-row", ".proposition-row"
+            ]
+            for selector in selectors:
+                items = page.locator(selector)
+                for i in range(items.count()):
+                    item = items.nth(i)
+                    cells = item.locator("> *")
+                    row = [cells.nth(j).inner_text().strip() for j in range(cells.count())]
+                    if any(row):
+                        ballot_items.append(row)
 
-    # Pick the highest scoring table(s)
-    scored_tables.sort(reverse=True, key=lambda x: x[0])
-    if not scored_tables:
-        logger.warning(f"[TABLE EXTRACTION] No suitable table found for contest: {html_context.get('selected_race')}")
-        # Try to extract data from first table even if headers are missing
-        if precinct_tables:
-            first_table = precinct_tables[0][1]
-            headers, data_rows = extract_table_data(first_table)
-            if data_rows:
-                headers = headers or [f"Column {i+1}" for i in range(len(data_rows[0]))]
-                headers, rows = build_dynamic_table(headers, data_rows, coordinator, html_context)
-                if rows:
-                    data = rows
-                    # ...finalize output as usual...
-                    # return headers, data, contest_title, metadata
-                    # (copy the rest of your output logic here)
-                    pass
+            if ballot_items:
+                first_row = ballot_items[0]
+                known_keywords = ["candidate", "votes", "party", "precinct", "choice", "option", "response", "total"]
+                if sum(1 for cell in first_row if any(kw in cell.lower() for kw in known_keywords)) >= 2:
+                    headers = first_row
+                    data_rows = [dict(zip(headers, row)) for row in ballot_items[1:]]
                 else:
-                    rprint(f"[red][ERROR] No data could be parsed from fallback table.[/red]")
+                    headers = []
+                    for idx in range(len(first_row)):
+                        if expected_location and idx == 0:
+                            headers.append(expected_location)
+                        elif idx == 0:
+                            headers.append("Candidate")
+                        elif idx == 1:
+                            headers.append("Party")
+                        elif idx == 2:
+                            headers.append("Votes")
+                        else:
+                            headers.append(f"Column {idx+1}")
+                    data_rows = [dict(zip(headers, row)) for row in ballot_items]
             else:
-                rprint(f"[red][ERROR] No data found in fallback table.[/red]")
-        else:
-            # --- PATCH: Try robust_table_extraction as a last resort ---
-            rprint(f"[yellow][WARNING] No tables found by heading association. Trying robust_table_extraction...[/yellow]")
-            from .....utils.table_builder import robust_table_extraction
-            headers, data_rows = robust_table_extraction(page, html_context)
-            if headers and data_rows:
-                headers, rows = build_dynamic_table(headers, data_rows, coordinator, html_context)
-                if rows:
-                    data = rows
-                    # ...finalize output as usual...
-                    # return headers, data, contest_title, metadata
-                    pass
-                else:
-                    rprint(f"[red][ERROR] No data could be parsed from robust_table_extraction.[/red]")
-            else:
-                rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
-        return None, None, None, {"skipped": True}
+                rprint(f"[yellow][WARNING] No ballot items found by div selectors. Trying robust_table_extraction...[/yellow]")
+                from .....utils.table_builder import robust_table_extraction
+                headers, data_rows = robust_table_extraction(page, html_context)
+                if not headers or not data_rows:
+                    rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+                    results.append((None, None, contest_title, {"skipped": True}))
+                    continue
 
-    if not scored_tables and precinct_tables:
-        rprint("[yellow][PROMPT] No headers found. Please select a table to inspect:")
-        for idx, (heading, table) in enumerate(precinct_tables):
-            preview = table.inner_text()[:120].replace("\n", " ")
-            rprint(f"[{idx}] Heading: {heading} | Preview: {preview}...")
-        sel = input("Enter table index to inspect (or blank to skip): ").strip()
-        if sel.isdigit():
-            idx = int(sel)
-            if 0 <= idx < len(precinct_tables):
-                table = precinct_tables[idx][1]
-                headers, data_rows = extract_table_data(table)
-                rprint(f"[yellow][DEBUG] Table headers: {headers}")
-                rprint(f"[yellow][DEBUG] First row: {data_rows[0] if data_rows else None}")
-        return None, None, None, {"skipped": True}
+            headers, rows = build_dynamic_table(headers, data_rows, coordinator, html_context)
+            data = rows
 
-    if not precinct_tables:
-        # Fallback: try all tables on the page
-        all_tables = page.locator("table")
-        for i in range(all_tables.count()):
-            table = all_tables.nth(i)
-            headers, data_rows = extract_table_data(table)
-            if headers or data_rows:
-                rprint(f"[yellow][DEBUG] Fallback table #{i}: headers={headers}, first row={data_rows[0] if data_rows else None}")
+            if not data:
+                rprint(f"[red][ERROR] No data could be parsed from ballot items or robust extraction.[/red]")
+                results.append((None, None, contest_title, {"skipped": True}))
+                continue
 
-    # Optionally, you can aggregate data from all high-scoring tables, or just use the top one
-    top_score = scored_tables[0][0]
-    top_tables = [t for t in scored_tables if t[0] == top_score]
-    all_data_rows = []
-    headers = None
-    for score, hdrs, data_rows, precinct_name, table in top_tables:
-        headers = hdrs
-        all_data_rows.extend(data_rows)
-
-    if len(top_tables) > 1:
-        rprint(f"[yellow][DEBUG] Multiple tables tied for top score. Prompting user for selection.[/yellow]")
-        # Show a preview of each table (headers, first row) and prompt user
-        for idx, (score, hdrs, data_rows, precinct_name, table) in enumerate(top_tables):
-            rprint(f"[{idx}] Precinct: {precinct_name}, Headers: {hdrs}, First row: {data_rows[0] if data_rows else None}")
-        sel = input("Select table index (or press Enter for first): ").strip()
-        try:
-            sel_idx = int(sel)
-            headers, all_data_rows = top_tables[sel_idx][1], top_tables[sel_idx][2]
-        except Exception:
-            headers, all_data_rows = top_tables[0][1], top_tables[0][2]
-
-    logger.info(f"[LEARNING] Confirmed table pattern: headers={headers}, num_rows={len(all_data_rows)}")
-       
-    # --- Now call build_dynamic_table ONCE for all precincts ---
-    if not headers:
-        rprint(f"[red][ERROR] No headers found in any table. No suitable table available for debugging.[/red]")
-        return None, None, None, {"skipped": True}
-    headers, rows = build_dynamic_table(headers, all_data_rows, coordinator, html_context)
-    data = rows
-
-    if not data:
-        rprint(f"[yellow][DEBUG] precinct_tables: {precinct_tables}[/yellow]")
-        rprint(f"[yellow][DEBUG] data: {data}[/yellow]")
-        rprint("[red][ERROR] No precinct data was parsed.[/red]")
-        return None, None, None, {"skipped": True}
-
-    # --- 10. Assemble headers and finalize output ---
-    headers = sorted(set().union(*(row.keys() for row in data)))
-    print("DEBUG: Finalized headers:", headers)
-    metadata = {
-        "state": state or "Unknown",
-        "county": county or "Unknown",
-        "race": contest_title or "Unknown",
-        "source": getattr(page, "url", "Unknown"),
-        "handler": "rockland"
-    }
-    if "year" in html_context:
-        metadata["year"] = html_context["year"]
-    if "election_type" in html_context:
-        metadata["election_type"] = html_context["election_type"]
-        print("DEBUG: headers before finalize:", headers)
-        print("DEBUG: first row before finalize:", data[0] if data else None)
-        print("DEBUG: contest_title before finalize:", contest_title)
-    result = finalize_election_output(headers, data, coordinator, contest_title, state, county)
-    # Merge metadata for output
-    if isinstance(result, dict):
-        # Ensure output_file is present for the main pipeline
-        if "csv_path" in result:
-            metadata["output_file"] = result["csv_path"]
-        # Optionally include metadata_path or other keys if needed
-        if "metadata_path" in result:
-            metadata["metadata_path"] = result["metadata_path"]
-        metadata.update(result)
-    return headers, data, contest_title, metadata
+            # --- 10. Assemble headers and finalize output ---
+            headers = sorted(set().union(*(row.keys() for row in data)))
+            print("DEBUG: Finalized headers:", headers)
+            metadata = {
+                "state": state or "Unknown",
+                "county": county or "Unknown",
+                "race": contest_title or "Unknown",
+                "source": getattr(page, "url", "Unknown"),
+                "handler": "rockland"
+            }
+            if "year" in html_context:
+                metadata["year"] = html_context["year"]
+            if "election_type" in html_context:
+                metadata["election_type"] = html_context["election_type"]
+                print("DEBUG: headers before finalize:", headers)
+                print("DEBUG: first row before finalize:", data[0] if data else None)
+                print("DEBUG: contest_title before finalize:", contest_title)
+            result = finalize_election_output(headers, data, coordinator, contest_title, state, county)
+            if isinstance(result, dict):
+                if "csv_path" in result:
+                    metadata["output_file"] = result["csv_path"]
+                if "metadata_path" in result:
+                    metadata["metadata_path"] = result["metadata_path"]
+                metadata.update(result)
+            results.append((headers, data, contest_title, metadata))
+        return results[0] if results else (None, None, None, {"skipped": True})

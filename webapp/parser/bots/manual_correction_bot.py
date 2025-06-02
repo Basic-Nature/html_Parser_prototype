@@ -34,6 +34,10 @@ import importlib
 import shutil
 import difflib
 import datetime
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("manual_correction_bot")
+
 try:
     import spacy
     nlp = spacy.load("en_core_web_sm")
@@ -194,9 +198,12 @@ def safe_path(path, base_dir=SAFE_DIR):
 def load_context_library(path):
     """Load the context library from a JSON file."""
     path = safe_path(path)
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load context library: {e}")
     return {}
 
 def save_context_library(library, path):
@@ -214,10 +221,6 @@ def find_log_files(log_dir=LOG_DIR):
     return list(log_dir.glob(f"*{FIELD_LOG_SUFFIX}"))
 
 def aggregate_successful_field_entries(log_file: Path) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Parse a field log file and aggregate successful entries.
-    Returns: dict of {context_key: [entry_dict, ...]}
-    """
     field_entries = defaultdict(list)
     if not os.path.exists(log_file):
         print(f"[WARN] Log file not found: {log_file}")
@@ -230,21 +233,31 @@ def aggregate_successful_field_entries(log_file: Path) -> Dict[str, List[Dict[st
                 continue
             result = str(entry.get("result", ""))
             if any(result.startswith(s) for s in SUCCESS_RESULTS):
-                context_key = entry.get("context", {}).get("contest_title") \
-                    or entry.get("context", {}).get("state") \
-                    or entry.get("context", {}).get("county") \
-                    or entry.get("context", {}).get("field_name") \
-                    or entry.get("field_name") \
+                context = entry.get("context", {})
+                context_key = (
+                    context.get("contest_title")
+                    or context.get("state")
+                    or context.get("county")
+                    or context.get("field_name")
+                    or entry.get("field_name")
+                    or context.get("url")
                     or "unknown"
+                )
+                # Fallback: if still empty, use a hash of the entry
+                if not context_key or not str(context_key).strip():
+                    context_key = f"entry_{hash(str(entry))[:8]}"
                 field_entries[context_key].append(entry)
     return field_entries
 
-def spacy_feedback_on_entry(entry):
+def spacy_feedback_on_entry(entry, args=None):
     """
     Use spaCy to analyze and provide feedback on an entry for context awareness/self-improvement.
     """
     if not nlp:
+        logger.warning("spaCy not available. Some features will be disabled.")
         return {}
+    if args is not None and getattr(args, "llm_api_key", None) is None:
+        logger.info("No LLM API key provided. LLM suggestions will be skipped.")
     text = entry.get("extracted_value", "")
     doc = nlp(str(text))
     entities = [(ent.text, ent.label_) for ent in doc.ents]
@@ -269,6 +282,10 @@ def update_context_library_with_field(library, field_type, field_entries, coordi
     for context_key, entries in field_entries.items():
         for entry in entries:
             value = entry.get("extracted_value")
+            if isinstance(value, str):
+                value = value.strip()
+            if not value or (isinstance(value, str) and not value.strip()):
+                continue 
             # Enhanced learning: use coordinator/context_organizer for validation or enrichment
             if coordinator and hasattr(coordinator, "validate_and_check_integrity"):
                 # Example: Use integrity check for contests
@@ -284,11 +301,11 @@ def update_context_library_with_field(library, field_type, field_entries, coordi
             if field_type in {"buttons", "panels", "tables"}:
                 if context_key not in library[field_type]:
                     library[field_type][context_key] = []
-                if value and value not in library[field_type][context_key]:
+                if value not in library[field_type][context_key]:
                     library[field_type][context_key].append(value)
                     new_entries[context_key].append(value)
             else:
-                if value and value not in library[field_type]:
+                if value not in library[field_type]:
                     library[field_type].append(value)
                     new_entries[context_key].append(value)
     return new_entries
@@ -300,10 +317,11 @@ def feedback_loop(
     enhanced=True,
     coordinator=None,
     llm_api_key=None,
-    llm_provider="openai",
+    llm_provider="openai", # Or set for Anthropic specific information
     llm_model="gpt-4-turbo",
     llm_system_prompt=None,
     llm_extra_instructions=None,
+    args=None,
 ):
     """
     Interactive feedback loop: prompt user to confirm or correct new entries.
@@ -313,29 +331,66 @@ def feedback_loop(
     if not new_entries:
         print(f"[INFO] No new entries to review for {field_type}.")
         return
-
+    
     print(f"\n[FEEDBACK] Review new context library entries for [bold]{field_type}[/bold]:")
     context_library = load_context_library(context_library_path)
     changed = False
 
+    print(f"\n[FEEDBACK] Review new context library entries for [bold]{field_type}[/bold]:")
+    context_library = load_context_library(context_library_path)
+    changed = False
+    accepted, edited, removed = 0, 0, 0
+    undo_stack = []
+
+    skip_all = False
+    accept_all = False
+
     for context_key, values in new_entries.items():
+        if skip_all or accept_all:
+            break
         print(f"\nContext: {context_key}")
         for idx, val in enumerate(values):
+            if skip_all:
+                break
+            if accept_all:
+                print(f"    [ACCEPTED] {val!r}")
+                accepted += 1
+                continue
             print(f"  {idx}: {val!r}")
             ml_score = ml_score_entry({"extracted_value": val}, coordinator=coordinator)
             if enhanced and nlp:
-                analysis = spacy_feedback_on_entry({"extracted_value": val})
+                analysis = spacy_feedback_on_entry({"extracted_value": val}, args=args)
                 if analysis.get("entities"):
                     print(f"    [spaCy entities]: {analysis['entities']}")
                 if analysis.get("suggestions"):
                     print(f"    [spaCy suggestions]: {analysis['suggestions']}")
             print(f"    [ML score]: {ml_score:.2f}")
             resp = input(
-                "    [A]ccept / [E]dit / [R]emove / [D]ebate / [S]uggest / [L]LM / [C]ancel? (A/E/R/D/S/L/C): "
+                "    [A]ccept / [E]dit / [R]emove / [B]atch Edit / [D]ebate / [S]uggest / [L]LM / [C]ancel / [S]kip all / [Y] Accept all / [U]ndo? (A/E/R/B/D/S/L/C/S/Y/U): "
             ).strip().lower()
             if resp == "c":
                 print("[INFO] Cancelled by user. Exiting feedback loop.")
                 return
+            if resp == "s":
+                skip_all = True
+                break
+            if resp == "y":
+                accept_all = True
+                accepted += 1
+                continue
+            if resp == "u" and undo_stack:
+                last_action = undo_stack.pop()
+                # Implement undo logic here
+                print("[INFO] Undo last action (not fully implemented).")
+                continue
+            if resp == "b":
+                batch_val = input("    Enter new value for all similar entries: ").strip()
+                for i, v in enumerate(values):
+                    if v == val:
+                        values[i] = batch_val
+                        edited += 1
+                changed = True
+                continue
             if resp == "d":
                 print("[DEBATE] Should this process be handled differently?")
                 print(
@@ -418,6 +473,7 @@ def feedback_loop(
                     else:
                         context_library[field_type][idx] = new_val
                     print("    [UPDATED]")
+                    edited += 1
                     changed = True
             elif resp == "r":
                 if field_type in {"buttons", "panels", "tables"}:
@@ -425,12 +481,15 @@ def feedback_loop(
                 else:
                     context_library[field_type].remove(val)
                 print("    [REMOVED]")
+                removed += 1
                 changed = True
             else:
                 print("    [ACCEPTED]")
+                accepted += 1
     if changed:
         save_context_library(context_library, context_library_path)
         print(f"[INFO] Context library updated with feedback for {field_type}.")
+    print(f"[SUMMARY] Accepted: {accepted}, Edited: {edited}, Removed: {removed}")
 
 def highlight_anomalies(context_library, field_type):
     """
@@ -521,6 +580,7 @@ def load_jsonl(path):
         return [json.loads(line) for line in f if line.strip()]
 
 def save_jsonl(path, entries):
+    path = safe_path(path)
     with open(path, "w", encoding="utf-8") as f:
         for entry in entries:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -727,6 +787,8 @@ def main():
     parser.add_argument("--llm-model", type=str, default="gpt-4-turbo", help="LLM model name")
     parser.add_argument("--llm-system-prompt", type=str, default=None, help="Custom system prompt for LLM")
     parser.add_argument("--llm-extra-instructions", type=str, default=None, help="Extra instructions for LLM prompt")
+    parser.add_argument("--filter-context-key", type=str, help="Only process entries with this context key substring")
+    parser.add_argument("--filter-value", type=str, help="Only process entries containing this value substring")
     args = parser.parse_args()
 
     coordinator = None
