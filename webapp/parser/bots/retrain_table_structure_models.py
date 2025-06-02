@@ -107,6 +107,9 @@ def update_db_with_new_entities(new_entities, db_path):
     print(f"Updated DB with new entities: { {k: len(v) for k,v in new_entities.items()} }")
 
 def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model_save_path="fine_tuned_spacy_ner"):
+    import spacy
+    from spacy.training import Example
+
     nlp = spacy.blank("en")
     if "ner" not in nlp.pipe_names:
         ner = nlp.add_pipe("ner")
@@ -155,11 +158,19 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
         example = Example.from_dict(doc, annots)
         examples.append(example)
 
+    if not examples:
+        print("No NER training examples found. Skipping spaCy NER retraining.")
+        return
+
     optimizer = nlp.begin_training()
     for i in range(10):
         losses = {}
         nlp.update(examples, drop=0.2, losses=losses)
-        print(f"spaCy NER retraining epoch {i+1}, loss: {losses['ner']:.4f}")
+        if "ner" in losses:
+            print(f"spaCy NER retraining epoch {i+1}, loss: {losses['ner']:.4f}")
+        else:
+            print(f"spaCy NER retraining epoch {i+1}, no NER loss reported.")
+
     nlp.to_disk(model_save_path)
     print(f"Fine-tuned spaCy NER model saved to: {model_save_path}")
 

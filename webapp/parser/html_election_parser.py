@@ -48,7 +48,16 @@ except ImportError:
     run_bot_task = None
 
 import subprocess
-subprocess.run(["python", "bots/retrain_table_structure_models.py"])
+import sys
+# Build the absolute path to the retrainer script
+retrainer_path = os.path.join(BASE_DIR, "parser", "bots", "retrain_table_structure_models.py")
+retrainer_path = os.path.abspath(retrainer_path)
+retrainer_module = "webapp.parser.bots.retrain_table_structure_models"
+# Optionally, check that the file exists before running
+if os.path.isfile(retrainer_path):
+    subprocess.run([sys.executable, "-m", retrainer_module])
+else:
+    print(f"[ERROR] Retrainer script not found at: {retrainer_path}")
 
 # --- Environment & Path Setup ---
 load_dotenv()
