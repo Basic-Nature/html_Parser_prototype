@@ -127,9 +127,9 @@ You can finetune this model on your own dataset.
 * Samples:
   | sentence_0    | sentence_1                    | label            |
   |:--------------|:------------------------------|:-----------------|
-  | <code></code> | <code>Percent Reported</code> | <code>1.0</code> |
-  | <code></code> | <code>Candidate</code>        | <code>1.0</code> |
   | <code></code> | <code>Grand Total</code>      | <code>1.0</code> |
+  | <code></code> | <code>Districts</code>        | <code>1.0</code> |
+  | <code></code> | <code>Percent Reported</code> | <code>1.0</code> |
 * Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
   ```json
   {

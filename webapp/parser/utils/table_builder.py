@@ -23,13 +23,16 @@ from ..config import BASE_DIR
 
 def get_safe_log_path(filename="dom_pattern_log.jsonl"):
     """
-    Returns a safe log path inside the BASE_DIR/log directory.
+    Returns a safe log path inside the PROJECT_ROOT/log directory.
     Prevents path-injection and directory traversal.
     """
-    log_dir = os.path.join(BASE_DIR, "log")
+    # Use the parent of BASE_DIR as the project root
+    project_root = os.path.dirname(BASE_DIR)
+    log_dir = os.path.join(project_root, "log")
     os.makedirs(log_dir, exist_ok=True)
     safe_filename = os.path.basename(filename)
     return os.path.join(log_dir, safe_filename)
+
 
 def infer_column_types(headers, data):
     types = {}
@@ -420,10 +423,13 @@ def build_dynamic_table(
             else:
                 learned_structure = {}
         output_headers = learned_structure.get("headers", [])
-        output_headers, output_data = harmonize_headers_and_data(output_headers, data)
-        logger.info(f"[TABLE BUILDER] Auto-applied learned table structure for '{contest_title}'.")
-        return output_headers, output_data
-
+        # Only apply if all learned headers are present in data
+        if output_headers and all(h in data[0] for h in output_headers if data):
+            output_headers, output_data = harmonize_headers_and_data(output_headers, data)
+            logger.info(f"[TABLE BUILDER] Auto-applied learned table structure for '{contest_title}'.")
+            return output_headers, output_data
+        else:
+            logger.warning("[TABLE BUILDER] Learned structure does not match extracted data. Falling back to dynamic build.")
     # 1. Extraction fallback if needed
     if not headers or not data:
         headers, data = robust_table_extraction(context.get("page"), context)
@@ -439,6 +445,17 @@ def build_dynamic_table(
     if not percent_header:
         percent_header = "Percent Reported"
 
+    if headers == ["Candidate", "Votes"]:
+        logger.warning("[TABLE BUILDER] Only fallback candidate/vote extraction succeeded. Output will be incomplete.")
+
+    required_cols = ["Percent Reported", "Precinct", "Grand Total"]
+    for col in required_cols:
+        if col not in headers:
+            headers.append(col)
+    for row in data:
+        for col in required_cols:
+            if col not in row:
+                row[col] = ""
     # 3. Identify candidate/party/ballot type structure
     candidate_party_map = extract_candidates_and_parties(headers, coordinator)
     ballot_types = BALLOT_TYPES.copy()
@@ -1342,38 +1359,42 @@ def guess_headers_from_row(row, known_keywords=None):
 
 def fallback_nlp_candidate_vote_scan(page):
     """
-    Fallback: scan for elements with candidate-like names and vote-like numbers nearby.
+    Improved fallback: scan for elements with candidate-like, party-like, or location-like names and vote-like numbers nearby.
     Returns headers, data.
     """
     import re
-    candidate_pattern = re.compile(r"^[A-Z][a-z]+ [A-Z][a-z]+(?: [A-Z][a-z]+)?$")  # "Firstname Lastname" or "Firstname Middlename Lastname"
+    # Accept more flexible candidate/location/party patterns
+    label_pattern = re.compile(r"^[A-Za-z][A-Za-z\s\-\']{1,40}$")
     vote_pattern = re.compile(r"^\d{1,3}(,\d{3})*$")
     skip_phrases = [
         "Last Updated", "Vote Method", "Fully Reported", "Search", "Reported", "Total", "Precincts Reporting"
     ]
     elements = page.locator("*")
-    candidates = []
+    labels = []
     votes = []
     for i in range(elements.count()):
         text = elements.nth(i).inner_text().strip()
-        # Filter out irrelevant or too-short rows
-        if not text or len(text) < 3:
+        if not text or len(text) < 2:
             continue
         if any(skip in text for skip in skip_phrases):
             continue
-        if candidate_pattern.match(text):
-            candidates.append((i, text))
-        elif vote_pattern.fullmatch(text.replace(",", "")):
+        if vote_pattern.fullmatch(text.replace(",", "")):
             votes.append((i, text))
-    # Pair candidates and votes by proximity
+        elif label_pattern.match(text):
+            labels.append((i, text))
+    # Pair each vote with the closest preceding label
     data = []
-    for idx, cand in candidates:
-        # Find nearest vote after candidate
-        nearest_vote = next((v for j, v in votes if j > idx), None)
-        if nearest_vote:
-            data.append({"Candidate": cand, "Votes": nearest_vote})
-    headers = ["Candidate", "Votes"]
-    logger.info(f"[TABLE BUILDER] nlp candidate vote Final table: {len(data)} rows, {len(headers)} columns (learned structure).")
+    for vote_idx, vote_val in votes:
+        # Find the closest label before this vote
+        label = None
+        for idx, lbl in reversed(labels):
+            if idx < vote_idx:
+                label = lbl
+                break
+        if label:
+            data.append({"Label": label, "Votes": vote_val})
+    headers = ["Label", "Votes"]
+    logger.info(f"[TABLE BUILDER] Robust NLP fallback: {len(data)} rows, {len(headers)} columns.")
     return headers, data
 
 def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2, coordinator=None):
@@ -1597,8 +1618,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         logger.warning("[TABLE BUILDER] Too few rows after advanced heuristics. Saving HTML for manual inspection.")
         try:
             html = page.content()
-            fname = "debug_dom_extract_fallback.html"
-            fpath = os.path.join(BASE_DIR, "log", fname)
+            fpath = get_safe_log_path("debug_dom_extract_fallback.html")
             with open(fpath, "w", encoding="utf-8") as f:
                 f.write(html)
             logger.info(f"[TABLE BUILDER] Saved fallback HTML to {fpath}")
