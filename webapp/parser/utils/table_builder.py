@@ -163,10 +163,20 @@ def robust_table_extraction(page, extraction_context=None):
     Uses extraction_context for all steps and logs context/anomalies.
     DOM pattern extraction is prioritized.
     """
+    import types
+
+    def safe_json(obj):
+        """Recursively remove non-serializable objects (like functions) from dicts/lists."""
+        if isinstance(obj, dict):
+            return {k: safe_json(v) for k, v in obj.items() if not isinstance(v, types.FunctionType)}
+        elif isinstance(obj, list):
+            return [safe_json(v) for v in obj if not isinstance(v, types.FunctionType)]
+        else:
+            return obj
+
     headers_list = []
     data_list = []
     extraction_logs = []
-    attempt_names = ["pattern", "table", "repeated_dom", "nlp_fallback"]
 
     # 1. Pattern-based extraction (approved DOM patterns, prioritized)
     try:
@@ -229,6 +239,9 @@ def robust_table_extraction(page, extraction_context=None):
     # 3. Repeated DOM structures (divs, lists, etc.)
     try:
         headers, data = extract_rows_and_headers_from_dom(page)
+        # --- DEBUG LOGGING: Show headers and first 3 rows ---
+        logger.info(f"[TABLE BUILDER] DOM structure headers: {headers}")
+        logger.info(f"[TABLE BUILDER] First 3 rows: {data[:3]}")
         extraction_logs.append({
             "method": "repeated_dom",
             "headers": headers,
@@ -263,6 +276,7 @@ def robust_table_extraction(page, extraction_context=None):
         if headers and data:
             headers_list.append(headers)
             data_list.append(data)
+            logger.warning("[TABLE BUILDER] Fallback NLP extraction used. Only candidate/vote pairs extracted.")
     except Exception as e:
         logger.error(f"[TABLE BUILDER] NLP fallback extraction failed: {e}")
         extraction_logs.append({
@@ -272,7 +286,8 @@ def robust_table_extraction(page, extraction_context=None):
             "context": extraction_context
         })
 
-    logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(extraction_logs, indent=2)}")
+    # --- Safe JSON logging ---
+    logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(safe_json(extraction_logs), indent=2)}")
 
     # Merge all results
     if headers_list and data_list:
@@ -1316,53 +1331,206 @@ def fallback_nlp_candidate_vote_scan(page):
     logger.info(f"[TABLE BUILDER] nlp candidate vote Final table: {len(data)} rows, {len(headers)} columns (learned structure).")
     return headers, data
 
-def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2):
+def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2, coordinator=None):
     """
     Attempts to extract tabular data from repeated DOM structures (divs, etc.).
     Returns headers, data.
+    Uses advanced heuristics for ambiguous, malformed, or complex cases.
     """
     repeated_rows = extract_repeated_dom_structures(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
     if not repeated_rows:
         return [], []
+
     # --- Heuristic header detection block ---
-    # Try to find a likely header row using is_likely_header
-    for heading, row in repeated_rows[:10]:  # Only check the first few rows
+    headers = None
+    header_row_idx = None
+    for idx, (heading, row) in enumerate(repeated_rows[:10]):
         cells = row.locator("> *")
         cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
-        if is_likely_header(cell_texts):
+        # Heuristic: header row if at least 2 known fields or all non-numeric
+        if is_likely_header(cell_texts) or all(not re.match(r"^\d+([,.]\d+)?$", c) for c in cell_texts):
             headers = cell_texts
-            repeated_rows = repeated_rows[repeated_rows.index((heading, row)) + 1 :]  # Data rows after header
+            header_row_idx = idx
             break
+    if headers is not None:
+        repeated_rows = repeated_rows[header_row_idx + 1 :]
     else:
-        headers = guess_headers_from_row(repeated_rows[0][1])    
-    # --- End heuristic header detection block ---
-    if not headers:
-        logger.warning("[TABLE BUILDER] No headers could be detected from repeated DOM structures.")
-        return [], []
+        headers = guess_headers_from_row(repeated_rows[0][1])
+
+    # --- Merge split header rows (e.g., two header rows) ---
+    if len(repeated_rows) > 1:
+        first_row_cells = [repeated_rows[0][1].locator("> *").nth(i).inner_text().strip() for i in range(repeated_rows[0][1].locator("> *").count())]
+        if all(c.isalpha() or c == "" for c in first_row_cells) and any(c for c in first_row_cells):
+            headers = [" ".join(filter(None, [h, f])) for h, f in zip(headers, first_row_cells)]
+            repeated_rows = repeated_rows[1:]
+
+    # --- Advanced heuristics start here ---
+    location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal"}
+    candidate_keywords = {"candidate", "name", "nominee"}
+    vote_keywords = {"votes", "total", "sum"}
+    if coordinator and hasattr(coordinator, "library"):
+        location_keywords.update(set(coordinator.library.get("location_patterns", [])))
+        candidate_keywords.update(set(coordinator.library.get("candidate_patterns", [])))
+        vote_keywords.update(set(coordinator.library.get("vote_patterns", [])))
+
+    norm_headers = [normalize_text(h) for h in headers]
+    location_idx = None
+    candidate_idx = None
+    vote_idx = None
+
+    # Find likely location, candidate, and vote columns
+    for idx, h in enumerate(norm_headers):
+        for kw in location_keywords:
+            if kw in h:
+                location_idx = idx
+                break
+        for kw in candidate_keywords:
+            if kw in h:
+                candidate_idx = idx
+                break
+        for kw in vote_keywords:
+            if kw in h:
+                vote_idx = idx
+                break
+
+    # --- Extra heuristics: all-numeric, all-empty, low-uniqueness columns ---
+    sample_rows = []
+    for heading, row in repeated_rows[:20]:
+        cells = row.locator("> *")
+        cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
+        sample_rows.append(cell_texts)
+    col_stats = []
+    for col in range(len(headers)):
+        values = [r[col] for r in sample_rows if len(r) > col]
+        num_numeric = sum(1 for v in values if re.match(r"^\d+([,.]\d+)?$", v))
+        num_empty = sum(1 for v in values if not v)
+        unique_vals = len(set(values))
+        col_stats.append({
+            "numeric_ratio": num_numeric / len(values) if values else 0,
+            "empty_ratio": num_empty / len(values) if values else 1,
+            "unique_vals": unique_vals,
+            "values": values,
+        })
+
+    # Prefer location column: not all-numeric, not all-empty, high uniqueness
+    likely_loc = None
+    for idx, stat in enumerate(col_stats):
+        if stat["empty_ratio"] < 0.8 and stat["numeric_ratio"] < 0.5 and stat["unique_vals"] > 3:
+            likely_loc = idx
+            break
+    if likely_loc is not None and (location_idx is None or likely_loc != location_idx):
+        logger.info(f"[TABLE BUILDER] Heuristic: inferred location column at {likely_loc} based on uniqueness/numeric ratio.")
+        location_idx = likely_loc
+
+    # --- ADVANCED: Detect "totals" or "footer" rows and remove them ---
+    # If the last row has mostly keywords like "total", "sum", "overall", etc., drop it
+    if sample_rows:
+        last_row = sample_rows[-1]
+        if any(any(kw in normalize_text(str(cell)) for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS)) for cell in last_row):
+            logger.info("[TABLE BUILDER] Removing likely totals/footer row at end of data.")
+            repeated_rows = repeated_rows[:-1]
+            sample_rows = sample_rows[:-1]
+
+    # --- ADVANCED: Remove columns with >90% repeated value (e.g., "Reported", "Yes" everywhere) ---
+    repeated_val_cols = []
+    for idx, stat in enumerate(col_stats):
+        if stat["unique_vals"] == 1 and stat["empty_ratio"] < 0.9:
+            repeated_val_cols.append(idx)
+    if repeated_val_cols:
+        logger.info(f"[TABLE BUILDER] Removing columns with only repeated values: {[headers[i] for i in repeated_val_cols]}")
+        headers = [h for i, h in enumerate(headers) if i not in repeated_val_cols]
+        col_stats = [stat for i, stat in enumerate(col_stats) if i not in repeated_val_cols]
+
+    # --- ADVANCED: Detect and merge multi-line cells (e.g., candidate name and party in one cell) ---
+    # If a cell contains a newline, split it and try to assign to adjacent columns
+    def split_multiline_cells(row):
+        new_row = []
+        for cell in row:
+            if "\n" in cell:
+                parts = [p.strip() for p in cell.split("\n") if p.strip()]
+                new_row.extend(parts)
+            else:
+                new_row.append(cell)
+        return new_row
+    sample_rows = [split_multiline_cells(row) for row in sample_rows]
+
+    # --- ADVANCED: If all columns are numeric except one, that one is likely the label/location ---
+    numeric_cols = [i for i, stat in enumerate(col_stats) if stat["numeric_ratio"] > 0.8]
+    if len(numeric_cols) == len(headers) - 1:
+        non_numeric_idx = [i for i in range(len(headers)) if i not in numeric_cols][0]
+        if location_idx is None or location_idx != non_numeric_idx:
+            logger.info(f"[TABLE BUILDER] Only one non-numeric column at {non_numeric_idx}, using as location.")
+            location_idx = non_numeric_idx
+
+    # --- ADVANCED: If first column is not a location, but another column is, swap them ---
+    if location_idx is not None and location_idx != 0:
+        logger.info(f"[TABLE BUILDER] Swapping column {location_idx} ('{headers[location_idx]}') to front as location column.")
+        headers = [headers[location_idx]] + headers[:location_idx] + headers[location_idx+1:]
+        for row in sample_rows:
+            if len(row) > location_idx:
+                row.insert(0, row.pop(location_idx))
+        norm_headers = [normalize_text(h) for h in headers]
+
+    # --- ADVANCED: Remove duplicate headers (case-insensitive) ---
+    seen = set()
+    deduped_headers = []
+    for h in headers:
+        h_norm = normalize_text(h)
+        if h_norm not in seen:
+            deduped_headers.append(h)
+            seen.add(h_norm)
+    headers = deduped_headers
+
+    # --- ADVANCED: Remove all-empty columns ---
+    non_empty_cols = [i for i, stat in enumerate(col_stats) if stat["empty_ratio"] < 1.0]
+    if len(non_empty_cols) < len(headers):
+        logger.info(f"[TABLE BUILDER] Removing all-empty columns: {[headers[i] for i in range(len(headers)) if i not in non_empty_cols]}")
+        headers = [headers[i] for i in non_empty_cols]
+
+    # --- ADVANCED: If only one row remains, treat as summary, not table ---
+    if len(sample_rows) == 1:
+        logger.info("[TABLE BUILDER] Only one row detected, treating as summary row.")
+        return headers, [dict(zip(headers, sample_rows[0]))]
+
+    # --- ADVANCED: If header names are all generic (Column 1, Column 2...), try to infer from first data row ---
+    if all(re.match(r"Column \d+", h) for h in headers) and sample_rows:
+        logger.info("[TABLE BUILDER] All headers are generic, inferring from first data row.")
+        headers = sample_rows[0]
+        sample_rows = sample_rows[1:]
+
+    # --- Build data ---
     data = []
     for heading, row in repeated_rows:
         cells = row.locator("> *")
         row_data = {}
-        for idx in range(cells.count()):
-            row_data[headers[idx] if idx < len(headers) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
-        if row_data:
+        cell_values = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
+        # If we swapped headers, swap cell values accordingly
+        if location_idx is not None and location_idx != 0 and len(cell_values) > location_idx:
+            cell_values = [cell_values[location_idx]] + cell_values[:location_idx] + cell_values[location_idx+1:]
+        elif (candidate_idx == 0 or vote_idx == 0) and location_idx not in (None, 0) and len(cell_values) > location_idx:
+            cell_values = [cell_values[location_idx]] + cell_values[:location_idx] + cell_values[location_idx+1:]
+        elif 'likely_loc' in locals() and likely_loc is not None and likely_loc != 0 and len(cell_values) > likely_loc:
+            cell_values = [cell_values[likely_loc]] + cell_values[:likely_loc] + cell_values[likely_loc+1:]
+        # Remove all-empty columns
+        if len(cell_values) > len(headers):
+            cell_values = cell_values[:len(headers)]
+        for idx in range(len(headers)):
+            row_data[headers[idx]] = cell_values[idx] if idx < len(cell_values) else ""
+        # Remove rows that are all empty or all repeated values
+        if row_data and any(v.strip() for v in row_data.values()):
             data.append(row_data)
-    logger.info(f"[TABLE BUILDER] Extracted rows and headers from DOMFinal table: {len(data)} rows, {len(headers)} columns (learned structure).")
-    return headers, data
-def write_csv_with_warnings(filename, headers, rows):
-    if not headers:
-        logger.warning(f"Skipped CSV write for {filename}: No headers found.")
-        return
-    import csv
-    with open(filename, "w", newline='', encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(headers)
-        for row in rows:
-            if len(row) != len(headers):
-                logger.warning(f"Row length mismatch in {filename}: {row}")
-                # Pad or truncate row
-                row = (row + ["N/A"] * len(headers))[:len(headers)]
-            writer.writerow(row)
+
+    # --- ADVANCED: Remove rows that are all empty or all repeated values ---
+    filtered_data = []
+    for row in data:
+        values = list(row.values())
+        if not all(v == "" for v in values) and len(set(values)) > 1:
+            filtered_data.append(row)
+    if not filtered_data and data:
+        filtered_data = data  # fallback
+
+    logger.info(f"[TABLE BUILDER] Extracted rows and headers from DOM (location-first): {len(filtered_data)} rows, {len(headers)} columns.")
+    return headers, filtered_data
             
 def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title, coordinator):
     """
