@@ -15,7 +15,10 @@ from spacy.training import Example
 
 ELECTION_ENTITY_LABELS = [
     "CONTEST", "CANDIDATE", "PARTY", "COUNTY", "STATE", "DISTRICT", "VOTE_METHOD",
-    "BALLOT_TYPE", "PRECINCT", "TOTAL", "PERCENT", "YEAR", "ELECTION_TYPE", "OFFICE", "MISC"
+    "BALLOT_TYPE", "PRECINCT", "TOTAL", "PERCENT", "YEAR", "ELECTION_TYPE", "OFFICE", "MISC",
+    "BALLOT_MEASURE", "LOCATION", "DATE", "INCUMBENT", "WINNER", "LOSER", "WRITE_IN", "UNOPPOSED", "PROPOSITION", "AMENDMENT", "DISTRICT_TYPE", "JURISDICTION",
+    "VOTER", "VOTING_METHOD", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "ABSENTEE", "EARLY_VOTING", "MAIL_IN", "PROVISIONAL", "AFFIDAVIT", "OTHER"
+    
 ]
 
 ENTITY_PATTERNS = [
@@ -30,6 +33,30 @@ ENTITY_PATTERNS = [
     (r"\bstate\b", "STATE"),
     (r"\bgeneral|primary|special\b", "ELECTION_TYPE"),
     (r"\b(overvote|undervote|scattering|write-in|blank|spoiled)\b", "MISC"),
+    (r"\b(proposition|amendment|measure|referendum|initiative)\b", "BALLOT_MEASURE"),
+    (r"\b(city|town|village|borough|municipality|community|district)\b", "LOCATION"),
+    (r"\b(january|february|march|april|may|june|july|august|september|october|november|december)\b \d{1,2}, \d{4}", "DATE"),
+    (r"\bincumbent\b", "INCUMBENT"),
+    (r"\bwinner\b", "WINNER"),
+    (r"\bloser\b", "LOSER"),
+    (r"\bwrite[- ]?in\b", "WRITE_IN"),
+    (r"\bunopposed\b", "UNOPPOSED"),  
+    (r"\bproposition \d+\b", "PROPOSITION"),
+    (r"\bamendment \d+\b", "AMENDMENT"),
+    (r"\bdistrict \d+\b", "DISTRICT_TYPE"),
+    (r"\b(jurisdiction|authority|agency|department)\b", "JURISDICTION"),
+    (r"\b(voter|voting|elector|constituent)\b", "VOTER"),
+    (r"\b(voting method|voting system|voting process)\b", "VOTING_METHOD"),
+    (r"\belection official\b", "ELECTION_OFFICIAL"),
+    (r"\b(results|outcome|tally|count)\b", "RESULTS"),
+    (r"\b(vote count|vote total|vote tally)\b", "VOTE_COUNT"),
+    (r"\b(absentee|early voting|mail-in|provisional|affidavit)\b", "VOTE_METHOD"),
+    (r"\b(?:district|ward|precinct|area|region)\b", "DISTRICT"),
+    (r"\b(?:city|town|village|borough|municipality|community)\b", "LOCATION"),
+    (r"\b(?:election|vote|poll|referendum|plebiscite)\b", "ELECTION_TYPE"),  
+    (r"\b(?:candidate|nominee|aspirant|hopeful)\b", "CANDIDATE"),
+    (r"\b(?:election official|poll worker|election judge|inspector)\b", "ELECTION_OFFICIAL"),
+    
     # Add more as needed
 ]
 
@@ -56,9 +83,11 @@ def auto_label_header(header: str, context: dict = None):
     if context:
         for label_type, values in [
             ("COUNTY", context.get("known_counties", [])),
+            ("LOCATION", context.get("known_cities", [])),
             ("STATE", context.get("known_states", [])),
             ("CANDIDATE", context.get("known_candidates", [])),
             ("DISTRICT", context.get("known_districts", [])),
+            
         ]:
             for val in values:
                 for match in re.finditer(re.escape(val), header, re.IGNORECASE):
@@ -125,7 +154,7 @@ def load_spacy_ner_examples(jsonl_path):
 def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model_save_path="fine_tuned_spacy_ner"):
     import spacy
     from spacy.training import Example
-
+    
     nlp = spacy.blank("en")
     if "ner" not in nlp.pipe_names:
         ner = nlp.add_pipe("ner")
@@ -141,7 +170,8 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     all_counties = set()
     all_states = set()
     all_districts = set()
-
+    all_locations = set()
+    
     # --- Load extra examples from JSONL file ---
     extra_examples = load_spacy_ner_examples(
         os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_train_data.jsonl"))
@@ -156,6 +186,7 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
         context = struct.get("context", {})
         context.update({
             "known_counties": known_context.get("known_counties", []),
+            "known_cities": known_context.get("known_cities", []),
             "known_states": known_context.get("known_states", []),
             "known_candidates": known_context.get("known_candidates", []),
             "known_districts": known_context.get("known_districts", []),
@@ -167,6 +198,8 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
         all_counties.update(context.get("known_counties", []))
         all_states.update(context.get("known_states", []))
         all_districts.update(context.get("known_districts", []))
+        all_locations.update(context.get("known_cities", []))
+        
         for header in headers:
             entities = auto_label_header(header, context)
             if entities:
@@ -205,6 +238,22 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
         "COUNTY": list(all_counties),
         "STATE": list(all_states),
         "DISTRICT": list(all_districts),
+        "LOCATION": list(all_locations),
+        "VOTE_METHOD": list(context_library.get("known_vote_methods", [])),
+        "BALLOT_MEASURE": list(context_library.get("known_ballot_measures", [])),
+        "ELECTION_TYPE": list(context_library.get("known_election_types", [])),
+        "YEAR": list(context_library.get("known_years", [])),
+        "MISC": list(context_library.get("known_misc", [])),
+        "OFFICE": list(context_library.get("known_offices", [])),
+        "VOTER": list(context_library.get("known_voters", [])),
+        "ELECTION_OFFICIAL": list(context_library.get("known_election_officials", [])),
+        "RESULTS": list(context_library.get("known_results", [])),
+        "VOTE_COUNT": list(context_library.get("known_vote_counts", [])),
+        "ABSENTEE": list(context_library.get("known_absentee_methods", [])),
+        "EARLY_VOTING": list(context_library.get("known_early_voting_methods", [])),
+        "MAIL_IN": list(context_library.get("known_mail_in_methods", [])),
+        "PROVISIONAL": list(context_library.get("known_provisional_methods", [])),
+        
     }
     update_db_with_new_entities(new_entities, _safe_db_path(CONTEXT_DB_PATH))
     
@@ -266,6 +315,5 @@ def main():
     retrain_sentence_transformer(confirmed_structures)
     context_library = load_context_library()
     retrain_spacy_ner_advanced(confirmed_structures, context_library)
-
 if __name__ == "__main__":
     main()
