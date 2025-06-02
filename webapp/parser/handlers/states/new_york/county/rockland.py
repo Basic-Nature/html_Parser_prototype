@@ -177,6 +177,16 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             locations = [ent for ent, label in entities if label in ("GPE", "LOC", "FAC", "ORG") or "district" in ent.lower()]
             expected_location = locations[0] if locations else None
 
+            extraction_context = {
+                "contest_title": contest_title,
+                "entities": entities,
+                "expected_location": expected_location,
+                "html_context": html_context,
+                "coordinator": coordinator,
+                "page": page,
+                # Add more as needed
+            }
+
             ballot_items = []
             selectors = [
                 ".ballot-option", ".candidate-info", ".contest-row", ".result-row", ".header", ".race-row", ".proposition-row"
