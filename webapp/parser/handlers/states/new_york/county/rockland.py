@@ -2,7 +2,7 @@ from playwright.sync_api import Page
 
 from .....utils.html_scanner import scan_html_for_context
 from .....utils.contest_selector import select_contest
-from .....utils.table_builder import build_dynamic_table, extract_table_data, extract_ballot_items
+from .....utils.table_builder import build_dynamic_table, extract_table_data, robust_table_extraction
 from .....utils.output_utils import finalize_election_output
 from .....utils.logger_instance import logger
 from .....utils.shared_logger import rprint
@@ -186,51 +186,46 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 "page": page,
                 # Add more as needed
             }
-
-            ballot_items = []
-            selectors = [
-                ".ballot-option", ".candidate-info", ".contest-row", ".result-row", ".header", ".race-row", ".proposition-row"
-            ]
-            for selector in selectors:
-                items = page.locator(selector)
-                for i in range(items.count()):
-                    item = items.nth(i)
-                    cells = item.locator("> *")
-                    row = [cells.nth(j).inner_text().strip() for j in range(cells.count())]
-                    if any(row):
-                        ballot_items.append(row)
-
-            if ballot_items:
-                first_row = ballot_items[0]
-                known_keywords = ["candidate", "votes", "party", "precinct", "choice", "option", "response", "total"]
-                if sum(1 for cell in first_row if any(kw in cell.lower() for kw in known_keywords)) >= 2:
-                    headers = first_row
-                    data_rows = [dict(zip(headers, row)) for row in ballot_items[1:]]
+            headers, data_rows = robust_table_extraction(page, extraction_context)
+            
+            if not headers or not data_rows:
+                ballot_items = []
+                selectors = [
+                    ".ballot-option", ".candidate-info", ".contest-row", ".result-row", ".header", ".race-row", ".proposition-row"
+                ]
+                for selector in selectors:
+                    items = page.locator(selector)
+                    for i in range(items.count()):
+                        item = items.nth(i)
+                        cells = item.locator("> *")
+                        row = [cells.nth(j).inner_text().strip() for j in range(cells.count())]
+                        if any(row):
+                            ballot_items.append(row)
+                if ballot_items:
+                    first_row = ballot_items[0]
+                    known_keywords = ["candidate", "votes", "party", "precinct", "choice", "option", "response", "total"]
+                    if sum(1 for cell in first_row if any(kw in cell.lower() for kw in known_keywords)) >= 2:
+                        headers = first_row
+                        data_rows = [dict(zip(headers, row)) for row in ballot_items[1:]]
+                    else:
+                        headers = []
+                        for idx in range(len(first_row)):
+                            if expected_location and idx == 0:
+                                headers.append(expected_location)
+                            elif idx == 0:
+                                headers.append("Candidate")
+                            elif idx == 1:
+                                headers.append("Party")
+                            elif idx == 2:
+                                headers.append("Votes")
+                            else:
+                                headers.append(f"Column {idx+1}")
+                        data_rows = [dict(zip(headers, row)) for row in ballot_items]
                 else:
-                    headers = []
-                    for idx in range(len(first_row)):
-                        if expected_location and idx == 0:
-                            headers.append(expected_location)
-                        elif idx == 0:
-                            headers.append("Candidate")
-                        elif idx == 1:
-                            headers.append("Party")
-                        elif idx == 2:
-                            headers.append("Votes")
-                        else:
-                            headers.append(f"Column {idx+1}")
-                    data_rows = [dict(zip(headers, row)) for row in ballot_items]
-            else:
-                rprint(f"[yellow][WARNING] No ballot items found by div selectors. Trying robust_table_extraction...[/yellow]")
-                from .....utils.table_builder import robust_table_extraction
-                headers, data_rows = robust_table_extraction(page, html_context)
-                if not headers or not data_rows:
-                    rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+                    rprint(f"[red][ERROR] No data found for contest '{contest_title}'. Skipping.")
                     results.append((None, None, contest_title, {"skipped": True}))
                     continue
-
-            headers, rows = build_dynamic_table(headers, data_rows, coordinator, html_context)
-            data = rows
+            headers, data = build_dynamic_table(headers, data_rows, coordinator, html_context)
 
             if not data:
                 rprint(f"[red][ERROR] No data could be parsed from ballot items or robust extraction.[/red]")

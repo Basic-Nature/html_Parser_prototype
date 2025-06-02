@@ -47,6 +47,9 @@ try:
 except ImportError:
     run_bot_task = None
 
+import subprocess
+subprocess.run(["python", "bots/retrain_table_structure_models.py"])
+
 # --- Environment & Path Setup ---
 load_dotenv()
 console = Console()

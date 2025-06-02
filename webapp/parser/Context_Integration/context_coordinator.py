@@ -175,6 +175,14 @@ class ContextCoordinator:
         if alert_monitor:
             self.start_alert_monitoring()
 
+    def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
+        from .context_organizer import save_table_structure_to_db
+        return save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
+
+    def get_table_structure_from_db(self, contest_title, context=None):
+        from .context_organizer import get_table_structure_from_db
+        return get_table_structure_from_db(contest_title, context)
+
     def organize_and_enrich(self, raw_context, contamination=None, n_estimators=100, random_state=42):
         """
         Organize raw context (from HTML/DOM or DB), deduplicate, cluster, and enrich with NLP.

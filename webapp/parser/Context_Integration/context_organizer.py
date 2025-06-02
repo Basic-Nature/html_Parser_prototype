@@ -90,6 +90,57 @@ ensure_db_schema()
 processed_urls = load_processed_urls()
 output_cache = load_output_cache()
 
+def create_table_structures_table():
+    db_path = _safe_db_path(CONTEXT_DB_PATH)
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS table_structures (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            contest_title TEXT,
+            headers TEXT,
+            context TEXT,
+            confirmed_by_user INTEGER DEFAULT 0,
+            ml_confidence REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+    
+create_table_structures_table()
+
+def save_table_structure_to_db(contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
+    db_path = _safe_db_path(CONTEXT_DB_PATH)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO table_structures (contest_title, headers, context, ml_confidence, confirmed_by_user) VALUES (?, ?, ?, ?, ?)",
+        (
+            contest_title,
+            json.dumps(headers),
+            json.dumps(context),
+            ml_confidence if ml_confidence is not None else None,
+            int(confirmed_by_user)
+        )
+    )
+    conn.commit()
+    conn.close()
+
+def get_table_structure_from_db(contest_title, context=None):
+    db_path = _safe_db_path(CONTEXT_DB_PATH)
+    conn = sqlite3.connect(db_path)
+    cur = conn.execute(
+        "SELECT headers, context, ml_confidence FROM table_structures WHERE contest_title = ? ORDER BY confirmed_by_user DESC, ml_confidence DESC LIMIT 1",
+        (contest_title,)
+    )
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        headers = json.loads(row[0])
+        context = json.loads(row[1])
+        ml_confidence = row[2]
+        return {"headers": headers, "context": context, "ml_confidence": ml_confidence}
+    return None
+
 def build_dom_tree(segments):
     """
     Build a DOM tree from a list of segments that already include parent/child relationships and indices.
