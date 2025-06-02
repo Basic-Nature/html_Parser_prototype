@@ -106,6 +106,22 @@ def update_db_with_new_entities(new_entities, db_path):
     conn.close()
     print(f"Updated DB with new entities: { {k: len(v) for k,v in new_entities.items()} }")
 
+def load_spacy_ner_examples(jsonl_path):
+    """
+    Loads extra NER training examples from a JSONL file.
+    Each line should be: {"text": ..., "entities": [[start, end, label], ...]}
+    """
+    examples = []
+    if not os.path.exists(jsonl_path):
+        return examples
+    with open(jsonl_path, "r", encoding="utf-8") as f:
+        for line in f:
+            obj = json.loads(line)
+            text = obj["text"]
+            entities = obj["entities"]
+            examples.append((text, {"entities": entities}))
+    return examples
+
 def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model_save_path="fine_tuned_spacy_ner"):
     import spacy
     from spacy.training import Example
@@ -126,6 +142,15 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     all_states = set()
     all_districts = set()
 
+    # --- Load extra examples from JSONL file ---
+    extra_examples = load_spacy_ner_examples(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_train_data.jsonl"))
+    )
+    if extra_examples:
+        print(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
+    train_data.extend(extra_examples)
+
+    # ...existing code for auto-labeling confirmed_structures...
     for struct in confirmed_structures:
         headers = struct["headers"]
         context = struct.get("context", {})
@@ -135,7 +160,6 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
             "known_candidates": known_context.get("known_candidates", []),
             "known_districts": known_context.get("known_districts", []),
         })
-        # Auto-extract and aggregate entities for DB update
         context_candidates = extract_candidates_from_context(context)
         context["known_candidates"] = list(set(context.get("known_candidates", []) + context_candidates))
         all_candidates.update(context["known_candidates"])
@@ -183,7 +207,7 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
         "DISTRICT": list(all_districts),
     }
     update_db_with_new_entities(new_entities, _safe_db_path(CONTEXT_DB_PATH))
-
+    
 def get_all_confirmed_structures():
     db_path = _safe_db_path(CONTEXT_DB_PATH)
     conn = sqlite3.connect(db_path)
