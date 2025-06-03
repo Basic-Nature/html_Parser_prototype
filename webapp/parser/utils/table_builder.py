@@ -2239,6 +2239,8 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
 
     # --- PATCH: Feedback loop for columns repeatedly removed ---
     removed_columns_log_path = os.path.join(BASE_DIR, "log", "removed_columns_log.json")
+    removed_columns_log_dir = os.path.dirname(removed_columns_log_path)
+    os.makedirs(removed_columns_log_dir, exist_ok=True)
     if os.path.exists(removed_columns_log_path):
         with open(removed_columns_log_path, "r", encoding="utf-8") as f:
             removed_columns_log = json.load(f)
