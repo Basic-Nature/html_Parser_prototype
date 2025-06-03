@@ -2227,6 +2227,9 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     new_headers = copy.deepcopy(headers)
     denied_structures_path = os.path.join(BASE_DIR, "log", "denied_table_structures.json")
     denied_structures = {}
+    # --- PATCH: Ensure log directory exists before file operations ---
+    denied_structures_dir = os.path.dirname(denied_structures_path)
+    os.makedirs(denied_structures_dir, exist_ok=True)
     # Load denied structures count
     if os.path.exists(denied_structures_path):
         with open(denied_structures_path, "r", encoding="utf-8") as f:
