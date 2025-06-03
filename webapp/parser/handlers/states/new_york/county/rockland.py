@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 import numpy as e
 BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
 context_cache = {}
-
+accepted_buttons_cache = {}
 def score_table(table, context, coordinator):
     """
     Score a table based on known district/precinct names, result keywords, and table size.
@@ -53,7 +53,9 @@ def handle_toggle_and_rescan(
     keywords,
     toggle_name,
     html_context,
-    extra_context=None
+    extra_context=None,
+    accepted_buttons_cache=None,
+    rejected_downloads=None 
 ):
     """
     Clicks the best button for the toggle, waits for page change, and re-scans context if changed.
@@ -62,7 +64,6 @@ def handle_toggle_and_rescan(
     from .....html_election_parser import get_page_hash, get_or_scan_context
 
     prev_hash = get_page_hash(page)
-    # Always use the advanced button logic (learned button first)
     btn, idx = coordinator.get_best_button_advanced(
         page=page,
         contest_title=contest_title,
@@ -70,28 +71,31 @@ def handle_toggle_and_rescan(
         context={**(extra_context or {}), **(html_context or {}), "toggle_name": toggle_name},
         confirm_button_callback=confirm_button_callback,
         prompt_user_for_button=prompt_user_for_button,
-        learning_mode=True
+        learning_mode=True,
+        accepted_buttons_cache=accepted_buttons_cache  # <-- pass cache
     )
     if btn and "element_handle" in btn:
         element = btn["element_handle"]
         if element.is_visible() and element.is_enabled():
             try:
-                element.click(timeout=5000)  # Shorter timeout, fail fast if not clickable
+                element.click(timeout=5000)
+                page.wait_for_timeout(500)  # Give time for DOM update
             except Exception as e:
                 rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
-                return html_context  # Return unchanged context if click fails
+                return html_context
         else:
             rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
-            return html_context  # Return unchanged context if not clickable
+            return html_context
     else:
         rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
-        return html_context  # Return unchanged context if no button
+        return html_context
 
     autoscroll_until_stable(page)
     new_hash = get_page_hash(page)
     if new_hash != prev_hash:
-        # Use the orchestrator's context cache and loader
-        html_context = get_or_scan_context(page, coordinator)
+        if rejected_downloads is None:
+            rejected_downloads = set()
+        html_context = get_or_scan_context(page, coordinator, rejected_downloads=rejected_downloads)
         context_cache[new_hash] = html_context
         rprint(f"[green][TOGGLE] Page changed after '{toggle_name}' toggle. Context re-scanned.[/green]")
     else:
@@ -225,6 +229,15 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                     rprint(f"[red][ERROR] No data found for contest '{contest_title}'. Skipping.")
                     results.append((None, None, contest_title, {"skipped": True}))
                     continue
+
+            if "contest_title" not in html_context or not html_context["contest_title"]:
+                html_context["contest_title"] = (
+                    html_context.get("selected_race")
+                    or html_context.get("title")
+                    or contest_title
+                    or "Unknown Contest"
+                )
+                
             headers, data = build_dynamic_table(
                 contest_title,      # domain
                 headers,            # headers

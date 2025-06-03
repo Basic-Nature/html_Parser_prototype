@@ -237,9 +237,11 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                 "success": bool(headers and data),
                 "context": extraction_context
             })
-            if headers and data:
-                headers_list.append(headers)
-                data_list.append(data)
+            if headers == ["Label", "Votes"] and data:
+                possible_headers = list(data[0].values())
+                if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
+                    headers = possible_headers
+                    data = data[1:]
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Pattern extraction failed: {e}")
         extraction_logs.append({
@@ -262,9 +264,11 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                 "success": bool(headers and data),
                 "context": extraction_context
             })
-            if headers and data:
-                headers_list.append(headers)
-                data_list.append(data)
+            if headers == ["Label", "Votes"] and data:
+                possible_headers = list(data[0].values())
+                if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
+                    headers = possible_headers
+                    data = data[1:]
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Table extraction failed: {e}")
         extraction_logs.append({
@@ -287,9 +291,11 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "success": bool(headers and data),
             "context": extraction_context
         })
-        if headers and data:
-            headers_list.append(headers)
-            data_list.append(data)
+        if headers == ["Label", "Votes"] and data:
+            possible_headers = list(data[0].values())
+            if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
+                headers = possible_headers
+                data = data[1:]
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Repeated DOM extraction failed: {e}")
         extraction_logs.append({
@@ -302,6 +308,12 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # 4. NLP/keyword-based fallback extraction
     try:
         headers, data = fallback_nlp_candidate_vote_scan(page)
+        # PATCH: If first data row looks like headers, use it
+        if headers == ["Label", "Votes"] and data:
+            possible_headers = list(data[0].values())
+            if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
+                headers = possible_headers
+                data = data[1:]
         extraction_logs.append({
             "method": "nlp_fallback",
             "headers": headers,
@@ -441,9 +453,15 @@ def build_dynamic_table(
     if context is None:
         context = {}
 
-    contest_title = context.get("selected_race") or context.get("contest_title") or context.get("title", "")
+    if "contest_title" not in context or not context["contest_title"]:
+        context["contest_title"] = (
+            context.get("selected_race")
+            or context.get("title")
+            or "Unknown Contest"
+        )
+    contest_title = context["contest_title"]
     logger.info(f"[TABLE BUILDER] Using contest_title: '{contest_title}'")
-
+    
     # 0. Try to auto-apply a learned structure from the log/database
     learned_structure = None
     if hasattr(coordinator, "get_table_structure"):
@@ -655,6 +673,12 @@ def build_dynamic_table(
 
     output_data = [rows_by_location[loc] for loc in rows_by_location]
     output_headers, output_data = harmonize_headers_and_data(output_headers, output_data)
+
+    if output_data:
+        last_row = output_data[-1]
+        if any("total" in str(v).lower() or "summary" in str(v).lower() for v in last_row.values()):
+            logger.info("[TABLE BUILDER] Removing last row as it appears to be a total/summary row.")
+            output_data = output_data[:-1]
 
     # Prompt user to confirm/correct table structure if in learning mode
     if learning_mode and hasattr(coordinator, "log_table_structure"):
@@ -2219,6 +2243,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     """
     Interactive and semi-automated CLI prompt for user to confirm/correct table structure.
     After any user modification, always harmonize headers and data.
+    If ML confidence is low and NLP suggests better header names, auto-apply those suggestions.
     """
     import copy
 
@@ -2227,7 +2252,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     new_headers = copy.deepcopy(headers)
     denied_structures_path = os.path.join(BASE_DIR, "log", "denied_table_structures.json")
     denied_structures = {}
-    # --- PATCH: Ensure log directory exists before file operations ---
+    # Ensure log directory exists before file operations
     denied_structures_dir = os.path.dirname(denied_structures_path)
     os.makedirs(denied_structures_dir, exist_ok=True)
     # Load denied structures count
@@ -2237,7 +2262,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     sig = f"{domain}:{table_signature(headers)}"
     denied_count = denied_structures.get(sig, 0)
 
-    # --- PATCH: Feedback loop for columns repeatedly removed ---
+    # Feedback loop for columns repeatedly removed
     removed_columns_log_path = os.path.join(BASE_DIR, "log", "removed_columns_log.json")
     removed_columns_log_dir = os.path.dirname(removed_columns_log_path)
     os.makedirs(removed_columns_log_dir, exist_ok=True)
@@ -2247,13 +2272,12 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     else:
         removed_columns_log = {}
 
-    # --- ML/NLP suggestions ---
+    # ML/NLP suggestions
     ml_scores = []
     nlp_suggestions = []
     for h in new_headers:
         score = coordinator.score_header(h, {"contest_title": contest_title})
         ml_scores.append(score)
-        # Try NER for header suggestion
         ents = coordinator.extract_entities(h)
         if ents:
             ent, label = ents[0]
@@ -2264,7 +2288,18 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     avg_score = sum(ml_scores) / len(ml_scores) if ml_scores else 0
     auto_accept_threshold = 0.93  # Accept automatically if ML is very confident
 
-    # --- Multiple structure candidates (if available) ---
+    # PATCH: If ML confidence is low and NLP suggests better header names, auto-apply those suggestions
+    if avg_score < 0.7 and any(ent and ent != h for h, ent, label in nlp_suggestions):
+        logger.info("[TABLE BUILDER] ML confidence low and NLP suggests better header names. Auto-applying suggestions.")
+        for idx, (h, ent, label) in enumerate(nlp_suggestions):
+            if ent and ent != h:
+                new_headers[idx] = ent
+        new_headers, data = harmonize_headers_and_data(new_headers, data)
+        # Recompute ML scores after change
+        ml_scores = [coordinator.score_header(h, {"contest_title": contest_title}) for h in new_headers]
+        avg_score = sum(ml_scores) / len(ml_scores) if ml_scores else 0
+
+    # Multiple structure candidates (if available)
     structure_candidates = [new_headers]
     # Optionally, try to generate alternative header orders/types using ML/NLP
     alt_headers = []
@@ -2301,7 +2336,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
         if len(structure_candidates) > 1:
             rprint(f"[cyan]Use [N]ext/[P]revious to cycle through {len(structure_candidates)} candidates.[/cyan]")
 
-        # --- Auto-accept if ML is very confident ---
+        # Auto-accept if ML is very confident
         if avg_score >= auto_accept_threshold:
             rprint("[green]ML confidence is high. Auto-accepting this structure.[/green]")
             new_headers = candidate_headers
@@ -2408,7 +2443,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
         # Always harmonize after user modification
         candidate_headers, data = harmonize_headers_and_data(candidate_headers, data)
 
-    # --- Save user-confirmed structure for future ML learning ---
+    # Save user-confirmed structure for future ML learning
     if should_log and hasattr(coordinator, "log_table_structure"):
         coordinator.log_table_structure(contest_title, new_headers, context={"domain": domain})
         cache_table_structure(domain, new_headers, new_headers)

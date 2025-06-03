@@ -336,7 +336,7 @@ def stream_results(headers, data, contest_title, metadata):
 # --- Main URL Processing Logic ---
 def process_url(target_url, processed_info):
     from .Context_Integration.context_coordinator import dynamic_state_county_detection, ContextCoordinator
-
+    rejected_downloads = set()
     logging.info(f"Navigating to: {target_url}")
 
     browser = context = page = user_agent = None
@@ -351,7 +351,7 @@ def process_url(target_url, processed_info):
             coordinator = ContextCoordinator()
 
             # --- Detect page hash and use context cache ---
-            html_context = get_or_scan_context(page, coordinator)
+            html_context = get_or_scan_context(page, coordinator, rejected_downloads=rejected_downloads)
             html_context["source_url"] = target_url
 
             # --- Robust state/county inference and validation ---
@@ -500,13 +500,15 @@ def main():
         for url in selected_urls:
             process_url(url, processed_info)            
 
-def get_or_scan_context(page, coordinator):
+def get_or_scan_context(page, coordinator, rejected_downloads=None):
+    if rejected_downloads is None:
+        rejected_downloads = set()
     page_hash = get_page_hash(page)
     if page_hash in context_cache:
         html_context = context_cache[page_hash]
         logger.info(f"[CONTEXT] Using cached context for hash {page_hash}")
     else:
-        html_context = scan_html_for_context(page.url, page)  # no need to pass rejected_downloads
+        html_context = scan_html_for_context(page.url, page, rejected_downloads=rejected_downloads)
         html_context = coordinator.organize_and_enrich(html_context)
         context_cache[page_hash] = html_context
         logger.info(f"[CONTEXT] Scanned and cached context for hash {page_hash}")
