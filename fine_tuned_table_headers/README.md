@@ -4,35 +4,35 @@ tags:
 - sentence-similarity
 - feature-extraction
 - generated_from_trainer
-- dataset_size:171
+- dataset_size:174
 - loss:CosineSimilarityLoss
 base_model: sentence-transformers/all-MiniLM-L6-v2
 widget:
 - source_sentence: ''
   sentences:
-  - Precinct (Other) - Total
-  - Chrissy Knapp (Working Families) - Absentee
-  - Write (Other) - Total
+  - CON Daniel W. Sullivan (Conservative) - Total
+  - '%reported'
+  - Districts
 - source_sentence: ''
   sentences:
-  - DEM Chrissy Knapp (Democratic) - Absentee
-  - Percent Reported (Other) - Total
-  - Election Day (Other) - Early Voting
+  - Candidate (Other) - Election Day
+  - Write (Other) - Early Voting
+  - Grand Total (Grand Total) - Absentee
 - source_sentence: ''
   sentences:
-  - Chrissy Knapp (Working Families) - Total
-  - Working Families (Working Families) - Mail
-  - Fully Reported
+  - WOR Chrissy Knapp (Working Families) - Early Voting
+  - CON
+  - WOR Chrissy Knapp (Working Families) - Election Day
 - source_sentence: ''
   sentences:
-  - Precinct (Other) - Early Voting
-  - REP Daniel W. Sullivan (Republican) - Mail
-  - Daniel W. Sullivan (Conservative) - Total
+  - Grand Total (Grand Total) - Total
+  - Votes (Other) - Absentee
+  - Absentee Mail (Absentee Mail) - Mail
 - source_sentence: ''
   sentences:
-  - Orangetown (Other) - Mail
-  - Working Families (Working Families) - Absentee
   - Grand Total
+  - WOR Chrissy Knapp (Working Families) - Election Day
+  - Write-in - Total
 pipeline_tag: sentence-similarity
 library_name: sentence-transformers
 ---
@@ -88,8 +88,8 @@ model = SentenceTransformer("sentence_transformers_model_id")
 # Run inference
 sentences = [
     '',
+    'Write-in - Total',
     'Grand Total',
-    'Orangetown (Other) - Mail',
 ]
 embeddings = model.encode(sentences)
 print(embeddings.shape)
@@ -143,19 +143,19 @@ You can finetune this model on your own dataset.
 
 #### Unnamed Dataset
 
-* Size: 171 training samples
+* Size: 174 training samples
 * Columns: <code>sentence_0</code>, <code>sentence_1</code>, and <code>label</code>
-* Approximate statistics based on the first 171 samples:
+* Approximate statistics based on the first 174 samples:
   |         | sentence_0                                                                     | sentence_1                                                                       | label                                                         |
   |:--------|:-------------------------------------------------------------------------------|:---------------------------------------------------------------------------------|:--------------------------------------------------------------|
   | type    | string                                                                         | string                                                                           | float                                                         |
-  | details | <ul><li>min: 2 tokens</li><li>mean: 2.0 tokens</li><li>max: 2 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 9.92 tokens</li><li>max: 15 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
+  | details | <ul><li>min: 2 tokens</li><li>mean: 2.0 tokens</li><li>max: 2 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 9.82 tokens</li><li>max: 15 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
 * Samples:
-  | sentence_0    | sentence_1                                         | label            |
-  |:--------------|:---------------------------------------------------|:-----------------|
-  | <code></code> | <code>Total Votes (Other) - Absentee</code>        | <code>1.0</code> |
-  | <code></code> | <code>%reported</code>                             | <code>1.0</code> |
-  | <code></code> | <code>Chrissy Knapp (Democratic) - Absentee</code> | <code>1.0</code> |
+  | sentence_0    | sentence_1                                                   | label            |
+  |:--------------|:-------------------------------------------------------------|:-----------------|
+  | <code></code> | <code>Total Votes (Other) - Total</code>                     | <code>1.0</code> |
+  | <code></code> | <code>Percent Reported (Other) - Total</code>                | <code>1.0</code> |
+  | <code></code> | <code>Chrissy Knapp (Working Families) - Early Voting</code> | <code>1.0</code> |
 * Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
   ```json
   {

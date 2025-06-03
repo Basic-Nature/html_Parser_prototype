@@ -317,7 +317,13 @@ def prompt_for_segment_label(segment):
     label = prompt_user_input("> ").strip()
     return label
 
-def scan_html_for_context(target_url, page, debug=False, context_cache=None) -> Dict[str, Any]:
+def scan_html_for_context(
+    target_url, 
+    page, 
+    debug=False, 
+    context_cache=None, 
+    rejected_downloads: Optional[set] = None  # <-- add this
+) -> Dict[str, Any]:
     """
     Advanced HTML scanner with ML-driven DOM pattern clustering, active learning, dynamic tagging,
     confidence-driven processing, and persistent knowledge base.

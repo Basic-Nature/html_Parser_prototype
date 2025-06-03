@@ -506,7 +506,7 @@ def get_or_scan_context(page, coordinator):
         html_context = context_cache[page_hash]
         logger.info(f"[CONTEXT] Using cached context for hash {page_hash}")
     else:
-        html_context = scan_html_for_context(page.url, page)
+        html_context = scan_html_for_context(page.url, page)  # no need to pass rejected_downloads
         html_context = coordinator.organize_and_enrich(html_context)
         context_cache[page_hash] = html_context
         logger.info(f"[CONTEXT] Scanned and cached context for hash {page_hash}")
