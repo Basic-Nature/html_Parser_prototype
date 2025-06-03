@@ -77,6 +77,7 @@ def handle_toggle_and_rescan(
         if element.is_visible() and element.is_enabled():
             try:
                 element.click(timeout=5000)
+                rprint(f"[green][DEBUG] Clicked button: '{btn.get('label', '')}' for toggle '{toggle_name}'[/green]")
                 page.wait_for_timeout(500)  # Give time for DOM update
             except Exception as e:
                 rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
@@ -87,7 +88,6 @@ def handle_toggle_and_rescan(
     else:
         rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
         return html_context
-
     autoscroll_until_stable(page)
     new_hash = get_page_hash(page)
     if new_hash != prev_hash:
@@ -146,31 +146,37 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 "View results by"
             ]
             # --- 5. Toggle "View results by election district" ---
+            toggle_name = "View results by election district"
+            rprint(f"[DEBUG] About to toggle first button: {toggle_name}")
             html_context = handle_toggle_and_rescan(
                 page,
                 coordinator,
                 context_cache,
                 contest_title_for_button,
                 election_district_keywords,
-                "View results by election district",
+                toggle_name,
                 html_context,
-                extra_context={"toggle_name": "View results by election district"}
+                extra_context={"toggle_name": toggle_name}
             )
+            rprint(f"[DEBUG] Finished toggle first button: {toggle_name}")
             autoscroll_until_stable(page)
 
             vote_method_keywords = [
                 "vote method", "Vote Method", "Vote method", "Method"
             ]
+            toggle_name = "Vote Method"
+            rprint(f"[DEBUG] About to toggle second button: {toggle_name}")
             html_context = handle_toggle_and_rescan(
                 page,
                 coordinator,
                 context_cache,
-                contest_title_for_button,
+                contest_title_for_button,     
                 vote_method_keywords,
-                "Vote Method",
+                toggle_name,
                 html_context,
-                extra_context={"toggle_name": "Vote Method"}
+                extra_context={"toggle_name": toggle_name}
             )
+            rprint(f"[DEBUG] Finished toggle second button: {toggle_name}")
             autoscroll_until_stable(page)
 
             # --- 9. Extract ballot items using DOM scan and context/NLP ---
