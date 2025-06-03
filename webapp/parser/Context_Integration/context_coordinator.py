@@ -172,6 +172,7 @@ class ContextCoordinator:
         self.organized = None
         self.last_raw_context = None 
         self.clicked_button_selectors = set()
+        self.accepted_buttons_cache = {}
         if alert_monitor:
             self.start_alert_monitoring()
 

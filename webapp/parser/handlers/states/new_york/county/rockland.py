@@ -54,7 +54,6 @@ def handle_toggle_and_rescan(
     toggle_name,
     html_context,
     extra_context=None,
-    accepted_buttons_cache=None,
     rejected_downloads=None 
 ):
     """
@@ -72,7 +71,6 @@ def handle_toggle_and_rescan(
         confirm_button_callback=confirm_button_callback,
         prompt_user_for_button=prompt_user_for_button,
         learning_mode=True,
-        accepted_buttons_cache=accepted_buttons_cache  # <-- pass cache
     )
     if btn and "element_handle" in btn:
         element = btn["element_handle"]
