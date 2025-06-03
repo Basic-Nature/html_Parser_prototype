@@ -3,7 +3,8 @@
 # Election Data Cleaner - Table Extraction and Cleaning Utilities
 # Context-integrated version: uses ContextCoordinator for config
 # ===================================================================
-import difflib
+import glob
+from collections import Counter
 import hashlib
 import re
 import os
@@ -1688,30 +1689,97 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
             results.append((heading, table))
     return results
 
+def log_failed_container(page, container, selector, idx, error_msg):
+    try:
+        html = container.evaluate("el => el.outerHTML")
+        parent = container.locator("xpath=..")
+        parent_class = parent.get_attribute("class") or ""
+        parent_id = parent.get_attribute("id") or ""
+        heading = ""
+        heading_loc = container.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
+        if heading_loc.count() > 0:
+            heading = heading_loc.nth(0).inner_text().strip()
+        log_entry = {
+            "selector": selector,
+            "container_idx": idx,
+            "parent_class": parent_class,
+            "parent_id": parent_id,
+            "heading": heading,
+            "error": error_msg,
+            "html": html[:2000]  # Truncate for log size
+        }
+        log_path = get_safe_log_path(f"failed_container_{selector.replace('.', '_')}_{idx}.json")
+        with open(log_path, "w", encoding="utf-8") as f:
+            json.dump(log_entry, f, indent=2)
+        logger.error(f"[TABLE BUILDER] Failed container logged: {log_path}")
+    except Exception as e:
+        logger.error(f"[TABLE BUILDER] Could not log failed container: {e}")
+
+def suggest_new_row_classes_from_logs(log_dir):
+    """
+    Analyze failed container logs and suggest new likely row classes/IDs.
+    """
+    class_counter = Counter()
+    parent_counter = Counter()
+    for path in glob.glob(os.path.join(log_dir, "failed_container_*.json")):
+        with open(path, "r", encoding="utf-8") as f:
+            entry = json.load(f)
+            cls = entry.get("parent_class", "")
+            if cls:
+                for c in cls.split():
+                    class_counter[c] += 1
+            parent_id = entry.get("parent_id", "")
+            if parent_id:
+                parent_counter[parent_id] += 1
+    # Suggest top classes/IDs as new selectors
+    suggested_classes = [c for c, _ in class_counter.most_common(10)]
+    suggested_ids = [pid for pid, _ in parent_counter.most_common(5)]
+    print("Suggested new row classes:", suggested_classes)
+    print("Suggested new row IDs:", suggested_ids)
+    return suggested_classes, suggested_ids
+
 def extract_repeated_dom_structures(page, container_selectors=None, min_row_count=2, extra_keywords=None):
     """
     Scans the DOM for repeated structures (divs, uls, etc.) that look like tabular data.
     Returns a list of (section_heading, row_locator) tuples.
+    Dynamically updates likely_row_classes from log analysis.
     """
+    # --- Dynamically update likely_row_classes from logs ---
+    log_dir = os.path.join(os.path.dirname(BASE_DIR), "log")
+    suggested_classes, suggested_ids = suggest_new_row_classes_from_logs(log_dir)
+    likely_row_classes = [
+        "row", "table-row", "ballot-option", "candidate-info", "result-row", "precinct-row"
+    ] + suggested_classes
+    likely_row_ids = suggested_ids
+
     if container_selectors is None:
-        container_selectors = discover_container_selectors(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
+        selectors = [f"div.{cls}" for cls in likely_row_classes]
+        selectors += [f"div#{id_}" for id_ in likely_row_ids]
+        selectors += ["ul > li", "ol > li"]
+    else:
+        selectors = container_selectors
+
     results = []
-    for selector in container_selectors:
+    MAX_CONTAINERS = 100
+    for selector in selectors:
         containers = page.locator(selector)
-        for i in range(containers.count()):
-            container = containers.nth(i)
-            children = container.locator("> *")
-            if children.count() >= min_row_count:
-                # Try to find a heading above the container
-                heading = ""
-                heading_loc = container.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
-                if heading_loc.count() > 0:
-                    heading = heading_loc.nth(0).inner_text().strip()
-                else:
-                    heading = f"Section {i+1}"
-                for j in range(children.count()):
-                    row = children.nth(j)
-                    results.append((heading, row))
+        for i in range(min(containers.count(), MAX_CONTAINERS)):
+            try:
+                container = containers.nth(i)
+                children = container.locator("> *")
+                if children.count() >= min_row_count:
+                    # Try to find a heading above the container
+                    heading = ""
+                    heading_loc = container.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
+                    if heading_loc.count() > 0:
+                        heading = heading_loc.nth(0).inner_text().strip()
+                    else:
+                        heading = f"Section {i+1}"
+                    for j in range(children.count()):
+                        row = children.nth(j)
+                        results.append((heading, row))
+            except Exception as e:
+                log_failed_container(page, container, selector, i, str(e))
     return results
 
 def log_new_dom_pattern(example_html, selector, context=None, log_path=None):

@@ -3,7 +3,7 @@ import sqlite3
 import json
 import re
 from pathlib import Path
-
+from collections import Counter
 from sentence_transformers import SentenceTransformer, InputExample, losses
 from torch.utils.data import DataLoader
 from ..utils.shared_logic import load_context_library
@@ -66,6 +66,47 @@ def save_training_data_jsonl(train_data, path="spacy_ner_train_data.jsonl"):
         for text, annots in train_data:
             f.write(json.dumps({"text": text, "entities": annots["entities"]}, ensure_ascii=False) + "\n")
     print(f"Saved spaCy NER training data to {safe_path}")
+
+def cluster_container_patterns(log_dir=None, n_clusters=5):
+    """
+    Cluster container HTML snippets and metadata for ML/NLP training.
+    Prints cluster assignments and common selectors/classes/headings.
+    """
+    import glob
+    import json
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.cluster import KMeans
+
+    if log_dir is None:
+        log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log"))
+
+    htmls = []
+    meta = []
+    for path in glob.glob(os.path.join(log_dir, "failed_container_*.json")):
+        with open(path, "r", encoding="utf-8") as f:
+            entry = json.load(f)
+            htmls.append(entry.get("html", ""))
+            meta.append(entry)
+    if not htmls:
+        print("No failed containers to cluster.")
+        return
+
+    vectorizer = TfidfVectorizer(max_features=200, stop_words="english")
+    X = vectorizer.fit_transform(htmls)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10).fit(X)
+    clusters = [[] for _ in range(n_clusters)]
+    for i, label in enumerate(kmeans.labels_):
+        clusters[label].append(meta[i])
+
+    for idx, group in enumerate(clusters):
+        print(f"\n=== Cluster {idx+1} ({len(group)} containers) ===")
+        selectors = [g.get("selector") for g in group]
+        parent_classes = [g.get("parent_class") for g in group]
+        headings = [g.get("heading") for g in group]
+        print("  Common selectors:", Counter(selectors).most_common(3))
+        print("  Common parent classes:", Counter(parent_classes).most_common(3))
+        print("  Common headings:", Counter(headings).most_common(3))
+        print("  Example HTML snippet:", group[0].get("html", "")[:200].replace("\n", " ") if group else "")
 
 def auto_label_header(header: str, context: dict = None):
     labels = []
@@ -322,5 +363,6 @@ def main():
     retrain_sentence_transformer(confirmed_structures)
     context_library = load_context_library()
     retrain_spacy_ner_advanced(confirmed_structures, context_library)
+    cluster_container_patterns()
 if __name__ == "__main__":
     main()

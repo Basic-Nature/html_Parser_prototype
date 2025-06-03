@@ -1039,26 +1039,26 @@ class ContextCoordinator:
         # --- 1. Learning mode: check log/DB for confirmed button ---
         if learning_mode:
             learned_btn = self._get_confirmed_button_from_log(contest_title, keywords, context)
-            # PATCH: Only use learned_btn if it can be matched to a DOM element
             if learned_btn and learned_btn.get("selector") not in self.clicked_button_selectors:
-                # Try to find the corresponding DOM element
                 selector_html = learned_btn.get("selector", "")
                 dom_candidates = []
-                BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
+                # PATCH: Use a broad selector for all clickable elements
+                BUTTON_SELECTORS = (
+                    "button, a[href], [role='button'], input[type='button'], input[type='submit'], "
+                    "[tabindex]:not([tabindex='-1'])"
+                )
                 button_features = page.locator(BUTTON_SELECTORS)
                 for i in range(button_features.count()):
                     btn = button_features.nth(i)
                     try:
                         btn_html = btn.evaluate("el => el.outerHTML")
                         if btn_html == selector_html:
-                            # Found the DOM element for the learned button
                             learned_btn["element_handle"] = btn
                             learned_btn["is_visible"] = btn.is_visible()
                             learned_btn["is_clickable"] = btn.is_enabled()
                             break
                     except Exception:
                         continue
-                # Only proceed if element_handle is found and clickable
                 if learned_btn.get("element_handle") and learned_btn.get("is_visible") and learned_btn.get("is_clickable"):
                     rprint(f"[green][LEARNING] Auto-applying learned button: {learned_btn['label']}[/green]")
                     try:
@@ -1082,12 +1082,20 @@ class ContextCoordinator:
 
         # --- 3. Gather live candidates from DOM ---
         dom_candidates = []
-        BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
+        # PATCH: Use a broad selector for all clickable elements
+        BUTTON_SELECTORS = (
+            "button, a[href], [role='button'], input[type='button'], input[type='submit'], "
+            "[tabindex]:not([tabindex='-1'])"
+        )
         button_features = page.locator(BUTTON_SELECTORS)
 
         def scan_btn(btn, i):
             try:
+                # PATCH: Robust label extraction
                 label = btn.inner_text() or ""
+                if not label:
+                    # Try aria-label or value attribute
+                    label = btn.get_attribute("aria-label") or btn.get_attribute("value") or ""
                 class_name = btn.get_attribute("class") or ""
                 role = btn.get_attribute("role") or ""
                 tag = btn.evaluate("el => el.tagName").lower()
@@ -1095,7 +1103,7 @@ class ContextCoordinator:
                 is_enabled = btn.is_enabled()
                 selector = btn.evaluate("el => el.outerHTML") if btn else ""
                 candidate = {
-                    "label": label,
+                    "label": label.strip(),
                     "class": class_name,
                     "role": role,
                     "tag": tag,
@@ -1125,7 +1133,6 @@ class ContextCoordinator:
                     if cand["combined_score"] >= threshold and cand.get("is_visible") and cand.get("is_clickable"):
                         if cand["label"] in excluded_labels:
                             continue
-                        # Confirm with user/callback
                         confirmed = True
                         if confirm_button_callback:
                             confirmed = confirm_button_callback(cand)
@@ -1134,11 +1141,10 @@ class ContextCoordinator:
                             self._log_button_memory(cand, contest_title, f"confirmed_pass_{cand['combined_score']:.2f}")
                             if learning_mode:
                                 self._log_confirmed_button_for_learning(cand, contest_title, context)
-                            self.clicked_button_selectors.add(cand.get("selector"))  # <-- Mark as clicked
-                            # PATCH: Wait for page update after click
+                            self.clicked_button_selectors.add(cand.get("selector"))
                             try:
                                 cand["element_handle"].click()
-                                page.wait_for_timeout(1500)  # Wait 1.5 seconds for page to update
+                                page.wait_for_timeout(1500)
                             except Exception:
                                 pass
                             return cand, idx
@@ -1146,11 +1152,10 @@ class ContextCoordinator:
                             excluded_labels.add(cand["label"])
                             rprint(f"[yellow][Coordinator] Button '{cand['label']}' rejected, retrying...[/yellow]")
                             found = True
-                            break  # Try next candidate
+                            break
                 if found:
                     break
             else:
-                # No more candidates to try
                 break
 
         # --- 6. Feedback UI: Prompt user for manual correction ---

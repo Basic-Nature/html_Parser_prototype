@@ -322,6 +322,8 @@ def scan_html_for_context(target_url, page, debug=False, context_cache=None) -> 
     Advanced HTML scanner with ML-driven DOM pattern clustering, active learning, dynamic tagging,
     confidence-driven processing, and persistent knowledge base.
     """
+    if rejected_downloads is None:
+        rejected_downloads = set()
     # --- 1. Caching ---
     page_hash = get_page_hash(page)
     if context_cache is not None and page_hash in context_cache:
@@ -382,18 +384,21 @@ def scan_html_for_context(target_url, page, debug=False, context_cache=None) -> 
                 "embedding": [],  # Could add file content embedding if downloaded
             })
 
-        if supported_links:
-            available_files = [f"{os.path.basename(link['href'])} ({link['format']})" for link in supported_links]
+        # --- Filter out rejected files ---
+        new_links = [link for link in supported_links if link["href"] not in rejected_downloads]
+
+        if new_links:
+            available_files = [f"{os.path.basename(link['href'])} ({link['format']})" for link in new_links]
             rprint(f"[cyan]Downloadable file(s) found: {', '.join(available_files)}.[/cyan]")
             rprint("[magenta]Would you like to download one now? (y/n) (type 'cancel' to abort)[/magenta]")
             user_input = prompt_user_input("> ")
             if user_input and user_input.strip().lower().startswith("y"):
-                if len(supported_links) > 1:
+                if len(new_links) > 1:
                     rprint("[bold cyan]Which format do you want to download?[/bold cyan] " + ", ".join(available_files))
                     chosen_fmt = prompt_user_input("> ").strip().lower()
-                    chosen_link = next((l for l in supported_links if l["format"].lower() == chosen_fmt.lower()), None)
+                    chosen_link = next((l for l in new_links if l["format"].lower() == chosen_fmt.lower()), None)
                 else:
-                    chosen_link = supported_links[0]
+                    chosen_link = new_links[0]
                 if chosen_link:
                     from ..html_election_parser import mark_url_processed
                     local_file = download_file(page.url, chosen_link["href"])
@@ -408,9 +413,13 @@ def scan_html_for_context(target_url, page, debug=False, context_cache=None) -> 
                             else:
                                 mark_url_processed(target_url, status="fail")
                             return context_result
+                    pass
                 if not chosen_link:
                     rprint(f"[red]No download link found for format: {chosen_fmt}[/red]")
             else:
+                # User rejected all new files, add to rejected_downloads
+                for link in new_links:
+                    rejected_downloads.add(link["href"])
                 context_result["metadata"]["download_links"] = [
                     {"format": link["format"], "url": link["href"]} for link in supported_links
                 ]
@@ -506,6 +515,7 @@ def scan_html_for_context(target_url, page, debug=False, context_cache=None) -> 
         rprint(f"[SCAN ERROR] HTML parsing failed: {e}")
         logger.error(f"[SCAN ERROR] HTML parsing failed: {e}")
         context_result["error"] = f"[SCAN ERROR] HTML parsing failed: {e}"
+        pass
 
     logger.debug(f"Available formats detected: {context_result['available_formats']}")
     if context_cache is not None:

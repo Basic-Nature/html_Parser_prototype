@@ -4,51 +4,46 @@ tags:
 - sentence-similarity
 - feature-extraction
 - generated_from_trainer
-- dataset_size:85
+- dataset_size:171
 - loss:CosineSimilarityLoss
 base_model: sentence-transformers/all-MiniLM-L6-v2
 widget:
 - source_sentence: ''
   sentences:
-  - WOR Chrissy Knapp (Working Families) - Early Voting
-  - Write (Other) - Election Day
-  - Write-in - Total
-- source_sentence: ''
-  sentences:
-  - '%reported'
-  - Orangetown (Other) - Mail
   - Precinct (Other) - Total
+  - Chrissy Knapp (Working Families) - Absentee
+  - Write (Other) - Total
 - source_sentence: ''
   sentences:
-  - Grand Total (Grand Total) - Early Voting
-  - Orangetown (Other) - Absentee
-  - DEM Chrissy Knapp (Democratic) - Early Voting
+  - DEM Chrissy Knapp (Democratic) - Absentee
+  - Percent Reported (Other) - Total
+  - Election Day (Other) - Early Voting
 - source_sentence: ''
   sentences:
-  - Districts
+  - Chrissy Knapp (Working Families) - Total
+  - Working Families (Working Families) - Mail
+  - Fully Reported
+- source_sentence: ''
+  sentences:
+  - Precinct (Other) - Early Voting
+  - REP Daniel W. Sullivan (Republican) - Mail
+  - Daniel W. Sullivan (Conservative) - Total
+- source_sentence: ''
+  sentences:
+  - Orangetown (Other) - Mail
+  - Working Families (Working Families) - Absentee
   - Grand Total
-  - CON Daniel W. Sullivan (Conservative) - Election Day
-- source_sentence: ''
-  sentences:
-  - WOR Chrissy Knapp (Working Families) - Election Day
-  - Precinct (Other) - Absentee
-  - WOR Chrissy Knapp (Working Families) - Total
 pipeline_tag: sentence-similarity
 library_name: sentence-transformers
 ---
 
-# Fine-tuned Table Headers SentenceTransformer
-
-## SentenceTransformer: Fine-tuned Table Headers
-
-### SentenceTransformer based on sentence-transformers/all-MiniLM-L6-v2
+# SentenceTransformer based on sentence-transformers/all-MiniLM-L6-v2
 
 This is a [sentence-transformers](https://www.SBERT.net) model finetuned from [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2). It maps sentences & paragraphs to a 384-dimensional dense vector space and can be used for semantic textual similarity, semantic search, paraphrase mining, text classification, clustering, and more.
 
 ## Model Details
 
 ### Model Description
-
 - **Model Type:** Sentence Transformer
 - **Base model:** [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) <!-- at revision c9745ed1d9f207416be6d2e6f8de32d1f16199bf -->
 - **Maximum Sequence Length:** 256 tokens
@@ -66,13 +61,13 @@ This is a [sentence-transformers](https://www.SBERT.net) model finetuned from [s
 
 ### Full Model Architecture
 
-``
+```
 SentenceTransformer(
-  (0): Transformer({'max_seq_length': 256, 'do_lower_case': False}) with Transformer model: BertModel
+  (0): Transformer({'max_seq_length': 256, 'do_lower_case': False}) with Transformer model: BertModel 
   (1): Pooling({'word_embedding_dimension': 384, 'pooling_mode_cls_token': False, 'pooling_mode_mean_tokens': True, 'pooling_mode_max_tokens': False, 'pooling_mode_mean_sqrt_len_tokens': False, 'pooling_mode_weightedmean_tokens': False, 'pooling_mode_lasttoken': False, 'include_prompt': True})
   (2): Normalize()
 )
-``
+```
 
 ## Usage
 
@@ -80,39 +75,31 @@ SentenceTransformer(
 
 First install the Sentence Transformers library:
 
-``bash
+```bash
 pip install -U sentence-transformers
-``
+```
 
 Then you can load this model and run inference.
-
-``python
+```python
 from sentence_transformers import SentenceTransformer
 
-## Download from the 🤗 Hub
-
+# Download from the 🤗 Hub
 model = SentenceTransformer("sentence_transformers_model_id")
-
-## Run inference
-
+# Run inference
 sentences = [
     '',
-    'Precinct (Other) - Absentee',
-    'WOR Chrissy Knapp (Working Families) - Election Day',
+    'Grand Total',
+    'Orangetown (Other) - Mail',
 ]
 embeddings = model.encode(sentences)
 print(embeddings.shape)
+# [3, 384]
 
-## [3, 384]
-
-## Get the similarity scores for the embeddings
-
+# Get the similarity scores for the embeddings
 similarities = model.similarity(embeddings, embeddings)
 print(similarities.shape)
-
-## [3, 3]
-
-``
+# [3, 3]
+```
 
 <!--
 ### Direct Usage (Transformers)
@@ -127,7 +114,7 @@ print(similarities.shape)
 
 You can finetune this model on your own dataset.
 
-**Click to expand for details**
+<details><summary>Click to expand</summary>
 
 </details>
 -->
@@ -156,56 +143,34 @@ You can finetune this model on your own dataset.
 
 #### Unnamed Dataset
 
-- Size: 85 training samples
-- Columns: `sentence_0`, `sentence_1`, and `label`
-- Approximate statistics based on the first 85 samples:
-
-  |         | sentence_0                                                                     | sentence_1                                                                        | label                                                         |
-  |:--------|:-------------------------------------------------------------------------------|:----------------------------------------------------------------------------------|:--------------------------------------------------------------|
-  | type    | string                                                                         | string                                                                            | float                                                         |
-  | details |  |  |  |
-
-  - min: 2 tokens
-  - mean: 2.0 tokens
-  - max: 2 tokens
-  |
-  - min: 3 tokens
-  - mean: 10.27 tokens
-  - max: 15 tokens
-  |
-  - min: 1.0
-  - mean: 1.0
-  - max: 1.0
-  |
-
-- Samples:
-
-  | sentence_0    | sentence_1                                           | label            |
-  |:--------------|:-----------------------------------------------------|:-----------------|
-  | `` `` | ``Precinct (Other) - Total``                | ``1.0`` |
-  | `` `` | ``Percent Reported (Other) - Early Voting`` | ``1.0`` |
-  | `` `` | ``Orangetown (Other) - Early Voting``       | ``1.0`` |
-
-- Loss: [`CosineSimilarityLoss`](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
-
-  ``json
+* Size: 171 training samples
+* Columns: <code>sentence_0</code>, <code>sentence_1</code>, and <code>label</code>
+* Approximate statistics based on the first 171 samples:
+  |         | sentence_0                                                                     | sentence_1                                                                       | label                                                         |
+  |:--------|:-------------------------------------------------------------------------------|:---------------------------------------------------------------------------------|:--------------------------------------------------------------|
+  | type    | string                                                                         | string                                                                           | float                                                         |
+  | details | <ul><li>min: 2 tokens</li><li>mean: 2.0 tokens</li><li>max: 2 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 9.92 tokens</li><li>max: 15 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
+* Samples:
+  | sentence_0    | sentence_1                                         | label            |
+  |:--------------|:---------------------------------------------------|:-----------------|
+  | <code></code> | <code>Total Votes (Other) - Absentee</code>        | <code>1.0</code> |
+  | <code></code> | <code>%reported</code>                             | <code>1.0</code> |
+  | <code></code> | <code>Chrissy Knapp (Democratic) - Absentee</code> | <code>1.0</code> |
+* Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
+  ```json
   {
       "loss_fct": "torch.nn.modules.loss.MSELoss"
   }
-  ``
+  ```
 
 ### Training Hyperparameters
-
 #### Non-Default Hyperparameters
 
 - `num_train_epochs`: 1
 - `multi_dataset_batch_sampler`: round_robin
 
 #### All Hyperparameters
-
-``
-
-#### All Hyperparameters (Click to expand)
+<details><summary>Click to expand</summary>
 
 - `overwrite_output_dir`: False
 - `do_predict`: False
@@ -299,7 +264,7 @@ You can finetune this model on your own dataset.
 - `fp16_backend`: auto
 - `push_to_hub_model_id`: None
 - `push_to_hub_organization`: None
-- `mp_parameters`:
+- `mp_parameters`: 
 - `auto_find_batch_size`: False
 - `full_determinism`: False
 - `torchdynamo`: None
@@ -321,8 +286,9 @@ You can finetune this model on your own dataset.
 - `batch_sampler`: batch_sampler
 - `multi_dataset_batch_sampler`: round_robin
 
-### Framework Versions
+</details>
 
+### Framework Versions
 - Python: 3.11.4
 - Sentence Transformers: 4.1.0
 - Transformers: 4.52.3
@@ -336,8 +302,7 @@ You can finetune this model on your own dataset.
 ### BibTeX
 
 #### Sentence Transformers
-
-``bibtex
+```bibtex
 @inproceedings{reimers-2019-sentence-bert,
     title = "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks",
     author = "Reimers, Nils and Gurevych, Iryna",
@@ -347,7 +312,7 @@ You can finetune this model on your own dataset.
     publisher = "Association for Computational Linguistics",
     url = "https://arxiv.org/abs/1908.10084",
 }
-``
+```
 
 <!--
 ## Glossary
