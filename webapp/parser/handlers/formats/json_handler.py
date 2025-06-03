@@ -4,8 +4,9 @@ from ...state_router import get_handler
 from ...utils.logger_instance import logger
 from ...utils.shared_logger import rprint
 from ...utils.output_utils import get_output_path, format_timestamp
-from ...utils.table_builder import rescan_and_verify, build_dynamic_table, extract_table_data
+from ...utils.table_builder import build_dynamic_table, extract_table_data
 from collections import defaultdict
+from ...utils.dynamic_table_extractor import rescan_and_verify
 
 def detect_json_files(input_folder="input"):
     """Return a list of JSON files in the input folder, sorted by modified time (newest first)."""

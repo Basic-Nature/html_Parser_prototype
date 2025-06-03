@@ -4,35 +4,35 @@ tags:
 - sentence-similarity
 - feature-extraction
 - generated_from_trainer
-- dataset_size:174
+- dataset_size:231
 - loss:CosineSimilarityLoss
 base_model: sentence-transformers/all-MiniLM-L6-v2
 widget:
 - source_sentence: ''
   sentences:
-  - Percent Reported (Other) - Election Day
-  - Working Families (Working Families) - Mail
-  - Daniel W. Sullivan (Republican) - Mail
-- source_sentence: ''
-  sentences:
-  - Write-in - Total
-  - Percent Reported
-  - Chrissy Knapp (Democratic) - Early Voting
-- source_sentence: ''
-  sentences:
-  - WOR Chrissy Knapp (Working Families) - Absentee
-  - Write (Other) - Absentee
-  - Grand Total
-- source_sentence: ''
-  sentences:
-  - CON Daniel W. Sullivan (Conservative) - Mail
+  - Write-in - Absentee
   - Orangetown (Other) - Absentee
+  - Working Families (Working Families) - Total
+- source_sentence: ''
+  sentences:
+  - '%reported (Other) - Total'
+  - Chrissy Knapp (Democratic) - Mail
   - DEM Chrissy Knapp (Democratic) - Absentee
 - source_sentence: ''
   sentences:
-  - Grand Total (Grand Total) - Total
-  - Write (Other) - Election Day
-  - WOR Chrissy Knapp (Working Families) - Total
+  - REP Daniel W. Sullivan (Republican) - Election Day
+  - Grand Total (Grand Total) - Election Day
+  - Percent Reported (Other) - Early Voting
+- source_sentence: ''
+  sentences:
+  - Precinct
+  - Chrissy Knapp (Working Families) - Election Day
+  - Candidate (Other) - Total
+- source_sentence: ''
+  sentences:
+  - Daniel W. Sullivan (Republican) - Early Voting
+  - WOR Chrissy Knapp (Working Families) - Early Voting
+  - Orangetown (Other) - Election Day
 pipeline_tag: sentence-similarity
 library_name: sentence-transformers
 ---
@@ -88,8 +88,8 @@ model = SentenceTransformer("sentence_transformers_model_id")
 # Run inference
 sentences = [
     '',
-    'WOR Chrissy Knapp (Working Families) - Total',
-    'Grand Total (Grand Total) - Total',
+    'WOR Chrissy Knapp (Working Families) - Early Voting',
+    'Orangetown (Other) - Election Day',
 ]
 embeddings = model.encode(sentences)
 print(embeddings.shape)
@@ -143,19 +143,19 @@ You can finetune this model on your own dataset.
 
 #### Unnamed Dataset
 
-* Size: 174 training samples
+* Size: 231 training samples
 * Columns: <code>sentence_0</code>, <code>sentence_1</code>, and <code>label</code>
-* Approximate statistics based on the first 174 samples:
-  |         | sentence_0                                                                     | sentence_1                                                                       | label                                                         |
-  |:--------|:-------------------------------------------------------------------------------|:---------------------------------------------------------------------------------|:--------------------------------------------------------------|
-  | type    | string                                                                         | string                                                                           | float                                                         |
-  | details | <ul><li>min: 2 tokens</li><li>mean: 2.0 tokens</li><li>max: 2 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 9.82 tokens</li><li>max: 15 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
+* Approximate statistics based on the first 231 samples:
+  |         | sentence_0                                                                     | sentence_1                                                                      | label                                                         |
+  |:--------|:-------------------------------------------------------------------------------|:--------------------------------------------------------------------------------|:--------------------------------------------------------------|
+  | type    | string                                                                         | string                                                                          | float                                                         |
+  | details | <ul><li>min: 2 tokens</li><li>mean: 3.1 tokens</li><li>max: 9 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 9.9 tokens</li><li>max: 15 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
 * Samples:
-  | sentence_0    | sentence_1                                               | label            |
-  |:--------------|:---------------------------------------------------------|:-----------------|
-  | <code></code> | <code>REP Daniel W. Sullivan (Republican) - Total</code> | <code>1.0</code> |
-  | <code></code> | <code>DEM Chrissy Knapp (Democratic) - Absentee</code>   | <code>1.0</code> |
-  | <code></code> | <code>Write-in - Mail</code>                             | <code>1.0</code> |
+  | sentence_0                                         | sentence_1                                                   | label            |
+  |:---------------------------------------------------|:-------------------------------------------------------------|:-----------------|
+  | <code></code>                                      | <code>Write-in - Mail</code>                                 | <code>1.0</code> |
+  | <code>Orangetown Town Council<br>Vote for 1</code> | <code>Write-in - Mail</code>                                 | <code>1.0</code> |
+  | <code>Unknown Contest</code>                       | <code>Chrissy Knapp (Working Families) - Early Voting</code> | <code>1.0</code> |
 * Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
   ```json
   {

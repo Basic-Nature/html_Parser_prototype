@@ -13,7 +13,8 @@ from ...utils.shared_logger import rprint
 from ...state_router import get_handler
 from ...utils.output_utils import finalize_election_output
 from ...utils.logger_instance import logger
-from ...utils.table_builder import rescan_and_verify, build_dynamic_table, extract_table_data
+from ...utils.table_builder import build_dynamic_table, extract_table_data
+from ...utils.dynamic_table_extractor import rescan_and_verify
 
 try:
     import fitz  # PyMuPDF

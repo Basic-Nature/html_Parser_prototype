@@ -4,26 +4,23 @@
 # Context-integrated version: uses ContextCoordinator for config
 # ===================================================================
 
-import re
-import os
-import json
 from typing import List, Dict, Tuple, Any, Optional
 from .logger_instance import logger
-from .shared_logger import rprint
-from .shared_logic import normalize_text
+
 from typing import TYPE_CHECKING
-from .dynamic_table_extractor import (
+from .table_core import (
+    robust_table_extraction,
     extract_table_data,
-    extract_rows_and_headers_from_dom,
-    fallback_nlp_candidate_vote_scan,
-    extract_with_patterns,
-    guess_headers_from_row,
     harmonize_headers_and_data,
+    guess_headers_from_row,
     detect_table_structure,
     handle_candidate_major,
     handle_precinct_major,
-    handle_ambiguous,
-    merge_table_data
+    extract_rows_and_headers_from_dom,
+    fallback_nlp_candidate_vote_scan,
+    extract_with_patterns,
+    handle_ambiguous
+    
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -156,198 +153,7 @@ def build_dynamic_table(
         return handle_ambiguous(headers, data, coordinator, context)
 
 
-def robust_table_extraction(page, extraction_context=None, existing_headers=None, existing_data=None):
-    """
-    Attempts all extraction strategies in order, merging partial results.
-    Uses extraction_context for all steps and logs context/anomalies.
-    DOM pattern extraction is prioritized.
 
-    - If existing_headers/data are provided and non-empty, merges new results into them.
-    - Never overwrites non-empty headers/data unless extraction fails.
-    - Always harmonizes headers after merging.
-    """
-    import types
-
-    def safe_json(obj):
-        """Recursively remove non-serializable objects (like functions, classes, custom objects) from dicts/lists."""
-        import types
-        if isinstance(obj, dict):
-            result = {}
-            for k, v in obj.items():
-                if k in ("coordinator", "ContextCoordinator"):
-                    continue
-                if isinstance(v, (types.FunctionType, types.ModuleType)) or hasattr(v, "__dict__"):
-                    continue
-                try:
-                    json.dumps(v)
-                    result[k] = safe_json(v)
-                except Exception:
-                    continue
-            return result
-        elif isinstance(obj, list):
-            return [safe_json(v) for v in obj if not hasattr(v, "__dict__")]
-        else:
-            return obj
-
-    headers_list = []
-    data_list = []
-    extraction_logs = []
-
-    # If existing headers/data are provided and non-empty, add them first
-    if existing_headers and existing_data and len(existing_headers) > 0 and len(existing_data) > 0:
-        headers_list.append(existing_headers)
-        data_list.append(existing_data)
-
-    def log_page_html(page, context, prefix=""):
-        """Save the current page HTML for debugging extraction issues."""
-        try:
-            html = page.content()
-            contest_title = context.get("selected_race") or context.get("contest_title") or "unknown"
-            safe_title = re.sub(r'[^a-zA-Z0-9_\-]', '_', contest_title)[:40]
-            fname = f"debug_{prefix}{safe_title}.html"
-            fpath = os.path.join(BASE_DIR, "log", fname)
-            with open(fpath, "w", encoding="utf-8") as f:
-                f.write(html)
-            logger.info(f"[TABLE BUILDER] Saved page HTML to {fpath}")
-        except Exception as e:
-            logger.error(f"[TABLE BUILDER] Could not save page HTML: {e}")
-
-    # 1. Pattern-based extraction (approved DOM patterns, prioritized)
-    try:
-        pattern_rows = extract_with_patterns(page, extraction_context)
-        if pattern_rows:
-            headers = guess_headers_from_row(pattern_rows[0][1])
-            data = []
-            for heading, row, pat in pattern_rows:
-                cells = row.locator("> *")
-                row_data = {}
-                for idx in range(cells.count()):
-                    row_data[headers[idx] if idx < len(headers) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
-                if row_data:
-                    data.append(row_data)
-            extraction_logs.append({
-                "method": "pattern",
-                "headers": headers,
-                "rows": len(data),
-                "columns": len(headers),
-                "success": bool(headers and data),
-                "context": extraction_context
-            })
-            if headers == ["Label", "Votes"] and data:
-                possible_headers = list(data[0].values())
-                if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
-                    headers = possible_headers
-                    data = data[1:]
-    except Exception as e:
-        logger.error(f"[TABLE BUILDER] Pattern extraction failed: {e}")
-        extraction_logs.append({
-            "method": "pattern",
-            "error": str(e),
-            "success": False,
-            "context": extraction_context
-        })
-
-    # 2. Standard HTML table extraction
-    try:
-        tables = page.locator("table")
-        for i in range(tables.count()):
-            headers, data = extract_table_data(tables.nth(i))
-            extraction_logs.append({
-                "method": "table",
-                "headers": headers,
-                "rows": len(data),
-                "columns": len(headers),
-                "success": bool(headers and data),
-                "context": extraction_context
-            })
-            if headers == ["Label", "Votes"] and data:
-                possible_headers = list(data[0].values())
-                if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
-                    headers = possible_headers
-                    data = data[1:]
-    except Exception as e:
-        logger.error(f"[TABLE BUILDER] Table extraction failed: {e}")
-        extraction_logs.append({
-            "method": "table",
-            "error": str(e),
-            "success": False,
-            "context": extraction_context
-        })
-
-    # 3. Repeated DOM structures (divs, lists, etc.)
-    try:
-        headers, data = extract_rows_and_headers_from_dom(page)
-        logger.info(f"[TABLE BUILDER] DOM structure headers: {headers}")
-        logger.info(f"[TABLE BUILDER] First 3 rows: {data[:3]}")
-        extraction_logs.append({
-            "method": "repeated_dom",
-            "headers": headers,
-            "rows": len(data),
-            "columns": len(headers),
-            "success": bool(headers and data),
-            "context": extraction_context
-        })
-        if headers == ["Label", "Votes"] and data:
-            possible_headers = list(data[0].values())
-            if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
-                headers = possible_headers
-                data = data[1:]
-    except Exception as e:
-        logger.error(f"[TABLE BUILDER] Repeated DOM extraction failed: {e}")
-        extraction_logs.append({
-            "method": "repeated_dom",
-            "error": str(e),
-            "success": False,
-            "context": extraction_context
-        })
-
-    # 4. NLP/keyword-based fallback extraction
-    try:
-        headers, data = fallback_nlp_candidate_vote_scan(page)
-        # PATCH: If first data row looks like headers, use it
-        if headers == ["Label", "Votes"] and data:
-            possible_headers = list(data[0].values())
-            if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
-                headers = possible_headers
-                data = data[1:]
-        extraction_logs.append({
-            "method": "nlp_fallback",
-            "headers": headers,
-            "rows": len(data),
-            "columns": len(headers),
-            "success": bool(headers and data),
-            "context": extraction_context
-        })
-        if headers and data:
-            headers_list.append(headers)
-            data_list.append(data)
-            logger.warning("[TABLE BUILDER] Fallback NLP extraction used. Only candidate/vote pairs extracted.")
-    except Exception as e:
-        logger.error(f"[TABLE BUILDER] NLP fallback extraction failed: {e}")
-        extraction_logs.append({
-            "method": "nlp_fallback",
-            "error": str(e),
-            "success": False,
-            "context": extraction_context
-        })
-
-    # --- Safe JSON logging ---
-    logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(safe_json(extraction_logs), indent=2)}")
-
-    # Merge all results (including any existing headers/data)
-    if headers_list and data_list:
-        merged_headers, merged_data = merge_table_data(headers_list, data_list)
-        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
-        logger.info(f"[TABLE BUILDER] Merged extraction: {len(merged_data)} rows, {len(merged_headers)} columns.")
-        return merged_headers, merged_data
-
-    logger.warning("[TABLE BUILDER] No extraction method succeeded.")
-    return [], []
-
-
-def is_likely_header(row):
-    known_fields = {"candidate", "votes", "percent", "party", "district"}
-    return sum(1 for cell in row if cell.lower() in known_fields) >= 2
 
 EXTRACTION_ATTEMPTS = [
     # 1. Standard HTML table extraction
