@@ -37,13 +37,18 @@ pipeline_tag: sentence-similarity
 library_name: sentence-transformers
 ---
 
-# SentenceTransformer based on sentence-transformers/all-MiniLM-L6-v2
+# Fine-tuned Table Headers SentenceTransformer
+
+## SentenceTransformer: Fine-tuned Table Headers
+
+### SentenceTransformer based on sentence-transformers/all-MiniLM-L6-v2
 
 This is a [sentence-transformers](https://www.SBERT.net) model finetuned from [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2). It maps sentences & paragraphs to a 384-dimensional dense vector space and can be used for semantic textual similarity, semantic search, paraphrase mining, text classification, clustering, and more.
 
 ## Model Details
 
 ### Model Description
+
 - **Model Type:** Sentence Transformer
 - **Base model:** [sentence-transformers/all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) <!-- at revision c9745ed1d9f207416be6d2e6f8de32d1f16199bf -->
 - **Maximum Sequence Length:** 256 tokens
@@ -61,13 +66,13 @@ This is a [sentence-transformers](https://www.SBERT.net) model finetuned from [s
 
 ### Full Model Architecture
 
-```
+``
 SentenceTransformer(
-  (0): Transformer({'max_seq_length': 256, 'do_lower_case': False}) with Transformer model: BertModel 
+  (0): Transformer({'max_seq_length': 256, 'do_lower_case': False}) with Transformer model: BertModel
   (1): Pooling({'word_embedding_dimension': 384, 'pooling_mode_cls_token': False, 'pooling_mode_mean_tokens': True, 'pooling_mode_max_tokens': False, 'pooling_mode_mean_sqrt_len_tokens': False, 'pooling_mode_weightedmean_tokens': False, 'pooling_mode_lasttoken': False, 'include_prompt': True})
   (2): Normalize()
 )
-```
+``
 
 ## Usage
 
@@ -75,17 +80,21 @@ SentenceTransformer(
 
 First install the Sentence Transformers library:
 
-```bash
+``bash
 pip install -U sentence-transformers
-```
+``
 
 Then you can load this model and run inference.
-```python
+
+``python
 from sentence_transformers import SentenceTransformer
 
-# Download from the 🤗 Hub
+## Download from the 🤗 Hub
+
 model = SentenceTransformer("sentence_transformers_model_id")
-# Run inference
+
+## Run inference
+
 sentences = [
     '',
     'Precinct (Other) - Absentee',
@@ -93,13 +102,17 @@ sentences = [
 ]
 embeddings = model.encode(sentences)
 print(embeddings.shape)
-# [3, 384]
 
-# Get the similarity scores for the embeddings
+## [3, 384]
+
+## Get the similarity scores for the embeddings
+
 similarities = model.similarity(embeddings, embeddings)
 print(similarities.shape)
-# [3, 3]
-```
+
+## [3, 3]
+
+``
 
 <!--
 ### Direct Usage (Transformers)
@@ -114,7 +127,7 @@ print(similarities.shape)
 
 You can finetune this model on your own dataset.
 
-<details><summary>Click to expand</summary>
+**Click to expand for details**
 
 </details>
 -->
@@ -143,34 +156,56 @@ You can finetune this model on your own dataset.
 
 #### Unnamed Dataset
 
-* Size: 85 training samples
-* Columns: <code>sentence_0</code>, <code>sentence_1</code>, and <code>label</code>
-* Approximate statistics based on the first 85 samples:
+- Size: 85 training samples
+- Columns: `sentence_0`, `sentence_1`, and `label`
+- Approximate statistics based on the first 85 samples:
+
   |         | sentence_0                                                                     | sentence_1                                                                        | label                                                         |
   |:--------|:-------------------------------------------------------------------------------|:----------------------------------------------------------------------------------|:--------------------------------------------------------------|
   | type    | string                                                                         | string                                                                            | float                                                         |
-  | details | <ul><li>min: 2 tokens</li><li>mean: 2.0 tokens</li><li>max: 2 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 10.27 tokens</li><li>max: 15 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
-* Samples:
+  | details |  |  |  |
+
+  - min: 2 tokens
+  - mean: 2.0 tokens
+  - max: 2 tokens
+  |
+  - min: 3 tokens
+  - mean: 10.27 tokens
+  - max: 15 tokens
+  |
+  - min: 1.0
+  - mean: 1.0
+  - max: 1.0
+  |
+
+- Samples:
+
   | sentence_0    | sentence_1                                           | label            |
   |:--------------|:-----------------------------------------------------|:-----------------|
-  | <code></code> | <code>Precinct (Other) - Total</code>                | <code>1.0</code> |
-  | <code></code> | <code>Percent Reported (Other) - Early Voting</code> | <code>1.0</code> |
-  | <code></code> | <code>Orangetown (Other) - Early Voting</code>       | <code>1.0</code> |
-* Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
-  ```json
+  | `` `` | ``Precinct (Other) - Total``                | ``1.0`` |
+  | `` `` | ``Percent Reported (Other) - Early Voting`` | ``1.0`` |
+  | `` `` | ``Orangetown (Other) - Early Voting``       | ``1.0`` |
+
+- Loss: [`CosineSimilarityLoss`](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
+
+  ``json
   {
       "loss_fct": "torch.nn.modules.loss.MSELoss"
   }
-  ```
+  ``
 
 ### Training Hyperparameters
+
 #### Non-Default Hyperparameters
 
 - `num_train_epochs`: 1
 - `multi_dataset_batch_sampler`: round_robin
 
 #### All Hyperparameters
-<details><summary>Click to expand</summary>
+
+``
+
+#### All Hyperparameters (Click to expand)
 
 - `overwrite_output_dir`: False
 - `do_predict`: False
@@ -264,7 +299,7 @@ You can finetune this model on your own dataset.
 - `fp16_backend`: auto
 - `push_to_hub_model_id`: None
 - `push_to_hub_organization`: None
-- `mp_parameters`: 
+- `mp_parameters`:
 - `auto_find_batch_size`: False
 - `full_determinism`: False
 - `torchdynamo`: None
@@ -286,9 +321,8 @@ You can finetune this model on your own dataset.
 - `batch_sampler`: batch_sampler
 - `multi_dataset_batch_sampler`: round_robin
 
-</details>
-
 ### Framework Versions
+
 - Python: 3.11.4
 - Sentence Transformers: 4.1.0
 - Transformers: 4.52.3
@@ -302,7 +336,8 @@ You can finetune this model on your own dataset.
 ### BibTeX
 
 #### Sentence Transformers
-```bibtex
+
+``bibtex
 @inproceedings{reimers-2019-sentence-bert,
     title = "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks",
     author = "Reimers, Nils and Gurevych, Iryna",
@@ -312,7 +347,7 @@ You can finetune this model on your own dataset.
     publisher = "Association for Computational Linguistics",
     url = "https://arxiv.org/abs/1908.10084",
 }
-```
+``
 
 <!--
 ## Glossary
