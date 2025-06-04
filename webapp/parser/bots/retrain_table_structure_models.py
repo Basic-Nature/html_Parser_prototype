@@ -2,13 +2,14 @@ import os
 import sqlite3
 import json
 import re
+import datetime
 from pathlib import Path
 from collections import Counter
 from sentence_transformers import SentenceTransformer, InputExample, losses
 from torch.utils.data import DataLoader
 from ..utils.shared_logic import load_context_library
 from ..Context_Integration.context_organizer import _safe_db_path
-from ..config import CONTEXT_DB_PATH
+from ..config import CONTEXT_DB_PATH, MODEL_DIR
 
 import spacy
 from spacy.training import Example
@@ -328,7 +329,7 @@ def run_manual_correction_bot():
     script_path = os.path.join(os.path.dirname(__file__), "manual_correction_bot.py")
     subprocess.run(["python", script_path, "--fields", "tables", "--feedback", "--enhanced"])
 
-def retrain_sentence_transformer(confirmed_structures, model_save_path="fine_tuned_table_headers"):
+def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
     train_examples = []
     for struct in confirmed_structures:
         contest_title = struct["contest_title"]
@@ -350,6 +351,14 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path="fine_tun
         warmup_steps=10,
         show_progress_bar=True
     )
+
+    # PATCH: Use config/model dir and unique subdir for each run
+    if model_save_path is None:
+        # Use config path if available, else fallback to log/
+        base_dir = MODEL_DIR if 'MODEL_DIR' in globals() else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log"))
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_save_path = os.path.join(base_dir, f"fine_tuned_table_headers_{timestamp}")
+    os.makedirs(model_save_path, exist_ok=True)
     model.save(model_save_path)
     print(f"Fine-tuned model saved to: {model_save_path}")
 
@@ -359,6 +368,23 @@ def main():
 
     confirmed_structures = get_all_confirmed_structures()
     print(f"Found {len(confirmed_structures)} confirmed table structures.")
+
+    # Log user feedback/corrections for ML ---
+    feedback_log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../log/structure_feedback_log.jsonl"))
+    os.makedirs(os.path.dirname(feedback_log_path), exist_ok=True)
+    for struct in confirmed_structures:
+        # Assume struct contains both original and corrected structure info if available
+        old_structure_info = struct.get("original_structure", {})
+        structure_info = struct.get("corrected_structure", {})
+        headers = struct.get("headers", [])
+        data = struct.get("sample_rows", [{}])
+        with open(feedback_log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "original_structure": old_structure_info,
+                "corrected_structure": structure_info,
+                "headers": headers,
+                "sample_row": data[0] if data else {},
+            }) + "\n")
 
     retrain_sentence_transformer(confirmed_structures)
     context_library = load_context_library()

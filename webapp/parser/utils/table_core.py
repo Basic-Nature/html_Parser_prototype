@@ -28,20 +28,26 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
     Extracts headers and data from a Playwright table locator.
     Handles malformed HTML, empty tables, and logs errors.
     """
+    logger.info("[TABLE BUILDER][extract_table_data] Starting table extraction.")
     headers = []
     data = []
     try:
         header_cells = table.locator("thead tr th")
+        logger.info(f"[TABLE BUILDER][extract_table_data] Found {header_cells.count()} header cells in thead.")
         if header_cells.count() == 0:
             first_row = table.locator("tr").first
             header_cells = first_row.locator("th, td")
+            logger.info(f"[TABLE BUILDER][extract_table_data] No thead headers, using first row: {header_cells.count()} cells.")
         for i in range(header_cells.count()):
             text = header_cells.nth(i).inner_text().strip()
             headers.append(text if text else f"Column {i+1}")
+        logger.info(f"[TABLE BUILDER][extract_table_data] Extracted headers: {headers}")
 
         rows = table.locator("tbody tr")
+        logger.info(f"[TABLE BUILDER][extract_table_data] Found {rows.count()} rows in tbody.")
         if rows.count() == 0:
             all_rows = table.locator("tr")
+            logger.info(f"[TABLE BUILDER][extract_table_data] No tbody rows, using all tr: {all_rows.count()} rows.")
             if all_rows.count() > 1:
                 rows = all_rows.nth(1).locator("xpath=following-sibling::tr")
             else:
@@ -50,6 +56,7 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
         for i in range(rows.count()):
             row = {}
             cells = rows.nth(i).locator("td, th")
+            logger.info(f"[TABLE BUILDER][extract_table_data] Row {i}: {cells.count()} cells.")
             if cells.count() == 0:
                 continue
             for j in range(cells.count()):
@@ -59,14 +66,16 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
                     row[f"Extra_{j+1}"] = cells.nth(j).inner_text().strip()
             if any(v for v in row.values()):
                 data.append(row)
+        logger.info(f"[TABLE BUILDER][extract_table_data] Extracted {len(data)} data rows.")
 
         if not headers and data:
             max_cols = max(len(row) for row in data)
             headers = [f"Column {i+1}" for i in range(max_cols)]
+            logger.warning("[TABLE BUILDER][extract_table_data] No headers but there is data. Generating generic headers.")
             new_data = []
             for row in data:
                 if len(row) != len(headers):
-                    logger.warning(f"[TABLE BUILDER] No headers but there is data Row length mismatch: {row}")
+                    logger.warning(f"[TABLE BUILDER][extract_table_data] Row length mismatch: {row}")
                 new_row = {}
                 for idx, h in enumerate(headers):
                     new_row[h] = list(row.values())[idx] if idx < len(row) else ""
@@ -74,11 +83,11 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
             data = new_data
 
         if not headers and not data:
-            logger.warning("[TABLE BUILDER] Empty table encountered.")
+            logger.warning("[TABLE BUILDER][extract_table_data] Empty table encountered.")
     except Exception as e:
-        logger.error(f"[TABLE BUILDER] Malformed HTML or extraction error: {e}")
+        logger.error(f"[TABLE BUILDER][extract_table_data] Malformed HTML or extraction error: {e}")
         return [], []
-    logger.info(f"[TABLE BUILDER] Extracted final table: {len(data)} rows, {len(headers)} columns (learned structure).")
+    logger.info(f"[TABLE BUILDER][extract_table_data] Finished: {len(data)} rows, {len(headers)} columns.")
     return headers, data
 
 def guess_headers_from_row(row, known_keywords=None):
@@ -390,7 +399,12 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         merged_headers, merged_data = merge_table_data(headers_list, data_list)
         merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
         logger.info(f"[TABLE BUILDER] Merged extraction: {len(merged_data)} rows, {len(merged_headers)} columns.")
-        return merged_headers, merged_data
+
+        # PATCH: Add progressive verification and interactive feedback loop
+        headers, data, structure_info = progressive_table_verification(merged_headers, merged_data, extraction_context.get("coordinator"), extraction_context)
+        if not structure_info.get("verified"):
+            headers, data, structure_info = interactive_feedback_loop(headers, data, structure_info)
+        return headers, data
 
     logger.warning("[TABLE BUILDER] No extraction method succeeded.")
     return [], []
@@ -400,7 +414,7 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
     Ensures all rows have the same headers, filling missing fields with empty string.
     Deduplicates headers and prunes empty/zero columns.
     """
-    all_headers = list(headers)
+    all_headers = [h for h in headers if h is not None]
     # Only expand headers from the input headers; do not expand from row keys here.
     # Let prune_empty_or_zero_columns and prioritize_real_data_columns handle column filtering and ordering.
     # Deduplicate headers
@@ -417,115 +431,6 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
     # Prioritize columns with real data
     prioritized_headers, harmonized = prioritize_real_data_columns(pruned_headers, harmonized)
     return prioritized_headers, harmonized
-
-def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2, coordinator=None):
-    """
-    Attempts to extract tabular data from repeated DOM structures (divs, etc.).
-    Returns headers, data.
-    Uses advanced heuristics for ambiguous, malformed, or complex cases.
-    """
-    repeated_rows = extract_repeated_dom_structures(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
-    if not repeated_rows:
-        return [], []
-
-    # --- Heuristic header detection block ---
-    headers = None
-    header_row_idx = None
-    for idx, (heading, row) in enumerate(repeated_rows[:10]):
-        cells = row.locator("> *")
-        cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
-        # Heuristic: header row if at least 2 known fields or all non-numeric
-        if is_likely_header(cell_texts) or all(not re.match(r"^\d+([,.]\d+)?$", c) for c in cell_texts):
-            headers = cell_texts
-            header_row_idx = idx
-            break
-    if headers is not None:
-        repeated_rows = repeated_rows[header_row_idx + 1 :]
-    else:
-        headers = guess_headers_from_row(repeated_rows[0][1])
-
-    # --- Merge split header rows (e.g., two header rows) ---
-    if len(repeated_rows) > 1:
-        first_row_cells = [repeated_rows[0][1].locator("> *").nth(i).inner_text().strip() for i in range(repeated_rows[0][1].locator("> *").count())]
-        if all(c.isalpha() or c == "" for c in first_row_cells) and any(c for c in first_row_cells):
-            headers = [" ".join(filter(None, [h, f])) for h, f in zip(headers, first_row_cells)]
-            repeated_rows = repeated_rows[1:]
-
-    # --- Advanced heuristics start here ---
-    location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "ed", "division", "subdistrict", "polling place"}
-    candidate_keywords = {"candidate", "name", "nominee"}
-    vote_keywords = {"votes", "total", "sum"}
-    if coordinator and hasattr(coordinator, "library"):
-        location_keywords.update(set(coordinator.library.get("location_patterns", [])))
-        candidate_keywords.update(set(coordinator.library.get("candidate_patterns", [])))
-        vote_keywords.update(set(coordinator.library.get("vote_patterns", [])))
-
-    norm_headers = [normalize_text(h) for h in headers]
-    location_idx = None
-    candidate_idx = None
-    vote_idx = None
-
-    # Find likely location, candidate, and vote columns
-    for idx, h in enumerate(norm_headers):
-        for kw in location_keywords:
-            if kw in h:
-                location_idx = idx
-                break
-        for kw in candidate_keywords:
-            if kw in h:
-                candidate_idx = idx
-                break
-        for kw in vote_keywords:
-            if kw in h:
-                vote_idx = idx
-                break
-
-    # --- Extra heuristics: all-numeric, all-empty, low-uniqueness columns ---
-    sample_rows = []
-    for heading, row in repeated_rows[:20]:
-        cells = row.locator("> *")
-        cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
-        sample_rows.append(cell_texts)
-    col_stats = []
-    for col in range(len(headers)):
-        values = [r[col] for r in sample_rows if len(r) > col]
-        num_numeric = sum(1 for v in values if re.match(r"^\d+([,.]\d+)?$", v))
-        num_empty = sum(1 for v in values if not v)
-        unique_vals = len(set(values))
-        col_stats.append({
-            "numeric_ratio": num_numeric / len(values) if values else 0,
-            "empty_ratio": num_empty / len(values) if values else 1,
-            "unique_vals": unique_vals,
-            "values": values,
-        })
-
-    # Prefer location column: not all-numeric, not all-empty, high uniqueness
-    likely_loc = None
-    for idx, stat in enumerate(col_stats):
-        if stat["empty_ratio"] < 0.8 and stat["numeric_ratio"] < 0.5 and stat["unique_vals"] > 3:
-            likely_loc = idx
-            break
-    if likely_loc is not None and (location_idx is None or likely_loc != location_idx):
-        logger.info(f"[TABLE BUILDER] Heuristic: inferred location column at {likely_loc} based on uniqueness/numeric ratio.")
-        location_idx = likely_loc
-
-    # --- ADVANCED: Detect "totals" or "footer" rows and remove them ---
-    if sample_rows:
-        last_row = sample_rows[-1]
-        if any(any(kw in normalize_text(str(cell)) for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS)) for cell in last_row):
-            logger.info("[TABLE BUILDER] Removing likely totals/footer row at end of data.")
-            repeated_rows = repeated_rows[:-1]
-            sample_rows = sample_rows[:-1]
-
-    # --- ADVANCED: Remove columns with >90% repeated value (e.g., "Reported", "Yes" everywhere) ---
-    repeated_val_cols = []
-    for idx, stat in enumerate(col_stats):
-        if stat["unique_vals"] == 1 and stat["empty_ratio"] < 0.9:
-            repeated_val_cols.append(idx)
-    if repeated_val_cols:
-        logger.info(f"[TABLE BUILDER] Removing columns with only repeated values: {[headers[i] for i in repeated_val_cols]}")
-        headers = [h for i, h in enumerate(headers) if i not in repeated_val_cols]
-        col_stats = [stat for i, stat in enumerate(col_stats) if i not in repeated_val_cols]
         
 def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2, coordinator=None):
     """
@@ -533,8 +438,11 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     Returns headers, data.
     Uses advanced heuristics for ambiguous, malformed, or complex cases.
     """
+    logger.info("[TABLE BUILDER][extract_rows_and_headers_from_dom] Starting DOM structure extraction.")
     repeated_rows = extract_repeated_dom_structures(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
+    logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Found {len(repeated_rows)} repeated rows.")
     if not repeated_rows:
+        logger.warning("[TABLE BUILDER][extract_rows_and_headers_from_dom] No repeated rows found.")
         return [], []
 
     # --- Heuristic header detection block ---
@@ -543,20 +451,24 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     for idx, (heading, row) in enumerate(repeated_rows[:10]):
         cells = row.locator("> *")
         cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
+        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Checking row {idx} for headers: {cell_texts}")
         # Heuristic: header row if at least 2 known fields or all non-numeric
         if is_likely_header(cell_texts) or all(not re.match(r"^\d+([,.]\d+)?$", c) for c in cell_texts):
             headers = cell_texts
             header_row_idx = idx
+            logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Detected header row at index {idx}: {headers}")
             break
     if headers is not None:
         repeated_rows = repeated_rows[header_row_idx + 1 :]
     else:
         headers = guess_headers_from_row(repeated_rows[0][1])
+        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Guessed headers from first row: {headers}")
 
     # --- Merge split header rows (e.g., two header rows) ---
     if len(repeated_rows) > 1:
         first_row_cells = [repeated_rows[0][1].locator("> *").nth(i).inner_text().strip() for i in range(repeated_rows[0][1].locator("> *").count())]
         if all(c.isalpha() or c == "" for c in first_row_cells) and any(c for c in first_row_cells):
+            logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Merging split header rows: {headers} + {first_row_cells}")
             headers = [" ".join(filter(None, [h, f])) for h, f in zip(headers, first_row_cells)]
             repeated_rows = repeated_rows[1:]
 
@@ -579,14 +491,17 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         for kw in location_keywords:
             if kw in h:
                 location_idx = idx
+                logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Found location column at index {idx}: {headers[idx]}")
                 break
         for kw in candidate_keywords:
             if kw in h:
                 candidate_idx = idx
+                logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Found candidate column at index {idx}: {headers[idx]}")
                 break
         for kw in vote_keywords:
             if kw in h:
                 vote_idx = idx
+                logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Found vote column at index {idx}: {headers[idx]}")
                 break
 
     # --- Extra heuristics: all-numeric, all-empty, low-uniqueness columns ---
@@ -595,6 +510,8 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         cells = row.locator("> *")
         cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
         sample_rows.append(cell_texts)
+    logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Sample rows for stats: {sample_rows[:3]}")
+
     col_stats = []
     for col in range(len(headers)):
         values = [r[col] for r in sample_rows if len(r) > col]
@@ -607,22 +524,23 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
             "unique_vals": unique_vals,
             "values": values,
         })
+    logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Column stats: {col_stats}")
 
     # Prefer location column: not all-numeric, not all-empty, high uniqueness
     likely_loc = None
     for idx, stat in enumerate(col_stats):
         if stat["empty_ratio"] < 0.8 and stat["numeric_ratio"] < 0.5 and stat["unique_vals"] > 3:
             likely_loc = idx
+            logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Heuristic: inferred location column at {likely_loc} based on uniqueness/numeric ratio.")
             break
     if likely_loc is not None and (location_idx is None or likely_loc != location_idx):
-        logger.info(f"[TABLE BUILDER] Heuristic: inferred location column at {likely_loc} based on uniqueness/numeric ratio.")
         location_idx = likely_loc
 
     # --- ADVANCED: Detect "totals" or "footer" rows and remove them ---
     if sample_rows:
         last_row = sample_rows[-1]
         if any(any(kw in normalize_text(str(cell)) for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS)) for cell in last_row):
-            logger.info("[TABLE BUILDER] Removing likely totals/footer row at end of data.")
+            logger.info("[TABLE BUILDER][extract_rows_and_headers_from_dom] Removing likely totals/footer row at end of data.")
             repeated_rows = repeated_rows[:-1]
             sample_rows = sample_rows[:-1]
 
@@ -632,7 +550,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         if stat["unique_vals"] == 1 and stat["empty_ratio"] < 0.9:
             repeated_val_cols.append(idx)
     if repeated_val_cols:
-        logger.info(f"[TABLE BUILDER] Removing columns with only repeated values: {[headers[i] for i in repeated_val_cols]}")
+        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Removing columns with only repeated values: {[headers[i] for i in repeated_val_cols]}")
         headers = [h for i, h in enumerate(headers) if i not in repeated_val_cols]
         col_stats = [stat for i, stat in enumerate(col_stats) if i not in repeated_val_cols]
 
@@ -653,12 +571,12 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     if len(numeric_cols) == len(headers) - 1:
         non_numeric_idx = [i for i in range(len(headers)) if i not in numeric_cols][0]
         if location_idx is None or location_idx != non_numeric_idx:
-            logger.info(f"[TABLE BUILDER] Only one non-numeric column at {non_numeric_idx}, using as location.")
+            logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Only one non-numeric column at {non_numeric_idx}, using as location.")
             location_idx = non_numeric_idx
 
     # --- ADVANCED: If first column is not a location, but another column is, swap them ---
     if location_idx is not None and location_idx != 0:
-        logger.info(f"[TABLE BUILDER] Swapping column {location_idx} ('{headers[location_idx]}') to front as location column.")
+        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Swapping column {location_idx} ('{headers[location_idx]}') to front as location column.")
         headers = [headers[location_idx]] + headers[:location_idx] + headers[location_idx+1:]
         for row in sample_rows:
             if len(row) > location_idx:
@@ -668,18 +586,20 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     # --- ADVANCED: Remove all-empty columns ---
     non_empty_cols = [i for i, stat in enumerate(col_stats) if stat["empty_ratio"] < 1.0]
     if len(non_empty_cols) < len(headers):
-        logger.info(f"[TABLE BUILDER] Removing all-empty columns: {[headers[i] for i in range(len(headers)) if i not in non_empty_cols]}")
+        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Removing all-empty columns: {[headers[i] for i in range(len(headers)) if i not in non_empty_cols]}")
         headers = [headers[i] for i in non_empty_cols]
 
     # --- ADVANCED: If only one row remains, treat as summary, not table ---
     if len(sample_rows) == 1:
-        logger.info("[TABLE BUILDER] Only one row detected, treating as summary row.")
+        logger.info("[TABLE BUILDER][extract_rows_and_headers_from_dom] Only one row detected, treating as summary row.")
         data = [dict(zip(headers, sample_rows[0]))]
+        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Final headers: {headers}")
+        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Final data: {data}")
         return harmonize_headers_and_data(headers, data)
 
     # --- ADVANCED: If header names are all generic (Column 1, Column 2...), try to infer from first data row ---
     if all(re.match(r"Column \d+", h) for h in headers) and sample_rows:
-        logger.info("[TABLE BUILDER] All headers are generic, inferring from first data row.")
+        logger.info("[TABLE BUILDER][extract_rows_and_headers_from_dom] All headers are generic, inferring from first data row.")
         headers = sample_rows[0]
         sample_rows = sample_rows[1:]
 
@@ -702,23 +622,25 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         if row_data and any(v.strip() for v in row_data.values()):
             data.append(row_data)
 
+    logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Extracted {len(data)} rows with headers: {headers}")
+
     # Centralized row filtering
     data = remove_footer_and_summary_rows(data, headers)
     data = remove_outlier_and_empty_rows(data)
 
     # --- ADVANCED: If still ambiguous, log a warning and save HTML for manual inspection ---
     if len(data) < 2:
-        logger.warning("[TABLE BUILDER] Too few rows after advanced heuristics. Saving HTML for manual inspection.")
+        logger.warning("[TABLE BUILDER][extract_rows_and_headers_from_dom] Too few rows after advanced heuristics. Saving HTML for manual inspection.")
         try:
             html = page.content()
             fpath = get_safe_log_path("debug_dom_extract_fallback.html")
             with open(fpath, "w", encoding="utf-8") as f:
                 f.write(html)
-            logger.info(f"[TABLE BUILDER] Saved fallback HTML to {fpath}")
+            logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Saved fallback HTML to {fpath}")
         except Exception as e:
-            logger.error(f"[TABLE BUILDER] Could not save fallback HTML: {e}")
+            logger.error(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Could not save fallback HTML: {e}")
 
-    logger.info(f"[TABLE BUILDER] Extracted rows and headers from DOM (location-first): {len(data)} rows, {len(headers)} columns.")
+    logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Finished: {len(data)} rows, {len(headers)} columns.")
     return harmonize_headers_and_data(headers, data)
 
 def fallback_nlp_candidate_vote_scan(page):
@@ -1258,4 +1180,114 @@ def handle_ambiguous(headers, data, coordinator, context):
         return cand_headers, cand_data
     else:
         return prec_headers, prec_data
+    
+def progressive_table_verification(headers, data, coordinator, context):
+    """
+    Stepwise verification of extracted table structure.
+    Logs and verifies each component: location, ballot types, candidates, totals.
+    Returns (verified_headers, verified_data, structure_info)
+    """
+    logger.info("[TABLE BUILDER][progressive_table_verification] Starting verification of extracted table.")
 
+    # 1. Detect location column
+    location_header = None
+    location_patterns = set(coordinator.library.get("location_patterns", [])) | LOCATION_KEYWORDS
+    for h in headers:
+        if any(pat in h.lower() for pat in location_patterns):
+            location_header = h
+            break
+    if not location_header:
+        logger.warning("[TABLE BUILDER][progressive_table_verification] No location column detected.")
+    else:
+        logger.info(f"[TABLE BUILDER][progressive_table_verification] Detected location column: {location_header}")
+
+    # 2. Detect ballot type columns
+    ballot_type_headers = [h for h in headers if any(bt.lower() in h.lower() for bt in BALLOT_TYPES)]
+    if not ballot_type_headers:
+        logger.warning("[TABLE BUILDER][progressive_table_verification] No ballot type columns detected.")
+    else:
+        logger.info(f"[TABLE BUILDER][progressive_table_verification] Detected ballot type columns: {ballot_type_headers}")
+
+    # 3. Detect candidate columns (using NER)
+    candidate_headers = []
+    for h in headers:
+        ents = coordinator.extract_entities(h)
+        if any(label == "PERSON" for ent, label in ents):
+            candidate_headers.append(h)
+    if not candidate_headers:
+        logger.warning("[TABLE BUILDER][progressive_table_verification] No candidate columns detected.")
+    else:
+        logger.info(f"[TABLE BUILDER][progressive_table_verification] Detected candidate columns: {candidate_headers}")
+
+    # 4. Detect Grand Total column
+    total_header = next((h for h in headers if "total" in h.lower()), None)
+    if not total_header:
+        logger.warning("[TABLE BUILDER][progressive_table_verification] No Grand Total column detected.")
+    else:
+        logger.info(f"[TABLE BUILDER][progressive_table_verification] Detected Grand Total column: {total_header}")
+
+    # 5. Verify row structure
+    for i, row in enumerate(data[:5]):
+        loc_val = row.get(location_header, "")
+        ballot_vals = [row.get(h, "") for h in ballot_type_headers]
+        candidate_vals = [row.get(h, "") for h in candidate_headers]
+        logger.info(f"[TABLE BUILDER][progressive_table_verification] Row {i}: location={loc_val}, ballot_types={ballot_vals}, candidates={candidate_vals}")
+
+    # 6. Structure info summary
+    structure_info = {
+        "location_header": location_header,
+        "ballot_type_headers": ballot_type_headers,
+        "candidate_headers": candidate_headers,
+        "total_header": total_header,
+        "verified": all([location_header, ballot_type_headers, candidate_headers, total_header])
+    }
+    logger.info(f"[TABLE BUILDER][progressive_table_verification] Structure summary: {structure_info}")
+
+    # Optionally: prompt for correction or fallback if not verified
+    # Optionally: persist structure_info for feedback learning
+
+    return headers, data, structure_info
+
+def interactive_feedback_loop(headers, data, structure_info):
+    """
+    If structure_info['verified'] is False, interactively prompt the user to correct or confirm table structure.
+    Returns possibly corrected headers and data.
+    """
+    import pprint
+    print("\n[FEEDBACK] Table structure could not be fully verified.")
+    print("Detected structure:")
+    pprint.pprint(structure_info)
+    print("\nSample headers:", headers)
+    print("Sample row:", data[0] if data else "NO DATA")
+    print("\nPlease review the detected columns:")
+    print("1. Location column:", structure_info.get("location_header"))
+    print("2. Ballot type columns:", structure_info.get("ballot_type_headers"))
+    print("3. Candidate columns:", structure_info.get("candidate_headers"))
+    print("4. Grand Total column:", structure_info.get("total_header"))
+    print("\nIf any are incorrect, enter the correct header names (comma-separated), or press Enter to accept as-is.")
+
+    # Location
+    loc = input("Location column (current: {}): ".format(structure_info.get("location_header") or "None"))
+    if loc.strip():
+        structure_info["location_header"] = loc.strip()
+
+    # Ballot types
+    bt = input("Ballot type columns (current: {}): ".format(structure_info.get("ballot_type_headers") or "None"))
+    if bt.strip():
+        structure_info["ballot_type_headers"] = [b.strip() for b in bt.split(",")]
+
+    # Candidates
+    cand = input("Candidate columns (current: {}): ".format(structure_info.get("candidate_headers") or "None"))
+    if cand.strip():
+        structure_info["candidate_headers"] = [c.strip() for c in cand.split(",")]
+
+    # Grand Total
+    tot = input("Grand Total column (current: {}): ".format(structure_info.get("total_header") or "None"))
+    if tot.strip():
+        structure_info["total_header"] = tot.strip()
+
+    # Optionally, you could re-harmonize or re-verify here
+    print("\n[FEEDBACK] Updated structure info:")
+    pprint.pprint(structure_info)
+    print("Continuing with these settings...\n")
+    return headers, data, structure_info

@@ -604,20 +604,25 @@ def autoscroll_until_stable(
     coordinator_feedback=None,
 ):
     """
-    Continuously scrolls a Playwright page until its scroll height and visible content stabilize,
-    or until max_total_time is reached. Optionally waits for a selector to appear.
-    Shows a dynamic progress bar and prompts user if scrolling takes too long.
+    Continuously scrolls a Playwright page until its scroll height and visible content stabilize
+    for at least 5 consecutive measurements, or until max_total_time is reached.
+    Optionally waits for a selector to appear.
+    Shows a dynamic progress bar using rich and prompts user if scrolling takes too long.
     Learns scroll patterns per domain for future runs.
     """
     from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+    import time
+
     console = Console()
     logger = logger or globals().get("logger", None)
     start_time = time.time()
     page.evaluate("window.scrollTo(0, 0)")
     page.wait_for_timeout(delay_ms)
+
     stable = 0
-    last_height = 0
-    last_text = ""
+    last_heights = []
+    last_texts = []
     scroll_attempts = 0
     max_scrolls = max_total_time // delay_ms
     domain = domain or (page.url.split("/")[2] if "://" in page.url else page.url.split("/")[0])
@@ -650,12 +655,20 @@ def autoscroll_until_stable(
         while stable < max_stable_frames and scroll_attempts < max_scrolls:
             current_height = page.evaluate("() => document.body.scrollHeight")
             current_text = get_main_text()
-            if current_height == last_height and current_text == last_text:
+            last_heights.append(current_height)
+            last_texts.append(current_text)
+            if len(last_heights) > max_stable_frames:
+                last_heights.pop(0)
+                last_texts.pop(0)
+            # Check if the last N heights and texts are all the same
+            if (
+                len(last_heights) == max_stable_frames
+                and all(h == last_heights[0] for h in last_heights)
+                and all(t == last_texts[0] for t in last_texts)
+            ):
                 stable += 1
             else:
                 stable = 0
-            last_height = current_height
-            last_text = current_text
             page.evaluate(f"window.scrollBy(0, {step})")
             page.wait_for_timeout(delay_ms)
             scroll_attempts += 1

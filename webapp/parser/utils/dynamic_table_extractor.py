@@ -6,9 +6,10 @@ from .shared_logger import logger, rprint
 import unicodedata
 import time
 from rich.table import Table
-
+from ..config import BASE_DIR
 import hashlib
 
+LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
 
 from .table_core import (
     robust_table_extraction,
@@ -55,28 +56,82 @@ def dynamic_table_extractor(page, context, coordinator):
     best = enriched_candidates[0] if enriched_candidates else None
     # 5. Feedback loop
     if best:
-        best = feedback_and_confirm(best, context, coordinator)
-    return best['headers'], best['rows'] if best else ([], [])
+        # PATCH: Add progressive verification and interactive feedback loop
+        from .table_core import progressive_table_verification, interactive_feedback_loop
+        headers, data, structure_info = progressive_table_verification(best['headers'], best['rows'], coordinator, context)
+        if not structure_info.get("verified"):
+            headers, data, structure_info = interactive_feedback_loop(headers, data, structure_info)
+        return headers, data
+    return [], []
 
 # Support functions (case-based, not monolithic)
-def find_tabular_candidates(page): ...
-def analyze_candidate_nlp(candidate, coordinator): ...
+def find_tabular_candidates(page):
+    """
+    Find all DOM elements that look like tables or repeated row structures.
+    Returns a list of candidate dicts with 'headers' and 'rows'.
+    """
+    candidates = []
+    # 1. Standard HTML tables
+    tables = page.locator("table")
+    for i in range(tables.count()):
+        table = tables.nth(i)
+        from .table_core import extract_table_data
+        headers, data = extract_table_data(table)
+        if headers and data:
+            candidates.append({"headers": headers, "rows": data, "source": "table"})
+    # 2. Repeated DOM structures (divs, lists, etc.)
+    from .table_core import extract_rows_and_headers_from_dom
+    headers, data = extract_rows_and_headers_from_dom(page)
+    if headers and data:
+        candidates.append({"headers": headers, "rows": data, "source": "repeated_dom"})
+    # 3. Pattern-based extraction (if any patterns are approved)
+    from .table_core import extract_with_patterns, guess_headers_from_row
+    pattern_rows = extract_with_patterns(page)
+    if pattern_rows:
+        headers = guess_headers_from_row(pattern_rows[0][1])
+        data = []
+        for heading, row, pat in pattern_rows:
+            cells = row.locator("> *")
+            row_data = {}
+            for idx in range(cells.count()):
+                row_data[headers[idx] if idx < len(headers) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
+            if row_data:
+                data.append(row_data)
+        if headers and data:
+            candidates.append({"headers": headers, "rows": data, "source": "pattern"})
+    return candidates
 
-def feedback_and_confirm(candidate, context, coordinator): ...
+def analyze_candidate_nlp(candidate, coordinator):
+    """
+    Enrich a candidate dict with NLP/NER analysis for headers.
+    Adds 'header_entities' and 'header_scores' fields.
+    """
+    headers = candidate.get("headers", [])
+    header_entities = []
+    header_scores = []
+    for h in headers:
+        ents = coordinator.extract_entities(h)
+        header_entities.append(ents)
+        score = coordinator.score_header(h, {})
+        header_scores.append(score)
+    candidate["header_entities"] = header_entities
+    candidate["header_scores"] = header_scores
+    return candidate
+
+def feedback_and_confirm(candidate, context, coordinator):
+    """
+    Interactive feedback loop for user to confirm or correct table structure.
+    Returns possibly corrected headers and data.
+    """
+    from .table_core import progressive_table_verification, interactive_feedback_loop
+    headers = candidate.get("headers", [])
+    data = candidate.get("rows", [])
+    headers, data, structure_info = progressive_table_verification(headers, data, coordinator, context)
+    if not structure_info.get("verified"):
+        headers, data, structure_info = interactive_feedback_loop(headers, data, structure_info)
+    return headers, data
 
 ## Core Extraction & Harmonization ##
-
-
-
-
-
-
-
-
-
-
-
-
 
 def deduplicate_headers(headers, data):
     """Remove duplicate headers by normalized name, keep first occurrence."""
@@ -114,8 +169,6 @@ def remove_low_signal_columns(headers, data, min_unique=2, min_non_empty_ratio=0
     return keep, [{h: row.get(h, "") for h in keep} for row in data]
 
 ## DOM/NLP Analysis & Scoring ## 
-
-
 
 def advanced_party_candidate_detection(headers, coordinator):
     """
@@ -254,36 +307,91 @@ def entity_linking(header, known_entities):
             best, score = ent, s
     return best if score > 0.8 else header
 
-def score_candidate(candidate, context, coordinator): ...
+def score_candidate(candidate, context, coordinator):
+    """
+    Score a candidate table structure using ML/NLP and heuristics.
+    Returns (score, rationale).
+    """
+    headers = candidate.get("headers", [])
+    rows = candidate.get("rows", [])
+    rationale = []
+
+    # 1. ML/NLP header confidence
+    ml_scores = []
+    for h in headers:
+        score = coordinator.score_header(h, context)
+        ml_scores.append(score)
+    avg_ml_score = sum(ml_scores) / len(ml_scores) if ml_scores else 0
+    rationale.append(f"ML header avg score: {avg_ml_score:.2f}")
+
+    # 2. Heuristic: prefer more rows and columns (but not too many)
+    n_rows = len(rows)
+    n_cols = len(headers)
+    row_score = min(n_rows / 10.0, 1.0)  # up to 1.0 for 10+ rows
+    col_score = min(n_cols / 8.0, 1.0)   # up to 1.0 for 8+ columns
+    rationale.append(f"Rows: {n_rows}, Cols: {n_cols}, row_score: {row_score:.2f}, col_score: {col_score:.2f}")
+
+    # 3. Heuristic: penalize if too many empty cells
+    total_cells = n_rows * n_cols if n_rows and n_cols else 1
+    non_empty_cells = sum(1 for row in rows for v in row.values() if v not in ("", None))
+    fill_ratio = non_empty_cells / total_cells if total_cells else 0
+    rationale.append(f"Fill ratio: {fill_ratio:.2f}")
+    fill_penalty = 0.0 if fill_ratio > 0.7 else -0.5
+
+    # 4. Heuristic: bonus if headers match known keywords/entities
+    entity_bonus = 0.0
+    entity_hits = 0
+    for h in headers:
+        ents = coordinator.extract_entities(h)
+        if ents:
+            entity_hits += 1
+    if headers:
+        entity_bonus = 0.2 * (entity_hits / len(headers))
+    rationale.append(f"Entity bonus: {entity_bonus:.2f} ({entity_hits}/{len(headers)} headers)")
+
+    # 5. Penalty for generic headers (Column 1, etc.)
+    generic_headers = sum(1 for h in headers if re.match(r"Column \d+", h))
+    generic_penalty = -0.2 * (generic_headers / len(headers)) if headers else 0
+    if generic_penalty:
+        rationale.append(f"Generic header penalty: {generic_penalty:.2f}")
+
+    # 6. Final score
+    score = (
+        0.5 * avg_ml_score +
+        0.2 * row_score +
+        0.2 * col_score +
+        fill_penalty +
+        entity_bonus +
+        generic_penalty
+    )
+    # Clamp score to [0, 1]
+    score = max(0.0, min(1.0, score))
+    rationale.append(f"Final score: {score:.2f}")
+
+    return score, "; ".join(rationale)
 
 ## Candidate Selection & Feedback ## 
 # --- USER FEEDBACK LOOP ---
 
 def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title, coordinator):
-    """
-    Interactive and semi-automated CLI prompt for user to confirm/correct table structure.
-    After any user modification, always harmonize headers and data.
-    If ML confidence is low and NLP suggests better header names, auto-apply those suggestions.
-    """
     import copy
 
     should_log = True
     columns_changed = False
     new_headers = copy.deepcopy(headers)
-    denied_structures_path = os.path.join(BASE_DIR, "log", "denied_table_structures.json")
+    # PATCH: Use log parent dir for denied structures
+    denied_structures_path = os.path.join(LOG_PARENT_DIR, "denied_table_structures.json")
     denied_structures = {}
-    # Ensure log directory exists before file operations
     denied_structures_dir = os.path.dirname(denied_structures_path)
     os.makedirs(denied_structures_dir, exist_ok=True)
-    # Load denied structures count
     if os.path.exists(denied_structures_path):
         with open(denied_structures_path, "r", encoding="utf-8") as f:
             denied_structures = json.load(f)
     sig = f"{domain}:{table_signature(headers)}"
     denied_count = denied_structures.get(sig, 0)
 
-    # Feedback loop for columns repeatedly removed
-    removed_columns_log_path = os.path.join(BASE_DIR, "log", "removed_columns_log.json")
+    # PATCH: Use log parent dir for removed columns log
+    removed_columns_log_path = os.path.join(LOG_PARENT_DIR, "removed_columns_log.json")
     removed_columns_log_dir = os.path.dirname(removed_columns_log_path)
     os.makedirs(removed_columns_log_dir, exist_ok=True)
     if os.path.exists(removed_columns_log_path):
@@ -998,10 +1106,16 @@ def handle_nested_tables(page):
         results.append((headers, data))
     return results
 
-def review_learned_table_structures(log_path="log/table_structure_learning_log.jsonl"):
+def review_learned_table_structures(log_path=None):
     """
     CLI to review/edit learned table structures.
     """
+    # PATCH: Use log directory parent to webapp for default path
+    if log_path is None:
+        from ..config import BASE_DIR
+        import os
+        LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
+        log_path = os.path.join(LOG_PARENT_DIR, "table_structure_learning_log.jsonl")
     if not os.path.exists(log_path):
         print("No learned table structures found.")
         return

@@ -1920,3 +1920,451 @@
 {"text": "Write-in - Absentee", "entities": [[0, 8, "WRITE_IN"], [11, 19, "VOTE_METHOD"]]}
 {"text": "Write-in - Mail", "entities": [[0, 8, "WRITE_IN"], [11, 15, "VOTE_METHOD"]]}
 {"text": "Write-in - Total", "entities": [[0, 8, "MISC"], [11, 16, "TOTAL"]]}
+{"text": "Percent Reported", "entities": [[0, 7, "PERCENT"]]}
+{"text": "Candidate", "entities": [[0, 9, "CANDIDATE"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Orangetown", "entities": [[0, 10, "DISTRICT"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Election Day", "entities": [[19, 29, "PARTY"], [33, 41, "ELECTION_TYPE"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Early Voting", "entities": [[19, 29, "PARTY"], [33, 45, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Absentee", "entities": [[19, 29, "PARTY"], [33, 41, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Mail", "entities": [[19, 29, "PARTY"], [33, 37, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Total", "entities": [[19, 29, "PARTY"], [33, 38, "TOTAL"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Election Day", "entities": [[19, 35, "PARTY"], [39, 47, "ELECTION_TYPE"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Early Voting", "entities": [[19, 35, "PARTY"], [39, 51, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Absentee", "entities": [[19, 35, "PARTY"], [39, 47, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Mail", "entities": [[19, 35, "PARTY"], [39, 43, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Total", "entities": [[19, 35, "PARTY"], [39, 44, "TOTAL"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Election Day", "entities": [[24, 34, "PARTY"], [38, 46, "ELECTION_TYPE"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Early Voting", "entities": [[24, 34, "PARTY"], [38, 50, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Absentee", "entities": [[24, 34, "PARTY"], [38, 46, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Mail", "entities": [[24, 34, "PARTY"], [38, 42, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Total", "entities": [[24, 34, "PARTY"], [38, 43, "TOTAL"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Election Day", "entities": [[24, 36, "PARTY"], [40, 48, "ELECTION_TYPE"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Early Voting", "entities": [[24, 36, "PARTY"], [40, 52, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Absentee", "entities": [[24, 36, "PARTY"], [40, 48, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Mail", "entities": [[24, 36, "PARTY"], [40, 44, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Total", "entities": [[24, 36, "PARTY"], [40, 45, "TOTAL"]]}
+{"text": "Write-in - Election Day", "entities": [[0, 8, "MISC"], [11, 19, "ELECTION_TYPE"]]}
+{"text": "Write-in - Early Voting", "entities": [[0, 8, "MISC"], [11, 23, "VOTE_METHOD"]]}
+{"text": "Write-in - Absentee", "entities": [[0, 8, "MISC"], [11, 19, "VOTE_METHOD"]]}
+{"text": "Write-in - Mail", "entities": [[0, 8, "MISC"], [11, 15, "VOTE_METHOD"]]}
+{"text": "Write-in - Total", "entities": [[0, 8, "WRITE_IN"], [11, 16, "TOTAL"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Orangetown", "entities": [[0, 10, "DISTRICT"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Early Voting", "entities": [[24, 36, "PARTY"], [40, 52, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Absentee", "entities": [[24, 36, "PARTY"], [40, 48, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Mail", "entities": [[24, 36, "PARTY"], [40, 44, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Total", "entities": [[24, 36, "PARTY"], [40, 45, "TOTAL"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Election Day", "entities": [[19, 29, "PARTY"], [33, 41, "ELECTION_TYPE"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Early Voting", "entities": [[19, 29, "PARTY"], [33, 45, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Absentee", "entities": [[19, 29, "PARTY"], [33, 41, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Mail", "entities": [[19, 29, "PARTY"], [33, 37, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Total", "entities": [[19, 29, "PARTY"], [33, 38, "TOTAL"]]}
+{"text": "Grand Total (Grand Total) - Election Day", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 36, "ELECTION_TYPE"]]}
+{"text": "Grand Total (Grand Total) - Early Voting", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 40, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Absentee", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 36, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Mail", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 32, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Total", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 33, "TOTAL"]]}
+{"text": "%reported (Other) - Election Day", "entities": [[11, 16, "VOTE_METHOD"], [20, 28, "ELECTION_TYPE"]]}
+{"text": "%reported (Other) - Early Voting", "entities": [[11, 16, "VOTE_METHOD"], [20, 32, "VOTE_METHOD"]]}
+{"text": "%reported (Other) - Absentee", "entities": [[11, 16, "VOTE_METHOD"], [20, 28, "VOTE_METHOD"]]}
+{"text": "%reported (Other) - Mail", "entities": [[11, 16, "VOTE_METHOD"], [20, 24, "VOTE_METHOD"]]}
+{"text": "%reported (Other) - Total", "entities": [[11, 16, "VOTE_METHOD"], [20, 25, "TOTAL"]]}
+{"text": "Orangetown (Other) - Election Day", "entities": [[0, 10, "DISTRICT"], [12, 17, "PARTY"], [21, 29, "ELECTION_TYPE"]]}
+{"text": "Orangetown (Other) - Early Voting", "entities": [[0, 10, "DISTRICT"], [12, 17, "PARTY"], [21, 33, "VOTE_METHOD"]]}
+{"text": "Orangetown (Other) - Absentee", "entities": [[0, 10, "DISTRICT"], [12, 17, "PARTY"], [21, 29, "VOTE_METHOD"]]}
+{"text": "Orangetown (Other) - Mail", "entities": [[0, 10, "DISTRICT"], [12, 17, "PARTY"], [21, 25, "VOTE_METHOD"]]}
+{"text": "Orangetown (Other) - Total", "entities": [[0, 10, "DISTRICT"], [12, 17, "PARTY"], [21, 26, "TOTAL"]]}
+{"text": "Percent Reported (Other) - Election Day", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 35, "ELECTION_TYPE"]]}
+{"text": "Percent Reported (Other) - Early Voting", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 39, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Absentee", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 35, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Mail", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 31, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Total", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 32, "TOTAL"]]}
+{"text": "Precinct (Other) - Election Day", "entities": [[0, 8, "PRECINCT"], [10, 15, "PARTY"], [19, 27, "ELECTION_TYPE"]]}
+{"text": "Precinct (Other) - Early Voting", "entities": [[0, 8, "PRECINCT"], [10, 15, "PARTY"], [19, 31, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Absentee", "entities": [[0, 8, "PRECINCT"], [10, 15, "PARTY"], [19, 27, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Mail", "entities": [[0, 8, "PRECINCT"], [10, 15, "PARTY"], [19, 23, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Total", "entities": [[0, 8, "PRECINCT"], [10, 15, "PARTY"], [19, 24, "TOTAL"]]}
+{"text": "Write (Other) - Election Day", "entities": [[7, 12, "PARTY"], [16, 24, "ELECTION_TYPE"]]}
+{"text": "Write (Other) - Early Voting", "entities": [[7, 12, "PARTY"], [16, 28, "VOTE_METHOD"]]}
+{"text": "Write (Other) - Absentee", "entities": [[7, 12, "PARTY"], [16, 24, "VOTE_METHOD"]]}
+{"text": "Write (Other) - Mail", "entities": [[7, 12, "PARTY"], [16, 20, "VOTE_METHOD"]]}
+{"text": "Write (Other) - Total", "entities": [[7, 12, "PARTY"], [16, 21, "TOTAL"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Election Day", "entities": [[24, 34, "PARTY"], [38, 46, "ELECTION_TYPE"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Early Voting", "entities": [[24, 34, "PARTY"], [38, 50, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Absentee", "entities": [[24, 34, "PARTY"], [38, 46, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Mail", "entities": [[24, 34, "PARTY"], [38, 42, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Total", "entities": [[24, 34, "PARTY"], [38, 43, "TOTAL"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Election Day", "entities": [[19, 35, "PARTY"], [39, 47, "ELECTION_TYPE"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Early Voting", "entities": [[19, 35, "PARTY"], [39, 51, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Absentee", "entities": [[19, 35, "PARTY"], [39, 47, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Mail", "entities": [[19, 35, "PARTY"], [39, 43, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Total", "entities": [[19, 35, "PARTY"], [39, 44, "TOTAL"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Percent Reported", "entities": [[0, 7, "PERCENT"]]}
+{"text": "Candidate", "entities": [[0, 9, "CANDIDATE"]]}
+{"text": "Absentee Mail (Absentee Mail) - Election Day", "entities": [[0, 8, "VOTE_METHOD"], [9, 13, "VOTE_METHOD"], [15, 23, "VOTE_METHOD"], [24, 28, "VOTE_METHOD"], [32, 40, "ELECTION_TYPE"]]}
+{"text": "Absentee Mail (Absentee Mail) - Early Voting", "entities": [[0, 8, "VOTE_METHOD"], [9, 13, "VOTE_METHOD"], [15, 23, "VOTE_METHOD"], [24, 28, "VOTE_METHOD"], [32, 44, "VOTE_METHOD"]]}
+{"text": "Absentee Mail (Absentee Mail) - Absentee", "entities": [[0, 8, "VOTE_METHOD"], [9, 13, "VOTE_METHOD"], [15, 23, "VOTE_METHOD"], [24, 28, "VOTE_METHOD"], [32, 40, "VOTE_METHOD"]]}
+{"text": "Absentee Mail (Absentee Mail) - Mail", "entities": [[0, 8, "VOTE_METHOD"], [9, 13, "VOTE_METHOD"], [15, 23, "VOTE_METHOD"], [24, 28, "VOTE_METHOD"], [32, 36, "VOTE_METHOD"]]}
+{"text": "Absentee Mail (Absentee Mail) - Total", "entities": [[0, 8, "VOTE_METHOD"], [9, 13, "VOTE_METHOD"], [15, 23, "VOTE_METHOD"], [24, 28, "VOTE_METHOD"], [32, 37, "TOTAL"]]}
+{"text": "Grand Total (Grand Total) - Election Day", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 36, "ELECTION_TYPE"]]}
+{"text": "Grand Total (Grand Total) - Early Voting", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 40, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Absentee", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 36, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Mail", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 32, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Total", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 33, "TOTAL"]]}
+{"text": "Candidate (Other) - Election Day", "entities": [[0, 9, "CANDIDATE"], [11, 16, "VOTE_METHOD"], [20, 28, "ELECTION_TYPE"]]}
+{"text": "Candidate (Other) - Early Voting", "entities": [[0, 9, "CANDIDATE"], [11, 16, "VOTE_METHOD"], [20, 32, "VOTE_METHOD"]]}
+{"text": "Candidate (Other) - Absentee", "entities": [[0, 9, "CANDIDATE"], [11, 16, "VOTE_METHOD"], [20, 28, "VOTE_METHOD"]]}
+{"text": "Candidate (Other) - Mail", "entities": [[0, 9, "CANDIDATE"], [11, 16, "VOTE_METHOD"], [20, 24, "VOTE_METHOD"]]}
+{"text": "Candidate (Other) - Total", "entities": [[0, 9, "CANDIDATE"], [11, 16, "VOTE_METHOD"], [20, 25, "TOTAL"]]}
+{"text": "Early Voting (Other) - Election Day", "entities": [[0, 12, "VOTE_METHOD"], [14, 19, "PARTY"], [23, 31, "ELECTION_TYPE"]]}
+{"text": "Early Voting (Other) - Early Voting", "entities": [[0, 12, "VOTE_METHOD"], [14, 19, "PARTY"], [23, 35, "VOTE_METHOD"]]}
+{"text": "Early Voting (Other) - Absentee", "entities": [[0, 12, "VOTE_METHOD"], [14, 19, "PARTY"], [23, 31, "VOTE_METHOD"]]}
+{"text": "Early Voting (Other) - Mail", "entities": [[0, 12, "VOTE_METHOD"], [14, 19, "PARTY"], [23, 27, "VOTE_METHOD"]]}
+{"text": "Early Voting (Other) - Total", "entities": [[0, 12, "VOTE_METHOD"], [14, 19, "PARTY"], [23, 28, "TOTAL"]]}
+{"text": "Election Day (Other) - Election Day", "entities": [[0, 8, "ELECTION_TYPE"], [14, 19, "PARTY"], [23, 31, "ELECTION_TYPE"]]}
+{"text": "Election Day (Other) - Early Voting", "entities": [[0, 8, "ELECTION_TYPE"], [14, 19, "PARTY"], [23, 35, "VOTE_METHOD"]]}
+{"text": "Election Day (Other) - Absentee", "entities": [[0, 8, "ELECTION_TYPE"], [14, 19, "PARTY"], [23, 31, "VOTE_METHOD"]]}
+{"text": "Election Day (Other) - Mail", "entities": [[0, 8, "ELECTION_TYPE"], [14, 19, "PARTY"], [23, 27, "VOTE_METHOD"]]}
+{"text": "Election Day (Other) - Total", "entities": [[0, 8, "ELECTION_TYPE"], [14, 19, "PARTY"], [23, 28, "TOTAL"]]}
+{"text": "Label (Other) - Election Day", "entities": [[7, 12, "PARTY"], [16, 24, "ELECTION_TYPE"]]}
+{"text": "Label (Other) - Early Voting", "entities": [[7, 12, "PARTY"], [16, 28, "VOTE_METHOD"]]}
+{"text": "Label (Other) - Absentee", "entities": [[7, 12, "PARTY"], [16, 24, "VOTE_METHOD"]]}
+{"text": "Label (Other) - Mail", "entities": [[7, 12, "PARTY"], [16, 20, "VOTE_METHOD"]]}
+{"text": "Label (Other) - Total", "entities": [[7, 12, "PARTY"], [16, 21, "TOTAL"]]}
+{"text": "Percent Reported (Other) - Election Day", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 35, "ELECTION_TYPE"]]}
+{"text": "Percent Reported (Other) - Early Voting", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 39, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Absentee", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 35, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Mail", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 31, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Total", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 32, "TOTAL"]]}
+{"text": "Precinct (Other) - Election Day", "entities": [[0, 8, "PRECINCT"], [10, 15, "PARTY"], [19, 27, "ELECTION_TYPE"]]}
+{"text": "Precinct (Other) - Early Voting", "entities": [[0, 8, "PRECINCT"], [10, 15, "PARTY"], [19, 31, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Absentee", "entities": [[0, 8, "PRECINCT"], [10, 15, "PARTY"], [19, 27, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Mail", "entities": [[0, 8, "PRECINCT"], [10, 15, "PARTY"], [19, 23, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Total", "entities": [[0, 8, "PRECINCT"], [10, 15, "PARTY"], [19, 24, "TOTAL"]]}
+{"text": "Total Votes", "entities": [[0, 5, "TOTAL"], [6, 11, "TOTAL"]]}
+{"text": "Total Votes (Other) - Early Voting", "entities": [[0, 5, "TOTAL"], [6, 11, "TOTAL"], [13, 18, "VOTE_METHOD"], [22, 34, "VOTE_METHOD"]]}
+{"text": "Total Votes (Other) - Absentee", "entities": [[0, 5, "TOTAL"], [6, 11, "TOTAL"], [13, 18, "VOTE_METHOD"], [22, 30, "VOTE_METHOD"]]}
+{"text": "Total Votes (Other) - Mail", "entities": [[0, 5, "TOTAL"], [6, 11, "TOTAL"], [13, 18, "VOTE_METHOD"], [22, 26, "VOTE_METHOD"]]}
+{"text": "Total Votes (Other) - Total", "entities": [[0, 5, "TOTAL"], [6, 11, "TOTAL"], [13, 18, "VOTE_METHOD"], [22, 27, "TOTAL"]]}
+{"text": "Votes (Other) - Election Day", "entities": [[0, 5, "TOTAL"], [7, 12, "PARTY"], [16, 24, "ELECTION_TYPE"]]}
+{"text": "Votes (Other) - Early Voting", "entities": [[0, 5, "TOTAL"], [7, 12, "PARTY"], [16, 28, "VOTE_METHOD"]]}
+{"text": "Votes (Other) - Absentee", "entities": [[0, 5, "TOTAL"], [7, 12, "PARTY"], [16, 24, "VOTE_METHOD"]]}
+{"text": "Votes (Other) - Mail", "entities": [[0, 5, "TOTAL"], [7, 12, "PARTY"], [16, 20, "VOTE_METHOD"]]}
+{"text": "Votes (Other) - Total", "entities": [[0, 5, "TOTAL"], [7, 12, "PARTY"], [16, 21, "TOTAL"]]}
+{"text": "Working Families (Working Families) - Election Day", "entities": [[0, 16, "PARTY"], [18, 34, "PARTY"], [38, 46, "ELECTION_TYPE"]]}
+{"text": "Working Families (Working Families) - Early Voting", "entities": [[0, 16, "PARTY"], [18, 34, "PARTY"], [38, 50, "VOTE_METHOD"]]}
+{"text": "Working Families (Working Families) - Absentee", "entities": [[0, 16, "PARTY"], [18, 34, "PARTY"], [38, 46, "VOTE_METHOD"]]}
+{"text": "Working Families (Working Families) - Mail", "entities": [[0, 16, "PARTY"], [18, 34, "PARTY"], [38, 42, "VOTE_METHOD"]]}
+{"text": "Working Families (Working Families) - Total", "entities": [[0, 16, "PARTY"], [18, 34, "PARTY"], [38, 43, "TOTAL"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Precinct", "entities": [[0, 8, "PRECINCT"]]}
+{"text": "Chrissy Knapp (Democratic) - Election Day", "entities": [[15, 25, "PARTY"], [29, 37, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Democratic) - Early Voting", "entities": [[15, 25, "PARTY"], [29, 41, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Absentee", "entities": [[15, 25, "PARTY"], [29, 37, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Mail", "entities": [[15, 25, "PARTY"], [29, 33, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Total", "entities": [[15, 25, "PARTY"], [29, 34, "TOTAL"]]}
+{"text": "Chrissy Knapp (Working Families) - Election Day", "entities": [[15, 31, "PARTY"], [35, 43, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Working Families) - Early Voting", "entities": [[15, 31, "PARTY"], [35, 47, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Absentee", "entities": [[15, 31, "PARTY"], [35, 43, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Mail", "entities": [[15, 31, "PARTY"], [35, 39, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Total", "entities": [[15, 31, "PARTY"], [35, 40, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Republican) - Election Day", "entities": [[20, 30, "PARTY"], [34, 42, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Republican) - Early Voting", "entities": [[20, 30, "PARTY"], [34, 46, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Absentee", "entities": [[20, 30, "PARTY"], [34, 42, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Mail", "entities": [[20, 30, "PARTY"], [34, 38, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Total", "entities": [[20, 30, "PARTY"], [34, 39, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Election Day", "entities": [[20, 32, "PARTY"], [36, 44, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Early Voting", "entities": [[20, 32, "PARTY"], [36, 48, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Absentee", "entities": [[20, 32, "PARTY"], [36, 44, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Mail", "entities": [[20, 32, "PARTY"], [36, 40, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Total", "entities": [[20, 32, "PARTY"], [36, 41, "TOTAL"]]}
+{"text": "Write-in - Election Day", "entities": [[0, 8, "MISC"], [11, 19, "ELECTION_TYPE"]]}
+{"text": "Write-in - Early Voting", "entities": [[0, 8, "MISC"], [11, 23, "VOTE_METHOD"]]}
+{"text": "Write-in - Absentee", "entities": [[0, 8, "MISC"], [11, 19, "VOTE_METHOD"]]}
+{"text": "Write-in - Mail", "entities": [[0, 8, "MISC"], [11, 15, "VOTE_METHOD"]]}
+{"text": "Write-in - Total", "entities": [[0, 8, "WRITE_IN"], [11, 16, "TOTAL"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Percent Reported", "entities": [[0, 7, "PERCENT"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Percent Reported", "entities": [[0, 7, "PERCENT"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Orangetown", "entities": [[0, 10, "DISTRICT"]]}
+{"text": "Chrissy Knapp (Democratic) - Election Day", "entities": [[15, 25, "PARTY"], [29, 37, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Democratic) - Early Voting", "entities": [[15, 25, "PARTY"], [29, 41, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Absentee", "entities": [[15, 25, "PARTY"], [29, 37, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Mail", "entities": [[15, 25, "PARTY"], [29, 33, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Total", "entities": [[15, 25, "PARTY"], [29, 34, "TOTAL"]]}
+{"text": "Chrissy Knapp (Working Families) - Election Day", "entities": [[15, 31, "PARTY"], [35, 43, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Working Families) - Early Voting", "entities": [[15, 31, "PARTY"], [35, 47, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Absentee", "entities": [[15, 31, "PARTY"], [35, 43, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Mail", "entities": [[15, 31, "PARTY"], [35, 39, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Total", "entities": [[15, 31, "PARTY"], [35, 40, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Republican) - Election Day", "entities": [[20, 30, "PARTY"], [34, 42, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Republican) - Early Voting", "entities": [[20, 30, "PARTY"], [34, 46, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Absentee", "entities": [[20, 30, "PARTY"], [34, 42, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Mail", "entities": [[20, 30, "PARTY"], [34, 38, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Total", "entities": [[20, 30, "PARTY"], [34, 39, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Election Day", "entities": [[20, 32, "PARTY"], [36, 44, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Early Voting", "entities": [[20, 32, "PARTY"], [36, 48, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Absentee", "entities": [[20, 32, "PARTY"], [36, 44, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Mail", "entities": [[20, 32, "PARTY"], [36, 40, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Total", "entities": [[20, 32, "PARTY"], [36, 41, "TOTAL"]]}
+{"text": "Write-in - Election Day", "entities": [[0, 8, "MISC"], [11, 19, "ELECTION_TYPE"]]}
+{"text": "Write-in - Early Voting", "entities": [[0, 8, "MISC"], [11, 23, "VOTE_METHOD"]]}
+{"text": "Write-in - Absentee", "entities": [[0, 8, "MISC"], [11, 19, "VOTE_METHOD"]]}
+{"text": "Write-in - Mail", "entities": [[0, 8, "MISC"], [11, 15, "VOTE_METHOD"]]}
+{"text": "Write-in - Total", "entities": [[0, 8, "WRITE_IN"], [11, 16, "TOTAL"]]}
+{"text": "Percent Reported", "entities": [[0, 7, "PERCENT"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Orangetown", "entities": [[0, 10, "DISTRICT"]]}
+{"text": "Chrissy Knapp (Democratic) - Election Day", "entities": [[15, 25, "PARTY"], [29, 37, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Democratic) - Early Voting", "entities": [[15, 25, "PARTY"], [29, 41, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Absentee", "entities": [[15, 25, "PARTY"], [29, 37, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Mail", "entities": [[15, 25, "PARTY"], [29, 33, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Total", "entities": [[15, 25, "PARTY"], [29, 34, "TOTAL"]]}
+{"text": "Chrissy Knapp (Working Families) - Election Day", "entities": [[15, 31, "PARTY"], [35, 43, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Working Families) - Early Voting", "entities": [[15, 31, "PARTY"], [35, 47, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Absentee", "entities": [[15, 31, "PARTY"], [35, 43, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Mail", "entities": [[15, 31, "PARTY"], [35, 39, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Total", "entities": [[15, 31, "PARTY"], [35, 40, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Republican) - Election Day", "entities": [[20, 30, "PARTY"], [34, 42, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Republican) - Early Voting", "entities": [[20, 30, "PARTY"], [34, 46, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Absentee", "entities": [[20, 30, "PARTY"], [34, 42, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Mail", "entities": [[20, 30, "PARTY"], [34, 38, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Total", "entities": [[20, 30, "PARTY"], [34, 39, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Election Day", "entities": [[20, 32, "PARTY"], [36, 44, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Early Voting", "entities": [[20, 32, "PARTY"], [36, 48, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Absentee", "entities": [[20, 32, "PARTY"], [36, 44, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Mail", "entities": [[20, 32, "PARTY"], [36, 40, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Total", "entities": [[20, 32, "PARTY"], [36, 41, "TOTAL"]]}
+{"text": "Write-in - Election Day", "entities": [[0, 8, "MISC"], [11, 19, "ELECTION_TYPE"]]}
+{"text": "Write-in - Early Voting", "entities": [[0, 8, "MISC"], [11, 23, "VOTE_METHOD"]]}
+{"text": "Write-in - Absentee", "entities": [[0, 8, "MISC"], [11, 19, "VOTE_METHOD"]]}
+{"text": "Write-in - Mail", "entities": [[0, 8, "MISC"], [11, 15, "VOTE_METHOD"]]}
+{"text": "Write-in - Total", "entities": [[0, 8, "WRITE_IN"], [11, 16, "TOTAL"]]}
+{"text": "Percent Reported", "entities": [[0, 7, "PERCENT"]]}
+{"text": "Candidate", "entities": [[0, 9, "CANDIDATE"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Orangetown", "entities": [[0, 10, "DISTRICT"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Election Day", "entities": [[19, 29, "PARTY"], [33, 41, "ELECTION_TYPE"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Early Voting", "entities": [[19, 29, "PARTY"], [33, 45, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Absentee", "entities": [[19, 29, "PARTY"], [33, 41, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Mail", "entities": [[19, 29, "PARTY"], [33, 37, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Total", "entities": [[19, 29, "PARTY"], [33, 38, "TOTAL"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Election Day", "entities": [[19, 35, "PARTY"], [39, 47, "ELECTION_TYPE"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Early Voting", "entities": [[19, 35, "PARTY"], [39, 51, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Absentee", "entities": [[19, 35, "PARTY"], [39, 47, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Mail", "entities": [[19, 35, "PARTY"], [39, 43, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Total", "entities": [[19, 35, "PARTY"], [39, 44, "TOTAL"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Election Day", "entities": [[24, 34, "PARTY"], [38, 46, "ELECTION_TYPE"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Early Voting", "entities": [[24, 34, "PARTY"], [38, 50, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Absentee", "entities": [[24, 34, "PARTY"], [38, 46, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Mail", "entities": [[24, 34, "PARTY"], [38, 42, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Total", "entities": [[24, 34, "PARTY"], [38, 43, "TOTAL"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Election Day", "entities": [[24, 36, "PARTY"], [40, 48, "ELECTION_TYPE"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Early Voting", "entities": [[24, 36, "PARTY"], [40, 52, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Absentee", "entities": [[24, 36, "PARTY"], [40, 48, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Mail", "entities": [[24, 36, "PARTY"], [40, 44, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Total", "entities": [[24, 36, "PARTY"], [40, 45, "TOTAL"]]}
+{"text": "Write-in - Election Day", "entities": [[0, 8, "MISC"], [11, 19, "ELECTION_TYPE"]]}
+{"text": "Write-in - Early Voting", "entities": [[0, 8, "MISC"], [11, 23, "VOTE_METHOD"]]}
+{"text": "Write-in - Absentee", "entities": [[0, 8, "MISC"], [11, 19, "VOTE_METHOD"]]}
+{"text": "Write-in - Mail", "entities": [[0, 8, "MISC"], [11, 15, "VOTE_METHOD"]]}
+{"text": "Write-in - Total", "entities": [[0, 8, "MISC"], [11, 16, "TOTAL"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Orangetown", "entities": [[0, 10, "DISTRICT"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Early Voting", "entities": [[24, 36, "PARTY"], [40, 52, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Absentee", "entities": [[24, 36, "PARTY"], [40, 48, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Mail", "entities": [[24, 36, "PARTY"], [40, 44, "VOTE_METHOD"]]}
+{"text": "CON Daniel W. Sullivan (Conservative) - Total", "entities": [[24, 36, "PARTY"], [40, 45, "TOTAL"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Election Day", "entities": [[19, 29, "PARTY"], [33, 41, "ELECTION_TYPE"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Early Voting", "entities": [[19, 29, "PARTY"], [33, 45, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Absentee", "entities": [[19, 29, "PARTY"], [33, 41, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Mail", "entities": [[19, 29, "PARTY"], [33, 37, "VOTE_METHOD"]]}
+{"text": "DEM Chrissy Knapp (Democratic) - Total", "entities": [[19, 29, "PARTY"], [33, 38, "TOTAL"]]}
+{"text": "Grand Total (Grand Total) - Election Day", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 36, "ELECTION_TYPE"]]}
+{"text": "Grand Total (Grand Total) - Early Voting", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 40, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Absentee", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 36, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Mail", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 32, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Total", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 33, "TOTAL"]]}
+{"text": "%reported (Other) - Election Day", "entities": [[11, 16, "VOTE_METHOD"], [20, 28, "ELECTION_TYPE"]]}
+{"text": "%reported (Other) - Early Voting", "entities": [[11, 16, "VOTE_METHOD"], [20, 32, "VOTE_METHOD"]]}
+{"text": "%reported (Other) - Absentee", "entities": [[11, 16, "VOTE_METHOD"], [20, 28, "VOTE_METHOD"]]}
+{"text": "%reported (Other) - Mail", "entities": [[11, 16, "VOTE_METHOD"], [20, 24, "VOTE_METHOD"]]}
+{"text": "%reported (Other) - Total", "entities": [[11, 16, "VOTE_METHOD"], [20, 25, "TOTAL"]]}
+{"text": "Orangetown (Other) - Election Day", "entities": [[0, 10, "DISTRICT"], [12, 17, "VOTE_METHOD"], [21, 29, "ELECTION_TYPE"]]}
+{"text": "Orangetown (Other) - Early Voting", "entities": [[0, 10, "DISTRICT"], [12, 17, "VOTE_METHOD"], [21, 33, "VOTE_METHOD"]]}
+{"text": "Orangetown (Other) - Absentee", "entities": [[0, 10, "DISTRICT"], [12, 17, "VOTE_METHOD"], [21, 29, "VOTE_METHOD"]]}
+{"text": "Orangetown (Other) - Mail", "entities": [[0, 10, "DISTRICT"], [12, 17, "VOTE_METHOD"], [21, 25, "VOTE_METHOD"]]}
+{"text": "Orangetown (Other) - Total", "entities": [[0, 10, "DISTRICT"], [12, 17, "VOTE_METHOD"], [21, 26, "TOTAL"]]}
+{"text": "Percent Reported (Other) - Election Day", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 35, "ELECTION_TYPE"]]}
+{"text": "Percent Reported (Other) - Early Voting", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 39, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Absentee", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 35, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Mail", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 31, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Total", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 32, "TOTAL"]]}
+{"text": "Precinct (Other) - Election Day", "entities": [[0, 8, "PRECINCT"], [10, 15, "VOTE_METHOD"], [19, 27, "ELECTION_TYPE"]]}
+{"text": "Precinct (Other) - Early Voting", "entities": [[0, 8, "PRECINCT"], [10, 15, "VOTE_METHOD"], [19, 31, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Absentee", "entities": [[0, 8, "PRECINCT"], [10, 15, "VOTE_METHOD"], [19, 27, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Mail", "entities": [[0, 8, "PRECINCT"], [10, 15, "VOTE_METHOD"], [19, 23, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Total", "entities": [[0, 8, "PRECINCT"], [10, 15, "VOTE_METHOD"], [19, 24, "TOTAL"]]}
+{"text": "Write (Other) - Election Day", "entities": [[7, 12, "VOTE_METHOD"], [16, 24, "ELECTION_TYPE"]]}
+{"text": "Write (Other) - Early Voting", "entities": [[7, 12, "VOTE_METHOD"], [16, 28, "VOTE_METHOD"]]}
+{"text": "Write (Other) - Absentee", "entities": [[7, 12, "VOTE_METHOD"], [16, 24, "VOTE_METHOD"]]}
+{"text": "Write (Other) - Mail", "entities": [[7, 12, "VOTE_METHOD"], [16, 20, "VOTE_METHOD"]]}
+{"text": "Write (Other) - Total", "entities": [[7, 12, "VOTE_METHOD"], [16, 21, "TOTAL"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Election Day", "entities": [[24, 34, "PARTY"], [38, 46, "ELECTION_TYPE"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Early Voting", "entities": [[24, 34, "PARTY"], [38, 50, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Absentee", "entities": [[24, 34, "PARTY"], [38, 46, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Mail", "entities": [[24, 34, "PARTY"], [38, 42, "VOTE_METHOD"]]}
+{"text": "REP Daniel W. Sullivan (Republican) - Total", "entities": [[24, 34, "PARTY"], [38, 43, "TOTAL"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Election Day", "entities": [[19, 35, "PARTY"], [39, 47, "ELECTION_TYPE"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Early Voting", "entities": [[19, 35, "PARTY"], [39, 51, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Absentee", "entities": [[19, 35, "PARTY"], [39, 47, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Mail", "entities": [[19, 35, "PARTY"], [39, 43, "VOTE_METHOD"]]}
+{"text": "WOR Chrissy Knapp (Working Families) - Total", "entities": [[19, 35, "PARTY"], [39, 44, "TOTAL"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Percent Reported", "entities": [[0, 7, "PERCENT"]]}
+{"text": "Candidate", "entities": [[0, 9, "CANDIDATE"]]}
+{"text": "Absentee Mail (Absentee Mail) - Election Day", "entities": [[0, 8, "VOTE_METHOD"], [9, 13, "VOTE_METHOD"], [15, 23, "VOTE_METHOD"], [24, 28, "VOTE_METHOD"], [32, 40, "ELECTION_TYPE"]]}
+{"text": "Absentee Mail (Absentee Mail) - Early Voting", "entities": [[0, 8, "VOTE_METHOD"], [9, 13, "VOTE_METHOD"], [15, 23, "VOTE_METHOD"], [24, 28, "VOTE_METHOD"], [32, 44, "VOTE_METHOD"]]}
+{"text": "Absentee Mail (Absentee Mail) - Absentee", "entities": [[0, 8, "VOTE_METHOD"], [9, 13, "VOTE_METHOD"], [15, 23, "VOTE_METHOD"], [24, 28, "VOTE_METHOD"], [32, 40, "VOTE_METHOD"]]}
+{"text": "Absentee Mail (Absentee Mail) - Mail", "entities": [[0, 8, "VOTE_METHOD"], [9, 13, "VOTE_METHOD"], [15, 23, "VOTE_METHOD"], [24, 28, "VOTE_METHOD"], [32, 36, "VOTE_METHOD"]]}
+{"text": "Absentee Mail (Absentee Mail) - Total", "entities": [[0, 8, "VOTE_METHOD"], [9, 13, "VOTE_METHOD"], [15, 23, "VOTE_METHOD"], [24, 28, "VOTE_METHOD"], [32, 37, "TOTAL"]]}
+{"text": "Grand Total (Grand Total) - Election Day", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 36, "ELECTION_TYPE"]]}
+{"text": "Grand Total (Grand Total) - Early Voting", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 40, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Absentee", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 36, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Mail", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 32, "VOTE_METHOD"]]}
+{"text": "Grand Total (Grand Total) - Total", "entities": [[6, 11, "TOTAL"], [19, 24, "TOTAL"], [28, 33, "TOTAL"]]}
+{"text": "Candidate (Other) - Election Day", "entities": [[0, 9, "CANDIDATE"], [11, 16, "VOTE_METHOD"], [20, 28, "ELECTION_TYPE"]]}
+{"text": "Candidate (Other) - Early Voting", "entities": [[0, 9, "CANDIDATE"], [11, 16, "VOTE_METHOD"], [20, 32, "VOTE_METHOD"]]}
+{"text": "Candidate (Other) - Absentee", "entities": [[0, 9, "CANDIDATE"], [11, 16, "VOTE_METHOD"], [20, 28, "VOTE_METHOD"]]}
+{"text": "Candidate (Other) - Mail", "entities": [[0, 9, "CANDIDATE"], [11, 16, "VOTE_METHOD"], [20, 24, "VOTE_METHOD"]]}
+{"text": "Candidate (Other) - Total", "entities": [[0, 9, "CANDIDATE"], [11, 16, "VOTE_METHOD"], [20, 25, "TOTAL"]]}
+{"text": "Early Voting (Other) - Election Day", "entities": [[0, 12, "VOTE_METHOD"], [14, 19, "VOTE_METHOD"], [23, 31, "ELECTION_TYPE"]]}
+{"text": "Early Voting (Other) - Early Voting", "entities": [[0, 12, "VOTE_METHOD"], [14, 19, "VOTE_METHOD"], [23, 35, "VOTE_METHOD"]]}
+{"text": "Early Voting (Other) - Absentee", "entities": [[0, 12, "VOTE_METHOD"], [14, 19, "VOTE_METHOD"], [23, 31, "VOTE_METHOD"]]}
+{"text": "Early Voting (Other) - Mail", "entities": [[0, 12, "VOTE_METHOD"], [14, 19, "VOTE_METHOD"], [23, 27, "VOTE_METHOD"]]}
+{"text": "Early Voting (Other) - Total", "entities": [[0, 12, "VOTE_METHOD"], [14, 19, "VOTE_METHOD"], [23, 28, "TOTAL"]]}
+{"text": "Election Day (Other) - Election Day", "entities": [[0, 8, "ELECTION_TYPE"], [14, 19, "VOTE_METHOD"], [23, 31, "ELECTION_TYPE"]]}
+{"text": "Election Day (Other) - Early Voting", "entities": [[0, 8, "ELECTION_TYPE"], [14, 19, "VOTE_METHOD"], [23, 35, "VOTE_METHOD"]]}
+{"text": "Election Day (Other) - Absentee", "entities": [[0, 8, "ELECTION_TYPE"], [14, 19, "VOTE_METHOD"], [23, 31, "VOTE_METHOD"]]}
+{"text": "Election Day (Other) - Mail", "entities": [[0, 8, "ELECTION_TYPE"], [14, 19, "VOTE_METHOD"], [23, 27, "VOTE_METHOD"]]}
+{"text": "Election Day (Other) - Total", "entities": [[0, 8, "ELECTION_TYPE"], [14, 19, "VOTE_METHOD"], [23, 28, "TOTAL"]]}
+{"text": "Label (Other) - Election Day", "entities": [[7, 12, "VOTE_METHOD"], [16, 24, "ELECTION_TYPE"]]}
+{"text": "Label (Other) - Early Voting", "entities": [[7, 12, "VOTE_METHOD"], [16, 28, "VOTE_METHOD"]]}
+{"text": "Label (Other) - Absentee", "entities": [[7, 12, "VOTE_METHOD"], [16, 24, "VOTE_METHOD"]]}
+{"text": "Label (Other) - Mail", "entities": [[7, 12, "VOTE_METHOD"], [16, 20, "VOTE_METHOD"]]}
+{"text": "Label (Other) - Total", "entities": [[7, 12, "VOTE_METHOD"], [16, 21, "TOTAL"]]}
+{"text": "Percent Reported (Other) - Election Day", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 35, "ELECTION_TYPE"]]}
+{"text": "Percent Reported (Other) - Early Voting", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 39, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Absentee", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 35, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Mail", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 31, "VOTE_METHOD"]]}
+{"text": "Percent Reported (Other) - Total", "entities": [[0, 7, "PERCENT"], [18, 23, "VOTE_METHOD"], [27, 32, "TOTAL"]]}
+{"text": "Precinct (Other) - Election Day", "entities": [[0, 8, "PRECINCT"], [10, 15, "VOTE_METHOD"], [19, 27, "ELECTION_TYPE"]]}
+{"text": "Precinct (Other) - Early Voting", "entities": [[0, 8, "PRECINCT"], [10, 15, "VOTE_METHOD"], [19, 31, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Absentee", "entities": [[0, 8, "PRECINCT"], [10, 15, "VOTE_METHOD"], [19, 27, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Mail", "entities": [[0, 8, "PRECINCT"], [10, 15, "VOTE_METHOD"], [19, 23, "VOTE_METHOD"]]}
+{"text": "Precinct (Other) - Total", "entities": [[0, 8, "PRECINCT"], [10, 15, "VOTE_METHOD"], [19, 24, "TOTAL"]]}
+{"text": "Total Votes", "entities": [[0, 5, "TOTAL"], [6, 11, "TOTAL"]]}
+{"text": "Total Votes (Other) - Early Voting", "entities": [[0, 5, "TOTAL"], [6, 11, "TOTAL"], [13, 18, "PARTY"], [22, 34, "VOTE_METHOD"]]}
+{"text": "Total Votes (Other) - Absentee", "entities": [[0, 5, "TOTAL"], [6, 11, "TOTAL"], [13, 18, "PARTY"], [22, 30, "VOTE_METHOD"]]}
+{"text": "Total Votes (Other) - Mail", "entities": [[0, 5, "TOTAL"], [6, 11, "TOTAL"], [13, 18, "PARTY"], [22, 26, "VOTE_METHOD"]]}
+{"text": "Total Votes (Other) - Total", "entities": [[0, 5, "TOTAL"], [6, 11, "TOTAL"], [13, 18, "PARTY"], [22, 27, "TOTAL"]]}
+{"text": "Votes (Other) - Election Day", "entities": [[0, 5, "TOTAL"], [7, 12, "VOTE_METHOD"], [16, 24, "ELECTION_TYPE"]]}
+{"text": "Votes (Other) - Early Voting", "entities": [[0, 5, "TOTAL"], [7, 12, "VOTE_METHOD"], [16, 28, "VOTE_METHOD"]]}
+{"text": "Votes (Other) - Absentee", "entities": [[0, 5, "TOTAL"], [7, 12, "VOTE_METHOD"], [16, 24, "VOTE_METHOD"]]}
+{"text": "Votes (Other) - Mail", "entities": [[0, 5, "TOTAL"], [7, 12, "VOTE_METHOD"], [16, 20, "VOTE_METHOD"]]}
+{"text": "Votes (Other) - Total", "entities": [[0, 5, "TOTAL"], [7, 12, "VOTE_METHOD"], [16, 21, "TOTAL"]]}
+{"text": "Working Families (Working Families) - Election Day", "entities": [[0, 16, "PARTY"], [18, 34, "PARTY"], [38, 46, "ELECTION_TYPE"]]}
+{"text": "Working Families (Working Families) - Early Voting", "entities": [[0, 16, "PARTY"], [18, 34, "PARTY"], [38, 50, "VOTE_METHOD"]]}
+{"text": "Working Families (Working Families) - Absentee", "entities": [[0, 16, "PARTY"], [18, 34, "PARTY"], [38, 46, "VOTE_METHOD"]]}
+{"text": "Working Families (Working Families) - Mail", "entities": [[0, 16, "PARTY"], [18, 34, "PARTY"], [38, 42, "VOTE_METHOD"]]}
+{"text": "Working Families (Working Families) - Total", "entities": [[0, 16, "PARTY"], [18, 34, "PARTY"], [38, 43, "TOTAL"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Precinct", "entities": [[0, 8, "PRECINCT"]]}
+{"text": "Chrissy Knapp (Democratic) - Election Day", "entities": [[15, 25, "PARTY"], [29, 37, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Democratic) - Early Voting", "entities": [[15, 25, "PARTY"], [29, 41, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Absentee", "entities": [[15, 25, "PARTY"], [29, 37, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Mail", "entities": [[15, 25, "PARTY"], [29, 33, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Total", "entities": [[15, 25, "PARTY"], [29, 34, "TOTAL"]]}
+{"text": "Chrissy Knapp (Working Families) - Election Day", "entities": [[15, 31, "PARTY"], [35, 43, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Working Families) - Early Voting", "entities": [[15, 31, "PARTY"], [35, 47, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Absentee", "entities": [[15, 31, "PARTY"], [35, 43, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Mail", "entities": [[15, 31, "PARTY"], [35, 39, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Total", "entities": [[15, 31, "PARTY"], [35, 40, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Republican) - Election Day", "entities": [[20, 30, "PARTY"], [34, 42, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Republican) - Early Voting", "entities": [[20, 30, "PARTY"], [34, 46, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Absentee", "entities": [[20, 30, "PARTY"], [34, 42, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Mail", "entities": [[20, 30, "PARTY"], [34, 38, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Total", "entities": [[20, 30, "PARTY"], [34, 39, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Election Day", "entities": [[20, 32, "PARTY"], [36, 44, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Early Voting", "entities": [[20, 32, "PARTY"], [36, 48, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Absentee", "entities": [[20, 32, "PARTY"], [36, 44, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Mail", "entities": [[20, 32, "PARTY"], [36, 40, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Total", "entities": [[20, 32, "PARTY"], [36, 41, "TOTAL"]]}
+{"text": "Write-in - Election Day", "entities": [[0, 8, "MISC"], [11, 19, "ELECTION_TYPE"]]}
+{"text": "Write-in - Early Voting", "entities": [[0, 8, "MISC"], [11, 23, "VOTE_METHOD"]]}
+{"text": "Write-in - Absentee", "entities": [[0, 8, "MISC"], [11, 19, "VOTE_METHOD"]]}
+{"text": "Write-in - Mail", "entities": [[0, 8, "MISC"], [11, 15, "VOTE_METHOD"]]}
+{"text": "Write-in - Total", "entities": [[0, 8, "MISC"], [11, 16, "TOTAL"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Percent Reported", "entities": [[0, 7, "PERCENT"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Percent Reported", "entities": [[0, 7, "PERCENT"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Orangetown", "entities": [[0, 10, "DISTRICT"]]}
+{"text": "Chrissy Knapp (Democratic) - Election Day", "entities": [[15, 25, "PARTY"], [29, 37, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Democratic) - Early Voting", "entities": [[15, 25, "PARTY"], [29, 41, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Absentee", "entities": [[15, 25, "PARTY"], [29, 37, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Mail", "entities": [[15, 25, "PARTY"], [29, 33, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Total", "entities": [[15, 25, "PARTY"], [29, 34, "TOTAL"]]}
+{"text": "Chrissy Knapp (Working Families) - Election Day", "entities": [[15, 31, "PARTY"], [35, 43, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Working Families) - Early Voting", "entities": [[15, 31, "PARTY"], [35, 47, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Absentee", "entities": [[15, 31, "PARTY"], [35, 43, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Mail", "entities": [[15, 31, "PARTY"], [35, 39, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Total", "entities": [[15, 31, "PARTY"], [35, 40, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Republican) - Election Day", "entities": [[20, 30, "PARTY"], [34, 42, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Republican) - Early Voting", "entities": [[20, 30, "PARTY"], [34, 46, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Absentee", "entities": [[20, 30, "PARTY"], [34, 42, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Mail", "entities": [[20, 30, "PARTY"], [34, 38, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Total", "entities": [[20, 30, "PARTY"], [34, 39, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Election Day", "entities": [[20, 32, "PARTY"], [36, 44, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Early Voting", "entities": [[20, 32, "PARTY"], [36, 48, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Absentee", "entities": [[20, 32, "PARTY"], [36, 44, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Mail", "entities": [[20, 32, "PARTY"], [36, 40, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Total", "entities": [[20, 32, "PARTY"], [36, 41, "TOTAL"]]}
+{"text": "Write-in - Election Day", "entities": [[0, 8, "MISC"], [11, 19, "ELECTION_TYPE"]]}
+{"text": "Write-in - Early Voting", "entities": [[0, 8, "MISC"], [11, 23, "VOTE_METHOD"]]}
+{"text": "Write-in - Absentee", "entities": [[0, 8, "MISC"], [11, 19, "VOTE_METHOD"]]}
+{"text": "Write-in - Mail", "entities": [[0, 8, "MISC"], [11, 15, "VOTE_METHOD"]]}
+{"text": "Write-in - Total", "entities": [[0, 8, "MISC"], [11, 16, "TOTAL"]]}
+{"text": "Percent Reported", "entities": [[0, 7, "PERCENT"]]}
+{"text": "Grand Total", "entities": [[6, 11, "TOTAL"]]}
+{"text": "Orangetown", "entities": [[0, 10, "DISTRICT"]]}
+{"text": "Chrissy Knapp (Democratic) - Election Day", "entities": [[15, 25, "PARTY"], [29, 37, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Democratic) - Early Voting", "entities": [[15, 25, "PARTY"], [29, 41, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Absentee", "entities": [[15, 25, "PARTY"], [29, 37, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Mail", "entities": [[15, 25, "PARTY"], [29, 33, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Democratic) - Total", "entities": [[15, 25, "PARTY"], [29, 34, "TOTAL"]]}
+{"text": "Chrissy Knapp (Working Families) - Election Day", "entities": [[15, 31, "PARTY"], [35, 43, "ELECTION_TYPE"]]}
+{"text": "Chrissy Knapp (Working Families) - Early Voting", "entities": [[15, 31, "PARTY"], [35, 47, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Absentee", "entities": [[15, 31, "PARTY"], [35, 43, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Mail", "entities": [[15, 31, "PARTY"], [35, 39, "VOTE_METHOD"]]}
+{"text": "Chrissy Knapp (Working Families) - Total", "entities": [[15, 31, "PARTY"], [35, 40, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Republican) - Election Day", "entities": [[20, 30, "PARTY"], [34, 42, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Republican) - Early Voting", "entities": [[20, 30, "PARTY"], [34, 46, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Absentee", "entities": [[20, 30, "PARTY"], [34, 42, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Mail", "entities": [[20, 30, "PARTY"], [34, 38, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Republican) - Total", "entities": [[20, 30, "PARTY"], [34, 39, "TOTAL"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Election Day", "entities": [[20, 32, "PARTY"], [36, 44, "ELECTION_TYPE"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Early Voting", "entities": [[20, 32, "PARTY"], [36, 48, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Absentee", "entities": [[20, 32, "PARTY"], [36, 44, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Mail", "entities": [[20, 32, "PARTY"], [36, 40, "VOTE_METHOD"]]}
+{"text": "Daniel W. Sullivan (Conservative) - Total", "entities": [[20, 32, "PARTY"], [36, 41, "TOTAL"]]}
+{"text": "Write-in - Election Day", "entities": [[0, 8, "MISC"], [11, 19, "ELECTION_TYPE"]]}
+{"text": "Write-in - Early Voting", "entities": [[0, 8, "MISC"], [11, 23, "VOTE_METHOD"]]}
+{"text": "Write-in - Absentee", "entities": [[0, 8, "MISC"], [11, 19, "VOTE_METHOD"]]}
+{"text": "Write-in - Mail", "entities": [[0, 8, "MISC"], [11, 15, "VOTE_METHOD"]]}
+{"text": "Write-in - Total", "entities": [[0, 8, "MISC"], [11, 16, "TOTAL"]]}

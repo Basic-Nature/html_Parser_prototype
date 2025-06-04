@@ -55,7 +55,7 @@ def build_dynamic_table(
             or "Unknown Contest"
         )
     contest_title = context["contest_title"]
-    logger.info(f"[TABLE BUILDER] Using contest_title: '{contest_title}'")
+    logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Using contest_title: '{contest_title}'")
 
     # 2. Try to use a learned structure if available
     learned_structure = None
@@ -77,7 +77,9 @@ def build_dynamic_table(
                 if h not in merged_headers:
                     merged_headers.append(h)
             merged_headers, merged_data = harmonize_headers_and_data(merged_headers, data)
-            logger.info(f"[TABLE BUILDER] Applied merged learned structure for '{contest_title}'.")
+            logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Applied merged learned structure for '{contest_title}'.")
+            logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Output headers: {merged_headers}")
+            logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Output sample row: {merged_data[0] if merged_data else 'NO DATA'}")
             return merged_headers, merged_data
 
     # 3. If no headers/data, attempt all extraction strategies in order of reliability
@@ -109,6 +111,7 @@ def build_dynamic_table(
     for extract_fn in extraction_attempts:
         try:
             cand_headers, cand_data = extract_fn(page, context)
+            logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Extraction attempt {extract_fn.__name__}: headers={cand_headers}, rows={len(cand_data)}")
             if cand_headers and cand_data:
                 # Score using ML/NLP
                 ml_scores = [coordinator.score_header(h, context) for h in cand_headers]
@@ -120,7 +123,7 @@ def build_dynamic_table(
                     "source": extract_fn.__name__,
                 })
         except Exception as e:
-            logger.warning(f"[TABLE BUILDER] Extraction attempt {extract_fn.__name__} failed: {e}")
+            logger.warning(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Extraction attempt {extract_fn.__name__} failed: {e}")
 
     # 5. Rank candidates by ML/NLP confidence and keyword/entity matching
     def candidate_rank(cand):
@@ -132,24 +135,35 @@ def build_dynamic_table(
     if candidates:
         best = candidates[0]
         headers, data = best["headers"], best["data"]
-        logger.info(f"[TABLE BUILDER] Selected extraction from {best['source']} with ML score {best['ml_score']:.2f}")
+        logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Selected extraction from {best['source']} with ML score {best['ml_score']:.2f}")
+        logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Output headers: {headers}")
+        logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Output sample row: {data[0] if data else 'NO DATA'}")
     else:
-        logger.warning("[TABLE BUILDER] No extraction method succeeded, using fallback handler.")
+        logger.warning("[TABLE BUILDER][BUILD_DYNAMIC_TABLE] No extraction method succeeded, using fallback handler.")
         headers, data = [], []
 
     # 7. Harmonize headers/data after extraction
     headers, data = harmonize_headers_and_data(headers, data)
+    logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Harmonized headers: {headers}")
+    logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Harmonized sample row: {data[0] if data else 'NO DATA'}")
 
     # 8. Use NLP/NER to cross-reference DOM and refine structure
     structure_info = detect_table_structure(headers, data, coordinator)
-    logger.info(f"[TABLE BUILDER] Detected table structure: {structure_info}")
+    logger.info(f"[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Detected table structure: {structure_info}")
+
+    from .table_core import progressive_table_verification, interactive_feedback_loop
+    headers, data, structure_info = progressive_table_verification(headers, data, coordinator, context)
+    if not structure_info.get("verified"):
+        headers, data, structure_info = interactive_feedback_loop(headers, data, structure_info)
 
     if structure_info["type"] == "candidate-major":
+        logger.info("[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Using candidate-major handler.")
         return handle_candidate_major(headers, data, coordinator, context)
     elif structure_info["type"] == "precinct-major":
+        logger.info("[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Using precinct-major handler.")
         return handle_precinct_major(headers, data, coordinator, context)
     else:
-        # As a last resort, try ambiguous handler (which tries both major types and picks the best)
+        logger.info("[TABLE BUILDER][BUILD_DYNAMIC_TABLE] Using ambiguous handler.")
         return handle_ambiguous(headers, data, coordinator, context)
 
 

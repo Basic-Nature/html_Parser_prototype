@@ -78,7 +78,7 @@ def handle_toggle_and_rescan(
             try:
                 element.click(timeout=5000)
                 rprint(f"[green][DEBUG] Clicked button: '{btn.get('label', '')}' for toggle '{toggle_name}'[/green]")
-                page.wait_for_timeout(500)  # Give time for DOM update
+                page.wait_for_timeout(500)
             except Exception as e:
                 rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
                 return html_context
@@ -89,15 +89,13 @@ def handle_toggle_and_rescan(
         rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
         return html_context
     autoscroll_until_stable(page)
+    # PATCH: Always rescan context after toggle
+    if rejected_downloads is None:
+        rejected_downloads = set()
+    html_context = get_or_scan_context(page, coordinator, rejected_downloads=rejected_downloads)
     new_hash = get_page_hash(page)
-    if new_hash != prev_hash:
-        if rejected_downloads is None:
-            rejected_downloads = set()
-        html_context = get_or_scan_context(page, coordinator, rejected_downloads=rejected_downloads)
-        context_cache[new_hash] = html_context
-        rprint(f"[green][TOGGLE] Page changed after '{toggle_name}' toggle. Context re-scanned.[/green]")
-    else:
-        rprint(f"[yellow][TOGGLE] Page did not change after '{toggle_name}' toggle. Skipping re-scan.[/yellow]")
+    context_cache[new_hash] = html_context
+    rprint(f"[green][TOGGLE] Page (re)scanned after '{toggle_name}' toggle.[/green]")
     return html_context
 
 def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, non_interactive=False):
@@ -256,7 +254,11 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 continue
 
             # --- 10. Assemble headers and finalize output ---
-            headers = sorted(set().union(*(row.keys() for row in data)))
+            headers = sorted(
+                set(
+                    k for row in data for k in row.keys() if k is not None
+                )
+            )
             print("DEBUG: Finalized headers:", headers)
             metadata = {
                 "state": state or "Unknown",

@@ -10,29 +10,29 @@ base_model: sentence-transformers/all-MiniLM-L6-v2
 widget:
 - source_sentence: ''
   sentences:
-  - Write-in - Absentee
-  - Orangetown (Other) - Absentee
-  - Working Families (Working Families) - Total
-- source_sentence: ''
-  sentences:
-  - '%reported (Other) - Total'
-  - Chrissy Knapp (Democratic) - Mail
-  - DEM Chrissy Knapp (Democratic) - Absentee
-- source_sentence: ''
-  sentences:
-  - REP Daniel W. Sullivan (Republican) - Election Day
-  - Grand Total (Grand Total) - Election Day
-  - Percent Reported (Other) - Early Voting
-- source_sentence: ''
-  sentences:
-  - Precinct
-  - Chrissy Knapp (Working Families) - Election Day
   - Candidate (Other) - Total
+  - Chrissy Knapp (Working Families) - Absentee
+  - Write-in - Early Voting
 - source_sentence: ''
   sentences:
-  - Daniel W. Sullivan (Republican) - Early Voting
-  - WOR Chrissy Knapp (Working Families) - Early Voting
-  - Orangetown (Other) - Election Day
+  - Label (Other) - Total
+  - Chrissy Knapp (Working Families) - Mail
+  - Orangetown (Other) - Absentee
+- source_sentence: ''
+  sentences:
+  - REP Daniel W. Sullivan (Republican) - Total
+  - Precinct (Other) - Mail
+  - Orangetown
+- source_sentence: ''
+  sentences:
+  - Daniel W. Sullivan (Conservative) - Absentee
+  - Precinct (Other) - Mail
+  - Districts
+- source_sentence: ''
+  sentences:
+  - Grand Total (Grand Total) - Election Day
+  - Early Voting (Other) - Early Voting
+  - Absentee Mail (Absentee Mail) - Mail
 pipeline_tag: sentence-similarity
 library_name: sentence-transformers
 ---
@@ -88,8 +88,8 @@ model = SentenceTransformer("sentence_transformers_model_id")
 # Run inference
 sentences = [
     '',
-    'WOR Chrissy Knapp (Working Families) - Early Voting',
-    'Orangetown (Other) - Election Day',
+    'Early Voting (Other) - Early Voting',
+    'Absentee Mail (Absentee Mail) - Mail',
 ]
 embeddings = model.encode(sentences)
 print(embeddings.shape)
@@ -151,11 +151,11 @@ You can finetune this model on your own dataset.
   | type    | string                                                                         | string                                                                          | float                                                         |
   | details | <ul><li>min: 2 tokens</li><li>mean: 3.1 tokens</li><li>max: 9 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 9.9 tokens</li><li>max: 15 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
 * Samples:
-  | sentence_0                                         | sentence_1                                                   | label            |
-  |:---------------------------------------------------|:-------------------------------------------------------------|:-----------------|
-  | <code></code>                                      | <code>Write-in - Mail</code>                                 | <code>1.0</code> |
-  | <code>Orangetown Town Council<br>Vote for 1</code> | <code>Write-in - Mail</code>                                 | <code>1.0</code> |
-  | <code>Unknown Contest</code>                       | <code>Chrissy Knapp (Working Families) - Early Voting</code> | <code>1.0</code> |
+  | sentence_0                   | sentence_1                                               | label            |
+  |:-----------------------------|:---------------------------------------------------------|:-----------------|
+  | <code></code>                | <code>Candidate (Other) - Mail</code>                    | <code>1.0</code> |
+  | <code>Unknown Contest</code> | <code>Write-in - Absentee</code>                         | <code>1.0</code> |
+  | <code>Unknown Contest</code> | <code>Chrissy Knapp (Working Families) - Absentee</code> | <code>1.0</code> |
 * Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
   ```json
   {

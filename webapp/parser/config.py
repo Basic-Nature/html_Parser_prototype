@@ -6,3 +6,4 @@ CONTEXT_DB_PATH = os.path.join(BASE_DIR, "parser", "Context_Integration", "Conte
 CONTEXT_LIBRARY_PATH = os.path.join(
     BASE_DIR, "parser", "Context_Integration", "Context_Library", "context_library.json"
 )
+MODEL_DIR = os.path.dirname(BASE_DIR)
