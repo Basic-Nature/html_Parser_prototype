@@ -53,6 +53,34 @@ ENTITY_PATTERNS = [
     # Add more as needed
 ]
 
+def append_training_data(new_data, path="spacy_ner_train_data.jsonl"):
+    """
+    Appends new training data to a JSONL file in the log directory, deduplicating by text/entities,
+    and adds a timestamp to each entry. Uses the log_dir as the parent of the model_dir for safety.
+    """
+    main_dir = MODEL_DIR if 'MODEL_DIR' in globals() else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../model"))
+    log_dir = os.path.abspath(os.path.join(os.path.dirname(main_dir), "log"))
+    os.makedirs(log_dir, exist_ok=True)
+    safe_path = os.path.abspath(os.path.join(log_dir, path))
+    # Harden: ensure safe_path is inside log_dir
+    if not safe_path.startswith(log_dir):
+        raise ValueError("Unsafe path detected for training data output!")
+    existing = set()
+    if os.path.exists(safe_path):
+        with open(safe_path, "r", encoding="utf-8") as f:
+            for line in f:
+                existing.add(line.strip())
+    with open(safe_path, "a", encoding="utf-8") as f:
+        for text, annots in new_data:
+            entry = {
+                "text": text,
+                "entities": annots["entities"],
+                "timestamp": datetime.datetime.now().isoformat()
+            }
+            line = json.dumps(entry, ensure_ascii=False)
+            if line not in existing:
+                f.write(line + "\n")
+
 def save_training_data_jsonl(train_data, path="spacy_ner_train_data.jsonl"):
     # Save to the log/ directory at the project root
     log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log"))
@@ -335,6 +363,11 @@ def run_manual_correction_bot():
     subprocess.run(["python", script_path, "--fields", "tables", "--feedback", "--enhanced"])
 
 def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
+    """
+    Fine-tunes the SentenceTransformer model on confirmed structures.
+    Loads the existing model for further training if present, otherwise starts from base.
+    Always saves to the same folder (no timestamp).
+    """
     train_examples = []
     for struct in confirmed_structures:
         contest_title = struct["contest_title"]
@@ -345,7 +378,19 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
         print("No training examples found. Aborting retraining.")
         return
 
-    model = SentenceTransformer("all-MiniLM-L6-v2")
+    # Always use the same folder for the model
+    base_dir = MODEL_DIR if 'MODEL_DIR' in globals() else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../model"))
+    model_save_path = model_save_path or os.path.join(base_dir, "fine_tuned_table_headers")
+    os.makedirs(model_save_path, exist_ok=True)
+
+    # Load existing model for further training if present
+    if os.path.exists(os.path.join(model_save_path, "config.json")):
+        print(f"Loading existing model from {model_save_path} for further fine-tuning...")
+        model = SentenceTransformer(model_save_path)
+    else:
+        print("No existing fine-tuned model found. Starting from base model.")
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+
     train_dataloader = DataLoader(train_examples, shuffle=True, batch_size=8)
     train_loss = losses.CosineSimilarityLoss(model)
 
@@ -357,13 +402,6 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
         show_progress_bar=True
     )
 
-    # PATCH: Use config/model dir and unique subdir for each run
-    if model_save_path is None:
-        # Use config path if available, else fallback to log/
-        base_dir = MODEL_DIR if 'MODEL_DIR' in globals() else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log"))
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_save_path = os.path.join(base_dir, f"fine_tuned_table_headers_{timestamp}")
-    os.makedirs(model_save_path, exist_ok=True)
     model.save(model_save_path)
     print(f"Fine-tuned model saved to: {model_save_path}")
 
