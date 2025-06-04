@@ -3,6 +3,7 @@ from .....utils.logger_instance import logger
 from .....utils.shared_logger import rprint
 from .....utils.output_utils import finalize_election_output
 from .....utils.table_builder import build_dynamic_table
+from .....utils.table_core import robust_table_extraction
 from .....utils.html_scanner import scan_html_for_context
 from .....utils.contest_selector import select_contest
 from typing import TYPE_CHECKING
@@ -116,7 +117,6 @@ def parse_single_contest_dynamic(page, html_context, state, county, coordinator)
     else:
         # Fallback: try table-based extraction as a last resort
         rprint(f"[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
-        from .....utils.table_builder import robust_table_extraction
         headers, data_rows = robust_table_extraction(page, html_context)
         if not headers or not data_rows:
             rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")

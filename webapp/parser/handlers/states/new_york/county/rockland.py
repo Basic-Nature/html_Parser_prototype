@@ -1,10 +1,9 @@
 from playwright.sync_api import Page
 
-from .....utils.html_scanner import scan_html_for_context
 from .....utils.contest_selector import select_contest
-from .....utils.table_builder import build_dynamic_table, extract_table_data, robust_table_extraction
+from .....utils.table_builder import build_dynamic_table
+from .....utils.table_core import robust_table_extraction
 from .....utils.output_utils import finalize_election_output
-from .....utils.logger_instance import logger
 from .....utils.shared_logger import rprint
 from .....utils.shared_logic import autoscroll_until_stable
 from .....utils.user_prompt import prompt_user_for_button, confirm_button_callback
