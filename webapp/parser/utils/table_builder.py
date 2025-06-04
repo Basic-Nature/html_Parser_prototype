@@ -6,6 +6,7 @@
 
 import os
 import json
+import time
 from rich.table import Table
 from typing import List, Dict, Tuple, Any, Optional, TYPE_CHECKING
 from .logger_instance import logger
@@ -36,15 +37,16 @@ def build_dynamic_table(
     data: List[Dict[str, Any]],
     coordinator: "ContextCoordinator",
     context: dict = None,
-    max_feedback_loops: int = 3,
+    max_feedback_loops: int = 2,
     learning_mode: bool = True,
     confirm_table_structure_callback=None,
     pivot_to_wide: bool = True,
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Orchestrates robust, multi-source, entity-aware table extraction and harmonization.
-    - Uses robust_table_extraction as the single source of truth for extraction.
-    - Proceeds with annotation, user/ML feedback, and pivots only if structure requires.
+    Uses dynamic_table_extractor for candidate generation and scoring.
+    Fallbacks and patching are used only as needed, with deduplication and validation.
+    Persistent cache is for debugging/recovery, not for downstream ML/feedback.
     """
     if context is None:
         context = {}
@@ -52,34 +54,111 @@ def build_dynamic_table(
         context["coordinator"] = coordinator
     page = context.get("page")
 
-    # --- 1. Robust Extraction (single source of truth) ---
-    from .table_core import robust_table_extraction
+    # --- Persistent cache for debugging/recovery only ---
+    persistent_cache = {
+        "initial_headers": headers.copy() if headers else [],
+        "initial_data": data.copy() if data else [],
+        "extracted_headers": [],
+        "extracted_data": [],
+        "fallback_headers": [],
+        "fallback_data": [],
+        "patched_headers": [],
+        "patched_data": [],
+        "final_headers": [],
+        "final_data": [],
+        "attempts": [],
+        "timestamp": time.time(),
+    }
 
-    extracted_headers, extracted_data = robust_table_extraction(
-        page,
-        extraction_context=context,
-        existing_headers=headers,
-        existing_data=data
-    )
-    logger.info(f"[TABLE_BUILDER] robust_table_extraction: {len(extracted_headers)} headers, {len(extracted_data)} rows.")
+    # --- 1. Candidate Generation & Scoring ---
+    from ..utils.dynamic_table_extractor import dynamic_table_extractor
+    extracted_headers, extracted_data = dynamic_table_extractor(page, context, coordinator)
+    logger.info(f"[TABLE_BUILDER] dynamic_table_extractor: {len(extracted_headers)} headers, {len(extracted_data)} rows.")
 
-    # --- 2. NLP Entity Annotation ---
+    persistent_cache["extracted_headers"] = extracted_headers.copy()
+    persistent_cache["extracted_data"] = extracted_data.copy()
+    persistent_cache["attempts"].append({
+        "stage": "dynamic_table_extractor",
+        "headers": extracted_headers.copy(),
+        "data_len": len(extracted_data),
+        "timestamp": time.time(),
+    })
+
+    # --- 2. Fallback: Robust Extraction & Patch Incomplete Data ---
+    patch_attempts = 0
+    max_patch_attempts = max_feedback_loops
+    patched_headers, patched_data = extracted_headers.copy(), extracted_data.copy()
+
+    while (
+        (not patched_headers or not patched_data or any(not h or h.lower().startswith("column") for h in patched_headers))
+        and patch_attempts < max_patch_attempts
+    ):
+        patch_attempts += 1
+        from .table_core import robust_table_extraction, harmonize_headers_and_data
+        fallback_headers, fallback_data = robust_table_extraction(
+            page,
+            extraction_context=context,
+            existing_headers=persistent_cache["initial_headers"],
+            existing_data=persistent_cache["initial_data"]
+        )
+        logger.info(f"[TABLE_BUILDER] robust_table_extraction fallback: {len(fallback_headers)} headers, {len(fallback_data)} rows.")
+        persistent_cache["fallback_headers"] = fallback_headers.copy()
+        persistent_cache["fallback_data"] = fallback_data.copy()
+        persistent_cache["attempts"].append({
+            "stage": f"robust_table_extraction_{patch_attempts}",
+            "headers": fallback_headers.copy(),
+            "data_len": len(fallback_data),
+            "timestamp": time.time(),
+        })
+
+        # --- Deduplicate and validate when merging fallback and initial data ---
+        # Merge headers
+        merged_headers = list(dict.fromkeys([h for h in (patched_headers or []) + (fallback_headers or []) if h]))
+        # Merge data, deduplicate by row signature
+        merged_data = patched_data.copy() if patched_data else []
+        for row in fallback_data:
+            if row not in merged_data:
+                merged_data.append(row)
+        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
+
+        # Try to re-run dynamic_table_extractor with patched data
+        context["patched_headers"] = merged_headers
+        context["patched_data"] = merged_data
+        patched_headers, patched_data = dynamic_table_extractor(page, context, coordinator)
+        logger.info(f"[TABLE_BUILDER] dynamic_table_extractor (after patch): {len(patched_headers)} headers, {len(patched_data)} rows.")
+        persistent_cache["attempts"].append({
+            "stage": f"dynamic_table_extractor_patch_{patch_attempts}",
+            "headers": patched_headers.copy(),
+            "data_len": len(patched_data),
+            "timestamp": time.time(),
+        })
+
+        # If still nothing, use merged fallback as last resort
+        if not patched_headers or not patched_data:
+            patched_headers, patched_data = merged_headers, merged_data
+
+    # Use the final, highest-confidence extraction for downstream processing
+    headers, data = patched_headers, patched_data
+    persistent_cache["final_headers"] = headers.copy()
+    persistent_cache["final_data"] = data.copy()
+
+    # --- 3. NLP Entity Annotation ---
     try:
         annotated_headers, annotated_data, entity_info = nlp_entity_annotate_table(
-            extracted_headers, extracted_data, context=context, coordinator=coordinator
+            headers, data, context=context, coordinator=coordinator
         )
         logger.info(f"[TABLE_BUILDER] NLP entity annotation complete. Entities: {entity_info}")
     except Exception as e:
         logger.warning(f"[TABLE_BUILDER] NLP entity annotation failed: {e}")
-        annotated_headers, annotated_data = extracted_headers, extracted_data
+        annotated_headers, annotated_data = headers, data
         entity_info = {}
 
-    # --- 3. Harmonize headers/data after annotation ---
+    # --- 4. Harmonize headers/data after annotation ---
     headers, data = harmonize_headers_and_data(annotated_headers, annotated_data)
     logger.info(f"[TABLE_BUILDER] Harmonized headers: {headers}")
     logger.info(f"[TABLE_BUILDER] Harmonized sample row: {data[0] if data else 'NO DATA'}")
 
-    # --- 4. Structure Analysis (annotation only, no transformation) ---
+    # --- 5. Structure Analysis ---
     try:
         structure_info = detect_table_structure(headers, data, coordinator, entity_info=entity_info)
         logger.info(f"[TABLE_BUILDER] Detected table structure: {structure_info}")
@@ -87,8 +166,7 @@ def build_dynamic_table(
         logger.warning(f"[TABLE_BUILDER] Structure detection failed: {e}")
         structure_info = {"type": "ambiguous", "verified": False}
 
-    # --- 5. Pivot to wide format only if structure requires ---
-    # Only pivot if structure_info indicates candidate-major or precinct-major
+    # --- 6. Pivot to wide format only if structure requires ---
     should_pivot = False
     if pivot_to_wide and structure_info.get("type") in {"candidate-major", "precinct-major"}:
         should_pivot = True
@@ -97,7 +175,6 @@ def build_dynamic_table(
     if should_pivot:
         location_headers = [h for h in headers if any(lk in h.lower() for lk in ["precinct", "district", "ward", "location"])]
         if not location_headers:
-            # Add a synthetic location column
             synthetic_location = context.get("contest_title", "All")
             for row in data:
                 row["Location"] = synthetic_location
@@ -107,20 +184,92 @@ def build_dynamic_table(
         try:
             wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
             logger.info(f"[TABLE_BUILDER] Pivoted to wide format: {len(wide_headers)} headers, {len(wide_data)} rows.")
+            persistent_cache["final_headers"] = wide_headers.copy()
+            persistent_cache["final_data"] = wide_data.copy()
+            _save_table_builder_cache(domain, persistent_cache)
             return wide_headers, wide_data
         except Exception as e:
             logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e}")
-            # Return harmonized, annotated data as fallback
 
-    # --- 6. User/ML confirmation and learning (if enabled) ---
+    # --- 7. User/ML confirmation and learning (if enabled) ---
     if learning_mode:
         contest_title = context.get("contest_title") or "Unknown Contest"
         headers, data = prompt_user_to_confirm_table_structure(
             headers, data, domain, contest_title, coordinator
         )
+        persistent_cache["final_headers"] = headers.copy()
+        persistent_cache["final_data"] = data.copy()
+
+    # --- 8. Final backup in persistent cache (for debugging/recovery only) ---
+    _save_table_builder_cache(domain, persistent_cache)
 
     return headers, data
 
+# ===================================================================
+# CACHE MANAGEMENT STRATEGY
+# ===================================================================
+
+def _get_table_builder_cache_dir():
+    # Always log to parent of webapp/logs/table_builder_cache
+    from ..config import BASE_DIR
+    log_parent = os.path.abspath(os.path.join(BASE_DIR, "..", "logs"))
+    cache_dir = os.path.join(log_parent, "table_builder_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    return cache_dir
+
+def _save_table_builder_cache(domain, persistent_cache, keep_last_n=5):
+    """
+    Save the persistent cache for debugging/recovery only.
+    Keeps only the last N cache files per domain to avoid stale data buildup.
+    """
+    cache_dir = _get_table_builder_cache_dir()
+    # Use timestamp for uniqueness, but sanitize domain for filename
+    safe_domain = "".join(c for c in domain if c.isalnum() or c in ("-", "_"))
+    timestamp = int(persistent_cache.get("timestamp", time.time()))
+    cache_path = os.path.join(cache_dir, f"{safe_domain}_{timestamp}_table.json")
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(persistent_cache, f, indent=2)
+    # Cleanup: keep only last N cache files per domain
+    files = sorted(
+        [f for f in os.listdir(cache_dir) if f.startswith(safe_domain)],
+        key=lambda fn: os.path.getmtime(os.path.join(cache_dir, fn)),
+        reverse=True
+    )
+    for old_file in files[keep_last_n:]:
+        try:
+            os.remove(os.path.join(cache_dir, old_file))
+        except Exception:
+            pass
+
+def _list_table_builder_cache(domain=None):
+    """
+    List available cache files for a domain (or all if domain is None).
+    """
+    cache_dir = _get_table_builder_cache_dir()
+    files = os.listdir(cache_dir)
+    if domain:
+        safe_domain = "".join(c for c in domain if c.isalnum() or c in ("-", "_"))
+        files = [f for f in files if f.startswith(safe_domain)]
+    return sorted(files, key=lambda fn: os.path.getmtime(os.path.join(cache_dir, fn)), reverse=True)
+
+def _load_table_builder_cache(domain, latest=True):
+    """
+    Load the latest (or all) cache files for a domain.
+    """
+    files = _list_table_builder_cache(domain)
+    if not files:
+        return None
+    cache_dir = _get_table_builder_cache_dir()
+    if latest:
+        with open(os.path.join(cache_dir, files[0]), "r", encoding="utf-8") as f:
+            return json.load(f)
+    else:
+        caches = []
+        for fn in files:
+            with open(os.path.join(cache_dir, fn), "r", encoding="utf-8") as f:
+                caches.append(json.load(f))
+        return caches
+    
 # ===================================================================
 # USER FEEDBACK, CONFIRMATION, AND LEARNING
 # ===================================================================
