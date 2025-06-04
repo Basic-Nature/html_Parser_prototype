@@ -77,6 +77,8 @@ def find_tabular_candidates(page):
     tables = page.locator("table")
     for i in range(tables.count()):
         table = tables.nth(i)
+        if table is None:
+            continue
         from .table_core import extract_table_data
         headers, data = extract_table_data(table)
         if headers and data:
@@ -89,10 +91,14 @@ def find_tabular_candidates(page):
     # 3. Pattern-based extraction (if any patterns are approved)
     from .table_core import extract_with_patterns, guess_headers_from_row
     pattern_rows = extract_with_patterns(page)
+    # Only use rows where row is not None
+    pattern_rows = [tup for tup in pattern_rows if tup[1] is not None]
     if pattern_rows:
         headers = guess_headers_from_row(pattern_rows[0][1])
         data = []
         for heading, row, pat in pattern_rows:
+            if row is None:
+                continue
             cells = row.locator("> *")
             row_data = {}
             for idx in range(cells.count()):
@@ -328,9 +334,6 @@ def entity_linking(header, known_entities):
 def find_tables_with_headings(page, dom_segments=None, heading_tags=None, include_section_context=True):
     """
     Finds all tables on the page and pairs each with its nearest heading or ARIA landmark.
-    - If dom_segments is provided (from scan_html_for_context), uses that for robust matching.
-    - Otherwise, falls back to Playwright DOM traversal.
-    - Supports nested sections, ARIA landmarks, and fieldset legends.
     Returns a list of (heading, table_locator) tuples.
     """
     if heading_tags is None:
@@ -409,25 +412,26 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
                 heading = f"{section_context}: {heading}"
             # Use Playwright to get the table locator by index
             table_locator = page.locator("table").nth(i)
-            results.append((heading, table_locator))
+            if table_locator is not None:
+                results.append((heading, table_locator))
     else:
         # Fallback: Use Playwright only
         tables = page.locator("table")
         for i in range(tables.count()):
             table = tables.nth(i)
+            if table is None:
+                continue
             heading = None
             section_context = None
             try:
-                # Try ARIA landmarks/regions
                 parent = table
-                for _ in range(5):  # Walk up to 5 ancestors
+                for _ in range(5):
                     parent = parent.locator("xpath=..")
                     attrs = parent.evaluate("el => ({'role': el.getAttribute('role'), 'aria-label': el.getAttribute('aria-label'), 'aria-labelledby': el.getAttribute('aria-labelledby'), 'tag': el.tagName.toLowerCase()})")
                     if attrs.get("role") in ("region", "complementary", "main", "navigation", "search") or attrs.get("aria-label"):
                         section_context = attrs.get("aria-label") or attrs.get("role")
                         break
                     if attrs.get("tag") in ("section", "fieldset"):
-                        # Try to find a legend or heading inside this section
                         legend = parent.locator("legend")
                         if legend.count() > 0:
                             heading = legend.nth(0).inner_text().strip()
@@ -441,7 +445,6 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
                             break
                         section_context = attrs.get("tag")
                         break
-                # Try previous heading sibling
                 if not heading:
                     header_locator = table.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
                     if header_locator.count() > 0:
@@ -468,6 +471,8 @@ def discover_container_selectors(page, extra_keywords=None, min_row_count=2):
     all_divs = page.locator("div")
     for i in range(all_divs.count()):
         div = all_divs.nth(i)
+        if div is None:
+            continue
         cls = div.get_attribute("class") or ""
         id_ = div.get_attribute("id") or ""
         text = div.inner_text().strip().lower()

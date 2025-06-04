@@ -105,10 +105,14 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # 2. Pattern-based extraction (approved DOM patterns)
     try:
         pattern_rows = extract_with_patterns(page, extraction_context)
+        # Only use rows where row is not None
+        pattern_rows = [tup for tup in pattern_rows if tup[1] is not None]
         if pattern_rows:
             headers_pat = guess_headers_from_row(pattern_rows[0][1])
             data_pat = []
             for heading, row, pat in pattern_rows:
+                if row is None:
+                    continue
                 cells = row.locator("> *")
                 row_data = {}
                 for idx in range(cells.count()):
@@ -138,17 +142,19 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     try:
         tables = page.locator("table")
         for i in range(tables.count()):
-            headers_tab, data_tab = extract_table_data(tables.nth(i))
-            if headers_tab and data_tab:
-                all_tables.append((headers_tab, data_tab))
-                extraction_logs.append({
-                    "method": "table",
-                    "headers": headers_tab,
-                    "rows": len(data_tab),
-                    "columns": len(headers_tab),
-                    "success": True,
-                    "context": extraction_context
-                })
+            table = tables.nth(i)
+            if table is not None:
+                headers_tab, data_tab = extract_table_data(table)
+                if headers_tab and data_tab:
+                    all_tables.append((headers_tab, data_tab))
+                    extraction_logs.append({
+                        "method": "table",
+                        "headers": headers_tab,
+                        "rows": len(data_tab),
+                        "columns": len(headers_tab),
+                        "success": True,
+                        "context": extraction_context
+                    })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Table extraction failed: {e}")
         extraction_logs.append({
@@ -231,6 +237,9 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
     Extracts headers and data from a Playwright table locator.
     Handles malformed HTML, empty tables, and logs errors.
     """
+    if table is None:
+        logger.error("[TABLE BUILDER][extract_table_data] Table locator is None.")
+        return [], []    
     logger.info("[TABLE BUILDER][extract_table_data] Starting table extraction.")
     headers = []
     data = []
@@ -297,6 +306,9 @@ def guess_headers_from_row(row, known_keywords=None):
     """
     Attempts to guess headers from a row's children using keywords or context.
     """
+    if row is None:
+        logger.warning("[TABLE BUILDER][guess_headers_from_row] Row is None, cannot guess headers.")
+        return []
     if known_keywords is None:
         known_keywords = ["candidate", "votes", "party", "precinct", "choice", "option", "response", "total"]
     cells = row.locator("> *")
@@ -331,6 +343,9 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     headers = None
     header_row_idx = None
     for idx, (heading, row) in enumerate(repeated_rows[:10]):
+        if row is None:
+            logger.warning(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Row locator is None at index {idx}. Skipping.")
+            continue
         cells = row.locator("> *")
         cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
         logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Checking row {idx} for headers: {cell_texts}")
@@ -559,7 +574,8 @@ def extract_with_patterns(page, context=None, log_path=None):
                             text = row.inner_text().strip()
                             if pat["row_text_contains"] not in text:
                                 continue
-                        results.append((heading, row, pat))
+                        if row is not None:
+                            results.append((heading, row, pat))
     return results
 
 def fallback_nlp_candidate_vote_scan(page):
@@ -596,7 +612,7 @@ def fallback_nlp_candidate_vote_scan(page):
             if idx < vote_idx:
                 label = lbl
                 break
-        if label:
+        if label is not None:
             data.append({"Label": label, "Votes": vote_val})
     headers = ["Label", "Votes"]
     logger.info(f"[TABLE BUILDER] Robust NLP fallback: {len(data)} rows, {len(headers)} columns.")
@@ -641,7 +657,8 @@ def extract_repeated_dom_structures(page, container_selectors=None, min_row_coun
                         heading = f"Section {i+1}"
                     for j in range(children.count()):
                         row = children.nth(j)
-                        results.append((heading, row))
+                        if row is not None:
+                            results.append((heading, row))
             except Exception as e:
                 log_failed_container(page, container, selector, i, str(e))
     return results
@@ -1439,6 +1456,9 @@ def dynamic_required_columns(context, default_required=None):
     return default_required
 
 def log_failed_container(page, container, selector, idx, error_msg):
+    if container is None:
+        logger.error(f"[TABLE BUILDER] log_failed_container: container is None for selector {selector} idx {idx}")
+        return
     try:
         html = container.evaluate("el => el.outerHTML")
         parent = container.locator("xpath=..")
@@ -1720,8 +1740,9 @@ def handle_nested_tables(page):
     results = []
     for i in range(tables.count()):
         table = tables.nth(i)
-        headers, data = extract_table_data(table)
-        results.append((headers, data))
+        if table is not None:
+            headers, data = extract_table_data(table)
+            results.append((headers, data))
     return results
 
 # ===================================================================
