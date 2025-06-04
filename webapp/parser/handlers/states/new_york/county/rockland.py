@@ -74,16 +74,21 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             )
             if btn and "element_handle" in btn:
                 element = btn["element_handle"]
-                if element.is_visible() and element.is_enabled():
-                    try:
-                        rprint(f"[blue][DEBUG] Clicking button: '{btn.get('label', '')}' for toggle '{toggle_name}'")
-                        element.click(timeout=5000)
-                        page.wait_for_timeout(3000)
-                        rprint(f"[green][DEBUG] Button click for '{toggle_name}' completed.[/green]")
-                    except Exception as e:
-                        rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+                # Only click if not already clicked by coordinator (learning mode)
+                if btn.get("selector") not in coordinator.clicked_button_selectors:
+                    if element.is_visible() and element.is_enabled():
+                        try:
+                            rprint(f"[blue][DEBUG] Clicking button: '{btn.get('label', '')}' for toggle '{toggle_name}'")
+                            element.click(timeout=5000)
+                            page.wait_for_timeout(3000)
+                            rprint(f"[green][DEBUG] Button click for '{toggle_name}' completed.[/green]")
+                            coordinator.clicked_button_selectors.add(btn.get("selector"))
+                        except Exception as e:
+                            rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+                    else:
+                        rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
                 else:
-                    rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
+                    rprint(f"[yellow][DEBUG] Button '{btn.get('label', '')}' was already clicked by learning mode.[/yellow]")
             else:
                 rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
 
@@ -106,19 +111,23 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             )
             if btn and "element_handle" in btn:
                 element = btn["element_handle"]
-                if element.is_visible() and element.is_enabled():
-                    try:
-                        rprint(f"[blue][DEBUG] Clicking button: '{btn.get('label', '')}' for toggle '{toggle_name}'")
-                        element.click(timeout=5000)
-                        page.wait_for_timeout(3000)
-                        rprint(f"[green][DEBUG] Button click for '{toggle_name}' completed.[/green]")
-                    except Exception as e:
-                        rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+                # Only click if not already clicked by coordinator (learning mode)
+                if btn.get("selector") not in coordinator.clicked_button_selectors:
+                    if element.is_visible() and element.is_enabled():
+                        try:
+                            rprint(f"[blue][DEBUG] Clicking button: '{btn.get('label', '')}' for toggle '{toggle_name}'")
+                            element.click(timeout=5000)
+                            page.wait_for_timeout(3000)
+                            rprint(f"[green][DEBUG] Button click for '{toggle_name}' completed.[/green]")
+                            coordinator.clicked_button_selectors.add(btn.get("selector"))
+                        except Exception as e:
+                            rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+                    else:
+                        rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
                 else:
-                    rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
+                    rprint(f"[yellow][DEBUG] Button '{btn.get('label', '')}' was already clicked by learning mode.[/yellow]")
             else:
                 rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
-
             rprint(f"[DEBUG] Finished toggle second button: {toggle_name}")
 
             # --- Only autoscroll once, after all toggles ---
@@ -140,60 +149,9 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 # Add more as needed
             }
             html_context["coordinator"] = coordinator
-            headers, data_rows = robust_table_extraction(page, extraction_context)
             
-            if not headers or not data_rows:
-                ballot_items = []
-                selectors = [
-                    ".ballot-option", ".candidate-info", ".contest-row", ".result-row", ".header", ".race-row", ".proposition-row"
-                ]
-                for selector in selectors:
-                    items = page.locator(selector)
-                    for i in range(items.count()):
-                        item = items.nth(i)
-                        cells = item.locator("> *")
-                        row = [cells.nth(j).inner_text().strip() for j in range(cells.count())]
-                        if any(row):
-                            ballot_items.append(row)
-                if ballot_items:
-                    first_row = ballot_items[0]
-                    known_keywords = ["candidate", "votes", "party", "precinct", "choice", "option", "response", "total"]
-                    if sum(1 for cell in first_row if any(kw in cell.lower() for kw in known_keywords)) >= 2:
-                        headers = first_row
-                        data_rows = [dict(zip(headers, row)) for row in ballot_items[1:]]
-                    else:
-                        headers = []
-                        for idx in range(len(first_row)):
-                            if expected_location and idx == 0:
-                                headers.append(expected_location)
-                            elif idx == 0:
-                                headers.append("Candidate")
-                            elif idx == 1:
-                                headers.append("Party")
-                            elif idx == 2:
-                                headers.append("Votes")
-                            else:
-                                headers.append(f"Column {idx+1}")
-                        data_rows = [dict(zip(headers, row)) for row in ballot_items]
-                else:
-                    rprint(f"[red][ERROR] No data found for contest '{contest_title}'. Skipping.")
-                    results.append((None, None, contest_title, {"skipped": True}))
-                    continue
-
-            if "contest_title" not in html_context or not html_context["contest_title"]:
-                html_context["contest_title"] = (
-                    html_context.get("selected_race")
-                    or html_context.get("title")
-                    or contest_title
-                    or "Unknown Contest"
-                )
-            html_context["coordinator"] = coordinator    
             headers, data = build_dynamic_table(
-                contest_title,      # domain
-                headers,            # headers
-                data_rows,          # data
-                coordinator,        # coordinator
-                html_context        # context
+                contest_title, [], [], coordinator, html_context
             )
 
             if not data:
