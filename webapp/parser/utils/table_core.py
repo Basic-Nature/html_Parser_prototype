@@ -187,14 +187,24 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "context": extraction_context
         })
 
-    # 4. NLP/keyword-based fallback extraction
+    logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(safe_json(extraction_logs), indent=2)}")
+
+    # --- PATCH: Only use fallback if all other methods failed ---
+    if headers_list and data_list and any(len(h) > 0 and len(d) > 0 for h, d in zip(headers_list, data_list)):
+        # Merge all non-empty results (excluding fallback)
+        merged_headers, merged_data = merge_table_data(headers_list, data_list)
+        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
+        logger.info(f"[TABLE BUILDER] Merged extraction: {len(merged_data)} rows, {len(merged_headers)} columns.")
+
+        # PATCH: Add progressive verification
+        headers, data, structure_info = progressive_table_verification(
+            merged_headers, merged_data, extraction_context.get("coordinator"), extraction_context
+        )
+        return headers, data
+
+    # --- Only now try fallback extraction ---
     try:
         headers, data = fallback_nlp_candidate_vote_scan(page)
-        if headers == ["Label", "Votes"] and data:
-            possible_headers = list(data[0].values())
-            if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
-                headers = possible_headers
-                data = data[1:]
         extraction_logs.append({
             "method": "nlp_fallback",
             "headers": headers,
@@ -204,9 +214,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "context": extraction_context
         })
         if headers and data:
-            headers_list.append(headers)
-            data_list.append(data)
             logger.warning("[TABLE BUILDER] Fallback NLP extraction used. Only candidate/vote pairs extracted.")
+            return headers, data
     except Exception as e:
         logger.error(f"[TABLE BUILDER] NLP fallback extraction failed: {e}")
         extraction_logs.append({
@@ -215,20 +224,6 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "success": False,
             "context": extraction_context
         })
-
-    logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(safe_json(extraction_logs), indent=2)}")
-
-    # Merge all results (including any existing headers/data)
-    if headers_list and data_list:
-        merged_headers, merged_data = merge_table_data(headers_list, data_list)
-        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
-        logger.info(f"[TABLE BUILDER] Merged extraction: {len(merged_data)} rows, {len(merged_headers)} columns.")
-
-        # PATCH: Add progressive verification and interactive feedback loop
-        headers, data, structure_info = progressive_table_verification(
-            merged_headers, merged_data, extraction_context.get("coordinator"), extraction_context
-        )
-        return headers, data
 
     logger.warning("[TABLE BUILDER] No extraction method succeeded.")
     return [], []
@@ -664,11 +659,9 @@ def extract_repeated_dom_structures(page, container_selectors=None, min_row_coun
 def harmonize_headers_and_data(headers: list, data: list) -> tuple:
     """
     Ensures all rows have the same headers, filling missing fields with empty string.
-    Deduplicates headers and prunes empty/zero columns.
+    Deduplicates headers and prunes empty/zero columns, but does NOT prune columns if there is at least one valid (non-empty) row.
     """
     all_headers = [h for h in headers if h is not None]
-    # Only expand headers from the input headers; do not expand from row keys here.
-    # Let prune_empty_or_zero_columns and prioritize_real_data_columns handle column filtering and ordering.
     # Deduplicate headers
     seen = set()
     deduped_headers = []
@@ -678,11 +671,20 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
             deduped_headers.append(h)
             seen.add(norm)
     harmonized = [{h: row.get(h, "") for h in deduped_headers} for row in data]
-    # Prune empty/zero columns
-    pruned_headers, harmonized = prune_empty_or_zero_columns(deduped_headers, harmonized)
-    # Prioritize columns with real data
-    prioritized_headers, harmonized = prioritize_real_data_columns(pruned_headers, harmonized)
-    return prioritized_headers, harmonized
+
+    # PATCH: Only prune columns if all values are empty/zero for that column across all rows
+    keep = []
+    n_rows = len(harmonized)
+    for h in deduped_headers:
+        col_vals = [row.get(h, "") for row in harmonized]
+        # Keep column if at least one value is not empty/zero/None
+        if any(v not in ("", "0", 0, None) for v in col_vals):
+            keep.append(h)
+    # If all columns would be pruned, keep all deduped_headers (don't prune everything)
+    if not keep and deduped_headers:
+        keep = deduped_headers
+    harmonized = [{h: row.get(h, "") for h in keep} for row in harmonized]
+    return keep, harmonized
 
 def deduplicate_headers(headers, data):
     """Remove duplicate headers by normalized name, keep first occurrence."""
@@ -709,49 +711,6 @@ def remove_low_signal_columns(headers, data, min_unique=2, min_non_empty_ratio=0
         if len(unique_vals) >= min_unique and len(non_empty) / n_rows >= min_non_empty_ratio:
             keep.append(h)
     return keep, [{h: row.get(h, "") for h in keep} for row in data]
-
-def prune_empty_or_zero_columns(headers, data, required_cols=None, min_data_threshold=0.05):
-    """
-    Remove columns where all values are empty or zero, unless required.
-    Also remove columns with (Other) if all values are empty/zero.
-    Optionally, flag columns with less than min_data_threshold non-empty/non-zero values.
-    """
-    if required_cols is None:
-        required_cols = {"Grand Total", "Precinct", "Percent Reported", "Location"}
-    keep = []
-    flagged = []
-    n_rows = len(data)
-    for h in headers:
-        col_vals = [row.get(h, "") for row in data]
-        non_empty = [v for v in col_vals if v not in ("", "0", 0, None)]
-        # Remove if all values are empty or zero, unless required
-        if h in required_cols:
-            keep.append(h)
-        elif "(Other)" in h and all(v in ("", "0", 0, None) for v in col_vals):
-            continue
-        elif n_rows > 0 and len(non_empty) / n_rows < min_data_threshold:
-            flagged.append(h)
-        elif any(v not in ("", "0", 0, None) for v in col_vals):
-            keep.append(h)
-    # Optionally, print or log flagged columns for review
-    if flagged:
-        logger.info(f"[TABLE BUILDER] Columns flagged for low data: {flagged}")
-    new_data = [{h: row.get(h, "") for h in keep} for row in data]
-    return keep, new_data
-
-def prioritize_real_data_columns(headers, data, required_cols=None):
-    """
-    Move columns with real data to the front for user review.
-    """
-    if required_cols is None:
-        required_cols = {"Grand Total", "Precinct", "Percent Reported", "Location"}
-    n_rows = len(data)
-    def col_score(h):
-        vals = [row.get(h, "") for row in data]
-        return sum(1 for v in vals if v not in ("", "0", 0, None))
-    scored = sorted(headers, key=lambda h: (h not in required_cols, -col_score(h)))
-    new_data = [{h: row.get(h, "") for h in scored} for row in data]
-    return scored, new_data
 
 def merge_table_data(headers_list, data_list):
     """
