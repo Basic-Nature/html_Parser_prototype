@@ -140,8 +140,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 html_context,
                 extra_context={"toggle_name": toggle_name}
             )
-            rprint(f"[DEBUG] Finished toggle first button: {toggle_name}")
             page.wait_for_timeout(3000)
+            rprint(f"[DEBUG] Finished toggle first button: {toggle_name}")
             vote_method_keywords = [
                 "vote method", "Vote Method", "Vote method", "Method"
             ]
@@ -157,8 +157,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 html_context,
                 extra_context={"toggle_name": toggle_name}
             )
-            rprint(f"[DEBUG] Finished toggle second button: {toggle_name}")
             page.wait_for_timeout(3000)
+            rprint(f"[DEBUG] Finished toggle second button: {toggle_name}")           
             autoscroll_until_stable(page)
 
             # --- 9. Extract ballot items using DOM scan and context/NLP ---
