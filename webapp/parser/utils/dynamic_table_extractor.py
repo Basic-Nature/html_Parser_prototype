@@ -27,7 +27,6 @@ from ..utils.table_core import (
     TOTAL_KEYWORDS,
     LOCATION_KEYWORDS,
     MISC_FOOTER_KEYWORDS,
-    BALLOT_TYPES,
     detect_table_structure,
     get_safe_log_path,
     load_dom_patterns,

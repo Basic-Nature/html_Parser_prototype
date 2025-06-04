@@ -15,16 +15,12 @@ from ..config import BASE_DIR
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "logs"))
 
 from .table_core import (
-    extract_table_data,
-    extract_rows_and_headers_from_dom,
-    extract_with_patterns,
     harmonize_headers_and_data,
     detect_table_structure,
     nlp_entity_annotate_table,
-    verify_table_structure,
     pivot_to_wide_format,
     table_signature,
-    cache_table_structure,
+    cache_table_structure
 )
 
 if TYPE_CHECKING:
@@ -47,65 +43,42 @@ def build_dynamic_table(
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Orchestrates robust, multi-source, entity-aware table extraction and harmonization.
-    - Always attempts DOM extraction first.
-    - Uses pattern-based and NLP-based entity detection to annotate and enrich data.
-    - Harmonizes and verifies table structure.
-    - Handles user/ML feedback and learning.
-    - Only transforms/pivots to wide format if explicitly requested.
+    - Uses robust_table_extraction as the single source of truth for extraction.
+    - Proceeds with annotation, user/ML feedback, and pivots only if structure requires.
     """
     if context is None:
         context = {}
 
-    # 1. DOM Extraction (always first)
     page = context.get("page")
-    dom_headers, dom_data = [], []
-    try:
-        if page and page.locator("table").count() > 0:
-            dom_headers, dom_data = extract_table_data(page.locator("table").first)
-            logger.info(f"[TABLE_BUILDER] DOM table extraction: {len(dom_headers)} headers, {len(dom_data)} rows.")
-    except Exception as e:
-        logger.warning(f"[TABLE_BUILDER] DOM table extraction failed: {e}")
 
-    # 2. Pattern-based Extraction (divs, lists, etc.)
-    pattern_headers, pattern_data = [], []
-    try:
-        pattern_headers, pattern_data = extract_rows_and_headers_from_dom(page, coordinator=coordinator)
-        logger.info(f"[TABLE_BUILDER] Pattern-based extraction: {len(pattern_headers)} headers, {len(pattern_data)} rows.")
-    except Exception as e:
-        logger.warning(f"[TABLE_BUILDER] Pattern-based extraction failed: {e}")
+    # --- 1. Robust Extraction (single source of truth) ---
+    from .table_core import robust_table_extraction
 
-    # 3. Pattern-based DOM heuristics (custom patterns)
-    custom_headers, custom_data = [], []
-    try:
-        custom_headers, custom_data = extract_with_patterns(page, context)
-        logger.info(f"[TABLE_BUILDER] Custom pattern extraction: {len(custom_headers)} headers, {len(custom_data)} rows.")
-    except Exception as e:
-        logger.warning(f"[TABLE_BUILDER] Custom pattern extraction failed: {e}")
+    extracted_headers, extracted_data = robust_table_extraction(
+        page,
+        extraction_context=context,
+        existing_headers=headers,
+        existing_data=data
+    )
+    logger.info(f"[TABLE_BUILDER] robust_table_extraction: {len(extracted_headers)} headers, {len(extracted_data)} rows.")
 
-    # 4. NLP Entity Annotation (always used, not fallback)
-    # Combine all extracted data for annotation
-    all_headers = list({h for h in (dom_headers + pattern_headers + custom_headers) if h})
-    all_data = (dom_data or []) + (pattern_data or []) + (custom_data or [])
-    all_headers, all_data = harmonize_headers_and_data(all_headers, all_data)
-    logger.info(f"[TABLE_BUILDER] Combined extraction: {len(all_headers)} headers, {len(all_data)} rows.")
-
-    # NLP entity annotation: enriches data with detected people, locations, ballot types, numbers
+    # --- 2. NLP Entity Annotation ---
     try:
         annotated_headers, annotated_data, entity_info = nlp_entity_annotate_table(
-            all_headers, all_data, context=context, coordinator=coordinator
+            extracted_headers, extracted_data, context=context, coordinator=coordinator
         )
         logger.info(f"[TABLE_BUILDER] NLP entity annotation complete. Entities: {entity_info}")
     except Exception as e:
         logger.warning(f"[TABLE_BUILDER] NLP entity annotation failed: {e}")
-        annotated_headers, annotated_data = all_headers, all_data
+        annotated_headers, annotated_data = extracted_headers, extracted_data
         entity_info = {}
 
-    # 5. Harmonize headers/data after annotation
+    # --- 3. Harmonize headers/data after annotation ---
     headers, data = harmonize_headers_and_data(annotated_headers, annotated_data)
     logger.info(f"[TABLE_BUILDER] Harmonized headers: {headers}")
     logger.info(f"[TABLE_BUILDER] Harmonized sample row: {data[0] if data else 'NO DATA'}")
 
-    # 6. Structure Analysis (annotation only, no transformation)
+    # --- 4. Structure Analysis (annotation only, no transformation) ---
     try:
         structure_info = detect_table_structure(headers, data, coordinator, entity_info=entity_info)
         logger.info(f"[TABLE_BUILDER] Detected table structure: {structure_info}")
@@ -113,15 +86,20 @@ def build_dynamic_table(
         logger.warning(f"[TABLE_BUILDER] Structure detection failed: {e}")
         structure_info = {"type": "ambiguous", "verified": False}
 
-    # 7. User/ML confirmation and learning (if enabled)
+    # --- 5. User/ML confirmation and learning (if enabled) ---
     if learning_mode:
         contest_title = context.get("contest_title") or "Unknown Contest"
         headers, data = prompt_user_to_confirm_table_structure(
             headers, data, domain, contest_title, coordinator
         )
 
-    # 8. Only transform/pivot to wide format if requested
-    if pivot_to_wide:
+    # --- 6. Pivot to wide format only if structure requires ---
+    # Only pivot if structure_info indicates candidate-major or precinct-major
+    should_pivot = False
+    if pivot_to_wide and structure_info.get("type") in {"candidate-major", "precinct-major"}:
+        should_pivot = True
+
+    if should_pivot:
         try:
             wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
             logger.info(f"[TABLE_BUILDER] Pivoted to wide format: {len(wide_headers)} headers, {len(wide_data)} rows.")

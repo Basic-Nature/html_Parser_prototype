@@ -50,18 +50,15 @@ context_cache = {}
 
 def robust_table_extraction(page, extraction_context=None, existing_headers=None, existing_data=None):
     """
-    Attempts all extraction strategies in order, merging partial results.
-    Uses extraction_context for all steps and logs context/anomalies.
-    DOM pattern extraction is prioritized.
-
-    - If existing_headers/data are provided and non-empty, merges new results into them.
-    - Never overwrites non-empty headers/data unless extraction fails.
-    - Always harmonizes headers after merging.
+    Unified, persistent table extraction pipeline:
+    - Accumulates all plausible tables/rows from DOM, patterns, and standard tables.
+    - Deduplicates tables and rows.
+    - Runs entity annotation and structure verification on the unified result.
+    - Only uses fallback extraction if all other methods fail.
     """
     import types
 
     def safe_json(obj):
-        """Recursively remove non-serializable objects (like functions, classes, custom objects) from dicts/lists."""
         if isinstance(obj, dict):
             result = {}
             for k, v in obj.items():
@@ -80,44 +77,54 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         else:
             return obj
 
-    headers_list = []
-    data_list = []
     extraction_logs = []
+    all_tables = []
 
-    # If existing headers/data are provided and non-empty, add them first
-    if existing_headers and existing_data and len(existing_headers) > 0 and len(existing_data) > 0:
-        headers_list.append(existing_headers)
-        data_list.append(existing_data)
+    # 1. DOM structure extraction (divs, lists, etc.)
+    try:
+        headers_dom, data_dom = extract_rows_and_headers_from_dom(page, coordinator=extraction_context.get("coordinator") if extraction_context else None)
+        if headers_dom and data_dom:
+            all_tables.append((headers_dom, data_dom))
+            extraction_logs.append({
+                "method": "repeated_dom",
+                "headers": headers_dom,
+                "rows": len(data_dom),
+                "columns": len(headers_dom),
+                "success": True,
+                "context": extraction_context
+            })
+    except Exception as e:
+        logger.error(f"[TABLE BUILDER] DOM structure extraction failed: {e}")
+        extraction_logs.append({
+            "method": "repeated_dom",
+            "error": str(e),
+            "success": False,
+            "context": extraction_context
+        })
 
-    # 1. Pattern-based extraction (approved DOM patterns, prioritized)
+    # 2. Pattern-based extraction (approved DOM patterns)
     try:
         pattern_rows = extract_with_patterns(page, extraction_context)
         if pattern_rows:
-            headers = guess_headers_from_row(pattern_rows[0][1])
-            data = []
+            headers_pat = guess_headers_from_row(pattern_rows[0][1])
+            data_pat = []
             for heading, row, pat in pattern_rows:
                 cells = row.locator("> *")
                 row_data = {}
                 for idx in range(cells.count()):
-                    row_data[headers[idx] if idx < len(headers) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
+                    row_data[headers_pat[idx] if idx < len(headers_pat) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
                 if row_data:
-                    data.append(row_data)
-            extraction_logs.append({
-                "method": "pattern",
-                "headers": headers,
-                "rows": len(data),
-                "columns": len(headers),
-                "success": bool(headers and data),
-                "context": extraction_context
-            })
-            if headers == ["Label", "Votes"] and data:
-                possible_headers = list(data[0].values())
-                if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
-                    headers = possible_headers
-                    data = data[1:]
-            if headers and data:
-                headers_list.append(headers)
-                data_list.append(data)
+                    data_pat.append(row_data)
+            if headers_pat and data_pat:
+                all_tables.append((headers_pat, data_pat))
+                extraction_logs.append({
+                    "method": "pattern",
+                    "headers": headers_pat,
+                    "rows": len(data_pat),
+                    "columns": len(headers_pat),
+                    "success": True,
+                    "context": extraction_context
+                })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Pattern extraction failed: {e}")
         extraction_logs.append({
@@ -127,27 +134,21 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "context": extraction_context
         })
 
-    # 2. Standard HTML table extraction
+    # 3. Standard HTML table extraction
     try:
         tables = page.locator("table")
         for i in range(tables.count()):
-            headers, data = extract_table_data(tables.nth(i))
-            extraction_logs.append({
-                "method": "table",
-                "headers": headers,
-                "rows": len(data),
-                "columns": len(headers),
-                "success": bool(headers and data),
-                "context": extraction_context
-            })
-            if headers == ["Label", "Votes"] and data:
-                possible_headers = list(data[0].values())
-                if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
-                    headers = possible_headers
-                    data = data[1:]
-            if headers and data:
-                headers_list.append(headers)
-                data_list.append(data)
+            headers_tab, data_tab = extract_table_data(tables.nth(i))
+            if headers_tab and data_tab:
+                all_tables.append((headers_tab, data_tab))
+                extraction_logs.append({
+                    "method": "table",
+                    "headers": headers_tab,
+                    "rows": len(data_tab),
+                    "columns": len(headers_tab),
+                    "success": True,
+                    "context": extraction_context
+                })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Table extraction failed: {e}")
         extraction_logs.append({
@@ -157,50 +158,43 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "context": extraction_context
         })
 
-    # 3. Repeated DOM structures (divs, lists, etc.)
-    try:
-        headers, data = extract_rows_and_headers_from_dom(page)
-        logger.info(f"[TABLE BUILDER] DOM structure headers: {headers}")
-        logger.info(f"[TABLE BUILDER] First 3 rows: {data[:3]}")
-        extraction_logs.append({
-            "method": "repeated_dom",
-            "headers": headers,
-            "rows": len(data),
-            "columns": len(headers),
-            "success": bool(headers and data),
-            "context": extraction_context
-        })
-        if headers == ["Label", "Votes"] and data:
-            possible_headers = list(data[0].values())
-            if all(isinstance(h, str) and len(h) > 0 for h in possible_headers):
-                headers = possible_headers
-                data = data[1:]
-        if headers and data:
-            headers_list.append(headers)
-            data_list.append(data)
-    except Exception as e:
-        logger.error(f"[TABLE BUILDER] Repeated DOM extraction failed: {e}")
-        extraction_logs.append({
-            "method": "repeated_dom",
-            "error": str(e),
-            "success": False,
-            "context": extraction_context
-        })
+    # 4. Add any existing headers/data provided
+    if existing_headers and existing_data and len(existing_headers) > 0 and len(existing_data) > 0:
+        all_tables.append((existing_headers, existing_data))
 
     logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(safe_json(extraction_logs), indent=2)}")
 
-    # --- PATCH: Only use fallback if all other methods failed ---
-    if headers_list and data_list and any(len(h) > 0 and len(d) > 0 for h, d in zip(headers_list, data_list)):
-        # Merge all non-empty results (excluding fallback)
-        merged_headers, merged_data = merge_table_data(headers_list, data_list)
-        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
-        logger.info(f"[TABLE BUILDER] Merged extraction: {len(merged_data)} rows, {len(merged_headers)} columns.")
+    # --- Deduplicate tables by header signature ---
+    unique_tables = {}
+    for headers, data in all_tables:
+        sig = tuple(normalize_header_name(h) for h in headers)
+        if sig not in unique_tables or (len(data) > len(unique_tables[sig][1])):
+            unique_tables[sig] = (headers, data)
+    all_tables = list(unique_tables.values())
 
-        # PATCH: Add progressive verification
-        headers, data, structure_info = progressive_table_verification(
-            merged_headers, merged_data, extraction_context.get("coordinator"), extraction_context
+    # --- Merge all unique rows from all sources ---
+    if all_tables:
+        merged_headers = []
+        merged_data = []
+        for headers, data in all_tables:
+            for h in headers:
+                if h not in merged_headers:
+                    merged_headers.append(h)
+            merged_data.extend(data)
+        # Harmonize and deduplicate rows
+        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
+        logger.info(f"[TABLE BUILDER] Unified extraction: {len(merged_data)} rows, {len(merged_headers)} columns.")
+
+        # Entity annotation and structure verification
+        coordinator = extraction_context.get("coordinator") if extraction_context else None
+        merged_headers, merged_data, entity_info = nlp_entity_annotate_table(
+            merged_headers, merged_data, context=extraction_context, coordinator=coordinator
         )
-        return headers, data
+        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
+        merged_headers, merged_data, _ = progressive_table_verification(
+            merged_headers, merged_data, coordinator, extraction_context
+        )
+        return merged_headers, merged_data
 
     # --- Only now try fallback extraction ---
     try:
