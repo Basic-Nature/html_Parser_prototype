@@ -608,7 +608,7 @@ def autoscroll_until_stable(
     for at least 5 consecutive measurements, or until max_total_time is reached.
     Optionally waits for a selector to appear.
     Shows a dynamic progress bar using rich and prompts user if scrolling takes too long.
-    Learns scroll patterns per domain for future runs.
+    Does NOT use or save any cached scroll pattern.
     """
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
@@ -626,14 +626,6 @@ def autoscroll_until_stable(
     scroll_attempts = 0
     max_scrolls = max_total_time // delay_ms
     domain = domain or (page.url.split("/")[2] if "://" in page.url else page.url.split("/")[0])
-
-    # Try to load scroll pattern from cache
-    lib = load_context_library()
-    domain_scrolls = lib.get("domain_scrolls", {}).get(domain, None)
-    if domain_scrolls:
-        max_scrolls = domain_scrolls.get("max_scrolls", max_scrolls)
-        step = domain_scrolls.get("step", step)
-        logger and logger.info(f"[SCROLL] Loaded scroll pattern for {domain}: max_scrolls={max_scrolls}, step={step}")
 
     def get_main_text():
         try:
@@ -684,15 +676,6 @@ def autoscroll_until_stable(
                     logger and logger.warning("[SCROLL] User aborted scrolling.")
                     break
         progress.update(task, completed=max_scrolls)
-
-    # Save scroll pattern for this domain
-    lib.setdefault("domain_scrolls", {})
-    lib["domain_scrolls"][domain] = {
-        "max_scrolls": scroll_attempts,
-        "step": step,
-        "last_used": datetime.utcnow().isoformat(),
-    }
-    save_context_library(lib)
 
     if stable >= max_stable_frames:
         logger and logger.info("[SCROLL] Completed scrolling until page height/content stabilized.")

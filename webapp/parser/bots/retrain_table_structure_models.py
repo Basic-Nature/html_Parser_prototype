@@ -3,7 +3,6 @@ import sqlite3
 import json
 import re
 import datetime
-from pathlib import Path
 from collections import Counter
 from sentence_transformers import SentenceTransformer, InputExample, losses
 from torch.utils.data import DataLoader
@@ -203,10 +202,16 @@ def remove_overlapping_entities(entities):
     return result
 
 def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model_save_path="fine_tuned_spacy_ner"):
-    import spacy
-    from spacy.training import Example
 
     nlp = spacy.blank("en")
+    try:
+        from spacy.lookups import Lookups
+        lookups = Lookups()
+        lookups.add_table("lexeme_norm", spacy.lookups.load_lookups_data("en", tables=["lexeme_norm"]).get_table("lexeme_norm"))
+        nlp.vocab.lookups = lookups
+    except Exception as e:
+        print("[spaCy] Could not load lexeme normalization table. You may ignore this if not using a supported language. Error:", e)
+
     if "ner" not in nlp.pipe_names:
         ner = nlp.add_pipe("ner")
     else:

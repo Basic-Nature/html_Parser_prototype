@@ -15,35 +15,6 @@ import numpy as e
 BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
 context_cache = {}
 accepted_buttons_cache = {}
-def score_table(table, context, coordinator):
-    """
-    Score a table based on known district/precinct names, result keywords, and table size.
-    """
-    headers, data = extract_table_data(table)
-    score = 0
-    # 1. Known district/precinct names in first column
-    known_districts = set()
-    if hasattr(coordinator, "get_districts"):
-        known_districts = set(coordinator.get_districts(
-            state=context.get("state"), county=context.get("county")
-        ) or [])
-    if headers and data:
-        first_col = [row.get(headers[0], "") for row in data]
-        matches = sum(1 for val in first_col if any(str(d).lower() in str(val).lower() for d in known_districts))
-        score += matches * 3  # weight matches higher
-    # 2. Known result keywords in headers
-    result_keywords = {"votes", "candidate", "precinct", "total"}
-    score += sum(2 for h in headers if any(kw in h.lower() for kw in result_keywords))
-    # 3. Table size
-    score += len(data)
-    # 4. Prefer tables with more numeric columns (likely results)
-    if headers and data:
-        numeric_cols = sum(
-            1 for h in headers
-            if all(str(row.get(h, "")).replace(",", "").replace(".", "").isdigit() or row.get(h, "") == "" for row in data)
-        )
-        score += numeric_cols
-    return score, headers, data
 
 def handle_toggle_and_rescan(
     page,
@@ -54,42 +25,56 @@ def handle_toggle_and_rescan(
     toggle_name,
     html_context,
     extra_context=None,
-    rejected_downloads=None 
+    rejected_downloads=None,
+    max_retries=2
 ):
     """
     Clicks the best button for the toggle, waits for page change, and re-scans context if changed.
-    Always uses the coordinator's learned button logic.
+    Uses improved logging and verifies button click by checking for HTML change. Retries if needed.
     """
     from .....html_election_parser import get_page_hash, get_or_scan_context
 
-    prev_hash = get_page_hash(page)
-    btn, idx = coordinator.get_best_button_advanced(
-        page=page,
-        contest_title=contest_title,
-        keywords=keywords,
-        context={**(extra_context or {}), **(html_context or {}), "toggle_name": toggle_name},
-        confirm_button_callback=confirm_button_callback,
-        prompt_user_for_button=prompt_user_for_button,
-        learning_mode=True,
-    )
-    if btn and "element_handle" in btn:
-        element = btn["element_handle"]
-        if element.is_visible() and element.is_enabled():
-            try:
-                element.click(timeout=5000)
-                rprint(f"[green][DEBUG] Clicked button: '{btn.get('label', '')}' for toggle '{toggle_name}'[/green]")
-                page.wait_for_timeout(500)
-            except Exception as e:
-                rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+    for attempt in range(1, max_retries + 2):
+        prev_hash = get_page_hash(page)
+        prev_html = page.content()
+        btn, idx = coordinator.get_best_button_advanced(
+            page=page,
+            contest_title=contest_title,
+            keywords=keywords,
+            context={**(extra_context or {}), **(html_context or {}), "toggle_name": toggle_name},
+            confirm_button_callback=confirm_button_callback,
+            prompt_user_for_button=prompt_user_for_button,
+            learning_mode=True,
+        )
+        if btn and "element_handle" in btn:
+            element = btn["element_handle"]
+            if element.is_visible() and element.is_enabled():
+                try:
+                    rprint(f"[blue][DEBUG] Attempting to click button: '{btn.get('label', '')}' for toggle '{toggle_name}' (attempt {attempt})[/blue]")
+                    element.click(timeout=5000)
+                    page.wait_for_timeout(700)
+                    new_hash = get_page_hash(page)
+                    new_html = page.content()
+                    if new_hash != prev_hash or new_html != prev_html:
+                        rprint(f"[green][DEBUG] Button click for '{toggle_name}' resulted in page change.[/green]")
+                        autoscroll_until_stable(page)
+                        break
+                    else:
+                        rprint(f"[yellow][WARNING] Button click for '{toggle_name}' did NOT change the page. Retrying... (attempt {attempt})[/yellow]")
+                        if attempt >= max_retries + 1:
+                            rprint(f"[red][ERROR] Max retries reached for '{toggle_name}'. Proceeding anyway.[/red]")
+                except Exception as e:
+                    rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+                    if attempt >= max_retries + 1:
+                        return html_context
+            else:
+                rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
                 return html_context
         else:
-            rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
+            rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
             return html_context
-    else:
-        rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
-        return html_context
-    autoscroll_until_stable(page)
-    # PATCH: Always rescan context after toggle
+
+    # Always rescan context after toggle
     if rejected_downloads is None:
         rejected_downloads = set()
     html_context = get_or_scan_context(page, coordinator, rejected_downloads=rejected_downloads)
