@@ -12,7 +12,7 @@ from .logger_instance import logger
 from ..utils.shared_logger import rprint
 from ..config import BASE_DIR
 
-LOG_PARENT_DIR = os.path.join(BASE_DIR, "logs")
+LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "logs"))
 
 from .table_core import (
     extract_table_data,
@@ -22,7 +22,6 @@ from .table_core import (
     detect_table_structure,
     nlp_entity_annotate_table,
     verify_table_structure,
-    interactive_feedback_loop,
     pivot_to_wide_format,
     table_signature,
     cache_table_structure,
@@ -114,26 +113,14 @@ def build_dynamic_table(
         logger.warning(f"[TABLE_BUILDER] Structure detection failed: {e}")
         structure_info = {"type": "ambiguous", "verified": False}
 
-    # 7. Verification (required columns/entities)
-    try:
-        verified, missing = verify_table_structure(headers, data, entity_info, coordinator, context)
-        if not verified:
-            logger.warning(f"[TABLE_BUILDER] Table verification failed. Missing: {missing}")
-            headers, data, structure_info = interactive_feedback_loop(headers, data, structure_info)
-        else:
-            logger.info("[TABLE_BUILDER] Table verification passed.")
-    except Exception as e:
-        logger.warning(f"[TABLE_BUILDER] Table verification error: {e}")
-        headers, data, structure_info = interactive_feedback_loop(headers, data, structure_info)
-
-    # 8. User/ML confirmation and learning (if enabled)
+    # 7. User/ML confirmation and learning (if enabled)
     if learning_mode:
         contest_title = context.get("contest_title") or "Unknown Contest"
         headers, data = prompt_user_to_confirm_table_structure(
             headers, data, domain, contest_title, coordinator
         )
 
-    # 9. Only transform/pivot to wide format if requested
+    # 8. Only transform/pivot to wide format if requested
     if pivot_to_wide:
         try:
             wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
@@ -159,6 +146,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     should_log = True
     columns_changed = False
     new_headers = copy.deepcopy(headers)
+    # PATCH: Use LOG_PARENT_DIR for all log files
     denied_structures_path = os.path.join(LOG_PARENT_DIR, "denied_table_structures.json")
     denied_structures = {}
     denied_structures_dir = os.path.dirname(denied_structures_path)

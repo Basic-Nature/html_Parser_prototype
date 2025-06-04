@@ -228,8 +228,6 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         headers, data, structure_info = progressive_table_verification(
             merged_headers, merged_data, extraction_context.get("coordinator"), extraction_context
         )
-        if not structure_info.get("verified"):
-            headers, data, structure_info = interactive_feedback_loop(headers, data, structure_info)
         return headers, data
 
     logger.warning("[TABLE BUILDER] No extraction method succeeded.")
@@ -965,49 +963,6 @@ def progressive_table_verification(headers, data, coordinator, context):
     # Optionally: prompt for correction or fallback if not verified
     # Optionally: persist structure_info for feedback learning
 
-    return headers, data, structure_info
-
-def interactive_feedback_loop(headers, data, structure_info):
-    """
-    If structure_info['verified'] is False, interactively prompt the user to correct or confirm table structure.
-    Returns possibly corrected headers and data.
-    """
-    import pprint
-    print("\n[FEEDBACK] Table structure could not be fully verified.")
-    print("Detected structure:")
-    pprint.pprint(structure_info)
-    print("\nSample headers:", headers)
-    print("Sample row:", data[0] if data else "NO DATA")
-    print("\nPlease review the detected columns:")
-    print("1. Location column:", structure_info.get("location_header"))
-    print("2. Ballot type columns:", structure_info.get("ballot_type_headers"))
-    print("3. Candidate columns:", structure_info.get("candidate_headers"))
-    print("4. Grand Total column:", structure_info.get("total_header"))
-    print("\nIf any are incorrect, enter the correct header names (comma-separated), or press Enter to accept as-is.")
-
-    # Location
-    loc = input("Location column (current: {}): ".format(structure_info.get("location_header") or "None"))
-    if loc.strip():
-        structure_info["location_header"] = loc.strip()
-
-    # Ballot types
-    bt = input("Ballot type columns (current: {}): ".format(structure_info.get("ballot_type_headers") or "None"))
-    if bt.strip():
-        structure_info["ballot_type_headers"] = [b.strip() for b in bt.split(",")]
-
-    # Candidates
-    cand = input("Candidate columns (current: {}): ".format(structure_info.get("candidate_headers") or "None"))
-    if cand.strip():
-        structure_info["candidate_headers"] = [c.strip() for c in cand.split(",")]
-
-    # Grand Total
-    tot = input("Grand Total column (current: {}): ".format(structure_info.get("total_header") or "None"))
-    if tot.strip():
-        structure_info["total_header"] = tot.strip()
-
-    print("\n[FEEDBACK] Updated structure info:")
-    pprint.pprint(structure_info)
-    print("Continuing with these settings...\n")
     return headers, data, structure_info
 
 def rescan_and_verify(headers: List[str], data: List[Dict[str, Any]], coordinator: "ContextCoordinator", context: dict, threshold: float = 0.85) -> Tuple[List[str], List[Dict[str, Any]], bool]:
