@@ -239,5 +239,12 @@
     "Write-in - Absentee",
     "Write-in - Mail",
     "Write-in - Total"
+  ],
+  "Orangetown Town Council\nVote for 1:967e1b026d907c7fed2c8097d80ae4c2": [
+    "Candidate",
+    "Election Day",
+    "Early Voting",
+    "Absentee Mail",
+    "Total Votes"
   ]
 }

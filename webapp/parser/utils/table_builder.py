@@ -48,7 +48,8 @@ def build_dynamic_table(
     """
     if context is None:
         context = {}
-
+    if "coordinator" not in context or context["coordinator"] is None:
+        context["coordinator"] = coordinator
     page = context.get("page")
 
     # --- 1. Robust Extraction (single source of truth) ---
@@ -86,18 +87,21 @@ def build_dynamic_table(
         logger.warning(f"[TABLE_BUILDER] Structure detection failed: {e}")
         structure_info = {"type": "ambiguous", "verified": False}
 
-    # --- 5. User/ML confirmation and learning (if enabled) ---
-    if learning_mode:
-        contest_title = context.get("contest_title") or "Unknown Contest"
-        headers, data = prompt_user_to_confirm_table_structure(
-            headers, data, domain, contest_title, coordinator
-        )
-
-    # --- 6. Pivot to wide format only if structure requires ---
+    # --- 5. Pivot to wide format only if structure requires ---
     # Only pivot if structure_info indicates candidate-major or precinct-major
     should_pivot = False
     if pivot_to_wide and structure_info.get("type") in {"candidate-major", "precinct-major"}:
         should_pivot = True
+
+    # --- Synthesize location column if missing ---
+    if should_pivot:
+        location_headers = [h for h in headers if any(lk in h.lower() for lk in ["precinct", "district", "ward", "location"])]
+        if not location_headers:
+            # Add a synthetic location column
+            synthetic_location = context.get("contest_title", "All")
+            for row in data:
+                row["Location"] = synthetic_location
+            headers = ["Location"] + headers
 
     if should_pivot:
         try:
@@ -107,6 +111,13 @@ def build_dynamic_table(
         except Exception as e:
             logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e}")
             # Return harmonized, annotated data as fallback
+
+    # --- 6. User/ML confirmation and learning (if enabled) ---
+    if learning_mode:
+        contest_title = context.get("contest_title") or "Unknown Contest"
+        headers, data = prompt_user_to_confirm_table_structure(
+            headers, data, domain, contest_title, coordinator
+        )
 
     return headers, data
 

@@ -15,80 +15,13 @@ BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type
 context_cache = {}
 accepted_buttons_cache = {}
 
-def handle_toggle_and_rescan(
-    page,
-    coordinator,
-    context_cache,
-    contest_title,
-    keywords,
-    toggle_name,
-    html_context,
-    extra_context=None,
-    rejected_downloads=None,
-    max_retries=2
-):
-    """
-    Clicks the best button for the toggle, waits for page change, and re-scans context if changed.
-    Uses improved logging and verifies button click by checking for HTML change. Retries if needed.
-    """
-    from .....html_election_parser import get_page_hash, get_or_scan_context
-
-    for attempt in range(1, max_retries + 2):
-        prev_hash = get_page_hash(page)
-        prev_html = page.content()
-        btn, idx = coordinator.get_best_button_advanced(
-            page=page,
-            contest_title=contest_title,
-            keywords=keywords,
-            context={**(extra_context or {}), **(html_context or {}), "toggle_name": toggle_name},
-            confirm_button_callback=confirm_button_callback,
-            prompt_user_for_button=prompt_user_for_button,
-            learning_mode=True,
-        )
-        if btn and "element_handle" in btn:
-            element = btn["element_handle"]
-            if element.is_visible() and element.is_enabled():
-                try:
-                    rprint(f"[blue][DEBUG] Attempting to click button: '{btn.get('label', '')}' for toggle '{toggle_name}' (attempt {attempt})[/blue]")
-                    element.click(timeout=5000)
-                    page.wait_for_timeout(700)
-                    new_hash = get_page_hash(page)
-                    new_html = page.content()
-                    if new_hash != prev_hash or new_html != prev_html:
-                        rprint(f"[green][DEBUG] Button click for '{toggle_name}' resulted in page change.[/green]")
-                        autoscroll_until_stable(page)
-                        break
-                    else:
-                        rprint(f"[yellow][WARNING] Button click for '{toggle_name}' did NOT change the page. Retrying... (attempt {attempt})[/yellow]")
-                        if attempt >= max_retries + 1:
-                            rprint(f"[red][ERROR] Max retries reached for '{toggle_name}'. Proceeding anyway.[/red]")
-                except Exception as e:
-                    rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
-                    if attempt >= max_retries + 1:
-                        return html_context
-            else:
-                rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
-                return html_context
-        else:
-            rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
-            return html_context
-
-    # Always rescan context after toggle
-    if rejected_downloads is None:
-        rejected_downloads = set()
-    html_context = get_or_scan_context(page, coordinator, rejected_downloads=rejected_downloads)
-    new_hash = get_page_hash(page)
-    context_cache[new_hash] = html_context
-    rprint(f"[green][TOGGLE] Page (re)scanned after '{toggle_name}' toggle.[/green]")
-    return html_context
-
 def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, non_interactive=False):
     """
     Rockland County handler: all logic in one place.
     - Scans HTML for context and contests
     - Lets user select contest
     - Toggles "View results by election district" and "Vote Method"
-    - Autoscrolls as needed
+    - Autoscrolls as needed (only once, after all toggles)
     - Extracts tables and outputs results
     """
     if html_context is None:
@@ -112,7 +45,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         rprint("[red]No contest selected. Skipping.[/red]")
         return None, None, None, {"skipped": True}
     # If multiple contests, process each (return first result or aggregate as needed)
-    # --- 5. Toggle "View results by election district" ---
     if isinstance(selected, list):
         results = []
         for contest in selected:
@@ -122,43 +54,74 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
 
             # --- Button toggles for this contest ---
             contest_title_for_button = user_selected_title if user_selected_title else None
+
+            # --- Toggle "View results by election district" ---
             election_district_keywords = [
                 r"view results? by election district[\s:]*$", "View results by election district", 
                 "results by election district",  "election district", 
                 "View results by"
             ]
-            # --- 5. Toggle "View results by election district" ---
             toggle_name = "View results by election district"
             rprint(f"[DEBUG] About to toggle first button: {toggle_name}")
-            html_context = handle_toggle_and_rescan(
-                page,
-                coordinator,
-                context_cache,
-                contest_title_for_button,
-                election_district_keywords,
-                toggle_name,
-                html_context,
-                extra_context={"toggle_name": toggle_name}
+            btn, idx = coordinator.get_best_button_advanced(
+                page=page,
+                contest_title=contest_title_for_button,
+                keywords=election_district_keywords,
+                context={**html_context, "toggle_name": toggle_name},
+                confirm_button_callback=confirm_button_callback,
+                prompt_user_for_button=prompt_user_for_button,
+                learning_mode=True,
             )
-            page.wait_for_timeout(3000)
+            if btn and "element_handle" in btn:
+                element = btn["element_handle"]
+                if element.is_visible() and element.is_enabled():
+                    try:
+                        rprint(f"[blue][DEBUG] Clicking button: '{btn.get('label', '')}' for toggle '{toggle_name}'")
+                        element.click(timeout=5000)
+                        page.wait_for_timeout(3000)
+                        rprint(f"[green][DEBUG] Button click for '{toggle_name}' completed.[/green]")
+                    except Exception as e:
+                        rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+                else:
+                    rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
+            else:
+                rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
+
             rprint(f"[DEBUG] Finished toggle first button: {toggle_name}")
+
+            # --- Toggle "Vote Method" ---
             vote_method_keywords = [
                 "vote method", "Vote Method", "Vote method", "Method"
             ]
             toggle_name = "Vote Method"
             rprint(f"[DEBUG] About to toggle second button: {toggle_name}")
-            html_context = handle_toggle_and_rescan(
-                page,
-                coordinator,
-                context_cache,
-                contest_title_for_button,     
-                vote_method_keywords,
-                toggle_name,
-                html_context,
-                extra_context={"toggle_name": toggle_name}
+            btn, idx = coordinator.get_best_button_advanced(
+                page=page,
+                contest_title=contest_title_for_button,
+                keywords=vote_method_keywords,
+                context={**html_context, "toggle_name": toggle_name},
+                confirm_button_callback=confirm_button_callback,
+                prompt_user_for_button=prompt_user_for_button,
+                learning_mode=True,
             )
-            page.wait_for_timeout(3000)
-            rprint(f"[DEBUG] Finished toggle second button: {toggle_name}")           
+            if btn and "element_handle" in btn:
+                element = btn["element_handle"]
+                if element.is_visible() and element.is_enabled():
+                    try:
+                        rprint(f"[blue][DEBUG] Clicking button: '{btn.get('label', '')}' for toggle '{toggle_name}'")
+                        element.click(timeout=5000)
+                        page.wait_for_timeout(3000)
+                        rprint(f"[green][DEBUG] Button click for '{toggle_name}' completed.[/green]")
+                    except Exception as e:
+                        rprint(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+                else:
+                    rprint(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
+            else:
+                rprint(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
+
+            rprint(f"[DEBUG] Finished toggle second button: {toggle_name}")
+
+            # --- Only autoscroll once, after all toggles ---
             autoscroll_until_stable(page)
 
             # --- 9. Extract ballot items using DOM scan and context/NLP ---
@@ -176,6 +139,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 "page": page,
                 # Add more as needed
             }
+            html_context["coordinator"] = coordinator
             headers, data_rows = robust_table_extraction(page, extraction_context)
             
             if not headers or not data_rows:
