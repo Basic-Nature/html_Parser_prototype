@@ -45,6 +45,9 @@ LOCATION_KEYWORDS = {
     "precinct", "ward", "district", "location", "area", "city", "municipal", "town",
     "borough", "village", "county", "division", "subdistrict", "polling place", "ed", "municipality"
 }
+PERCENT_KEYWORDS = {
+    "% precincts reporting", "% reported", "percent reported", "fully reported", "precincts reporting"
+}
 TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all"}
 MISC_FOOTER_KEYWORDS = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
 CANDIDATE_KEYWORDS = {
@@ -387,72 +390,137 @@ def extract_percent_reported_from_page(page):
     return ""
 
 def extract_all_tables_with_location(page, coordinator=None):
-    from ..utils.dynamic_table_extractor import find_tables_with_headings
+    """
+    Extract all tables, associating each with the nearest section/district/heading.
+    Dynamically chooses between panel-based and section-heading-based extraction,
+    scores each, and merges/patches missing information if possible.
+    """
+    from ..utils.dynamic_table_extractor import (
+        find_tables_with_panel_headings,
+        find_tables_with_section_headings,
+    )
 
-    LOCATION_HEADERS = ["Precinct", "Location", "Ward", "District", "Area", "City", "Municipal", "Town"]
-    PERCENT_HEADERS = ["% Precincts Reporting", "% Reported", "Percent Reported", "Fully Reported", "Precincts Reporting"]
-    all_headers = set()
-    all_data = []
-    all_entity_previews = []
-    tables_with_headings = find_tables_with_headings(page)
+    # Use the global keyword sets for easier expansion
+    LOCATION_HEADERS = list(LOCATION_KEYWORDS)
+    PERCENT_HEADERS = list(PERCENT_KEYWORDS)
+
+    extraction_types = [
+        ("panel", find_tables_with_panel_headings(page)),
+        ("section", find_tables_with_section_headings(page)),
+    ]
 
     percent_reported_global = extract_percent_reported_from_page(page)
+    extraction_results = []
 
-    for heading, table in tables_with_headings:
-        headers, data, entity_preview = extract_table_data(table)
-        if not headers or not data:
-            continue
+    for method, tables_with_headings in extraction_types:
+        all_headers = set()
+        all_data = []
+        all_entity_previews = []
+        for heading, table in tables_with_headings:
+            headers, data, entity_preview = extract_table_data(table, coordinator=coordinator)
+            if not headers or not data:
+                continue
 
-        # --- Find or create a location column name (fuzzy/substring match) ---
-        location_col = None
-        for h in headers:
-            for lh in LOCATION_HEADERS:
-                if fuzzy_in(lh, h) and h.lower() != "candidate":
-                    location_col = h
+            # --- Find or create a location column name (fuzzy/substring match) ---
+            location_col = None
+            for h in headers:
+                for lh in LOCATION_HEADERS:
+                    if fuzzy_in(lh, h) and h.lower() != "candidate":
+                        location_col = h
+                        break
+                if location_col:
                     break
-            if location_col:
-                break
 
-        # If not found, synthesize
-        if location_col is None or location_col.lower() == "candidate":
-            location_col = "Location"
-            if "Location" not in headers:
-                headers = ["Location"] + headers
+            # If not found, synthesize
+            if location_col is None or location_col.lower() == "candidate":
+                # Use "District" for panel, "Location" for section
+                location_col = "District" if method == "panel" else "Location"
+                if location_col not in headers:
+                    headers = headers + [location_col]
+                for row in data:
+                    row[location_col] = heading
 
-        # --- Find or create a percent reported column ---
-        percent_col = None
-        for h in headers:
-            for ph in PERCENT_HEADERS:
-                if fuzzy_in(ph.replace("%", "").replace(" ", ""), h.replace("%", "").replace(" ", "")):
-                    percent_col = h
+            # --- Find or create a percent reported column ---
+            percent_col = None
+            for h in headers:
+                for ph in PERCENT_HEADERS:
+                    if fuzzy_in(ph.replace("%", "").replace(" ", ""), h.replace("%", "").replace(" ", "")):
+                        percent_col = h
+                        break
+                if percent_col:
                     break
-            if percent_col:
-                break
-        if not percent_col:
-            percent_col = "% Precincts Reporting"
-            if percent_col not in headers:
-                headers = [percent_col] + headers
+            if not percent_col:
+                percent_col = "% Precincts Reporting"
+                if percent_col not in headers:
+                    headers = headers + [percent_col]
 
-        # --- Extract percent reported from heading or global ---
-        percent_value = extract_percent_reported_from_heading(heading)
-        if not percent_value:
-            percent_value = percent_reported_global
+            # --- Extract percent reported from heading or global ---
+            percent_value = extract_percent_reported_from_heading(heading)
+            if not percent_value:
+                percent_value = percent_reported_global
 
-        # --- Assign heading to location column and percent to percent column for each row ---
-        for row in data:
-            if location_col not in row or not row[location_col]:
-                row[location_col] = heading
-            if percent_col not in row or not row[percent_col]:
-                row[percent_col] = percent_value
+            # --- Assign heading to location column and percent to percent column for each row ---
+            for row in data:
+                if location_col not in row or not row[location_col]:
+                    row[location_col] = heading
+                if percent_col not in row or not row[percent_col]:
+                    row[percent_col] = percent_value
 
-        all_headers.update(headers)
-        all_data.extend(data)
-        all_entity_previews.append(entity_preview)
+            all_headers.update(headers)
+            all_data.extend(data)
+            all_entity_previews.append(entity_preview)
 
-    # Harmonize headers and data
-    all_headers = list(all_headers)
-    all_headers, all_data = harmonize_headers_and_data(all_headers, all_data)
-    return all_headers, all_data, all_entity_previews
+        # Harmonize headers and data
+        all_headers_list = list(all_headers)
+        all_headers_list, all_data = harmonize_headers_and_data(all_headers_list, all_data)
+        extraction_results.append({
+            "method": method,
+            "headers": all_headers_list,
+            "data": all_data,
+            "entity_previews": all_entity_previews,
+            "score": 0  # Will be filled below
+        })
+
+    # --- Score each extraction result using ML/NLP if available ---
+    for result in extraction_results:
+        score = 0
+        if coordinator and hasattr(coordinator, "score_header"):
+            # Average ML score for headers
+            scores = [coordinator.score_header(h, {}) for h in result["headers"]]
+            score = sum(scores) / len(scores) if scores else 0
+        # Bonus for more rows and columns
+        score += 0.1 * min(len(result["data"]) / 10.0, 1.0)
+        score += 0.1 * min(len(result["headers"]) / 8.0, 1.0)
+        result["score"] = score
+
+    # --- Try to merge/patch missing information between extraction types ---
+    # If one extraction is missing a location or percent column, but the other has it, fill in
+    def patch_missing_info(primary, secondary):
+        patched = False
+        sec_headers = set(secondary["headers"])
+        for h in secondary["headers"]:
+            if h not in primary["headers"]:
+                # Add missing header and fill with values if possible
+                primary["headers"].append(h)
+                for i, row in enumerate(primary["data"]):
+                    # Try to match by row index (could be improved with NLP/ML row association)
+                    if i < len(secondary["data"]):
+                        row[h] = secondary["data"][i].get(h, "")
+                    else:
+                        row[h] = ""
+                patched = True
+        return patched
+
+    # Pick the best extraction by score, but patch with info from the other if possible
+    extraction_results.sort(key=lambda r: r["score"], reverse=True)
+    best = extraction_results[0]
+    if len(extraction_results) > 1:
+        other = extraction_results[1]
+        patched = patch_missing_info(best, other)
+        # Optionally, use NLP/ML to check if rows are associated (e.g., by location/district/candidate)
+        # This can be extended with coordinator.match_rows(row1, row2) if implemented
+
+    return best["headers"], best["data"], best["entity_previews"]
 
 def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """

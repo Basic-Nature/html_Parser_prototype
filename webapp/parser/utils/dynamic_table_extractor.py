@@ -581,6 +581,97 @@ def auto_approve_dom_pattern(selector, log_path=None, min_count=2):
 
 # --- Structure Detection & Classification ---
 
+def find_tables_with_panel_headings(page, panel_selector="p-panel.ballot-item", header_selector="h1.panel-header span.ng-star-inserted", fallback_header_selector="h1.panel-header", table_selector="table.contest-table"):
+    """
+    Finds all tables inside panels, associates each with the panel's heading.
+    Returns a list of (district_name, table_locator) tuples.
+    """
+    results = []
+    panels = page.locator(panel_selector)
+    for i in range(panels.count()):
+        panel = panels.nth(i)
+        # Try to get the span inside the h1.panel-header
+        district_name = ""
+        header_span = panel.locator(header_selector)
+        if header_span.count() > 0:
+            district_name = header_span.nth(0).inner_text().strip()
+        else:
+            header = panel.locator(fallback_header_selector)
+            if header.count() > 0:
+                district_name = header.nth(0).inner_text().strip()
+        # Find the table inside this panel
+        table = panel.locator(table_selector)
+        if table.count() == 0:
+            continue
+        results.append((district_name, table.nth(0)))
+    return results
+
+def find_tables_with_section_headings(page, heading_tags=None, extra_heading_selectors=None, max_depth=6):
+    """
+    For each table on the page, walk up the DOM to find the nearest section heading.
+    Returns a list of (section_name, table_locator) tuples.
+    - heading_tags: tuple of heading tags to consider (default: h1-h6, span, strong, b)
+    - extra_heading_selectors: list of additional selectors (e.g., ".ng-star-inserted")
+    - max_depth: how many parent levels to walk up
+    """
+    if heading_tags is None:
+        heading_tags = ("h1", "h2", "h3", "h4", "h5", "h6", "span", "strong", "b")
+    if extra_heading_selectors is None:
+        extra_heading_selectors = [".ng-star-inserted", ".section-title", ".panel-header", ".fw-bold"]
+
+    results = []
+    tables = page.locator("table")
+    for i in range(tables.count()):
+        table = tables.nth(i)
+        section_name = None
+
+        # 1. Walk up DOM for heading tags
+        parent = table
+        for _ in range(max_depth):
+            parent = parent.locator("xpath=..")
+            # Try heading tags
+            for tag in heading_tags:
+                headings = parent.locator(tag)
+                if headings.count() > 0:
+                    section_name = headings.nth(0).inner_text().strip()
+                    if section_name:
+                        break
+            if section_name:
+                break
+            # Try extra selectors
+            for sel in extra_heading_selectors:
+                extra = parent.locator(sel)
+                if extra.count() > 0:
+                    section_name = extra.nth(0).inner_text().strip()
+                    if section_name:
+                        break
+            if section_name:
+                break
+            # Try ARIA label
+            try:
+                aria_label = parent.evaluate("el => el.getAttribute('aria-label')")
+                if aria_label:
+                    section_name = aria_label.strip()
+                    break
+            except Exception:
+                pass
+
+        # 2. Fallback: preceding sibling heading
+        if not section_name:
+            for tag in heading_tags:
+                sibling = table.locator(f"xpath=preceding-sibling::{tag}[1]")
+                if sibling.count() > 0:
+                    section_name = sibling.nth(0).inner_text().strip()
+                    if section_name:
+                        break
+
+        # 3. Fallback: use table index
+        if not section_name:
+            section_name = f"Section {i+1}"
+
+        results.append((section_name, table))
+    return results
+
 def is_candidate_major_row(headers, data, coordinator, context):
     # First column is candidate, rest are vote types or totals
     if not headers or not data:
