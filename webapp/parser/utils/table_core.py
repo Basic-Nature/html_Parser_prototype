@@ -144,7 +144,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         for i in range(tables.count()):
             table = tables.nth(i)
             if table is not None:
-                headers_tab, data_tab = extract_table_data(table)
+                headers_tab, data_tab, _ = extract_table_data(table)
                 if headers_tab and data_tab:
                     all_tables.append((headers_tab, data_tab))
                     extraction_logs.append({
@@ -1896,7 +1896,7 @@ def handle_nested_tables(page):
     for i in range(tables.count()):
         table = tables.nth(i)
         if table is not None:
-            headers, data = extract_table_data(table)
+            headers, data, _ = extract_table_data(table)
             results.append((headers, data))
     return results
 

@@ -83,7 +83,7 @@ def find_tabular_candidates(page):
         table = tables.nth(i)
         if table is None:
             continue
-        headers, data = extract_table_data(table)
+        headers, data, _ = extract_table_data(table)
         if headers and data:
             candidates.append({"headers": headers, "rows": data, "source": "table"})
     # 2. Repeated DOM structures (divs, lists, etc.)
