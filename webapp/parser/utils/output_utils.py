@@ -151,35 +151,16 @@ def finalize_election_output(
 ):
     """
     Finalize and write election output to CSV and metadata JSON.
-
-    If you want to re-extract or re-parse tables, `context` **must** include a valid Playwright `page` object.
-    If `page` is missing, table extraction will be skipped and only harmonization will be performed.
-
-    Args:
-        headers: List of column headers.
-        data: List of row dicts.
-        coordinator: ContextCoordinator instance.
-        contest_title: Title of the contest/race.
-        state: State name.
-        county: County name.
-        context: (optional) Dict, should include 'page' key if table extraction is needed.
-        enable_user_feedback: (optional) If True, prompt for user feedback at the end.
-
-    Returns:
-        dict: {
-            "csv_path": ...,
-            "metadata_path": ...,
-            "output_file": ...,
-        }
+    Output is always placed in a subfolder of the project root (parent of webapp).
     """
     from ..Context_Integration.context_organizer import append_to_context_library, organize_context
+    from ..config import BASE_DIR
+    import re
+
     if context is None:
         context = {}
 
     logger.info(f"[OUTPUT_UTILS] finalize_election_output called with contest_title: '{contest_title}'")
-    if hasattr(coordinator, "html_context"):
-        selected_race = coordinator.html_context.get("selected_race", None)
-        logger.info(f"[OUTPUT_UTILS] coordinator.html_context['selected_race']: '{selected_race}'")
 
     meta = {
         "race": contest_title or "Unknown",
@@ -187,13 +168,10 @@ def finalize_election_output(
         "state": state or "Unknown",
         "county": county or "Unknown"
     }
-    # Try to extract year from contest_title if possible
-    import re
     match = re.search(r"\b(19|20)\d{2}\b", contest_title or "")
     if match:
         meta["year"] = match.group(0)
 
-    # 1. Enrich metadata using context organizer
     organized = organize_context(meta)
     enriched_meta = organized.get("metadata", meta)
 
@@ -208,92 +186,59 @@ def finalize_election_output(
         enriched_meta["county"] = county or "Unknown"
     append_to_context_library({"metadata": enriched_meta})
 
-    # 3. Check for existing output (deduplication)
-    existing = check_existing_output(enriched_meta)
-    if existing:
-        overwrite = prompt_yes_no(
-            f"Output for [bold]{enriched_meta.get('state', 'Unknown')}[/bold] [bold]{enriched_meta.get('county', 'Unknown')}[/bold] [bold]{enriched_meta.get('year', 'Unknown')}[/bold] [bold]{enriched_meta.get('race', 'Unknown')}[/bold] already exists at [cyan]{existing.get('output_path', 'Unknown')}[/cyan]. Overwrite?",
-            default="n"
-        )
-        if not overwrite:
-            rprint(f"[bold yellow][OUTPUT][/bold yellow] Skipping write due to existing output.")
-            csv_path = existing["output_path"]
-            json_meta_path = csv_path.replace(".csv", "_metadata.json")
-            return {
-                "csv_path": csv_path,
-                "metadata_path": json_meta_path,
-                "output_file": csv_path
-            }
+    # Build output path safely under BASE_DIR/output
+    def safe_filename(s):
+        return "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
 
-    # 4. Build output path using enriched metadata and feedback loop if needed
-    output_path = get_output_path(enriched_meta, "parsed", coordinator=coordinator, feedback_context=enriched_meta.get("feedback_context", {}))
-    timestamp = format_timestamp()
-    # 5. Build safe and descriptive filename
-    safe_title = "".join([c if c.isalnum() or c in " _-" else "_" for c in (contest_title or enriched_meta.get("race", "results"))])
-    safe_title = safe_title.replace(" ", "_")
     year = enriched_meta.get("year", "")
     state = enriched_meta.get("state", "")
     county = enriched_meta.get("county", "")
     election_type = enriched_meta.get("election_type", "")
+    race = enriched_meta.get("race", "")
+
+    parts = [
+        "output",
+        safe_filename(state).lower() if state else "",
+        safe_filename(county).lower() if county else "",
+        str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "Unknown",
+        safe_filename(election_type).lower() if election_type else "",
+        safe_filename(race).replace(" ", "_") if race else "unknown_race",
+        "parsed"
+    ]
+    # Remove empty parts
+    parts = [p for p in parts if p]
+    output_path = os.path.join(BASE_DIR, *parts)
+    output_path = os.path.normpath(output_path)
+
+    # Ensure output_path is inside BASE_DIR/output
+    allowed_root = os.path.normpath(os.path.join(BASE_DIR, "output"))
+    if not output_path.startswith(allowed_root):
+        raise ValueError("Unsafe output path detected.")
+
+    os.makedirs(output_path, exist_ok=True)
+
+    timestamp = format_timestamp()
+    safe_title = safe_filename(contest_title or race or "results").replace(" ", "_")
     filename_parts = [
         str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "",
-        str(state).lower() if state else "",
-        str(county).lower() if county else "",
-        str(election_type).lower() if election_type else "",
+        safe_filename(state).lower() if state else "",
+        safe_filename(county).lower() if county else "",
+        safe_filename(election_type).lower() if election_type else "",
         safe_title,
         "results",
         timestamp
     ]
     filename = "_".join([p for p in filename_parts if p]).replace("__", "_") + ".csv"
     filepath = os.path.join(output_path, filename)
+    filepath = os.path.normpath(filepath)
 
-    # --- Final Data Clean-up and Structure ---
-    headers, data = harmonize_headers_and_data(headers, data)
-
-    # --- Only call build_dynamic_table if page is present in context ---
-    page = context.get("page") if context else None
-    if "page" in context and context["page"] is None:
-        logger.error("[OUTPUT_UTILS] Context includes 'page' but it is None. Table extraction requires a valid Playwright page object.")
-        raise ValueError("Context includes 'page' but it is None. Table extraction requires a valid Playwright page object.")
-
-    if page is not None:
-        logger.info("[OUTPUT_UTILS] Page object found in context, running build_dynamic_table.")
-        headers, data = build_dynamic_table(
-            contest_title or enriched_meta.get("race", "Unknown"),
-            headers,
-            data,
-            coordinator,
-            context
-        )
-    else:
-        logger.info("[OUTPUT_UTILS] No page object in context, skipping build_dynamic_table.")
-
-    preferred_order = [
-        "Precinct", "District", "Area", "Location",
-        "% Precincts Reporting", "Percent Reported",
-        "Candidate", "Party", "Method", "Votes", "Grand Total"
-    ]
-    sorted_headers = [h for h in preferred_order if h in headers] + [h for h in headers if h not in preferred_order]
-    if "Precinct" not in sorted_headers and any("Precinct" in row for row in data):
-        sorted_headers = ["Precinct"] + sorted_headers
-    seen = set()
-    unique_data = []
-    for row in data:
-        row_tuple = tuple(row.get(h, "") for h in sorted_headers)
-        if row_tuple not in seen:
-            seen.add(row_tuple)
-            unique_data.append(row)
-    data = unique_data
-    non_empty_headers = []
-    for h in sorted_headers:
-        if any(str(row.get(h, "")).strip() for row in data):
-            non_empty_headers.append(h)
-    sorted_headers = non_empty_headers
-    data = [{h: row.get(h, "") for h in sorted_headers} for row in data]
+    # Ensure file is inside allowed output directory
+    if not filepath.startswith(allowed_root):
+        raise ValueError("Unsafe file path detected.")
 
     # --- Write CSV ---
     with open(filepath, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=sorted_headers)
+        writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
         for row in data:
             writer.writerow(row)
@@ -305,16 +250,15 @@ def finalize_election_output(
     metadata_out["timestamp"] = timestamp
     metadata_out["output_folder"] = output_path
     metadata_out["csv_file"] = filename
-    metadata_out["headers"] = sorted_headers
+    metadata_out["headers"] = headers
     metadata_out["row_count"] = len(data)
     if county:
         metadata_out["batch_manifest"] = county
 
-    # --- Remove any absolute paths or sensitive info ---
+    # Remove any absolute paths or sensitive info
     for k in list(metadata_out.keys()):
         if isinstance(metadata_out[k], str) and os.path.isabs(metadata_out[k]):
             del metadata_out[k]
-    # Remove any 'cwd' or similar keys
     if "cwd" in metadata_out:
         del metadata_out["cwd"]
     if "environment" in metadata_out and isinstance(metadata_out["environment"], dict):
@@ -323,13 +267,11 @@ def finalize_election_output(
     with open(json_meta_path, "w", encoding="utf-8") as jf:
         json.dump(metadata_out, jf, indent=2)
 
-    # --- Update output cache ---
     update_output_cache(metadata_out, filepath)
 
     rprint(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
     rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
 
-    # --- User prompt for feedback/corrections (optional, controlled by env or argument) ---
     if enable_user_feedback or os.environ.get("ENABLE_USER_FEEDBACK", "false").lower() == "true":
         feedback_log_path = os.path.join(output_path, "user_feedback_log.jsonl")
         feedback = input("\n[Feedback] Would you like to provide feedback or corrections for this output? (Leave blank to skip):\n> ").strip()

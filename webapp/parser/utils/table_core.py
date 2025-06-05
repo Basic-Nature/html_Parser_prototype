@@ -232,18 +232,29 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 # EXTRACTION STRATEGIES (HTML, DOM, PATTERNS, NLP)
 # ===================================================================
 
-def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
+def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """
     Extracts headers and data from a Playwright table locator.
-    Handles malformed HTML, empty tables, and logs errors.
+    Logs an NLP-style preview of detected entities (candidates, ballot types, numbers, locations).
+    Returns headers, data, and a meta dict with entity preview and detected location column.
     """
     if table is None:
         logger.error("[TABLE BUILDER][extract_table_data] Table locator is None.")
-        return [], []    
+        return [], [], {}
+
     logger.info("[TABLE BUILDER][extract_table_data] Starting table extraction.")
     headers = []
     data = []
+    entity_preview = {
+        "candidates": set(),
+        "ballot_types": set(),
+        "numbers": set(),
+        "locations": set(),
+        "location_column": None,
+    }
+
     try:
+        # --- Extract headers ---
         header_cells = table.locator("thead tr th")
         logger.info(f"[TABLE BUILDER][extract_table_data] Found {header_cells.count()} header cells in thead.")
         if header_cells.count() == 0:
@@ -255,15 +266,13 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
             headers.append(text if text else f"Column {i+1}")
         logger.info(f"[TABLE BUILDER][extract_table_data] Extracted headers: {headers}")
 
+        # --- Extract rows ---
         rows = table.locator("tbody tr")
         logger.info(f"[TABLE BUILDER][extract_table_data] Found {rows.count()} rows in tbody.")
         if rows.count() == 0:
             all_rows = table.locator("tr")
             logger.info(f"[TABLE BUILDER][extract_table_data] No tbody rows, using all tr: {all_rows.count()} rows.")
-            if all_rows.count() > 1:
-                rows = all_rows.nth(1).locator("xpath=following-sibling::tr")
-            else:
-                rows = all_rows
+            rows = all_rows
 
         for i in range(rows.count()):
             row = {}
@@ -280,14 +289,61 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
                 data.append(row)
         logger.info(f"[TABLE BUILDER][extract_table_data] Extracted {len(data)} data rows.")
 
+        # --- NLP-style entity preview ---
+        location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "town"}
+        ballot_type_keywords = {"election day", "early voting", "absentee", "mail", "provisional", "affidavit", "other", "void"}
+        candidate_keywords = {"candidate", "name", "nominee"}
+        number_pattern = re.compile(r"^\d{1,3}(,\d{3})*$")
+
+        # Detect location column
+        location_col = None
+        for h in headers:
+            if any(lk in h.lower() for lk in location_keywords):
+                location_col = h
+                break
+        if not location_col and headers:
+            location_col = headers[0]  # fallback
+        entity_preview["location_column"] = location_col
+
+        # Scan data for entity types
+        for row in data:
+            for h, v in row.items():
+                if not v:
+                    continue
+                # Candidate detection
+                if any(ck in h.lower() for ck in candidate_keywords):
+                    entity_preview["candidates"].add(v)
+                # Ballot type detection
+                if any(bk in h.lower() for bk in ballot_type_keywords):
+                    entity_preview["ballot_types"].add(h)
+                # Number detection
+                if number_pattern.match(v.replace(",", "")):
+                    entity_preview["numbers"].add(v)
+                # Location detection
+                if h == location_col:
+                    entity_preview["locations"].add(v)
+
+        # Log NLP-style preview
+        logger.info(f"[NLP PREVIEW][extract_table_data] Candidates: {sorted(entity_preview['candidates'])}")
+        logger.info(f"[NLP PREVIEW][extract_table_data] Ballot Types: {sorted(entity_preview['ballot_types'])}")
+        logger.info(f"[NLP PREVIEW][extract_table_data] Numbers: {sorted(entity_preview['numbers'])}")
+        logger.info(f"[NLP PREVIEW][extract_table_data] Locations: {sorted(entity_preview['locations'])}")
+        logger.info(f"[NLP PREVIEW][extract_table_data] Location column: {entity_preview['location_column']}")
+
+        # Optionally print for CLI debug
+        print(f"[NLP PREVIEW] Candidates: {sorted(entity_preview['candidates'])}")
+        print(f"[NLP PREVIEW] Ballot Types: {sorted(entity_preview['ballot_types'])}")
+        print(f"[NLP PREVIEW] Numbers: {sorted(entity_preview['numbers'])}")
+        print(f"[NLP PREVIEW] Locations: {sorted(entity_preview['locations'])}")
+        print(f"[NLP PREVIEW] Location column: {entity_preview['location_column']}")
+
+        # If not headers and data, fallback to generic headers
         if not headers and data:
             max_cols = max(len(row) for row in data)
             headers = [f"Column {i+1}" for i in range(max_cols)]
             logger.warning("[TABLE BUILDER][extract_table_data] No headers but there is data. Generating generic headers.")
             new_data = []
             for row in data:
-                if len(row) != len(headers):
-                    logger.warning(f"[TABLE BUILDER][extract_table_data] Row length mismatch: {row}")
                 new_row = {}
                 for idx, h in enumerate(headers):
                     new_row[h] = list(row.values())[idx] if idx < len(row) else ""
@@ -296,11 +352,13 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]]]:
 
         if not headers and not data:
             logger.warning("[TABLE BUILDER][extract_table_data] Empty table encountered.")
+
     except Exception as e:
         logger.error(f"[TABLE BUILDER][extract_table_data] Malformed HTML or extraction error: {e}")
-        return [], []
+        return [], [], {}
+
     logger.info(f"[TABLE BUILDER][extract_table_data] Finished: {len(data)} rows, {len(headers)} columns.")
-    return headers, data
+    return headers, data, entity_preview
 
 def guess_headers_from_row(row, known_keywords=None):
     """
