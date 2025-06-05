@@ -3,7 +3,8 @@ import subprocess
 import sys
 import os
 import json
-from datetime import datetime, time
+import time
+from datetime import datetime
 
 try:
     import openai
