@@ -16,6 +16,7 @@ from ..config import BASE_DIR
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "logs"))
 
 from .table_core import (
+    extract_all_candidates_from_data,
     merge_multiline_candidate_rows,
     robust_table_extraction,
     harmonize_headers_and_data,
@@ -162,6 +163,15 @@ def build_dynamic_table(
     # --- Merge multi-line candidate rows if needed ---
     headers, data = merge_multiline_candidate_rows(headers, data)
     logger.info(f"[TABLE_BUILDER] After merging multi-line candidate rows: {len(data)} rows.")
+
+    # --- Extract all candidate names from data for robust pivoting ---
+    all_candidates = extract_all_candidates_from_data(headers, data)
+    if 'people' not in entity_info or not entity_info['people']:
+        entity_info['people'] = list(all_candidates)
+    else:
+        # Merge with any already detected by NLP
+        entity_info['people'] = list(set(entity_info['people']) | all_candidates)
+    logger.info(f"[TABLE_BUILDER] All detected candidates for pivot: {entity_info['people']}")
 
     # --- 5. Structure Analysis ---
     try:

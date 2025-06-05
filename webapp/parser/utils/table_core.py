@@ -663,6 +663,17 @@ def extract_repeated_dom_structures(page, container_selectors=None, min_row_coun
                 log_failed_container(page, container, selector, i, str(e))
     return results
 
+def extract_all_candidates_from_data(headers, data):
+    candidates = set()
+    for row in data:
+        val = row.get("Candidate", "")
+        # Split on newline or known party/candidate patterns
+        for part in val.split("\n"):
+            part = part.strip()
+            if part and not part.lower().startswith(("democratic", "republican", "working families", "conservative", "green", "libertarian", "independent", "write-in", "other")):
+                candidates.add(part)
+    return candidates
+
 # ===================================================================
 # HARMONIZATION & CLEANING
 # ===================================================================
@@ -671,6 +682,7 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
     """
     Ensures all rows have the same headers, filling missing fields with empty string.
     Deduplicates headers and prunes empty/zero columns, but does NOT prune columns if there is at least one valid (non-empty) row.
+    Logs unique values in the detected location column for verification.
     """
     all_headers = [h for h in headers if h is not None]
     # Deduplicate headers
@@ -695,6 +707,26 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
     if not keep and deduped_headers:
         keep = deduped_headers
     harmonized = [{h: row.get(h, "") for h in keep} for row in harmonized]
+
+    # --- Location column detection and logging ---
+    location_col = None
+    location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "town"}
+    for h in keep:
+        if any(lk in h.lower() for lk in location_keywords):
+            location_col = h
+            break
+    if not location_col and keep:
+        # Fallback: first column
+        location_col = keep[0]
+
+    # Gather unique values in the location column
+    unique_locations = set(row.get(location_col, "") for row in harmonized if location_col in row)
+    logger.info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
+    print(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
+    if len(unique_locations) <= 1:
+        logger.warning(f"[HARMONIZE] Only one unique value found in location column '{location_col}'. Extraction may be incorrect.")
+        print(f"[HARMONIZE] WARNING: Only one unique value found in location column '{location_col}'. Extraction may be incorrect.")
+
     return keep, harmonized
 
 def deduplicate_headers(headers, data):
@@ -1127,7 +1159,8 @@ def pivot_to_wide_format(
     - All numbers correlated with correct entities
     """
     logger.info("[TABLE_CORE][pivot_to_wide_format] Pivoting to wide format.")
-    # Determine location header
+
+    # 1. Detect location header robustly
     location_header = None
     for h in headers:
         if any(lk in h.lower() for lk in LOCATION_KEYWORDS):
@@ -1135,13 +1168,14 @@ def pivot_to_wide_format(
             break
     if not location_header and entity_info.get("locations"):
         # Use first detected location entity as header
-        location_header = entity_info["locations"][0]
-    if not location_header:
+        location_header = entity_info["locations"][0] if entity_info["locations"] else None
+    if not location_header and headers:
         location_header = headers[0]  # fallback
 
-    # Gather all unique candidates and ballot types
+    # 2. Gather all unique candidates and ballot types
     candidates = set(entity_info.get("people", []))
     ballot_types = set(entity_info.get("ballot_types", []))
+
     # Fallback: try to infer from headers if not found
     if not candidates:
         for h in headers:
@@ -1158,15 +1192,15 @@ def pivot_to_wide_format(
     if not ballot_types:
         ballot_types = set(h for h in headers if h != location_header)
 
-    # Build wide headers
+    # 3. Build wide headers
     wide_headers = [location_header]
     for candidate in sorted(candidates):
         for bt in sorted(ballot_types):
             wide_headers.append(f"{candidate} - {bt}")
     wide_headers.append("Grand Total")
 
-    # Build wide data
-    location_values = set(row.get(location_header, "") for row in data)
+    # 4. Build wide data, one row per unique location
+    location_values = set(row.get(location_header, "") for row in data if row.get(location_header, ""))
     wide_data = []
     for loc in sorted(location_values):
         out_row = {h: "" for h in wide_headers}
@@ -1178,24 +1212,29 @@ def pivot_to_wide_format(
             for candidate in candidates:
                 for bt in ballot_types:
                     col = f"{candidate} - {bt}"
-                    # Try to find value in row
                     val = ""
-                    for h in headers:
-                        if candidate in row.get(h, "") or candidate in h:
-                            if bt in h or bt in row.get(h, ""):
+                    # Try to find value in row
+                    # 1. Direct match
+                    if col in row:
+                        val = row.get(col, "")
+                    # 2. Candidate and ballot type in separate columns
+                    elif candidate in row.values() and bt in row:
+                        val = row.get(bt, "")
+                    # 3. Candidate and ballot type in header
+                    else:
+                        for h in headers:
+                            if candidate in h and bt in h:
                                 val = row.get(h, "")
                                 break
-                    if not val:
-                        # Try direct match
-                        val = row.get(f"{candidate} - {bt}", "")
                     try:
-                        ival = int(val.replace(",", "")) if val else 0
+                        ival = int(val.replace(",", "")) if val and val.replace(",", "").isdigit() else 0
                     except Exception:
                         ival = 0
                     out_row[col] = str(ival) if val != "" else ""
                     grand_total += ival
         out_row["Grand Total"] = str(grand_total)
         wide_data.append(out_row)
+
     logger.info(f"[TABLE_CORE][pivot_to_wide_format] Wide format: {len(wide_data)} rows, {len(wide_headers)} columns.")
     return wide_headers, wide_data
 
