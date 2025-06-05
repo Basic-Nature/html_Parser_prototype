@@ -208,14 +208,18 @@ def build_dynamic_table(
 
     # --- Synthesize location column if missing ---
     if should_pivot:
-        location_headers = [h for h in headers if any(lk in h.lower() for lk in ["precinct", "district", "ward", "location"])]
+        # Find all possible location headers, but exclude "Candidate"
+        location_headers = [
+            h for h in headers
+            if any(lk in h.lower() for lk in ["precinct", "district", "ward", "location"])
+            and h.lower() != "candidate"
+        ]
         if not location_headers:
             synthetic_location = context.get("contest_title", "All")
             for row in data:
                 row["Location"] = synthetic_location
             headers = ["Location"] + headers
 
-    if should_pivot:
         try:
             wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
             logger.info(f"[TABLE_BUILDER] Pivoted to wide format: {len(wide_headers)} headers, {len(wide_data)} rows.")

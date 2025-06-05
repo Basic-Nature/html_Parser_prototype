@@ -374,16 +374,18 @@ def extract_all_tables_with_location(page, coordinator=None):
             if any(lh.lower() in h.lower() for lh in LOCATION_HEADERS):
                 location_col = h
                 break
-        if not location_col:
-            # Default to "Precinct" if not present
-            location_col = "Precinct"
-            headers = headers + [location_col]
+
+        # Do NOT use "Candidate" as a location column
+        if location_col is None or location_col.lower() == "candidate":
+            location_col = "Location"
+            if "Location" not in headers:
+                headers = ["Location"] + headers
 
         # --- Assign heading to location column for each row ---
         for row in data:
             # Only set if missing or empty
             if location_col not in row or not row[location_col]:
-                row[location_col] = heading if heading else "Unknown"
+                row[location_col] = heading
 
         all_headers.update(headers)
         all_data.extend(data)
@@ -1528,12 +1530,6 @@ def pivot_to_wide_format(
     coordinator: "ContextCoordinator",
     context: dict = None
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """
-    Pivot table to wide format:
-    - Each row is a unique location (precinct/ward/town/district)
-    - Columns for each candidate/ballot type combination
-    - All numbers correlated with correct entities
-    """
     logger.info("[TABLE_CORE][pivot_to_wide_format] Pivoting to wide format.")
 
     # 1. Detect location header robustly
@@ -1542,11 +1538,9 @@ def pivot_to_wide_format(
         if any(lk in h.lower() for lk in LOCATION_KEYWORDS):
             location_header = h
             break
-    if not location_header and entity_info.get("locations"):
-        # Use first detected location entity as header
-        location_header = entity_info["locations"][0] if entity_info["locations"] else None
-    if not location_header and headers:
-        location_header = headers[0]  # fallback
+    # PATCH: Do NOT use "Candidate" as location header
+    if not location_header or location_header.lower() == "candidate":
+        location_header = "Location"
 
     # 2. Gather all unique candidates and ballot types
     candidates = set(entity_info.get("people", []))
@@ -1555,18 +1549,28 @@ def pivot_to_wide_format(
     # Fallback: try to infer from headers if not found
     if not candidates:
         for h in headers:
-            ents = coordinator.extract_entities(h)
-            for ent, label in ents:
-                if label == "PERSON":
-                    candidates.add(ent)
+            if "candidate" in h.lower():
+                candidates.add(h)
     if not ballot_types:
         for h in headers:
-            for bt in BALLOT_TYPES:
-                if bt.lower() in h.lower():
-                    ballot_types.add(bt)
-    # If still empty, use all headers except location as ballot types
+            if any(bt.lower() in h.lower() for bt in BALLOT_TYPES):
+                ballot_types.add(h)
     if not ballot_types:
         ballot_types = set(h for h in headers if h != location_header)
+
+    # --- If only one unique location, synthesize from contest title/context ---
+    location_values = set(row.get(location_header, "") for row in data if row.get(location_header, ""))
+    if len(location_values) <= 1:
+        synthetic_location = None
+        if context and "contest_title" in context:
+            synthetic_location = context["contest_title"]
+        elif context and "html_context" in context and "selected_race" in context["html_context"]:
+            synthetic_location = context["html_context"]["selected_race"]
+        else:
+            synthetic_location = "All"
+        for row in data:
+            row[location_header] = synthetic_location
+        logger.warning(f"[TABLE_CORE][pivot_to_wide_format] Only one unique location found. Synthesized location: {synthetic_location}")
 
     # 3. Build wide headers
     wide_headers = [location_header]
@@ -1583,31 +1587,17 @@ def pivot_to_wide_format(
         out_row[location_header] = loc
         grand_total = 0
         for row in data:
-            if row.get(location_header, "") != loc:
-                continue
-            for candidate in candidates:
-                for bt in ballot_types:
-                    col = f"{candidate} - {bt}"
-                    val = ""
-                    # Try to find value in row
-                    # 1. Direct match
-                    if col in row:
-                        val = row.get(col, "")
-                    # 2. Candidate and ballot type in separate columns
-                    elif candidate in row.values() and bt in row:
-                        val = row.get(bt, "")
-                    # 3. Candidate and ballot type in header
-                    else:
-                        for h in headers:
-                            if candidate in h and bt in h:
-                                val = row.get(h, "")
-                                break
-                    try:
-                        ival = int(val.replace(",", "")) if val and val.replace(",", "").isdigit() else 0
-                    except Exception:
-                        ival = 0
-                    out_row[col] = str(ival) if val != "" else ""
-                    grand_total += ival
+            if row.get(location_header, "") == loc:
+                for candidate in candidates:
+                    for bt in ballot_types:
+                        key = f"{candidate} - {bt}"
+                        val = row.get(bt, "") if candidate == row.get("Candidate", "") else ""
+                        if val and key in out_row:
+                            out_row[key] = val
+                            try:
+                                grand_total += int(val.replace(",", ""))
+                            except Exception:
+                                pass
         out_row["Grand Total"] = str(grand_total)
         wide_data.append(out_row)
 

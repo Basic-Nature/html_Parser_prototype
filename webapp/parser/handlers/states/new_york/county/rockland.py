@@ -148,7 +148,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             }
             html_context["coordinator"] = coordinator
             
-            headers, data = build_dynamic_table(
+            headers, data, entity_info = build_dynamic_table(
                 contest_title, [], [], coordinator, extraction_context
             )
 
@@ -178,6 +178,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 print("DEBUG: headers before finalize:", headers)
                 print("DEBUG: first row before finalize:", data[0] if data else None)
             print("DEBUG: contest_title before finalize:", contest_title)
+            metadata["entity_info"] = entity_info
             result = finalize_election_output(headers, data, coordinator, contest_title, state, county, context=metadata)
             if isinstance(result, dict):
                 if "csv_path" in result:
