@@ -246,5 +246,13 @@
     "Early Voting",
     "Absentee Mail",
     "Total Votes"
+  ],
+  "Orangetown Town Council\nVote for 1:958f6fb0651300017deded7afbc2ee81": [
+    "Location",
+    "%Reported",
+    "Candidate (Election Day)",
+    "Candidate (Early Voting)",
+    "Candidate (Absentee Mail)",
+    "Candidate (Total Votes)"
   ]
 }

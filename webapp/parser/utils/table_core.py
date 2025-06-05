@@ -22,6 +22,7 @@ import re
 import unicodedata
 import glob
 import re
+import string
 from difflib import SequenceMatcher
 from collections import Counter
 from typing import List, Dict, Any, Tuple, TYPE_CHECKING
@@ -40,10 +41,15 @@ TABLE_STRUCTURE_CACHE_PATH = os.path.join(BASE_DIR, "parser", "Context_Integrati
 BALLOT_TYPES = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
 ]
-LOCATION_KEYWORDS = {"precinct", "ward", "district", "location", "area", "city", "municipal", "town"}
+LOCATION_KEYWORDS = {
+    "precinct", "ward", "district", "location", "area", "city", "municipal", "town",
+    "borough", "village", "county", "division", "subdistrict", "polling place", "ed", "municipality"
+}
 TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all"}
 MISC_FOOTER_KEYWORDS = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
-
+CANDIDATE_KEYWORDS = {
+    "candidate", "candidates", "name", "nominee", "person", "individual", "contestant"
+}
 context_cache = {}
 
 # ===================================================================
@@ -448,7 +454,7 @@ def extract_all_tables_with_location(page, coordinator=None):
     all_headers, all_data = harmonize_headers_and_data(all_headers, all_data)
     return all_headers, all_data, all_entity_previews
 
-def extract_table_data(table, coordinator=None) -> Tuple[List[str], List[Dict[str, Any]], dict]:
+def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """
     Extracts headers and data from a Playwright table locator.
     Uses advanced NLP/NER and ML scoring to robustly detect entity columns.
@@ -507,10 +513,10 @@ def extract_table_data(table, coordinator=None) -> Tuple[List[str], List[Dict[st
         logger.info(f"[TABLE BUILDER][extract_table_data] Extracted {len(data)} data rows.")
 
         # --- Advanced NLP/ML entity detection ---
-        location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "town"}
-        ballot_type_keywords = {"election day", "early voting", "absentee", "mail", "provisional", "affidavit", "other", "void"}
-        candidate_keywords = {"candidate", "name", "nominee"}
-        number_pattern = re.compile(r"^\d{1,3}(,\d{3})*$")
+        # Use centralized, robust keyword sets
+        ballot_type_keywords = set(bt.lower() for bt in BALLOT_TYPES)
+        # Improved number pattern: allows commas, decimals, percents, and negative numbers
+        number_pattern = re.compile(r"^-?\d{1,3}(?:,\d{3})*(?:\.\d+)?%?$")
 
         # 1. Use NLP/NER to detect likely location columns
         location_col = None
@@ -521,36 +527,35 @@ def extract_table_data(table, coordinator=None) -> Tuple[List[str], List[Dict[st
                 for ent, label in ents:
                     if label in {"GPE", "LOC", "FAC"} and h.lower() != "candidate":
                         location_scores.append((h, 1.0))
-                # ML scoring for location-like headers
-                if any(lk in h.lower() for lk in location_keywords) and h.lower() != "candidate":
+                if is_location_header(h) and h.lower() != "candidate":
                     score = coordinator.score_header(h, {}) if hasattr(coordinator, "score_header") else 0.5
                     location_scores.append((h, score))
-            # Pick the highest scoring location header
             if location_scores:
                 location_col = max(location_scores, key=lambda x: x[1])[0]
         # 2. Fallback: use location keyword match, but never "Candidate"
         if not location_col:
             for h in headers:
-                if any(lk in h.lower() for lk in location_keywords) and h.lower() != "candidate":
+                if is_location_header(h) and h.lower() != "candidate":
                     location_col = h
                     break
-        # 3. If still not found, leave as None and log a warning
-        if not location_col:
-            logger.warning("[TABLE BUILDER][extract_table_data] No location column detected by NLP/ML. Will not use 'Candidate' as fallback.")
+        # 3. If still not found, log a warning (optionally suppress for already-wide)
         entity_preview["location_column"] = location_col
+        suppress_warning = structure_info and structure_info.get("type") == "already-wide"
+        if not location_col and not suppress_warning:
+            logger.warning("[TABLE BUILDER][extract_table_data] No location column detected by NLP/ML. Will not use 'Candidate' as fallback.")
 
         # --- Scan data for entity types ---
         for row in data:
             for h, v in row.items():
                 if not v:
                     continue
-                # Candidate detection
-                if any(ck in h.lower() for ck in candidate_keywords):
+                # Candidate detection (robust)
+                if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS):
                     entity_preview["candidates"].add(v)
-                # Ballot type detection
+                # Ballot type detection (robust)
                 if any(bk in h.lower() for bk in ballot_type_keywords):
                     entity_preview["ballot_types"].add(h)
-                # Number detection
+                # Number detection (improved)
                 if number_pattern.match(v.replace(",", "")):
                     entity_preview["numbers"].add(v)
                 # Location detection (only if a valid location_col was found)
@@ -666,8 +671,8 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
             repeated_rows = repeated_rows[1:]
 
     # --- Advanced heuristics start here ---
-    location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "ed", "division", "subdistrict", "polling place"}
-    candidate_keywords = {"candidate", "name", "nominee"}
+    location_keywords = set(LOCATION_KEYWORDS)
+    candidate_keywords = set(CANDIDATE_KEYWORDS)
     vote_keywords = {"votes", "total", "sum"}
     if coordinator and hasattr(coordinator, "library"):
         location_keywords.update(set(coordinator.library.get("location_patterns", [])))
@@ -738,49 +743,29 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
             sample_rows = sample_rows[:-1]
 
     # --- ADVANCED: Remove columns with >90% repeated value (e.g., "Reported", "Yes" everywhere) ---
+    always_keep = {"location", "precinct", "district", "ward", "town", "city", "municipal", "county", "% reported", "percent reported", "fully reported"}
+    always_keep = {h.lower() for h in always_keep}
+    protected_headers = set(h.lower() for h in headers if any(kw in h.lower() for kw in always_keep))
+
     repeated_val_cols = []
     for idx, stat in enumerate(col_stats):
-        if stat["unique_vals"] == 1 and stat["empty_ratio"] < 0.9:
+        h_lower = headers[idx].lower()
+        # --- Only remove if all values are empty and not protected
+        if stat["unique_vals"] == 1 and stat["empty_ratio"] == 1.0 and h_lower not in protected_headers:
             repeated_val_cols.append(idx)
     if repeated_val_cols:
-        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Removing columns with only repeated values: {[headers[i] for i in repeated_val_cols]}")
+        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Removing columns that are all empty: {[headers[i] for i in repeated_val_cols]}")
         headers = [h for i, h in enumerate(headers) if i not in repeated_val_cols]
         col_stats = [stat for i, stat in enumerate(col_stats) if i not in repeated_val_cols]
 
-    # --- ADVANCED: Detect and merge multi-line cells (e.g., candidate name and party in one cell) ---
-    def split_multiline_cells(row):
-        new_row = []
-        for cell in row:
-            if "\n" in cell:
-                parts = [p.strip() for p in cell.split("\n") if p.strip()]
-                new_row.extend(parts)
-            else:
-                new_row.append(cell)
-        return new_row
-    sample_rows = [split_multiline_cells(row) for row in sample_rows]
-
-    # --- ADVANCED: If all columns are numeric except one, that one is likely the label/location ---
-    numeric_cols = [i for i, stat in enumerate(col_stats) if stat["numeric_ratio"] > 0.8]
-    if len(numeric_cols) == len(headers) - 1:
-        non_numeric_idx = [i for i in range(len(headers)) if i not in numeric_cols][0]
-        if location_idx is None or location_idx != non_numeric_idx:
-            logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Only one non-numeric column at {non_numeric_idx}, using as location.")
-            location_idx = non_numeric_idx
-
-    # --- ADVANCED: If first column is not a location, but another column is, swap them ---
-    if location_idx is not None and location_idx != 0:
-        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Swapping column {location_idx} ('{headers[location_idx]}') to front as location column.")
-        headers = [headers[location_idx]] + headers[:location_idx] + headers[location_idx+1:]
-        for row in sample_rows:
-            if len(row) > location_idx:
-                row.insert(0, row.pop(location_idx))
-        norm_headers = [normalize_text(h) for h in headers]
-
-    # --- ADVANCED: Remove all-empty columns ---
-    non_empty_cols = [i for i, stat in enumerate(col_stats) if stat["empty_ratio"] < 1.0]
-    if len(non_empty_cols) < len(headers):
+    # --- ADVANCED: Remove all-empty columns, but keep protected headers ---
+    # Only remove if all values are empty and not protected, and keep if few columns remain
+    min_columns = 3
+    non_empty_cols = [i for i, stat in enumerate(col_stats) if stat["empty_ratio"] < 1.0 or headers[i].lower() in protected_headers]
+    if len(non_empty_cols) < len(headers) and len(headers) > min_columns:
         logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Removing all-empty columns: {[headers[i] for i in range(len(headers)) if i not in non_empty_cols]}")
         headers = [headers[i] for i in non_empty_cols]
+        col_stats = [col_stats[i] for i in non_empty_cols]
 
     # --- ADVANCED: If only one row remains, treat as summary, not table ---
     if len(sample_rows) == 1:
@@ -1113,26 +1098,23 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
     Deduplicates rows using a composite key of Location, Candidate, and Ballot Type columns.
     Never collapses rows from different locations or ballot types with the same candidate.
     Logs unique values in the detected location column for verification.
+    --- Only deduplicate if a valid composite key exists (location and candidate).
     """
     # Deduplicate headers
     all_headers = [h for h in headers if h is not None]
     seen = set()
     deduped_headers = []
     for h in all_headers:
-        norm = normalize_header_name(h)
-        if norm not in seen:
+        if h not in deduped_headers:
             deduped_headers.append(h)
-            seen.add(norm)
 
     # Detect location column
     location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "town"}
     location_col = None
     for h in deduped_headers:
-        if any(lk in h.lower() for lk in location_keywords):
+        if is_location_header(h):
             location_col = h
             break
-    if not location_col and deduped_headers:
-        location_col = deduped_headers[0]
 
     # Detect candidate column
     candidate_col = None
@@ -1148,24 +1130,23 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
     harmonized = []
     seen_keys = set()
     for row in data:
-        # Build composite key: (location, candidate, ballot types...)
-        key = (
-            row.get(location_col, "").strip().lower() if location_col else "",
-            row.get(candidate_col, "").strip().lower() if candidate_col else "",
-        )
-        # Add all ballot type values to the key (to distinguish rows by ballot type)
-        key += tuple(row.get(bt, "").strip().lower() for bt in ballot_type_cols)
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
+        # --- Only deduplicate if both location_col and candidate_col are present and non-empty
+        if location_col and candidate_col and row.get(location_col, "") and row.get(candidate_col, ""):
+            key = (
+                row.get(location_col, ""),
+                row.get(candidate_col, ""),
+                *(row.get(bt, "") for bt in ballot_type_cols)
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
         harmonized.append({h: row.get(h, "") for h in deduped_headers})
 
-    # PATCH: Only prune columns if all values are empty/zero for that column across all rows
+    # Only prune columns if all values are empty/zero for that column across all rows
     keep = []
     n_rows = len(harmonized)
     for h in deduped_headers:
-        col_vals = [row.get(h, "") for row in harmonized]
-        if any(v not in ("", "0", 0, None) for v in col_vals):
+        if any(row.get(h, "") not in ("", "0") for row in harmonized):
             keep.append(h)
     if not keep and deduped_headers:
         keep = deduped_headers
@@ -1175,9 +1156,8 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
     unique_locations = set(row.get(location_col, "") for row in harmonized if location_col in row)
     logger.info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
     print(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
-    if len(unique_locations) <= 1:
-        logger.warning(f"[HARMONIZE] Only one unique value found in location column '{location_col}'. Extraction may be incorrect.")
-        print(f"[HARMONIZE] WARNING: Only one unique value found in location column '{location_col}'. Extraction may be incorrect.")
+    if location_col and len(unique_locations) <= 1:
+        logger.warning(f"[HARMONIZE] WARNING: Only one unique value found in location column '{location_col}'. Extraction may be incorrect.")
 
     return keep, harmonized
 
@@ -1242,21 +1222,36 @@ def merge_multiline_candidate_rows(headers, data):
     if "Candidate" not in headers:
         return headers, data
     merged_data = []
-    skip_next = False
-    for i, row in enumerate(data):
-        if skip_next:
-            skip_next = False
-            continue
-        candidate_val = row.get("Candidate", "").strip()
-        # If next row exists and all other columns are empty, treat as party
-        if i + 1 < len(data):
+    i = 0
+    while i < len(data):
+        row = data[i]
+        candidate_val = row.get("Candidate", "")
+        # If candidate cell has a newline, merge into one cell
+        if "\n" in candidate_val:
+            parts = [p.strip() for p in candidate_val.split("\n") if p.strip()]
+            if len(parts) >= 2:
+                merged_name = f"{parts[0]} ({' '.join(parts[1:])})"
+                row["Candidate"] = merged_name
+            else:
+                row["Candidate"] = candidate_val.replace("\n", " ")
+            merged_data.append(row)
+            i += 1
+        # If next row is just a party, merge it
+        elif i + 1 < len(data):
             next_row = data[i + 1]
-            if all(not next_row.get(h, "").strip() for h in headers if h != "Candidate"):
-                # Merge party into candidate name
-                party_val = next_row.get("Candidate", "").strip()
-                row["Candidate"] = f"{candidate_val} ({party_val})" if party_val else candidate_val
-                skip_next = True
-        merged_data.append(row)
+            next_candidate_val = next_row.get("Candidate", "")
+            # Only merge if all other columns are empty in next row
+            if next_candidate_val and all(not v for k, v in next_row.items() if k != "Candidate"):
+                merged_name = f"{candidate_val} ({next_candidate_val})"
+                row["Candidate"] = merged_name
+                merged_data.append(row)
+                i += 2
+            else:
+                merged_data.append(row)
+                i += 1
+        else:
+            merged_data.append(row)
+            i += 1
     return headers, merged_data
 
 # ===================================================================
@@ -1509,7 +1504,7 @@ def detect_table_structure(
         if entity_info.get("ballot_types") and any(bt in h for bt in entity_info["ballot_types"]):
             ballot_type_cols.append(idx)
         # Fallback: heuristics
-        if any(lk in h.lower() for lk in LOCATION_KEYWORDS):
+        if is_location_header(h):
             location_cols.append(idx)
         if any(bt.lower() in h.lower() for bt in BALLOT_TYPES):
             ballot_type_cols.append(idx)
@@ -1615,7 +1610,7 @@ def pivot_to_wide_format(
     # 1. Detect location header robustly, but never use "Candidate"
     location_header = None
     for h in headers:
-        if any(lk in h.lower() for lk in LOCATION_KEYWORDS) and h.lower() != "candidate":
+        if is_location_header(h) and h.lower() != "candidate":
             location_header = h
             break
     if not location_header:
@@ -2043,26 +2038,35 @@ def load_dom_patterns(log_path=None):
 def remove_footer_and_summary_rows(data, headers):
     """
     Remove rows that are likely summary, totals, or repeated headers.
+    --- Only remove if 'total' or 'summary' appears in a column that is a total/summary column.
     """
     filtered = []
+    total_cols = [h for h in headers if any(kw in h.lower() for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS))]
     for row in data:
         values = list(row.values())
-        if any("total" in str(v).lower() or "summary" in str(v).lower() for v in values):
-            continue
-        if set(normalize_header_name(h) for h in headers) == set(normalize_header_name(str(v)) for v in values):
-            continue
-        filtered.append(row)
+        # --- Only remove if 'total' or 'summary' appears in a total/summary column
+        remove = False
+        for h in total_cols:
+            v = row.get(h, "")
+            if any(kw in str(v).lower() for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS)):
+                remove = True
+                break
+        # --- Do not remove if header row repeated (keep as is)
+        if not remove:
+            filtered.append(row)
     return filtered
 
 def remove_outlier_and_empty_rows(data, min_non_empty=2):
     """
     Remove rows with too many empty or repeated values.
+    --- Only remove if truly all values are empty.
     """
     filtered = []
     for row in data:
         values = list(row.values())
         non_empty = [v for v in values if v not in ("", None)]
-        if len(non_empty) >= min_non_empty and len(set(values)) > 1:
+        # --- Only remove if all values are empty
+        if len(non_empty) > 0:
             filtered.append(row)
     return filtered
 
@@ -2070,7 +2074,7 @@ def review_learned_table_structures(log_path=None):
     """
     CLI to review/edit learned table structures.
     """
-    # PATCH: Use log directory parent to webapp for default path
+    # --- Use log directory parent to webapp for default path
     if log_path is None:
         LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
         log_path = os.path.join(LOG_PARENT_DIR, "table_structure_learning_log.jsonl")
@@ -2262,6 +2266,31 @@ def fuzzy_in(word, text, threshold=0.7):
     # Fuzzy match: allow for partials (e.g., "town" in "orangetown")
     ratio = SequenceMatcher(None, word, text).ratio()
     return ratio >= threshold
+
+def normalize_for_matching(text):
+    text = text.lower()
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    return text.strip()
+
+def contains_location_keyword(text, keywords=LOCATION_KEYWORDS):
+    text_norm = normalize_for_matching(text)
+    for kw in keywords:
+        # Match as a whole word or as a suffix/prefix (e.g., "orangetown")
+        if re.search(rf"\b{re.escape(kw)}\b", text_norm):
+            return True
+        if kw in text_norm:
+            return True
+    return False
+
+def is_location_header(header):
+    """
+    Robustly determine if a header is a location column using fuzzy, substring, and regex matching.
+    """
+    header_norm = normalize_for_matching(header)
+    for kw in LOCATION_KEYWORDS:
+        if fuzzy_in(kw, header_norm) or contains_location_keyword(header_norm, LOCATION_KEYWORDS):
+            return True
+    return False
 
 # ===================================================================
 # END OF FILE

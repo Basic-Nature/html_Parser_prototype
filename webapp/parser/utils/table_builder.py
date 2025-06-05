@@ -190,7 +190,7 @@ def build_dynamic_table(
     try:
         structure_info = detect_table_structure(headers, data, coordinator, entity_info=entity_info)
         logger.info(f"[TABLE_BUILDER] Detected table structure: {structure_info}")
-        entity_info["structure_info"] = structure_info  # PATCH: add structure_info to entity_info for feedback/metadata
+        entity_info["structure_info"] = structure_info  # --- add structure_info to entity_info for feedback/metadata
     except Exception as e:
         logger.warning(f"[TABLE_BUILDER] Structure detection failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
         structure_info = {"type": "ambiguous", "verified": False}
@@ -222,7 +222,7 @@ def build_dynamic_table(
             persistent_cache["final_headers"] = wide_headers.copy()
             persistent_cache["final_data"] = wide_data.copy()
             _save_table_builder_cache(domain, persistent_cache)
-            # PATCH: Always harmonize before returning
+            # --- Always harmonize before returning
             wide_headers, wide_data = harmonize_headers_and_data(wide_headers, wide_data)
             return wide_headers, wide_data, entity_info
         except Exception as e:
@@ -236,13 +236,13 @@ def build_dynamic_table(
         )
         persistent_cache["final_headers"] = headers.copy()
         persistent_cache["final_data"] = data.copy()
-        # PATCH: Always harmonize after user feedback
+        # --- Always harmonize after user feedback
         headers, data = harmonize_headers_and_data(headers, data)
 
     # --- 8. Final backup in persistent cache (for debugging/recovery only) ---
     _save_table_builder_cache(domain, persistent_cache)
 
-    # PATCH: Always harmonize before returning
+    # --- Always harmonize before returning
     headers, data = harmonize_headers_and_data(headers, data)
     return headers, data, entity_info
 
@@ -325,7 +325,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     should_log = True
     columns_changed = False
     new_headers = copy.deepcopy(headers)
-    # PATCH: Use LOG_PARENT_DIR for all log files
+    # --- Use LOG_PARENT_DIR for all log files
     denied_structures_path = os.path.join(LOG_PARENT_DIR, "denied_table_structures.json")
     denied_structures = {}
     denied_structures_dir = os.path.dirname(denied_structures_path)
