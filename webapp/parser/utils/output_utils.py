@@ -139,6 +139,23 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
                 return entry
     return None
 
+def deep_merge_dicts(dest, src):
+    """
+    Recursively merge src into dest.
+    - If a key exists in both and both values are dicts, merge them recursively.
+    - Otherwise, src overwrites dest.
+    """
+    for k, v in src.items():
+        if (
+            k in dest
+            and isinstance(dest[k], dict)
+            and isinstance(v, dict)
+        ):
+            deep_merge_dicts(dest[k], v)
+        else:
+            dest[k] = v
+    return dest
+
 def finalize_election_output(
     headers,
     data,
@@ -254,6 +271,10 @@ def finalize_election_output(
     metadata_out["row_count"] = len(data)
     if county:
         metadata_out["batch_manifest"] = county
+
+    # --- Deep merge in any extra context/meta ---
+    if context:
+        metadata_out = deep_merge_dicts(metadata_out, context)
 
     # Remove any absolute paths or sensitive info
     for k in list(metadata_out.keys()):

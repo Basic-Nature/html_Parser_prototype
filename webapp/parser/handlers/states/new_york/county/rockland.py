@@ -2,7 +2,7 @@ from playwright.sync_api import Page
 
 from .....utils.contest_selector import select_contest
 from .....utils.table_builder import build_dynamic_table
-from .....utils.table_core import robust_table_extraction
+from .....utils.table_core import extract_all_tables_with_location
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import rprint
 from .....utils.shared_logic import autoscroll_until_stable
@@ -150,8 +150,9 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             }
             html_context["coordinator"] = coordinator
             
+            headers, data, entity_previews = extract_all_tables_with_location(page, coordinator)
             headers, data = build_dynamic_table(
-                contest_title, [], [], coordinator, extraction_context
+                contest_title, headers, data, coordinator, extraction_context
             )
 
             if not data:
@@ -171,7 +172,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 "county": county or "Unknown",
                 "race": contest_title or "Unknown",
                 "source": getattr(page, "url", "Unknown"),
-                "handler": "rockland"
+                "handler": "rockland",
+                "entity_previews": entity_previews,  # <-- Add this line
             }
             if "year" in html_context:
                 metadata["year"] = html_context["year"]
@@ -180,7 +182,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 print("DEBUG: headers before finalize:", headers)
                 print("DEBUG: first row before finalize:", data[0] if data else None)
             print("DEBUG: contest_title before finalize:", contest_title)
-            result = finalize_election_output(headers, data, coordinator, contest_title, state, county)
+            result = finalize_election_output(headers, data, coordinator, contest_title, state, county, context=metadata)
             if isinstance(result, dict):
                 if "csv_path" in result:
                     metadata["output_file"] = result["csv_path"]

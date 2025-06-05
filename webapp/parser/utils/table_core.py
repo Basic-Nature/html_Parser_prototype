@@ -232,6 +232,39 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 # EXTRACTION STRATEGIES (HTML, DOM, PATTERNS, NLP)
 # ===================================================================
 
+def extract_all_tables_with_location(page, coordinator=None):
+    """
+    Finds all tables and pairs each with its nearest heading.
+    Extracts each table and injects the heading as a 'Location' column in every row.
+    Returns merged headers, data, and a list of entity previews (one per table).
+    """
+    from .dynamic_table_extractor import find_tables_with_headings
+    all_headers = set()
+    all_data = []
+    all_entity_previews = []
+    tables_with_headings = find_tables_with_headings(page)
+    for heading, table in tables_with_headings:
+        headers, data, entity_preview = extract_table_data(table)
+        # Determine location column name
+        location_col = entity_preview.get("location_column") or "Location"
+        # If the table does not already have a location column, add one
+        if location_col not in headers:
+            headers = [location_col] + headers
+            for row in data:
+                row[location_col] = heading
+        else:
+            # If it does, but is empty, fill it
+            for row in data:
+                if not row.get(location_col):
+                    row[location_col] = heading
+        all_headers.update(headers)
+        all_data.extend(data)
+        all_entity_previews.append(entity_preview)
+    # Harmonize headers and data
+    all_headers = list(all_headers)
+    all_headers, all_data = harmonize_headers_and_data(all_headers, all_data)
+    return all_headers, all_data, all_entity_previews
+
 def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """
     Extracts headers and data from a Playwright table locator.
