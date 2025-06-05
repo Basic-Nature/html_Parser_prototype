@@ -1,6 +1,6 @@
 # Smart Elections Parser — Roadmap
 
-This document tracks the progress and next steps for the Smart Elections Parser project, as well as providing solutions to common problems.
+This document tracks the progress and next steps for the Smart Elections Parser project.
 
 ---
 
