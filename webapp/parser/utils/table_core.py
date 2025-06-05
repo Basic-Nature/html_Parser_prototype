@@ -448,10 +448,11 @@ def extract_all_tables_with_location(page, coordinator=None):
     all_headers, all_data = harmonize_headers_and_data(all_headers, all_data)
     return all_headers, all_data, all_entity_previews
 
-def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]], dict]:
+def extract_table_data(table, coordinator=None) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """
     Extracts headers and data from a Playwright table locator.
-    Logs an NLP-style preview of detected entities (candidates, ballot types, numbers, locations).
+    Uses advanced NLP/NER and ML scoring to robustly detect entity columns.
+    Never uses "Candidate" as a location column.
     Returns headers, data, and a meta dict with entity preview and detected location column.
     """
     if table is None:
@@ -505,23 +506,40 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]], dict]:
                 data.append(row)
         logger.info(f"[TABLE BUILDER][extract_table_data] Extracted {len(data)} data rows.")
 
-        # --- NLP-style entity preview ---
+        # --- Advanced NLP/ML entity detection ---
         location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "town"}
         ballot_type_keywords = {"election day", "early voting", "absentee", "mail", "provisional", "affidavit", "other", "void"}
         candidate_keywords = {"candidate", "name", "nominee"}
         number_pattern = re.compile(r"^\d{1,3}(,\d{3})*$")
 
-        # Detect location column
+        # 1. Use NLP/NER to detect likely location columns
         location_col = None
-        for h in headers:
-            if any(lk in h.lower() for lk in location_keywords):
-                location_col = h
-                break
-        if not location_col and headers:
-            location_col = headers[0]  # fallback
+        location_scores = []
+        if coordinator:
+            for h in headers:
+                ents = coordinator.extract_entities(h)
+                for ent, label in ents:
+                    if label in {"GPE", "LOC", "FAC"} and h.lower() != "candidate":
+                        location_scores.append((h, 1.0))
+                # ML scoring for location-like headers
+                if any(lk in h.lower() for lk in location_keywords) and h.lower() != "candidate":
+                    score = coordinator.score_header(h, {}) if hasattr(coordinator, "score_header") else 0.5
+                    location_scores.append((h, score))
+            # Pick the highest scoring location header
+            if location_scores:
+                location_col = max(location_scores, key=lambda x: x[1])[0]
+        # 2. Fallback: use location keyword match, but never "Candidate"
+        if not location_col:
+            for h in headers:
+                if any(lk in h.lower() for lk in location_keywords) and h.lower() != "candidate":
+                    location_col = h
+                    break
+        # 3. If still not found, leave as None and log a warning
+        if not location_col:
+            logger.warning("[TABLE BUILDER][extract_table_data] No location column detected by NLP/ML. Will not use 'Candidate' as fallback.")
         entity_preview["location_column"] = location_col
 
-        # Scan data for entity types
+        # --- Scan data for entity types ---
         for row in data:
             for h, v in row.items():
                 if not v:
@@ -535,9 +553,14 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]], dict]:
                 # Number detection
                 if number_pattern.match(v.replace(",", "")):
                     entity_preview["numbers"].add(v)
-                # Location detection
-                if h == location_col:
+                # Location detection (only if a valid location_col was found)
+                if location_col and h == location_col:
                     entity_preview["locations"].add(v)
+
+        # --- Automated feedback/learning: log if location_col is missing or suspect ---
+        if not location_col or len(entity_preview["locations"]) == 0:
+            logger.warning("[TABLE BUILDER][extract_table_data] No valid location column or values detected. Consider user/ML feedback.")
+            # Optionally: trigger feedback_correction_loop or log for learning
 
         # Log NLP-style preview
         logger.info(f"[NLP PREVIEW][extract_table_data] Candidates: {sorted(entity_preview['candidates'])}")
@@ -546,7 +569,6 @@ def extract_table_data(table) -> Tuple[List[str], List[Dict[str, Any]], dict]:
         logger.info(f"[NLP PREVIEW][extract_table_data] Locations: {sorted(entity_preview['locations'])}")
         logger.info(f"[NLP PREVIEW][extract_table_data] Location column: {entity_preview['location_column']}")
 
-        # Optionally print for CLI debug
         print(f"[NLP PREVIEW] Candidates: {sorted(entity_preview['candidates'])}")
         print(f"[NLP PREVIEW] Ballot Types: {sorted(entity_preview['ballot_types'])}")
         print(f"[NLP PREVIEW] Numbers: {sorted(entity_preview['numbers'])}")
@@ -1469,6 +1491,12 @@ def detect_table_structure(
     logger.info("[TABLE_CORE][detect_table_structure] Analyzing table structure.")
     if entity_info is None:
         entity_info = {}
+
+    # Heuristic: If first column is "Candidate" and the rest are ballot types, it's already wide
+    if headers and headers[0].lower() == "candidate" and all(
+        any(bt in h.lower() for bt in ["election day", "early voting", "absentee", "mail", "total"]) for h in headers[1:]
+    ):
+        return {"type": "already-wide", "candidate_col": 0, "ballot_type_cols": list(range(1, len(headers)))}
     # Use entity_info and header heuristics
     candidate_cols = []
     location_cols = []

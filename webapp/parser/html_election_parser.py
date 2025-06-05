@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import threading
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import cast, Dict, Any, List
@@ -47,17 +48,50 @@ try:
 except ImportError:
     run_bot_task = None
 
-import subprocess
-import sys
-# Build the absolute path to the retrainer script
-retrainer_path = os.path.join(BASE_DIR, "parser", "bots", "retrain_table_structure_models.py")
-retrainer_path = os.path.abspath(retrainer_path)
-retrainer_module = "webapp.parser.bots.retrain_table_structure_models"
-# Optionally, check that the file exists before running
-if os.path.isfile(retrainer_path):
-    subprocess.run([sys.executable, "-m", retrainer_module])
-else:
-    print(f"[ERROR] Retrainer script not found at: {retrainer_path}")
+# --- Bot Orchestration: Run retrainer/correction bots if needed ---
+def run_preprocessing_bots():
+    if os.getenv("SKIP_BOT_TASKS", "false").lower() == "true":
+        print("[INFO] Skipping bot tasks as requested.")
+        return
+    if not run_bot_task:
+        print("[WARN] Bot router not available; skipping bot tasks.")
+        return
+
+    # Only retrain if model is missing, outdated, or not being saved
+    model_path = os.path.join(BASE_DIR, "parser", "Context_Integration", "Context_Library", "table_structure_model.pkl")
+    retrain_needed = not os.path.exists(model_path) or (time.time() - os.path.getmtime(model_path) > 7 * 86400)
+    retrain_lock = os.path.join(os.path.dirname(model_path), ".retrain_lock")
+    if retrain_needed and not os.path.exists(retrain_lock):
+        try:
+            open(retrain_lock, "w").close()
+            run_bot_task("retrain_table_structure_models")
+        except Exception as e:
+            print(f"[ERROR] Retrainer failed: {e}\nIf on Windows, ensure no file explorer or editor is open on the model directory.")
+        finally:
+            if os.path.exists(retrain_lock):
+                os.remove(retrain_lock)
+    else:
+        print("[BOT] Table structure model is up-to-date or retraining already in progress.")
+
+    # Only run correction bot if new logs exist
+    log_dir = os.getenv("LOG_DIR", os.path.join(BASE_DIR, "..", "..", "log"))
+    last_run_time = time.time() - 3600  # Example: last hour
+    from .bots.bot_router import should_run_correction_bot
+    if should_run_correction_bot(log_dir, last_run_time):
+        try:
+            run_bot_task("manual_correction_bot", args=["--enhanced", "--feedback", "--update-db"])
+        except Exception as e:
+            print(f"[ERROR] Correction bot failed: {e}")
+
+    # Let the bot router suggest additional bots (Auto-GPT style)
+    if hasattr(run_bot_task, "suggest_bots"):
+        for bot_name, args in run_bot_task.suggest_bots():
+            try:
+                run_bot_task(bot_name, args=args)
+            except Exception as e:
+                print(f"[ERROR] Bot {bot_name} failed: {e}")
+# Call this before main logic
+run_preprocessing_bots()
 
 # --- Environment & Path Setup ---
 load_dotenv()
@@ -498,7 +532,23 @@ def main():
             pool.starmap(process_url, [(url, processed_info) for url in selected_urls])
     else:
         for url in selected_urls:
-            process_url(url, processed_info)            
+            process_url(url, processed_info)  
+    summary = {"success": 0, "fail": 0, "partial": 0, "error": 0, "flagged": 0}
+    processed = load_processed_urls()
+    for url in selected_urls:
+        status = processed.get(url, {}).get("status", "unprocessed")
+        if status in summary:
+            summary[status] += 1
+        if processed.get(url, {}).get("flagged_for_review"):
+            summary["flagged"] += 1
+
+    print("\n[SUMMARY]")
+    print(f"  URLs processed: {len(selected_urls)}")
+    print(f"  Success: {summary['success']}")
+    print(f"  Failures: {summary['fail']}")
+    print(f"  Partial: {summary['partial']}")
+    print(f"  Errors: {summary['error']}")
+    print(f"  Flagged for review: {summary['flagged']}")          
 
 def get_or_scan_context(page, coordinator, rejected_downloads=None):
     if rejected_downloads is None:

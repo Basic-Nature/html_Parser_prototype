@@ -17,7 +17,7 @@ Features:
 Exports:
     - detect_tables_ml(html: str, options: dict = None) -> List[dict]
 """
-
+import os
 import re
 import json
 from typing import List, Dict, Any, Optional, Tuple
@@ -37,47 +37,72 @@ except ImportError:
 # --- Optional LLM integration (OpenAI, local LLM, etc.) ---
 def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
     """
-    Use an LLM (OpenAI, local, etc.) to extract tables from HTML.
+    Use an LLM (OpenAI, Anthropic, Gemini, local, etc.) to extract tables from HTML.
     Returns a list of {headers, data, meta}.
     """
-    llm_provider = options.get("llm_provider", "openai") if options else "openai"
+    llm_provider = (options.get("llm_provider") or os.getenv("LLM_PROVIDER", "openai")).lower()
+    llm_model = options.get("llm_model") or os.getenv("LLM_MODEL", "gpt-4-turbo")
+    llm_api_key = options.get("llm_api_key") or os.getenv("LLM_API_KEY")
+    system_prompt = options.get("llm_system_prompt") or os.getenv("LLM_SYSTEM_PROMPT")
+    extra_instructions = options.get("llm_extra_instructions") or os.getenv("LLM_EXTRA_INSTRUCTIONS")
     prompt = (
-        "You are an expert at extracting tabular data from HTML. "
-        "Given the following HTML, extract all tables (including non-standard, visually-styled, or grid-like tables). "
-        "For each table, return a JSON object with 'headers' (list of strings), 'data' (list of dicts), "
-        "and 'meta' (with any structure info you can infer). "
-        "HTML:\n" + html[:8000]  # Truncate for token safety
+        (system_prompt or "You are an expert at extracting tabular data from HTML. ")
+        + "Given the following HTML, extract all tables (including non-standard, visually-styled, or grid-like tables). "
+        + "For each table, return a JSON object with 'headers' (list of strings), 'data' (list of dicts), "
+        + "and 'meta' (with any structure info you can infer). "
+        + (f"Extra instructions: {extra_instructions}\n" if extra_instructions else "")
+        + "HTML:\n" + html[:8000]  # Truncate for token safety
     )
     try:
         if llm_provider == "openai":
             import openai
-            model = options.get("llm_model", "gpt-4-turbo")
+            openai.api_key = llm_api_key
             response = openai.ChatCompletion.create(
-                model=model,
+                model=llm_model,
                 messages=[{"role": "system", "content": prompt}],
                 max_tokens=2048,
                 temperature=0.0,
             )
             content = response["choices"][0]["message"]["content"]
-            # Try to extract JSON from the response
-            json_blocks = re.findall(r"\{[\s\S]+?\}", content)
-            tables = []
-            for block in json_blocks:
-                try:
-                    obj = json.loads(block)
-                    if "headers" in obj and "data" in obj:
-                        tables.append(obj)
-                except Exception:
-                    continue
-            return tables
+        elif llm_provider == "anthropic":
+            import anthropic # type: ignore
+            client = anthropic.Anthropic(api_key=llm_api_key)
+            system_prompt = system_prompt or "You are an expert at extracting tabular data from HTML."
+            message = client.messages.create(
+                model=llm_model,
+                max_tokens=2048,
+                temperature=0.0,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            content = message.content[0].text if hasattr(message.content[0], "text") else str(message.content[0])
+        elif llm_provider == "gemini":
+            import google.generativeai as genai # type: ignore
+            genai.configure(api_key=llm_api_key)
+            model = genai.GenerativeModel(llm_model)
+            response = model.generate_content(prompt)
+            content = response.text
         elif llm_provider == "local":
             # Example: Use a local LLM API (e.g., llama.cpp, vllm, etc.)
-            # Implement your local LLM call here
+            # Implement your local LLM call here, e.g.:
+            # response = requests.post(local_llm_url, json={"prompt": prompt, ...})
+            # content = response.json()["text"]
             return []
         else:
             return []
+        # Try to extract JSON from the response
+        json_blocks = re.findall(r"\{[\s\S]+?\}", content)
+        tables = []
+        for block in json_blocks:
+            try:
+                obj = json.loads(block)
+                if "headers" in obj and "data" in obj:
+                    tables.append(obj)
+            except Exception:
+                continue
+        return tables
     except Exception as e:
-        print(f"[LLM TABLE DETECTION] Error: {e}")
+        print(f"[LLM TABLE DETECTION] Error ({llm_provider}): {e}")
         return []
 
 def detect_tables_ml(html: str, options: Optional[dict] = None) -> List[Dict[str, Any]]:

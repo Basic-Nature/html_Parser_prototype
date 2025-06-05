@@ -53,6 +53,25 @@ ENTITY_PATTERNS = [
     # Add more as needed
 ]
 
+def safe_model_save(model, model_save_path, retries=3):
+    import time, shutil
+    for attempt in range(retries):
+        try:
+            safe_model_save(model, model_save_path)
+            return
+        except Exception as e:
+            print(f"[WARN] Model save failed (attempt {attempt+1}): {e}")
+            time.sleep(2)
+    # Try saving to a temp dir and moving
+    tmp_path = model_save_path + "_tmp"
+    try:
+        safe_model_save(model, tmp_path)
+        shutil.rmtree(model_save_path, ignore_errors=True)
+        shutil.move(tmp_path, model_save_path)
+        print(f"[INFO] Model saved via temp path workaround.")
+    except Exception as e:
+        print(f"[ERROR] Final model save failed: {e}")
+        
 def append_training_data(new_data, path="spacy_ner_train_data.jsonl"):
     """
     Appends new training data to a JSONL file in the log directory, deduplicating by text/entities,
@@ -402,7 +421,7 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
         show_progress_bar=True
     )
 
-    model.save(model_save_path)
+    safe_model_save(model, model_save_path)
     print(f"Fine-tuned model saved to: {model_save_path}")
 
 def main():

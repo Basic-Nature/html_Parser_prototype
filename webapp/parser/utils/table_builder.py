@@ -198,28 +198,24 @@ def build_dynamic_table(
 
     # --- 6. Pivot to wide format only if structure requires ---
     should_pivot = False
-    if pivot_to_wide and structure_info.get("type") in {"candidate-major", "precinct-major"}:
-        unique_locations = set(row.get("Location") for row in data if "Location" in row)
-        if len(unique_locations) <= 1:
-            should_pivot = True
-
-    if pivot_to_wide and not should_pivot and "Candidate" in headers and any(bt in headers for bt in ["Election Day", "Early Voting", "Absentee Mail"]):
+    if structure_info.get("type") == "already-wide":
+        should_pivot = False
+    # Only pivot if there is a valid location column and more than one unique location
+    location_col = None
+    for h in headers:
+        if h.lower() in {"location", "precinct", "ward", "district", "area", "city", "municipal", "town"}:
+            location_col = h
+            break
+    unique_locations = set(row.get(location_col, "") for row in data if location_col and row.get(location_col, ""))
+    if pivot_to_wide and location_col and len(unique_locations) > 1:
         should_pivot = True
 
-    # --- Synthesize location column if missing ---
-    if should_pivot:
-        # Find all possible location headers, but exclude "Candidate"
-        location_headers = [
-            h for h in headers
-            if any(lk in h.lower() for lk in ["precinct", "district", "ward", "location"])
-            and h.lower() != "candidate"
-        ]
-        if not location_headers:
-            synthetic_location = context.get("contest_title", "All")
-            for row in data:
-                row["Location"] = synthetic_location
-            headers = ["Location"] + headers
+    # If structure_info says candidate-major or precinct-major, and location_col is valid, allow pivot
+    if pivot_to_wide and not should_pivot and structure_info.get("type") in {"candidate-major", "precinct-major"} and location_col and len(unique_locations) > 1:
+        should_pivot = True
 
+    # Do NOT pivot if there is no location column or only one unique location
+    if should_pivot:
         try:
             wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
             logger.info(f"[TABLE_BUILDER] Pivoted to wide format: {len(wide_headers)} headers, {len(wide_data)} rows.")

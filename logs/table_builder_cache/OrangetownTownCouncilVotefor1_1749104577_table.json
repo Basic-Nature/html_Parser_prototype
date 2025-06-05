@@ -51,6 +51,16 @@
   "patched_data": [],
   "final_headers": [
     "Location",
+    "CON Daniel W. Sullivan - Absentee",
+    "CON Daniel W. Sullivan - Absentee Mail",
+    "CON Daniel W. Sullivan - Early Voting",
+    "CON Daniel W. Sullivan - Election Day",
+    "CON Daniel W. Sullivan - Mail",
+    "DEM Chrissy Knapp - Absentee",
+    "DEM Chrissy Knapp - Absentee Mail",
+    "DEM Chrissy Knapp - Early Voting",
+    "DEM Chrissy Knapp - Election Day",
+    "DEM Chrissy Knapp - Mail",
     "Daniel W. Sullivan - Absentee",
     "Daniel W. Sullivan - Absentee Mail",
     "Daniel W. Sullivan - Early Voting",
@@ -61,11 +71,31 @@
     "Daniel W. Sullivan\n - Early Voting",
     "Daniel W. Sullivan\n - Election Day",
     "Daniel W. Sullivan\n - Mail",
+    "REP Daniel W. Sullivan - Absentee",
+    "REP Daniel W. Sullivan - Absentee Mail",
+    "REP Daniel W. Sullivan - Early Voting",
+    "REP Daniel W. Sullivan - Election Day",
+    "REP Daniel W. Sullivan - Mail",
+    "WOR Chrissy Knapp - Absentee",
+    "WOR Chrissy Knapp - Absentee Mail",
+    "WOR Chrissy Knapp - Early Voting",
+    "WOR Chrissy Knapp - Election Day",
+    "WOR Chrissy Knapp - Mail",
     "Grand Total"
   ],
   "final_data": [
     {
       "Location": "Orangetown Town Council\nVote for 1",
+      "CON Daniel W. Sullivan - Absentee": "",
+      "CON Daniel W. Sullivan - Absentee Mail": "",
+      "CON Daniel W. Sullivan - Early Voting": "",
+      "CON Daniel W. Sullivan - Election Day": "",
+      "CON Daniel W. Sullivan - Mail": "",
+      "DEM Chrissy Knapp - Absentee": "",
+      "DEM Chrissy Knapp - Absentee Mail": "",
+      "DEM Chrissy Knapp - Early Voting": "",
+      "DEM Chrissy Knapp - Election Day": "",
+      "DEM Chrissy Knapp - Mail": "",
       "Daniel W. Sullivan - Absentee": "",
       "Daniel W. Sullivan - Absentee Mail": "",
       "Daniel W. Sullivan - Early Voting": "",
@@ -76,6 +106,16 @@
       "Daniel W. Sullivan\n - Early Voting": "",
       "Daniel W. Sullivan\n - Election Day": "",
       "Daniel W. Sullivan\n - Mail": "",
+      "REP Daniel W. Sullivan - Absentee": "",
+      "REP Daniel W. Sullivan - Absentee Mail": "",
+      "REP Daniel W. Sullivan - Early Voting": "",
+      "REP Daniel W. Sullivan - Election Day": "",
+      "REP Daniel W. Sullivan - Mail": "",
+      "WOR Chrissy Knapp - Absentee": "",
+      "WOR Chrissy Knapp - Absentee Mail": "",
+      "WOR Chrissy Knapp - Early Voting": "",
+      "WOR Chrissy Knapp - Election Day": "",
+      "WOR Chrissy Knapp - Mail": "",
       "Grand Total": "0"
     }
   ],
@@ -90,8 +130,8 @@
         "Total Votes"
       ],
       "data_len": 5,
-      "timestamp": 1749085473.4985435
+      "timestamp": 1749104685.0292866
     }
   ],
-  "timestamp": 1749085291.922694
+  "timestamp": 1749104577.613315
 }
