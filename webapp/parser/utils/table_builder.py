@@ -9,7 +9,7 @@ import json
 import time
 from rich.table import Table
 from typing import List, Dict, Tuple, Any, Optional, TYPE_CHECKING
-from .logger_instance import logger
+from ..utils.logger_instance import logger
 from ..utils.shared_logger import rprint
 from ..config import BASE_DIR
 
@@ -44,12 +44,14 @@ def build_dynamic_table(
     learning_mode: bool = True,
     confirm_table_structure_callback=None,
     pivot_to_wide: bool = True,
-) -> Tuple[List[str], List[Dict[str, Any]]]:
+    debug: bool = False,  # Added debug flag for enhanced logging
+) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """
     Orchestrates robust, multi-source, entity-aware table extraction and harmonization.
     Uses dynamic_table_extractor for candidate generation and scoring.
     Fallbacks and patching are used only as needed, with deduplication and validation.
     Persistent cache is for debugging/recovery, not for downstream ML/feedback.
+    Returns (headers, data, entity_info) for downstream enrichment.
     """
     if context is None:
         context = {}
@@ -75,8 +77,12 @@ def build_dynamic_table(
 
     # --- 1. Candidate Generation & Scoring ---
     from ..utils.dynamic_table_extractor import dynamic_table_extractor
-    extracted_headers, extracted_data = dynamic_table_extractor(page, context, coordinator)
-    logger.info(f"[TABLE_BUILDER] dynamic_table_extractor: {len(extracted_headers)} headers, {len(extracted_data)} rows.")
+    try:
+        extracted_headers, extracted_data = dynamic_table_extractor(page, context, coordinator)
+        logger.info(f"[TABLE_BUILDER] dynamic_table_extractor: {len(extracted_headers)} headers, {len(extracted_data)} rows.")
+    except Exception as e:
+        logger.error(f"[TABLE_BUILDER] dynamic_table_extractor failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+        extracted_headers, extracted_data = [], []
 
     persistent_cache["extracted_headers"] = extracted_headers.copy()
     persistent_cache["extracted_data"] = extracted_data.copy()
@@ -97,13 +103,18 @@ def build_dynamic_table(
         and patch_attempts < max_patch_attempts
     ):
         patch_attempts += 1
-        fallback_headers, fallback_data = robust_table_extraction(
-            page,
-            extraction_context=context,
-            existing_headers=persistent_cache["initial_headers"],
-            existing_data=persistent_cache["initial_data"]
-        )
-        logger.info(f"[TABLE_BUILDER] robust_table_extraction fallback: {len(fallback_headers)} headers, {len(fallback_data)} rows.")
+        try:
+            fallback_headers, fallback_data = robust_table_extraction(
+                page,
+                extraction_context=context,
+                existing_headers=persistent_cache["initial_headers"],
+                existing_data=persistent_cache["initial_data"]
+            )
+            logger.info(f"[TABLE_BUILDER] robust_table_extraction fallback: {len(fallback_headers)} headers, {len(fallback_data)} rows.")
+        except Exception as e:
+            logger.error(f"[TABLE_BUILDER] robust_table_extraction failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+            fallback_headers, fallback_data = [], []
+
         persistent_cache["fallback_headers"] = fallback_headers.copy()
         persistent_cache["fallback_data"] = fallback_data.copy()
         persistent_cache["attempts"].append({
@@ -114,9 +125,7 @@ def build_dynamic_table(
         })
 
         # --- Deduplicate and validate when merging fallback and initial data ---
-        # Merge headers
         merged_headers = list(dict.fromkeys([h for h in (patched_headers or []) + (fallback_headers or []) if h]))
-        # Merge data, deduplicate by row signature
         merged_data = patched_data.copy() if patched_data else []
         for row in fallback_data:
             if row not in merged_data:
@@ -126,8 +135,13 @@ def build_dynamic_table(
         # Try to re-run dynamic_table_extractor with patched data
         context["patched_headers"] = merged_headers
         context["patched_data"] = merged_data
-        patched_headers, patched_data = dynamic_table_extractor(page, context, coordinator)
-        logger.info(f"[TABLE_BUILDER] dynamic_table_extractor (after patch): {len(patched_headers)} headers, {len(patched_data)} rows.")
+        try:
+            patched_headers, patched_data = dynamic_table_extractor(page, context, coordinator)
+            logger.info(f"[TABLE_BUILDER] dynamic_table_extractor (after patch): {len(patched_headers)} headers, {len(patched_data)} rows.")
+        except Exception as e:
+            logger.error(f"[TABLE_BUILDER] dynamic_table_extractor (after patch) failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+            patched_headers, patched_data = merged_headers, merged_data
+
         persistent_cache["attempts"].append({
             "stage": f"dynamic_table_extractor_patch_{patch_attempts}",
             "headers": patched_headers.copy(),
@@ -151,7 +165,7 @@ def build_dynamic_table(
         )
         logger.info(f"[TABLE_BUILDER] NLP entity annotation complete. Entities: {entity_info}")
     except Exception as e:
-        logger.warning(f"[TABLE_BUILDER] NLP entity annotation failed: {e}")
+        logger.warning(f"[TABLE_BUILDER] NLP entity annotation failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
         annotated_headers, annotated_data = headers, data
         entity_info = {}
 
@@ -169,7 +183,6 @@ def build_dynamic_table(
     if 'people' not in entity_info or not entity_info['people']:
         entity_info['people'] = list(all_candidates)
     else:
-        # Merge with any already detected by NLP
         entity_info['people'] = list(set(entity_info['people']) | all_candidates)
     logger.info(f"[TABLE_BUILDER] All detected candidates for pivot: {entity_info['people']}")
 
@@ -177,16 +190,19 @@ def build_dynamic_table(
     try:
         structure_info = detect_table_structure(headers, data, coordinator, entity_info=entity_info)
         logger.info(f"[TABLE_BUILDER] Detected table structure: {structure_info}")
+        entity_info["structure_info"] = structure_info  # PATCH: add structure_info to entity_info for feedback/metadata
     except Exception as e:
-        logger.warning(f"[TABLE_BUILDER] Structure detection failed: {e}")
+        logger.warning(f"[TABLE_BUILDER] Structure detection failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
         structure_info = {"type": "ambiguous", "verified": False}
+        entity_info["structure_info"] = structure_info
 
     # --- 6. Pivot to wide format only if structure requires ---
     should_pivot = False
     if pivot_to_wide and structure_info.get("type") in {"candidate-major", "precinct-major"}:
-        should_pivot = True
+        unique_locations = set(row.get("Location") for row in data if "Location" in row)
+        if len(unique_locations) <= 1:
+            should_pivot = True
 
-    # Force pivot if headers look like candidate-major
     if pivot_to_wide and not should_pivot and "Candidate" in headers and any(bt in headers for bt in ["Election Day", "Early Voting", "Absentee Mail"]):
         should_pivot = True
 
@@ -206,9 +222,11 @@ def build_dynamic_table(
             persistent_cache["final_headers"] = wide_headers.copy()
             persistent_cache["final_data"] = wide_data.copy()
             _save_table_builder_cache(domain, persistent_cache)
-            return wide_headers, wide_data
+            # PATCH: Always harmonize before returning
+            wide_headers, wide_data = harmonize_headers_and_data(wide_headers, wide_data)
+            return wide_headers, wide_data, entity_info
         except Exception as e:
-            logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e}")
+            logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
 
     # --- 7. User/ML confirmation and learning (if enabled) ---
     if learning_mode:
@@ -218,11 +236,15 @@ def build_dynamic_table(
         )
         persistent_cache["final_headers"] = headers.copy()
         persistent_cache["final_data"] = data.copy()
+        # PATCH: Always harmonize after user feedback
+        headers, data = harmonize_headers_and_data(headers, data)
 
     # --- 8. Final backup in persistent cache (for debugging/recovery only) ---
     _save_table_builder_cache(domain, persistent_cache)
 
-    return headers, data
+    # PATCH: Always harmonize before returning
+    headers, data = harmonize_headers_and_data(headers, data)
+    return headers, data, entity_info
 
 # ===================================================================
 # CACHE MANAGEMENT STRATEGY

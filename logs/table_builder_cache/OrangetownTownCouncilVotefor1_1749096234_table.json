@@ -1,0 +1,1929 @@
+{
+  "initial_headers": [
+    "Total Votes",
+    "Election Day",
+    "Early Voting",
+    "Candidate",
+    "Absentee Mail"
+  ],
+  "initial_data": [
+    {
+      "Total Votes": "605",
+      "Election Day": "278",
+      "Early Voting": "202",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "125"
+    },
+    {
+      "Total Votes": "199",
+      "Election Day": "106",
+      "Early Voting": "70",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "23"
+    },
+    {
+      "Total Votes": "26",
+      "Election Day": "13",
+      "Early Voting": "9",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "25",
+      "Election Day": "12",
+      "Early Voting": "10",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "0",
+      "Early Voting": "1",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "517",
+      "Election Day": "304",
+      "Early Voting": "123",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "90"
+    },
+    {
+      "Total Votes": "95",
+      "Election Day": "64",
+      "Early Voting": "23",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "8"
+    },
+    {
+      "Total Votes": "12",
+      "Election Day": "7",
+      "Early Voting": "2",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "29",
+      "Election Day": "20",
+      "Early Voting": "5",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "146",
+      "Election Day": "50",
+      "Early Voting": "58",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "38"
+    },
+    {
+      "Total Votes": "237",
+      "Election Day": "91",
+      "Early Voting": "105",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "41"
+    },
+    {
+      "Total Votes": "29",
+      "Election Day": "13",
+      "Early Voting": "13",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "9",
+      "Election Day": "5",
+      "Early Voting": "4",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "1",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "153",
+      "Election Day": "40",
+      "Early Voting": "84",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "29"
+    },
+    {
+      "Total Votes": "235",
+      "Election Day": "83",
+      "Early Voting": "120",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "32"
+    },
+    {
+      "Total Votes": "25",
+      "Election Day": "11",
+      "Early Voting": "12",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "10",
+      "Election Day": "5",
+      "Early Voting": "4",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "374",
+      "Election Day": "192",
+      "Early Voting": "109",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "73"
+    },
+    {
+      "Total Votes": "63",
+      "Election Day": "34",
+      "Early Voting": "18",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "11"
+    },
+    {
+      "Total Votes": "5",
+      "Election Day": "3",
+      "Early Voting": "2",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "25",
+      "Election Day": "15",
+      "Early Voting": "9",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "162",
+      "Election Day": "59",
+      "Early Voting": "75",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "28"
+    },
+    {
+      "Total Votes": "154",
+      "Election Day": "60",
+      "Early Voting": "80",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "14"
+    },
+    {
+      "Total Votes": "20",
+      "Election Day": "9",
+      "Early Voting": "10",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "7",
+      "Election Day": "3",
+      "Early Voting": "3",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "1",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "319",
+      "Election Day": "165",
+      "Early Voting": "102",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "52"
+    },
+    {
+      "Total Votes": "57",
+      "Election Day": "31",
+      "Early Voting": "20",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "6",
+      "Election Day": "6",
+      "Early Voting": "0",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "39",
+      "Election Day": "25",
+      "Early Voting": "9",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "5"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "367",
+      "Election Day": "229",
+      "Early Voting": "83",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "55"
+    },
+    {
+      "Total Votes": "70",
+      "Election Day": "38",
+      "Early Voting": "27",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "5"
+    },
+    {
+      "Total Votes": "9",
+      "Election Day": "3",
+      "Early Voting": "4",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "29",
+      "Election Day": "20",
+      "Early Voting": "5",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "362",
+      "Election Day": "120",
+      "Early Voting": "157",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "85"
+    },
+    {
+      "Total Votes": "514",
+      "Election Day": "216",
+      "Early Voting": "247",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "51"
+    },
+    {
+      "Total Votes": "61",
+      "Election Day": "25",
+      "Early Voting": "28",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "8"
+    },
+    {
+      "Total Votes": "18",
+      "Election Day": "11",
+      "Early Voting": "4",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "136",
+      "Election Day": "63",
+      "Early Voting": "49",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "24"
+    },
+    {
+      "Total Votes": "206",
+      "Election Day": "113",
+      "Early Voting": "73",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "20"
+    },
+    {
+      "Total Votes": "22",
+      "Election Day": "11",
+      "Early Voting": "8",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "7",
+      "Election Day": "3",
+      "Early Voting": "3",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "530",
+      "Election Day": "304",
+      "Early Voting": "159",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "67"
+    },
+    {
+      "Total Votes": "85",
+      "Election Day": "46",
+      "Early Voting": "27",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "12"
+    },
+    {
+      "Total Votes": "8",
+      "Election Day": "6",
+      "Early Voting": "2",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "40",
+      "Election Day": "21",
+      "Early Voting": "10",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "9"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "399",
+      "Election Day": "121",
+      "Early Voting": "188",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "90"
+    },
+    {
+      "Total Votes": "230",
+      "Election Day": "98",
+      "Early Voting": "102",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "30"
+    },
+    {
+      "Total Votes": "17",
+      "Election Day": "8",
+      "Early Voting": "9",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "15",
+      "Election Day": "4",
+      "Early Voting": "6",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "5"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "288",
+      "Election Day": "95",
+      "Early Voting": "141",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "52"
+    },
+    {
+      "Total Votes": "193",
+      "Election Day": "67",
+      "Early Voting": "102",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "24"
+    },
+    {
+      "Total Votes": "21",
+      "Election Day": "7",
+      "Early Voting": "10",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "15",
+      "Election Day": "7",
+      "Early Voting": "6",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "389",
+      "Election Day": "167",
+      "Early Voting": "128",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "94"
+    },
+    {
+      "Total Votes": "116",
+      "Election Day": "59",
+      "Early Voting": "46",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "11"
+    },
+    {
+      "Total Votes": "18",
+      "Election Day": "9",
+      "Early Voting": "8",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "13",
+      "Election Day": "9",
+      "Early Voting": "2",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "221",
+      "Election Day": "103",
+      "Early Voting": "78",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "40"
+    },
+    {
+      "Total Votes": "63",
+      "Election Day": "32",
+      "Early Voting": "24",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "7"
+    },
+    {
+      "Total Votes": "12",
+      "Election Day": "7",
+      "Early Voting": "4",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "13",
+      "Election Day": "7",
+      "Early Voting": "2",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "0",
+      "Early Voting": "1",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "295",
+      "Election Day": "145",
+      "Early Voting": "57",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "93"
+    },
+    {
+      "Total Votes": "176",
+      "Election Day": "106",
+      "Early Voting": "50",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "20"
+    },
+    {
+      "Total Votes": "33",
+      "Election Day": "13",
+      "Early Voting": "11",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "9"
+    },
+    {
+      "Total Votes": "14",
+      "Election Day": "6",
+      "Early Voting": "4",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "164",
+      "Election Day": "64",
+      "Early Voting": "54",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "46"
+    },
+    {
+      "Total Votes": "390",
+      "Election Day": "202",
+      "Early Voting": "154",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "34"
+    },
+    {
+      "Total Votes": "44",
+      "Election Day": "23",
+      "Early Voting": "19",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "12",
+      "Election Day": "6",
+      "Early Voting": "4",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "361",
+      "Election Day": "181",
+      "Early Voting": "116",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "64"
+    },
+    {
+      "Total Votes": "74",
+      "Election Day": "30",
+      "Early Voting": "26",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "18"
+    },
+    {
+      "Total Votes": "13",
+      "Election Day": "7",
+      "Early Voting": "6",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "37",
+      "Election Day": "17",
+      "Early Voting": "14",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "121",
+      "Election Day": "52",
+      "Early Voting": "49",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "20"
+    },
+    {
+      "Total Votes": "337",
+      "Election Day": "126",
+      "Early Voting": "178",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "33"
+    },
+    {
+      "Total Votes": "43",
+      "Election Day": "19",
+      "Early Voting": "20",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "8",
+      "Election Day": "2",
+      "Early Voting": "4",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "172",
+      "Election Day": "72",
+      "Early Voting": "66",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "34"
+    },
+    {
+      "Total Votes": "494",
+      "Election Day": "214",
+      "Early Voting": "220",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "60"
+    },
+    {
+      "Total Votes": "54",
+      "Election Day": "26",
+      "Early Voting": "19",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "9"
+    },
+    {
+      "Total Votes": "17",
+      "Election Day": "9",
+      "Early Voting": "5",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "243",
+      "Election Day": "65",
+      "Early Voting": "129",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "49"
+    },
+    {
+      "Total Votes": "181",
+      "Election Day": "87",
+      "Early Voting": "71",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "23"
+    },
+    {
+      "Total Votes": "27",
+      "Election Day": "8",
+      "Early Voting": "17",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "18",
+      "Election Day": "8",
+      "Early Voting": "6",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "1",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "169",
+      "Election Day": "62",
+      "Early Voting": "87",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "20"
+    },
+    {
+      "Total Votes": "408",
+      "Election Day": "170",
+      "Early Voting": "185",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "53"
+    },
+    {
+      "Total Votes": "41",
+      "Election Day": "19",
+      "Early Voting": "18",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "11",
+      "Election Day": "5",
+      "Early Voting": "3",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "1",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "112",
+      "Election Day": "42",
+      "Early Voting": "53",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "17"
+    },
+    {
+      "Total Votes": "304",
+      "Election Day": "147",
+      "Early Voting": "134",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "23"
+    },
+    {
+      "Total Votes": "38",
+      "Election Day": "16",
+      "Early Voting": "18",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "3",
+      "Election Day": "3",
+      "Early Voting": "0",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "125",
+      "Election Day": "52",
+      "Early Voting": "48",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "25"
+    },
+    {
+      "Total Votes": "333",
+      "Election Day": "156",
+      "Early Voting": "145",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "32"
+    },
+    {
+      "Total Votes": "32",
+      "Election Day": "13",
+      "Early Voting": "16",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "9",
+      "Election Day": "4",
+      "Early Voting": "2",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "1",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "107",
+      "Election Day": "41",
+      "Early Voting": "43",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "23"
+    },
+    {
+      "Total Votes": "317",
+      "Election Day": "137",
+      "Early Voting": "142",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "38"
+    },
+    {
+      "Total Votes": "33",
+      "Election Day": "13",
+      "Early Voting": "14",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "9",
+      "Election Day": "4",
+      "Early Voting": "4",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "293",
+      "Election Day": "103",
+      "Early Voting": "131",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "59"
+    },
+    {
+      "Total Votes": "434",
+      "Election Day": "185",
+      "Early Voting": "209",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "40"
+    },
+    {
+      "Total Votes": "61",
+      "Election Day": "26",
+      "Early Voting": "28",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "7"
+    },
+    {
+      "Total Votes": "15",
+      "Election Day": "7",
+      "Early Voting": "4",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "108",
+      "Election Day": "24",
+      "Early Voting": "55",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "29"
+    },
+    {
+      "Total Votes": "293",
+      "Election Day": "122",
+      "Early Voting": "138",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "33"
+    },
+    {
+      "Total Votes": "36",
+      "Election Day": "12",
+      "Early Voting": "18",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "2",
+      "Election Day": "1",
+      "Early Voting": "1",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "1",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "220",
+      "Election Day": "88",
+      "Early Voting": "88",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "44"
+    },
+    {
+      "Total Votes": "359",
+      "Election Day": "177",
+      "Early Voting": "149",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "33"
+    },
+    {
+      "Total Votes": "54",
+      "Election Day": "24",
+      "Early Voting": "25",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "5"
+    },
+    {
+      "Total Votes": "24",
+      "Election Day": "14",
+      "Early Voting": "7",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "149",
+      "Election Day": "63",
+      "Early Voting": "48",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "38"
+    },
+    {
+      "Total Votes": "375",
+      "Election Day": "226",
+      "Early Voting": "109",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "40"
+    },
+    {
+      "Total Votes": "43",
+      "Election Day": "19",
+      "Early Voting": "18",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "10",
+      "Election Day": "7",
+      "Early Voting": "3",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "93",
+      "Election Day": "26",
+      "Early Voting": "50",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "17"
+    },
+    {
+      "Total Votes": "331",
+      "Election Day": "131",
+      "Early Voting": "168",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "32"
+    },
+    {
+      "Total Votes": "21",
+      "Election Day": "6",
+      "Early Voting": "14",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "5",
+      "Election Day": "2",
+      "Early Voting": "2",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "123",
+      "Election Day": "54",
+      "Early Voting": "51",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "18"
+    },
+    {
+      "Total Votes": "48",
+      "Election Day": "26",
+      "Early Voting": "18",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "4",
+      "Election Day": "1",
+      "Early Voting": "3",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "7",
+      "Election Day": "2",
+      "Early Voting": "2",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "338",
+      "Election Day": "142",
+      "Early Voting": "145",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "51"
+    },
+    {
+      "Total Votes": "215",
+      "Election Day": "127",
+      "Early Voting": "72",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "16"
+    },
+    {
+      "Total Votes": "23",
+      "Election Day": "16",
+      "Early Voting": "5",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "22",
+      "Election Day": "12",
+      "Early Voting": "3",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "7"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "1",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "161",
+      "Election Day": "71",
+      "Early Voting": "59",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "31"
+    },
+    {
+      "Total Votes": "335",
+      "Election Day": "188",
+      "Early Voting": "125",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "22"
+    },
+    {
+      "Total Votes": "40",
+      "Election Day": "20",
+      "Early Voting": "14",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "5",
+      "Election Day": "2",
+      "Early Voting": "1",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "24",
+      "Election Day": "6",
+      "Early Voting": "6",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "12"
+    },
+    {
+      "Total Votes": "18",
+      "Election Day": "5",
+      "Early Voting": "2",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "11"
+    },
+    {
+      "Total Votes": "2",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "7",
+      "Election Day": "0",
+      "Early Voting": "1",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "203",
+      "Election Day": "55",
+      "Early Voting": "101",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "47"
+    },
+    {
+      "Total Votes": "247",
+      "Election Day": "104",
+      "Early Voting": "118",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "25"
+    },
+    {
+      "Total Votes": "14",
+      "Election Day": "5",
+      "Early Voting": "8",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "4",
+      "Election Day": "1",
+      "Early Voting": "2",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "206",
+      "Election Day": "71",
+      "Early Voting": "106",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "29"
+    },
+    {
+      "Total Votes": "278",
+      "Election Day": "123",
+      "Early Voting": "116",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "39"
+    },
+    {
+      "Total Votes": "40",
+      "Election Day": "21",
+      "Early Voting": "18",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "13",
+      "Election Day": "4",
+      "Early Voting": "4",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "5"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "253",
+      "Election Day": "95",
+      "Early Voting": "112",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "46"
+    },
+    {
+      "Total Votes": "456",
+      "Election Day": "254",
+      "Early Voting": "171",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "31"
+    },
+    {
+      "Total Votes": "48",
+      "Election Day": "18",
+      "Early Voting": "24",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "21",
+      "Election Day": "7",
+      "Early Voting": "12",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "1",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "253",
+      "Election Day": "103",
+      "Early Voting": "111",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "39"
+    },
+    {
+      "Total Votes": "278",
+      "Election Day": "132",
+      "Early Voting": "120",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "26"
+    },
+    {
+      "Total Votes": "36",
+      "Election Day": "11",
+      "Early Voting": "22",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "13",
+      "Election Day": "4",
+      "Early Voting": "5",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "150",
+      "Election Day": "58",
+      "Early Voting": "60",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "32"
+    },
+    {
+      "Total Votes": "312",
+      "Election Day": "134",
+      "Early Voting": "155",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "23"
+    },
+    {
+      "Total Votes": "41",
+      "Election Day": "16",
+      "Early Voting": "21",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "6",
+      "Election Day": "3",
+      "Early Voting": "1",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "154",
+      "Election Day": "77",
+      "Early Voting": "45",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "32"
+    },
+    {
+      "Total Votes": "405",
+      "Election Day": "196",
+      "Early Voting": "179",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "30"
+    },
+    {
+      "Total Votes": "51",
+      "Election Day": "24",
+      "Early Voting": "23",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "14",
+      "Election Day": "7",
+      "Early Voting": "4",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "284",
+      "Election Day": "102",
+      "Early Voting": "125",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "57"
+    },
+    {
+      "Total Votes": "84",
+      "Election Day": "39",
+      "Early Voting": "37",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "8"
+    },
+    {
+      "Total Votes": "17",
+      "Election Day": "3",
+      "Early Voting": "13",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "10",
+      "Election Day": "8",
+      "Early Voting": "2",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "1",
+      "Election Day": "1",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "196",
+      "Election Day": "72",
+      "Early Voting": "94",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "30"
+    },
+    {
+      "Total Votes": "326",
+      "Election Day": "126",
+      "Early Voting": "165",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "35"
+    },
+    {
+      "Total Votes": "24",
+      "Election Day": "9",
+      "Early Voting": "8",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "7"
+    },
+    {
+      "Total Votes": "16",
+      "Election Day": "5",
+      "Early Voting": "7",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "358",
+      "Election Day": "186",
+      "Early Voting": "120",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "52"
+    },
+    {
+      "Total Votes": "96",
+      "Election Day": "52",
+      "Early Voting": "35",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "9"
+    },
+    {
+      "Total Votes": "14",
+      "Election Day": "6",
+      "Early Voting": "4",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "4"
+    },
+    {
+      "Total Votes": "27",
+      "Election Day": "13",
+      "Early Voting": "12",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "301",
+      "Election Day": "90",
+      "Early Voting": "142",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "69"
+    },
+    {
+      "Total Votes": "379",
+      "Election Day": "158",
+      "Early Voting": "182",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "39"
+    },
+    {
+      "Total Votes": "31",
+      "Election Day": "14",
+      "Early Voting": "12",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "5"
+    },
+    {
+      "Total Votes": "19",
+      "Election Day": "10",
+      "Early Voting": "6",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "213",
+      "Election Day": "65",
+      "Early Voting": "110",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "38"
+    },
+    {
+      "Total Votes": "200",
+      "Election Day": "79",
+      "Early Voting": "101",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "20"
+    },
+    {
+      "Total Votes": "23",
+      "Election Day": "8",
+      "Early Voting": "13",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "11",
+      "Election Day": "2",
+      "Early Voting": "3",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "159",
+      "Election Day": "54",
+      "Early Voting": "85",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "20"
+    },
+    {
+      "Total Votes": "215",
+      "Election Day": "92",
+      "Early Voting": "103",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "20"
+    },
+    {
+      "Total Votes": "27",
+      "Election Day": "8",
+      "Early Voting": "13",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "4",
+      "Election Day": "3",
+      "Early Voting": "1",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "167",
+      "Election Day": "28",
+      "Early Voting": "68",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "71"
+    },
+    {
+      "Total Votes": "297",
+      "Election Day": "92",
+      "Early Voting": "144",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "61"
+    },
+    {
+      "Total Votes": "28",
+      "Election Day": "4",
+      "Early Voting": "18",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "3",
+      "Election Day": "0",
+      "Early Voting": "2",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "142",
+      "Election Day": "64",
+      "Early Voting": "48",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "30"
+    },
+    {
+      "Total Votes": "353",
+      "Election Day": "192",
+      "Early Voting": "126",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "35"
+    },
+    {
+      "Total Votes": "46",
+      "Election Day": "22",
+      "Early Voting": "18",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "6"
+    },
+    {
+      "Total Votes": "11",
+      "Election Day": "3",
+      "Early Voting": "8",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "246",
+      "Election Day": "81",
+      "Early Voting": "112",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "53"
+    },
+    {
+      "Total Votes": "301",
+      "Election Day": "139",
+      "Early Voting": "146",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "16"
+    },
+    {
+      "Total Votes": "48",
+      "Election Day": "23",
+      "Early Voting": "16",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "9"
+    },
+    {
+      "Total Votes": "6",
+      "Election Day": "2",
+      "Early Voting": "3",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "1"
+    },
+    {
+      "Total Votes": "2",
+      "Election Day": "0",
+      "Early Voting": "2",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "207",
+      "Election Day": "69",
+      "Early Voting": "105",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "33"
+    },
+    {
+      "Total Votes": "220",
+      "Election Day": "84",
+      "Early Voting": "114",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "22"
+    },
+    {
+      "Total Votes": "28",
+      "Election Day": "10",
+      "Early Voting": "15",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "3"
+    },
+    {
+      "Total Votes": "17",
+      "Election Day": "5",
+      "Early Voting": "7",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "5"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    },
+    {
+      "Total Votes": "143",
+      "Election Day": "49",
+      "Early Voting": "64",
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Absentee Mail": "30"
+    },
+    {
+      "Total Votes": "173",
+      "Election Day": "62",
+      "Early Voting": "104",
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Absentee Mail": "7"
+    },
+    {
+      "Total Votes": "17",
+      "Election Day": "7",
+      "Early Voting": "8",
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "18",
+      "Election Day": "11",
+      "Early Voting": "5",
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Absentee Mail": "2"
+    },
+    {
+      "Total Votes": "0",
+      "Election Day": "0",
+      "Early Voting": "0",
+      "Candidate": "Write-in",
+      "Absentee Mail": "0"
+    }
+  ],
+  "extracted_headers": [
+    "Candidate",
+    "Election Day",
+    "Early Voting",
+    "Absentee Mail",
+    "Total Votes"
+  ],
+  "extracted_data": [
+    {
+      "Candidate": "DEM Chrissy Knapp\nDemocratic",
+      "Election Day": "278",
+      "Early Voting": "202",
+      "Absentee Mail": "125",
+      "Total Votes": "605"
+    },
+    {
+      "Candidate": "REP Daniel W. Sullivan\nRepublican",
+      "Election Day": "106",
+      "Early Voting": "70",
+      "Absentee Mail": "23",
+      "Total Votes": "199"
+    },
+    {
+      "Candidate": "CON Daniel W. Sullivan\nConservative",
+      "Election Day": "13",
+      "Early Voting": "9",
+      "Absentee Mail": "4",
+      "Total Votes": "26"
+    },
+    {
+      "Candidate": "WOR Chrissy Knapp\nWorking Families",
+      "Election Day": "12",
+      "Early Voting": "10",
+      "Absentee Mail": "3",
+      "Total Votes": "25"
+    },
+    {
+      "Candidate": "Write-in",
+      "Election Day": "0",
+      "Early Voting": "1",
+      "Absentee Mail": "0",
+      "Total Votes": "1"
+    }
+  ],
+  "fallback_headers": [],
+  "fallback_data": [],
+  "patched_headers": [],
+  "patched_data": [],
+  "final_headers": [
+    "Location",
+    "CON Daniel W. Sullivan - Absentee",
+    "CON Daniel W. Sullivan - Absentee Mail",
+    "CON Daniel W. Sullivan - Early Voting",
+    "CON Daniel W. Sullivan - Election Day",
+    "CON Daniel W. Sullivan - Mail",
+    "DEM Chrissy Knapp - Absentee",
+    "DEM Chrissy Knapp - Absentee Mail",
+    "DEM Chrissy Knapp - Early Voting",
+    "DEM Chrissy Knapp - Election Day",
+    "DEM Chrissy Knapp - Mail",
+    "Daniel W. Sullivan - Absentee",
+    "Daniel W. Sullivan - Absentee Mail",
+    "Daniel W. Sullivan - Early Voting",
+    "Daniel W. Sullivan - Election Day",
+    "Daniel W. Sullivan - Mail",
+    "Daniel W. Sullivan\n - Absentee",
+    "Daniel W. Sullivan\n - Absentee Mail",
+    "Daniel W. Sullivan\n - Early Voting",
+    "Daniel W. Sullivan\n - Election Day",
+    "Daniel W. Sullivan\n - Mail",
+    "REP Daniel W. Sullivan - Absentee",
+    "REP Daniel W. Sullivan - Absentee Mail",
+    "REP Daniel W. Sullivan - Early Voting",
+    "REP Daniel W. Sullivan - Election Day",
+    "REP Daniel W. Sullivan - Mail",
+    "WOR Chrissy Knapp - Absentee",
+    "WOR Chrissy Knapp - Absentee Mail",
+    "WOR Chrissy Knapp - Early Voting",
+    "WOR Chrissy Knapp - Election Day",
+    "WOR Chrissy Knapp - Mail",
+    "Grand Total"
+  ],
+  "final_data": [
+    {
+      "Location": "Orangetown Town Council\nVote for 1",
+      "CON Daniel W. Sullivan - Absentee": "",
+      "CON Daniel W. Sullivan - Absentee Mail": "",
+      "CON Daniel W. Sullivan - Early Voting": "",
+      "CON Daniel W. Sullivan - Election Day": "",
+      "CON Daniel W. Sullivan - Mail": "",
+      "DEM Chrissy Knapp - Absentee": "",
+      "DEM Chrissy Knapp - Absentee Mail": "",
+      "DEM Chrissy Knapp - Early Voting": "",
+      "DEM Chrissy Knapp - Election Day": "",
+      "DEM Chrissy Knapp - Mail": "",
+      "Daniel W. Sullivan - Absentee": "",
+      "Daniel W. Sullivan - Absentee Mail": "",
+      "Daniel W. Sullivan - Early Voting": "",
+      "Daniel W. Sullivan - Election Day": "",
+      "Daniel W. Sullivan - Mail": "",
+      "Daniel W. Sullivan\n - Absentee": "",
+      "Daniel W. Sullivan\n - Absentee Mail": "",
+      "Daniel W. Sullivan\n - Early Voting": "",
+      "Daniel W. Sullivan\n - Election Day": "",
+      "Daniel W. Sullivan\n - Mail": "",
+      "REP Daniel W. Sullivan - Absentee": "",
+      "REP Daniel W. Sullivan - Absentee Mail": "",
+      "REP Daniel W. Sullivan - Early Voting": "",
+      "REP Daniel W. Sullivan - Election Day": "",
+      "REP Daniel W. Sullivan - Mail": "",
+      "WOR Chrissy Knapp - Absentee": "",
+      "WOR Chrissy Knapp - Absentee Mail": "",
+      "WOR Chrissy Knapp - Early Voting": "",
+      "WOR Chrissy Knapp - Election Day": "",
+      "WOR Chrissy Knapp - Mail": "",
+      "Grand Total": "0"
+    }
+  ],
+  "attempts": [
+    {
+      "stage": "dynamic_table_extractor",
+      "headers": [
+        "Candidate",
+        "Election Day",
+        "Early Voting",
+        "Absentee Mail",
+        "Total Votes"
+      ],
+      "data_len": 5,
+      "timestamp": 1749096339.8752222
+    }
+  ],
+  "timestamp": 1749096234.1822307
+}

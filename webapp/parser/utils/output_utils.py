@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import collections.abc
 from datetime import datetime
 from ..utils.shared_logger import rprint
 from ..utils.logger_instance import logger
@@ -10,12 +11,35 @@ from ..utils.user_prompt import prompt_yes_no
 
 CACHE_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
 
+def get_project_root():
+    # Returns the parent directory of webapp (the project root)
+    return os.path.dirname(BASE_DIR)
+
+def get_output_root():
+    # Output folder at the project root
+    return os.path.join(get_project_root(), "output")
+
+def get_log_root():
+    # Log folder at the project root
+    return os.path.join(get_project_root(), "log")
+
+def safe_join(base, *paths):
+    """
+    Safely join paths and ensure the result is inside base.
+    Prevents path traversal and path-injection.
+    """
+    base = os.path.abspath(base)
+    path = os.path.abspath(os.path.join(base, *paths))
+    if not path.startswith(base):
+        raise ValueError("Unsafe path detected.")
+    return path
+
 def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_context=None):
     """
     Build output path using organized context metadata.
     If any key info is missing, use feedback loop (ML/NER/user prompt) to resolve.
     """
-    parts = ["output"]
+    parts = []
     # Use coordinator to try to fill missing info if available
     state = metadata.get("state", "") or (coordinator.get_states()[0] if coordinator and coordinator.get_states() else "")
     county = metadata.get("county", "") or (coordinator.get_districts()[0] if coordinator and coordinator.get_districts() else "")
@@ -30,14 +54,12 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
     max_loops = 3
     for _ in range(max_loops):
         if not year or not str(year).isdigit() or len(str(year)) != 4:
-            # Try to extract from context or prompt user
             if coordinator:
                 years = coordinator.get_years()
                 if years:
                     year = years[0]
             if not year and feedback_context:
                 year = feedback_context.get("year", "")
-            # Avoid prompt in non-interactive mode
         if not race or race.lower() == "unknown":
             if coordinator:
                 contests = coordinator.get_contests()
@@ -45,11 +67,9 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
                     race = contests[0].get("title", "")
             if not race and feedback_context:
                 race = feedback_context.get("race", "")
-            # Avoid prompt in non-interactive mode
         if year and race:
             break
 
-    # If still unknown, warn and use 'unknown'
     if not year or not str(year).isdigit() or len(str(year)) != 4:
         rprint("[yellow][OUTPUT] Year could not be verified. Using 'Unknown'.[/yellow]")
         year = "Unknown"
@@ -77,7 +97,10 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
         parts.append("unknown_race")
     if subfolder:
         parts.append(str(subfolder))
-    path = os.path.join(*parts)
+
+    # Always use output folder at project root
+    output_root = get_output_root()
+    path = safe_join(output_root, *parts)
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -129,7 +152,6 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
                     continue
         for entry in entries:
             meta = entry.get("metadata", {})
-            # Compare key fields for deduplication
             if (
                 meta.get("state", "Unknown") == metadata.get("state", "Unknown") and
                 meta.get("county", "Unknown") == metadata.get("county", "Unknown") and
@@ -138,6 +160,16 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
             ):
                 return entry
     return None
+
+def convert_sets_to_lists(obj):
+    if isinstance(obj, dict):
+        return {k: convert_sets_to_lists(v) for k, v in obj.items()}
+    elif isinstance(obj, set):
+        return list(obj)
+    elif isinstance(obj, list):
+        return [convert_sets_to_lists(i) for i in obj]
+    else:
+        return obj
 
 def deep_merge_dicts(dest, src):
     """
@@ -203,7 +235,7 @@ def finalize_election_output(
         enriched_meta["county"] = county or "Unknown"
     append_to_context_library({"metadata": enriched_meta})
 
-    # Build output path safely under BASE_DIR/output
+    # Build output path safely under output folder at project root
     def safe_filename(s):
         return "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
 
@@ -214,7 +246,6 @@ def finalize_election_output(
     race = enriched_meta.get("race", "")
 
     parts = [
-        "output",
         safe_filename(state).lower() if state else "",
         safe_filename(county).lower() if county else "",
         str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "Unknown",
@@ -222,16 +253,11 @@ def finalize_election_output(
         safe_filename(race).replace(" ", "_") if race else "unknown_race",
         "parsed"
     ]
-    # Remove empty parts
     parts = [p for p in parts if p]
-    output_path = os.path.join(BASE_DIR, *parts)
-    output_path = os.path.normpath(output_path)
+    output_root = get_output_root()
+    output_path = safe_join(output_root, *parts)
 
-    # Ensure output_path is inside BASE_DIR/output
-    allowed_root = os.path.normpath(os.path.join(BASE_DIR, "output"))
-    if not output_path.startswith(allowed_root):
-        raise ValueError("Unsafe output path detected.")
-
+    # Ensure output_path is inside output_root
     os.makedirs(output_path, exist_ok=True)
 
     timestamp = format_timestamp()
@@ -246,12 +272,7 @@ def finalize_election_output(
         timestamp
     ]
     filename = "_".join([p for p in filename_parts if p]).replace("__", "_") + ".csv"
-    filepath = os.path.join(output_path, filename)
-    filepath = os.path.normpath(filepath)
-
-    # Ensure file is inside allowed output directory
-    if not filepath.startswith(allowed_root):
-        raise ValueError("Unsafe file path detected.")
+    filepath = safe_join(output_path, filename)
 
     # --- Write CSV ---
     with open(filepath, "w", newline="", encoding="utf-8") as f:
@@ -286,6 +307,7 @@ def finalize_election_output(
         metadata_out["environment"].pop("cwd", None)
 
     with open(json_meta_path, "w", encoding="utf-8") as jf:
+        metadata_out = convert_sets_to_lists(metadata_out)
         json.dump(metadata_out, jf, indent=2)
 
     update_output_cache(metadata_out, filepath)
@@ -294,7 +316,7 @@ def finalize_election_output(
     rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
 
     if enable_user_feedback or os.environ.get("ENABLE_USER_FEEDBACK", "false").lower() == "true":
-        feedback_log_path = os.path.join(output_path, "user_feedback_log.jsonl")
+        feedback_log_path = safe_join(output_path, "user_feedback_log.jsonl")
         feedback = input("\n[Feedback] Would you like to provide feedback or corrections for this output? (Leave blank to skip):\n> ").strip()
         if feedback:
             feedback_entry = {

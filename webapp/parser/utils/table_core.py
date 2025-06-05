@@ -25,8 +25,8 @@ from collections import Counter
 from typing import List, Dict, Any, Tuple, TYPE_CHECKING
 import time
 import hashlib
-from .shared_logger import logger
-
+from ..utils.shared_logger import logger
+from ..utils.ml_table_detector import detect_tables_ml
 from ..config import BASE_DIR
 
 if TYPE_CHECKING:
@@ -51,10 +51,11 @@ context_cache = {}
 def robust_table_extraction(page, extraction_context=None, existing_headers=None, existing_data=None):
     """
     Unified, persistent table extraction pipeline:
-    - Accumulates all plausible tables/rows from DOM, patterns, and standard tables.
+    - Accumulates all plausible tables/rows from DOM, patterns, standard tables, ML, plugins, and robust fallbacks.
     - Deduplicates tables and rows.
     - Runs entity annotation and structure verification on the unified result.
     - Only uses fallback extraction if all other methods fail.
+    - All strategies are integrated here. Do not call individual strategies from handlers.
     """
     import types
 
@@ -82,7 +83,9 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 
     # 1. DOM structure extraction (divs, lists, etc.)
     try:
-        headers_dom, data_dom = extract_rows_and_headers_from_dom(page, coordinator=extraction_context.get("coordinator") if extraction_context else None)
+        headers_dom, data_dom = extract_rows_and_headers_from_dom(
+            page, coordinator=extraction_context.get("coordinator") if extraction_context else None
+        )
         if headers_dom and data_dom:
             all_tables.append((headers_dom, data_dom))
             extraction_logs.append({
@@ -105,7 +108,6 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # 2. Pattern-based extraction (approved DOM patterns)
     try:
         pattern_rows = extract_with_patterns(page, extraction_context)
-        # Only use rows where row is not None
         pattern_rows = [tup for tup in pattern_rows if tup[1] is not None]
         if pattern_rows:
             headers_pat = guess_headers_from_row(pattern_rows[0][1])
@@ -164,9 +166,125 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "context": extraction_context
         })
 
-    # 4. Add any existing headers/data provided
+    # 4. Table extraction with heading/location context
+    try:
+        headers_loc, data_loc, _ = extract_all_tables_with_location(
+            page, coordinator=extraction_context.get("coordinator") if extraction_context else None
+        )
+        if headers_loc and data_loc:
+            all_tables.append((headers_loc, data_loc))
+            extraction_logs.append({
+                "method": "table_with_heading",
+                "headers": headers_loc,
+                "rows": len(data_loc),
+                "columns": len(headers_loc),
+                "success": True,
+                "context": extraction_context
+            })
+    except Exception as e:
+        logger.error(f"[TABLE BUILDER] Table-with-heading extraction failed: {e}")
+        extraction_logs.append({
+            "method": "table_with_heading",
+            "error": str(e),
+            "success": False,
+            "context": extraction_context
+        })
+
+    # 5. ML-based table detection
+    try:
+        ml_tables = ml_based_table_detection(page, extraction_context)
+        for headers_ml, data_ml in ml_tables:
+            if headers_ml and data_ml:
+                all_tables.append((headers_ml, data_ml))
+                extraction_logs.append({
+                    "method": "ml_table_detection",
+                    "headers": headers_ml,
+                    "rows": len(data_ml),
+                    "columns": len(headers_ml),
+                    "success": True,
+                    "context": extraction_context
+                })
+    except Exception as e:
+        logger.error(f"[TABLE BUILDER] ML table detection failed: {e}")
+        extraction_logs.append({
+            "method": "ml_table_detection",
+            "error": str(e),
+            "success": False,
+            "context": extraction_context
+        })
+
+    # 6. Nested table extraction
+    try:
+        nested_tables = nested_table_extraction(page)
+        for headers_nested, data_nested in nested_tables:
+            if headers_nested and data_nested:
+                all_tables.append((headers_nested, data_nested))
+                extraction_logs.append({
+                    "method": "nested_table",
+                    "headers": headers_nested,
+                    "rows": len(data_nested),
+                    "columns": len(headers_nested),
+                    "success": True,
+                    "context": extraction_context
+                })
+    except Exception as e:
+        logger.error(f"[TABLE BUILDER] Nested table extraction failed: {e}")
+        extraction_logs.append({
+            "method": "nested_table",
+            "error": str(e),
+            "success": False,
+            "context": extraction_context
+        })
+
+    # 7. Custom plugin extraction
+    try:
+        plugin_tables = custom_plugin_extraction(page, extraction_context)
+        for headers_plugin, data_plugin in plugin_tables:
+            if headers_plugin and data_plugin:
+                all_tables.append((headers_plugin, data_plugin))
+                extraction_logs.append({
+                    "method": "plugin",
+                    "headers": headers_plugin,
+                    "rows": len(data_plugin),
+                    "columns": len(headers_plugin),
+                    "success": True,
+                    "context": extraction_context
+                })
+    except Exception as e:
+        logger.error(f"[TABLE BUILDER] Plugin extraction failed: {e}")
+        extraction_logs.append({
+            "method": "plugin",
+            "error": str(e),
+            "success": False,
+            "context": extraction_context
+        })
+
+    # 8. Add any existing headers/data provided
     if existing_headers and existing_data and len(existing_headers) > 0 and len(existing_data) > 0:
         all_tables.append((existing_headers, existing_data))
+
+    # 9. Robust HTML fallback using BeautifulSoup
+    try:
+        fallback_tables = robust_html_fallback_extraction(page)
+        for headers_fallback, data_fallback in fallback_tables:
+            if headers_fallback and data_fallback:
+                all_tables.append((headers_fallback, data_fallback))
+                extraction_logs.append({
+                    "method": "html_fallback",
+                    "headers": headers_fallback,
+                    "rows": len(data_fallback),
+                    "columns": len(headers_fallback),
+                    "success": True,
+                    "context": extraction_context
+                })
+    except Exception as e:
+        logger.error(f"[TABLE BUILDER] HTML fallback extraction failed: {e}")
+        extraction_logs.append({
+            "method": "html_fallback",
+            "error": str(e),
+            "success": False,
+            "context": extraction_context
+        })
 
     logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(safe_json(extraction_logs), indent=2)}")
 
@@ -200,9 +318,13 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         merged_headers, merged_data, _ = progressive_table_verification(
             merged_headers, merged_data, coordinator, extraction_context
         )
+
+        # 10. Feedback/correction loop (user-in-the-loop)
+        merged_headers, merged_data = feedback_correction_loop(merged_headers, merged_data, extraction_context)
+
         return merged_headers, merged_data
 
-    # --- Only now try fallback extraction ---
+    # --- Only now try fallback NLP extraction ---
     try:
         headers, data = fallback_nlp_candidate_vote_scan(page)
         extraction_logs.append({
@@ -233,33 +355,40 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 # ===================================================================
 
 def extract_all_tables_with_location(page, coordinator=None):
-    """
-    Finds all tables and pairs each with its nearest heading.
-    Extracts each table and injects the heading as a 'Location' column in every row.
-    Returns merged headers, data, and a list of entity previews (one per table).
-    """
     from .dynamic_table_extractor import find_tables_with_headings
+
+    LOCATION_HEADERS = ["Precinct", "Location", "Ward", "District", "Area", "City", "Municipal", "Town"]
     all_headers = set()
     all_data = []
     all_entity_previews = []
     tables_with_headings = find_tables_with_headings(page)
+
     for heading, table in tables_with_headings:
         headers, data, entity_preview = extract_table_data(table)
-        # Determine location column name
-        location_col = entity_preview.get("location_column") or "Location"
-        # If the table does not already have a location column, add one
-        if location_col not in headers:
-            headers = [location_col] + headers
-            for row in data:
-                row[location_col] = heading
-        else:
-            # If it does, but is empty, fill it
-            for row in data:
-                if not row.get(location_col):
-                    row[location_col] = heading
+        if not headers or not data:
+            continue
+
+        # --- Find or create a location column name ---
+        location_col = None
+        for h in headers:
+            if any(lh.lower() in h.lower() for lh in LOCATION_HEADERS):
+                location_col = h
+                break
+        if not location_col:
+            # Default to "Precinct" if not present
+            location_col = "Precinct"
+            headers = headers + [location_col]
+
+        # --- Assign heading to location column for each row ---
+        for row in data:
+            # Only set if missing or empty
+            if location_col not in row or not row[location_col]:
+                row[location_col] = heading if heading else "Unknown"
+
         all_headers.update(headers)
         all_data.extend(data)
         all_entity_previews.append(entity_preview)
+
     # Harmonize headers and data
     all_headers = list(all_headers)
     all_headers, all_data = harmonize_headers_and_data(all_headers, all_data)
@@ -764,7 +893,140 @@ def extract_all_candidates_from_data(headers, data):
             if part and not part.lower().startswith(("democratic", "republican", "working families", "conservative", "green", "libertarian", "independent", "write-in", "other")):
                 candidates.add(part)
     return candidates
+# 1. ML-based table detection (e.g., using a model to find tables in arbitrary HTML)
+def ml_based_table_detection(page, extraction_context=None):
+    """
+    Use a machine learning model to detect and extract tables from arbitrary HTML.
+    Returns a list of (headers, data) tuples.
+    """
+    try:
+        # Example: Assume you have a model or service for table detection
+        # hypothetical module
+        ml_tables = detect_tables_ml(page.content())
+        results = []
+        for table_dict in ml_tables:
+            headers = table_dict.get("headers", [])
+            data = table_dict.get("data", [])
+            if headers and data:
+                results.append((headers, data))
+        return results
+    except Exception as e:
+        logger.error(f"[ML TABLE DETECTION] Error: {e}")
+        return []
 
+# 2. Nested table extraction (see handle_nested_tables)
+def nested_table_extraction(page):
+    """
+    Extract tables that are nested within other tables or complex DOM structures.
+    Returns a list of (headers, data) tuples.
+    """
+    try:
+        results = []
+        tables = page.locator("table table")
+        for i in range(tables.count()):
+            table = tables.nth(i)
+            if table is not None:
+                headers, data, _ = extract_table_data(table)
+                if headers and data:
+                    results.append((headers, data))
+        return results
+    except Exception as e:
+        logger.error(f"[NESTED TABLE EXTRACTION] Error: {e}")
+        return []
+
+# 3. Robust HTML fallback using BeautifulSoup (see robust_html_fallback)
+def robust_html_fallback_extraction(page):
+    """
+    Use BeautifulSoup to parse HTML and extract tables as a last-resort fallback.
+    Returns a list of (headers, data) tuples.
+    """
+    try:
+        html = page.content()
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        tables = soup.find_all("table")
+        all_tables = []
+        for table in tables:
+            rows = table.find_all("tr")
+            if not rows:
+                continue
+            headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
+            data = []
+            for row in rows[1:]:
+                cells = row.find_all(["td", "th"])
+                data.append({headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))})
+            if headers and data:
+                all_tables.append((headers, data))
+        return all_tables
+    except Exception as e:
+        logger.error(f"[HTML FALLBACK] Error: {e}")
+        return []
+
+# 4. Custom per-county or per-state extraction strategies (plug-in architecture)
+def custom_plugin_extraction(page, extraction_context=None):
+    """
+    Use custom extraction plugins based on county/state or other context.
+    Returns a list of (headers, data) tuples.
+    """
+    try:
+        plugins = extraction_context.get("plugins") if extraction_context else []
+        results = []
+        for plugin in plugins:
+            try:
+                plugin_result = plugin.extract(page, extraction_context)
+                if plugin_result:
+                    for headers, data in plugin_result:
+                        if headers and data:
+                            results.append((headers, data))
+            except Exception as e:
+                logger.error(f"[PLUGIN EXTRACTION] Plugin {plugin}: {e}")
+        return results
+    except Exception as e:
+        logger.error(f"[PLUGIN EXTRACTION] Error: {e}")
+        return []
+
+# 5. Feedback/correction loop for user-in-the-loop extraction
+def feedback_correction_loop(headers, data, extraction_context=None):
+    """
+    Allow user or operator to review and correct extracted table data.
+    Returns possibly corrected (headers, data).
+    """
+    try:
+        if extraction_context and extraction_context.get("interactive"):
+            print("\n[FEEDBACK] Review extracted headers and data:")
+            print("Headers:", headers)
+            for i, row in enumerate(data[:5]):
+                print(f"Row {i+1}:", row)
+            resp = input("Are the headers and data correct? (y/n): ").strip().lower()
+            if resp == "n":
+                new_headers = input("Enter corrected headers as comma-separated values: ").strip().split(",")
+                headers = [h.strip() for h in new_headers]
+                # Optionally, allow editing data as well
+                # For brevity, only headers are corrected here
+        return headers, data
+    except Exception as e:
+        logger.error(f"[FEEDBACK LOOP] Error: {e}")
+        return headers, data
+
+# --- CLIENT-SIDE UNVALIDATED URL REDIRECTION MITIGATION ---
+def safe_redirect_url(user_url, allowed_domains=None):
+    """
+    Prevent unvalidated redirects by checking user-supplied URLs against a whitelist.
+    """
+    from urllib.parse import urlparse
+    if allowed_domains is None:
+        allowed_domains = {"yourdomain.com"}
+    try:
+        parsed = urlparse(user_url)
+        if parsed.scheme not in {"http", "https"}:
+            return "/"
+        if parsed.netloc and parsed.netloc not in allowed_domains:
+            return "/"
+        # Optionally, further sanitize the path
+        return parsed.geturl()
+    except Exception:
+        return "/"
+    
 # ===================================================================
 # HARMONIZATION & CLEANING
 # ===================================================================
@@ -772,11 +1034,12 @@ def extract_all_candidates_from_data(headers, data):
 def harmonize_headers_and_data(headers: list, data: list) -> tuple:
     """
     Ensures all rows have the same headers, filling missing fields with empty string.
-    Deduplicates headers and prunes empty/zero columns, but does NOT prune columns if there is at least one valid (non-empty) row.
+    Deduplicates rows using a composite key of Location, Candidate, and Ballot Type columns.
+    Never collapses rows from different locations or ballot types with the same candidate.
     Logs unique values in the detected location column for verification.
     """
-    all_headers = [h for h in headers if h is not None]
     # Deduplicate headers
+    all_headers = [h for h in headers if h is not None]
     seen = set()
     deduped_headers = []
     for h in all_headers:
@@ -784,33 +1047,55 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
         if norm not in seen:
             deduped_headers.append(h)
             seen.add(norm)
-    harmonized = [{h: row.get(h, "") for h in deduped_headers} for row in data]
+
+    # Detect location column
+    location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "town"}
+    location_col = None
+    for h in deduped_headers:
+        if any(lk in h.lower() for lk in location_keywords):
+            location_col = h
+            break
+    if not location_col and deduped_headers:
+        location_col = deduped_headers[0]
+
+    # Detect candidate column
+    candidate_col = None
+    for h in deduped_headers:
+        if "candidate" in h.lower():
+            candidate_col = h
+            break
+
+    # Detect ballot type columns
+    ballot_type_cols = [h for h in deduped_headers if any(bt.lower() in h.lower() for bt in BALLOT_TYPES)]
+
+    # Always include all columns in output, but deduplicate by composite key
+    harmonized = []
+    seen_keys = set()
+    for row in data:
+        # Build composite key: (location, candidate, ballot types...)
+        key = (
+            row.get(location_col, "").strip().lower() if location_col else "",
+            row.get(candidate_col, "").strip().lower() if candidate_col else "",
+        )
+        # Add all ballot type values to the key (to distinguish rows by ballot type)
+        key += tuple(row.get(bt, "").strip().lower() for bt in ballot_type_cols)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        harmonized.append({h: row.get(h, "") for h in deduped_headers})
 
     # PATCH: Only prune columns if all values are empty/zero for that column across all rows
     keep = []
     n_rows = len(harmonized)
     for h in deduped_headers:
         col_vals = [row.get(h, "") for row in harmonized]
-        # Keep column if at least one value is not empty/zero/None
         if any(v not in ("", "0", 0, None) for v in col_vals):
             keep.append(h)
-    # If all columns would be pruned, keep all deduped_headers (don't prune everything)
     if not keep and deduped_headers:
         keep = deduped_headers
     harmonized = [{h: row.get(h, "") for h in keep} for row in harmonized]
 
     # --- Location column detection and logging ---
-    location_col = None
-    location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "town"}
-    for h in keep:
-        if any(lk in h.lower() for lk in location_keywords):
-            location_col = h
-            break
-    if not location_col and keep:
-        # Fallback: first column
-        location_col = keep[0]
-
-    # Gather unique values in the location column
     unique_locations = set(row.get(location_col, "") for row in harmonized if location_col in row)
     logger.info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
     print(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")

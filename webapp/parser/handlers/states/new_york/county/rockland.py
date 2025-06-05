@@ -141,8 +141,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
 
             extraction_context = {
                 "contest_title": contest_title,
-                "entities": entities,
-                "expected_location": expected_location,
                 "html_context": html_context,
                 "coordinator": coordinator,
                 "page": page,
@@ -150,9 +148,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             }
             html_context["coordinator"] = coordinator
             
-            headers, data, entity_previews = extract_all_tables_with_location(page, coordinator)
             headers, data = build_dynamic_table(
-                contest_title, headers, data, coordinator, extraction_context
+                contest_title, [], [], coordinator, extraction_context
             )
 
             if not data:
@@ -173,7 +170,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 "race": contest_title or "Unknown",
                 "source": getattr(page, "url", "Unknown"),
                 "handler": "rockland",
-                "entity_previews": entity_previews,  # <-- Add this line
             }
             if "year" in html_context:
                 metadata["year"] = html_context["year"]
