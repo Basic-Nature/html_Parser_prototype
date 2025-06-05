@@ -1,12 +1,6 @@
-# Troubleshooting Guide
+# 🛠️ Troubleshooting Guide
 
-This guide offers solutions to common problems encountered while using or developing the **Smart Elections Parser** project.
-
----
-
-## 🔍 General Issues
-
-### ❗ Problem: Parser exits without processing any data
+## ❗ Problem: Parser exits without processing any data
 
 - **Possible Cause**: Missing or malformed URL in `urls.txt`, or all URLs already marked as processed.
 - **Fix**:
@@ -29,10 +23,6 @@ This guide offers solutions to common problems encountered while using or develo
   - Ensure all user input is routed through `prompt_user_input()` from `utils/user_prompt.py`.
   - This is required for both CLI and future web UI compatibility.
 
----
-
-## 🕵️ CAPTCHA & Browser Behavior
-
 ### ❗ Problem: CAPTCHA triggered but no browser appears
 
 - **Possible Cause**: Browser is running in headless mode.
@@ -53,10 +43,6 @@ This guide offers solutions to common problems encountered while using or develo
   - Try switching User-Agent (rotate via `.env` or update `user_agents.py`).
   - If using a VPN or proxy, try disabling it.
 
----
-
-## 🧾 Output Issues
-
 ### ❗ Problem: Output file not written
 
 - **Possible Cause**: No data returned from handler, or handler returned wrong tuple structure.
@@ -71,10 +57,6 @@ This guide offers solutions to common problems encountered while using or develo
   - Use utilities like `utils.table_utils.normalize_headers()` to ensure consistent naming.
   - Validate all candidate-method combinations are included.
   - Check for noisy labels or patterns interfering with contest selection.
-
----
-
-## 📁 File Handling Issues
 
 ### ❗ Problem: PDF/CSV/JSON file not found
 
@@ -93,16 +75,12 @@ This guide offers solutions to common problems encountered while using or develo
   - Ensure a handler for the format exists and is registered in `format_router.py`.
   - Use the interactive prompt to select the file.
 
----
-
-## 🤖 Bot & Automation Issues
-
 ### ❗ Problem: Bot tasks not running
 
 - **Possible Cause**: Bot integration not enabled or `bot_router.py` missing.
 - **Fix**:
   - Set `ENABLE_BOT_TASKS=true` in `.env`.
-  - Ensure `bot/bot_router.py` exists and exports `run_bot_task`.
+  - Ensure `bots/bot_router.py` exists and exports `run_bot_task`.
   - Check logs for bot task execution.
 
 ---
@@ -120,8 +98,8 @@ This guide offers solutions to common problems encountered while using or develo
 
 ## 📚 Reference & Deeper Debugging
 
-- See [`docs/architecture.md`](architecture.md) for data flow and module responsibilities.
-- See [`docs/handlers.md`](handlers.md) for handler development and return structure.
+- See [`architecture.md`](architecture.md) for data flow and module responsibilities.
+- See [`handlers.md`](handlers.md) for handler development and return structure.
 - See [`README.md`](../README.md) for install and usage basics.
 
 ---
@@ -131,5 +109,7 @@ This guide offers solutions to common problems encountered while using or develo
 - Open a GitHub issue with your traceback and `urls.txt` sample.
 - Include screenshots if possible.
 - Reference the docs above to verify the data flow and handler structure.
+
+---
 
 Happy parsing! 🗳️

@@ -15,48 +15,71 @@ This index links to all core documents and resources for building, extending, an
 
 ## 📄 Design & Development Documents
 
-- [`docs/architecture.md`](architecture.md): System components, orchestration, and data flow
-- [`docs/handlers.md`](handlers.md): How to build and extend state, county, and format handlers
-- [`docs/roadmap.md`](roadmap.md): Planned features, enhancements, and future directions
+- [`architecture.md`](architecture.md): System components, orchestration, and data flow
+- [`handlers.md`](handlers.md): How to build and extend state, county, and format handlers
+- [`roadmap.md`](roadmap.md): Planned features, enhancements, and future directions
 
 ---
 
 ## 🖥️ Web UI (Optional)
 
-- The Smart Elections Parser includes an **optional Flask-based Web UI** for users who prefer a graphical experience or are new to coding.
-- The Web UI provides:
-  - A dashboard for quick access to all tools
-  - URL Hint Manager for managing custom URL-to-handler mappings
-  - Change History for configuration transparency and auditability
-  - "Run Parser" page with real-time output and styled terminal-like area
-  - Live feedback via WebSockets
-- The Web UI is ideal for teams, researchers, and those learning to code—**all core parser features remain available via the CLI**.
+The Smart Elections Parser includes an **optional Flask-based Web UI** for users who prefer a graphical experience or are new to coding.
+
+**Web UI Features:**
+
+- Dashboard for quick access to all tools
+- URL Hint Manager for managing custom URL-to-handler mappings
+- Change History for configuration transparency and auditability
+- "Run Parser" page with real-time output and styled terminal-like area
+- Live feedback via WebSockets
+- Data management for uploads, downloads, and review
+
+The Web UI is ideal for teams, researchers, and those learning to code—**all core parser features remain available via the CLI**.
 
 ---
 
-## 🧩 Extensibility & Automation
+## 🤖 Automation, Bots & Context
 
-- [`bot/`](../bot/): Automation and notification tasks (see `bot_router.py`)
-- [`utils/`](../utils/): Shared utilities for browser, CAPTCHA, download, contest selection, and more
+- [`bots/`](../bots/): Correction, retraining, and automation bots (see `bot_router.py`)
+- [`Context_Integration/`](../Context_Integration/): Context, ML/NLP, and integrity modules (`context_coordinator.py`, `context_organizer.py`, `Integrity_check.py`)
+- [`context_library.json`](../context_library.json): Persistent context and feedback for smarter extraction and correction
+
+---
+
+## 🧩 Extensibility & Utilities
+
+- [`utils/`](../utils/): Shared utilities for browser automation, CAPTCHA, download, contest selection, table extraction, ML/NER, and more
 - [`handlers/`](../handlers/): All state/county and format-specific parsing logic
+- [`shared/`](../handlers/shared/): Shared handler logic for reuse
 
 ---
 
-## 📦 Other Resources
+## 📦 Data & Resources
 
 - [`requirements.txt`](../requirements.txt): Required Python packages
 - [`urls.txt`](../urls.txt): Starter list of known election result pages
 - [`output/`](../output/): Parsed results (organized by state/county/race)
 - [`input/`](../input/): Place files for manual/override parsing
+- [`log/`](../log/): Persistent logs and audit trails
 
 ---
 
 ## 🧪 Testing & Debugging
 
-- Use `.env` variables like `HEADLESS=false` or `ENABLE_BOT_TASKS=true` to control behavior
+- Use `.env` variables like `HEADLESS=false`, `ENABLE_BOT_TASKS=true`, or `CACHE_RESET=true` to control behavior
 - Try parsing pre-downloaded HTML or file formats using the `input/` directory
 - Simulate CAPTCHA triggers for state/county sites
 - Modular user prompts (`prompt_user_input`) allow easy CLI or web UI testing
+- Correction and feedback bots help retrain extraction logic and improve future runs
+
+---
+
+## 🛡️ Election Integrity & Transparency
+
+- All outputs are auditable: logs, metadata, and correction trails are saved
+- ML/NER-powered anomaly detection and structure validation
+- Human-in-the-loop feedback at every stage
+- Persistent context library for smarter, more reliable extraction
 
 ---
 

@@ -2,7 +2,6 @@ from playwright.sync_api import Page
 
 from .....utils.contest_selector import select_contest
 from .....utils.table_builder import build_dynamic_table
-from .....utils.table_core import extract_all_tables_with_location
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import rprint
 from .....utils.shared_logic import autoscroll_until_stable

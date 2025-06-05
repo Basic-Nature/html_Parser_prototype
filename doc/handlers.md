@@ -6,9 +6,9 @@ This document outlines how to develop and maintain **state-level** and **format-
 
 ## 🗂 Directory Layout
 
-``text
+```text
 handlers/
-├── states/
+├── states/                # State-specific handlers
 │   ├── arizona/
 │   │   ├── arizona.py
 │   │   └── county/
@@ -20,17 +20,19 @@ handlers/
 │   │   └── county/
 │   │       ├── rockland.py
 │   │       └── [county.py]
-│   ├── georgia/
-│   │   ├── georgia.py
-│   │   └── county/
-├── formats/                # Format-based fallback logic
+│   ├── example_state/
+│   │   ├── example_state.py
+│   │   └── example_county/
+│   │       └── example_county.py
+│   └── ...
+├── formats/               # Format-based fallback handlers
 │   ├── csv_handler.py
 │   ├── json_handler.py
 │   ├── pdf_handler.py
 │   └── html_handler.py
-├── shared/                 # Reusable modules across handlers
-└── shared_logic.py         # Common logic for interpreting elections (race/year/etc.)
-``
+├── utils/                # Reusable modules across handlers
+└── shared_logic.py        # Common logic for interpreting elections (race/year/etc.)
+```
 
 ---
 
@@ -40,9 +42,11 @@ Each state handler **must**:
 
 - Export a `parse(page, html_context)` function.
 - Return a tuple:
-  ``python
+
+  ```python
   return headers, data_rows, contest_title, metadata
-  ``
+  ```
+
   - `headers`: List of column headers
   - `data_rows`: List of row dicts or lists
   - `contest_title`: String describing the contest/race
@@ -51,27 +55,14 @@ Each state handler **must**:
 - Optionally export `list_available_contests(page)` if the state site supports user contest selection.
 - Pull `state`, `county`, and `race` metadata wherever possible.
 - Set recommended output paths by providing structured metadata, e.g.:
-  ``python
+
+  ```python
   metadata = {
     "state": "New York",
     "county": "Rockland",
     "race": "President"
   }
-  ``
-
-**Example: handlers/states/texas/texas.py**
-``python
-from utils.table_utils import extract_table_data
-
-def parse(page, html_context):
-    contest_title = "Governor - General Election"
-    headers, data = extract_table_data(page)
-    return headers, data, contest_title, {
-        "state": "Texas",
-        "county": html_context.get("county"),
-        "race_type": "General"
-    }
-``
+  ```
 
 ---
 
@@ -82,17 +73,10 @@ Used when no `state_router` match is found.
 - Must export `parse(page, html_context)` or `parse(file_path, html_context)` depending on context.
 - Return the same `(headers, data, contest_title, metadata)` tuple.
 - Must extract metadata for state/county/race if possible for output directory routing.
+- Return a tuple:
 
-**Example: handlers/formats/pdf_handler.py**
-``python
-def parse(page, html_context):
-    from utils.pdf_utils import extract_pdf_tables
-    tables = extract_pdf_tables(html_context["manual_file"])
-    return tables[0].columns, tables[0].rows, "PDF Fallback", {
-        "state": "Arizona",
-        "race": "Senate"
-    }
-``
+  ```python
+  return headers, data_rows, contest_title, metadata
 
 ---
 
@@ -113,26 +97,63 @@ The file `shared_logic.py` is where general shared election-logic for parsing or
 
 ## 🧩 Extending Handlers
 
-- **Custom Noisy Labels/Patterns:**  
-  Pass `noisy_labels` and `noisy_label_patterns` to `select_contest()` for contest filtering in your handler.
-- **User Prompts:**  
-  Use `prompt_user_input()` for all user input to allow easy CLI/web UI integration later.
-- **Bot Tasks:**  
-  Add automation/notification logic in `bot/bot_router.py` and enable with `ENABLE_BOT_TASKS=true` in `.env`.
+### Custom Noisy Labels/Patterns
+
+- Pass `noisy_labels` and `noisy_label_patterns` to `select_contest()` for advanced contest filtering within your handler.
+
+### User Prompts
+
+- Always use `prompt_user_input()` for user interactions to ensure seamless CLI and future web UI integration.
+
+### Bot Tasks
+
+- Add automation or notification logic in `bots/bot_router.py`.
+- Enable bot tasks by setting `ENABLE_BOT_TASKS=true` in your `.env` file.
+
+### Context-Aware Extraction
+
+- Enhance extraction and validation by leveraging context enrichment and ML/NLP features.
+- Use `context_coordinator.py` and `context_organizer.py` for smarter, context-driven data extraction.
+
+### Dynamic Table Extraction
+
+- For robust, multi-strategy table extraction, scoring, and patching, utilize `table_core.py` and `dynamic_table_extractor.py`.
 
 ---
 
 ## ✅ Best Practices
 
-- Prefer clarity over cleverness.
-- Avoid hardcoded strings for races/candidates where possible.
-- Always include all vote methods, even if count is 0.
-- Ensure cross-precinct comparability (e.g., uniform column headers).
-- Use `Pathlib`, not `os.path`.
-- Use shared tools from `utils/` or `shared/` instead of duplicating logic.
-- Return metadata so results can be stored in `output/<state>/<county>/<race>.csv`.
-- Modularize any user prompts using `prompt_user_input()` for future web UI compatibility.
-- Document any handler-specific configuration at the top of your handler file.
+### Best Practices
+
+- **Clarity First:**  
+  Prefer clear, readable code over clever or obscure solutions.
+
+- **Avoid Hardcoding:**  
+  Do not hardcode race or candidate names; extract dynamically whenever possible.
+
+- **Comprehensive Vote Methods:**  
+  Always include all vote methods in your output, even if their count is zero.
+
+- **Uniformity Across Precincts:**  
+  Ensure consistent column headers and data formats for cross-precinct comparability.
+
+- **Path Handling:**  
+  Use `pathlib` for file and directory operations instead of `os.path`.
+
+- **Reuse Shared Tools:**  
+  Import utilities from `utils/` or `shared/` rather than duplicating logic.
+
+- **Return Metadata:**  
+  Always return metadata so results can be saved as `output/<state>/<county>/<race>.csv`.
+
+- **Modular User Prompts:**  
+  Use `prompt_user_input()` for all user interactions to support future web UI integration.
+
+- **Document Configuration:**  
+  Add handler-specific configuration details at the top of your handler file.
+
+- **Audit Logging:**  
+  Log key decisions and extraction steps using `shared_logger.py` for traceability.
 
 ---
 
@@ -152,9 +173,14 @@ To test locally with pre-saved HTML files, adjust the `page.set_content()` step 
 
 ## 🧑‍💻 Example Handler Template
 
-``python
-from utils.table_utils import extract_table_data
+```python
+from utils.table_builder import build_dynamic_table
 from utils.user_prompt import prompt_user_input
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .....Context_Integration.context_coordinator import ContextCoordinator
+import numpy as e
 
 def parse(page, html_context):
     # Optionally prompt user for contest if needed
@@ -167,7 +193,13 @@ def parse(page, html_context):
         "race": contest_title
     }
     return headers, data, contest_title, metadata
-``
+```
+
+## 🛡️ Election Integrity & Context
+
+- Use context enrichment and ML/NLP validation (Context_Integration/) to improve extraction accuracy and integrity.
+- All handler outputs are checked for anomalies and cross-field consistency.
+- Corrections and feedback are logged and used to retrain extraction models and improve future runs.
 
 ---
 

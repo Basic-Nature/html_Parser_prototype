@@ -1,135 +1,106 @@
-# Troubleshooting Guide
+# Smart Elections Parser — Roadmap
 
-This guide offers solutions to common problems encountered while using or developing the **Smart Elections Parser** project.
-
----
-
-## 🔍 General Issues
-
-### ❗ Problem: Parser exits without processing any data
-
-- **Possible Cause**: Missing or malformed URL in `urls.txt`, or all URLs already marked as processed.
-- **Fix**:
-  - Check that your `urls.txt` file contains at least one valid, full URL (not commented out).
-  - Use the interactive prompt to select URLs.
-  - If using `.processed_urls` caching, set `CACHE_RESET=true` in `.env` to clear the cache.
-
-### ❗ Problem: No handler found for the URL
-
-- **Possible Cause**: `state_router.py` failed to match the state or county.
-- **Fix**:
-  - Ensure the domain or state name in the URL matches what's listed in `state_router.py`.
-  - Add or update a handler for the state/county.
-  - Confirm fallback to `format_router.py` is working (see logs).
-
-### ❗ Problem: User prompt not appearing or not working
-
-- **Possible Cause**: Not using `prompt_user_input()` everywhere.
-- **Fix**:
-  - Ensure all user input is routed through `prompt_user_input()` from `utils/user_prompt.py`.
-  - This is required for both CLI and future web UI compatibility.
+This document tracks the progress and next steps for the Smart Elections Parser project, as well as providing solutions to common problems.
 
 ---
 
-## 🕵️ CAPTCHA & Browser Behavior
+## ✅ Completed Milestones
 
-### ❗ Problem: CAPTCHA triggered but no browser appears
-
-- **Possible Cause**: Browser is running in headless mode.
-- **Fix**:
-  - Set `HEADLESS=false` in your `.env` file.
-  - Set `SHOW_BROWSER_ON_CAPTCHA=true` in `.env`.
-  - Verify you’ve installed the proper Playwright browser binaries:
-
-    ```bash
-    playwright install
-    ```
-
-### ❗ Problem: CAPTCHA page stuck or browser keeps refreshing
-
-- **Fix**:
-  - Manually refresh the page once.
-  - Ensure JavaScript and cookies are enabled.
-  - Try switching User-Agent (rotate via `.env` or update `user_agents.py`).
-  - If using a VPN or proxy, try disabling it.
-
----
-
-## 🧾 Output Issues
-
-### ❗ Problem: Output file not written
-
-- **Possible Cause**: No data returned from handler, or handler returned wrong tuple structure.
-- **Fix**:
-  - Confirm handler returns a `(headers, data, contest_title, metadata)` tuple.
-  - Ensure `metadata` includes at least `state` and `race` to build the output path.
-  - Check logs for `[WARN] No output file path returned from parser.`
-
-### ❗ Problem: CSV headers mismatch or missing columns
-
-- **Fix**:
-  - Use utilities like `utils.table_utils.normalize_headers()` to ensure consistent naming.
-  - Validate all candidate-method combinations are included.
-  - Check for noisy labels or patterns interfering with contest selection.
+- **Modular Handler Architecture:**  
+  State, county, and format handlers are fully modular and extensible.
+- **Dynamic Table Extraction:**  
+  Multi-strategy extraction (panel, section, ML/NER, plugin) with scoring and patching is implemented in `table_core.py` and `dynamic_table_extractor.py`.
+- **Persistent Context Library:**  
+  `context_library.json` and context enrichment modules are in place for smarter extraction and correction.
+- **Bots & Automation:**  
+  Correction and retraining bots are implemented (`bots/`), with `.env`-driven enable/disable.
+- **Election Integrity Checks:**  
+  ML/NER-based anomaly detection and cross-field validation are integrated (`Context_Integration/Integrity_check.py`).
+- **Web UI (Flask):**  
+  Web interface for running the parser, managing URLs, and reviewing output is live.
+- **Unified Logging & Audit Trails:**  
+  All actions and corrections are logged for transparency and reproducibility.
+- **Batch & Parallel Processing:**  
+  Multiprocessing and batch scraping are supported.
+- **Security & Compliance:**  
+  Path traversal protections, .env-driven config, and no credential storage.
+- **User Prompt Abstraction:**  
+  All user input is routed through `prompt_user_input()` for CLI/Web UI compatibility.
+- **Format Handlers:**  
+  CSV, PDF, JSON, and HTML fallback handlers are implemented and registered.
+- **Shared Utilities:**  
+  Centralized browser, CAPTCHA, download, and output logic in `utils/`.
 
 ---
 
-## 📁 File Handling Issues
+## 🚧 Next Steps & Priorities
 
-### ❗ Problem: PDF/CSV/JSON file not found
+### 1. **ML/NLP Library & Training**
 
-- **Possible Cause**: Dynamic downloads failed or input folder not scanned.
-- **Fix**:
-  - Check that the file exists in `input/`.
-  - Confirm download logic in `download_utils.py` is functioning.
-  - Use `ENABLE_DOWNLOAD_DISCOVERY=true` in `.env` to allow automatic retrieval.
-  - For manual override, ensure `FORCE_PARSE_INPUT_FILE=true` and `FORCE_PARSE_FORMAT` are set in `.env`.
+- Improve and expand the ML/NER models for table detection, entity recognition, and anomaly detection.
+- Integrate more robust LLM (Large Language Model) support for structure learning and context inference.
+- Build a retraining pipeline that leverages correction logs and user feedback for continuous improvement.
+- Expand `spacy_utils.py` and `ml_table_detector.py` with new entity types and training data.
 
-### ❗ Problem: Manual file parsing not working
+### 2. **Web UI & CLI Parity**
 
-- **Possible Cause**: Wrong file extension or missing handler.
-- **Fix**:
-  - Place the file in `input/` with the correct extension.
-  - Ensure a handler for the format exists and is registered in `format_router.py`.
-  - Use the interactive prompt to select the file.
+- Make the Web UI fully compatible with all CLI logic, including:
+  - Contest selection and user prompts
+  - Real-time feedback and correction workflows
+  - Batch and parallel processing controls
+- Add more robust error handling and user guidance in the Web UI.
+- Enable upload and manual override of input files via the Web UI.
+
+### 3. **LLM Integration**
+
+- Improve reliability and fallback logic for LLM-based extraction.
+- Add support for multiple LLM providers and local models.
+- Allow handler and extraction logic to select or override LLM strategies as needed.
+
+### 4. **Handler Expansion**
+
+- Expand the number of state and county handlers, prioritizing high-impact or frequently requested jurisdictions.
+- Add more format-specific handlers for edge-case PDFs, JSONs, and vendor-specific HTML.
+- Encourage community contributions and provide templates for new handlers.
+
+### 5. **Testing, Validation, and Documentation**
+
+- Expand automated and manual test coverage for handlers and extraction logic.
+- Add more sample URLs and edge cases to `urls.txt`.
+- Improve documentation for handler development, context enrichment, and bot usage.
+- Add troubleshooting and FAQ sections to the Web UI.
+
+### 6. **Performance & Scalability**
+
+- Optimize multiprocessing and memory usage for large-scale scraping.
+- Add caching and smarter deduplication for processed URLs and files.
+- Improve download and file management for large input datasets.
+
+### 7. **Election Integrity & Transparency**
+
+- Expand audit trail metadata and correction logging.
+- Add more granular anomaly detection and reporting.
+- Integrate with external election data sources for cross-validation.
+
+### 8. **User Experience**
+
+- Add more informative error messages and suggestions in both CLI and Web UI.
+- Improve accessibility and onboarding for non-technical users.
+- Provide more granular progress and status updates during batch runs.
 
 ---
 
-## 🤖 Bot & Automation Issues
+## 📝 Additional Ideas & Stretch Goals
 
-### ❗ Problem: Bot tasks not running
-
-- **Possible Cause**: Bot integration not enabled or `bot_router.py` missing.
-- **Fix**:
-  - Set `ENABLE_BOT_TASKS=true` in `.env`.
-  - Ensure `bot/bot_router.py` exists and exports `run_bot_task`.
-  - Check logs for bot task execution.
-
----
-
-## 🧪 Debugging Tips
-
-- Use `DEBUG_MODE=true` in `.env` to enable verbose logging.
-- Use `print_dom_structure()` utility in `html_scanner.py` for debugging site layout.
-- Log User-Agent string to verify spoofing effectiveness.
-- Manually test URLs in a normal browser before scripting.
-- Check logs for `[ERROR] Handler returned unexpected structure` for tuple/return issues.
-- Use `CACHE_RESET=true` to clear processed URL cache if needed.
+- **Plugin System:**  
+  Allow third-party plugins for extraction, validation, or output formatting.
+- **Automated Data Publishing:**  
+  Integrate with open data portals or APIs for publishing results.
+- **Crowdsourced Correction:**  
+  Enable collaborative correction and feedback via the Web UI.
+- **Advanced Visualization:**  
+  Add basic charts or maps to the Web UI for quick data review.
+- **Internationalization:**  
+  Prepare for non-U.S. election formats and multilingual support.
 
 ---
-
-## 📚 Reference & Deeper Debugging
-
-- See [`docs/architecture.md`](architecture.md) for data flow and module responsibilities.
-- See [`docs/handlers.md`](handlers.md) for handler development and return structure.
-- See [`README.md`](../README.md) for install and usage basics.
-
----
-
-## 📫 Still stuck?
-
-- Open a GitHub issue with your traceback and `urls.txt` sample.
-- Include screenshots if possible.
-- Reference the docs above to verify the data flow and handler structure.
-
-Happy parsing! 🗳️
