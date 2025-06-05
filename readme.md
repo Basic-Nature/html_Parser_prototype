@@ -2,25 +2,71 @@
 
 ## Overview
 
-A highly adaptable and modular precinct-level election result scraper. Designed to support structured parsing across various formats and state websites, it incorporates dynamic CAPTCHA handling, contest/race discovery, and file download capabilities.
+Smart Elections Parser is a robust, modular, and integrity-focused precinct-level election result scraper and analyzer. It is designed to adapt to the ever-changing landscape of U.S. election reporting, supporting both traditional and modern web formats, and is built for extensibility, transparency, and auditability.
 
 ---
 
-🧭 **Design Philosophy**
+## 🚀 What's New (2025)
 
-- `html_election_parser.py` orchestrates the pipeline: it only delegates, never implements scraping/parsing logic.
-- All specialized logic (browser, CAPTCHA, download, contest selection, format detection, etc.) is delegated to dedicated modules in `utils/` or `handlers/`.
-- `format_router.py` takes over only if a downloadable file is explicitly confirmed by the user or automation.
-- Each state/county handler (e.g., `pennsylvania.py`) should:
-  - Dynamically interact with the current page
-  - Parse content before assuming file-based fallback
-  - Respect `html_scanner.py` flags but remain flexible
-- All user prompts use `prompt_user_input()` for easy CLI/web UI swapping.
-- `/bot` folder is reserved for automation and notification tasks, callable from the main pipeline.
+### Major Additions
+
+- **Dynamic Table Extraction & Structure Learning**
+  - Centralized in `table_core.py` and `dynamic_table_extractor.py`
+  - Multi-strategy extraction: HTML tables, repeated DOM, pattern-based, ML/LLM, and plugin-based
+  - Table structure learning, harmonization, and feedback are now fully centralized
+  - ML/NER-powered entity annotation and structure verification
+  - Dynamic scoring and patching: extraction methods are scored and can "fill in the blanks" using information from other strategies
+
+- **Context-Aware Orchestration**
+  - `context_coordinator.py` and `context_organizer.py` orchestrate advanced context analysis, NLP, and ML integrity checks
+  - Persistent context library (`context_library.json`) for learning from user feedback and corrections
+  - Automated anomaly detection, clustering, and integrity checks (see `Integrity_check.py`)
+
+- **Web UI & CLI Parity**
+  - Flask-based web interface for managing URLs, running the parser, and reviewing output
+  - Real-time log streaming via SocketIO
+  - Data management dashboard for uploads, downloads, and URL hint management
+
+- **Handler Architecture**
+  - Modular state/county/format handlers in `handlers/`
+  - Handlers can delegate to county-level or format-level logic
+  - Shared logic and utilities for contest selection, table extraction, and output formatting
+
+- **Election Integrity & Transparency**
+  - ML/NER-based anomaly detection and cross-field validation
+  - Persistent logs and feedback loops for user corrections and audit trails
+  - Manual correction bot and retraining pipeline for continuous improvement
+  - All outputs are saved with rich metadata and context for reproducibility
+
+- **Security & Compliance**
+  - Path traversal and injection protections on all file/database operations
+  - .env-driven configuration for all sensitive settings
+  - No credentials or session tokens are stored; web UI can be secured for public deployment
+
+---
+
+## 🧭 Design Philosophy
+
+- **Single Source of Truth:** All table extraction, harmonization, and feedback logic is centralized for maintainability and learning.
+- **Extensible & Pluggable:** New extraction strategies, handlers, and ML models can be added without breaking the pipeline.
+- **Human-in-the-Loop:** User feedback is integrated at every stage, from contest selection to table correction.
+- **Election Integrity First:** Every step is logged, auditable, and designed to surface anomalies or suspicious data.
+- **Web & CLI Parity:** All features are available via both the command line and the web interface.
 
 ---
 
 ## 🔧 Features
+
+- **Multi-Strategy Table Extraction:** HTML tables, repeated DOM, pattern-based, ML/LLM, plugin, and fallback NLP extraction.
+- **Dynamic Scoring & Patching:** Extraction strategies are scored (ML/NER + heuristics); missing info is patched from other strategies when possible.
+- **Persistent Context Library:** Learns from user corrections and feedback for smarter future extraction.
+- **Contest & Handler Routing:** Dynamic state/county/format handler routing with fuzzy matching and context enrichment.
+- **Election Integrity Checks:** ML/NER anomaly detection, cross-field validation, and audit logs.
+- **Web UI:** Real-time log streaming, data management, and user-friendly contest/table review.
+- **Batch & Parallel Processing:** Multiprocessing support for large-scale scraping.
+- **Security:** Path safety, .env config, and no credential storage.
+
+---
 
 - **Headless or GUI Mode**: Browser launches headlessly by default unless CAPTCHA triggers a human interaction.
 - **CAPTCHA-Resilient**: Dynamically detects and pauses for Cloudflare verification with a visible browser.
@@ -96,61 +142,45 @@ A highly adaptable and modular precinct-level election result scraper. Designed 
 ## 🗂 Folder Structure
 
 ``
-html_Parser_prototype/
-└── webapp/
-    ├── Smart_Elections_Parser_Webapp.py
-    │└── templates/
-    │   ├── index.html
-    │   ├── url_hints.html
-    │   ├── history.html
-    │   └── run_parser.html
-    └──parser
-        └── handlers/
-            ├── formats/
-            │   │   ├── csv_handler.py
-            │   │   ├── html_handler.py
-            │   │   ├── json_handler.py
-            │   │   └── pdf_handler.py
-            │   └── states/
-            │       └── county/
-            │
-            ├── utils/
-            │   ├── browser_utils.py
-            │   ├── captcha_tools.py
-            │   ├── contest_selector.py
-            │   ├── download_utils.py
-            │   ├── format_router.py
-            │   ├── html_scanner.py
-            │   ├── output_utils.py
-            │   ├── shared_logger.py
-            │   ├── shared_logic.py
-            │   ├── user_agents.py
-            │   └── user_prompt.py
-            │
-            ├── bot/
-            │   └── bot_router.py
-            │
-            ├── state_router.py
-            ├── html_election_parser.py
-            ├── url_hint_overrides.txt
-            ├── urls.txt
-            ├── .env
-            ├── .env.template
-            ├── .gitignore
-            ├── requirements.txt
-            ├── seleniumbase_launcher.py
 
-``
+```bash
+html_Parser_prototype/
+├── webapp/
+│   ├── Smart_Elections_Parser_Webapp.py    # Flask web UI
+│   ├── parser/
+│   │   ├── html_election_parser.py         # Main CLI orchestrator
+│   │   ├── state_router.py                 # Dynamic handler routing
+│   │   ├── utils/
+│   │   │   ├── table_core.py               # Centralized table extraction/learning
+│   │   │   ├── dynamic_table_extractor.py  # Candidate table generator/scorer
+│   │   │   ├── ml_table_detector.py        # ML/LLM table detection
+│   │   │   ├── shared_logger.py            # Logging utilities
+│   │   │   ├── user_prompt.py              # CLI/web prompt utilities
+│   │   │   └── ...                         # (browser, captcha, etc.)
+│   │   ├── Context_Integration/
+│   │   │   ├── context_coordinator.py      # Context/NLP/ML orchestrator
+│   │   │   ├── context_organizer.py        # Context enrichment, clustering, DB
+│   │   │   └── Integrity_check.py          # Election integrity/anomaly checks
+│   │   ├── handlers/
+│   │   │   ├── states/                     # State/county handlers
+│   │   │   ├── formats/                    # Format handlers (csv, pdf, json, html)
+│   │   │   └── shared/                     # Shared handler logic
+│   │   ├── bots/                           # Correction/retraining bots
+│   │   ├── templates/                      # Web UI templates
+│   │   ├── input/                          # Input data
+│   │   ├── output/                         # Output data
+│   │   ├── log/                            # Logs
+│   │   ├── .env
+│   │   ├── .env.template
+│   │   └── requirements.txt
 
 ---
-
 ## 🧪 How to Use
 
 1. **Install Requirements**
-
-   ``bash
+   ```bash
    pip install -r requirements.txt
-   ``
+   python -m spacy download en_core_web_sm
 
 2. **Configure Settings (Optional)**
    Copy `.env.template` to `.env` and modify:
@@ -175,7 +205,7 @@ html_Parser_prototype/
 
    ``bash <--Terminal
    (uncomment the "")--
-   "python -m webapp.parser.html_election_parser"
+   `python -m webapp.parser.html_election_parser`
    if terminal already in root folder; otherwise,
     (replace full path with the actual path to the folder)
     "cd ...full path...\html_Parser_prototype"
@@ -184,7 +214,7 @@ html_Parser_prototype/
 5. **Run Parser (Web UI, Optional)**
 
    ``bash<Same as above with "" and folder path>
-    "python -m webapp.Smart_Elections_Parser_Webapp"
+    `python -m webapp.Smart_Elections_Parser_Webapp`
    ``"cd ...full path...\html_Parser_prototype\"
    - Then visit [http://localhost:5000](http://localhost:5000) in your browser or more likely the printed to terminal IP address pasted into browser of choice.
 
@@ -192,21 +222,50 @@ html_Parser_prototype/
 
 ## 📦 Output Format
 
-Parsed CSV files are saved as:
+All parsed results are saved in a structured, transparent, and auditable format:
 
-``
+### 📁 Directory Structure
+
+```bash
+
 output/{state}/{county}/{race}/{contest}_results.csv
-``
 
-Example:
+```bash
 
-``
+**Example:**
+```
+
 output/arizona/maricopa/us_senate/kari_lake_results.csv
-``
+
+### 📄 Output Files
+
+For each contest, the following files are generated:
+
+- **CSV Results:**  
+   Tabular results for the contest, ready for analysis.
+
+- **Metadata JSON:**  
+   Includes key information such as:
+  - `state`
+  - `county`
+  - `year`
+  - `race`
+  - `contest`
+  - `handler`
+  - `timestamp`
+  - Additional extraction context
+
+- **Audit Trail:**  
+   A detailed log of extraction steps, harmonization, user corrections, and any anomalies detected, ensuring full transparency and reproducibility.
 
 ---
 
 ## 🧩 Extending the Parser
+
+Add New Extraction Strategies: Implement in table_core.py or as a plugin.
+Add Handlers: Place new state/county/format handlers in handlers/.
+Improve ML/NER: Retrain models using the correction bot and logs.
+Election Integrity: All new logic should log decisions and support auditability.
 
 - **Add New States**: Create a new file in `handlers/states/` (e.g. `georgia.py`) and implement a `parse()` method.
 - **Add Format Support**: Add new file in `handlers/formats/` and map in `format_router.py`.
@@ -215,25 +274,38 @@ output/arizona/maricopa/us_senate/kari_lake_results.csv
 
 ---
 
-## 🔐 Notes on Security
+## 🔐 Security & Integrity
 
-- All scraping runs headlessly unless CAPTCHA is triggered.
-- `.env` is excluded from version control via `.gitignore`.
-- No credentials or session tokens are stored.
-- The web UI can be protected with authentication if deployed publicly.
+- **Headless Scraping:** All scraping runs headlessly by default; a visible browser is launched only if CAPTCHA is triggered.
+- **.env Protection:** Sensitive settings are managed via `.env`, which is excluded from version control (`.gitignore`).
+- **No Credential Storage:** No credentials or session tokens are stored at any time.
+- **Path Safety:** All file and database operations are path-safe and `.env`-configured to prevent injection or traversal attacks.
+- **Web UI Security:** The web interface can be protected with authentication when deployed publicly.
+- **Auditability:** All user feedback and corrections are logged for transparency and audit trails.
+- **Election Integrity:** ML/NER-powered anomaly detection, cross-field validation, and persistent logs enforce data integrity.
 
 ---
 
 ## 🚧 Roadmap
 
 - Multi-race selection prompt
-- Retry logic on failed URLs
+- Retry logic for failed URLs
 - Browser fingerprint obfuscation
 - Contributor upload queue (for handler patches)
 - YAML config option for handler metadata
 - Web UI for user prompts and batch management
 
 ---
+
+## 🛡️ Smart Elections Ambition
+
+Smart Elections Parser is built to set a new standard for election data integrity and transparency. Every extraction, correction, and output is:
+
+- **Auditable:** Full logs and metadata for every step.
+- **Verifiable:** ML/NER-powered anomaly detection and structure validation.
+- **Correctable:** Human-in-the-loop feedback at every stage.
+- **Extensible:** Ready for new formats, handlers, and AI/ML improvements.
+- **Secure:** Designed for safe, compliant, and transparent operation.
 
 ## 📄 License
 
