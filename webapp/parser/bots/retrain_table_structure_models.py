@@ -57,7 +57,8 @@ def safe_model_save(model, model_save_path, retries=3):
     import time, shutil
     for attempt in range(retries):
         try:
-            safe_model_save(model, model_save_path)
+            # PATCH: Call the model's save method, not safe_model_save recursively!
+            model.save(model_save_path)
             return
         except Exception as e:
             print(f"[WARN] Model save failed (attempt {attempt+1}): {e}")
@@ -65,7 +66,7 @@ def safe_model_save(model, model_save_path, retries=3):
     # Try saving to a temp dir and moving
     tmp_path = model_save_path + "_tmp"
     try:
-        safe_model_save(model, tmp_path)
+        model.save(tmp_path)
         shutil.rmtree(model_save_path, ignore_errors=True)
         shutil.move(tmp_path, model_save_path)
         print(f"[INFO] Model saved via temp path workaround.")

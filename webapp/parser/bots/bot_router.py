@@ -95,6 +95,13 @@ def get_file_age_days(path):
     mtime = os.path.getmtime(path)
     return (datetime.now() - datetime.fromtimestamp(mtime)).days
 
+def should_run_correction_bot(log_dir, last_run_time):
+    for fname in os.listdir(log_dir):
+        if fname.endswith("_selection_log.jsonl"):
+            if os.path.getmtime(os.path.join(log_dir, fname)) > last_run_time:
+                return True
+    return False
+
 def summarize_logs(log_dir, max_lines=100):
     """Summarize recent logs for AI context."""
     logs = []
@@ -174,12 +181,6 @@ def suggest_bots(context=None):
     This is where you can add Auto-GPT-like logic.
     """
     suggestions = []
-    def should_run_correction_bot(log_dir, last_run_time):
-        for fname in os.listdir(log_dir):
-            if fname.endswith("_selection_log.jsonl"):
-                if os.path.getmtime(os.path.join(log_dir, fname)) > last_run_time:
-                    return True
-        return False
     # --- Example: Always suggest retrainer if model is missing or old ---
     model_path = os.path.join(os.path.dirname(__file__), "..", "Context_Integration", "Context_Library", "table_structure_model.pkl")
     model_age = get_file_age_days(model_path)
