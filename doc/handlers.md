@@ -173,14 +173,16 @@ To test locally with pre-saved HTML files, adjust the `page.set_content()` step 
 
 ## 🧑‍💻 Example Handler Template
 
+- The .... before a module `from` indicate the absolute folder structure relative to the
+root directory of `webapp/parser/handlers/states/...` "4 dots in"
+
 ```python
-from utils.table_builder import build_dynamic_table
-from utils.user_prompt import prompt_user_input
+from ....utils.table_builder import build_dynamic_table
+from ....utils.user_prompt import prompt_user_input
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .....Context_Integration.context_coordinator import ContextCoordinator
-import numpy as e
+    from ....Context_Integration.context_coordinator import ContextCoordinator
 
 def parse(page, html_context):
     # Optionally prompt user for contest if needed
