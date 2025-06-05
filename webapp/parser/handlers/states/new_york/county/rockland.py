@@ -6,6 +6,7 @@ from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import rprint
 from .....utils.shared_logic import autoscroll_until_stable
 from .....utils.user_prompt import prompt_user_for_button, confirm_button_callback
+from .....utils.html_scanner import extract_tagged_segments_with_attrs, extract_panel_table_hierarchy
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .....Context_Integration.context_coordinator import ContextCoordinator
@@ -133,40 +134,54 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             autoscroll_until_stable(page)
 
             # --- 9. Extract ballot items using DOM scan and context/NLP ---
-            contest_title = user_selected_title
-            entities = coordinator.extract_entities(contest_title)
-            locations = [ent for ent, label in entities if label in ("GPE", "LOC", "FAC", "ORG") or "district" in ent.lower()]
-            expected_location = locations[0] if locations else None
+            html = page.content()
+            segments = extract_tagged_segments_with_attrs(html)
+            panels = extract_panel_table_hierarchy(segments)
 
-            extraction_context = {
-                "contest_title": contest_title,
-                "html_context": html_context,
-                "coordinator": coordinator,
-                "page": page,
-                # Add more as needed
-            }
-            html_context["coordinator"] = coordinator
-            
-            headers, data, entity_info = build_dynamic_table(
-                contest_title, [], [], coordinator, extraction_context
-            )
+            all_results = []
+            contest_title = html_context.get("selected_race") or html_context.get("contest_title") or "Unknown Contest"
+            state = html_context.get("state", "NY")
+            county = html_context.get("county", "Rockland")
 
-            if not data:
-                rprint(f"[red][ERROR] No data could be parsed from ballot items or robust extraction.[/red]")
-                results.append((None, None, contest_title, {"skipped": True}))
-                continue
+            for panel in panels:
+                district = panel["panel_heading"] or "Unknown District"
+                for table in panel["tables"]:
+                    table_html = table["table_html"]
+                    extraction_context = {
+                        "district": district,
+                        "panel_heading": panel["panel_heading"],
+                        "panel_tag": panel["panel_tag"],
+                        "coordinator": coordinator,
+                        "page": page,
+                        "html_context": html_context,
+                        "table_html": table_html,  # Pass table HTML for downstream use if needed
+                    }
+                    # Optionally, you can pass table_html to table_builder if you adapt it to accept raw HTML
+                    headers, data, entity_info = build_dynamic_table(
+                        contest_title, [], [], coordinator, extraction_context
+                    )
+                    # Add district to each row for context
+                    for row in data:
+                        row["District"] = district
+                    all_results.append((headers, data, contest_title, entity_info))
 
             # --- 10. Assemble headers and finalize output ---
-            headers = sorted(
-                set(
-                    k for row in data for k in row.keys() if k is not None
-                )
-            )
-            print("DEBUG: Finalized headers:", headers)
+            if not all_results:
+                rprint(f"[red][ERROR] No data could be parsed from ballot items or robust extraction.[/red]")
+                return None, None, contest_title, {"skipped": True}
+
+            # Merge all results
+            merged_headers = set()
+            merged_data = []
+            for headers, data, _, _ in all_results:
+                merged_headers.update(headers)
+                merged_data.extend(data)
+            merged_headers = sorted(merged_headers)
+
             metadata = {
-                "state": state or "Unknown",
-                "county": county or "Unknown",
-                "race": contest_title or "Unknown",
+                "state": state,
+                "county": county,
+                "race": contest_title,
                 "source": getattr(page, "url", "Unknown"),
                 "handler": "rockland",
             }
@@ -174,16 +189,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 metadata["year"] = html_context["year"]
             if "election_type" in html_context:
                 metadata["election_type"] = html_context["election_type"]
-                print("DEBUG: headers before finalize:", headers)
-                print("DEBUG: first row before finalize:", data[0] if data else None)
-            print("DEBUG: contest_title before finalize:", contest_title)
-            metadata["entity_info"] = entity_info
-            result = finalize_election_output(headers, data, coordinator, contest_title, state, county, context=metadata)
+
+            result = finalize_election_output(merged_headers, merged_data, coordinator, contest_title, state, county, context=metadata)
             if isinstance(result, dict):
-                if "csv_path" in result:
-                    metadata["output_file"] = result["csv_path"]
-                if "metadata_path" in result:
-                    metadata["metadata_path"] = result["metadata_path"]
                 metadata.update(result)
-            results.append((headers, data, contest_title, metadata))
-        return results[0] if results else (None, None, None, {"skipped": True})
+            return merged_headers, merged_data, contest_title, metadata

@@ -44,7 +44,7 @@ def build_dynamic_table(
     learning_mode: bool = True,
     confirm_table_structure_callback=None,
     pivot_to_wide: bool = True,
-    debug: bool = False,  # Added debug flag for enhanced logging
+    debug: bool = False,
 ) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """
     Orchestrates robust, multi-source, entity-aware table extraction and harmonization.
@@ -58,7 +58,15 @@ def build_dynamic_table(
     if "coordinator" not in context or context["coordinator"] is None:
         context["coordinator"] = coordinator
     page = context.get("page")
-
+    from ..utils.dynamic_table_extractor import dynamic_table_extractor
+    try:
+        # PATCH: If table_html is present in context, pass it to the extractor
+        table_html = context.get("table_html") if context else None
+        extracted_headers, extracted_data = dynamic_table_extractor(page, context, coordinator, table_html=table_html)
+        logger.info(f"[TABLE_BUILDER] dynamic_table_extractor: {len(extracted_headers)} headers, {len(extracted_data)} rows.")
+    except Exception as e:
+        logger.error(f"[TABLE_BUILDER] dynamic_table_extractor failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+        extracted_headers, extracted_data = [], []
     # --- Persistent cache for debugging/recovery only ---
     persistent_cache = {
         "initial_headers": headers.copy() if headers else [],

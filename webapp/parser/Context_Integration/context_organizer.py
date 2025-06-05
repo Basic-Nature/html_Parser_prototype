@@ -182,6 +182,27 @@ def build_dom_tree(segments):
     }
     return dom_tree
 
+def get_panels_and_tables(dom_tree):
+    """
+    Returns a list of (panel_heading, [tables]) for each panel/section in the DOM.
+    """
+    panels = []
+    nodes = dom_tree["nodes"]
+    for node in nodes:
+        if node["tag"] in ("section", "div", "fieldset", "panel"):
+            # Find heading among children
+            heading = None
+            for child_idx in node["children"]:
+                child = nodes[child_idx]
+                if child["tag"] in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                    heading = child["html"]
+                    break
+            # Find tables among children
+            tables = [nodes[cidx] for cidx in node["children"] if nodes[cidx]["tag"] == "table"]
+            if heading and tables:
+                panels.append((heading, tables))
+    return panels
+
 def extract_html_by_idx(nodes, idx, full_html):
     """
     Extract the exact HTML for a node using its start/end indices.

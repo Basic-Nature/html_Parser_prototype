@@ -50,11 +50,26 @@ LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
 
 # --- Main Candidate Generator/Scorer ---
 
-def dynamic_table_extractor(page, context, coordinator):
+def dynamic_table_extractor(page, context, coordinator, table_html=None):
     """
     Finds and scores candidate tables, returning the best (headers, data) for further processing.
     Does NOT run harmonization, annotation, or feedback loop.
     """
+    if table_html:
+        # Use BeautifulSoup to extract headers and rows from the HTML snippet
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(table_html, "html.parser")
+        table = soup.find("table")
+        if table:
+            rows = table.find_all("tr")
+            if not rows:
+                return [], []
+            headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
+            data = []
+            for row in rows[1:]:
+                cells = row.find_all(["td", "th"])
+                data.append({headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))})
+            return headers, data
     candidates = find_tabular_candidates(page)
     enriched_candidates = []
     for cand in candidates:

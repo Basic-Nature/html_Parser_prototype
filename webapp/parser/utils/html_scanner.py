@@ -3,14 +3,14 @@ import json
 import os
 import re
 import time
-from collections import defaultdict
+
 from typing import Dict, Any, List, Optional, Callable, Set
 from ..config import CONTEXT_LIBRARY_PATH
 from ..utils.download_utils import download_file
-from ..utils.format_router import prompt_user_for_format, route_format_handler 
-from ..utils.logger_instance import logger, logging
+from ..utils.format_router import route_format_handler 
+from ..utils.logger_instance import logger
 from rich import print as rprint
-from ..utils.user_prompt import prompt_user_input, PromptCancelled
+from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
 from sentence_transformers import SentenceTransformer
 import numpy as np
@@ -82,40 +82,58 @@ def extract_tagged_segments_with_attrs(
 ) -> List[Dict[str, Any]]:
     """
     Uses selectolax to walk the DOM and extract segments with parent/child relationships and accurate indices.
+    Adds context_heading to panels/sections and tables by finding the nearest heading ancestor.
+    Also adds panel_ancestor_idx and panel_ancestor_heading to tables for direct hierarchy extraction.
     Falls back to BeautifulSoup if selectolax fails.
     """
     start_time = time.time()
     segments: List[Dict[str, Any]] = []
+    heading_tags = {"h1", "h2", "h3", "h4", "h5", "h6"}
+    panel_tags = {"section", "fieldset", "panel", "div"}  # Extend as needed
+
     try:
         tree = HTMLParser(html)
-        def walk(node, parent_idx=None):
+        def walk(node, parent_idx=None, heading_idx=None, panel_idx=None):
             tag = node.tag
             if not tag or tag.lower() not in HTML_TAGS:
                 for child in node.iter():
                     if child.parent is node:
-                        walk(child, parent_idx)
+                        walk(child, parent_idx, heading_idx, panel_idx)
                 return
             attrs = dict(node.attributes)
-            # Custom attribute extraction (e.g., data-*)
             if include_data_attrs:
                 attrs.update({k: v for k, v in node.attributes.items() if k.startswith("data-")})
             classes = attrs.get("class", "").split() if "class" in attrs else []
             id_ = attrs.get("id", "")
             is_button = tag == "button" or (tag == "input" and attrs.get("type", "").lower() in ["button", "submit"])
             is_clickable = is_button or tag == "a" or "onclick" in attrs or "btn" in classes or "button" in classes
+
+            # If this is a heading, update heading_idx for children
+            this_heading_idx = heading_idx
+            if tag.lower() in heading_tags:
+                this_heading_idx = len(segments)
+
+            # If this is a panel, update panel_idx for children
+            this_panel_idx = panel_idx
+            if tag.lower() in panel_tags:
+                this_panel_idx = len(segments)
+
             seg = {
                 "tag": tag.lower(),
                 "attrs": attrs,
                 "classes": classes,
                 "id": id_,
-                "html": "",  # Will fill below with unicode-safe extraction
+                "html": "",
                 "is_button": is_button,
                 "is_clickable": is_clickable,
                 "parent_idx": parent_idx,
                 "children": [],
                 "start": getattr(node, "start", None),
                 "end": getattr(node, "end", None),
-                "_idx": len(segments)
+                "_idx": len(segments),
+                "context_heading": None,  # Will fill below
+                "panel_ancestor_idx": this_panel_idx,  # For tables
+                "panel_ancestor_heading": None,        # Will fill below
             }
             if hasattr(node, "start") and hasattr(node, "end") and node.start is not None and node.end is not None:
                 html_bytes = html.encode("utf-8")
@@ -129,12 +147,33 @@ def extract_tagged_segments_with_attrs(
             this_idx = seg["_idx"]
             for child in node.iter():
                 if child.parent is node:
-                    child_idx = walk(child, this_idx)
+                    child_idx = walk(child, this_idx, this_heading_idx, this_panel_idx)
                     if child_idx is not None:
                         seg["children"].append(child_idx)
             return this_idx
+
         root = tree.body or tree.html or tree.root
         walk(root)
+
+        # Second pass: assign context_heading and panel_ancestor_heading
+        for seg in segments:
+            # Assign context_heading for panels/sections and tables
+            if seg["tag"] in panel_tags or seg["tag"] == "table":
+                parent_idx = seg["parent_idx"]
+                heading_html = None
+                while parent_idx is not None:
+                    parent = segments[parent_idx]
+                    if parent["tag"] in heading_tags:
+                        heading_html = parent["html"]
+                        break
+                    parent_idx = parent["parent_idx"]
+                seg["context_heading"] = heading_html
+
+            # For tables, assign panel_ancestor_heading
+            if seg["tag"] == "table" and seg["panel_ancestor_idx"] is not None:
+                panel_node = segments[seg["panel_ancestor_idx"]]
+                seg["panel_ancestor_heading"] = panel_node.get("context_heading")
+
         logger.info(f"[PERF] DOM extraction (selectolax) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
         return segments
     except Exception as e:
@@ -143,13 +182,13 @@ def extract_tagged_segments_with_attrs(
             raise
         # Fallback to BeautifulSoup (slower, less accurate indices)
         soup = BeautifulSoup(html, "html.parser")
-        def walk_bs4(node, parent_idx=None, start_search=0):
+        def walk_bs4(node, parent_idx=None, heading_idx=None, start_search=0):
             if not isinstance(node, Tag):
                 return start_search
             tag = node.name.lower()
             if tag not in HTML_TAGS:
                 for child in node.children:
-                    start_search = walk_bs4(child, parent_idx, start_search)
+                    start_search = walk_bs4(child, parent_idx, heading_idx, start_search)
                 return start_search
             tag_html = str(node)
             start, end = html.find(tag_html, start_search), -1
@@ -162,6 +201,11 @@ def extract_tagged_segments_with_attrs(
             id_ = attrs.get("id", "")
             is_button = tag == "button" or (tag == "input" and attrs.get("type", "").lower() in ["button", "submit"])
             is_clickable = is_button or tag == "a" or "onclick" in attrs or "btn" in classes or "button" in classes
+
+            this_heading_idx = heading_idx
+            if tag in heading_tags:
+                this_heading_idx = len(segments)
+
             seg = {
                 "tag": tag,
                 "attrs": attrs,
@@ -174,17 +218,83 @@ def extract_tagged_segments_with_attrs(
                 "children": [],
                 "start": start,
                 "end": end,
-                "_idx": len(segments)
+                "_idx": len(segments),
+                "context_heading": None
             }
             segments.append(seg)
             this_idx = seg["_idx"]
             for child in node.children:
-                start_search = walk_bs4(child, this_idx, start_search)
+                start_search = walk_bs4(child, this_idx, this_heading_idx, start_search)
             return end if end > 0 else start_search
+
         root = soup.find("html") or soup.find("body") or soup
         walk_bs4(root)
+
+        # Second pass for context_heading
+        for seg in segments:
+            if seg["tag"] in panel_tags or seg["tag"] == "table":
+                parent_idx = seg["parent_idx"]
+                heading_html = None
+                while parent_idx is not None:
+                    parent = segments[parent_idx]
+                    if parent["tag"] in heading_tags:
+                        heading_html = parent["html"]
+                        break
+                    parent_idx = parent["parent_idx"]
+                seg["context_heading"] = heading_html
+
         logger.info(f"[PERF] DOM extraction (BeautifulSoup fallback) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
-        return segments
+        return []
+
+def extract_panel_table_hierarchy(segments):
+    """
+    Returns a list of dicts:
+    [
+        {
+            "panel_idx": idx,
+            "panel_tag": ...,
+            "panel_heading": ...,
+            "panel_html": ...,
+            "tables": [
+                {
+                    "table_idx": idx,
+                    "table_html": ...,
+                    "context_heading": ...,
+                    "panel_ancestor_heading": ...,
+                },
+                ...
+            ]
+        },
+        ...
+    ]
+    """
+    panel_tags = {"section", "fieldset", "panel", "div"}
+    panels = []
+    for seg in segments:
+        if seg["tag"] in panel_tags:
+            panel = {
+                "panel_idx": seg["_idx"],
+                "panel_tag": seg["tag"],
+                "panel_heading": seg.get("context_heading"),
+                "panel_html": seg["html"],
+                "tables": []
+            }
+            # Find all descendant tables
+            stack = list(seg["children"])
+            while stack:
+                child_idx = stack.pop()
+                child = segments[child_idx]
+                if child["tag"] == "table":
+                    panel["tables"].append({
+                        "table_idx": child["_idx"],
+                        "table_html": child["html"],
+                        "context_heading": child.get("context_heading"),
+                        "panel_ancestor_heading": child.get("panel_ancestor_heading"),
+                    })
+                stack.extend(child["children"])
+            if panel["tables"]:
+                panels.append(panel)
+    return panels
 
 TAG_PATTERN = re.compile(
     r"<({tags})(\s[^>]*)?>.*?</\1\s*>|<({tags})(\s[^>]*)?/?>".format(
