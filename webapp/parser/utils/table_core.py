@@ -21,6 +21,8 @@ import json
 import re
 import unicodedata
 import glob
+import re
+from difflib import SequenceMatcher
 from collections import Counter
 from typing import List, Dict, Any, Tuple, TYPE_CHECKING
 import time
@@ -353,39 +355,89 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 # ===================================================================
 # EXTRACTION STRATEGIES (HTML, DOM, PATTERNS, NLP)
 # ===================================================================
+def extract_percent_reported_from_heading(heading):
+    """Extract percent reported or fully reported from heading text."""
+    # Look for patterns like '80% Reported', 'Fully Reported', etc.
+    percent_pattern = re.compile(r"(\d{1,3})\s*%[\s\-]*reported", re.I)
+    match = percent_pattern.search(heading)
+    if match:
+        return f"{match.group(1)}%"
+    if "fully reported" in heading.lower():
+        return "100%"
+    return ""
+
+def extract_percent_reported_from_page(page):
+    """Try to extract percent reported from the page outside the table."""
+    # Look for common phrases in spans/divs
+    for selector in ["span", "div", "p"]:
+        elements = page.locator(selector)
+        for i in range(elements.count()):
+            text = elements.nth(i).inner_text().strip()
+            if not text:
+                continue
+            percent = extract_percent_reported_from_heading(text)
+            if percent:
+                return percent
+    return ""
 
 def extract_all_tables_with_location(page, coordinator=None):
-    from .dynamic_table_extractor import find_tables_with_headings
+    from ..utils.dynamic_table_extractor import find_tables_with_headings
 
     LOCATION_HEADERS = ["Precinct", "Location", "Ward", "District", "Area", "City", "Municipal", "Town"]
+    PERCENT_HEADERS = ["% Precincts Reporting", "% Reported", "Percent Reported", "Fully Reported", "Precincts Reporting"]
     all_headers = set()
     all_data = []
     all_entity_previews = []
     tables_with_headings = find_tables_with_headings(page)
+
+    percent_reported_global = extract_percent_reported_from_page(page)
 
     for heading, table in tables_with_headings:
         headers, data, entity_preview = extract_table_data(table)
         if not headers or not data:
             continue
 
-        # --- Find or create a location column name ---
+        # --- Find or create a location column name (fuzzy/substring match) ---
         location_col = None
         for h in headers:
-            if any(lh.lower() in h.lower() for lh in LOCATION_HEADERS):
-                location_col = h
+            for lh in LOCATION_HEADERS:
+                if fuzzy_in(lh, h) and h.lower() != "candidate":
+                    location_col = h
+                    break
+            if location_col:
                 break
 
-        # Do NOT use "Candidate" as a location column
+        # If not found, synthesize
         if location_col is None or location_col.lower() == "candidate":
             location_col = "Location"
             if "Location" not in headers:
                 headers = ["Location"] + headers
 
-        # --- Assign heading to location column for each row ---
+        # --- Find or create a percent reported column ---
+        percent_col = None
+        for h in headers:
+            for ph in PERCENT_HEADERS:
+                if fuzzy_in(ph.replace("%", "").replace(" ", ""), h.replace("%", "").replace(" ", "")):
+                    percent_col = h
+                    break
+            if percent_col:
+                break
+        if not percent_col:
+            percent_col = "% Precincts Reporting"
+            if percent_col not in headers:
+                headers = [percent_col] + headers
+
+        # --- Extract percent reported from heading or global ---
+        percent_value = extract_percent_reported_from_heading(heading)
+        if not percent_value:
+            percent_value = percent_reported_global
+
+        # --- Assign heading to location column and percent to percent column for each row ---
         for row in data:
-            # Only set if missing or empty
             if location_col not in row or not row[location_col]:
                 row[location_col] = heading
+            if percent_col not in row or not row[percent_col]:
+                row[percent_col] = percent_value
 
         all_headers.update(headers)
         all_data.extend(data)
@@ -1532,14 +1584,13 @@ def pivot_to_wide_format(
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     logger.info("[TABLE_CORE][pivot_to_wide_format] Pivoting to wide format.")
 
-    # 1. Detect location header robustly
+    # 1. Detect location header robustly, but never use "Candidate"
     location_header = None
     for h in headers:
-        if any(lk in h.lower() for lk in LOCATION_KEYWORDS):
+        if any(lk in h.lower() for lk in LOCATION_KEYWORDS) and h.lower() != "candidate":
             location_header = h
             break
-    # PATCH: Do NOT use "Candidate" as location header
-    if not location_header or location_header.lower() == "candidate":
+    if not location_header:
         location_header = "Location"
 
     # 2. Gather all unique candidates and ballot types
@@ -1548,15 +1599,16 @@ def pivot_to_wide_format(
 
     # Fallback: try to infer from headers if not found
     if not candidates:
-        for h in headers:
-            if "candidate" in h.lower():
-                candidates.add(h)
+        # Try to extract from data
+        for row in data:
+            if "Candidate" in row:
+                candidates.add(row["Candidate"])
     if not ballot_types:
         for h in headers:
             if any(bt.lower() in h.lower() for bt in BALLOT_TYPES):
                 ballot_types.add(h)
     if not ballot_types:
-        ballot_types = set(h for h in headers if h != location_header)
+        ballot_types = set(h for h in headers if h != location_header and h != "Candidate")
 
     # --- If only one unique location, synthesize from contest title/context ---
     location_values = set(row.get(location_header, "") for row in data if row.get(location_header, ""))
@@ -1571,8 +1623,9 @@ def pivot_to_wide_format(
         for row in data:
             row[location_header] = synthetic_location
         logger.warning(f"[TABLE_CORE][pivot_to_wide_format] Only one unique location found. Synthesized location: {synthetic_location}")
+        location_values = set([synthetic_location])
 
-    # 3. Build wide headers
+    # 3. Build wide headers: always include all candidate/ballot type combos
     wide_headers = [location_header]
     for candidate in sorted(candidates):
         for bt in sorted(ballot_types):
@@ -1580,7 +1633,6 @@ def pivot_to_wide_format(
     wide_headers.append("Grand Total")
 
     # 4. Build wide data, one row per unique location
-    location_values = set(row.get(location_header, "") for row in data if row.get(location_header, ""))
     wide_data = []
     for loc in sorted(location_values):
         out_row = {h: "" for h in wide_headers}
@@ -1588,16 +1640,16 @@ def pivot_to_wide_format(
         grand_total = 0
         for row in data:
             if row.get(location_header, "") == loc:
-                for candidate in candidates:
-                    for bt in ballot_types:
-                        key = f"{candidate} - {bt}"
-                        val = row.get(bt, "") if candidate == row.get("Candidate", "") else ""
-                        if val and key in out_row:
-                            out_row[key] = val
-                            try:
-                                grand_total += int(val.replace(",", ""))
-                            except Exception:
-                                pass
+                candidate = row.get("Candidate", "")
+                for bt in ballot_types:
+                    key = f"{candidate} - {bt}"
+                    val = row.get(bt, "")
+                    if val and key in out_row:
+                        out_row[key] = val
+                        try:
+                            grand_total += int(val.replace(",", ""))
+                        except Exception:
+                            pass
         out_row["Grand Total"] = str(grand_total)
         wide_data.append(out_row)
 
@@ -1992,8 +2044,6 @@ def review_learned_table_structures(log_path=None):
     """
     # PATCH: Use log directory parent to webapp for default path
     if log_path is None:
-        from ..config import BASE_DIR
-        import os
         LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
         log_path = os.path.join(LOG_PARENT_DIR, "table_structure_learning_log.jsonl")
     if not os.path.exists(log_path):
@@ -2174,6 +2224,16 @@ def handle_nested_tables(page):
             headers, data, _ = extract_table_data(table)
             results.append((headers, data))
     return results
+
+def fuzzy_in(word, text, threshold=0.7):
+    """Return True if word is in text by substring or fuzzy match."""
+    word = word.lower()
+    text = text.lower()
+    if word in text:
+        return True
+    # Fuzzy match: allow for partials (e.g., "town" in "orangetown")
+    ratio = SequenceMatcher(None, word, text).ratio()
+    return ratio >= threshold
 
 # ===================================================================
 # END OF FILE
