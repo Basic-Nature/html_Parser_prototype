@@ -35,6 +35,10 @@ For field-specific correction: --fields contests states --feedback --enhanced
 """
 ORCHESTRATION_PLUGINS = []
 
+WEBAPP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .../webapp
+PROJECT_ROOT = os.path.dirname(WEBAPP_DIR)  # parent of webapp
+DEFAULT_LOG_DIR = os.path.join(PROJECT_ROOT, "log")
+
 def register_orchestration_plugin(plugin_func):
     """Register a plugin function for orchestration logic."""
     ORCHESTRATION_PLUGINS.append(plugin_func)
@@ -103,7 +107,7 @@ def should_run_correction_bot(log_dir, last_run_time):
                 return True
     return False
 
-def summarize_logs(log_dir, max_lines=100):
+def summarize_logs(log_dir=DEFAULT_LOG_DIR, max_lines=100):
     """Summarize recent logs for AI context."""
     logs = []
     if not os.path.isdir(log_dir):
@@ -122,6 +126,9 @@ def ai_suggest_bots(context=None):
     Use an LLM (OpenAI) to suggest which bots to run and with what arguments.
     """
     suggestions = []
+    context = context or {}
+    log_dir = os.getenv("LOG_DIR", DEFAULT_LOG_DIR)
+    logs_summary = summarize_logs(log_dir)
     # Gather context for the LLM
     context = context or {}
     log_dir = os.getenv("LOG_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "log"))
@@ -262,11 +269,12 @@ def suggest_bots(context=None):
         suggestions.append(("scan_and_notify", []))
 
     # Suggest batch_status_report if logs mention 'batch' or 'status'
-    log_dir = os.getenv("LOG_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "log"))
+    log_dir = os.getenv("LOG_DIR", DEFAULT_LOG_DIR)
     last_run_time = time.time() - 3600  # Example: last hour
     if should_run_correction_bot(log_dir, last_run_time):
         suggestions.append(("manual_correction_bot", correction_args))
-
+    if os.path.isdir(log_dir) and should_run_correction_bot(log_dir, last_run_time):
+        suggestions.append(("manual_correction_bot", correction_args))
 
     suggestions.extend(run_orchestration_plugins(context))
     return suggestions
