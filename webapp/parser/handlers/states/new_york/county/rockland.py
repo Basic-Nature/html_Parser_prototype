@@ -151,7 +151,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             html_context["coordinator"] = coordinator
             
             headers, data = build_dynamic_table(
-                contest_title, [], [], coordinator, html_context
+                contest_title, [], [], coordinator, extraction_context
             )
 
             if not data:

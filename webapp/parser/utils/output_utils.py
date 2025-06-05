@@ -37,8 +37,7 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
                     year = years[0]
             if not year and feedback_context:
                 year = feedback_context.get("year", "")
-            if not year:
-                year = input("Year could not be determined. Please enter the election year (YYYY): ").strip()
+            # Avoid prompt in non-interactive mode
         if not race or race.lower() == "unknown":
             if coordinator:
                 contests = coordinator.get_contests()
@@ -46,8 +45,7 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
                     race = contests[0].get("title", "")
             if not race and feedback_context:
                 race = feedback_context.get("race", "")
-            if not race:
-                race = input("Race could not be determined. Please enter the race name: ").strip()
+            # Avoid prompt in non-interactive mode
         if year and race:
             break
 
@@ -141,15 +139,43 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
                 return entry
     return None
 
-def finalize_election_output(headers, data, coordinator, contest_title, state, county):
+def finalize_election_output(
+    headers,
+    data,
+    coordinator,
+    contest_title,
+    state,
+    county,
+    context=None,
+    enable_user_feedback=False
+):
     """
-    Writes the parsed election data and metadata to CSV and JSON files.
-    Updates the persistent context library and output cache.
-    Returns a dict with the CSV and JSON paths.
+    Finalize and write election output to CSV and metadata JSON.
+
+    If you want to re-extract or re-parse tables, `context` **must** include a valid Playwright `page` object.
+    If `page` is missing, table extraction will be skipped and only harmonization will be performed.
+
+    Args:
+        headers: List of column headers.
+        data: List of row dicts.
+        coordinator: ContextCoordinator instance.
+        contest_title: Title of the contest/race.
+        state: State name.
+        county: County name.
+        context: (optional) Dict, should include 'page' key if table extraction is needed.
+        enable_user_feedback: (optional) If True, prompt for user feedback at the end.
+
+    Returns:
+        dict: {
+            "csv_path": ...,
+            "metadata_path": ...,
+            "output_file": ...,
+        }
     """
     from ..Context_Integration.context_organizer import append_to_context_library, organize_context
+    if context is None:
+        context = {}
 
-    # --- DEBUG: Log contest_title and selected_race ---
     logger.info(f"[OUTPUT_UTILS] finalize_election_output called with contest_title: '{contest_title}'")
     if hasattr(coordinator, "html_context"):
         selected_race = coordinator.html_context.get("selected_race", None)
@@ -170,8 +196,8 @@ def finalize_election_output(headers, data, coordinator, contest_title, state, c
     # 1. Enrich metadata using context organizer
     organized = organize_context(meta)
     enriched_meta = organized.get("metadata", meta)
-    # Defensive: ensure 'race' is present in enriched_meta
-# Defensive: ensure required fields
+
+    # Defensive: ensure required fields
     if not enriched_meta.get("race"):
         enriched_meta["race"] = contest_title or "Unknown"
     if not enriched_meta.get("year") or not (str(enriched_meta["year"]).isdigit() and len(str(enriched_meta["year"])) == 4):
@@ -193,7 +219,11 @@ def finalize_election_output(headers, data, coordinator, contest_title, state, c
             rprint(f"[bold yellow][OUTPUT][/bold yellow] Skipping write due to existing output.")
             csv_path = existing["output_path"]
             json_meta_path = csv_path.replace(".csv", "_metadata.json")
-            return {"csv_path": csv_path, "metadata_path": json_meta_path}
+            return {
+                "csv_path": csv_path,
+                "metadata_path": json_meta_path,
+                "output_file": csv_path
+            }
 
     # 4. Build output path using enriched metadata and feedback loop if needed
     output_path = get_output_path(enriched_meta, "parsed", coordinator=coordinator, feedback_context=enriched_meta.get("feedback_context", {}))
@@ -219,15 +249,25 @@ def finalize_election_output(headers, data, coordinator, contest_title, state, c
 
     # --- Final Data Clean-up and Structure ---
     headers, data = harmonize_headers_and_data(headers, data)
-    # --- DEBUG: Log contest_title before build_dynamic_table ---
-    logger.info(f"[OUTPUT_UTILS] Passing contest_title '{contest_title}' to build_dynamic_table")
-    headers, data = build_dynamic_table(
-        contest_title or enriched_meta.get("race", "Unknown"),  # domain
-        headers,                               # headers
-        data,                                  # data
-        coordinator,                           # coordinator
-        context=enriched_meta.get("context", {})  # context
-    )
+
+    # --- Only call build_dynamic_table if page is present in context ---
+    page = context.get("page") if context else None
+    if "page" in context and context["page"] is None:
+        logger.error("[OUTPUT_UTILS] Context includes 'page' but it is None. Table extraction requires a valid Playwright page object.")
+        raise ValueError("Context includes 'page' but it is None. Table extraction requires a valid Playwright page object.")
+
+    if page is not None:
+        logger.info("[OUTPUT_UTILS] Page object found in context, running build_dynamic_table.")
+        headers, data = build_dynamic_table(
+            contest_title or enriched_meta.get("race", "Unknown"),
+            headers,
+            data,
+            coordinator,
+            context
+        )
+    else:
+        logger.info("[OUTPUT_UTILS] No page object in context, skipping build_dynamic_table.")
+
     preferred_order = [
         "Precinct", "District", "Area", "Location",
         "% Precincts Reporting", "Percent Reported",
@@ -289,21 +329,23 @@ def finalize_election_output(headers, data, coordinator, contest_title, state, c
     rprint(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
     rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
 
-    # --- User prompt for feedback/corrections ---
-    feedback_log_path = os.path.join(output_path, "user_feedback_log.jsonl")
-    feedback = input("\n[Feedback] Would you like to provide feedback or corrections for this output? (Leave blank to skip):\n> ").strip()
-    if feedback:
-        feedback_entry = {
-            "timestamp": format_timestamp(),
-            "file": filepath,
-            "metadata": metadata_out,
-            "feedback": feedback
-        }
-        with open(feedback_log_path, "a", encoding="utf-8") as fb:
-            fb.write(json.dumps(feedback_entry) + "\n")
-        rprint(f"[bold blue][FEEDBACK][/bold blue] Feedback logged to {feedback_log_path}")
+    # --- User prompt for feedback/corrections (optional, controlled by env or argument) ---
+    if enable_user_feedback or os.environ.get("ENABLE_USER_FEEDBACK", "false").lower() == "true":
+        feedback_log_path = os.path.join(output_path, "user_feedback_log.jsonl")
+        feedback = input("\n[Feedback] Would you like to provide feedback or corrections for this output? (Leave blank to skip):\n> ").strip()
+        if feedback:
+            feedback_entry = {
+                "timestamp": format_timestamp(),
+                "file": filepath,
+                "metadata": metadata_out,
+                "feedback": feedback
+            }
+            with open(feedback_log_path, "a", encoding="utf-8") as fb:
+                fb.write(json.dumps(feedback_entry) + "\n")
+            rprint(f"[bold blue][FEEDBACK][/bold blue] Feedback logged to {feedback_log_path}")
 
-    return {"csv_path": filepath, 
-            "metadata_path": json_meta_path,
-            "output_file": filepath
+    return {
+        "csv_path": filepath,
+        "metadata_path": json_meta_path,
+        "output_file": filepath
     }

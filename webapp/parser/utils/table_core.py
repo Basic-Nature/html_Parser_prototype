@@ -750,6 +750,31 @@ def merge_table_data(headers_list, data_list):
     # Only harmonize once at the end
     return harmonize_headers_and_data(all_headers, merged_data)
 
+def merge_multiline_candidate_rows(headers, data):
+    """
+    Merge rows where candidate name and party are split across two rows.
+    Returns new headers and data.
+    """
+    if "Candidate" not in headers:
+        return headers, data
+    merged_data = []
+    skip_next = False
+    for i, row in enumerate(data):
+        if skip_next:
+            skip_next = False
+            continue
+        candidate_val = row.get("Candidate", "").strip()
+        # If next row exists and all other columns are empty, treat as party
+        if i + 1 < len(data):
+            next_row = data[i + 1]
+            if all(not next_row.get(h, "").strip() for h in headers if h != "Candidate"):
+                # Merge party into candidate name
+                party_val = next_row.get("Candidate", "").strip()
+                row["Candidate"] = f"{candidate_val} ({party_val})" if party_val else candidate_val
+                skip_next = True
+        merged_data.append(row)
+    return headers, merged_data
+
 # ===================================================================
 # ENTITY ANNOTATION & STRUCTURE VERIFICATION
 # ===================================================================

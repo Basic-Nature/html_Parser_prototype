@@ -1,4 +1,4 @@
-from webapp.parser.html_election_parser import process_url_stream
+from webapp.parser.html_election_parser import process_url
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
@@ -41,11 +41,8 @@ def process_single_url(url, output_callback, idx, total, cancel_flag):
         return
     output_callback(f"\n[Parsing {idx}/{total}] {url}\n")
     try:
-        for line in process_url_stream(url):
-            if cancel_flag.is_set():
-                output_callback(f"[CANCELLED] Stopping {url}\n")
-                return
-            output_callback(line)
+        # Call process_url and capture output (you may need to adapt this to your needs)
+        process_url(url, {})  # You may want to capture output or log here
         output_callback(f"[DONE] Finished: {url}\n")
     except Exception as e:
         output_callback(f"[ERROR] Exception while processing {url}: {e}\n")

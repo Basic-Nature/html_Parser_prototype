@@ -16,6 +16,8 @@ from ..config import BASE_DIR
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "logs"))
 
 from .table_core import (
+    merge_multiline_candidate_rows,
+    robust_table_extraction,
     harmonize_headers_and_data,
     detect_table_structure,
     nlp_entity_annotate_table,
@@ -94,7 +96,6 @@ def build_dynamic_table(
         and patch_attempts < max_patch_attempts
     ):
         patch_attempts += 1
-        from .table_core import robust_table_extraction, harmonize_headers_and_data
         fallback_headers, fallback_data = robust_table_extraction(
             page,
             extraction_context=context,
@@ -158,6 +159,10 @@ def build_dynamic_table(
     logger.info(f"[TABLE_BUILDER] Harmonized headers: {headers}")
     logger.info(f"[TABLE_BUILDER] Harmonized sample row: {data[0] if data else 'NO DATA'}")
 
+    # --- Merge multi-line candidate rows if needed ---
+    headers, data = merge_multiline_candidate_rows(headers, data)
+    logger.info(f"[TABLE_BUILDER] After merging multi-line candidate rows: {len(data)} rows.")
+
     # --- 5. Structure Analysis ---
     try:
         structure_info = detect_table_structure(headers, data, coordinator, entity_info=entity_info)
@@ -169,6 +174,10 @@ def build_dynamic_table(
     # --- 6. Pivot to wide format only if structure requires ---
     should_pivot = False
     if pivot_to_wide and structure_info.get("type") in {"candidate-major", "precinct-major"}:
+        should_pivot = True
+
+    # Force pivot if headers look like candidate-major
+    if pivot_to_wide and not should_pivot and "Candidate" in headers and any(bt in headers for bt in ["Election Day", "Early Voting", "Absentee Mail"]):
         should_pivot = True
 
     # --- Synthesize location column if missing ---

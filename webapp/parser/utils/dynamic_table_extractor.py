@@ -27,6 +27,10 @@ from ..utils.table_core import (
     TOTAL_KEYWORDS,
     LOCATION_KEYWORDS,
     MISC_FOOTER_KEYWORDS,
+    extract_rows_and_headers_from_dom,
+    extract_with_patterns,
+    guess_headers_from_row,
+    extract_table_data,
     detect_table_structure,
     get_safe_log_path,
     load_dom_patterns,
@@ -79,17 +83,14 @@ def find_tabular_candidates(page):
         table = tables.nth(i)
         if table is None:
             continue
-        from .table_core import extract_table_data
         headers, data = extract_table_data(table)
         if headers and data:
             candidates.append({"headers": headers, "rows": data, "source": "table"})
     # 2. Repeated DOM structures (divs, lists, etc.)
-    from .table_core import extract_rows_and_headers_from_dom
     headers, data = extract_rows_and_headers_from_dom(page)
     if headers and data:
         candidates.append({"headers": headers, "rows": data, "source": "repeated_dom"})
     # 3. Pattern-based extraction (if any patterns are approved)
-    from .table_core import extract_with_patterns, guess_headers_from_row
     pattern_rows = extract_with_patterns(page)
     # Only use rows where row is not None
     pattern_rows = [tup for tup in pattern_rows if tup[1] is not None]
