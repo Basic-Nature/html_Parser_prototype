@@ -56,20 +56,23 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
     Does NOT run harmonization, annotation, or feedback loop.
     """
     if table_html:
-        # Use BeautifulSoup to extract headers and rows from the HTML snippet
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(table_html, "html.parser")
         table = soup.find("table")
-        if table:
-            rows = table.find_all("tr")
-            if not rows:
-                return [], []
-            headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
-            data = []
-            for row in rows[1:]:
-                cells = row.find_all(["td", "th"])
-                data.append({headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))})
-            return headers, data
+        if not table:
+            logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No <table> found in provided table_html.")
+            return [], []
+        rows = table.find_all("tr")
+        if not rows:
+            logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No <tr> rows found in table_html.")
+            return [], []
+        headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
+        data = []
+        for row in rows[1:]:
+            cells = row.find_all(["td", "th"])
+            data.append({headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))})
+        logger.info(f"[DYNAMIC_TABLE_EXTRACTOR] Extracted {len(data)} rows from HTML table.")
+        return headers, data
     candidates = find_tabular_candidates(page)
     enriched_candidates = []
     for cand in candidates:

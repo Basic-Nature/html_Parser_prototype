@@ -60,12 +60,29 @@ def build_dynamic_table(
     page = context.get("page")
     from ..utils.dynamic_table_extractor import dynamic_table_extractor
     try:
-        # PATCH: If table_html is present in context, pass it to the extractor
         table_html = context.get("table_html") if context else None
+        # --- Debugging: Show what we got for table_html
+        if not table_html:
+            rprint(f"[yellow][DEBUG] No table_html found in context for domain: {domain}[/yellow]")
+        else:
+            snippet = table_html[:300].replace("\n", "\\n")
+            if "<table" not in table_html:
+                rprint(f"[red][ERROR] table_html present but does not contain a <table> tag. Context domain: {domain}[/red]")
+                rprint(f"[red][ERROR] table_html snippet: {snippet}...[/red]")
+            else:
+                rprint(f"[green][DEBUG] table_html found for domain: {domain}[/green]")
+                rprint(f"[green][DEBUG] table_html snippet: {snippet}...[/green]")
         extracted_headers, extracted_data = dynamic_table_extractor(page, context, coordinator, table_html=table_html)
+        # --- Debugging: Show what was extracted
+        if not extracted_headers and not extracted_data:
+            rprint(f"[red][ERROR] No headers or data extracted from table_html for domain: {domain}[/red]")
+        else:
+            rprint(f"[cyan][DEBUG] Extracted headers: {extracted_headers}[/cyan]")
+            rprint(f"[cyan][DEBUG] Number of extracted rows: {len(extracted_data)}[/cyan]")
         logger.info(f"[TABLE_BUILDER] dynamic_table_extractor: {len(extracted_headers)} headers, {len(extracted_data)} rows.")
     except Exception as e:
         logger.error(f"[TABLE_BUILDER] dynamic_table_extractor failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+        rprint(f"[red][ERROR] Exception in dynamic_table_extractor: {e}[/red]")
         extracted_headers, extracted_data = [], []
     # --- Persistent cache for debugging/recovery only ---
     persistent_cache = {

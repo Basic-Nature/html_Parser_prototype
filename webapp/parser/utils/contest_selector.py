@@ -27,27 +27,25 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     title = contest.get("title", "")
     year = contest.get("year", "")
     ctype = contest.get("type", "")
-    # Score year: must match a valid election year, not a timestamp
     year_score = 0.0
     if year and re.match(r"^(19|20)\d{2}$", str(year)):
         year_score = 1.0
     else:
-        # Try to extract year from title using NER
         entities = coordinator.extract_entities(title)
         for ent, label in entities:
             if label == "DATE" and re.match(r"^(19|20)\d{2}$", ent):
                 year_score = 0.9
                 break
-    # Score type: must match known election types
     known_types = [t.lower() for t in coordinator.get_election_types()]
-    type_score = 1.0 if ctype and ctype.lower() in known_types else 0.0
-    # Score title: must contain a known contest/election phrase
+    # PATCH: allow substring match
+    type_score = 1.0 if ctype and any(t in ctype.lower() for t in known_types) else 0.0
     contest_keywords = ["president", "senate", "congress", "governor", "mayor", "school board", "proposition", "referendum", "assembly", "council", "trustee", "justice", "clerk"]
     title_score = 1.0 if any(kw in title.lower() for kw in contest_keywords) else 0.0
-    # ML/NER score for the whole header
     ml_score = coordinator.score_header(title, context)
-    # Weighted average
     score = 0.4 * year_score + 0.2 * type_score + 0.2 * title_score + 0.2 * ml_score
+    if score < threshold:
+        print(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type: {ctype}")
+        print(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, total={score:.2f}")
     return score >= threshold
 
 def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "ContextCoordinator", context: dict, max_loops: int = 3, threshold: float = 0.85) -> List[Dict[str, Any]]:
