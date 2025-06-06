@@ -14,7 +14,7 @@ from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
 from sentence_transformers import SentenceTransformer
 from ..bots.librarian import (
-    HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS,
+    HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
     extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
     log_unknown_tag, log_unknown_attr
 )
@@ -89,12 +89,6 @@ def extract_tagged_segments_with_attrs(
     include_data_attrs: bool = True,
     fallback_on_error: bool = True
 ) -> List[Dict[str, Any]]:
-    """
-    Uses selectolax to walk the DOM and extract segments with parent/child relationships and accurate indices.
-    Adds context_heading to panels/sections and tables by finding the nearest heading ancestor.
-    Also adds panel_ancestor_idx and panel_ancestor_heading to tables for direct hierarchy extraction.
-    Falls back to BeautifulSoup if selectolax fails.
-    """
     start_time = time.time()
     segments: List[Dict[str, Any]] = []
     heading_tags = HEADING_TAGS
@@ -106,9 +100,8 @@ def extract_tagged_segments_with_attrs(
             tag = node.tag
             if not tag or tag.lower() not in HTML_TAGS:
                 log_unknown_tag(tag)
-                for child in node.iter():
-                    if child.parent is node:
-                        walk(child, parent_idx, heading_idx, panel_idx)
+                for child in node.iter(include_text=True):
+                    walk(child, parent_idx, heading_idx, panel_idx)
                 return
             attrs = dict(node.attributes)
             if include_data_attrs:
@@ -155,11 +148,10 @@ def extract_tagged_segments_with_attrs(
                 seg["html"] = ""
             segments.append(seg)
             this_idx = seg["_idx"]
-            for child in node.iter():
-                if child.parent is node:
-                    child_idx = walk(child, this_idx, this_heading_idx, this_panel_idx)
-                    if child_idx is not None:
-                        seg["children"].append(child_idx)
+            for child in node.iter(include_text=True):
+                child_idx = walk(child, this_idx, this_heading_idx, this_panel_idx)
+                if child_idx is not None:
+                    seg["children"].append(child_idx)
             return this_idx
 
         root = tree.body or tree.html or tree.root
@@ -255,10 +247,21 @@ def extract_tagged_segments_with_attrs(
 
 def extract_panel_table_hierarchy(segments):
     from bs4 import BeautifulSoup
-
     panel_tags = PANEL_TAGS
     panels = []
     found_panel = False
+
+    def is_panel(seg):
+        tag = seg["tag"]
+        classes = [c.lower() for c in seg.get("classes", [])]
+        id_ = seg.get("id", "").lower()
+        # Panel if tag in PANEL_TAGS or class/id contains panel-like keywords
+        panel_like = ["panel", "card", "container", "box", "section-panel"]
+        return (
+            tag in PANEL_TAGS
+            or any(cls in panel_like for cls in classes)
+            or any(p in id_ for p in panel_like)
+        )
 
     def extract_heading_text(heading_html):
         if not heading_html:
@@ -270,7 +273,7 @@ def extract_panel_table_hierarchy(segments):
         return soup.get_text(strip=True)
 
     for seg in segments:
-        if seg["tag"] in panel_tags:
+        if is_panel(seg):
             found_panel = True
             panel_heading_html = seg.get("context_heading")
             panel_heading = extract_heading_text(panel_heading_html)
@@ -412,13 +415,64 @@ def extract_download_links_from_html(html, exts=(".csv", ".json", ".pdf")):
 
 # --- ML/Embedding/Clustering helpers ---
 
+def auto_label_segment(segment):
+    tag = segment.get("tag", "")
+    classes = [c.lower() for c in segment.get("classes", [])]
+    attrs = segment.get("attrs", {})
+    html = segment.get("html", "").lower()
+    id_ = segment.get("id", "").lower()
+
+    # 1. Table
+    if tag == "table":
+        return "results_table"
+
+    # 2. Ballot toggle/button
+    if segment.get("is_button") or "btn" in classes or "button" in classes or "toggle" in classes or "toggle" in id_:
+        return "ballot_toggle"
+
+    # 3. Heading
+    if tag in HEADING_TAGS or any(cls in ["heading", "header", "title"] for cls in classes):
+        return "heading"
+
+    # 4. Panel
+    if tag in PANEL_TAGS or any(cls in ["panel", "card", "container", "box", "section-panel"] for cls in classes):
+        return "panel"
+
+    # 5. Download link
+    if tag == "a" and "href" in attrs:
+        href = str(attrs["href"]).lower()
+        if any(href.endswith(ext) for ext in [".csv", ".json", ".pdf", ".xlsx"]):
+            return "download_link"
+
+    # 6. Location/candidate panel
+    if any(kw in html for kw in LOCATION_KEYWORDS):
+        return "location_panel"
+    if any(kw in html for kw in CANDIDATE_KEYWORDS):
+        return "candidate_panel"
+
+    # 7. Ballot type
+    if any(bt in html for bt in BALLOT_TYPES):
+        return "ballot_type"
+
+    # 8. Clickable
+    if segment.get("is_clickable"):
+        return "clickable"
+
+    # 9. Ignore empty or decorative
+    if tag in {"br", "hr", "i", "b", "u", "span"} and not html.strip():
+        return "ignore"
+
+    # 10. Fallback
+    return "ignore"
+
 def get_segment_embedding(model, segment):
     # Use text and tag/attrs for embedding
     text = segment.get("html", "")
     tag = segment.get("tag", "")
     attrs = " ".join([f"{k}={v}" for k, v in segment.get("attrs", {}).items()])
-    full_text = f"{tag} {attrs} {text}"
+    full_text = f"{tag} {attrs} {text}"   
     return model.encode(full_text, convert_to_numpy=True)
+
 
 def cosine_sim(a, b):
     if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
@@ -448,8 +502,17 @@ def ml_classify_segment(segment, model, pattern_kb, threshold=0.85):
         return "unknown", best_conf, None
     return best_label, best_conf, best_pattern_id
 
+
 def prompt_for_segment_label(segment):
-    rprint(f"\n[bold yellow]Segment needs review:[/bold yellow]\n{segment['html'][:200]}{'...' if len(segment['html']) > 200 else ''}")
+    # Try to auto-label first
+    auto = auto_label_segment(segment)
+    if auto != "ignore":
+        return auto
+    # Fallback to user prompt if ambiguous
+    html_preview = segment.get("html", "")
+    if not html_preview:
+        html_preview = f"[No HTML] tag={segment.get('tag')} attrs={segment.get('attrs')}"
+    rprint(f"\n[bold yellow]Segment needs review:[/bold yellow]\n{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
     rprint("[cyan]What is the semantic role of this segment? (e.g., results_table, ballot_toggle, heading, ignore, etc.)[/cyan]")
     label = prompt_user_input("> ").strip()
     return label
@@ -664,26 +727,3 @@ def scan_html_for_context(
     if context_cache is not None:
         context_cache[page_hash] = context_result
     return context_result
-
-def log_unknown_tag(tag):
-    if tag not in HTML_TAGS:
-        log_unknown_tag.add(tag)
-        # Write to a file for LLM/human review
-        try:
-            path = safe_log_path("unknown_tags_log.jsonl")
-            with open(path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"tag": tag, "timestamp": time.time()}) + "\n")
-        except Exception as e:
-            logger.error(f"Failed to log unknown tag: {e}")
-
-def log_unknown_attr(attr):
-    known_prefixes = ["data-", "aria-", "role"]
-    if not any(attr.startswith(p) for p in known_prefixes):
-        log_unknown_attr.add(attr)
-        # Write to a file for LLM/human review
-        try:
-            path = safe_log_path("unknown_attrs_log.jsonl")
-            with open(path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"attr": attr, "timestamp": time.time()}) + "\n")
-        except Exception as e:
-            logger.error(f"Failed to log unknown attr: {e}")

@@ -139,7 +139,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             with open("rockland_debug.html", "w", encoding="utf-8") as f:
                 f.write(html)
             rprint(f"[DEBUG] HTML length: {len(html)}")
-            rprint(f"[DEBUG] HTML after toggles (first 500 chars):\n{html[:1000]}")
+            rprint(f"[DEBUG] HTML after toggles (first 1000 chars):\n{html[:1000]}")
             segments = extract_tagged_segments_with_attrs(html)
             rprint(f"[DEBUG] All segment tags: {[seg['tag'] for seg in segments]}")
             rprint(f"[DEBUG] Extracted {len(segments)} segments. Tags: {[seg['tag'] for seg in segments[:20]]}")

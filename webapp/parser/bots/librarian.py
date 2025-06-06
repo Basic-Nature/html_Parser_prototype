@@ -1,10 +1,6 @@
 import json, os, re
 from typing import Set, List, Dict, Any
-
-# --- Path to your context library ---
-CONTEXT_LIBRARY_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "Context_Integration", "Context_Library", "context_library.json"
-)
+from ..config import CONTEXT_LIBRARY_PATH
 
 # --- Central Dynamic Sets (used everywhere) ---
 HTML_TAGS: Set[str] = set([
@@ -101,15 +97,32 @@ def save_context_library():
 UNKNOWN_TAGS_LOG = set()
 UNKNOWN_ATTRS_LOG = set()
 
+def _get_log_path(filename: str) -> str:
+    # Get the parent directory of webapp
+    webapp_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    log_dir = os.path.join(webapp_dir, "log")
+    os.makedirs(log_dir, exist_ok=True)
+    return os.path.join(log_dir, filename)
+
 def log_unknown_tag(tag: str):
     if tag not in HTML_TAGS:
         UNKNOWN_TAGS_LOG.add(tag)
-        # Optionally: write to a file for LLM/human review
+        try:
+            log_path = _get_log_path("unknown_tags_log.jsonl")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"tag": tag}) + "\n")
+        except Exception:
+            pass
 
 def log_unknown_attr(attr: str):
     if not any(pat.match(attr) for pat in CUSTOM_ATTR_PATTERNS):
         UNKNOWN_ATTRS_LOG.add(attr)
-        # Optionally: write to a file for LLM/human review
+        try:
+            log_path = _get_log_path("unknown_attrs_log.jsonl")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"attr": attr}) + "\n")
+        except Exception:
+            pass
 
 # --- ML/LLM Feedback Integration Example ---
 def integrate_llm_feedback(new_panel_tags=None, new_heading_tags=None, new_attr_patterns=None, new_location_keywords=None, new_candidate_keywords=None, new_ballot_types=None):
