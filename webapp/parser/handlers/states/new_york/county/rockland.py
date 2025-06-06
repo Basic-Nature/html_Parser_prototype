@@ -141,6 +141,14 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             rprint(f"[DEBUG] HTML length: {len(html)}")
             rprint(f"[DEBUG] HTML after toggles (first 1000 chars):\n{html[:1000]}")
             segments = extract_tagged_segments_with_attrs(html)
+            for seg in segments:
+                if seg["tag"] == "table":
+                    parent_idx = seg.get("parent_idx")
+                    parent = segments[parent_idx] if parent_idx is not None else None
+                    print("TABLE SEGMENT:")
+                    print("  Table classes:", seg.get("classes"))
+                    if parent:
+                        print("  Parent tag/classes:", parent["tag"], parent.get("classes"))            
             rprint(f"[DEBUG] All segment tags: {[seg['tag'] for seg in segments]}")
             rprint(f"[DEBUG] Extracted {len(segments)} segments. Tags: {[seg['tag'] for seg in segments[:20]]}")
             panels = extract_panel_table_hierarchy(segments)

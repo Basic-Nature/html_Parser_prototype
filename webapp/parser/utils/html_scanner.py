@@ -249,19 +249,6 @@ def extract_panel_table_hierarchy(segments):
     from bs4 import BeautifulSoup
     panel_tags = PANEL_TAGS
     panels = []
-    found_panel = False
-
-    def is_panel(seg):
-        tag = seg["tag"]
-        classes = [c.lower() for c in seg.get("classes", [])]
-        id_ = seg.get("id", "").lower()
-        # Panel if tag in PANEL_TAGS or class/id contains panel-like keywords
-        panel_like = ["panel", "card", "container", "box", "section-panel"]
-        return (
-            tag in PANEL_TAGS
-            or any(cls in panel_like for cls in classes)
-            or any(p in id_ for p in panel_like)
-        )
 
     def extract_heading_text(heading_html):
         if not heading_html:
@@ -272,53 +259,58 @@ def extract_panel_table_hierarchy(segments):
             return span.get_text(strip=True)
         return soup.get_text(strip=True)
 
+    # Build mappings from heading to panels and tables
+    heading_to_panel = {}
+    heading_to_tables = {}
+
     for seg in segments:
-        if is_panel(seg):
-            found_panel = True
-            panel_heading_html = seg.get("context_heading")
-            panel_heading = extract_heading_text(panel_heading_html)
-            panel = {
-                "panel_idx": seg["_idx"],
-                "panel_tag": seg["tag"],
-                "panel_heading": panel_heading,
-                "panel_html": seg["html"],
-                "fully_reported": extract_fully_reported_from_panel(seg["html"]),
-                "tables": []
-            }
-            stack = list(seg["children"])
-            while stack:
-                child_idx = stack.pop()
-                child = segments[child_idx]
-                if child["tag"] == "table":
-                    context_heading_html = child.get("context_heading")
-                    context_heading = extract_heading_text(context_heading_html)
-                    panel_ancestor_heading_html = child.get("panel_ancestor_heading")
-                    panel_ancestor_heading = extract_heading_text(panel_ancestor_heading_html)
-                    panel["tables"].append({
-                        "table_idx": child["_idx"],
-                        "table_html": child["html"],
-                        "context_heading": context_heading,
-                        "panel_ancestor_heading": panel_ancestor_heading,
-                    })
-                stack.extend(child["children"])
-            if panel["tables"]:
-                panels.append(panel)
-    if not found_panel:
+        heading = extract_heading_text(seg.get("context_heading"))
+        if seg["tag"] in panel_tags or any(
+            kw in (seg.get("classes", []) + [seg.get("id", "")])
+            for kw in ["panel", "card", "container", "box", "section-panel", "results", "content", "main", "section", "p-panel-content"]
+        ):
+            if heading:
+                heading_to_panel[heading] = seg
+        elif seg["tag"] == "table":
+            if heading:
+                heading_to_tables.setdefault(heading, []).append(seg)
+
+    # Associate tables with their panels by heading
+    for heading, panel_seg in heading_to_panel.items():
+        tables = heading_to_tables.get(heading, [])
+        if tables:
+            panels.append({
+                "panel_idx": panel_seg["_idx"],
+                "panel_tag": panel_seg["tag"],
+                "panel_heading": heading,
+                "panel_html": panel_seg["html"],
+                "fully_reported": extract_fully_reported_from_panel(panel_seg["html"]),
+                "tables": [
+                    {
+                        "table_idx": t["_idx"],
+                        "table_html": t["html"],
+                        "context_heading": heading,
+                        "panel_ancestor_heading": heading,
+                    }
+                    for t in tables
+                ]
+            })
+
+    # If no panels found, fallback: treat each table as its own panel
+    if not panels:
         for seg in segments:
             if seg["tag"] == "table":
-                context_heading_html = seg.get("context_heading")
-                context_heading = extract_heading_text(context_heading_html)
-                panel_ancestor_heading_html = seg.get("panel_ancestor_heading")
-                panel_ancestor_heading = extract_heading_text(panel_ancestor_heading_html)
+                heading = extract_heading_text(seg.get("context_heading"))
+                panel_ancestor_heading = extract_heading_text(seg.get("panel_ancestor_heading"))
                 panels.append({
                     "panel_idx": seg["_idx"],
                     "panel_tag": "table",
-                    "panel_heading": context_heading,
+                    "panel_heading": heading,
                     "panel_html": seg["html"],
                     "tables": [{
                         "table_idx": seg["_idx"],
                         "table_html": seg["html"],
-                        "context_heading": context_heading,
+                        "context_heading": heading,
                         "panel_ancestor_heading": panel_ancestor_heading,
                     }]
                 })
