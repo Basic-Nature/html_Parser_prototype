@@ -13,15 +13,23 @@ from rich import print as rprint
 from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
 from sentence_transformers import SentenceTransformer
+from ..bots.librarian import (
+    HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS,
+    extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
+    log_unknown_tag, log_unknown_attr
+)
 import numpy as np
 
 from bs4 import BeautifulSoup, Tag
 
-# --- Extensible HTML tag list ---
-HTML_TAGS: Set[str] = set([
-    "html", "head", "title", "body", "h1", "h2", "h3", "h4", "h5", "h6",
-    "b", "i", "center", "ul", "li", "br", "p", "hr", "img", "a", "span", "div", "button", "input", "form", "table"
-])
+# --- No longer need local UNKNOWN_TAGS_LOG/UNKNOWN_ATTRS_LOG ---
+
+# Example: dynamically extend from learning/feedback
+extend_panel_tags(["custom-panel"])
+extend_custom_attr_patterns([r"^x-data-"])
+extend_heading_tags(["custom-heading", "special-h2"])
+extend_html_tags(["custom-element", "widget"])
+
 def load_additional_tags_from_context_library():
     tags = set()
     if os.path.exists(CONTEXT_LIBRARY_PATH):
@@ -32,10 +40,6 @@ def load_additional_tags_from_context_library():
                     tags.update([t.lower() for t in context_lib[key] if isinstance(t, str)])
     return tags
 HTML_TAGS |= load_additional_tags_from_context_library()
-def extend_html_tags(new_tags: List[str]):
-    """Allow runtime extension of HTML_TAGS."""
-    global HTML_TAGS
-    HTML_TAGS |= set(t.lower() for t in new_tags)
 
 def safe_log_path(filename: str, log_dir: str = "log") -> str:
     from ..config import BASE_DIR
@@ -61,6 +65,7 @@ def extract_attrs_bs4(bs4_tag: Tag) -> Dict[str, Any]:
             attrs[k] = True
         else:
             attrs[k] = v
+        log_unknown_attr(k)
     # Include data-* attributes
     for k, v in bs4_tag.attrs.items():
         if k.startswith("data-"):
@@ -68,11 +73,15 @@ def extract_attrs_bs4(bs4_tag: Tag) -> Dict[str, Any]:
     return attrs
 
 def extract_custom_attrs(attrs: Dict[str, Any], include_data: bool = True) -> Dict[str, Any]:
-    """Extract custom attributes, e.g., data-*."""
+    """Extract custom attributes (data-*, aria-*, role, etc.) based on dynamic patterns."""
     custom = {}
     for k, v in attrs.items():
-        if include_data and k.startswith("data-"):
-            custom[k] = v
+        for pat in CUSTOM_ATTR_PATTERNS:
+            if pat.match(k):
+                custom[k] = v
+                break
+        else:
+            log_unknown_attr(k)
     return custom
 
 def extract_tagged_segments_with_attrs(
@@ -88,14 +97,15 @@ def extract_tagged_segments_with_attrs(
     """
     start_time = time.time()
     segments: List[Dict[str, Any]] = []
-    heading_tags = {"h1", "h2", "h3", "h4", "h5", "h6"}
-    panel_tags = {"section", "fieldset", "panel", "div"}  # Extend as needed
+    heading_tags = HEADING_TAGS
+    panel_tags = PANEL_TAGS
 
     try:
         tree = HTMLParser(html)
         def walk(node, parent_idx=None, heading_idx=None, panel_idx=None):
             tag = node.tag
             if not tag or tag.lower() not in HTML_TAGS:
+                log_unknown_tag(tag)
                 for child in node.iter():
                     if child.parent is node:
                         walk(child, parent_idx, heading_idx, panel_idx)
@@ -103,17 +113,17 @@ def extract_tagged_segments_with_attrs(
             attrs = dict(node.attributes)
             if include_data_attrs:
                 attrs.update({k: v for k, v in node.attributes.items() if k.startswith("data-")})
+            for k in attrs:
+                log_unknown_attr(k)
             classes = attrs.get("class", "").split() if "class" in attrs else []
             id_ = attrs.get("id", "")
             is_button = tag == "button" or (tag == "input" and attrs.get("type", "").lower() in ["button", "submit"])
             is_clickable = is_button or tag == "a" or "onclick" in attrs or "btn" in classes or "button" in classes
 
-            # If this is a heading, update heading_idx for children
             this_heading_idx = heading_idx
             if tag.lower() in heading_tags:
                 this_heading_idx = len(segments)
 
-            # If this is a panel, update panel_idx for children
             this_panel_idx = panel_idx
             if tag.lower() in panel_tags:
                 this_panel_idx = len(segments)
@@ -131,9 +141,9 @@ def extract_tagged_segments_with_attrs(
                 "start": getattr(node, "start", None),
                 "end": getattr(node, "end", None),
                 "_idx": len(segments),
-                "context_heading": None,  # Will fill below
-                "panel_ancestor_idx": this_panel_idx,  # For tables
-                "panel_ancestor_heading": None,        # Will fill below
+                "context_heading": None,
+                "panel_ancestor_idx": this_panel_idx,
+                "panel_ancestor_heading": None,
             }
             if hasattr(node, "start") and hasattr(node, "end") and node.start is not None and node.end is not None:
                 html_bytes = html.encode("utf-8")
@@ -157,7 +167,6 @@ def extract_tagged_segments_with_attrs(
 
         # Second pass: assign context_heading and panel_ancestor_heading
         for seg in segments:
-            # Assign context_heading for panels/sections and tables
             if seg["tag"] in panel_tags or seg["tag"] == "table":
                 parent_idx = seg["parent_idx"]
                 heading_html = None
@@ -169,7 +178,6 @@ def extract_tagged_segments_with_attrs(
                     parent_idx = parent["parent_idx"]
                 seg["context_heading"] = heading_html
 
-            # For tables, assign panel_ancestor_heading
             if seg["tag"] == "table" and seg["panel_ancestor_idx"] is not None:
                 panel_node = segments[seg["panel_ancestor_idx"]]
                 seg["panel_ancestor_heading"] = panel_node.get("context_heading")
@@ -180,13 +188,13 @@ def extract_tagged_segments_with_attrs(
         logger.error(f"[FALLBACK] selectolax failed: {e}")
         if not fallback_on_error:
             raise
-        # Fallback to BeautifulSoup (slower, less accurate indices)
         soup = BeautifulSoup(html, "html.parser")
         def walk_bs4(node, parent_idx=None, heading_idx=None, start_search=0):
             if not isinstance(node, Tag):
                 return start_search
             tag = node.name.lower()
             if tag not in HTML_TAGS:
+                log_unknown_tag(tag)
                 for child in node.children:
                     start_search = walk_bs4(child, parent_idx, heading_idx, start_search)
                 return start_search
@@ -195,8 +203,8 @@ def extract_tagged_segments_with_attrs(
             if start != -1:
                 end = start + len(tag_html)
             attrs = extract_attrs_bs4(node)
-            if include_data_attrs:
-                attrs.update({k: v for k, v in node.attrs.items() if k.startswith("data-")})
+            for k in attrs:
+                log_unknown_attr(k)
             classes = attrs.get("class", "").split() if "class" in attrs else []
             id_ = attrs.get("id", "")
             is_button = tag == "button" or (tag == "input" and attrs.get("type", "").lower() in ["button", "submit"])
@@ -230,7 +238,6 @@ def extract_tagged_segments_with_attrs(
         root = soup.find("html") or soup.find("body") or soup
         walk_bs4(root)
 
-        # Second pass for context_heading
         for seg in segments:
             if seg["tag"] in panel_tags or seg["tag"] == "table":
                 parent_idx = seg["parent_idx"]
@@ -247,54 +254,84 @@ def extract_tagged_segments_with_attrs(
         return []
 
 def extract_panel_table_hierarchy(segments):
-    """
-    Returns a list of dicts:
-    [
-        {
-            "panel_idx": idx,
-            "panel_tag": ...,
-            "panel_heading": ...,
-            "panel_html": ...,
-            "tables": [
-                {
-                    "table_idx": idx,
-                    "table_html": ...,
-                    "context_heading": ...,
-                    "panel_ancestor_heading": ...,
-                },
-                ...
-            ]
-        },
-        ...
-    ]
-    """
-    panel_tags = {"section", "fieldset", "panel", "div"}
+    from bs4 import BeautifulSoup
+
+    panel_tags = PANEL_TAGS
     panels = []
+    found_panel = False
+
+    def extract_heading_text(heading_html):
+        if not heading_html:
+            return None
+        soup = BeautifulSoup(heading_html, "html.parser")
+        span = soup.find("span")
+        if span and span.get_text(strip=True):
+            return span.get_text(strip=True)
+        return soup.get_text(strip=True)
+
     for seg in segments:
         if seg["tag"] in panel_tags:
+            found_panel = True
+            panel_heading_html = seg.get("context_heading")
+            panel_heading = extract_heading_text(panel_heading_html)
             panel = {
                 "panel_idx": seg["_idx"],
                 "panel_tag": seg["tag"],
-                "panel_heading": seg.get("context_heading"),
+                "panel_heading": panel_heading,
                 "panel_html": seg["html"],
+                "fully_reported": extract_fully_reported_from_panel(seg["html"]),
                 "tables": []
             }
-            # Find all descendant tables
             stack = list(seg["children"])
             while stack:
                 child_idx = stack.pop()
                 child = segments[child_idx]
                 if child["tag"] == "table":
+                    context_heading_html = child.get("context_heading")
+                    context_heading = extract_heading_text(context_heading_html)
+                    panel_ancestor_heading_html = child.get("panel_ancestor_heading")
+                    panel_ancestor_heading = extract_heading_text(panel_ancestor_heading_html)
                     panel["tables"].append({
                         "table_idx": child["_idx"],
                         "table_html": child["html"],
-                        "context_heading": child.get("context_heading"),
-                        "panel_ancestor_heading": child.get("panel_ancestor_heading"),
+                        "context_heading": context_heading,
+                        "panel_ancestor_heading": panel_ancestor_heading,
                     })
                 stack.extend(child["children"])
             if panel["tables"]:
                 panels.append(panel)
+    if not found_panel:
+        for seg in segments:
+            if seg["tag"] == "table":
+                context_heading_html = seg.get("context_heading")
+                context_heading = extract_heading_text(context_heading_html)
+                panel_ancestor_heading_html = seg.get("panel_ancestor_heading")
+                panel_ancestor_heading = extract_heading_text(panel_ancestor_heading_html)
+                panels.append({
+                    "panel_idx": seg["_idx"],
+                    "panel_tag": "table",
+                    "panel_heading": context_heading,
+                    "panel_html": seg["html"],
+                    "tables": [{
+                        "table_idx": seg["_idx"],
+                        "table_html": seg["html"],
+                        "context_heading": context_heading,
+                        "panel_ancestor_heading": panel_ancestor_heading,
+                    }]
+                })
     return panels
+
+def extract_fully_reported_from_panel(panel_html):
+    soup = BeautifulSoup(panel_html, "html.parser")
+    for span in soup.find_all("span", class_="fw-bold"):
+        txt = span.get_text(strip=True)
+        if "Reported" in txt:
+            return txt
+    txt = soup.get_text(" ", strip=True)
+    for part in txt.splitlines():
+        if "Reported" in part:
+            return part.strip()
+    return ""
 
 TAG_PATTERN = re.compile(
     r"<({tags})(\s[^>]*)?>.*?</\1\s*>|<({tags})(\s[^>]*)?/?>".format(
@@ -303,43 +340,33 @@ TAG_PATTERN = re.compile(
     re.IGNORECASE | re.DOTALL
 )
 ATTR_PATTERN = re.compile(
-    r'([a-zA-Z_:][a-zA-Z0-9_\-.:]*)'                # Attribute name
-    r'(?:\s*=\s*'                                   # Optional equals sign and value
+    r'([a-zA-Z_:][a-zA-Z0-9_\-.:]*)'
+    r'(?:\s*=\s*'
     r'(?:'
-    r'"([^"]*)"'                                    # Double-quoted value
+    r'"([^"]*)"'
     r"|"
-    r"'([^']*)'"                                    # Single-quoted value
+    r"'([^']*)'"
     r"|"
-    r'([^\s"\'=<>`]+)'                              # Unquoted value
-    r'))?',                                         # End of value group, optional for boolean attrs
+    r'([^\s"\'=<>`]+)'
+    r'))?',
     re.UNICODE
 )
 
 def extract_attrs(attr_str):
-    """
-    Extracts HTML attributes from a string, handling:
-    - double-quoted values
-    - single-quoted values
-    - unquoted values
-    - boolean attributes (e.g., disabled, checked)
-    Returns a dict of attribute names to values (or True for boolean).
-    """
     attrs = {}
     for match in ATTR_PATTERN.finditer(attr_str):
         name = match.group(1)
-        # Prefer double-quoted, then single-quoted, then unquoted value
         value = match.group(2) if match.group(2) is not None else (
             match.group(3) if match.group(3) is not None else (
                 match.group(4) if match.group(4) is not None else None
             )
         )
         if value is None:
-            # Boolean attribute (e.g., disabled, checked)
             attrs[name] = True
         else:
             attrs[name] = value
+        log_unknown_attr(name)
     return attrs
-
 # Load or initialize the DOM pattern knowledge base
 def load_pattern_kb():
     kb = []
@@ -637,3 +664,26 @@ def scan_html_for_context(
     if context_cache is not None:
         context_cache[page_hash] = context_result
     return context_result
+
+def log_unknown_tag(tag):
+    if tag not in HTML_TAGS:
+        log_unknown_tag.add(tag)
+        # Write to a file for LLM/human review
+        try:
+            path = safe_log_path("unknown_tags_log.jsonl")
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"tag": tag, "timestamp": time.time()}) + "\n")
+        except Exception as e:
+            logger.error(f"Failed to log unknown tag: {e}")
+
+def log_unknown_attr(attr):
+    known_prefixes = ["data-", "aria-", "role"]
+    if not any(attr.startswith(p) for p in known_prefixes):
+        log_unknown_attr.add(attr)
+        # Write to a file for LLM/human review
+        try:
+            path = safe_log_path("unknown_attrs_log.jsonl")
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"attr": attr, "timestamp": time.time()}) + "\n")
+        except Exception as e:
+            logger.error(f"Failed to log unknown attr: {e}")

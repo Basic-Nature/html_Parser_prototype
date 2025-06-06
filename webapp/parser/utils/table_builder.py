@@ -221,6 +221,15 @@ def build_dynamic_table(
         structure_info = {"type": "ambiguous", "verified": False}
         entity_info["structure_info"] = structure_info
 
+    # --- PATCH: Add 'Percent Reported' or 'Reporting Status' column if present in context ---
+    percent_reported_val = context.get("fully_reported") or context.get("percent_reported")
+    if percent_reported_val:
+        colname = "Percent Reported" if "%" in percent_reported_val else "Reporting Status"
+        if colname not in headers:
+            headers.append(colname)
+        for row in data:
+            row[colname] = percent_reported_val
+
     # --- 6. Pivot to wide format only if structure requires ---
     should_pivot = False
     if structure_info.get("type") == "already-wide":

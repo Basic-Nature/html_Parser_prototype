@@ -48,7 +48,7 @@ LOCATION_KEYWORDS = {
 PERCENT_KEYWORDS = {
     "% precincts reporting", "% reported", "percent reported", "fully reported", "precincts reporting"
 }
-TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all"}
+TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all", "Percent Reported", "Reporting Status" }
 MISC_FOOTER_KEYWORDS = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
 CANDIDATE_KEYWORDS = {
     "candidate", "candidates", "name", "nominee", "person", "individual", "contestant"

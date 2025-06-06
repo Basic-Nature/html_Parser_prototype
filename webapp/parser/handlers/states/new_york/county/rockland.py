@@ -132,12 +132,26 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
 
             # --- Only autoscroll once, after all toggles ---
             autoscroll_until_stable(page)
+            page.wait_for_timeout(3000)
 
             # --- 9. Extract ballot items using DOM scan and context/NLP ---
             html = page.content()
+            with open("rockland_debug.html", "w", encoding="utf-8") as f:
+                f.write(html)
+            rprint(f"[DEBUG] HTML length: {len(html)}")
+            rprint(f"[DEBUG] HTML after toggles (first 500 chars):\n{html[:1000]}")
             segments = extract_tagged_segments_with_attrs(html)
+            rprint(f"[DEBUG] All segment tags: {[seg['tag'] for seg in segments]}")
+            rprint(f"[DEBUG] Extracted {len(segments)} segments. Tags: {[seg['tag'] for seg in segments[:20]]}")
             panels = extract_panel_table_hierarchy(segments)
+            
+            rprint(f"[DEBUG] Found {len(panels)} panels after extract_panel_table_hierarchy.")
+            for i, panel in enumerate(panels):
+                rprint(f"[DEBUG] Panel {i}: heading={panel.get('panel_heading')}, tables={len(panel.get('tables', []))}")
 
+            if not panels:
+                rprint("[red][DEBUG] No panels found in HTML. Check extract_panel_table_hierarchy logic or input HTML.")
+                
             all_results = []
             contest_title = html_context.get("selected_race") or html_context.get("contest_title") or "Unknown Contest"
             state = html_context.get("state", "NY")
@@ -154,7 +168,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                         "coordinator": coordinator,
                         "page": page,
                         "html_context": html_context,
-                        "table_html": table_html,  # Pass table HTML for downstream use if needed
+                        "table_html": table_html,
+                        "fully_reported": panel.get("fully_reported", ""),
                     }
                     # Optionally, you can pass table_html to table_builder if you adapt it to accept raw HTML
                     headers, data, entity_info = build_dynamic_table(
