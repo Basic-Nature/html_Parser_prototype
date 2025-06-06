@@ -422,48 +422,131 @@ def auto_label_segment(segment):
     html = segment.get("html", "").lower()
     id_ = segment.get("id", "").lower()
 
-    # 1. Table
+    # --- 0. Always-ignored tags/classes/ids ---
+    ALWAYS_IGNORE_TAGS = {
+        "script", "style", "svg", "path", "defs", "g", "canvas", "noscript", "meta", "link", "base", "title"
+    }
+    ALWAYS_IGNORE_CLASSES = {
+        "visually-hidden", "sr-only", "skip-link", "screen-reader", "aria-hidden", "d-none", "hidden", "offscreen"
+    }
+    ALWAYS_IGNORE_IDS = {
+        "skip-link", "hidden", "aria-hidden"
+    }
+
+    if tag in ALWAYS_IGNORE_TAGS:
+        return "ignore"
+    if set(classes) & ALWAYS_IGNORE_CLASSES:
+        return "ignore"
+    if id_ in ALWAYS_IGNORE_IDS:
+        return "ignore"
+
+    # --- 1. Decorative/icon detection (very thorough) ---
+    ICON_CLASSES = {
+        # Bootstrap, FontAwesome, PrimeIcons, Material, etc.
+        "pi", "bi", "fa", "fas", "far", "fal", "fad", "fab", "glyphicon", "icon", "material-icons",
+        "mdi", "octicon", "feather", "ion", "ionicon", "anticon", "euiicon", "p-button-icon", "p-icon",
+        "fa-solid", "fa-regular", "fa-light", "fa-duotone", "fa-brands", "fa-stack", "fa-stack-1x", "fa-stack-2x",
+        "fa-fw", "fa-li", "fa-border", "fa-spin", "fa-pulse", "fa-inverse", "fa-layers", "fa-layers-text", "fa-layers-counter",
+        "oi", "eva", "eva-icon", "remixicon", "ri", "icofont", "icn", "flaticon", "glyph", "iconify", "iconfont",
+        "uicon", "uik", "uik-icon", "uik-button-icon", "octicon", "octicon-alert", "octicon-info", "octicon-check",
+        "octicon-x", "octicon-star", "octicon-stop", "octicon-download", "octicon-upload", "octicon-arrow", "octicon-chevron",
+        "octicon-dot", "octicon-dot-fill", "octicon-dot-outline", "octicon-dot-circle", "octicon-dot-square",
+        # Common icon/decoration patterns
+        "icon-label", "icon-btn", "icon-button", "icon-container", "icon-wrapper", "icon-box", "icon-bg", "icon-bg-light",
+        "icon-bg-dark", "icon-bg-primary", "icon-bg-secondary", "icon-bg-success", "icon-bg-danger", "icon-bg-warning",
+        "icon-bg-info", "icon-bg-light", "icon-bg-dark", "icon-bg-white", "icon-bg-black", "icon-bg-gray", "icon-bg-grey",
+        "icon-bg-transparent", "icon-bg-gradient", "icon-bg-image", "icon-bg-pattern", "icon-bg-shape", "icon-bg-circle",
+        "icon-bg-square", "icon-bg-rectangle", "icon-bg-oval", "icon-bg-round", "icon-bg-pill", "icon-bg-dot", "icon-bg-line",
+        "icon-bg-arrow", "icon-bg-chevron", "icon-bg-star", "icon-bg-heart", "icon-bg-check", "icon-bg-x", "icon-bg-plus",
+        "icon-bg-minus", "icon-bg-close", "icon-bg-open", "icon-bg-expand", "icon-bg-collapse", "icon-bg-menu", "icon-bg-more",
+        "icon-bg-less", "icon-bg-up", "icon-bg-down", "icon-bg-left", "icon-bg-right", "icon-bg-top", "icon-bg-bottom",
+        "icon-bg-center", "icon-bg-middle", "icon-bg-end", "icon-bg-start", "icon-bg-first", "icon-bg-last", "icon-bg-prev",
+        "icon-bg-next", "icon-bg-prev", "icon-bg-next", "icon-bg-prev", "icon-bg-next"
+    }
+    ICON_TAGS = {"i", "svg", "path", "g", "span"}  # span is only icon if class matches
+
+    # If it's an icon tag with icon class, or a span with only icon class, ignore
+    if tag in ICON_TAGS and (ICON_CLASSES & set(classes)):
+        # If the span has only icon classes or is empty, ignore
+        if tag != "span" or (set(classes) <= ICON_CLASSES and not html.strip()):
+            return "ignore"
+        # If span has only icon classes and no text, ignore
+        if tag == "span" and set(classes) <= ICON_CLASSES and not re.sub(r"<[^>]+>", "", html).strip():
+            return "ignore"
+    # Empty span or i
+    if tag in {"i", "span"} and not html.strip():
+        return "ignore"
+
+    # --- 2. Download links ---
+    if tag == "a" and "href" in attrs:
+        href = str(attrs["href"]).lower()
+        if any(href.endswith(ext) for ext in [".csv", ".json", ".pdf", ".xlsx", ".zip", ".xls", ".doc", ".docx"]):
+            return "download_link"
+
+    # --- 3. Ballot toggle/button ---
+    BUTTON_CLASSES = {"btn", "button", "toggle", "switch", "p-button", "mat-button", "v-btn", "ant-btn", "el-button"}
+    if segment.get("is_button") or BUTTON_CLASSES & set(classes) or "toggle" in id_:
+        return "ballot_toggle"
+
+    # --- 4. Heading ---
+    HEADING_CLASSES = {"heading", "header", "title", "h1", "h2", "h3", "h4", "h5", "h6", "section-title", "panel-title"}
+    if tag in HEADING_TAGS or HEADING_CLASSES & set(classes):
+        return "heading"
+
+    # --- 5. Panel/section/card/box ---
+    PANEL_CLASSES = {"panel", "card", "container", "box", "section-panel", "mat-card", "el-card", "ant-card", "v-card"}
+    if tag in PANEL_TAGS or PANEL_CLASSES & set(classes):
+        return "panel"
+
+    # --- 6. Table ---
     if tag == "table":
         return "results_table"
 
-    # 2. Ballot toggle/button
-    if segment.get("is_button") or "btn" in classes or "button" in classes or "toggle" in classes or "toggle" in id_:
-        return "ballot_toggle"
-
-    # 3. Heading
-    if tag in HEADING_TAGS or any(cls in ["heading", "header", "title"] for cls in classes):
-        return "heading"
-
-    # 4. Panel
-    if tag in PANEL_TAGS or any(cls in ["panel", "card", "container", "box", "section-panel"] for cls in classes):
-        return "panel"
-
-    # 5. Download link
-    if tag == "a" and "href" in attrs:
-        href = str(attrs["href"]).lower()
-        if any(href.endswith(ext) for ext in [".csv", ".json", ".pdf", ".xlsx"]):
-            return "download_link"
-
-    # 6. Location/candidate panel
+    # --- 7. Location/candidate panel ---
     if any(kw in html for kw in LOCATION_KEYWORDS):
         return "location_panel"
     if any(kw in html for kw in CANDIDATE_KEYWORDS):
         return "candidate_panel"
 
-    # 7. Ballot type
+    # --- 8. Ballot type ---
     if any(bt in html for bt in BALLOT_TYPES):
         return "ballot_type"
 
-    # 8. Clickable
+    # --- 9. Clickable (fallback for links/buttons) ---
     if segment.get("is_clickable"):
         return "clickable"
 
-    # 9. Ignore empty or decorative
-    if tag in {"br", "hr", "i", "b", "u", "span"} and not html.strip():
+    # --- 10. User feedback-driven ignore patterns (optional, advanced) ---
+    # You can periodically load feedback log and add new ignore patterns here.
+    # Example:
+    # try:
+    #     with open(safe_log_path("segment_feedback_log.jsonl"), "r", encoding="utf-8") as f:
+    #         for line in f:
+    #             entry = json.loads(line)
+    #             if entry.get("label") == "ignore":
+    #                 # Add pattern to ignore list, e.g. by class, tag, or id
+    #                 pass
+    # except Exception:
+    #     pass
+
+    # --- 11. Fallback: ignore common empty/structural tags ---
+    STRUCTURAL_TAGS = {"br", "hr", "wbr", "col", "colgroup", "thead", "tbody", "tfoot", "tr", "th", "td"}
+    if tag in STRUCTURAL_TAGS and not html.strip():
         return "ignore"
 
-    # 10. Fallback
-    return "ignore"
+    # --- 12. Fallback: ignore if only whitespace or non-breaking space ---
+    if not html.strip() or html.strip() in {"&nbsp;", "&#160;"}:
+        return "ignore"
+
+    # --- 13. Fallback: ignore if only contains a single icon or decorative element ---
+    if tag == "span" and len(classes) > 0 and all(cls in ICON_CLASSES for cls in classes):
+        return "ignore"
+
+    # --- 14. Fallback: ignore if only contains a single child which is an icon ---
+    # (You can expand this with more DOM context if needed.)
+
+    # --- 15. Fallback: unknown/ambiguous, needs review ---
+    return "unknown"
 
 def get_segment_embedding(model, segment):
     # Use text and tag/attrs for embedding
