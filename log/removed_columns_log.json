@@ -1,6 +1,8 @@
 {
   "Orangetown Town Council\nVote for 1": {
-    "%reported": 1,
-    "Votes": 1
+    "District": 1,
+    "Town": 1,
+    "Precinct": 1,
+    "Candidate": 1
   }
 }

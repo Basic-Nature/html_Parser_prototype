@@ -1,7 +1,7 @@
 import json, os, re
 from typing import Set, List, Dict, Any
-from ..config import CONTEXT_LIBRARY_PATH
-
+from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
+LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
 # --- Central Dynamic Sets (used everywhere) ---
 HTML_TAGS: Set[str] = set([
     "html", "head", "title", "body", "h1", "h2", "h3", "h4", "h5", "h6",
@@ -98,9 +98,8 @@ UNKNOWN_TAGS_LOG = set()
 UNKNOWN_ATTRS_LOG = set()
 
 def _get_log_path(filename: str) -> str:
-    # Get the parent directory of webapp
-    webapp_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    log_dir = os.path.join(webapp_dir, "log")
+    # Get the parent directory of webapp (i.e., project root)
+    log_dir = os.path.join(LOG_PARENT_DIR, "log")
     os.makedirs(log_dir, exist_ok=True)
     return os.path.join(log_dir, filename)
 

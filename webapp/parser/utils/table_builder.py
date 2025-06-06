@@ -13,7 +13,7 @@ from ..utils.logger_instance import logger
 from ..utils.shared_logger import rprint
 from ..config import BASE_DIR
 
-LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "logs"))
+LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
 
 from .table_core import (
     extract_all_candidates_from_data,
