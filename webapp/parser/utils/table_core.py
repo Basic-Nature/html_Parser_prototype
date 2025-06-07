@@ -23,6 +23,7 @@ import unicodedata
 import glob
 import re
 import string
+import difflib
 from difflib import SequenceMatcher
 from collections import Counter
 from typing import List, Dict, Any, Tuple, TYPE_CHECKING
@@ -60,12 +61,7 @@ context_cache = {}
 
 def robust_table_extraction(page, extraction_context=None, existing_headers=None, existing_data=None):
     """
-    Unified, persistent table extraction pipeline:
-    - Accumulates all plausible tables/rows from DOM, patterns, standard tables, ML, plugins, and robust fallbacks.
-    - Deduplicates tables and rows.
-    - Runs entity annotation and structure verification on the unified result.
-    - Only uses fallback extraction if all other methods fail.
-    - All strategies are integrated here. Do not call individual strategies from handlers.
+    Unified, persistent table extraction pipeline with robust location detection and forced wide format.
     """
     import types
 
@@ -156,7 +152,11 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         for i in range(tables.count()):
             table = tables.nth(i)
             if table is not None:
-                headers_tab, data_tab, _ = extract_table_data(table)
+                headers_tab, data_tab, _ = extract_table_data(
+                    table,
+                    coordinator=extraction_context.get("coordinator") if extraction_context else None,
+                    structure_info={"context": extraction_context} if extraction_context else None
+                )
                 if headers_tab and data_tab:
                     all_tables.append((headers_tab, data_tab))
                     extraction_logs.append({
@@ -325,14 +325,17 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             merged_headers, merged_data, context=extraction_context, coordinator=coordinator
         )
         merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
-        merged_headers, merged_data, _ = progressive_table_verification(
+        merged_headers, merged_data, structure_info = progressive_table_verification(
             merged_headers, merged_data, coordinator, extraction_context
         )
 
         # 10. Feedback/correction loop (user-in-the-loop)
         merged_headers, merged_data = feedback_correction_loop(merged_headers, merged_data, extraction_context)
-        merged_headers, merged_data = force_fully_wide_format(merged_headers, merged_data, extraction_context)
-        
+
+        # --- NEW: Always force wide format if structure is already-wide or candidate-major ---
+        if structure_info.get("type") in ("already-wide", "candidate-major"):
+            merged_headers, merged_data = force_fully_wide_format(merged_headers, merged_data, extraction_context)
+
         return merged_headers, merged_data
 
     # --- Only now try fallback NLP extraction ---
@@ -507,10 +510,12 @@ def extract_all_tables_with_location(page, coordinator=None):
 def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """
     Extracts headers and data from a Playwright table locator.
-    Uses advanced NLP/NER and ML scoring to robustly detect entity columns.
-    Never uses "Candidate" as a location column.
-    Returns headers, data, and a meta dict with entity preview and detected location column.
+    Uses advanced NLP/NER, ML scoring, fuzzy and value-based matching to robustly detect entity columns.
+    Improves detection for location and percent reported columns.
+    Returns headers, data, and a meta dict with entity preview and detected location/percent columns.
+    Now walks the DOM for best-matching columns and values, scoring all candidates and picking the best.
     """
+
     if table is None:
         logger.error("[TABLE BUILDER][extract_table_data] Table locator is None.")
         return [], [], {}
@@ -524,33 +529,28 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         "numbers": set(),
         "locations": set(),
         "location_column": None,
+        "percent_column": None,
     }
 
     try:
         # --- Extract headers ---
         header_cells = table.locator("thead tr th")
-        logger.info(f"[TABLE BUILDER][extract_table_data] Found {header_cells.count()} header cells in thead.")
         if header_cells.count() == 0:
             first_row = table.locator("tr").first
             header_cells = first_row.locator("th, td")
-            logger.info(f"[TABLE BUILDER][extract_table_data] No thead headers, using first row: {header_cells.count()} cells.")
         for i in range(header_cells.count()):
             text = header_cells.nth(i).inner_text().strip()
             headers.append(text if text else f"Column {i+1}")
-        logger.info(f"[TABLE BUILDER][extract_table_data] Extracted headers: {headers}")
 
         # --- Extract rows ---
         rows = table.locator("tbody tr")
-        logger.info(f"[TABLE BUILDER][extract_table_data] Found {rows.count()} rows in tbody.")
         if rows.count() == 0:
             all_rows = table.locator("tr")
-            logger.info(f"[TABLE BUILDER][extract_table_data] No tbody rows, using all tr: {all_rows.count()} rows.")
             rows = all_rows
 
         for i in range(rows.count()):
             row = {}
             cells = rows.nth(i).locator("td, th")
-            logger.info(f"[TABLE BUILDER][extract_table_data] Row {i}: {cells.count()} cells.")
             if cells.count() == 0:
                 continue
             for j in range(cells.count()):
@@ -560,41 +560,94 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
                     row[f"Extra_{j+1}"] = cells.nth(j).inner_text().strip()
             if any(v for v in row.values()):
                 data.append(row)
-        logger.info(f"[TABLE BUILDER][extract_table_data] Extracted {len(data)} data rows.")
 
-        # --- Advanced NLP/ML entity detection ---
-        # Use centralized, robust keyword sets
-        ballot_type_keywords = set(bt.lower() for bt in BALLOT_TYPES)
-        # Improved number pattern: allows commas, decimals, percents, and negative numbers
-        number_pattern = re.compile(r"^-?\d{1,3}(?:,\d{3})*(?:\.\d+)?%?$")
+        context = structure_info.get("context") if structure_info else {}
+        county = context.get("county", "").lower() if context else ""
+        known_districts = set()
+        if coordinator and hasattr(coordinator, "library"):
+            county_map = coordinator.library.get("Known_county_to_district_map", {})
+            if county and county_map.get(county.title()):
+                known_districts = set(d.lower() for d in county_map[county.title()])
 
-        # 1. Use NLP/NER to detect likely location columns
-        location_col = None
-        location_scores = []
-        if coordinator:
-            for h in headers:
+        # --- Robust Location & Percent Detection: Score all candidates, don't stop at first ---
+        location_candidates = []
+        percent_candidates = []
+        percent_patterns = set(PERCENT_KEYWORDS)
+
+        # 1. Score headers using ML/NLP/NER and heuristics
+        for h in headers:
+            score = 0
+            if coordinator:
                 ents = coordinator.extract_entities(h)
                 for ent, label in ents:
                     if label in {"GPE", "LOC", "FAC"} and h.lower() != "candidate":
-                        location_scores.append((h, 1.0))
+                        score += 1.0
                 if is_location_header(h) and h.lower() != "candidate":
-                    score = coordinator.score_header(h, {}) if hasattr(coordinator, "score_header") else 0.5
-                    location_scores.append((h, score))
-            if location_scores:
-                location_col = max(location_scores, key=lambda x: x[1])[0]
-        # 2. Fallback: use location keyword match, but never "Candidate"
-        if not location_col:
-            for h in headers:
-                if is_location_header(h) and h.lower() != "candidate":
-                    location_col = h
-                    break
-        # 3. If still not found, log a warning (optionally suppress for already-wide)
+                    score += coordinator.score_header(h, {}) if hasattr(coordinator, "score_header") else 0.5
+            if is_location_header(h) and h.lower() != "candidate":
+                score += 0.3
+            # Value-based: check if values match known districts
+            if known_districts:
+                col_vals = [str(row.get(h, "")).lower() for row in data]
+                match_count = sum(
+                    1 for v in col_vals
+                    if v in known_districts or difflib.get_close_matches(v, known_districts, n=1, cutoff=0.8)
+                )
+                if match_count / max(1, len(col_vals)) > 0.5:
+                    score += 0.7
+            # Uniqueness/entropy: high unique values, not all numeric
+            col_vals = [str(row.get(h, "")) for row in data]
+            unique_vals = len(set(col_vals))
+            if unique_vals > 3 and not all(v.replace(",", "").isdigit() for v in col_vals if v):
+                score += 0.2
+            if score > 0:
+                location_candidates.append((h, score))
+
+            # Percent detection
+            pscore = 0
+            if any(kw in h.lower() for kw in percent_patterns):
+                pscore += 1.0
+            elif "%" in h:
+                pscore += 0.8
+            if pscore > 0:
+                percent_candidates.append((h, pscore))
+
+        # 2. Walk the DOM for additional clues (scan all cells for location/percent-like values)
+        # This is a second pass, not just headers
+        dom_location_scores = {}
+        dom_percent_scores = {}
+        for h in headers:
+            col_vals = [str(row.get(h, "")) for row in data]
+            # Location: match against known districts or location-like patterns
+            if known_districts:
+                match_count = sum(
+                    1 for v in col_vals
+                    if v.lower() in known_districts or difflib.get_close_matches(v.lower(), known_districts, n=1, cutoff=0.8)
+                )
+                dom_location_scores[h] = match_count / max(1, len(col_vals))
+            # Percent: look for % in values
+            percent_count = sum(1 for v in col_vals if "%" in v)
+            dom_percent_scores[h] = percent_count / max(1, len(col_vals))
+        # Add to candidates if above threshold
+        for h, v in dom_location_scores.items():
+            if v > 0.5:
+                location_candidates.append((h, 0.5 + v))
+        for h, v in dom_percent_scores.items():
+            if v > 0.5:
+                percent_candidates.append((h, 0.5 + v))
+
+        # 3. Score and pick the best (highest score) for each, require threshold
+        location_candidates = sorted(location_candidates, key=lambda x: x[1], reverse=True)
+        percent_candidates = sorted(percent_candidates, key=lambda x: x[1], reverse=True)
+        location_col = location_candidates[0][0] if location_candidates and location_candidates[0][1] > 0.7 else None
+        percent_col = percent_candidates[0][0] if percent_candidates and percent_candidates[0][1] > 0.7 else None
+
         entity_preview["location_column"] = location_col
-        suppress_warning = structure_info and structure_info.get("type") == "already-wide"
-        if not location_col and not suppress_warning:
-            logger.warning("[TABLE BUILDER][extract_table_data] No location column detected by NLP/ML. Will not use 'Candidate' as fallback.")
+        entity_preview["percent_column"] = percent_col
 
         # --- Scan data for entity types ---
+        ballot_type_keywords = set(bt.lower() for bt in BALLOT_TYPES)
+        number_pattern = re.compile(r"^-?\d{1,3}(?:,\d{3})*(?:\.\d+)?%?$")
         for row in data:
             for h, v in row.items():
                 if not v:
@@ -615,7 +668,34 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         # --- Automated feedback/learning: log if location_col is missing or suspect ---
         if not location_col or len(entity_preview["locations"]) == 0:
             logger.warning("[TABLE BUILDER][extract_table_data] No valid location column or values detected. Consider user/ML feedback.")
-            # Optionally: trigger feedback_correction_loop or log for learning
+
+        # --- Percent Reported Value Extraction ---
+        percent_value = ""
+        if percent_col:
+            # Try to extract a percent value from the first row
+            for row in data:
+                val = row.get(percent_col, "")
+                if val and "%" in val:
+                    percent_value = val
+                    break
+        if not percent_value:
+            # Try to extract from context or fallback
+            if context and "percent_reported" in context:
+                percent_value = context["percent_reported"]
+            else:
+                # Try to extract from any cell value
+                for row in data:
+                    for v in row.values():
+                        if isinstance(v, str) and "%" in v:
+                            percent_value = v
+                            break
+                    if percent_value:
+                        break
+        # Optionally, fill percent_col in all rows if found
+        if percent_col and percent_value:
+            for row in data:
+                if not row.get(percent_col):
+                    row[percent_col] = percent_value
 
         # Log NLP-style preview
         logger.info(f"[NLP PREVIEW][extract_table_data] Candidates: {sorted(entity_preview['candidates'])}")
@@ -623,12 +703,14 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         logger.info(f"[NLP PREVIEW][extract_table_data] Numbers: {sorted(entity_preview['numbers'])}")
         logger.info(f"[NLP PREVIEW][extract_table_data] Locations: {sorted(entity_preview['locations'])}")
         logger.info(f"[NLP PREVIEW][extract_table_data] Location column: {entity_preview['location_column']}")
+        logger.info(f"[NLP PREVIEW][extract_table_data] Percent column: {entity_preview['percent_column']}")
 
         print(f"[NLP PREVIEW] Candidates: {sorted(entity_preview['candidates'])}")
         print(f"[NLP PREVIEW] Ballot Types: {sorted(entity_preview['ballot_types'])}")
         print(f"[NLP PREVIEW] Numbers: {sorted(entity_preview['numbers'])}")
         print(f"[NLP PREVIEW] Locations: {sorted(entity_preview['locations'])}")
         print(f"[NLP PREVIEW] Location column: {entity_preview['location_column']}")
+        print(f"[NLP PREVIEW] Percent column: {entity_preview['percent_column']}")
 
         # If not headers and data, fallback to generic headers
         if not headers and data:
