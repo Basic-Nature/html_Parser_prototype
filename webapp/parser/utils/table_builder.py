@@ -122,6 +122,8 @@ def build_dynamic_table(
     patch_attempts = 0
     max_patch_attempts = max_feedback_loops
     patched_headers, patched_data = extracted_headers.copy(), extracted_data.copy()
+    last_headers, last_data = None, None
+    unchanged_count = 0
 
     while (
         (not patched_headers or not patched_data or any(not h or h.lower().startswith("column") for h in patched_headers))
@@ -177,6 +179,38 @@ def build_dynamic_table(
         # If still nothing, use merged fallback as last resort
         if not patched_headers or not patched_data:
             patched_headers, patched_data = merged_headers, merged_data
+
+        # --- Robust break conditions ---
+        structure_info = detect_table_structure(patched_headers, patched_data, coordinator)
+        location_col = next((h for h in patched_headers if h.lower() in {"location", "precinct", "ward", "district", "area", "city", "municipal", "town"}), None)
+        generic_headers = all(h.lower().startswith("column") or not h.strip() for h in patched_headers)
+        headers_unchanged = last_headers == patched_headers
+        data_unchanged = last_data == patched_data
+
+        # Count unchanged iterations
+        if headers_unchanged and data_unchanged:
+            unchanged_count += 1
+        else:
+            unchanged_count = 0
+        last_headers, last_data = patched_headers.copy(), [row.copy() for row in patched_data]
+
+        if (
+            (structure_info.get("type") == "already-wide" and not location_col)
+            or generic_headers
+            or unchanged_count >= 2
+            or patch_attempts >= max_patch_attempts
+            or not patched_headers
+            or not patched_data
+        ):
+            logger.warning("[TABLE_BUILDER] Breaking out of patch loop: "
+                           f"type={structure_info.get('type')}, "
+                           f"location_col={location_col}, "
+                           f"generic_headers={generic_headers}, "
+                           f"unchanged_count={unchanged_count}, "
+                           f"patch_attempts={patch_attempts}, "
+                           f"headers={patched_headers}, "
+                           f"data_len={len(patched_data)}")
+            break
 
     # Use the final, highest-confidence extraction for downstream processing
     headers, data = patched_headers, patched_data

@@ -331,7 +331,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 
         # 10. Feedback/correction loop (user-in-the-loop)
         merged_headers, merged_data = feedback_correction_loop(merged_headers, merged_data, extraction_context)
-
+        merged_headers, merged_data = force_fully_wide_format(merged_headers, merged_data, extraction_context)
+        
         return merged_headers, merged_data
 
     # --- Only now try fallback NLP extraction ---
@@ -1534,6 +1535,106 @@ def rescan_and_verify(headers: List[str], data: List[Dict[str, Any]], coordinato
 # ===================================================================
 # STRUCTURE DETECTION, CLASSIFICATION, PIVOTING
 # ===================================================================
+
+def force_fully_wide_format(headers, data, context=None):
+    """
+    Pivot to fully wide format: one row per location (real or synthetic),
+    columns for each candidate/party/ballot type pair, plus special columns like
+    Percent Reported and Misc Totals. Preserves all rows.
+    """
+    # 1. Find or synthesize location column
+    location_col = next((h for h in headers if is_location_header(h)), None)
+    if not location_col:
+        location_col = "Location"
+        for idx, row in enumerate(data):
+            row[location_col] = (
+                context.get("contest_title") if context and context.get("contest_title")
+                else f"Row {idx+1}"
+            )
+
+    # 2. Find candidate and party columns
+    candidate_col = next((h for h in headers if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS)), None)
+    party_col = next((h for h in headers if "party" in h.lower()), None)
+
+    # 3. Find ballot type columns (known types, not location/candidate/party)
+    ballot_type_cols = [
+        h for h in headers
+        if h not in (location_col, candidate_col, party_col) and any(bt.lower() in h.lower() for bt in BALLOT_TYPES)
+    ]
+    # If no ballot type columns, use all except location/candidate/party/total/specials
+    if not ballot_type_cols:
+        ballot_type_cols = [
+            h for h in headers
+            if h not in (location_col, candidate_col, party_col)
+            and "total" not in h.lower()
+            and not any(kw in h.lower() for kw in PERCENT_KEYWORDS)
+            and not any(kw in h.lower() for kw in MISC_FOOTER_KEYWORDS)
+        ]
+
+    # 4. Find special columns
+    percent_cols = [h for h in headers if any(kw in h.lower() for kw in PERCENT_KEYWORDS)]
+    misc_total_cols = [h for h in headers if any(kw in h.lower() for kw in MISC_FOOTER_KEYWORDS or TOTAL_KEYWORDS)]
+
+    # 5. Get all unique locations, candidates, parties, ballot types
+    locations = [row.get(location_col, f"Row {i+1}") for i, row in enumerate(data)]
+    unique_locations = sorted(set(locations))
+    candidates = sorted(set(row.get(candidate_col, "") for row in data if candidate_col))
+    parties = sorted(set(row.get(party_col, "") for row in data if party_col))
+    ballot_types = sorted(set(ballot_type_cols))
+
+    # 6. Build wide headers
+    wide_headers = [location_col]
+    wide_headers.extend(percent_cols)
+    candidate_party_pairs = []
+    for row in data:
+        candidate = row.get(candidate_col, "")
+        party = row.get(party_col, "") if party_col else ""
+        if (candidate, party) not in candidate_party_pairs and candidate:
+            candidate_party_pairs.append((candidate, party))
+    for candidate, party in candidate_party_pairs:
+        for bt in ballot_types:
+            if party:
+                wide_headers.append(f"{candidate} ({party}) - {bt}")
+            else:
+                wide_headers.append(f"{candidate} - {bt}")
+    wide_headers.extend(misc_total_cols)
+    wide_headers.append("Grand Total")
+
+    # 7. Build wide data, one row per unique location
+    wide_data = []
+    for loc in unique_locations:
+        out_row = {h: "" for h in wide_headers}
+        out_row[location_col] = loc
+        grand_total = 0
+        # Find all rows for this location
+        for row in data:
+            if row.get(location_col, "") != loc:
+                continue
+            # Special columns
+            for pcol in percent_cols:
+                if pcol in out_row and row.get(pcol, ""):
+                    out_row[pcol] = row.get(pcol, "")
+            for mcol in misc_total_cols:
+                if mcol in out_row and row.get(mcol, ""):
+                    out_row[mcol] = row.get(mcol, "")
+                    try:
+                        grand_total += int(row.get(mcol, "0").replace(",", ""))
+                    except Exception:
+                        pass
+            candidate = row.get(candidate_col, "")
+            party = row.get(party_col, "") if party_col else ""
+            for bt in ballot_types:
+                key = f"{candidate} ({party}) - {bt}" if party else f"{candidate} - {bt}"
+                val = row.get(bt, "")
+                if val and key in out_row:
+                    out_row[key] = val
+                    try:
+                        grand_total += int(val.replace(",", ""))
+                    except Exception:
+                        pass
+        out_row["Grand Total"] = str(grand_total)
+        wide_data.append(out_row)
+    return wide_headers, wide_data
 
 def detect_table_structure(
     headers: List[str],
