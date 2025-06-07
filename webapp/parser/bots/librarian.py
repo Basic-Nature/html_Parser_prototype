@@ -23,6 +23,9 @@ CUSTOM_ATTR_PATTERNS: List[re.Pattern] = [
 BALLOT_TYPES = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
 ]
+BALLOT_TYPE_SORT_ORDER = [
+    "Election Day", "Early Voting", "Absentee", "Mail", "Absentee Mail"
+]
 LOCATION_KEYWORDS = {
     "precinct", "ward", "district", "location", "area", "city", "municipal", "town",
     "borough", "village", "county", "division", "subdistrict", "polling place", "ed", "municipality"
@@ -145,7 +148,7 @@ load_context_library()
 # --- Export all sets for use in other modules ---
 __all__ = [
     "HTML_TAGS", "PANEL_TAGS", "HEADING_TAGS", "CUSTOM_ATTR_PATTERNS",
-    "BALLOT_TYPES", "LOCATION_KEYWORDS", "PERCENT_KEYWORDS", "TOTAL_KEYWORDS",
+    "BALLOT_TYPES", "BALLOT_TYPE_SORT_ORDER", "LOCATION_KEYWORDS", "PERCENT_KEYWORDS", "TOTAL_KEYWORDS",
     "MISC_FOOTER_KEYWORDS", "CANDIDATE_KEYWORDS",
     "extend_panel_tags", "extend_heading_tags", "extend_html_tags", "extend_custom_attr_patterns",
     "extend_location_keywords", "extend_candidate_keywords", "extend_ballot_types",

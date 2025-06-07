@@ -31,7 +31,16 @@ import hashlib
 from ..utils.shared_logger import logger
 from ..utils.ml_table_detector import detect_tables_ml
 from ..config import BASE_DIR
-
+from difflib import get_close_matches
+from ..bots.librarian import (
+    LOCATION_KEYWORDS,
+    PERCENT_KEYWORDS,
+    BALLOT_TYPES,
+    BALLOT_TYPE_SORT_ORDER,
+    CANDIDATE_KEYWORDS,
+    TOTAL_KEYWORDS,
+    MISC_FOOTER_KEYWORDS,
+)
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
@@ -41,18 +50,8 @@ TABLE_STRUCTURE_CACHE_PATH = os.path.join(BASE_DIR, "parser", "Context_Integrati
 BALLOT_TYPES = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
 ]
-LOCATION_KEYWORDS = {
-    "precinct", "ward", "district", "location", "area", "city", "municipal", "town",
-    "borough", "village", "county", "division", "subdistrict", "polling place", "ed", "municipality"
-}
-PERCENT_KEYWORDS = {
-    "% precincts reporting", "% reported", "percent reported", "fully reported", "precincts reporting"
-}
-TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all", "Percent Reported", "Reporting Status" }
-MISC_FOOTER_KEYWORDS = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
-CANDIDATE_KEYWORDS = {
-    "candidate", "candidates", "name", "nominee", "person", "individual", "contestant"
-}
+
+
 context_cache = {}
 
 # ===================================================================
@@ -400,10 +399,6 @@ def extract_all_tables_with_location(page, coordinator=None):
         find_tables_with_section_headings,
     )
 
-    # Use the global keyword sets for easier expansion
-    LOCATION_HEADERS = list(LOCATION_KEYWORDS)
-    PERCENT_HEADERS = list(PERCENT_KEYWORDS)
-
     extraction_types = [
         ("panel", find_tables_with_panel_headings(page)),
         ("section", find_tables_with_section_headings(page)),
@@ -420,44 +415,43 @@ def extract_all_tables_with_location(page, coordinator=None):
             headers, data, entity_preview = extract_table_data(table, coordinator=coordinator)
             if not headers or not data:
                 continue
-            
-            # --- Find or create a location column name (fuzzy/substring match) ---
-            location_col = None
-            for h in headers:
-                if is_location_header(h):
-                    location_col = h
-                    break
 
-            # If not found, synthesize
-            if location_col is None or location_col.lower() == "candidate":
-                # Prefer "District" or "Precinct" as column name
-                location_col = "District" if "district" in heading.lower() else "Precinct"
-                # Insert as first column if not present
+            # --- Use central keywords from librarian ---
+            location_col = find_best_header(headers, LOCATION_KEYWORDS)
+            if not location_col:
+                # Synthesize: guess best name from heading or fallback
+                for kw in LOCATION_KEYWORDS:
+                    if kw in heading.lower():
+                        location_col = kw.title()
+                        break
+                if not location_col:
+                    location_col = "District"
                 if location_col not in headers:
                     headers = [location_col] + headers
-                # Inject heading value into each row
                 for row in data:
                     row[location_col] = heading
+            else:
+                for row in data:
+                    if not row.get(location_col):
+                        row[location_col] = heading
 
-            # --- Find or create a percent reported column ---
-            percent_col = None
-            for h in headers:
-                if any(p.lower() in h.lower() for p in PERCENT_HEADERS):
-                    percent_col = h
-                    break
+            percent_col = find_best_header(headers, PERCENT_KEYWORDS)
+            percent_value = extract_percent_reported_from_heading(heading) or percent_reported_global
             if not percent_col:
                 percent_col = "Percent Reported"
                 if percent_col not in headers:
                     headers.append(percent_col)
-                percent_value = extract_percent_reported_from_heading(heading) or percent_reported_global
                 for row in data:
                     row[percent_col] = percent_value
+            else:
+                for row in data:
+                    if not row.get(percent_col):
+                        row[percent_col] = percent_value
 
             all_headers.update(headers)
             all_data.extend(data)
             all_entity_previews.append(entity_preview)
 
-        # Harmonize headers and data
         all_headers_list = list(all_headers)
         all_headers_list, all_data = harmonize_headers_and_data(all_headers_list, all_data)
         extraction_results.append({
@@ -465,7 +459,7 @@ def extract_all_tables_with_location(page, coordinator=None):
             "headers": all_headers_list,
             "data": all_data,
             "entity_previews": all_entity_previews,
-            "score": 0  # Will be filled below
+            "score": 0
         })
 
     # --- Score each extraction result using ML/NLP if available ---
@@ -1142,6 +1136,21 @@ def safe_redirect_url(user_url, allowed_domains=None):
         return parsed.geturl()
     except Exception:
         return "/"
+
+def find_best_header(headers, keywords):
+    """Find the best matching header from a set of keywords (case-insensitive, fuzzy)."""
+    headers_lower = [h.lower() for h in headers]
+    # Try substring match for any keyword
+    for kw in keywords:
+        for i, h in enumerate(headers_lower):
+            if kw in h:
+                return headers[i]
+    # Fuzzy match if no substring match
+    for kw in keywords:
+        matches = get_close_matches(kw, headers_lower, n=1, cutoff=0.7)
+        if matches:
+            return headers[headers_lower.index(matches[0])]
+    return None
     
 # ===================================================================
 # HARMONIZATION & CLEANING
@@ -1163,8 +1172,7 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
         if h not in deduped_headers:
             deduped_headers.append(h)
 
-    # Detect location column
-    location_keywords = {"precinct", "ward", "district", "location", "area", "city", "municipal", "town"}
+    # Detect location column using librarian keywords
     location_col = None
     for h in deduped_headers:
         if is_location_header(h):
@@ -1174,7 +1182,7 @@ def harmonize_headers_and_data(headers: list, data: list) -> tuple:
     # Detect candidate column
     candidate_col = None
     for h in deduped_headers:
-        if "candidate" in h.lower():
+        if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS):
             candidate_col = h
             break
 
@@ -1797,7 +1805,7 @@ def pivot_precinct_major_to_wide(
 
     # Sort ballot types: Election Day, Early Voting, Absentee, ...rest alphabetically
     ballot_types = []
-    for bt in ["Election Day", "Early Voting", "Absentee", "Mail", "Absentee Mail"]:
+    for bt in BALLOT_TYPE_SORT_ORDER:
         if bt in ballot_types_set:
             ballot_types.append(bt)
     for bt in sorted(ballot_types_set):
