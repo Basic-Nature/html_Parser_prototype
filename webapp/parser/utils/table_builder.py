@@ -321,7 +321,7 @@ def build_dynamic_table(
 def _get_table_builder_cache_dir():
     # Always log to parent of webapp/logs/table_builder_cache
     from ..config import BASE_DIR
-    log_parent = os.path.abspath(os.path.join(BASE_DIR, "..", "logs"))
+    log_parent = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
     cache_dir = os.path.join(log_parent, "table_builder_cache")
     os.makedirs(cache_dir, exist_ok=True)
     return cache_dir
