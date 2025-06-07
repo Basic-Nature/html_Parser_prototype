@@ -186,6 +186,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                     # Add district to each row for context
                     for row in data:
                         row["District"] = district
+                    if "District" not in headers:
+                        headers = ["District"] + headers
                     all_results.append((headers, data, contest_title, entity_info))
 
             # --- 10. Assemble headers and finalize output ---

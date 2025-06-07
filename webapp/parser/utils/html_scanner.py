@@ -508,18 +508,31 @@ def auto_label_segment(segment):
     if segment.get("is_clickable"):
         return "clickable"
 
-    # --- 10. User feedback-driven ignore patterns (optional, advanced) ---
-    # You can periodically load feedback log and add new ignore patterns here.
-    # Example:
-    # try:
-    #     with open(safe_log_path("segment_feedback_log.jsonl"), "r", encoding="utf-8") as f:
-    #         for line in f:
-    #             entry = json.loads(line)
-    #             if entry.get("label") == "ignore":
-    #                 # Add pattern to ignore list, e.g. by class, tag, or id
-    #                 pass
-    # except Exception:
-    #     pass
+    # --- 10. Results timestamp (robust, real-world) ---
+    TIMESTAMP_CLASSES = {
+        "time-ago", "timestamp", "last-updated", "results-timestamp", "update-time", "posted", "modified", "date", "datetime"
+    }
+    TIMESTAMP_ID_PATTERNS = [
+        r"timestamp", r"time[-_]?ago", r"last[-_]?updated", r"update[-_]?time", r"posted", r"modified", r"date", r"datetime"
+    ]
+    TIMESTAMP_ATTRS = [
+        "timeago", "datetime", "data-timestamp", "data-updated", "data-date", "data-time", "data-last-updated"
+    ]
+    # Check tag, class, id, or attributes
+    if (
+        tag in {"span", "time", "div", "p", "small", "label"}
+        and (
+            any(cls in TIMESTAMP_CLASSES for cls in classes)
+            or any(re.search(pat, id_) for pat in TIMESTAMP_ID_PATTERNS if id_)
+            or any(attr in attrs for attr in TIMESTAMP_ATTRS)
+            or any(re.search(pat, " ".join(attrs.keys())) for pat in TIMESTAMP_ID_PATTERNS)
+            or re.search(r"\bago\b|\bupdated\b|\blast\b|\bposted\b|\bas of\b|\breported\b", html)
+            or re.search(r"\b\d{1,2}:\d{2}\s*(am|pm)?\b", html)  # time like 12:34 or 12:34 pm
+            or re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", html)   # date like 1/2/2024
+            or re.search(r"\b\d{4}-\d{2}-\d{2}\b", html)         # ISO date
+        )
+    ):
+        return "results_timestamp"
 
     # --- 11. Fallback: ignore common empty/structural tags ---
     STRUCTURAL_TAGS = {"br", "hr", "wbr", "col", "colgroup", "thead", "tbody", "tfoot", "tr", "th", "td"}
@@ -536,7 +549,20 @@ def auto_label_segment(segment):
 
     # --- 14. Fallback: ignore if only contains a single child which is an icon ---
     # (You can expand this with more DOM context if needed.)
-
+    
+    # --- X. User feedback-driven ignore patterns (optional, advanced) ---
+    # You can periodically load feedback log and add new ignore patterns here.
+    # Example:
+    # try:
+    #     with open(safe_log_path("segment_feedback_log.jsonl"), "r", encoding="utf-8") as f:
+    #         for line in f:
+    #             entry = json.loads(line)
+    #             if entry.get("label") == "ignore":
+    #                 # Add pattern to ignore list, e.g. by class, tag, or id
+    #                 pass
+    # except Exception:
+    #     pass
+    
     # --- 15. Fallback: unknown/ambiguous, needs review ---
     return "unknown"
 

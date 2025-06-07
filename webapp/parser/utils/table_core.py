@@ -420,50 +420,37 @@ def extract_all_tables_with_location(page, coordinator=None):
             headers, data, entity_preview = extract_table_data(table, coordinator=coordinator)
             if not headers or not data:
                 continue
-
+            
             # --- Find or create a location column name (fuzzy/substring match) ---
             location_col = None
             for h in headers:
-                for lh in LOCATION_HEADERS:
-                    if fuzzy_in(lh, h) and h.lower() != "candidate":
-                        location_col = h
-                        break
-                if location_col:
+                if is_location_header(h):
+                    location_col = h
                     break
 
             # If not found, synthesize
             if location_col is None or location_col.lower() == "candidate":
-                # Use "District" for panel, "Location" for section
-                location_col = "District" if method == "panel" else "Location"
+                # Prefer "District" or "Precinct" as column name
+                location_col = "District" if "district" in heading.lower() else "Precinct"
+                # Insert as first column if not present
                 if location_col not in headers:
-                    headers = headers + [location_col]
+                    headers = [location_col] + headers
+                # Inject heading value into each row
                 for row in data:
                     row[location_col] = heading
 
             # --- Find or create a percent reported column ---
             percent_col = None
             for h in headers:
-                for ph in PERCENT_HEADERS:
-                    if fuzzy_in(ph.replace("%", "").replace(" ", ""), h.replace("%", "").replace(" ", "")):
-                        percent_col = h
-                        break
-                if percent_col:
+                if any(p.lower() in h.lower() for p in PERCENT_HEADERS):
+                    percent_col = h
                     break
             if not percent_col:
-                percent_col = "% Precincts Reporting"
+                percent_col = "Percent Reported"
                 if percent_col not in headers:
-                    headers = headers + [percent_col]
-
-            # --- Extract percent reported from heading or global ---
-            percent_value = extract_percent_reported_from_heading(heading)
-            if not percent_value:
-                percent_value = percent_reported_global
-
-            # --- Assign heading to location column and percent to percent column for each row ---
-            for row in data:
-                if location_col not in row or not row[location_col]:
-                    row[location_col] = heading
-                if percent_col not in row or not row[percent_col]:
+                    headers.append(percent_col)
+                percent_value = extract_percent_reported_from_heading(heading) or percent_reported_global
+                for row in data:
                     row[percent_col] = percent_value
 
             all_headers.update(headers)
