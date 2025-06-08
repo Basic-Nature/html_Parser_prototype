@@ -166,24 +166,33 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             county = html_context.get("county", "Rockland")
 
             for panel in panels:
-                district = panel["panel_heading"] or "Unknown District"
+                # Try to get a location/district name from the panel
+                district = panel.get("panel_heading") or "Unknown District"
+                # Optionally, look for more location context here (e.g., parent divs, nearby headings)
+                if not panel.get("tables"):
+                    rprint(f"[red][ERROR] No table found for panel with heading: {district}[/red]")
+                    continue
                 for table in panel["tables"]:
-                    table_html = table["table_html"]
+                    table_html = table.get("table_html")
+                    # If table_html is missing, warn and skip
+                    if not table_html:
+                        rprint(f"[red][ERROR] No table_html found in context for panel: {district}[/red]")
+                        continue
+                    # Build extraction context with both table and location
                     extraction_context = {
                         "district": district,
-                        "panel_heading": panel["panel_heading"],
-                        "panel_tag": panel["panel_tag"],
+                        "panel_heading": panel.get("panel_heading"),
+                        "panel_tag": panel.get("panel_tag"),
                         "coordinator": coordinator,
                         "page": page,
                         "html_context": html_context,
                         "table_html": table_html,
                         "fully_reported": panel.get("fully_reported", ""),
                     }
-                    # Optionally, you can pass table_html to table_builder if you adapt it to accept raw HTML
                     headers, data, entity_info = build_dynamic_table(
                         contest_title, [], [], coordinator, extraction_context
                     )
-                    # Add district to each row for context
+                    # Attach location to each row
                     for row in data:
                         row["District"] = district
                     if "District" not in headers:

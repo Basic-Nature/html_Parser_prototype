@@ -18,6 +18,7 @@ from ..bots.librarian import (
     extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
     log_unknown_tag, log_unknown_attr
 )
+ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 import numpy as np
 
 from bs4 import BeautifulSoup, Tag
@@ -246,74 +247,189 @@ def extract_tagged_segments_with_attrs(
         return []
 
 def extract_panel_table_hierarchy(segments):
+    """
+    Robustly extract panels and their associated tables from DOM segments.
+    Each panel will include all tables that are descendants or contextually grouped.
+    If no panels are found, each table is treated as its own panel.
+    Returns a list of panel dicts, each with a 'tables' list containing table HTML and context.
+    """
     from bs4 import BeautifulSoup
+    import re
+    from difflib import get_close_matches
+
     panel_tags = PANEL_TAGS
+    heading_tags = HEADING_TAGS
+
+    # --- Helper: Fuzzy/regex matching for district/precinct names ---
+    # Accepts things like "Orangetown 18", "Clarkstown 1", "District 5", etc.
+    DISTRICT_REGEX = re.compile(
+        r"\b([A-Z][a-z]+(?: [A-Z][a-z]+)*\s*\d{1,3}|District\s*\d{1,3}|Ward\s*\d{1,3}|Precinct\s*\d{1,3}|ED\s*\d{1,3})\b"
+    )
+    # Optionally, add more patterns as needed
+
+    # --- Helper: Extract heading text from ancestors, with regex/fuzzy matching ---
+    def extract_heading_text_from_ancestors(seg, segments, max_depth=6):
+        parent_idx = seg.get("parent_idx")
+        depth = 0
+        while parent_idx is not None and depth < max_depth:
+            parent = segments[parent_idx]
+            soup = BeautifulSoup(parent.get("html", ""), "html.parser")
+            # Try heading tags first
+            for tag in ["span", "strong", "b"] + [f"h{i}" for i in range(1, 7)]:
+                el = soup.find(tag)
+                if el and el.get_text(strip=True):
+                    txt = el.get_text(strip=True)
+                    # Regex match for district/precinct
+                    match = DISTRICT_REGEX.search(txt)
+                    if match:
+                        return match.group(0)
+                    # Fuzzy match: look for likely district/precinct names
+                    if len(txt) < 40 and any(word in txt.lower() for word in ["district", "ward", "precinct", "ed", "town", "city", "village"]):
+                        return txt
+            # Fallback: any text in parent
+            txt = soup.get_text(strip=True)
+            match = DISTRICT_REGEX.search(txt)
+            if match:
+                return match.group(0)
+            if len(txt) < 40 and any(word in txt.lower() for word in ["district", "ward", "precinct", "ed", "town", "city", "village"]):
+                return txt
+            parent_idx = parent.get("parent_idx")
+            depth += 1
+        return None
+
+    # --- Helper: Extract "Fully Reported" or percent reported from panel or siblings ---
+    def extract_fully_reported_from_ancestors_or_siblings(seg, segments):
+        from bs4 import BeautifulSoup
+        # Check self
+        soup = BeautifulSoup(seg.get("html", ""), "html.parser")
+        for span in soup.find_all("span", class_="fw-bold"):
+            txt = span.get_text(strip=True)
+            if "Reported" in txt:
+                return txt
+        # Check siblings (other children of parent)
+        parent_idx = seg.get("parent_idx")
+        if parent_idx is not None:
+            parent = segments[parent_idx]
+            for child_idx in parent.get("children", []):
+                if child_idx == seg["_idx"]:
+                    continue
+                sibling = segments[child_idx]
+                soup = BeautifulSoup(sibling.get("html", ""), "html.parser")
+                for span in soup.find_all("span", class_="fw-bold"):
+                    txt = span.get_text(strip=True)
+                    if "Reported" in txt:
+                        return txt
+        return ""
+
+    # --- 1. Build index for fast lookup ---
+    idx_to_seg = {seg["_idx"]: seg for seg in segments if "_idx" in seg}
+    table_segs = [seg for seg in segments if seg.get("tag") == "table"]
+    panel_segs = [
+        seg for seg in segments
+        if seg.get("tag") in panel_tags or any(
+            kw in (seg.get("classes", []) + [seg.get("id", "")])
+            for kw in [
+                "panel", "card", "container", "box", "section-panel", "results", "content", "main", "section", "p-panel-content"
+            ]
+        )
+    ]
+
+    # --- 2. Map tables to their nearest panel ancestor (by parent_idx walk) ---
+    table_to_panel = {}
+    for table in table_segs:
+        parent_idx = table.get("parent_idx")
+        found_panel = None
+        while parent_idx is not None:
+            parent = idx_to_seg.get(parent_idx)
+            if not parent:
+                break
+            if parent.get("tag") in panel_tags or any(
+                kw in (parent.get("classes", []) + [parent.get("id", "")])
+                for kw in [
+                    "panel", "card", "container", "box", "section-panel", "results", "content", "main", "section", "p-panel-content"
+                ]
+            ):
+                found_panel = parent
+                break
+            parent_idx = parent.get("parent_idx")
+        if found_panel:
+            table_to_panel.setdefault(found_panel["_idx"], []).append(table)
+        else:
+            table_to_panel.setdefault(None, []).append(table)
+
     panels = []
 
-    def extract_heading_text(heading_html):
-        if not heading_html:
-            return None
-        soup = BeautifulSoup(heading_html, "html.parser")
-        span = soup.find("span")
-        if span and span.get_text(strip=True):
-            return span.get_text(strip=True)
-        return soup.get_text(strip=True)
-
-    # Build mappings from heading to panels and tables
-    heading_to_panel = {}
-    heading_to_tables = {}
-
-    for seg in segments:
-        heading = extract_heading_text(seg.get("context_heading"))
-        if seg["tag"] in panel_tags or any(
-            kw in (seg.get("classes", []) + [seg.get("id", "")])
-            for kw in ["panel", "card", "container", "box", "section-panel", "results", "content", "main", "section", "p-panel-content"]
-        ):
-            if heading:
-                heading_to_panel[heading] = seg
-        elif seg["tag"] == "table":
-            if heading:
-                heading_to_tables.setdefault(heading, []).append(seg)
-
-    # Associate tables with their panels by heading
-    for heading, panel_seg in heading_to_panel.items():
-        tables = heading_to_tables.get(heading, [])
+    # --- 3. Build panel objects with robust heading and reporting extraction ---
+    for panel_seg in panel_segs:
+        # Try to extract heading from ancestors (robust)
+        heading = extract_heading_text_from_ancestors(panel_seg, segments)
+        # If not found, fallback to context_heading
+        if not heading:
+            heading = extract_heading_text_from_ancestors({"parent_idx": panel_seg.get("parent_idx")}, segments)
+        tables = table_to_panel.get(panel_seg["_idx"], [])
+        if not tables:
+            # Try to find tables that are children (descendants) of this panel
+            tables = [
+                seg for seg in table_segs
+                if seg.get("parent_idx") == panel_seg["_idx"]
+            ]
         if tables:
+            fully_reported = extract_fully_reported_from_ancestors_or_siblings(panel_seg, segments)
             panels.append({
                 "panel_idx": panel_seg["_idx"],
-                "panel_tag": panel_seg["tag"],
+                "panel_tag": panel_seg.get("tag"),
                 "panel_heading": heading,
-                "panel_html": panel_seg["html"],
-                "fully_reported": extract_fully_reported_from_panel(panel_seg["html"]),
+                "panel_html": panel_seg.get("html"),
+                "fully_reported": fully_reported,
                 "tables": [
                     {
                         "table_idx": t["_idx"],
-                        "table_html": t["html"],
-                        "context_heading": heading,
+                        "table_html": t.get("html", ""),
+                        "context_heading": extract_heading_text_from_ancestors(t, segments),
                         "panel_ancestor_heading": heading,
                     }
                     for t in tables
                 ]
             })
 
-    # If no panels found, fallback: treat each table as its own panel
+    # --- 4. Fallback: treat orphan tables as their own panels ---
+    orphan_tables = table_to_panel.get(None, [])
+    for seg in orphan_tables:
+        heading = extract_heading_text_from_ancestors(seg, segments)
+        panel_ancestor_heading = extract_heading_text_from_ancestors({"parent_idx": seg.get("parent_idx")}, segments)
+        panels.append({
+            "panel_idx": seg["_idx"],
+            "panel_tag": "table",
+            "panel_heading": heading,
+            "panel_html": seg.get("html", ""),
+            "fully_reported": "",
+            "tables": [{
+                "table_idx": seg["_idx"],
+                "table_html": seg.get("html", ""),
+                "context_heading": heading,
+                "panel_ancestor_heading": panel_ancestor_heading,
+            }]
+        })
+
+    # --- 5. If still no panels, treat every table as a panel (last resort) ---
     if not panels:
-        for seg in segments:
-            if seg["tag"] == "table":
-                heading = extract_heading_text(seg.get("context_heading"))
-                panel_ancestor_heading = extract_heading_text(seg.get("panel_ancestor_heading"))
-                panels.append({
-                    "panel_idx": seg["_idx"],
-                    "panel_tag": "table",
-                    "panel_heading": heading,
-                    "panel_html": seg["html"],
-                    "tables": [{
-                        "table_idx": seg["_idx"],
-                        "table_html": seg["html"],
-                        "context_heading": heading,
-                        "panel_ancestor_heading": panel_ancestor_heading,
-                    }]
-                })
+        for seg in table_segs:
+            heading = extract_heading_text_from_ancestors(seg, segments)
+            panel_ancestor_heading = extract_heading_text_from_ancestors({"parent_idx": seg.get("parent_idx")}, segments)
+            panels.append({
+                "panel_idx": seg["_idx"],
+                "panel_tag": "table",
+                "panel_heading": heading,
+                "panel_html": seg.get("html", ""),
+                "fully_reported": "",
+                "tables": [{
+                    "table_idx": seg["_idx"],
+                    "table_html": seg.get("html", ""),
+                    "context_heading": heading,
+                    "panel_ancestor_heading": panel_ancestor_heading,
+                }]
+            })
+
     return panels
 
 def extract_fully_reported_from_panel(panel_html):
@@ -609,12 +725,16 @@ def prompt_for_segment_label(segment):
     auto = auto_label_segment(segment)
     if auto != "ignore":
         return auto
+    if not ENABLE_SEGMENT_LABEL_PROMPT:
+        return "unknown"
     # Fallback to user prompt if ambiguous
     html_preview = segment.get("html", "")
     if not html_preview:
         html_preview = f"[No HTML] tag={segment.get('tag')} attrs={segment.get('attrs')}"
     rprint(f"\n[bold yellow]Segment needs review:[/bold yellow]\n{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
-    rprint("[cyan]What is the semantic role of this segment? (e.g., results_table, ballot_toggle, heading, ignore, etc.)[/cyan]")
+    rprint(
+        "[cyan]What is the semantic role of this segment? (e.g., results_table, ballot_toggle, heading, panel, candidate_panel, location_panel, ballot_type, results_timestamp, download_link, clickable, footer, legend, contest_title, party_label, vote_method, reporting_status, summary, error_message, warning, info_box, navigation, pagination, tab, modal, tooltip, ignore, unknown, etc.)[/cyan]"
+    )
     label = prompt_user_input("> ").strip()
     return label
 

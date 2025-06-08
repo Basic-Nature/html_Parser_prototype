@@ -11,7 +11,7 @@ PANEL_TAGS: Set[str] = set([
     "section", "fieldset", "panel", "div", "p-panel", "app-ballot-item-wrapper", "article"
 ])
 HEADING_TAGS: Set[str] = set([
-    "h1", "h2", "h3", "h4", "h5", "h6"
+    "h1", "h2", "h3", "h4", "h5", "h6", "span", "b", "strong"
 ])
 CUSTOM_ATTR_PATTERNS: List[re.Pattern] = [
     re.compile(r"^data-"),

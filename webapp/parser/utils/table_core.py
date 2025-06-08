@@ -89,7 +89,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 
     # 1. DOM structure extraction (divs, lists, etc.)
     try:
-        headers_dom, data_dom = extract_rows_and_headers_from_dom(
+        headers_dom, data_dom, diagnostics_dom = extract_rows_and_headers_from_dom(
             page, coordinator=extraction_context.get("coordinator") if extraction_context else None
         )
         if headers_dom and data_dom:
@@ -100,7 +100,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                 "rows": len(data_dom),
                 "columns": len(headers_dom),
                 "success": True,
-                "context": extraction_context
+                "context": extraction_context,
+                "diagnostics": diagnostics_dom,
             })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] DOM structure extraction failed: {e}")
@@ -108,13 +109,15 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "method": "repeated_dom",
             "error": str(e),
             "success": False,
-            "context": extraction_context
+            "context": extraction_context,
+            "diagnostics": None,
         })
 
     # 2. Pattern-based extraction (approved DOM patterns)
     try:
         pattern_rows = extract_with_patterns(page, extraction_context)
         pattern_rows = [tup for tup in pattern_rows if tup[1] is not None]
+        diagnostics_pat = {"pattern_count": len(pattern_rows)}
         if pattern_rows:
             headers_pat = guess_headers_from_row(pattern_rows[0][1])
             data_pat = []
@@ -135,7 +138,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                     "rows": len(data_pat),
                     "columns": len(headers_pat),
                     "success": True,
-                    "context": extraction_context
+                    "context": extraction_context,
+                    "diagnostics": diagnostics_pat,
                 })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Pattern extraction failed: {e}")
@@ -143,7 +147,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "method": "pattern",
             "error": str(e),
             "success": False,
-            "context": extraction_context
+            "context": extraction_context,
+            "diagnostics": None,
         })
 
     # 3. Standard HTML table extraction
@@ -152,7 +157,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         for i in range(tables.count()):
             table = tables.nth(i)
             if table is not None:
-                headers_tab, data_tab, _ = extract_table_data(
+                headers_tab, data_tab, diagnostics_tab = extract_table_data(
                     table,
                     coordinator=extraction_context.get("coordinator") if extraction_context else None,
                     structure_info={"context": extraction_context} if extraction_context else None
@@ -165,7 +170,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                         "rows": len(data_tab),
                         "columns": len(headers_tab),
                         "success": True,
-                        "context": extraction_context
+                        "context": extraction_context,
+                        "diagnostics": diagnostics_tab,
                     })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Table extraction failed: {e}")
@@ -173,12 +179,13 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "method": "table",
             "error": str(e),
             "success": False,
-            "context": extraction_context
+            "context": extraction_context,
+            "diagnostics": None,
         })
 
     # 4. Table extraction with heading/location context
     try:
-        headers_loc, data_loc, _ = extract_all_tables_with_location(
+        headers_loc, data_loc, diagnostics_loc = extract_all_tables_with_location(
             page, coordinator=extraction_context.get("coordinator") if extraction_context else None
         )
         if headers_loc and data_loc:
@@ -189,7 +196,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                 "rows": len(data_loc),
                 "columns": len(headers_loc),
                 "success": True,
-                "context": extraction_context
+                "context": extraction_context,
+                "diagnostics": diagnostics_loc,
             })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Table-with-heading extraction failed: {e}")
@@ -197,13 +205,15 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "method": "table_with_heading",
             "error": str(e),
             "success": False,
-            "context": extraction_context
+            "context": extraction_context,
+            "diagnostics": None,
         })
 
     # 5. ML-based table detection
     try:
         ml_tables = ml_based_table_detection(page, extraction_context)
-        for headers_ml, data_ml in ml_tables:
+        for idx, (headers_ml, data_ml) in enumerate(ml_tables):
+            diagnostics_ml = {"ml_table_index": idx, "row_count": len(data_ml)}
             if headers_ml and data_ml:
                 all_tables.append((headers_ml, data_ml))
                 extraction_logs.append({
@@ -212,7 +222,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                     "rows": len(data_ml),
                     "columns": len(headers_ml),
                     "success": True,
-                    "context": extraction_context
+                    "context": extraction_context,
+                    "diagnostics": diagnostics_ml,
                 })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] ML table detection failed: {e}")
@@ -220,13 +231,15 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "method": "ml_table_detection",
             "error": str(e),
             "success": False,
-            "context": extraction_context
+            "context": extraction_context,
+            "diagnostics": None,
         })
 
     # 6. Nested table extraction
     try:
         nested_tables = nested_table_extraction(page)
-        for headers_nested, data_nested in nested_tables:
+        for idx, (headers_nested, data_nested) in enumerate(nested_tables):
+            diagnostics_nested = {"nested_table_index": idx, "row_count": len(data_nested)}
             if headers_nested and data_nested:
                 all_tables.append((headers_nested, data_nested))
                 extraction_logs.append({
@@ -235,7 +248,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                     "rows": len(data_nested),
                     "columns": len(headers_nested),
                     "success": True,
-                    "context": extraction_context
+                    "context": extraction_context,
+                    "diagnostics": diagnostics_nested,
                 })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Nested table extraction failed: {e}")
@@ -243,13 +257,15 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "method": "nested_table",
             "error": str(e),
             "success": False,
-            "context": extraction_context
+            "context": extraction_context,
+            "diagnostics": None,
         })
 
     # 7. Custom plugin extraction
     try:
         plugin_tables = custom_plugin_extraction(page, extraction_context)
-        for headers_plugin, data_plugin in plugin_tables:
+        for idx, (headers_plugin, data_plugin) in enumerate(plugin_tables):
+            diagnostics_plugin = {"plugin_index": idx, "row_count": len(data_plugin)}
             if headers_plugin and data_plugin:
                 all_tables.append((headers_plugin, data_plugin))
                 extraction_logs.append({
@@ -258,7 +274,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                     "rows": len(data_plugin),
                     "columns": len(headers_plugin),
                     "success": True,
-                    "context": extraction_context
+                    "context": extraction_context,
+                    "diagnostics": diagnostics_plugin,
                 })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Plugin extraction failed: {e}")
@@ -266,17 +283,28 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "method": "plugin",
             "error": str(e),
             "success": False,
-            "context": extraction_context
+            "context": extraction_context,
+            "diagnostics": None,
         })
 
     # 8. Add any existing headers/data provided
     if existing_headers and existing_data and len(existing_headers) > 0 and len(existing_data) > 0:
         all_tables.append((existing_headers, existing_data))
+        extraction_logs.append({
+            "method": "existing",
+            "headers": existing_headers,
+            "rows": len(existing_data),
+            "columns": len(existing_headers),
+            "success": True,
+            "context": extraction_context,
+            "diagnostics": None,
+        })
 
     # 9. Robust HTML fallback using BeautifulSoup
     try:
         fallback_tables = robust_html_fallback_extraction(page)
-        for headers_fallback, data_fallback in fallback_tables:
+        for idx, (headers_fallback, data_fallback) in enumerate(fallback_tables):
+            diagnostics_fallback = {"fallback_table_index": idx, "row_count": len(data_fallback)}
             if headers_fallback and data_fallback:
                 all_tables.append((headers_fallback, data_fallback))
                 extraction_logs.append({
@@ -285,7 +313,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                     "rows": len(data_fallback),
                     "columns": len(headers_fallback),
                     "success": True,
-                    "context": extraction_context
+                    "context": extraction_context,
+                    "diagnostics": diagnostics_fallback,
                 })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] HTML fallback extraction failed: {e}")
@@ -293,11 +322,12 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "method": "html_fallback",
             "error": str(e),
             "success": False,
-            "context": extraction_context
+            "context": extraction_context,
+            "diagnostics": None,
         })
 
     logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(safe_json(extraction_logs), indent=2)}")
-
+    
     # --- Deduplicate tables by header signature ---
     unique_tables = {}
     for headers, data in all_tables:
@@ -738,17 +768,21 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
 def guess_headers_from_row(row, known_keywords=None):
     """
     Attempts to guess headers from a row's children using keywords or context.
+    Returns (headers, diagnostics)
     """
+    diagnostics = {}
     if row is None:
         logger.warning("[TABLE BUILDER][guess_headers_from_row] Row is None, cannot guess headers.")
-        return []
+        diagnostics["error"] = "Row is None"
+        return [], diagnostics
     if known_keywords is None:
         known_keywords = ["candidate", "votes", "party", "precinct", "choice", "option", "response", "total"]
     cells = row.locator("> *")
     headers = []
+    cell_texts = []
     for i in range(cells.count()):
         text = cells.nth(i).inner_text().strip().lower()
-        # Use keyword if present, else generic
+        cell_texts.append(text)
         header = None
         for kw in known_keywords:
             if kw in text:
@@ -757,91 +791,62 @@ def guess_headers_from_row(row, known_keywords=None):
         if not header:
             header = f"Column {i+1}"
         headers.append(header)
-    return headers
+    diagnostics["cell_texts"] = cell_texts
+    diagnostics["headers"] = headers
+    return headers, diagnostics
 
 def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2, coordinator=None):
     """
     Attempts to extract tabular data from repeated DOM structures (divs, etc.).
-    Returns headers, data.
-    Uses advanced heuristics for ambiguous, malformed, or complex cases.
+    Returns headers, data, and diagnostics.
+    Enhanced: logs and returns what is being removed, and column stats.
     """
-    logger.info("[TABLE BUILDER][extract_rows_and_headers_from_dom] Starting DOM structure extraction.")
+    logger.info("[TABLE_BUILDER][extract_rows_and_headers_from_dom] Starting DOM structure extraction.")
     repeated_rows = extract_repeated_dom_structures(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
-    logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Found {len(repeated_rows)} repeated rows.")
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Found {len(repeated_rows)} repeated rows.")
     if not repeated_rows:
-        logger.warning("[TABLE BUILDER][extract_rows_and_headers_from_dom] No repeated rows found.")
-        return [], []
+        logger.warning("[TABLE_BUILDER][extract_rows_and_headers_from_dom] No repeated rows found.")
+        return [], [], {"diagnostics": "No repeated rows found."}
 
     # --- Heuristic header detection block ---
     headers = None
     header_row_idx = None
     for idx, (heading, row) in enumerate(repeated_rows[:10]):
         if row is None:
-            logger.warning(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Row locator is None at index {idx}. Skipping.")
+            logger.warning(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Row locator is None at index {idx}. Skipping.")
             continue
         cells = row.locator("> *")
         cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
-        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Checking row {idx} for headers: {cell_texts}")
+        logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Checking row {idx} for headers: {cell_texts}")
         # Heuristic: header row if at least 2 known fields or all non-numeric
         if is_likely_header(cell_texts) or all(not re.match(r"^\d+([,.]\d+)?$", c) for c in cell_texts):
             headers = cell_texts
             header_row_idx = idx
-            logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Detected header row at index {idx}: {headers}")
+            logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Detected header row at index {idx}: {headers}")
             break
     if headers is not None:
         repeated_rows = repeated_rows[header_row_idx + 1 :]
     else:
         headers = guess_headers_from_row(repeated_rows[0][1])
-        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Guessed headers from first row: {headers}")
+        logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Guessed headers from first row: {headers}")
 
     # --- Merge split header rows (e.g., two header rows) ---
     if len(repeated_rows) > 1:
         first_row_cells = [repeated_rows[0][1].locator("> *").nth(i).inner_text().strip() for i in range(repeated_rows[0][1].locator("> *").count())]
         if all(c.isalpha() or c == "" for c in first_row_cells) and any(c for c in first_row_cells):
-            logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Merging split header rows: {headers} + {first_row_cells}")
+            logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Merging split header rows: {headers} + {first_row_cells}")
             headers = [" ".join(filter(None, [h, f])) for h, f in zip(headers, first_row_cells)]
             repeated_rows = repeated_rows[1:]
 
-    # --- Advanced heuristics start here ---
-    location_keywords = set(LOCATION_KEYWORDS)
-    candidate_keywords = set(CANDIDATE_KEYWORDS)
-    vote_keywords = {"votes", "total", "sum"}
-    if coordinator and hasattr(coordinator, "library"):
-        location_keywords.update(set(coordinator.library.get("location_patterns", [])))
-        candidate_keywords.update(set(coordinator.library.get("candidate_patterns", [])))
-        vote_keywords.update(set(coordinator.library.get("vote_patterns", [])))
-
-    norm_headers = [normalize_text(h) for h in headers]
-    location_idx = None
-    candidate_idx = None
-    vote_idx = None
-
-    # Find likely location, candidate, and vote columns
-    for idx, h in enumerate(norm_headers):
-        for kw in location_keywords:
-            if kw in h:
-                location_idx = idx
-                logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Found location column at index {idx}: {headers[idx]}")
-                break
-        for kw in candidate_keywords:
-            if kw in h:
-                candidate_idx = idx
-                logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Found candidate column at index {idx}: {headers[idx]}")
-                break
-        for kw in vote_keywords:
-            if kw in h:
-                vote_idx = idx
-                logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Found vote column at index {idx}: {headers[idx]}")
-                break
-
-    # --- Extra heuristics: all-numeric, all-empty, low-uniqueness columns ---
+    # --- Sample rows for stats ---
     sample_rows = []
     for heading, row in repeated_rows[:20]:
         cells = row.locator("> *")
         cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
         sample_rows.append(cell_texts)
-    logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Sample rows for stats: {sample_rows[:3]}")
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Sample rows for stats: {sample_rows[:3]}")
 
+    # --- Column stats ---
     col_stats = []
     for col in range(len(headers)):
         values = [r[col] for r in sample_rows if len(r) > col]
@@ -854,116 +859,66 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
             "unique_vals": unique_vals,
             "values": values,
         })
-    logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Column stats: {col_stats}")
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Column stats: {col_stats}")
 
-    # Prefer location column: not all-numeric, not all-empty, high uniqueness
-    likely_loc = None
-    for idx, stat in enumerate(col_stats):
-        if stat["empty_ratio"] < 0.8 and stat["numeric_ratio"] < 0.5 and stat["unique_vals"] > 3:
-            likely_loc = idx
-            logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Heuristic: inferred location column at {likely_loc} based on uniqueness/numeric ratio.")
-            break
-    if likely_loc is not None and (location_idx is None or likely_loc != location_idx):
-        location_idx = likely_loc
-
-    # --- ADVANCED: Detect "totals" or "footer" rows and remove them ---
-    if sample_rows:
-        last_row = sample_rows[-1]
-        if any(any(kw in normalize_text(str(cell)) for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS)) for cell in last_row):
-            logger.info("[TABLE BUILDER][extract_rows_and_headers_from_dom] Removing likely totals/footer row at end of data.")
-            repeated_rows = repeated_rows[:-1]
-            sample_rows = sample_rows[:-1]
-
-    # --- ADVANCED: Remove columns with >90% repeated value (e.g., "Reported", "Yes" everywhere) ---
-    always_keep = {"location", "precinct", "district", "ward", "town", "city", "municipal", "county", "% reported", "percent reported", "fully reported"}
-    always_keep = {h.lower() for h in always_keep}
-    protected_headers = set(h.lower() for h in headers if any(kw in h.lower() for kw in always_keep))
-
-    repeated_val_cols = []
-    for idx, stat in enumerate(col_stats):
-        h_lower = headers[idx].lower()
-        # --- Only remove if all values are empty and not protected
-        if stat["unique_vals"] == 1 and stat["empty_ratio"] == 1.0 and h_lower not in protected_headers:
-            repeated_val_cols.append(idx)
-    if repeated_val_cols:
-        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Removing columns that are all empty: {[headers[i] for i in repeated_val_cols]}")
-        headers = [h for i, h in enumerate(headers) if i not in repeated_val_cols]
-        col_stats = [stat for i, stat in enumerate(col_stats) if i not in repeated_val_cols]
-
-    # --- ADVANCED: Remove all-empty columns, but keep protected headers ---
-    # Only remove if all values are empty and not protected, and keep if few columns remain
-    min_columns = 3
-    non_empty_cols = [i for i, stat in enumerate(col_stats) if stat["empty_ratio"] < 1.0 or headers[i].lower() in protected_headers]
-    if len(non_empty_cols) < len(headers) and len(headers) > min_columns:
-        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Removing all-empty columns: {[headers[i] for i in range(len(headers)) if i not in non_empty_cols]}")
-        headers = [headers[i] for i in non_empty_cols]
-        col_stats = [col_stats[i] for i in non_empty_cols]
-
-    # --- ADVANCED: If only one row remains, treat as summary, not table ---
-    if len(sample_rows) == 1:
-        logger.info("[TABLE BUILDER][extract_rows_and_headers_from_dom] Only one row detected, treating as summary row.")
-        data = [dict(zip(headers, sample_rows[0]))]
-        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Final headers: {headers}")
-        logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Final data: {data}")
-        return harmonize_headers_and_data(headers, data)
-
-    # --- ADVANCED: If header names are all generic (Column 1, Column 2...), try to infer from first data row ---
-    if all(re.match(r"Column \d+", h) for h in headers) and sample_rows:
-        logger.info("[TABLE BUILDER][extract_rows_and_headers_from_dom] All headers are generic, inferring from first data row.")
-        headers = sample_rows[0]
-        sample_rows = sample_rows[1:]
-
-    # --- ADVANCED: Remove rows that are all empty or all repeated values ---
-    data = []
+    # --- Build all data rows before filtering ---
+    all_data = []
     for heading, row in repeated_rows:
         cells = row.locator("> *")
         cell_values = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
-        # If we swapped headers, swap cell values accordingly
-        if location_idx is not None and location_idx != 0 and len(cell_values) > location_idx:
-            cell_values = [cell_values[location_idx]] + cell_values[:location_idx] + cell_values[location_idx+1:]
-        elif (candidate_idx == 0 or vote_idx == 0) and location_idx not in (None, 0) and len(cell_values) > location_idx:
-            cell_values = [cell_values[location_idx]] + cell_values[:location_idx] + cell_values[location_idx+1:]
-        elif 'likely_loc' in locals() and likely_loc is not None and likely_loc != 0 and len(cell_values) > likely_loc:
-            cell_values = [cell_values[likely_loc]] + cell_values[:likely_loc] + cell_values[likely_loc+1:]
-        # Remove all-empty columns
-        if len(cell_values) > len(headers):
-            cell_values = cell_values[:len(headers)]
         row_data = {headers[idx]: cell_values[idx] if idx < len(cell_values) else "" for idx in range(len(headers))}
-        if row_data and any(v.strip() for v in row_data.values()):
-            data.append(row_data)
+        all_data.append(row_data)
 
-    logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Extracted {len(data)} rows with headers: {headers}")
+    # --- Remove footer/summary rows, log what is removed ---
+    filtered_data = []
+    removed_footer_rows = []
+    for row in all_data:
+        if row not in remove_footer_and_summary_rows([row], headers):
+            removed_footer_rows.append(row)
+        else:
+            filtered_data.append(row)
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Removed {len(removed_footer_rows)} footer/summary rows.")
 
-    # Centralized row filtering
-    data = remove_footer_and_summary_rows(data, headers)
-    data = remove_outlier_and_empty_rows(data)
+    # --- Remove outlier/empty rows, log what is removed ---
+    final_data = []
+    removed_empty_rows = []
+    for row in filtered_data:
+        if row not in remove_outlier_and_empty_rows([row]):
+            removed_empty_rows.append(row)
+        else:
+            final_data.append(row)
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Removed {len(removed_empty_rows)} empty/outlier rows.")
 
-    # --- ADVANCED: If still ambiguous, log a warning and save HTML for manual inspection ---
-    if len(data) < 2:
-        logger.warning("[TABLE BUILDER][extract_rows_and_headers_from_dom] Too few rows after advanced heuristics. Saving HTML for manual inspection.")
-        try:
-            html = page.content()
-            fpath = get_safe_log_path("debug_dom_extract_fallback.html")
-            with open(fpath, "w", encoding="utf-8") as f:
-                f.write(html)
-            logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Saved fallback HTML to {fpath}")
-        except Exception as e:
-            logger.error(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Could not save fallback HTML: {e}")
+    # --- Diagnostics dictionary ---
+    diagnostics = {
+        "headers": headers,
+        "all_data": all_data,
+        "removed_footer_rows": removed_footer_rows,
+        "removed_empty_rows": removed_empty_rows,
+        "col_stats": col_stats,
+        "sample_rows": sample_rows,
+        "final_row_count": len(final_data),
+        "final_col_count": len(headers),
+    }
 
-    logger.info(f"[TABLE BUILDER][extract_rows_and_headers_from_dom] Finished: {len(data)} rows, {len(headers)} columns.")
-    return harmonize_headers_and_data(headers, data)
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Finished: {len(final_data)} rows, {len(headers)} columns.")
+    return headers, final_data, diagnostics
 
 def extract_with_patterns(page, context=None, log_path=None):
     """
     Attempts to extract tabular data using approved DOM patterns.
-    Returns list of (heading, row_locator, pattern_used)
+    Returns (headers, data, diagnostics)
     """
     patterns = load_dom_patterns(log_path)
     approved = [p for p in patterns if p.get("approved")]
     results = []
+    diagnostics = {
+        "patterns_tried": len(patterns),
+        "patterns_approved": len(approved),
+        "matches": [],
+    }
     for pat in approved:
         selector = pat["selector"]
-        # Support multiple cell selectors for robustness
         cell_selectors = pat.get("cell_selectors") or [pat.get("cell_selector", "> *")]
         containers = page.locator(selector)
         for i in range(containers.count()):
@@ -974,7 +929,6 @@ def extract_with_patterns(page, context=None, log_path=None):
                 if children.count() > 0:
                     for j in range(children.count()):
                         row = children.nth(j)
-                        # Optionally, filter by tag/class/text if specified
                         if "row_tag" in pat:
                             tag = row.evaluate("el => el.tagName.toLowerCase()")
                             if tag != pat["row_tag"]:
@@ -989,7 +943,25 @@ def extract_with_patterns(page, context=None, log_path=None):
                                 continue
                         if row is not None:
                             results.append((heading, row, pat))
-    return results
+                            diagnostics["matches"].append({
+                                "heading": heading,
+                                "selector": selector,
+                                "cell_selector": cell_selector,
+                                "row_index": j
+                            })
+    # Build headers/data if any matches
+    if results:
+        headers = guess_headers_from_row(results[0][1])
+        data = []
+        for heading, row, pat in results:
+            cells = row.locator("> *")
+            row_data = {}
+            for idx in range(cells.count()):
+                row_data[headers[idx] if idx < len(headers) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
+            if row_data:
+                data.append(row_data)
+        return headers, data, diagnostics
+    return [], [], diagnostics
 
 def fallback_nlp_candidate_vote_scan(page):
     """
@@ -1090,28 +1062,31 @@ def extract_all_candidates_from_data(headers, data):
 def ml_based_table_detection(page, extraction_context=None):
     """
     Use a machine learning model to detect and extract tables from arbitrary HTML.
-    Returns a list of (headers, data) tuples.
+    Returns a list of (headers, data, diagnostics) tuples.
     """
     try:
-        # Example: Assume you have a model or service for table detection
-        # hypothetical module
         ml_tables = detect_tables_ml(page.content())
         results = []
-        for table_dict in ml_tables:
+        for idx, table_dict in enumerate(ml_tables):
             headers = table_dict.get("headers", [])
             data = table_dict.get("data", [])
+            diagnostics = {
+                "ml_table_index": idx,
+                "row_count": len(data),
+                "headers": headers
+            }
             if headers and data:
-                results.append((headers, data))
+                results.append((headers, data, diagnostics))
         return results
     except Exception as e:
         logger.error(f"[ML TABLE DETECTION] Error: {e}")
         return []
-
+    
 # 2. Nested table extraction (see handle_nested_tables)
 def nested_table_extraction(page):
     """
     Extract tables that are nested within other tables or complex DOM structures.
-    Returns a list of (headers, data) tuples.
+    Returns a list of (headers, data, diagnostics) tuples.
     """
     try:
         results = []
@@ -1119,9 +1094,11 @@ def nested_table_extraction(page):
         for i in range(tables.count()):
             table = tables.nth(i)
             if table is not None:
-                headers, data, _ = extract_table_data(table)
+                headers, data, diagnostics = extract_table_data(table)
+                diagnostics = diagnostics or {}
+                diagnostics["nested_table_index"] = i
                 if headers and data:
-                    results.append((headers, data))
+                    results.append((headers, data, diagnostics))
         return results
     except Exception as e:
         logger.error(f"[NESTED TABLE EXTRACTION] Error: {e}")
@@ -1131,7 +1108,7 @@ def nested_table_extraction(page):
 def robust_html_fallback_extraction(page):
     """
     Use BeautifulSoup to parse HTML and extract tables as a last-resort fallback.
-    Returns a list of (headers, data) tuples.
+    Returns a list of (headers, data, diagnostics) tuples.
     """
     try:
         html = page.content()
@@ -1139,7 +1116,7 @@ def robust_html_fallback_extraction(page):
         soup = BeautifulSoup(html, "html.parser")
         tables = soup.find_all("table")
         all_tables = []
-        for table in tables:
+        for idx, table in enumerate(tables):
             rows = table.find_all("tr")
             if not rows:
                 continue
@@ -1148,8 +1125,13 @@ def robust_html_fallback_extraction(page):
             for row in rows[1:]:
                 cells = row.find_all(["td", "th"])
                 data.append({headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))})
+            diagnostics = {
+                "fallback_table_index": idx,
+                "row_count": len(data),
+                "headers": headers
+            }
             if headers and data:
-                all_tables.append((headers, data))
+                all_tables.append((headers, data, diagnostics))
         return all_tables
     except Exception as e:
         logger.error(f"[HTML FALLBACK] Error: {e}")
@@ -1159,18 +1141,23 @@ def robust_html_fallback_extraction(page):
 def custom_plugin_extraction(page, extraction_context=None):
     """
     Use custom extraction plugins based on county/state or other context.
-    Returns a list of (headers, data) tuples.
+    Returns a list of (headers, data, diagnostics) tuples.
     """
     try:
         plugins = extraction_context.get("plugins") if extraction_context else []
         results = []
-        for plugin in plugins:
+        for idx, plugin in enumerate(plugins):
             try:
                 plugin_result = plugin.extract(page, extraction_context)
                 if plugin_result:
                     for headers, data in plugin_result:
+                        diagnostics = {
+                            "plugin_index": idx,
+                            "plugin_name": getattr(plugin, "__name__", str(plugin)),
+                            "row_count": len(data)
+                        }
                         if headers and data:
-                            results.append((headers, data))
+                            results.append((headers, data, diagnostics))
             except Exception as e:
                 logger.error(f"[PLUGIN EXTRACTION] Plugin {plugin}: {e}")
         return results
@@ -1738,6 +1725,7 @@ def detect_table_structure(
         any(bt in h.lower() for bt in ["election day", "early voting", "absentee", "mail", "total"]) for h in headers[1:]
     ):
         return {"type": "already-wide", "candidate_col": 0, "ballot_type_cols": list(range(1, len(headers)))}
+
     # Use entity_info and header heuristics
     candidate_cols = []
     location_cols = []
@@ -1866,15 +1854,15 @@ def pivot_to_wide_format(
     candidates = set(entity_info.get("people", []))
     ballot_types = set(entity_info.get("ballot_types", []))
 
-    # Fallback: try to infer from headers if not found
+    # Fallback: try to infer from data if not found
     if not candidates:
-        # Try to extract from data
         for row in data:
-            if "Candidate" in row:
-                candidates.add(row["Candidate"])
+            val = row.get("Candidate", "")
+            if val:
+                candidates.add(val)
     if not ballot_types:
         for h in headers:
-            if any(bt.lower() in h.lower() for bt in BALLOT_TYPES):
+            if h != location_header and h != "Candidate":
                 ballot_types.add(h)
     if not ballot_types:
         ballot_types = set(h for h in headers if h != location_header and h != "Candidate")
@@ -1888,7 +1876,7 @@ def pivot_to_wide_format(
         elif context and "html_context" in context and "selected_race" in context["html_context"]:
             synthetic_location = context["html_context"]["selected_race"]
         else:
-            synthetic_location = "All"
+            synthetic_location = "Unknown Location"
         for row in data:
             row[location_header] = synthetic_location
         logger.warning(f"[TABLE_CORE][pivot_to_wide_format] Only one unique location found. Synthesized location: {synthetic_location}")
@@ -1909,16 +1897,16 @@ def pivot_to_wide_format(
         grand_total = 0
         for row in data:
             if row.get(location_header, "") == loc:
-                candidate = row.get("Candidate", "")
-                for bt in ballot_types:
-                    key = f"{candidate} - {bt}"
-                    val = row.get(bt, "")
-                    if val and key in out_row:
-                        out_row[key] = val
-                        try:
-                            grand_total += int(val.replace(",", ""))
-                        except Exception:
-                            pass
+                for candidate in candidates:
+                    for bt in ballot_types:
+                        key = f"{candidate} - {bt}"
+                        val = row.get(bt, "") if row.get("Candidate", "") == candidate else ""
+                        if val and key in out_row and not out_row[key]:
+                            out_row[key] = val
+                            try:
+                                grand_total += int(val.replace(",", ""))
+                            except Exception:
+                                pass
         out_row["Grand Total"] = str(grand_total)
         wide_data.append(out_row)
 
