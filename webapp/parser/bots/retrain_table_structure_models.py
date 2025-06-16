@@ -3,6 +3,7 @@ import sqlite3
 import json
 import re
 import datetime
+import hashlib
 from collections import Counter
 from sentence_transformers import SentenceTransformer, InputExample, losses
 from torch.utils.data import DataLoader
@@ -57,7 +58,7 @@ def safe_model_save(model, model_save_path, retries=3):
     import time, shutil
     for attempt in range(retries):
         try:
-            # PATCH: Call the model's save method, not safe_model_save recursively!
+            # Call the model's save method, not safe_model_save recursively!
             model.save(model_save_path)
             return
         except Exception as e:
@@ -307,7 +308,7 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
         for header in headers:
             entities = auto_label_header(header, context)
             if entities:
-                # PATCH: Remove overlapping entities before adding to train_data
+                # Remove overlapping entities before adding to train_data
                 entities = remove_overlapping_entities(entities)
                 train_data.append((header, {"entities": entities}))
 
@@ -318,7 +319,7 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     examples = []
     for text, annots in train_data:
         doc = nlp.make_doc(text)
-        # PATCH: Remove overlapping entities before creating Example (defensive)
+        # Remove overlapping entities before creating Example (defensive)
         annots["entities"] = remove_overlapping_entities(annots["entities"])
         example = Example.from_dict(doc, annots)
         examples.append(example)
@@ -425,6 +426,19 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
     safe_model_save(model, model_save_path)
     print(f"Fine-tuned model saved to: {model_save_path}")
 
+def segment_hash(segment):
+    """Generate a stable hash for a DOM segment based on tag, attrs, and first 200 chars of HTML."""
+    tag = segment.get("tag", "")
+    attrs = segment.get("attrs", {})
+    html = segment.get("html", "")[:200]
+    return hashlib.sha256((tag + json.dumps(attrs, sort_keys=True) + html).encode("utf-8")).hexdigest()
+
+def load_cached_segment_hashes(context_library):
+    """Return a set of all segment_hashes in the context library."""
+    return {seg.get("segment_hash") for seg in context_library.get("cached_segments", [])}
+
+
+
 def main():
     if os.getenv("REVIEW_WITH_MANUAL_BOT", "false").lower() == "true":
         run_manual_correction_bot()
@@ -449,9 +463,18 @@ def main():
                 "sample_row": data[0] if data else {},
             }) + "\n")
 
-    retrain_sentence_transformer(confirmed_structures)
     context_library = load_context_library()
-    retrain_spacy_ner_advanced(confirmed_structures, context_library)
+    cached_hashes = load_cached_segment_hashes(context_library)
+    deduped_train_data = []
+    for struct in confirmed_structures:
+        seg_hash = segment_hash(struct)
+        if seg_hash not in cached_hashes:
+            deduped_train_data.append(struct)
+    print(f"Deduplicated to {len(deduped_train_data)} unique structures for training.")
+
+    # Use deduped_train_data for retraining
+    retrain_sentence_transformer(deduped_train_data)
+    retrain_spacy_ner_advanced(deduped_train_data, context_library)
     cluster_container_patterns()
 if __name__ == "__main__":
     main()
