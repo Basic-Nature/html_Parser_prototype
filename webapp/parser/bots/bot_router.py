@@ -101,7 +101,7 @@ def get_file_age_days(path):
     return (datetime.now() - datetime.fromtimestamp(mtime)).days
 
 def should_run_correction_bot(log_dir, last_run_time):
-    if not os.path.isdir(log_dir):  # PATCH: Only proceed if directory exists
+    if not os.path.isdir(log_dir):  # Only proceed if directory exists
         return False
     for fname in os.listdir(log_dir):
         if fname.endswith("_selection_log.jsonl"):
