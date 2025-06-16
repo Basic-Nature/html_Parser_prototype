@@ -71,9 +71,16 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
         for row in rows[1:]:
             cells = row.find_all(["td", "th"])
             data.append({headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))})
+        # --- PATCH: Attach context to each row if Precinct/panel_heading is present ---
+        precinct = context.get("panel_heading") or context.get("Precinct")
+        if precinct:
+            if "Precinct" not in headers:
+                headers = ["Precinct"] + headers
+            for row in data:
+                row["Precinct"] = precinct
         logger.info(f"[DYNAMIC_TABLE_EXTRACTOR] Extracted {len(data)} rows from HTML table.")
         return headers, data
-    candidates = find_tabular_candidates(page)
+    candidates = find_tabular_candidates(page, context=context)
     enriched_candidates = []
     for cand in candidates:
         cand = analyze_candidate_nlp(cand, coordinator)
@@ -83,13 +90,19 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
     best = enriched_candidates[0] if enriched_candidates else None
     if best:
         logger.info(f"[DYNAMIC_TABLE_EXTRACTOR] Best candidate source: {best.get('source')}, score: {best.get('score'):.2f}")
+        # --- PATCH: Attach context to each row if Precinct/panel_heading is present ---
+        precinct = context.get("panel_heading") or context.get("Precinct")
+        if precinct and "Precinct" not in best['headers']:
+            best['headers'] = ["Precinct"] + best['headers']
+            for row in best['rows']:
+                row["Precinct"] = precinct
         return best['headers'], best['rows']
     logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No suitable table candidates found.")
     return [], []
 
 # --- Candidate Generation & Scoring ---
 
-def find_tabular_candidates(page):
+def find_tabular_candidates(page, context=None):
     """
     Find all DOM elements that look like tables or repeated row structures.
     Returns a list of candidate dicts with 'headers' and 'rows'.
@@ -101,31 +114,57 @@ def find_tabular_candidates(page):
         table = tables.nth(i)
         if table is None:
             continue
-        headers, data, _ = extract_table_data(table)
+        # --- PATCH: Pass context to extract_table_data ---
+        headers, data, _ = extract_table_data(table, structure_info={"context": context or {}})
         if headers and data:
-            candidates.append({"headers": headers, "rows": data, "source": "table"})
+            # --- PATCH: Attach context to candidate ---
+            candidate = {"headers": headers, "rows": data, "source": "table"}
+            if context:
+                candidate["context"] = context.copy()
+            candidates.append(candidate)
     # 2. Repeated DOM structures (divs, lists, etc.)
-    headers, data = extract_rows_and_headers_from_dom(page)
-    if headers and data:
-        candidates.append({"headers": headers, "rows": data, "source": "repeated_dom"})
-    # 3. Pattern-based extraction (if any patterns are approved)
-    pattern_rows = extract_with_patterns(page)
-    # Only use rows where row is not None
-    pattern_rows = [tup for tup in pattern_rows if tup[1] is not None]
-    if pattern_rows:
-        headers = guess_headers_from_row(pattern_rows[0][1])
-        data = []
-        for heading, row, pat in pattern_rows:
-            if row is None:
-                continue
-            cells = row.locator("> *")
-            row_data = {}
-            for idx in range(cells.count()):
-                row_data[headers[idx] if idx < len(headers) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
-            if row_data:
-                data.append(row_data)
+    try:
+        headers, data, _ = extract_rows_and_headers_from_dom(page, context=context)
         if headers and data:
-            candidates.append({"headers": headers, "rows": data, "source": "pattern"})
+            candidate = {"headers": headers, "rows": data, "source": "repeated_dom"}
+            if context:
+                candidate["context"] = context.copy()
+            candidates.append(candidate)
+    except Exception as e:
+        logger.warning(f"[DYNAMIC_TABLE_EXTRACTOR] DOM extraction failed: {e}")
+    # 3. Pattern-based extraction (if any patterns are approved)
+    try:
+        pattern_rows = extract_with_patterns(page, context=context)
+        pattern_rows = [tup for tup in pattern_rows if len(tup) > 1 and tup[1] is not None]
+        if pattern_rows:
+            headers = []
+            for tup in pattern_rows:
+                row = tup[1]
+                if hasattr(row, "locator"):
+                    cells = row.locator("> *")
+                    if cells.count() > 0:
+                        headers, _ = guess_headers_from_row(row, context=context)
+                        break
+            if headers:
+                data = []
+                for heading, row, pat in pattern_rows:
+                    if row is None:
+                        continue
+                    cells = row.locator("> *")
+                    if cells.count() < len(headers):
+                        continue
+                    row_data = {}
+                    for idx in range(cells.count()):
+                        row_data[headers[idx] if idx < len(headers) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
+                    if row_data:
+                        data.append(row_data)
+                if headers and data:
+                    candidate = {"headers": headers, "rows": data, "source": "pattern"}
+                    if context:
+                        candidate["context"] = context.copy()
+                    candidates.append(candidate)
+    except Exception as e:
+        logger.warning(f"[DYNAMIC_TABLE_EXTRACTOR] Pattern extraction failed: {e}")
     return candidates
 
 def analyze_candidate_nlp(candidate, coordinator):
