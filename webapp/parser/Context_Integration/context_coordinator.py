@@ -75,8 +75,8 @@ def get_semantic_score(model, text1, text2):
     """
     if not text1 or not text2:
         return 0.0
-    emb1 = model.encode(text1, convert_to_tensor=False)
-    emb2 = model.encode(text2, convert_to_tensor=False)
+    emb1 = model.encode(text1, convert_to_tensor=False, show_progress_bar=False)
+    emb2 = model.encode(text2, convert_to_tensor=False, show_progress_bar=False)
     return float(util.pytorch_cos_sim(emb1, emb2)[0][0])
 
 def merge_and_rank_candidates(memory_candidates, dom_candidates, context, keywords, model,
@@ -1043,7 +1043,7 @@ class ContextCoordinator:
             if learned_btn and learned_btn.get("selector") not in self.clicked_button_selectors:
                 selector_html = learned_btn.get("selector", "")
                 dom_candidates = []
-                # PATCH: Use a broad selector for all clickable elements
+                # Use a broad selector for all clickable elements
                 BUTTON_SELECTORS = (
                     "button, a[href], [role='button'], input[type='button'], input[type='submit'], "
                     "[tabindex]:not([tabindex='-1'])"
@@ -1083,7 +1083,7 @@ class ContextCoordinator:
 
         # --- 3. Gather live candidates from DOM ---
         dom_candidates = []
-        # PATCH: Use a broad selector for all clickable elements
+        # Use a broad selector for all clickable elements
         BUTTON_SELECTORS = (
             "button, a[href], [role='button'], input[type='button'], input[type='submit'], "
             "[tabindex]:not([tabindex='-1'])"
@@ -1092,7 +1092,7 @@ class ContextCoordinator:
 
         def scan_btn(btn, i):
             try:
-                # PATCH: Robust label extraction
+                # Robust label extraction
                 label = btn.inner_text() or ""
                 if not label:
                     # Try aria-label or value attribute
