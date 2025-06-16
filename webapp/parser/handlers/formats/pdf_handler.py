@@ -1,20 +1,20 @@
-# handlers/formats/pdf_handler.py
 # ==============================================================
-# Parses election results from PDF files.
-# Includes dynamic scanning, OCR fallback, and optional user prompt.
-# Enhanced for multi-pass OCR, accuracy scoring, and harmonized output.
+# 🗳️ Smart Elections: Universal PDF Election Results Parser
 # ==============================================================
 
 import os
 import re
 import csv
 from concurrent.futures import ThreadPoolExecutor
-from ...utils.shared_logger import rprint
+from ...config import BASE_DIR
+from ...utils.shared_logger import rprint, logger
 from ...state_router import get_handler
 from ...utils.output_utils import finalize_election_output
-from ...utils.logger_instance import logger
-from ...utils.table_builder import build_dynamic_table
-from ...utils.table_core import rescan_and_verify, extract_table_data
+from ...bots.librarian import (
+    LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
+    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
+)
+from ...utils.table_core import harmonize_headers_and_data
 
 try:
     import fitz  # PyMuPDF
@@ -29,8 +29,15 @@ except ImportError:
     pytesseract = None
     pdf2image = None
 
-def detect_pdf_files(input_folder="input"):
-    """Return a list of PDF files in the input folder, sorted by modified time (newest first)."""
+def get_input_folder():
+    # Parent of webapp, then 'input'
+    return os.path.join(os.path.dirname(BASE_DIR), "input")
+
+def get_output_folder():
+    # Parent of webapp, then 'output'
+    return os.path.join(os.path.dirname(BASE_DIR), "output")
+
+def list_pdf_files(input_folder):
     try:
         pdf_files = [f for f in os.listdir(input_folder) if f.lower().endswith(".pdf")]
         pdf_files.sort(key=lambda x: os.path.getmtime(os.path.join(input_folder, x)), reverse=True)
@@ -39,20 +46,26 @@ def detect_pdf_files(input_folder="input"):
         logger.error(f"[ERROR] Failed to list PDF files: {e}")
         return []
 
-def prompt_file_selection(pdf_files):
-    """Prompt user to select a PDF file from the list."""
+def prompt_for_pdf_file(input_folder):
+    pdf_files = list_pdf_files(input_folder)
+    if not pdf_files:
+        rprint("[red][ERROR] No PDF files found in the input directory.[/red]")
+        return None
     rprint("\n[yellow]Available PDF files in 'input' folder:[/yellow]")
     for i, f in enumerate(pdf_files):
         rprint(f"  [bold cyan][{i}][/bold cyan] {os.path.basename(f)}")
     idx = input("\n[PROMPT] Enter file index or press Enter to cancel: ").strip()
-    if not idx.isdigit():
+    if not idx:
         rprint("[yellow]No file selected. Skipping PDF parsing.[/yellow]")
         return None
-    try:
-        return pdf_files[int(idx)]
-    except (IndexError, ValueError):
-        rprint("[red]Invalid index. Skipping PDF parsing.[/red]")
-        return None
+    if idx.isdigit():
+        try:
+            return pdf_files[int(idx)]
+        except (IndexError, ValueError):
+            rprint("[red]Invalid index. Skipping PDF parsing.[/red]")
+            return None
+    rprint("[red]Invalid selection. Skipping PDF parsing.[/red]")
+    return None
 
 def ocr_multi_pass(images, passes=3, confidence_threshold=30):
     """Run OCR multiple times and aggregate results with confidence scoring."""
@@ -107,44 +120,19 @@ def infer_headers_and_methods(lines, table_hints):
         headers = [h.strip() for h in headers if h.strip()]
     return headers, header_candidates
 
-def parse(page, coordinator=None, html_context=None, non_interactive=False, **kwargs):
-    # Respect early skip signal from calling context
-    if html_context.get("skip_format") or html_context.get("manual_skip"):
-        logger.info("[SKIP] PDF parsing intentionally skipped via context flag.")
-        return None, None, None, {"skipped": True}
-
-    pdf_path = html_context.get("pdf_source")
-    if not pdf_path:
-        pdf_files = detect_pdf_files()
-        if not pdf_files:
-            logger.error("[ERROR] No PDF files found in the input directory.")
-            return None, None, None, {"error": "No PDF in input folder"}
-        pdf_path = prompt_file_selection(pdf_files)
-        if not pdf_path:
-            return None, None, None, {"skipped": True}
-
-    try:
-        user_input = input(f"[PROMPT] PDF file detected at {os.path.basename(pdf_path)}. Parse this file? (y/n, or 'h' to fallback to HTML): ").strip().lower()
-        if user_input == 'h':
-            logger.info("[INFO] User opted to fallback to HTML scanning.")
-            return None, None, None, {"fallback_to_html": True}
-        elif user_input != 'y':
-            logger.info("[INFO] User declined PDF parse. Skipping.")
-            return None, None, None, {"skip_pdf": True}
-    except Exception as e:
-        logger.warning(f"[WARN] Failed to capture input. Skipping PDF parse: {e}")
-        return None, None, None, {"skip_pdf": True}
-
+def parse_pdf_election_results(pdf_path, output_dir=None):
+    """
+    Reads a PDF file, extracts tabular data (with OCR fallback), normalizes columns using librarian context,
+    and writes harmonized output CSV and metadata to the output folder.
+    """
     all_text = ""
     metadata = {}
     headers = []
-    ocr_passes = int(os.getenv("OCR_ATTEMPTS", "3"))
-    confidence_threshold = float(os.getenv("OCR_CONFIDENCE_THRESHOLD", "30"))
     ocr_score = 0.0
     ocr_runs = []
 
+    # === Extract text with PyMuPDF ===
     try:
-        # Extract text with PyMuPDF
         doc = fitz.open(pdf_path)
         for i in range(len(doc)):
             pdf_page = doc[i]
@@ -154,42 +142,38 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
         logger.warning(f"[WARN] fitz text extraction failed: {e}")
         all_text = ""
 
-    # OCR fallback if needed
+    # === OCR fallback if needed ===
     if not all_text.strip() and pytesseract and pdf2image and os.getenv("ENABLE_OCR", "true").lower() == "true":
         logger.info("[INFO] Empty text result from PyMuPDF — attempting OCR fallback.")
         images = pdf2image.convert_from_path(pdf_path)
-        all_text, ocr_score, ocr_runs = ocr_multi_pass(images, passes=ocr_passes, confidence_threshold=confidence_threshold)
+        all_text, ocr_score, ocr_runs = ocr_multi_pass(images, passes=3, confidence_threshold=30)
         metadata["ocr_confidence_avg"] = round(ocr_score, 2)
-        metadata["ocr_passes"] = ocr_passes
+        metadata["ocr_passes"] = 3
 
     logger.debug("[DEBUG] PDF extracted text preview (first 500 chars):" + all_text[:500])
 
-    # Step: Basic check for tabular structure
-    table_hints = os.getenv("PDF_HEADER_KEYWORDS", "precinct,votes,candidate,early,absentee,provisional").split(",")
+    # === Step: Basic check for tabular structure ===
+    table_hints = list(LOCATION_KEYWORDS | CANDIDATE_KEYWORDS | BALLOT_TYPES | PARTY_KEYWORDS | TOTAL_KEYWORDS | MISC_FOOTER_KEYWORDS)
     lines = all_text.splitlines()
     headers, header_candidates = infer_headers_and_methods(lines, table_hints)
 
-    # Detect state and county from filename if not already present
-    if "state" not in html_context or html_context.get("state") == "Unknown":
-        resolved = get_handler(pdf_path)
-        if resolved:
-            html_context["state"] = resolved.__name__.split(".")[-1].upper()
-
-    if "county" not in html_context or html_context.get("county") == "Unknown":
-        fname = os.path.basename(pdf_path).lower()
-        for part in fname.replace(".pdf", "").split("_"):
-            if "county" in part:
-                html_context["county"] = part.replace("county", "").strip().title() + " County"
-                break
-
+    # === Detect state and county from filename if not already present ===
+    state = "Unknown"
+    county = "Unknown"
+    fname = os.path.basename(pdf_path).lower()
+    for part in fname.replace(".pdf", "").split("_"):
+        if "county" in part:
+            county = part.replace("county", "").strip().title() + " County"
+        if len(part) == 2 and part.isalpha():
+            state = part.upper()
     metadata.update({
         "source_file": os.path.basename(pdf_path),
-        "state": html_context.get("state", "Unknown"),
-        "county": html_context.get("county", "Unknown"),
+        "state": state,
+        "county": county,
         "handler": "pdf_handler"
     })
 
-    # Attempt contest selection (if inferred columns contain contest-like fields)
+    # === Attempt contest selection (if inferred columns contain contest-like fields) ===
     contest_column = None
     if headers:
         rprint("[yellow]Inferred Columns:[/yellow]")
@@ -199,7 +183,7 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
         if selection.isdigit():
             contest_column = headers[int(selection)]
 
-    # Attempt row splitting from lines if table detected
+    # === Attempt row splitting from lines if table detected ===
     data = []
     if headers:
         # Find the header line index
@@ -229,17 +213,16 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
 
         # Harmonize and format as wide CSV
         if data:
-            # Try to detect candidate/method/reporting unit columns
-            candidate_cols = [col for col in headers if "candidate" in col.lower()]
-            precinct_cols = [col for col in headers if any(x in col.lower() for x in ["precinct", "ward", "district", "county"])]
-            method_cols = [col for col in headers if any(m in col.lower() for m in ["election day", "early", "absentee", "mail", "provisional", "total"])]
+            candidate_cols = [col for col in headers if any(k in col.lower() for k in CANDIDATE_KEYWORDS)]
+            precinct_cols = [col for col in headers if any(k in col.lower() for k in LOCATION_KEYWORDS)]
+            method_cols = [col for col in headers if any(m in col.lower() for m in BALLOT_TYPES | TOTAL_KEYWORDS | MISC_FOOTER_KEYWORDS)]
 
             wide_data = []
             reporting_unit_col = precinct_cols[0] if precinct_cols else headers[0]
             for row in data:
                 wide_row = {reporting_unit_col: row.get(reporting_unit_col, "")}
                 for cand_col in candidate_cols:
-                    candidate = extract_table_data(row.get(cand_col, ""))
+                    candidate = row.get(cand_col, "")
                     for method_col in method_cols:
                         val = row.get(method_col, "")
                         col_name = f"{candidate} - {method_col}"
@@ -259,38 +242,127 @@ def parse(page, coordinator=None, html_context=None, non_interactive=False, **kw
             headers = [reporting_unit_col] + sorted([k for k in all_keys if k != reporting_unit_col])
 
             # Harmonize and add grand total
-            wide_data = rescan_and_verify(headers, wide_data)
-            wide_data.append(build_dynamic_table(wide_data))
+            headers, wide_data = harmonize_headers_and_data(headers, wide_data)
 
-            contest_title = os.path.basename(pdf_path).replace(".pdf", "")
+            # === Setup Output Paths ===
+            if output_dir is None:
+                output_dir = get_output_folder()
+            os.makedirs(output_dir, exist_ok=True)
+            safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in os.path.basename(pdf_path).replace(".pdf", "")).replace(" ", "_")
+            output_csv = os.path.join(output_dir, f"{safe_title}_parsed.csv")
+            output_meta = os.path.join(output_dir, f"{safe_title}_metadata.json")
 
-            # --- Standardize: Enrich metadata and output ---
-            from ...Context_Integration.context_organizer import organize_context
-            organized = organize_context(metadata)
-            metadata = organized.get("metadata", metadata)
-            result = finalize_election_output(headers, wide_data, contest_title, metadata)
-            contest_title = result.get("contest_title", contest_title)
-            metadata = result.get("metadata", metadata)
-            return headers, wide_data, contest_title, metadata
+            # === Write Output CSV ===
+            with open(output_csv, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=headers)
+                writer.writeheader()
+                for row in wide_data:
+                    writer.writerow(row)
+
+            # === Write Metadata JSON ===
+            metadata.update({
+                "output_file": os.path.basename(output_csv),
+                "headers": headers,
+                "row_count": len(wide_data)
+            })
+            with open(output_meta, "w", encoding="utf-8") as jf:
+                import json
+                json.dump(metadata, jf, indent=2)
+
+            rprint(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(wide_data)}[/bold] rows to:\n  [cyan]{output_csv}[/cyan]")
+            rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{output_meta}[/cyan]")
+
+            return headers, wide_data, safe_title, metadata
 
         else:
             unmatched_count = len(lines[header_line_idx + 1:])
             logger.warning(f"[WARN] No structured rows matched the inferred column count of {len(headers)}. Total lines scanned: {unmatched_count}")
             fallback_rows = [{"raw_line": line} for line in lines[header_line_idx + 1:]]
-            # --- Standardize fallback ---
-            from ...Context_Integration.context_organizer import organize_context
-            organized = organize_context(metadata)
-            metadata = organized.get("metadata", metadata)
-            result = finalize_election_output(["raw_line"], fallback_rows, os.path.basename(pdf_path), metadata)
-            contest_title = result.get("contest_title", os.path.basename(pdf_path))
-            metadata = result.get("metadata", metadata)
-            return ["raw_line"], fallback_rows, contest_title, metadata
+            # Write fallback output
+            if output_dir is None:
+                output_dir = get_output_folder()
+            os.makedirs(output_dir, exist_ok=True)
+            safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in os.path.basename(pdf_path).replace(".pdf", "")).replace(" ", "_")
+            output_csv = os.path.join(output_dir, f"{safe_title}_parsed.csv")
+            output_meta = os.path.join(output_dir, f"{safe_title}_metadata.json")
+            with open(output_csv, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=["raw_line"])
+                writer.writeheader()
+                for row in fallback_rows:
+                    writer.writerow(row)
+            metadata.update({
+                "output_file": os.path.basename(output_csv),
+                "headers": ["raw_line"],
+                "row_count": len(fallback_rows)
+            })
+            with open(output_meta, "w", encoding="utf-8") as jf:
+                import json
+                json.dump(metadata, jf, indent=2)
+            rprint(f"[bold yellow][OUTPUT][/bold yellow] Wrote fallback rows to:\n  [cyan]{output_csv}[/cyan]")
+            return ["raw_line"], fallback_rows, safe_title, metadata
 
     # If no table, return plain text
-    from ...Context_Integration.context_organizer import organize_context
-    organized = organize_context(metadata)
-    metadata = organized.get("metadata", metadata)
-    result = finalize_election_output(["text"], [{"text": all_text}], os.path.basename(pdf_path), metadata)
-    contest_title = result.get("contest_title", os.path.basename(pdf_path))
-    metadata = result.get("metadata", metadata)
-    return ["text"], [{"text": all_text}], contest_title, metadata
+    if output_dir is None:
+        output_dir = get_output_folder()
+    os.makedirs(output_dir, exist_ok=True)
+    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in os.path.basename(pdf_path).replace(".pdf", "")).replace(" ", "_")
+    output_csv = os.path.join(output_dir, f"{safe_title}_parsed.csv")
+    output_meta = os.path.join(output_dir, f"{safe_title}_metadata.json")
+    with open(output_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["text"])
+        writer.writeheader()
+        writer.writerow({"text": all_text})
+    metadata.update({
+        "output_file": os.path.basename(output_csv),
+        "headers": ["text"],
+        "row_count": 1
+    })
+    with open(output_meta, "w", encoding="utf-8") as jf:
+        import json
+        json.dump(metadata, jf, indent=2)
+    rprint(f"[bold yellow][OUTPUT][/bold yellow] Wrote plain text to:\n  [cyan]{output_csv}[/cyan]")
+    return ["text"], [{"text": all_text}], safe_title, metadata
+
+def parse(page=None, coordinator=None, html_context=None, non_interactive=False, manual_file=None, **kwargs):
+    """
+    Universal pipeline entry: Accepts a PDF file path (manual_file) from the format router,
+    or prompts user to select a file from the input folder.
+    Returns: headers, data, contest_title, metadata
+    """
+    html_context = html_context or {}
+    if html_context.get("skip_format") or html_context.get("manual_skip"):
+        logger.info("[SKIP] PDF parsing intentionally skipped via context flag.")
+        return None, None, None, {"skipped": True}
+
+    input_folder = get_input_folder()
+    pdf_path = None
+
+    # 1. Use file handed over from format router if provided
+    if manual_file and os.path.isfile(manual_file):
+        pdf_path = manual_file
+    else:
+        # 2. Otherwise, prompt user to select from input folder
+        pdf_path = prompt_for_pdf_file(input_folder)
+        if not pdf_path:
+            return None, None, None, {"skipped": True}
+
+    try:
+        rprint("[yellow]Available PDF file detected:[/yellow]")
+        rprint(f"  [bold cyan]{os.path.basename(pdf_path)}[/bold cyan]")
+        user_input = input("[PROMPT] Parse this file? (y/n): ").strip().lower()
+        if user_input != 'y':
+            logger.info("[INFO] User declined PDF parse. Skipping.")
+            return None, None, None, {"skip_pdf": True}
+    except Exception as e:
+        logger.warning(f"[WARN] Skipping user input prompt due to error: {e}")
+        return None, None, None, {"error": str(e)}
+
+    # --- Main PDF parsing logic ---
+    return parse_pdf_election_results(pdf_path)
+
+# If run as a script, allow standalone use
+if __name__ == "__main__":
+    input_folder = get_input_folder()
+    pdf_path = prompt_for_pdf_file(input_folder)
+    if pdf_path:
+        parse_pdf_election_results(pdf_path)
