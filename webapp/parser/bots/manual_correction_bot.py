@@ -768,6 +768,14 @@ def import_correction_session(import_file, dest_path):
     shutil.copy2(import_file, dest_path)
     print(f"[INFO] Imported correction session from {import_file} to {dest_path}")
 
+def update_segment_in_context_library(context_library, seg_hash, new_label, new_confidence=1.0):
+    """Update a segment's label/confidence in the context library."""
+    for seg in context_library.get("cached_segments", []):
+        if seg.get("segment_hash") == seg_hash:
+            seg["ml_label"] = new_label
+            seg["ml_confidence"] = new_confidence
+            break
+
 def main():
     parser = argparse.ArgumentParser(description="Deep ML/LLM-enhanced batch review and correction bot for all context fields.")
     parser.add_argument("--context", type=str, default=str(DEFAULT_CONTEXT_LIBRARY_FILE), help="Path to context_library.json")
@@ -903,6 +911,6 @@ def extended_cli():
         return
     # If none of the above, fall back to main
     main()
-# --- PATCH: Replace main entry point ---
+# --- Replace main entry point ---
 if __name__ == "__main__":
     extended_cli()
