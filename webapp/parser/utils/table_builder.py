@@ -51,9 +51,7 @@ def build_dynamic_table(
 ) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """
     Orchestrates robust, multi-source, entity-aware table extraction and harmonization.
-    Uses dynamic_table_extractor for candidate generation and scoring.
-    Fallbacks and patching are used only as needed, with deduplication and validation.
-    Persistent cache is for debugging/recovery, not for downstream ML/feedback.
+    Always merges, harmonizes, and pivots all panel tables before any feedback/confirmation.
     Returns (headers, data, entity_info) for downstream enrichment.
     """
     if context is None:
@@ -69,347 +67,57 @@ def build_dynamic_table(
         context["Precinct"] = context["panel_heading"]        
     page = context.get("page")
     from ..utils.dynamic_table_extractor import dynamic_table_extractor
-    try:
-        table_html = context.get("table_html") if context else None
-        # --- Debugging: Show what we got for table_html
-        if not table_html:
-            rprint(f"[yellow][DEBUG] No table_html found in context for domain: {domain}[/yellow]")
-        else:
-            snippet = table_html[:300].replace("\n", "\\n")
-            if "<table" not in table_html:
-                rprint(f"[red][ERROR] table_html present but does not contain a <table> tag. Context domain: {domain}[/red]")
-                rprint(f"[red][ERROR] table_html snippet: {snippet}...[/red]")
-            else:
-                rprint(f"[green][DEBUG] table_html found for domain: {domain}[/green]")
-                rprint(f"[green][DEBUG] table_html snippet: {snippet}...[/green]")
-        extracted_headers, extracted_data = dynamic_table_extractor(page, context, coordinator, table_html=table_html)
-        # --- Debugging: Show what was extracted
-        if not extracted_headers and not extracted_data:
-            rprint(f"[red][ERROR] No headers or data extracted from table_html for domain: {domain}[/red]")
-        else:
-            rprint(f"[cyan][DEBUG] Extracted headers: {extracted_headers}[/cyan]")
-            rprint(f"[cyan][DEBUG] Number of extracted rows: {len(extracted_data)}[/cyan]")
-        logger.info(f"[TABLE_BUILDER] dynamic_table_extractor: {len(extracted_headers)} headers, {len(extracted_data)} rows.")
-    except Exception as e:
-        logger.error(f"[TABLE_BUILDER] dynamic_table_extractor failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
-        rprint(f"[red][ERROR] Exception in dynamic_table_extractor: {e}[/red]")
-        extracted_headers, extracted_data = [], []
-    # --- Persistent cache for debugging/recovery only ---
-    _list_table_builder_cache(domain)  # List existing cache files for debugging
-    persistent_cache = {
-        "initial_headers": headers.copy() if headers else [],
-        "initial_data": data.copy() if data else [],
-        "extracted_headers": [],
-        "extracted_data": [],
-        "fallback_headers": [],
-        "fallback_data": [],
-        "patched_headers": [],
-        "patched_data": [],
-        "final_headers": [],
-        "final_data": [],
-        "attempts": [],
-        "timestamp": time.time(),
-    }
-
-    # --- 1. Candidate Generation & Scoring ---
-    from ..utils.dynamic_table_extractor import dynamic_table_extractor
-    try:
-        # Instead of just one table, get all panel tables for the contest
-        all_panel_tables = []
-        if "panels" in context and context["panels"]:
-            for panel in context["panels"]:
-                for table in panel.get("tables", []):
-                    # Build context for each table
-                    table_context = context.copy()
-                    table_context["panel_heading"] = panel.get("panel_heading")
-                    table_context["Precinct"] = panel.get("panel_heading")
-                    table_context["table_html"] = table.get("table_html")
-                    headers, data = dynamic_table_extractor(page, table_context, coordinator, table_html=table.get("table_html"))
-                    if headers and data:
-                        all_panel_tables.append((headers, data))
-        else:
-            # Fallback: single table extraction
-            headers, data = dynamic_table_extractor(page, context, coordinator)
-            if headers and data:
-                all_panel_tables.append((headers, data))
-
-        # Merge all tables into one
-        if all_panel_tables:
-            from ..utils.table_core import merge_table_data
-            extracted_headers, extracted_data = merge_table_data(
-                [h for h, d in all_panel_tables],
-                [d for h, d in all_panel_tables]
-            )
-        else:
-            extracted_headers, extracted_data = [], []
-
-        logger.info(f"[TABLE_BUILDER] dynamic_table_extractor: {len(extracted_headers)} headers, {len(extracted_data)} rows.")
-    except Exception as e:
-        logger.error(f"[TABLE_BUILDER] dynamic_table_extractor failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
-        extracted_headers, extracted_data = [], []
-
-    # --- Defensive: Ensure extracted_data rows have all headers, and patch for Precinct if in context ---
-    if "Precinct" in context and context["Precinct"]:
-        if "Precinct" not in extracted_headers:
-            extracted_headers = ["Precinct"] + extracted_headers
-        for row in extracted_data:
-            row["Precinct"] = context["Precinct"]
-
-    persistent_cache["extracted_headers"] = extracted_headers.copy()
-    persistent_cache["extracted_data"] = extracted_data.copy()
-    persistent_cache["attempts"].append({
-        "stage": "dynamic_table_extractor",
-        "headers": extracted_headers.copy(),
-        "data_len": len(extracted_data),
-        "timestamp": time.time(),
-    })
-
-    # --- 2. Fallback: Robust Extraction & Patch Incomplete Data ---
-    patch_attempts = 0
-    max_patch_attempts = max_feedback_loops
-    patched_headers, patched_data = extracted_headers.copy(), extracted_data.copy()
-    last_headers, last_data = None, None
-    unchanged_count = 0
-
-    while (
-        (not patched_headers or not patched_data or any(not h or h.lower().startswith("column") for h in patched_headers))
-        and patch_attempts < max_patch_attempts
-    ):
-        patch_attempts += 1
-        try:
-            fallback_headers, fallback_data = robust_table_extraction(
-                page,
-                extraction_context=context,
-                existing_headers=persistent_cache["initial_headers"],
-                existing_data=persistent_cache["initial_data"]
-            )
-            logger.info(f"[TABLE_BUILDER] robust_table_extraction fallback: {len(fallback_headers)} headers, {len(fallback_data)} rows.")
-        except Exception as e:
-            logger.error(f"[TABLE_BUILDER] robust_table_extraction failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
-            fallback_headers, fallback_data = [], []
-
-        persistent_cache["fallback_headers"] = fallback_headers.copy()
-        persistent_cache["fallback_data"] = fallback_data.copy()
-        persistent_cache["attempts"].append({
-            "stage": f"robust_table_extraction_{patch_attempts}",
-            "headers": fallback_headers.copy(),
-            "data_len": len(fallback_data),
-            "timestamp": time.time(),
-        })
-
-        # --- Deduplicate and validate when merging fallback and initial data ---
-        merged_headers = list(dict.fromkeys([h for h in (patched_headers or []) + (fallback_headers or []) if h]))
-        merged_data = patched_data.copy() if patched_data else []
-        for row in fallback_data:
-            if row not in merged_data:
-                merged_data.append(row)
-        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
-        if "Precinct" not in headers and context.get("Precinct"):
-            headers = ["Precinct"] + headers
-            for row in data:
-                row["Precinct"] = context["Precinct"]
-        if "Percent Reported" not in headers and context.get("percent_reported"):
-            headers.append("Percent Reported")
-            for row in data:
-                row["Percent Reported"] = context["percent_reported"]
-        # Try to re-run dynamic_table_extractor with patched data
-        context["patched_headers"] = merged_headers
-        context["patched_data"] = merged_data
-        try:
-            patched_headers, patched_data = dynamic_table_extractor(page, context, coordinator)
-            logger.info(f"[TABLE_BUILDER] dynamic_table_extractor (after patch): {len(patched_headers)} headers, {len(patched_data)} rows.")
-        except Exception as e:
-            logger.error(f"[TABLE_BUILDER] dynamic_table_extractor (after patch) failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
-            patched_headers, patched_data = merged_headers, merged_data
-
-        persistent_cache["attempts"].append({
-            "stage": f"dynamic_table_extractor_patch_{patch_attempts}",
-            "headers": patched_headers.copy(),
-            "data_len": len(patched_data),
-            "timestamp": time.time(),
-        })
-
-        # If still nothing, use merged fallback as last resort
-        if not patched_headers or not patched_data:
-            patched_headers, patched_data = merged_headers, merged_data
-
-        # --- Robust break conditions ---
-        try:
-            structure_info = detect_table_structure(headers, data, coordinator, entity_info=entity_info)
-            logger.info(f"[TABLE_BUILDER] Detected table structure: {structure_info}")
-            entity_info["structure_info"] = structure_info
-        except Exception as e:
-            logger.warning(f"[TABLE_BUILDER] Structure detection failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
-            structure_info = {"type": "ambiguous", "verified": False}
-            entity_info["structure_info"] = structure_info
-        location_col = None
-        for h in headers:
-            if h.lower() in LOCATION_KEYWORDS:
-                location_col = h
-                break
-        unique_locations = set(row.get(location_col, "") for row in data if location_col and row.get(location_col, ""))
-        should_prompt_feedback = (
-            structure_info.get("type") not in {"ambiguous", None}
-            and location_col
-            and len(unique_locations) >= 2
+    # --- 1. Gather all panel tables if present ---
+    all_panel_tables = []
+    if "panels" in context and context["panels"]:
+        for panel in context["panels"]:
+            for table in panel.get("tables", []):
+                table_context = context.copy()
+                table_context["panel_heading"] = panel.get("panel_heading")
+                table_context["Precinct"] = panel.get("panel_heading")
+                table_context["table_html"] = table.get("table_html")
+                h, d = dynamic_table_extractor(page, table_context, coordinator, table_html=table.get("table_html"))
+                if h and d:
+                    all_panel_tables.append((h, d))
+    elif headers and data:
+        all_panel_tables.append((headers, data))
+    else:
+        h, d = dynamic_table_extractor(page, context, coordinator)
+        if h and d:
+            all_panel_tables.append((h, d))
+    # --- 2. Merge and harmonize all tables ---
+    if all_panel_tables:
+        from ..utils.table_core import merge_table_data
+        merged_headers, merged_data = merge_table_data(
+            [h for h, d in all_panel_tables],
+            [d for h, d in all_panel_tables]
         )
-        if learning_mode and should_prompt_feedback:
-            contest_title = context.get("contest_title") or "Unknown Contest"
-            headers, data = prompt_user_to_confirm_table_structure(
-                headers, data, domain, contest_title, coordinator
-            )
-            persistent_cache["final_headers"] = headers.copy()
-            persistent_cache["final_data"] = data.copy()
-            headers, data = harmonize_headers_and_data(headers, data)
-
-        generic_headers = all(h.lower().startswith("column") or not h.strip() for h in headers)
-        headers_unchanged = last_headers == headers
-        data_unchanged = last_data == data
-
-        # Count unchanged iterations
-        if headers_unchanged and data_unchanged:
-            unchanged_count += 1
-        else:
-            unchanged_count = 0
-        last_headers, last_data = patched_headers.copy(), [row.copy() for row in patched_data]
-
-        if (
-            (structure_info.get("type") == "already-wide" and not location_col)
-            or generic_headers
-            or unchanged_count >= 2
-            or patch_attempts >= max_patch_attempts
-            or not patched_headers
-            or not patched_data
-        ):
-            logger.warning("[TABLE_BUILDER] Breaking out of patch loop: "
-                           f"type={structure_info.get('type')}, "
-                           f"location_col={location_col}, "
-                           f"generic_headers={generic_headers}, "
-                           f"unchanged_count={unchanged_count}, "
-                           f"patch_attempts={patch_attempts}, "
-                           f"headers={patched_headers}, "
-                           f"data_len={len(patched_data)}")
-            break
-
-    # Use the final, highest-confidence extraction for downstream processing
-    headers, data = patched_headers, patched_data
-    persistent_cache["final_headers"] = headers.copy()
-    persistent_cache["final_data"] = data.copy()
-
+    else:
+        merged_headers, merged_data = [], []
+    merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
     # --- 3. NLP Entity Annotation ---
     try:
         annotated_headers, annotated_data, entity_info = nlp_entity_annotate_table(
-            headers, data, context=context, coordinator=coordinator
+            merged_headers, merged_data, context=context, coordinator=coordinator
         )
-        _preview_log(annotated_headers, annotated_data, "AFTER NLP ANNOTATION")
-        logger.info(f"[TABLE_BUILDER] NLP entity annotation complete. Entities: {entity_info}")
     except Exception as e:
         logger.warning(f"[TABLE_BUILDER] NLP entity annotation failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
-        annotated_headers, annotated_data = headers, data
+        annotated_headers, annotated_data = merged_headers, merged_data
         entity_info = {}
-
-    # --- 4. Harmonize headers/data after annotation ---
-    # --- 4. Harmonize headers/data after annotation ---
     headers, data = harmonize_headers_and_data(annotated_headers, annotated_data)
-    logger.info(f"[TABLE_BUILDER] Harmonized headers: {headers}")
-    logger.info(f"[TABLE_BUILDER] Harmonized sample row: {data[0] if data else 'NO DATA'}")
-
-    # --- Merge multi-line candidate rows if needed ---
-    headers, data = merge_multiline_candidate_rows(headers, data)
-    logger.info(f"[TABLE_BUILDER] After merging multi-line candidate rows: {len(data)} rows.")
-    def _preview_log(headers, data, label="AFTER MERGE"):
-        candidates = set(row.get("Candidate", "") for row in data if row.get("Candidate", ""))
-        parties = set(row.get("Party", "") for row in data if row.get("Party", ""))
-        precincts = set(row.get("Precinct", "") for row in data if row.get("Precinct", ""))
-        percent_reported = set(row.get("Percent Reported", "") for row in data if row.get("Percent Reported", ""))
-        rprint(f"[bold green][NLP PREVIEW {label}][/bold green] "
-            f"Candidates: [cyan]{len(candidates)}[/cyan], "
-            f"Parties: [magenta]{len(parties)}[/magenta], "
-            f"Precincts: [blue]{len(precincts)}[/blue], "
-            f"Percent Reported: [yellow]{len(percent_reported)}[/yellow], "
-            f"Headers: {headers}")
-    _preview_log(headers, data, "AFTER MERGE")
-    # --- Harmonize again after merging ---
-    headers, data = harmonize_headers_and_data(headers, data)
-    _preview_log(headers, data, "AFTER HARMONIZE")
-
-    # --- Extract all candidate names from data for robust pivoting ---
-    all_candidates = extract_all_candidates_from_data(headers, data)
-    if 'people' not in entity_info or not entity_info['people']:
-        entity_info['people'] = list(all_candidates)
-    else:
-        entity_info['people'] = list(set(entity_info['people']) | all_candidates)
-    logger.info(f"[TABLE_BUILDER] All detected candidates for pivot: {entity_info['people']}")
-
-    # --- 5. Structure Analysis ---
+    # --- 4. Pivot to wide format before feedback ---
     try:
-        structure_info = detect_table_structure(headers, data, coordinator, entity_info=entity_info)
-        logger.info(f"[TABLE_BUILDER] Detected table structure: {structure_info}")
-        entity_info["structure_info"] = structure_info  # --- add structure_info to entity_info for feedback/metadata
+        wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
+        headers, data = harmonize_headers_and_data(wide_headers, wide_data)
     except Exception as e:
-        logger.warning(f"[TABLE_BUILDER] Structure detection failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
-        structure_info = {"type": "ambiguous", "verified": False}
-        entity_info["structure_info"] = structure_info
-
-    # --- Add 'Percent Reported' or 'Reporting Status' column if present in context ---
-    percent_reported_val = context.get("fully_reported") or context.get("percent_reported")
-    if percent_reported_val:
-        colname = "Percent Reported" if "%" in percent_reported_val else "Reporting Status"
-        if colname not in headers:
-            headers.append(colname)
-        for row in data:
-            row[colname] = percent_reported_val
-
-    # --- 6. Pivot to wide format only if structure requires ---
-    should_pivot = False
-    if structure_info.get("type") == "already-wide":
-        should_pivot = False
-    # Only pivot if there is a valid location column and more than one unique location
-    location_col = None
-    for h in headers:
-        if h.lower() in {"location", "precinct", "ward", "district", "area", "city", "municipal", "town"}:
-            location_col = h
-            break
-    unique_locations = set(row.get(location_col, "") for row in data if location_col and row.get(location_col, ""))
-    if pivot_to_wide and location_col and len(unique_locations) > 1:
-        should_pivot = True
-
-    # If structure_info says candidate-major or precinct-major, and location_col is valid, allow pivot
-    if pivot_to_wide and not should_pivot and structure_info.get("type") in {"candidate-major", "precinct-major"} and location_col and len(unique_locations) > 1:
-        should_pivot = True
-
-    # Do NOT pivot if there is no location column or only one unique location
-    if should_pivot:
-        try:
-            wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
-            _preview_log(wide_headers, wide_data, "AFTER PIVOT")
-            logger.info(f"[TABLE_BUILDER] Pivoted to wide format: {len(wide_headers)} headers, {len(wide_data)} rows.")
-            persistent_cache["final_headers"] = wide_headers.copy()
-            persistent_cache["final_data"] = wide_data.copy()
-            _save_table_builder_cache(domain, persistent_cache)
-            # --- Always harmonize before returning
-            wide_headers, wide_data = harmonize_headers_and_data(wide_headers, wide_data)
-            return wide_headers, wide_data, entity_info
-        except Exception as e:
-            logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
-
-    # --- 7. User/ML confirmation and learning (if enabled) ---
+        logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+    # --- 5. User/ML confirmation and learning (if enabled) ---
     if learning_mode:
         contest_title = context.get("contest_title") or "Unknown Contest"
         headers, data = prompt_user_to_confirm_table_structure(
             headers, data, domain, contest_title, coordinator
         )
-        persistent_cache["final_headers"] = headers.copy()
-        persistent_cache["final_data"] = data.copy()
-        # --- Always harmonize after user feedback
         headers, data = harmonize_headers_and_data(headers, data)
-
-    # --- 8. Final backup in persistent cache (for debugging/recovery only) ---
-    _save_table_builder_cache(domain, persistent_cache)
-
-    # --- Always harmonize before returning
-    headers, data = harmonize_headers_and_data(headers, data)
-    _preview_log(headers, data, "FINAL")
     return headers, data, entity_info
 
 # ===================================================================
@@ -615,7 +323,8 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
             rprint("Enter column numbers (comma-separated) that are incorrect (starting from 1):")
             for idx, h in enumerate(candidate_headers):
                 rprint(f"  {idx+1}: {h}")
-            wrong_cols = input("Columns to mark as incorrect: ").strip()
+            wrong_cols = input("Columns to mark as incorrect: ")
+
             if wrong_cols:
                 wrong_idxs = [int(i)-1 for i in wrong_cols.split(",") if i.strip().isdigit()]
                 for idx in wrong_idxs:

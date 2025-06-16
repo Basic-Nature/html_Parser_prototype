@@ -177,6 +177,41 @@ def integrate_llm_feedback(new_panel_tags=None, new_heading_tags=None, new_attr_
 # --- Load context library at import time ---
 load_context_library()
 
+# --- Canonical Segment Labeling & Normalization ---
+CANONICAL_SEGMENT_LABELS = {
+    # Add common canonical mappings here
+    "election results": "results_table",
+    "results by precinct": "location_panel",
+    "summary": "summary",
+    "total votes": "total_votes",
+    "precincts reporting": "reporting_status",
+    "candidate": "candidate_panel",
+    "ballot type": "ballot_type",
+    "download": "download_link",
+    # Add more as needed
+}
+
+_segment_label_cache = {}
+
+def normalize_segment_text(text: str) -> str:
+    """Normalize segment text for canonical lookup (lowercase, strip, collapse spaces)."""
+    if not text:
+        return ""
+    return " ".join(text.lower().strip().split())
+
+def get_canonical_segment_label(text: str) -> str:
+    """Return canonical label for normalized segment text, or None if not found."""
+    norm = normalize_segment_text(text)
+    return CANONICAL_SEGMENT_LABELS.get(norm)
+
+def cache_segment_label(text: str, label: str):
+    norm = normalize_segment_text(text)
+    _segment_label_cache[norm] = label
+
+def get_cached_segment_label(text: str) -> str:
+    norm = normalize_segment_text(text)
+    return _segment_label_cache.get(norm)
+
 # --- Export all sets for use in other modules ---
 __all__ = [
     "HTML_TAGS", "PANEL_TAGS", "HEADING_TAGS", "CUSTOM_ATTR_PATTERNS", "DISTRICT_REGEX",
@@ -184,5 +219,6 @@ __all__ = [
     "MISC_FOOTER_KEYWORDS", "CANDIDATE_KEYWORDS", "PARTY_KEYWORDS", "LOCATION_ABBREVIATIONS", "VALID_TYPES", "CONTEST_KEYWORDS",
     "extend_panel_tags", "extend_heading_tags", "extend_html_tags", "extend_custom_attr_patterns",
     "extend_location_keywords", "extend_candidate_keywords", "extend_ballot_types",
-    "log_unknown_tag", "log_unknown_attr", "integrate_llm_feedback", "save_context_library"
+    "log_unknown_tag", "log_unknown_attr", "integrate_llm_feedback", "save_context_library",
+    "CANONICAL_SEGMENT_LABELS", "normalize_segment_text", "get_canonical_segment_label", "cache_segment_label", "get_cached_segment_label",
 ]

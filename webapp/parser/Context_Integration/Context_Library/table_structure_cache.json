@@ -254,5 +254,14 @@
     "Candidate (Early Voting)",
     "Candidate (Absentee Mail)",
     "Candidate (Total Votes)"
+  ],
+  "Orangetown Town Council\nVote for 1:7a50cd795ab5b470005062769986a095": [
+    "Precinct",
+    "Candidate",
+    "Party",
+    "Election Day",
+    "Early Voting",
+    "Absentee Mail",
+    "Total Votes"
   ]
 }

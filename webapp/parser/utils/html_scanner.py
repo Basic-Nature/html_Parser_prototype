@@ -18,7 +18,7 @@ from ..bots.manual_correction_bot import update_segment_in_context_library
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, DISTRICT_REGEX, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
     extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
-    log_unknown_tag, log_unknown_attr
+    log_unknown_tag, log_unknown_attr, get_canonical_segment_label, cache_segment_label, get_cached_segment_label,
 )
 ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 import numpy as np
@@ -917,14 +917,23 @@ def ml_classify_segment(segment, model, pattern_kb, threshold=0.85):
     return best_label, best_conf, best_pattern_id
 
 def prompt_for_segment_label(segment):
-    # Try to auto-label first
+    # Try canonical and cache-based auto-labeling first
+    html_preview = segment.get("html", "")
+    canonical_label = get_canonical_segment_label(html_preview)
+    if canonical_label:
+        cache_segment_label(html_preview, canonical_label)
+        return canonical_label
+    cached_label = get_cached_segment_label(html_preview)
+    if cached_label:
+        return cached_label
+    # Try to auto-label using rules
     auto = auto_label_segment(segment)
-    if auto != "ignore":
+    if auto != "ignore" and auto != "unknown":
+        cache_segment_label(html_preview, auto)
         return auto
     if not ENABLE_SEGMENT_LABEL_PROMPT:
         return "unknown"
     # Fallback to user prompt if ambiguous
-    html_preview = segment.get("html", "")
     if not html_preview:
         html_preview = f"[No HTML] tag={segment.get('tag')} attrs={segment.get('attrs')}"
     rprint(f"\n[bold yellow]Segment needs review:[/bold yellow]\n{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
@@ -932,6 +941,7 @@ def prompt_for_segment_label(segment):
         "[cyan]What is the semantic role of this segment? (e.g., results_table, ballot_toggle, heading, panel, candidate_panel, location_panel, ballot_type, results_timestamp, download_link, clickable, footer, legend, contest_title, party_label, vote_method, reporting_status, summary, error_message, warning, info_box, navigation, pagination, tab, modal, tooltip, ignore, unknown, etc.)[/cyan]"
     )
     label = prompt_user_input("> ").strip()
+    cache_segment_label(html_preview, label)
     return label
 
 def scan_html_for_context(

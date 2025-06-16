@@ -217,7 +217,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                         "association_log": panel.get("association_log"),
                         "panel_ml_label": panel.get("panel_tag"),
                     }
-                    # Let build_dynamic_table handle extraction and harmonization
                     headers, data, entity_info = build_dynamic_table(
                         contest_title, None, None, coordinator, extraction_context
                     )
@@ -233,18 +232,27 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                     all_panel_headers.update(headers)
             all_panel_headers = list(all_panel_headers)
             all_panel_headers, all_panel_rows = harmonize_headers_and_data(all_panel_headers, all_panel_rows)
+
+            # --- Pivot and merge all data before feedback/confirmation ---
+            from .....utils.table_core import pivot_to_wide_format
+            # Use canonical logic for entity_info if available
+            entity_info = {"people": [], "ballot_types": []}
+            if all_panel_rows:
+                # Try to extract canonical candidates and ballot types from rows
+                for row in all_panel_rows:
+                    if "Candidate" in row and row["Candidate"] not in entity_info["people"]:
+                        entity_info["people"].append(row["Candidate"])
+                    for k in row.keys():
+                        if k not in ("Precinct", "Candidate") and k not in entity_info["ballot_types"]:
+                            entity_info["ballot_types"].append(k)
+            merged_headers, merged_data = pivot_to_wide_format(
+                all_panel_headers, all_panel_rows, entity_info, coordinator, html_context
+            )
+
             # --- 10. Assemble headers and finalize output ---
-            if not all_results:
+            if not merged_data:
                 rprint(f"[red][ERROR] No data could be parsed from ballot items or robust extraction.[/red]")
                 return None, None, contest_title, {"skipped": True}
-
-            # Merge all results
-            merged_headers = set()
-            merged_data = []
-            for headers, data, _, _ in all_results:
-                merged_headers.update(headers)
-                merged_data.extend(data)
-            merged_headers = sorted(merged_headers)
 
             metadata = {
                 "state": state,
