@@ -16,7 +16,7 @@ import platform
 from collections import defaultdict
 from ..utils.shared_logger import rprint
 from sentence_transformers import SentenceTransformer
-
+import hashlib
 from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest
 from sklearn.cluster import DBSCAN
@@ -665,3 +665,36 @@ def append_to_context_library(new_data, path=CONTEXT_LIBRARY_PATH):
     # Write back to file
     with open(path, "w", encoding="utf-8") as f:
         json.dump(library, f, indent=2)
+        
+def segment_hash(segment):
+    """Generate a stable hash for a DOM segment based on tag, attrs, and first 200 chars of HTML."""
+    tag = segment.get("tag", "")
+    attrs = segment.get("attrs", {})
+    html = segment.get("html", "")[:200]
+    return hashlib.sha256((tag + json.dumps(attrs, sort_keys=True) + html).encode("utf-8")).hexdigest()
+
+def store_segments_by_hash(context_library, segments):
+    """Store segments in the context library by their hash for future reuse."""
+    if "cached_segments" not in context_library:
+        context_library["cached_segments"] = []
+    known_hashes = {seg.get("segment_hash") for seg in context_library["cached_segments"]}
+    for seg in segments:
+        seg_hash = segment_hash(seg)
+        if seg_hash not in known_hashes:
+            context_library["cached_segments"].append({
+                "segment_hash": seg_hash,
+                "ml_label": seg.get("ml_label"),
+                "ml_confidence": seg.get("ml_confidence"),
+                "pattern_id": seg.get("pattern_id"),
+                "tag": seg.get("tag"),
+                "attrs": seg.get("attrs"),
+                "selector": f"{seg.get('tag')}#{seg.get('id')}" if seg.get('id') else seg.get('tag'),
+                # Optionally add more fields
+            })
+
+def get_segment_by_hash(context_library, seg_hash):
+    """Retrieve a segment from the context library by its hash."""
+    for seg in context_library.get("cached_segments", []):
+        if seg.get("segment_hash") == seg_hash:
+            return seg
+    return None
