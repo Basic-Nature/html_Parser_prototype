@@ -1,29 +1,32 @@
 import hashlib
-import json
+import orjson
 import os
 import re
 import time
-
-from typing import Dict, Any, List, Optional, Callable, Set
-from ..config import CONTEXT_LIBRARY_PATH
+from typing import Dict, Any, List, Optional
+from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
 from ..utils.download_utils import download_file
 from ..utils.format_router import route_format_handler 
 from ..utils.logger_instance import logger
 from rich import print as rprint
+from rich.console import Console
 from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
 from sentence_transformers import SentenceTransformer
+from ..bots.manual_correction_bot import update_segment_in_context_library
 from ..bots.librarian import (
-    HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
+    HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, DISTRICT_REGEX, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
     extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
     log_unknown_tag, log_unknown_attr
 )
 ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 import numpy as np
-
+console = Console()
 from bs4 import BeautifulSoup, Tag
+from ..utils.embedding_cache import save_embedding, load_embedding
 
-# --- No longer need local UNKNOWN_TAGS_LOG/UNKNOWN_ATTRS_LOG ---
+embedding_cache_hits = set()
+embedding_cache_misses = set()
 
 # Example: dynamically extend from learning/feedback
 extend_panel_tags(["custom-panel"])
@@ -31,11 +34,15 @@ extend_custom_attr_patterns([r"^x-data-"])
 extend_heading_tags(["custom-heading", "special-h2"])
 extend_html_tags(["custom-element", "widget"])
 
+def save_context_library(context_library, context_library_path=CONTEXT_LIBRARY_PATH):
+    with open(context_library_path, "wb") as f:
+        f.write(orjson.dumps(context_library, option=orjson.OPT_INDENT_2))
+        
 def load_additional_tags_from_context_library():
     tags = set()
     if os.path.exists(CONTEXT_LIBRARY_PATH):
-        with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
-            context_lib = json.load(f)
+        with open(CONTEXT_LIBRARY_PATH, "rb") as f:
+            context_lib = orjson.loads(f.read())
             for key in ["panel_tags", "table_tags", "section_keywords"]:
                 if key in context_lib and isinstance(context_lib[key], list):
                     tags.update([t.lower() for t in context_lib[key] if isinstance(t, str)])
@@ -88,12 +95,40 @@ def extract_custom_attrs(attrs: Dict[str, Any], include_data: bool = True) -> Di
 def extract_tagged_segments_with_attrs(
     html: str,
     include_data_attrs: bool = True,
-    fallback_on_error: bool = True
+    fallback_on_error: bool = True,
+    ml_model_name: str = "all-MiniLM-L6-v2",
+    pattern_kb: list = None,
+    ml_threshold: float = 0.85,
+    context_library: dict = None
 ) -> List[Dict[str, Any]]:
+    """
+    Extracts DOM segments with attributes and ML-driven semantic labels.
+    Each segment gets: ml_label, ml_confidence, pattern_id.
+    """
+    from sentence_transformers import SentenceTransformer
+    def get_cached_segment(tag, attrs, html_snippet):
+        # Try to find a matching segment in pattern_kb or context_library
+        attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
+        key = hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + html_snippet[:200]).encode("utf-8")).hexdigest()
+        if pattern_kb:
+            for entry in pattern_kb:
+                if entry.get("segment_hash") == key:
+                    return entry
+        if context_library:
+            for seg in context_library.get("cached_segments", []):
+                if seg.get("segment_hash") == key:
+                    return seg
+        return None
+
     start_time = time.time()
     segments: List[Dict[str, Any]] = []
     heading_tags = HEADING_TAGS
     panel_tags = PANEL_TAGS
+
+    # Load ML model and pattern KB if not provided
+    model = SentenceTransformer(ml_model_name)
+    if pattern_kb is None:
+        pattern_kb = load_pattern_kb()
 
     try:
         tree = HTMLParser(html)
@@ -146,7 +181,20 @@ def extract_tagged_segments_with_attrs(
                 except Exception:
                     seg["html"] = html[node.start:node.end]
             else:
-                seg["html"] = ""
+                # Fallback: reconstruct HTML from node and children
+                try:
+                    seg["html"] = node.html if hasattr(node, "html") else ""
+                    if not seg["html"]:
+                        # Recursively join child HTML
+                        seg["html"] = "".join(child.html for child in node.children if hasattr(child, "html"))
+                except Exception:
+                    seg["html"] = ""
+            # --- ML-driven labeling ---
+            label, confidence, pattern_id = ml_classify_segment(seg, model, pattern_kb, threshold=ml_threshold)
+            seg["ml_label"] = label
+            seg["ml_confidence"] = confidence
+            seg["pattern_id"] = pattern_id
+
             segments.append(seg)
             this_idx = seg["_idx"]
             for child in node.iter(include_text=True):
@@ -175,12 +223,13 @@ def extract_tagged_segments_with_attrs(
                 panel_node = segments[seg["panel_ancestor_idx"]]
                 seg["panel_ancestor_heading"] = panel_node.get("context_heading")
 
-        logger.info(f"[PERF] DOM extraction (selectolax) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
+        logger.info(f"[PERF] DOM extraction (selectolax+ML) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
         return segments
     except Exception as e:
         logger.error(f"[FALLBACK] selectolax failed: {e}")
         if not fallback_on_error:
             raise
+        # Fallback: BeautifulSoup, but still add ML labels
         soup = BeautifulSoup(html, "html.parser")
         def walk_bs4(node, parent_idx=None, heading_idx=None, start_search=0):
             if not isinstance(node, Tag):
@@ -222,11 +271,21 @@ def extract_tagged_segments_with_attrs(
                 "_idx": len(segments),
                 "context_heading": None
             }
-            segments.append(seg)
-            this_idx = seg["_idx"]
-            for child in node.children:
-                start_search = walk_bs4(child, this_idx, this_heading_idx, start_search)
-            return end if end > 0 else start_search
+            # ML-driven labeling
+            attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
+            seg_hash = hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + seg["html"][:200]).encode("utf-8")).hexdigest()
+            cached = get_cached_segment(tag, attrs, seg["html"])
+            if cached:
+                seg["ml_label"] = cached["ml_label"]
+                seg["ml_confidence"] = cached["ml_confidence"]
+                seg["pattern_id"] = cached["pattern_id"]
+                seg["segment_hash"] = seg_hash
+            else:
+                label, confidence, pattern_id = ml_classify_segment(seg, model, pattern_kb, threshold=ml_threshold)
+                seg["ml_label"] = label
+                seg["ml_confidence"] = confidence
+                seg["pattern_id"] = pattern_id
+                seg["segment_hash"] = seg_hash
 
         root = soup.find("html") or soup.find("body") or soup
         walk_bs4(root)
@@ -243,194 +302,313 @@ def extract_tagged_segments_with_attrs(
                     parent_idx = parent["parent_idx"]
                 seg["context_heading"] = heading_html
 
-        logger.info(f"[PERF] DOM extraction (BeautifulSoup fallback) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
-        return []
+        logger.info(f"[PERF] DOM extraction (BeautifulSoup fallback+ML) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
+        return segments
 
-def extract_panel_table_hierarchy(segments):
+def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", min_panel_score=0.65):
     """
-    Robustly extract panels and their associated tables from DOM segments.
-    Each panel will include all tables that are descendants or contextually grouped.
-    If no panels are found, each table is treated as its own panel.
-    Returns a list of panel dicts, each with a 'tables' list containing table HTML and context.
+    Advanced: Extract panels and their associated tables from DOM segments.
+    Uses ML embeddings, clustering, DOM proximity, and semantic heuristics for robust extraction.
+    Returns a list of panel dicts, each with ML confidence and association logs.
     """
     from bs4 import BeautifulSoup
-    import re
-    from difflib import get_close_matches
+    from sentence_transformers import SentenceTransformer
+    import numpy as np
 
     panel_tags = PANEL_TAGS
     heading_tags = HEADING_TAGS
 
-    # --- Helper: Fuzzy/regex matching for district/precinct names ---
-    # Accepts things like "Orangetown 18", "Clarkstown 1", "District 5", etc.
-    DISTRICT_REGEX = re.compile(
-        r"\b([A-Z][a-z]+(?: [A-Z][a-z]+)*\s*\d{1,3}|District\s*\d{1,3}|Ward\s*\d{1,3}|Precinct\s*\d{1,3}|ED\s*\d{1,3})\b"
-    )
-    # Optionally, add more patterns as needed
-
-    # --- Helper: Extract heading text from ancestors, with regex/fuzzy matching ---
-    def extract_heading_text_from_ancestors(seg, segments, max_depth=6):
-        parent_idx = seg.get("parent_idx")
-        depth = 0
-        while parent_idx is not None and depth < max_depth:
-            parent = segments[parent_idx]
-            soup = BeautifulSoup(parent.get("html", ""), "html.parser")
-            # Try heading tags first
-            for tag in ["span", "strong", "b"] + [f"h{i}" for i in range(1, 7)]:
-                el = soup.find(tag)
-                if el and el.get_text(strip=True):
-                    txt = el.get_text(strip=True)
-                    # Regex match for district/precinct
-                    match = DISTRICT_REGEX.search(txt)
-                    if match:
-                        return match.group(0)
-                    # Fuzzy match: look for likely district/precinct names
-                    if len(txt) < 40 and any(word in txt.lower() for word in ["district", "ward", "precinct", "ed", "town", "city", "village"]):
-                        return txt
-            # Fallback: any text in parent
-            txt = soup.get_text(strip=True)
-            match = DISTRICT_REGEX.search(txt)
-            if match:
-                return match.group(0)
-            if len(txt) < 40 and any(word in txt.lower() for word in ["district", "ward", "precinct", "ed", "town", "city", "village"]):
-                return txt
-            parent_idx = parent.get("parent_idx")
-            depth += 1
-        return None
-
-    # --- Helper: Extract "Fully Reported" or percent reported from panel or siblings ---
-    def extract_fully_reported_from_ancestors_or_siblings(seg, segments):
-        from bs4 import BeautifulSoup
-        # Check self
-        soup = BeautifulSoup(seg.get("html", ""), "html.parser")
-        for span in soup.find_all("span", class_="fw-bold"):
-            txt = span.get_text(strip=True)
-            if "Reported" in txt:
-                return txt
-        # Check siblings (other children of parent)
-        parent_idx = seg.get("parent_idx")
-        if parent_idx is not None:
-            parent = segments[parent_idx]
-            for child_idx in parent.get("children", []):
-                if child_idx == seg["_idx"]:
-                    continue
-                sibling = segments[child_idx]
-                soup = BeautifulSoup(sibling.get("html", ""), "html.parser")
-                for span in soup.find_all("span", class_="fw-bold"):
-                    txt = span.get_text(strip=True)
-                    if "Reported" in txt:
-                        return txt
-        return ""
-
-    # --- 1. Build index for fast lookup ---
     idx_to_seg = {seg["_idx"]: seg for seg in segments if "_idx" in seg}
     table_segs = [seg for seg in segments if seg.get("tag") == "table"]
+
+    # --- ML Model for Embeddings ---
+    model = SentenceTransformer(ml_model_name)
+
+    # --- Helper: Get embedding for a segment (panel/table/heading) ---
+    def get_embedding(seg, model=None, cache_hits=None, cache_misses=None):
+        html = seg.get("html", "")
+        tag = seg.get("tag", "")
+        attrs = " ".join([f"{k}={v}" for k, v in seg.get("attrs", {}).items()])
+        text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
+        identity = segment_identity_hash(seg)
+        emb = load_embedding(identity)
+        if emb is not None:
+            if cache_hits is not None:
+                cache_hits.add(identity)
+            return emb
+        if cache_misses is not None:
+            cache_misses.add(identity)
+        with console.status(
+            f"[cyan]Please wait for [bold]{tag}[/bold] {attrs[:40]}... to load, this may take a while...[/cyan]",
+            spinner="dots"
+        ):
+            emb = model.encode(f"{tag} {attrs} {text}", convert_to_numpy=True, show_progress_bar=False)
+        save_embedding(identity, emb)
+        return emb
+
+    # --- Helper: Find all panel-like segments ---
     panel_segs = [
         seg for seg in segments
-        if seg.get("tag") in panel_tags or any(
-            kw in (seg.get("classes", []) + [seg.get("id", "")])
-            for kw in [
-                "panel", "card", "container", "box", "section-panel", "results", "content", "main", "section", "p-panel-content"
-            ]
-        )
-    ]
-
-    # --- 2. Map tables to their nearest panel ancestor (by parent_idx walk) ---
-    table_to_panel = {}
-    for table in table_segs:
-        parent_idx = table.get("parent_idx")
-        found_panel = None
-        while parent_idx is not None:
-            parent = idx_to_seg.get(parent_idx)
-            if not parent:
-                break
-            if parent.get("tag") in panel_tags or any(
-                kw in (parent.get("classes", []) + [parent.get("id", "")])
+        if (
+            (seg.get("tag") == "div" and "p-panel" in seg.get("classes", []))
+            or (seg.get("tag") in panel_tags)
+            or any(
+                kw in (seg.get("classes", []) + [seg.get("id", "")])
                 for kw in [
                     "panel", "card", "container", "box", "section-panel", "results", "content", "main", "section", "p-panel-content"
                 ]
-            ):
-                found_panel = parent
-                break
-            parent_idx = parent.get("parent_idx")
-        if found_panel:
-            table_to_panel.setdefault(found_panel["_idx"], []).append(table)
-        else:
-            table_to_panel.setdefault(None, []).append(table)
+            )
+            or seg.get("ml_label") in ("panel", "location_panel", "candidate_panel")
+        )
+    ]
 
-    panels = []
+    # --- Compute embeddings for all panels and tables ---
+    for seg in panel_segs + table_segs:
+        seg["_embedding"] = get_embedding(seg, model=model, cache_hits=embedding_cache_hits, cache_misses=embedding_cache_misses)
 
-    # --- 3. Build panel objects with robust heading and reporting extraction ---
-    for panel_seg in panel_segs:
-        # Try to extract heading from ancestors (robust)
-        heading = extract_heading_text_from_ancestors(panel_seg, segments)
-        # If not found, fallback to context_heading
-        if not heading:
-            heading = extract_heading_text_from_ancestors({"parent_idx": panel_seg.get("parent_idx")}, segments)
-        tables = table_to_panel.get(panel_seg["_idx"], [])
-        if not tables:
-            # Try to find tables that are children (descendants) of this panel
-            tables = [
-                seg for seg in table_segs
-                if seg.get("parent_idx") == panel_seg["_idx"]
-            ]
-        if tables:
-            fully_reported = extract_fully_reported_from_ancestors_or_siblings(panel_seg, segments)
-            panels.append({
-                "panel_idx": panel_seg["_idx"],
-                "panel_tag": panel_seg.get("tag"),
-                "panel_heading": heading,
-                "panel_html": panel_seg.get("html"),
-                "fully_reported": fully_reported,
-                "tables": [
-                    {
-                        "table_idx": t["_idx"],
-                        "table_html": t.get("html", ""),
-                        "context_heading": extract_heading_text_from_ancestors(t, segments),
-                        "panel_ancestor_heading": heading,
-                    }
-                    for t in tables
-                ]
+    # --- Score panel-table associations using DOM and ML similarity ---
+    panel_table_scores = []
+    for panel in panel_segs:
+        for table in table_segs:
+            # DOM proximity: walk up from table to see if panel is ancestor
+            dom_score = 0
+            parent_idx = table.get("parent_idx")
+            hops = 0
+            while parent_idx is not None and hops < 10:
+                if parent_idx == panel["_idx"]:
+                    dom_score = 1.0 - 0.1 * hops  # closer is better
+                    break
+                parent_idx = idx_to_seg.get(parent_idx, {}).get("parent_idx")
+                hops += 1
+            # ML similarity
+            ml_score = float(np.dot(panel["_embedding"], table["_embedding"]) /
+                             (np.linalg.norm(panel["_embedding"]) * np.linalg.norm(table["_embedding"]) + 1e-8))
+            # Final score: weighted sum
+            score = 0.6 * dom_score + 0.4 * ml_score
+            panel_table_scores.append({
+                "panel_idx": panel["_idx"],
+                "table_idx": table["_idx"],
+                "dom_score": dom_score,
+                "ml_score": ml_score,
+                "score": score,
             })
 
-    # --- 4. Fallback: treat orphan tables as their own panels ---
-    orphan_tables = table_to_panel.get(None, [])
-    for seg in orphan_tables:
-        heading = extract_heading_text_from_ancestors(seg, segments)
-        panel_ancestor_heading = extract_heading_text_from_ancestors({"parent_idx": seg.get("parent_idx")}, segments)
+    # --- Assign tables to panels based on best score ---
+    table_to_panel = {}
+    for table in table_segs:
+        best = max(
+            (s for s in panel_table_scores if s["table_idx"] == table["_idx"]),
+            key=lambda s: s["score"],
+            default=None
+        )
+        if best and best["score"] >= min_panel_score:
+            table_to_panel.setdefault(best["panel_idx"], []).append((table, best))
+        else:
+            table_to_panel.setdefault(None, []).append((table, {"score": 0.0}))
+
+    # --- Build panel objects with ML confidence and association logs ---
+    panels = []
+    for panel in panel_segs:
+        tables_and_scores = table_to_panel.get(panel["_idx"], [])
+        if not tables_and_scores:
+            continue
+
+        # Improved heading extraction
+        heading = extract_heading_text_from_panel_or_ancestors(panel, segments)
+        if not heading:
+            heading = panel.get("context_heading")
+        if not heading:
+            heading = panel.get("panel_ancestor_heading")
+        if not heading:
+            heading = f"Panel {panel['_idx']}"
+        # Debug output if heading is still generic
+        if not heading or heading.startswith("Panel"):
+            print(f"[DEBUG] Panel idx={panel['_idx']} has no heading. context_heading={panel.get('context_heading')}, panel_ancestor_heading={panel.get('panel_ancestor_heading')}")
+            print(f"[DEBUG] Panel HTML snippet: {panel.get('html', '')[:200]}")
+
         panels.append({
-            "panel_idx": seg["_idx"],
-            "panel_tag": "table",
+            "panel_idx": panel["_idx"],
+            "panel_tag": panel.get("tag"),
             "panel_heading": heading,
-            "panel_html": seg.get("html", ""),
-            "fully_reported": "",
-            "tables": [{
-                "table_idx": seg["_idx"],
-                "table_html": seg.get("html", ""),
-                "context_heading": heading,
-                "panel_ancestor_heading": panel_ancestor_heading,
-            }]
+            "panel_html": panel.get("html"),
+            "fully_reported": "",  # Could add ML extraction for reporting status
+            "ml_confidence": float(np.mean([s["score"] for _, s in tables_and_scores])),
+            "tables": [
+                {
+                    "table_idx": t["_idx"],
+                    "table_html": t.get("html", ""),
+                    "context_heading": heading,
+                    "panel_ancestor_heading": heading,
+                    "ml_panel_score": s["score"],
+                    "ml_panel_dom_score": s["dom_score"],
+                    "ml_panel_semantic_score": s["ml_score"],
+                }
+                for t, s in tables_and_scores
+            ],
+            "association_log": [
+                {
+                    "table_idx": t["_idx"],
+                    "score": s["score"],
+                    "dom_score": s["dom_score"],
+                    "ml_score": s["ml_score"]
+                }
+                for t, s in tables_and_scores
+            ]
         })
 
-    # --- 5. If still no panels, treat every table as a panel (last resort) ---
-    if not panels:
-        for seg in table_segs:
-            heading = extract_heading_text_from_ancestors(seg, segments)
-            panel_ancestor_heading = extract_heading_text_from_ancestors({"parent_idx": seg.get("parent_idx")}, segments)
-            panels.append({
-                "panel_idx": seg["_idx"],
-                "panel_tag": "table",
-                "panel_heading": heading,
-                "panel_html": seg.get("html", ""),
-                "fully_reported": "",
-                "tables": [{
-                    "table_idx": seg["_idx"],
-                    "table_html": seg.get("html", ""),
-                    "context_heading": heading,
-                    "panel_ancestor_heading": panel_ancestor_heading,
-                }]
-            })
+    # --- Fallback: treat orphan tables as their own panels ---
+    orphan_tables = table_to_panel.get(None, [])
+    for t, s in orphan_tables:
+        heading = extract_heading_text_from_panel_or_ancestors(t, segments)
+        if not heading:
+            heading = t.get("context_heading")
+        if not heading:
+            heading = t.get("panel_ancestor_heading")
+        if not heading:
+            heading = f"Panel {t['_idx']}"
+        if not heading or heading.startswith("Panel"):
+            print(f"[DEBUG] Orphan table idx={t['_idx']} has no heading. context_heading={t.get('context_heading')}, panel_ancestor_heading={t.get('panel_ancestor_heading')}")
+            print(f"[DEBUG] Table HTML snippet: {t.get('html', '')[:200]}")
 
+        panels.append({
+            "panel_idx": t["_idx"],
+            "panel_tag": "table",
+            "panel_heading": heading,
+            "panel_html": t.get("html", ""),
+            "fully_reported": "",
+            "ml_confidence": s["score"],
+            "tables": [{
+                "table_idx": t["_idx"],
+                "table_html": t.get("html", ""),
+                "context_heading": heading,
+                "panel_ancestor_heading": heading,
+                "ml_panel_score": s["score"],
+                "ml_panel_dom_score": s.get("dom_score", 0.0),
+                "ml_panel_semantic_score": s.get("ml_score", 0.0),
+            }],
+            "association_log": [{
+                "table_idx": t["_idx"],
+                "score": s["score"],
+                "dom_score": s.get("dom_score", 0.0),
+                "ml_score": s.get("ml_score", 0.0)
+            }]
+        })
     return panels
+
+def extract_heading_text_from_panel_or_ancestors(panel_seg, segments, max_depth=6):
+    from bs4 import BeautifulSoup
+    from difflib import get_close_matches
+    
+    # --- 1. Get HTML for this panel, fallback to concatenating children if empty ---
+    def get_full_html(seg):
+        html = seg.get("html", "")
+        if html and html.strip():
+            return html
+        # Recursively concatenate all descendants' HTML
+        child_htmls = []
+        for idx in seg.get("children", []):
+            child_html = get_full_html(segments[idx])
+            if child_html:
+                child_htmls.append(child_html)
+        return "\n".join(child_htmls)
+
+    html = get_full_html(panel_seg)
+    soup = BeautifulSoup(html, "html.parser")
+    found_texts = []
+
+    # 2. Try heading tags first (as before)
+    for tag in HEADING_TAGS:
+        for el in soup.find_all(tag):
+            txt = el.get_text(strip=True)
+            if not txt:
+                continue
+            found_texts.append(txt)
+            match = DISTRICT_REGEX.search(txt)
+            if match:
+                return match.group(0)
+            if len(txt) < 40 and any(word in txt.lower() for word in LOCATION_KEYWORDS):
+                return txt
+
+    # 3. Try common heading classes/ids (PrimeNG/Enhanced Voting)
+    for el in soup.find_all(True, class_=lambda c: c and any(h in c for h in ["panel-header", "contest-header", "ng-star-inserted", "section-title"])):
+        txt = el.get_text(strip=True)
+        if txt:
+            found_texts.append(txt)
+            match = DISTRICT_REGEX.search(txt)
+            if match:
+                return match.group(0)
+            if len(txt) < 40 and any(word in txt.lower() for word in LOCATION_KEYWORDS):
+                return txt
+    for el in soup.find_all(True, id=lambda i: i and any(h in i for h in ["panel-header", "contest-header", "ng-star-inserted", "section-title"])):
+        txt = el.get_text(strip=True)
+        if txt:
+            found_texts.append(txt)
+            match = DISTRICT_REGEX.search(txt)
+            if match:
+                return match.group(0)
+            if len(txt) < 40 and any(word in txt.lower() for word in LOCATION_KEYWORDS):
+                return txt
+
+    # 4. Fallback: any short, non-empty text node in the panel
+    for el in soup.find_all(text=True):
+        txt = el.strip()
+        if not txt or len(txt) > 60:
+            continue
+        found_texts.append(txt)
+        match = DISTRICT_REGEX.search(txt)
+        if match:
+            return match.group(0)
+        if any(word in txt.lower() for word in LOCATION_KEYWORDS):
+            return txt
+
+    # 5. Fuzzy match if nothing found
+    if found_texts:
+        close = get_close_matches(
+            found_texts[0], LOCATION_KEYWORDS, n=1, cutoff=0.7
+        )
+        if close:
+            return close[0]
+
+    # 6. Fallback: walk up ancestors
+    parent_idx = panel_seg.get("parent_idx")
+    depth = 0
+    while parent_idx is not None and depth < max_depth:
+        parent = segments[parent_idx]
+        parent_html = parent.get("html", "")
+        if not parent_html or parent_html.strip() == "":
+            # Try to concatenate children
+            child_htmls = []
+            for idx in parent.get("children", []):
+                child_html = segments[idx].get("html", "")
+                if child_html:
+                    child_htmls.append(child_html)
+            parent_html = "\n".join(child_htmls)
+        soup = BeautifulSoup(parent_html, "html.parser")
+        for tag in HEADING_TAGS:
+            el = soup.find(tag)
+            if el and el.get_text(strip=True):
+                txt = el.get_text(strip=True)
+                found_texts.append(txt)
+                match = DISTRICT_REGEX.search(txt)
+                if match:
+                    return match.group(0)
+                if len(txt) < 40 and any(word in txt.lower() for word in LOCATION_KEYWORDS):
+                    return txt
+        parent_idx = parent.get("parent_idx")
+        depth += 1
+
+    # 7. Fuzzy match on ancestors if nothing found
+    if found_texts:
+        close = get_close_matches(
+            found_texts[0], LOCATION_KEYWORDS, n=1, cutoff=0.7
+        )
+        if close:
+            return close[0]
+
+    # 8. Debug: print panel HTML if heading is still None
+    rprint(f"[red][DEBUG] No heading found for panel idx={panel_seg.get('_idx')}. Panel HTML snippet:\n{html[:300]}...[/red]")
+
+    return None
 
 def extract_fully_reported_from_panel(panel_html):
     soup = BeautifulSoup(panel_html, "html.parser")
@@ -483,29 +661,37 @@ def load_pattern_kb():
     kb = []
     path = safe_log_path("dom_pattern_kb.jsonl")
     if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "rb") as f:
             for line in f:
                 try:
-                    kb.append(json.loads(line))
+                    kb.append(orjson.loads(line))
                 except Exception:
                     continue
     return kb
 
 def save_pattern_kb(kb):
     path = safe_log_path("dom_pattern_kb.jsonl")
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path, "wb") as f:
         for entry in kb:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            if "embedding" in entry and isinstance(entry["embedding"], np.ndarray):
+                entry["embedding"] = entry["embedding"].tolist()
+            f.write(orjson.dumps(entry) + b"\n")
             
 def append_pattern_kb(entry):
+    # Convert any ndarray to list before saving
+    if "embedding" in entry and isinstance(entry["embedding"], np.ndarray):
+        entry["embedding"] = entry["embedding"].tolist()
     path = safe_log_path("dom_pattern_kb.jsonl")
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    with open(path, "ab") as f:
+        f.write(orjson.dumps(entry) + b"\n")
         
 def append_feedback_log(entry):
+    # Convert any ndarray to list before saving
+    if "embedding" in entry and isinstance(entry["embedding"], np.ndarray):
+        entry["embedding"] = entry["embedding"].tolist()    
     path = safe_log_path("segment_feedback_log.jsonl")
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    with open(path, "ab") as f:
+        f.write(orjson.dumps(entry) + b"\n")
 
 def get_page_hash(page):
     content = page.content()
@@ -682,14 +868,26 @@ def auto_label_segment(segment):
     # --- 15. Fallback: unknown/ambiguous, needs review ---
     return "unknown"
 
-def get_segment_embedding(model, segment):
-    # Use text and tag/attrs for embedding
+def get_segment_embedding(model, segment, cache_hits=None, cache_misses=None):
+    identity = segment_identity_hash(segment)
+    emb = load_embedding(identity)
+    if emb is not None:
+        if cache_hits is not None:
+            cache_hits.add(identity)
+        return emb
+    if cache_misses is not None:
+        cache_misses.add(identity)
     text = segment.get("html", "")
     tag = segment.get("tag", "")
     attrs = " ".join([f"{k}={v}" for k, v in segment.get("attrs", {}).items()])
-    full_text = f"{tag} {attrs} {text}"   
-    return model.encode(full_text, convert_to_numpy=True)
-
+    full_text = f"{tag} {attrs} {text}"
+    with console.status(
+        f"[cyan]Please wait for [bold]{tag}[/bold] {attrs[:40]}... to load, this may take a while...[/cyan]",
+        spinner="dots"
+    ):
+        emb = model.encode(full_text, convert_to_numpy=True, show_progress_bar=False)
+    save_embedding(identity, emb)
+    return emb
 
 def cosine_sim(a, b):
     if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
@@ -697,11 +895,9 @@ def cosine_sim(a, b):
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 def ml_classify_segment(segment, model, pattern_kb, threshold=0.85):
-    """
-    Classify a segment by comparing its embedding to known clusters in the KB.
-    Returns (label, confidence, matched_pattern_id)
-    """
-    emb = get_segment_embedding(model, segment)
+    emb = get_segment_embedding(model, segment, cache_hits=embedding_cache_hits, cache_misses=embedding_cache_misses)
+    if isinstance(emb, list):
+        emb = np.array(emb)
     best_label = "unknown"
     best_conf = 0.0
     best_pattern_id = None
@@ -714,11 +910,9 @@ def ml_classify_segment(segment, model, pattern_kb, threshold=0.85):
             best_conf = sim
             best_label = entry.get("label", "unknown")
             best_pattern_id = entry.get("pattern_id")
-    # If no match above threshold, label as unknown
     if best_conf < threshold:
         return "unknown", best_conf, None
     return best_label, best_conf, best_pattern_id
-
 
 def prompt_for_segment_label(segment):
     # Try to auto-label first
@@ -739,28 +933,38 @@ def prompt_for_segment_label(segment):
     return label
 
 def scan_html_for_context(
-    target_url, 
-    page, 
-    debug=False, 
-    context_cache=None, 
-    rejected_downloads: Optional[set] = None  # <-- add this
+    target_url,
+    page,
+    debug=False,
+    context_cache=None,
+    rejected_downloads: Optional[set] = None
 ) -> Dict[str, Any]:
     """
     Advanced HTML scanner with ML-driven DOM pattern clustering, active learning, dynamic tagging,
     confidence-driven processing, and persistent knowledge base.
     """
+    context_cache = load_context_cache_from_disk()
+    context_library = None
+    if os.path.exists(CONTEXT_LIBRARY_PATH):
+        with open(CONTEXT_LIBRARY_PATH, "rb") as f:
+            CONTEXT_LIBRARY = orjson.loads(f.read())
+            context_library = CONTEXT_LIBRARY
+        supported_formats = CONTEXT_LIBRARY.get("supported_formats", {})
+        supported_links = [link for link in CONTEXT_LIBRARY.get("download_links", []) if link["format"] in supported_formats]
+    else:
+        supported_formats = {}
+        supported_links = []    
     if rejected_downloads is None:
         rejected_downloads = set()
-    # --- 1. Caching ---
     page_hash = get_page_hash(page)
     if context_cache is not None and page_hash in context_cache:
         logger.info(f"[SCAN] Using cached context for {target_url}")
+        rprint("[bold green][CACHE] Entire context loaded from cache. Skipping scan.[/bold green]")
         return context_cache[page_hash]
 
-    # --- 2. Load context library and supported formats/links ---
     if os.path.exists(CONTEXT_LIBRARY_PATH):
-        with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
-            CONTEXT_LIBRARY = json.load(f)
+        with open(CONTEXT_LIBRARY_PATH, "rb") as f:
+            CONTEXT_LIBRARY = orjson.loads(f.read())
         supported_formats = CONTEXT_LIBRARY.get("supported_formats", {})
         supported_links = [link for link in CONTEXT_LIBRARY.get("download_links", []) if link["format"] in supported_formats]
     else:
@@ -792,15 +996,12 @@ def scan_html_for_context(
         dynamic_links = extract_download_links_from_html(html)
         all_links = { (l["href"], l["format"]): l for l in (supported_links + dynamic_links) }
         supported_links = list(all_links.values())
-        context_result["metadata"]["download_links"] = supported_links       
+        context_result["metadata"]["download_links"] = supported_links
 
         # --- 4. Downloadable file prompt logic (with ML-driven format clustering) ---
-        # Cluster available formats for review and ML learning
         format_kb = load_pattern_kb()
         for link in supported_links:
             fmt = link["format"]
-            # Use ML to cluster/categorize format extensions
-            # (Stub: just log for now, but could embed file metadata if downloaded)
             append_pattern_kb({
                 "pattern_id": f"format_{fmt}_{os.path.basename(link['href'])}",
                 "label": "download_format",
@@ -808,12 +1009,10 @@ def scan_html_for_context(
                 "href": link["href"],
                 "source_url": page.url,
                 "timestamp": time.time(),
-                "embedding": [],  # Could add file content embedding if downloaded
+                "embedding": [],
             })
 
-        # --- Filter out rejected files ---
         new_links = [link for link in supported_links if link["href"] not in rejected_downloads]
-
         if new_links:
             available_files = [f"{os.path.basename(link['href'])} ({link['format']})" for link in new_links]
             rprint(f"[cyan]Downloadable file(s) found: {', '.join(available_files)}.[/cyan]")
@@ -840,41 +1039,42 @@ def scan_html_for_context(
                             else:
                                 mark_url_processed(target_url, status="fail")
                             return context_result
-                    pass
                 if not chosen_link:
                     rprint(f"[red]No download link found for format: {chosen_fmt}[/red]")
             else:
-                # User rejected all new files, add to rejected_downloads
                 for link in new_links:
                     rejected_downloads.add(link["href"])
                 context_result["metadata"]["download_links"] = [
                     {"format": link["format"], "url": link["href"]} for link in supported_links
                 ]
 
-        # --- 5. HTML tag extraction for context organization ---
-        segments_with_attrs = extract_tagged_segments_with_attrs(html)
+        # --- 5. HTML tag extraction for context organization (with ML) ---
+        pattern_kb = load_pattern_kb()
+        segments_with_attrs = extract_tagged_segments_with_attrs(
+            html,
+            include_data_attrs=True,
+            fallback_on_error=True,
+            ml_model_name="all-MiniLM-L6-v2",
+            pattern_kb=pattern_kb,
+            ml_threshold=0.85,
+            context_library=context_library
+        )
         context_result["tagged_segments_with_attrs"] = segments_with_attrs
         context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
 
         # --- 6. ML-driven DOM pattern clustering and tagging ---
-        pattern_kb = load_pattern_kb()
         model = SentenceTransformer("all-MiniLM-L6-v2")
         pattern_matches = []
         segments_needing_review = []
 
         for seg in segments_with_attrs:
-            label, confidence, pattern_id = ml_classify_segment(seg, model, pattern_kb)
-            seg["ml_label"] = label
-            seg["ml_confidence"] = confidence
-            seg["pattern_id"] = pattern_id
-            if confidence < 0.7 or label == "unknown":
-                # Active learning: prompt user for feedback
+            # Already labeled in extract_tagged_segments_with_attrs, but check for low confidence
+            if seg["ml_confidence"] < 0.7 or seg["ml_label"] == "unknown":
                 user_label = prompt_for_segment_label(seg)
                 seg["ml_label"] = user_label
                 seg["ml_confidence"] = 1.0
                 seg["pattern_id"] = f"pattern_{hashlib.sha256(seg['html'].encode('utf-8')).hexdigest()[:10]}"
-                # Save to KB and feedback log
-                emb = get_segment_embedding(model, seg).tolist()
+                emb = get_segment_embedding(model, seg, cache_hits=embedding_cache_hits, cache_misses=embedding_cache_misses).tolist()
                 kb_entry = {
                     "pattern_id": seg["pattern_id"],
                     "label": user_label,
@@ -892,11 +1092,16 @@ def scan_html_for_context(
                     "timestamp": time.time(),
                 })
                 segments_needing_review.append(seg)
+                # --- update context library with the correction ---
+                if context_library is not None and seg.get("segment_hash"):
+                    update_segment_in_context_library(context_library, seg["segment_hash"], user_label)
+                    # Optionally save immediately:
+                    save_context_library(context_library)
             else:
                 pattern_matches.append({
-                    "pattern_id": pattern_id,
-                    "label": label,
-                    "confidence": confidence,
+                    "pattern_id": seg["pattern_id"],
+                    "label": seg["ml_label"],
+                    "confidence": seg["ml_confidence"],
                     "segment_html": seg["html"][:200],
                 })
 
@@ -911,21 +1116,18 @@ def scan_html_for_context(
             for cls in seg["classes"]:
                 selector_log.add(f'.{cls}')
             selector_log.add(seg["tag"].lower())
-            # Add semantic tags for downstream use
             if "semantic_tags" not in seg:
                 seg["semantic_tags"] = []
             if seg["ml_label"] not in ("unknown", "ignore"):
                 seg["semantic_tags"].append(seg["ml_label"])
         context_result["selector_log"] = sorted(selector_log)
 
-        # Add metadata for context organizer
         context_result["metadata"].update({
             "source_url": page.url,
             "scrape_time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "pattern_kb_size": len(pattern_kb),
         })
 
-        # --- 8. Debug output for development ---
         if debug:
             rprint("\n[orange][DEBUG] Extracted HTML segments with ML labels:[/orange]")
             for seg in segments_with_attrs:
@@ -937,14 +1139,80 @@ def scan_html_for_context(
                     rprint(f"[green]  - {file_name} ({link['format']})[/green]")
             if segments_needing_review:
                 rprint(f"\n[red][DEBUG] {len(segments_needing_review)} segments flagged for review.[/red]")
-
+        if context_library is not None:
+            if "cached_segments" not in context_library:
+                context_library["cached_segments"] = []
+            known_hashes = {seg.get("segment_hash") for seg in context_library["cached_segments"]}
+            for seg in segments_with_attrs:
+                if seg.get("segment_hash") and seg["segment_hash"] not in known_hashes:
+                    # Only store minimal info needed for reuse
+                    context_library["cached_segments"].append({
+                        "segment_hash": seg["segment_hash"],
+                        "ml_label": seg["ml_label"],
+                        "ml_confidence": seg["ml_confidence"],
+                        "pattern_id": seg["pattern_id"],
+                        # Optionally add more fields if needed
+                    })
+            # Save back to disk
+            save_context_library(context_library)
+   
     except Exception as e:
         rprint(f"[SCAN ERROR] HTML parsing failed: {e}")
         logger.error(f"[SCAN ERROR] HTML parsing failed: {e}")
         context_result["error"] = f"[SCAN ERROR] HTML parsing failed: {e}"
-        pass
 
     logger.debug(f"Available formats detected: {context_result['available_formats']}")
     if context_cache is not None:
         context_cache[page_hash] = context_result
+        save_context_cache_to_disk(context_cache)
+    if embedding_cache_hits and not embedding_cache_misses:
+        rprint(f"[bold green][CACHE] All segment embeddings loaded from cache.[/bold green]")
+    elif embedding_cache_hits:
+        rprint(f"[yellow][CACHE] {len(embedding_cache_hits)} embeddings loaded from cache, {len(embedding_cache_misses)} computed.[/yellow]")        
     return context_result
+
+def get_log_folder():
+    parent_dir = os.path.dirname(BASE_DIR)  # One level above webapp
+    log_folder = os.path.join(parent_dir, "log")
+    os.makedirs(log_folder, exist_ok=True)
+    return log_folder
+
+def load_context_cache_from_disk(filename="context_cache.json"):
+    log_folder = get_log_folder()
+    path = os.path.join(log_folder, filename)
+    if os.path.exists(path):
+        try:
+            with open(path, "rb") as f:
+                return orjson.loads(f.read())
+        except Exception as e:
+            logger.error(f"[ERROR] Failed to load {filename}: {e}")
+            # Optionally, backup or delete the corrupted file
+            # os.rename(path, path + ".corrupt")
+            return {}
+    return {}
+
+def _to_json_safe(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, dict):
+        return {k: _to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_json_safe(v) for v in obj]
+    return obj
+
+def save_context_cache_to_disk(context_cache, filename="context_cache.json"):
+    log_folder = get_log_folder()
+    path = os.path.join(log_folder, filename)
+    with open(path, "wb") as f:
+        f.write(orjson.dumps(_to_json_safe(context_cache), option=orjson.OPT_INDENT_2))
+        
+def segment_identity_hash(segment):
+    """
+    Returns a SHA-256 hash for segment identity (NOT for passwords).
+    Do NOT use SHA-256 for password hashing—use bcrypt, argon2, or scrypt for passwords.
+    """
+    tag = segment.get("tag", "")
+    attrs = segment.get("attrs", {})
+    html = segment.get("html", "")
+    attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
+    return hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + html).encode("utf-8")).hexdigest()
