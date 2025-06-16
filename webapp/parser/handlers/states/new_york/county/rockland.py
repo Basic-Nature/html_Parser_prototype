@@ -2,6 +2,7 @@ from playwright.sync_api import Page
 
 from .....utils.contest_selector import select_contest
 from .....utils.table_builder import build_dynamic_table
+from .....utils.table_core import harmonize_headers_and_data
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import rprint
 from .....utils.shared_logic import autoscroll_until_stable
@@ -134,71 +135,104 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             autoscroll_until_stable(page)
             page.wait_for_timeout(3000)
 
-            # --- 9. Extract ballot items using DOM scan and context/NLP ---
+             # --- 9. Extract ballot items using DOM scan and context/NLP ---
             html = page.content()
             with open("rockland_debug.html", "w", encoding="utf-8") as f:
                 f.write(html)
-            rprint(f"[DEBUG] HTML length: {len(html)}")
-            rprint(f"[DEBUG] HTML after toggles (first 1000 chars):\n{html[:1000]}")
-            segments = extract_tagged_segments_with_attrs(html)
-            for seg in segments:
-                if seg["tag"] == "table":
-                    parent_idx = seg.get("parent_idx")
-                    parent = segments[parent_idx] if parent_idx is not None else None
-                    print("TABLE SEGMENT:")
-                    print("  Table classes:", seg.get("classes"))
-                    if parent:
-                        print("  Parent tag/classes:", parent["tag"], parent.get("classes"))            
-            rprint(f"[DEBUG] All segment tags: {[seg['tag'] for seg in segments]}")
-            rprint(f"[DEBUG] Extracted {len(segments)} segments. Tags: {[seg['tag'] for seg in segments[:20]]}")
-            panels = extract_panel_table_hierarchy(segments)
-            
-            rprint(f"[DEBUG] Found {len(panels)} panels after extract_panel_table_hierarchy.")
-            for i, panel in enumerate(panels):
-                rprint(f"[DEBUG] Panel {i}: heading={panel.get('panel_heading')}, tables={len(panel.get('tables', []))}")
 
+            pattern_kb = coordinator.get_pattern_kb() if hasattr(coordinator, "get_pattern_kb") else None
+            segments = extract_tagged_segments_with_attrs(
+                html,
+                ml_model_name="all-MiniLM-L6-v2",
+                pattern_kb=pattern_kb,
+                ml_threshold=0.85
+            )
+
+            panels = extract_panel_table_hierarchy(
+                segments,
+                ml_model_name="all-MiniLM-L6-v2",
+                min_panel_score=0.65
+            )
+
+            rprint(f"[DEBUG] Found {len(panels)} panels after extract_panel_table_hierarchy.")
             if not panels:
-                rprint("[red][DEBUG] No panels found in HTML. Check extract_panel_table_hierarchy logic or input HTML.")
-                
+                rprint("[yellow][DEBUG] No panels found, falling back to direct table scan.[/yellow]")
+                tables = page.locator("table")
+                contest_title = html_context.get("selected_race") or html_context.get("contest_title") or "Unknown Contest"
+                for i in range(tables.count()):
+                    table_html = tables.nth(i).evaluate("el => el.outerHTML")
+                    extraction_context = {
+                        "panel_heading": f"Table {i+1}",
+                        "coordinator": coordinator,
+                        "page": page,
+                        "html_context": html_context,
+                        "table_html": table_html,
+                        "segments": segments,
+                        "panels": [],
+                    }
+                    headers, data, entity_info = build_dynamic_table(
+                        contest_title, None, None, coordinator, extraction_context
+                    )
+                    if headers and data:
+                        all_results.append((headers, data, contest_title, entity_info))
+
+            # --- Consolidated panel/table debug output ---
+            for i, panel in enumerate(panels):
+                heading = panel.get('panel_heading')
+                tables = panel.get('tables', [])
+                ml_conf = panel.get('ml_confidence')
+                rprint(f"[DEBUG] Panel {i}: heading={heading}, tables={len(tables)}, ml_confidence={ml_conf if ml_conf is not None else 'N/A'}")
+                for t in tables:
+                    idx = t.get('table_idx', 'N/A')
+                    ml_score = t.get('ml_panel_score', 0)
+                    rprint(f"    Table idx={idx} ml_panel_score={ml_score:.2f}")
+
             all_results = []
             contest_title = html_context.get("selected_race") or html_context.get("contest_title") or "Unknown Contest"
             state = html_context.get("state", "NY")
             county = html_context.get("county", "Rockland")
 
+            all_panel_rows = []
+            all_panel_headers = set()
+
             for panel in panels:
-                # Try to get a location/district name from the panel
-                district = panel.get("panel_heading") or "Unknown District"
-                # Optionally, look for more location context here (e.g., parent divs, nearby headings)
-                if not panel.get("tables"):
-                    rprint(f"[red][ERROR] No table found for panel with heading: {district}[/red]")
-                    continue
+                precinct = panel.get("panel_heading") or panel.get("Precinct") or panel.get("district")
                 for table in panel["tables"]:
                     table_html = table.get("table_html")
-                    # If table_html is missing, warn and skip
                     if not table_html:
-                        rprint(f"[red][ERROR] No table_html found in context for panel: {district}[/red]")
                         continue
-                    # Build extraction context with both table and location
                     extraction_context = {
-                        "district": district,
-                        "panel_heading": panel.get("panel_heading"),
+                        "district": precinct,
+                        "panel_heading": precinct,
+                        "Precinct": precinct,
                         "panel_tag": panel.get("panel_tag"),
                         "coordinator": coordinator,
                         "page": page,
                         "html_context": html_context,
                         "table_html": table_html,
+                        "segments": segments,
+                        "panels": panels,
                         "fully_reported": panel.get("fully_reported", ""),
+                        "ml_confidence": panel.get("ml_confidence"),
+                        "association_log": panel.get("association_log"),
+                        "panel_ml_label": panel.get("panel_tag"),
                     }
+                    # Let build_dynamic_table handle extraction and harmonization
                     headers, data, entity_info = build_dynamic_table(
-                        contest_title, [], [], coordinator, extraction_context
+                        contest_title, None, None, coordinator, extraction_context
                     )
-                    # Attach location to each row
+                    # Ensure every row has the precinct
+                    if "Precinct" not in headers and precinct:
+                        headers = ["Precinct"] + headers
+                        for row in data:
+                            row["Precinct"] = precinct
                     for row in data:
-                        row["District"] = district
-                    if "District" not in headers:
-                        headers = ["District"] + headers
-                    all_results.append((headers, data, contest_title, entity_info))
-
+                        if "Precinct" not in row and precinct:
+                            row["Precinct"] = precinct
+                    all_panel_rows.extend(data)
+                    all_panel_headers.update(headers)
+            all_panel_headers = list(all_panel_headers)
+            all_panel_headers, all_panel_rows = harmonize_headers_and_data(all_panel_headers, all_panel_rows)
             # --- 10. Assemble headers and finalize output ---
             if not all_results:
                 rprint(f"[red][ERROR] No data could be parsed from ballot items or robust extraction.[/red]")
