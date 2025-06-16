@@ -12,6 +12,7 @@ from rich import print as rprint
 from rich.console import Console
 from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
+from ..utils.model_registry import ModelRegistry
 from sentence_transformers import SentenceTransformer
 from ..bots.manual_correction_bot import update_segment_in_context_library
 from ..bots.librarian import (
@@ -126,7 +127,7 @@ def extract_tagged_segments_with_attrs(
     panel_tags = PANEL_TAGS
 
     # Load ML model and pattern KB if not provided
-    model = SentenceTransformer(ml_model_name)
+    model = ModelRegistry.get_sentence_transformer(ml_model_name)
     if pattern_kb is None:
         pattern_kb = load_pattern_kb()
 
@@ -322,7 +323,7 @@ def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", mi
     table_segs = [seg for seg in segments if seg.get("tag") == "table"]
 
     # --- ML Model for Embeddings ---
-    model = SentenceTransformer(ml_model_name)
+    model = ModelRegistry.get_sentence_transformer(ml_model_name)
 
     # --- Helper: Get embedding for a segment (panel/table/heading) ---
     def get_embedding(seg, model=None, cache_hits=None, cache_misses=None):
@@ -363,9 +364,10 @@ def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", mi
     ]
 
     # --- Compute embeddings for all panels and tables ---
-    for seg in panel_segs + table_segs:
-        seg["_embedding"] = get_embedding(seg, model=model, cache_hits=embedding_cache_hits, cache_misses=embedding_cache_misses)
-
+    all_segs = panel_segs + table_segs
+    embeddings = batch_get_segment_embeddings(model, all_segs)
+    for seg, emb in zip(all_segs, embeddings):
+        seg["_embedding"] = emb
     # --- Score panel-table associations using DOM and ML similarity ---
     panel_table_scores = []
     for panel in panel_segs:
@@ -937,7 +939,8 @@ def scan_html_for_context(
     page,
     debug=False,
     context_cache=None,
-    rejected_downloads: Optional[set] = None
+    rejected_downloads: Optional[set] = None,
+    ml_model_name="all-MiniLM-L6-v2",
 ) -> Dict[str, Any]:
     """
     Advanced HTML scanner with ML-driven DOM pattern clustering, active learning, dynamic tagging,
@@ -1063,7 +1066,7 @@ def scan_html_for_context(
         context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
 
         # --- 6. ML-driven DOM pattern clustering and tagging ---
-        model = SentenceTransformer("all-MiniLM-L6-v2")
+        model = ModelRegistry.get_sentence_transformer(ml_model_name)
         pattern_matches = []
         segments_needing_review = []
 
@@ -1216,3 +1219,27 @@ def segment_identity_hash(segment):
     html = segment.get("html", "")
     attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
     return hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + html).encode("utf-8")).hexdigest()
+
+def batch_get_segment_embeddings(model, segments):
+    """
+    Efficiently get embeddings for a list of segments using batch encoding and cache.
+    Returns a list of embeddings in the same order as segments.
+    """
+    identities = [segment_identity_hash(seg) for seg in segments]
+    # Try to load from cache
+    cached = [load_embedding(identity) for identity in identities]
+    to_compute = [i for i, emb in enumerate(cached) if emb is None]
+    if to_compute:
+        texts = []
+        for idx in to_compute:
+            seg = segments[idx]
+            tag = seg.get("tag", "")
+            attrs = " ".join([f"{k}={v}" for k, v in seg.get("attrs", {}).items()])
+            text = BeautifulSoup(seg.get("html", ""), "html.parser").get_text(" ", strip=True)
+            texts.append(f"{tag} {attrs} {text}")
+        # Batch encode
+        new_embs = model.encode(texts, convert_to_numpy=True, show_progress_bar=False, batch_size=16)
+        for i, idx in enumerate(to_compute):
+            save_embedding(identities[idx], new_embs[i])
+            cached[idx] = new_embs[i]
+    return cached
