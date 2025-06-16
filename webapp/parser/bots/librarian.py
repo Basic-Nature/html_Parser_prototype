@@ -19,6 +19,10 @@ CUSTOM_ATTR_PATTERNS: List[re.Pattern] = [
     re.compile(r"^role$"),
 ]
 
+DISTRICT_REGEX = re.compile(
+    r"\b([A-Z][a-z]+(?: [A-Z][a-z]+)*\s*\d{1,3}|District\s*\d{1,3}|Ward\s*\d{1,3}|Precinct\s*\d{1,3}|ED\s*\d{1,3})\b"
+)
+
 # --- Table/Entity Keywords (from table_core, dynamic_table_extractor, etc.) ---
 BALLOT_TYPES = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
@@ -28,7 +32,12 @@ BALLOT_TYPE_SORT_ORDER = [
 ]
 LOCATION_KEYWORDS = {
     "precinct", "ward", "district", "location", "area", "city", "municipal", "town",
-    "borough", "village", "county", "division", "subdistrict", "polling place", "ed", "municipality"
+    "borough", "village", "county", "division", "subdistrict", "polling place", "ed", "municipality",
+    "section", "region", "zone", "subdivision", "community", "neighborhood", "block", "site",
+    "station", "place", "locale", "sector", "unit", "assembly district", "senate district",
+    "school district", "congressional district", "judicial district", "supervisorial district",
+    "council district", "precinct number", "precinct name", "district number", "district name",
+    "polling location", "poll site", "polling station", "precinct id", "district id"
 }
 PERCENT_KEYWORDS = {
     "% precincts reporting", "% reported", "percent reported", "fully reported", "precincts reporting"
@@ -36,9 +45,32 @@ PERCENT_KEYWORDS = {
 TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all", "Percent Reported", "Reporting Status"}
 MISC_FOOTER_KEYWORDS = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
 CANDIDATE_KEYWORDS = {
-    "candidate", "candidates", "name", "nominee", "person", "individual", "contestant"
+    "candidate", "candidates", "name", "nominee", "person", "individual", "contestant",
+    "office", "incumbent", "challenger", "write-in", "write in", "writein", "option", "choice",
+    "party", "affiliation", "designation", "slate", "ticket", "representative", "member", "appointee"
 }
-
+PARTY_KEYWORDS = {
+    "democratic", "republican", "working families", "conservative", "green", "libertarian",
+    "independent", "write-in", "write in", "writein", "other", "constitution", "socialist",
+    "progressive", "labor", "peace and freedom", "american independent", "no party", "nonpartisan",
+    "unaffiliated", "unknown", "blank", "void", "spoiled", "scattering", "undeclared", "unaffiliated",
+    "party", "affiliation", "designation"
+}
+LOCATION_ABBREVIATIONS = {
+    "ed", "ward", "wd", "dist", "district", "pct", "prec", "precinct", "muni", "mun", "area", "city", "cty",
+    "munic", "borough", "boro", "vill", "vlg", "village", "cnty", "county", "div", "division", "subdist", "subdistrict",
+    "pollpl", "poll pl", "polling place", "pl", "section", "sec", "region", "reg", "zone", "zn", "subdivision", "sd",
+    "comm", "community", "neigh", "neighborhood", "blk", "block", "site", "station", "stn", "locale", "sector", "unit",
+    "ad", "assembly district", "sd", "senate district", "cd", "congressional district", "jd", "judicial district",
+    "sup dist", "supervisorial district", "council dist", "council district", "precinct no", "precinct num", "precinct number",
+    "precinct name", "district no", "district num", "district number", "district name", "poll loc", "poll location",
+    "poll site", "polling station", "precinct id", "district id"
+}
+VALID_TYPES = {"general", "primary", "presidential preference", "special", "runoff", "municipal", "local"}
+CONTEST_KEYWORDS = {
+        "president", "senate", "congress", "governor", "mayor", "school board", "proposition", "referendum",
+        "assembly", "council", "trustee", "justice", "clerk", "judge", "district", "proposal", "village", "town"
+    }
 # --- Extend/Modify Functions ---
 def extend_panel_tags(new_tags: List[str]):
     global PANEL_TAGS
@@ -147,9 +179,9 @@ load_context_library()
 
 # --- Export all sets for use in other modules ---
 __all__ = [
-    "HTML_TAGS", "PANEL_TAGS", "HEADING_TAGS", "CUSTOM_ATTR_PATTERNS",
+    "HTML_TAGS", "PANEL_TAGS", "HEADING_TAGS", "CUSTOM_ATTR_PATTERNS", "DISTRICT_REGEX",
     "BALLOT_TYPES", "BALLOT_TYPE_SORT_ORDER", "LOCATION_KEYWORDS", "PERCENT_KEYWORDS", "TOTAL_KEYWORDS",
-    "MISC_FOOTER_KEYWORDS", "CANDIDATE_KEYWORDS",
+    "MISC_FOOTER_KEYWORDS", "CANDIDATE_KEYWORDS", "PARTY_KEYWORDS", "LOCATION_ABBREVIATIONS", "VALID_TYPES", "CONTEST_KEYWORDS",
     "extend_panel_tags", "extend_heading_tags", "extend_html_tags", "extend_custom_attr_patterns",
     "extend_location_keywords", "extend_candidate_keywords", "extend_ballot_types",
     "log_unknown_tag", "log_unknown_attr", "integrate_llm_feedback", "save_context_library"
