@@ -2030,13 +2030,15 @@ def pivot_to_wide_format(
     context: dict = None
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     logger.info("[TABLE_CORE][pivot_to_wide_format] Pivoting to wide format.")
-
+    from ..bots.librarian import BALLOT_TYPE_SORT_ORDER, normalize_segment_text
     # 1. Detect location header robustly and normalize to "Precinct"
     location_header = None
+    percent_header = None
     for h in headers:
         if is_location_header(h) and h.lower() != "candidate":
             location_header = h
-            break
+        if h.lower() in (ph.lower() for ph in PERCENT_KEYWORDS) or "%" in h or "reported" in h.lower():
+            percent_header = h
     if not location_header:
         location_header = "Precinct"
     if location_header != "Precinct":
@@ -2044,52 +2046,68 @@ def pivot_to_wide_format(
         for row in data:
             row["Precinct"] = row.pop(location_header)
         location_header = "Precinct"
-
-    # 2. Gather all unique candidates and ballot types
-    candidates = set(entity_info.get("people", []))
-    ballot_types = set(entity_info.get("ballot_types", []))
-    if not candidates:
-        for row in data:
-            val = row.get("Candidate", "")
-            if val:
-                candidates.add(val)
+    # 2. Gather all unique candidates and ballot types using canonical normalization
+    candidates = set()
+    ballot_types = set()
+    for row in data:
+        cand = row.get("Candidate", "")
+        if cand:
+            candidates.add(cand.strip())
+        for h in row.keys():
+            norm_h = normalize_segment_text(h)
+            if norm_h in [normalize_segment_text(bt) for bt in BALLOT_TYPE_SORT_ORDER] or h in BALLOT_TYPE_SORT_ORDER:
+                ballot_types.add(h)
+    # Fallback: scan headers if not found in data
     if not ballot_types:
         for h in headers:
-            if h not in (location_header, "Candidate"):
+            norm_h = normalize_segment_text(h)
+            if norm_h in [normalize_segment_text(bt) for bt in BALLOT_TYPE_SORT_ORDER] or h in BALLOT_TYPE_SORT_ORDER:
                 ballot_types.add(h)
-    if not ballot_types:
-        ballot_types = set(h for h in headers if h != location_header and h != "Candidate")
-
-    # 3. Build wide headers: all candidate/ballot type combos
+    # Use canonical sort order for ballot types
+    ballot_types_sorted = [bt for bt in BALLOT_TYPE_SORT_ORDER if bt in ballot_types]
+    for bt in sorted(ballot_types):
+        if bt not in ballot_types_sorted:
+            ballot_types_sorted.append(bt)
+    # 3. Build wide headers: Precinct, % Reported, [Candidate - BallotType ... Total Vote], Grand Total
     wide_headers = [location_header]
+    if percent_header:
+        wide_headers.append(percent_header)
     for candidate in sorted(candidates):
-        for bt in sorted(ballot_types):
+        for bt in ballot_types_sorted:
             wide_headers.append(f"{candidate} - {bt}")
+        wide_headers.append(f"{candidate} - Total Vote")
     wide_headers.append("Grand Total")
-
     # 4. Build wide data, one row per unique location
     location_values = set(row.get(location_header, "") for row in data if row.get(location_header, ""))
     wide_data = []
     for loc in sorted(location_values):
         out_row = {h: "" for h in wide_headers}
         out_row[location_header] = loc
+        if percent_header:
+            # Use the first found value for this precinct
+            for row in data:
+                if row.get(location_header, "") == loc and percent_header in row:
+                    out_row[percent_header] = row[percent_header]
+                    break
         grand_total = 0
-        for candidate in candidates:
-            for bt in ballot_types:
+        for candidate in sorted(candidates):
+            cand_total = 0
+            for bt in ballot_types_sorted:
                 val = ""
                 for row in data:
                     if row.get(location_header, "") == loc and row.get("Candidate", "") == candidate:
-                        val = row.get(bt, "") or row.get(f"{bt}", "") or row.get(f"{candidate} - {bt}", "")
+                        val = row.get(bt, "") or row.get(f"{candidate} - {bt}", "")
                         break
                 out_row[f"{candidate} - {bt}"] = val if val not in (None, "") else "-"
                 try:
                     if val and str(val).replace(",", "").isdigit():
-                        grand_total += int(str(val).replace(",", ""))
+                        cand_total += int(str(val).replace(",", ""))
                 except Exception:
                     pass
+            out_row[f"{candidate} - Total Vote"] = str(cand_total)
+            grand_total += cand_total
         out_row["Grand Total"] = str(grand_total)
         wide_data.append(out_row)
-
     logger.info(f"[TABLE_CORE][pivot_to_wide_format] Wide format: {len(wide_data)} rows, {len(wide_headers)} columns.")
     return wide_headers, wide_data
 
