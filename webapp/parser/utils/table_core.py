@@ -29,7 +29,7 @@ from collections import Counter
 from typing import List, Dict, Any, Tuple, TYPE_CHECKING
 import time
 import hashlib
-from ..utils.shared_logger import logger
+from ..utils.shared_logger import logger, rprint
 from ..utils.ml_table_detector import detect_tables_ml
 from ..config import BASE_DIR
 from difflib import get_close_matches
@@ -41,6 +41,8 @@ from ..bots.librarian import (
     CANDIDATE_KEYWORDS,
     TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS,
+    PARTY_KEYWORDS,
+    LOCATION_ABBREVIATIONS
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -62,6 +64,7 @@ context_cache = {}
 def robust_table_extraction(page, extraction_context=None, existing_headers=None, existing_data=None):
     """
     Unified, persistent table extraction pipeline with robust location detection and forced wide format.
+    Now supports ML-driven context, segments, and panels from html_scanner.
     """
     import types
 
@@ -87,10 +90,18 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     extraction_logs = []
     all_tables = []
 
+    # --- ML context integration ---
+    ml_confidence = extraction_context.get("ml_confidence") if extraction_context else None
+    association_log = extraction_context.get("association_log") if extraction_context else None
+    segments = extraction_context.get("segments") if extraction_context else None
+    panels = extraction_context.get("panels") if extraction_context else None
+
     # 1. DOM structure extraction (divs, lists, etc.)
     try:
         headers_dom, data_dom, diagnostics_dom = extract_rows_and_headers_from_dom(
-            page, coordinator=extraction_context.get("coordinator") if extraction_context else None
+            page,
+            coordinator=extraction_context.get("coordinator") if extraction_context else None,
+            context=extraction_context
         )
         if headers_dom and data_dom:
             all_tables.append((headers_dom, data_dom))
@@ -115,32 +126,18 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 
     # 2. Pattern-based extraction (approved DOM patterns)
     try:
-        pattern_rows = extract_with_patterns(page, extraction_context)
-        pattern_rows = [tup for tup in pattern_rows if tup[1] is not None]
-        diagnostics_pat = {"pattern_count": len(pattern_rows)}
-        if pattern_rows:
-            headers_pat = guess_headers_from_row(pattern_rows[0][1])
-            data_pat = []
-            for heading, row, pat in pattern_rows:
-                if row is None:
-                    continue
-                cells = row.locator("> *")
-                row_data = {}
-                for idx in range(cells.count()):
-                    row_data[headers_pat[idx] if idx < len(headers_pat) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
-                if row_data:
-                    data_pat.append(row_data)
-            if headers_pat and data_pat:
-                all_tables.append((headers_pat, data_pat))
-                extraction_logs.append({
-                    "method": "pattern",
-                    "headers": headers_pat,
-                    "rows": len(data_pat),
-                    "columns": len(headers_pat),
-                    "success": True,
-                    "context": extraction_context,
-                    "diagnostics": diagnostics_pat,
-                })
+        headers_pat, data_pat, diagnostics_pat = extract_with_patterns(page, extraction_context)
+        if headers_pat and data_pat:
+            all_tables.append((headers_pat, data_pat))
+            extraction_logs.append({
+                "method": "pattern",
+                "headers": headers_pat,
+                "rows": len(data_pat),
+                "columns": len(headers_pat),
+                "success": True,
+                "context": extraction_context,
+                "diagnostics": diagnostics_pat,
+            })
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Pattern extraction failed: {e}")
         extraction_logs.append({
@@ -186,7 +183,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # 4. Table extraction with heading/location context
     try:
         headers_loc, data_loc, diagnostics_loc = extract_all_tables_with_location(
-            page, coordinator=extraction_context.get("coordinator") if extraction_context else None
+            page, coordinator=extraction_context.get("coordinator") if extraction_context else None, context=extraction_context
         )
         if headers_loc and data_loc:
             all_tables.append((headers_loc, data_loc))
@@ -209,11 +206,10 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "diagnostics": None,
         })
 
-    # 5. ML-based table detection
+    # 5. ML-based table detection (optionally use ML context/segments/panels)
     try:
         ml_tables = ml_based_table_detection(page, extraction_context)
-        for idx, (headers_ml, data_ml) in enumerate(ml_tables):
-            diagnostics_ml = {"ml_table_index": idx, "row_count": len(data_ml)}
+        for idx, (headers_ml, data_ml, diagnostics_ml) in enumerate(ml_tables):
             if headers_ml and data_ml:
                 all_tables.append((headers_ml, data_ml))
                 extraction_logs.append({
@@ -238,8 +234,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # 6. Nested table extraction
     try:
         nested_tables = nested_table_extraction(page)
-        for idx, (headers_nested, data_nested) in enumerate(nested_tables):
-            diagnostics_nested = {"nested_table_index": idx, "row_count": len(data_nested)}
+        for idx, (headers_nested, data_nested, diagnostics_nested) in enumerate(nested_tables):
             if headers_nested and data_nested:
                 all_tables.append((headers_nested, data_nested))
                 extraction_logs.append({
@@ -264,8 +259,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # 7. Custom plugin extraction
     try:
         plugin_tables = custom_plugin_extraction(page, extraction_context)
-        for idx, (headers_plugin, data_plugin) in enumerate(plugin_tables):
-            diagnostics_plugin = {"plugin_index": idx, "row_count": len(data_plugin)}
+        for idx, (headers_plugin, data_plugin, diagnostics_plugin) in enumerate(plugin_tables):
             if headers_plugin and data_plugin:
                 all_tables.append((headers_plugin, data_plugin))
                 extraction_logs.append({
@@ -303,8 +297,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # 9. Robust HTML fallback using BeautifulSoup
     try:
         fallback_tables = robust_html_fallback_extraction(page)
-        for idx, (headers_fallback, data_fallback) in enumerate(fallback_tables):
-            diagnostics_fallback = {"fallback_table_index": idx, "row_count": len(data_fallback)}
+        for idx, (headers_fallback, data_fallback, diagnostics_fallback) in enumerate(fallback_tables):
             if headers_fallback and data_fallback:
                 all_tables.append((headers_fallback, data_fallback))
                 extraction_logs.append({
@@ -327,7 +320,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         })
 
     logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(safe_json(extraction_logs), indent=2)}")
-    
+
     # --- Deduplicate tables by header signature ---
     unique_tables = {}
     for headers, data in all_tables:
@@ -336,37 +329,30 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             unique_tables[sig] = (headers, data)
     all_tables = list(unique_tables.values())
 
-    # --- Merge all unique rows from all sources ---
+    # --- Combine, merge, annotate, pivot, feedback ---
     if all_tables:
-        merged_headers = []
-        merged_data = []
-        for headers, data in all_tables:
-            for h in headers:
-                if h not in merged_headers:
-                    merged_headers.append(h)
-            merged_data.extend(data)
-        # Harmonize and deduplicate rows
-        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
-        logger.info(f"[TABLE BUILDER] Unified extraction: {len(merged_data)} rows, {len(merged_headers)} columns.")
-
-        # Entity annotation and structure verification
+        # 1. Combine all panel tables into one
+        combined_headers, combined_data = combine_panel_tables_by_precinct(all_tables)
+        # 2. Merge candidate/party fields
+        combined_headers, combined_data = merge_multiline_candidate_rows(combined_headers, combined_data)
+        # 3. Entity annotation and structure verification (pass ML context)
         coordinator = extraction_context.get("coordinator") if extraction_context else None
-        merged_headers, merged_data, entity_info = nlp_entity_annotate_table(
-            merged_headers, merged_data, context=extraction_context, coordinator=coordinator
+        entity_info = {
+            "ml_confidence": ml_confidence,
+            "association_log": association_log,
+            "segments": segments,
+            "panels": panels,
+        }
+        combined_headers, combined_data, entity_info = nlp_entity_annotate_table(
+            combined_headers, combined_data, context=extraction_context, coordinator=coordinator
         )
-        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
-        merged_headers, merged_data, structure_info = progressive_table_verification(
-            merged_headers, merged_data, coordinator, extraction_context
+        # 4. Pivot to wide format
+        combined_headers, combined_data = pivot_to_wide_format(
+            combined_headers, combined_data, entity_info, coordinator, extraction_context
         )
-
-        # 10. Feedback/correction loop (user-in-the-loop)
-        merged_headers, merged_data = feedback_correction_loop(merged_headers, merged_data, extraction_context)
-
-        # --- NEW: Always force wide format if structure is already-wide or candidate-major ---
-        if structure_info.get("type") in ("already-wide", "candidate-major"):
-            merged_headers, merged_data = force_fully_wide_format(merged_headers, merged_data, extraction_context)
-
-        return merged_headers, merged_data
+        # 5. Feedback/correction loop (user-in-the-loop)
+        combined_headers, combined_data = feedback_correction_loop(combined_headers, combined_data, extraction_context)
+        return combined_headers, combined_data
 
     # --- Only now try fallback NLP extraction ---
     try:
@@ -422,7 +408,7 @@ def extract_percent_reported_from_page(page):
                 return percent
     return ""
 
-def extract_all_tables_with_location(page, coordinator=None):
+def extract_all_tables_with_location(page, coordinator=None, context=None):
     """
     Extract all tables, associating each with the nearest section/district/heading.
     Dynamically chooses between panel-based and section-heading-based extraction,
@@ -443,31 +429,35 @@ def extract_all_tables_with_location(page, coordinator=None):
 
     for method, tables_with_headings in extraction_types:
         all_headers = set()
-        all_data = []
+        all_panel_rows = []
+        all_panel_headers = set()
         all_entity_previews = []
         for heading, table in tables_with_headings:
-            headers, data, entity_preview = extract_table_data(table, coordinator=coordinator)
+            headers, data, entity_preview = extract_table_data(
+                table, coordinator=coordinator, structure_info={"context": context or {}}
+            )
             if not headers or not data:
                 continue
 
-            # --- Use central keywords from librarian ---
+            # --- Always normalize location column to "Precinct" ---
             location_col = find_best_header(headers, LOCATION_KEYWORDS)
             if not location_col:
-                # Synthesize: guess best name from heading or fallback
-                for kw in LOCATION_KEYWORDS:
-                    if kw in heading.lower():
-                        location_col = kw.title()
-                        break
-                if not location_col:
-                    location_col = "District"
-                if location_col not in headers:
-                    headers = [location_col] + headers
+                # Use heading as the location value
+                if "Precinct" not in headers:
+                    headers = ["Precinct"] + headers
                 for row in data:
-                    row[location_col] = heading
+                    row["Precinct"] = heading
+                location_col = "Precinct"
             else:
+                # Rename location_col to "Precinct" if needed
+                if location_col != "Precinct":
+                    headers = ["Precinct" if h == location_col else h for h in headers]
+                    for row in data:
+                        row["Precinct"] = row.pop(location_col)
+                # Fill missing values with heading
                 for row in data:
-                    if not row.get(location_col):
-                        row[location_col] = heading
+                    if not row.get("Precinct"):
+                        row["Precinct"] = heading
 
             percent_col = find_best_header(headers, PERCENT_KEYWORDS)
             percent_value = extract_percent_reported_from_heading(heading) or percent_reported_global
@@ -483,15 +473,19 @@ def extract_all_tables_with_location(page, coordinator=None):
                         row[percent_col] = percent_value
 
             all_headers.update(headers)
-            all_data.extend(data)
+            all_panel_rows.extend(data)
             all_entity_previews.append(entity_preview)
-
-        all_headers_list = list(all_headers)
-        all_headers_list, all_data = harmonize_headers_and_data(all_headers_list, all_data)
+        candidate_cols = [h for h in all_panel_headers if any(k in h.lower() for k in CANDIDATE_KEYWORDS)]
+        ballot_type_cols = [h for h in all_panel_headers if any(bt in h.lower() for bt in BALLOT_TYPES)]
+        final_headers = ["Precinct"] + sorted(set(candidate_cols + ballot_type_cols)) + [
+            h for h in all_panel_headers if h not in candidate_cols + ballot_type_cols + ["Precinct"]
+        ]
+        all_panel_headers = list(all_headers)
+        all_panel_headers, all_panel_rows = harmonize_headers_and_data(final_headers, all_panel_rows)
         extraction_results.append({
             "method": method,
-            "headers": all_headers_list,
-            "data": all_data,
+            "headers": all_panel_headers,
+            "data": all_panel_rows,
             "entity_previews": all_entity_previews,
             "score": 0
         })
@@ -535,6 +529,15 @@ def extract_all_tables_with_location(page, coordinator=None):
         # Optionally, use NLP/ML to check if rows are associated (e.g., by location/district/candidate)
         # This can be extended with coordinator.match_rows(row1, row2) if implemented
 
+    # --- Combine all panel tables if more than one ---
+    all_tables = [(r["headers"], r["data"]) for r in extraction_results if r["headers"] and r["data"]]
+    if len(all_tables) > 1:
+        headers, data = combine_panel_tables_by_precinct(all_tables)
+        # Optionally, merge entity previews as well
+        entity_previews = []
+        for r in extraction_results:
+            entity_previews.extend(r.get("entity_previews", []))
+        return headers, data, entity_previews
     return best["headers"], best["data"], best["entity_previews"]
 
 def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[List[str], List[Dict[str, Any]], dict]:
@@ -591,7 +594,40 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
             if any(v for v in row.values()):
                 data.append(row)
 
+        # --- After extracting headers and data ---
+        # If no location column, but context provides one, inject it
         context = structure_info.get("context") if structure_info else {}
+        panel_heading = context.get("panel_heading") or context.get("Precinct") or context.get("district")
+        location_col = entity_preview.get("location_column") or (
+            next((h for h in headers if is_location_header(h)), None)
+        ) or "Precinct"
+        if location_col and location_col != "Precinct":
+            headers = ["Precinct" if h == location_col else h for h in headers]
+            for row in data:
+                row["Precinct"] = row.pop(location_col)
+            location_col = "Precinct"
+        # --- PATCH: Inject location if missing ---
+        if not location_col and panel_heading:           
+            for row in data:
+                row["Precinct"] = panel_heading
+            if "Precinct" not in headers:
+                headers = ["Precinct"] + headers
+            location_col = "Precinct"
+        # --- PATCH: If only one unique location, synthesize from context ---
+        unique_locations = sorted(
+            set(str(row.get(location_col, "") or "") for row in data if row.get(location_col, ""))
+        )
+        unique_candidates = sorted(set(row.get("Candidate", "") for row in data if row.get("Candidate", "")))
+        n_candidates = len(entity_preview.get("candidates") or [])
+        n_ballot_types = len(entity_preview.get("ballot_types") or [])
+        n_numbers = len(entity_preview.get("numbers") or [])
+        n_locations = len(unique_locations)
+        loc_col_disp = location_col if location_col else "N/A"
+        pct_col_disp = entity_preview.get("percent_column") or "N/A"
+        
+        if location_col and len(unique_locations) <= 1 and panel_heading:
+            for row in data:
+                row[location_col] = panel_heading             
         county = context.get("county", "").lower() if context else ""
         known_districts = set()
         if coordinator and hasattr(coordinator, "library"):
@@ -609,7 +645,7 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
             score = 0
             if coordinator:
                 ents = coordinator.extract_entities(h)
-                for ent, label in ents:
+                for ents, label in ents:
                     if label in {"GPE", "LOC", "FAC"} and h.lower() != "candidate":
                         score += 1.0
                 if is_location_header(h) and h.lower() != "candidate":
@@ -697,7 +733,7 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
 
         # --- Automated feedback/learning: log if location_col is missing or suspect ---
         if not location_col or len(entity_preview["locations"]) == 0:
-            logger.warning("[TABLE BUILDER][extract_table_data] No valid location column or values detected. Consider user/ML feedback.")
+            logger.warning(f"[TABLE BUILDER][extract_table_data] No valid location column {location_col} or values detected {entity_preview['locations']}. Consider user/ML feedback.")
 
         # --- Percent Reported Value Extraction ---
         percent_value = ""
@@ -728,20 +764,33 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
                     row[percent_col] = percent_value
 
         # Log NLP-style preview
-        logger.info(f"[NLP PREVIEW][extract_table_data] Candidates: {sorted(entity_preview['candidates'])}")
-        logger.info(f"[NLP PREVIEW][extract_table_data] Ballot Types: {sorted(entity_preview['ballot_types'])}")
-        logger.info(f"[NLP PREVIEW][extract_table_data] Numbers: {sorted(entity_preview['numbers'])}")
-        logger.info(f"[NLP PREVIEW][extract_table_data] Locations: {sorted(entity_preview['locations'])}")
-        logger.info(f"[NLP PREVIEW][extract_table_data] Location column: {entity_preview['location_column']}")
-        logger.info(f"[NLP PREVIEW][extract_table_data] Percent column: {entity_preview['percent_column']}")
-
-        print(f"[NLP PREVIEW] Candidates: {sorted(entity_preview['candidates'])}")
-        print(f"[NLP PREVIEW] Ballot Types: {sorted(entity_preview['ballot_types'])}")
-        print(f"[NLP PREVIEW] Numbers: {sorted(entity_preview['numbers'])}")
-        print(f"[NLP PREVIEW] Locations: {sorted(entity_preview['locations'])}")
-        print(f"[NLP PREVIEW] Location column: {entity_preview['location_column']}")
-        print(f"[NLP PREVIEW] Percent column: {entity_preview['percent_column']}")
-
+        summary = (
+            f"[bold green][NLP PREVIEW][/bold green] "
+            f"Candidates: [cyan]{n_candidates}[/cyan], "
+            f"Ballot Types: [magenta]{n_ballot_types}[/magenta], "
+            f"Numbers: [yellow]{n_numbers}[/yellow], "
+            f"Locations: [blue]{n_locations}[/blue], "
+            f"LocCol: [bold]{loc_col_disp}[/bold], "
+            f"PctCol: [bold]{pct_col_disp}[/bold]"
+        )
+        rprint(summary)
+        if unique_locations:
+            rprint(f"[blue]Unique {loc_col_disp}s: {unique_locations}[/blue]")
+        else:
+            rprint(f"[yellow]No unique {loc_col_disp}s detected in data.[/yellow]")
+        if unique_candidates:
+            rprint(f"[magenta]Unique Candidates: {unique_candidates}[/magenta]")
+        else:
+            rprint(f"[yellow]No unique candidates detected in data.[/yellow]")        
+        # Optional: show a compact table preview of the first 2 rows
+        if data:
+            from rich.table import Table as RichTable
+            preview_table = RichTable(show_header=True, header_style="bold magenta")
+            for h in headers:
+                preview_table.add_column(h)
+            for row in data[:2]:
+                preview_table.add_row(*(str(row.get(h, "")) for h in headers))
+            rprint(preview_table)
         # If not headers and data, fallback to generic headers
         if not headers and data:
             max_cols = max(len(row) for row in data)
@@ -765,7 +814,7 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
     logger.info(f"[TABLE BUILDER][extract_table_data] Finished: {len(data)} rows, {len(headers)} columns.")
     return headers, data, entity_preview
 
-def guess_headers_from_row(row, known_keywords=None):
+def guess_headers_from_row(row, known_keywords=None, context=None):
     """
     Attempts to guess headers from a row's children using keywords or context.
     Returns (headers, diagnostics)
@@ -795,7 +844,7 @@ def guess_headers_from_row(row, known_keywords=None):
     diagnostics["headers"] = headers
     return headers, diagnostics
 
-def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2, coordinator=None):
+def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2, coordinator=None, context=None):
     """
     Attempts to extract tabular data from repeated DOM structures (divs, etc.).
     Returns headers, data, and diagnostics.
@@ -827,7 +876,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     if headers is not None:
         repeated_rows = repeated_rows[header_row_idx + 1 :]
     else:
-        headers = guess_headers_from_row(repeated_rows[0][1])
+        headers, _ = guess_headers_from_row(repeated_rows[0][1], context=context or {})
         logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Guessed headers from first row: {headers}")
 
     # --- Merge split header rows (e.g., two header rows) ---
@@ -862,17 +911,17 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Column stats: {col_stats}")
 
     # --- Build all data rows before filtering ---
-    all_data = []
+    all_panel_rows = []
     for heading, row in repeated_rows:
         cells = row.locator("> *")
         cell_values = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
         row_data = {headers[idx]: cell_values[idx] if idx < len(cell_values) else "" for idx in range(len(headers))}
-        all_data.append(row_data)
+        all_panel_rows.append(row_data)
 
     # --- Remove footer/summary rows, log what is removed ---
     filtered_data = []
     removed_footer_rows = []
-    for row in all_data:
+    for row in all_panel_rows:
         if row not in remove_footer_and_summary_rows([row], headers):
             removed_footer_rows.append(row)
         else:
@@ -892,7 +941,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     # --- Diagnostics dictionary ---
     diagnostics = {
         "headers": headers,
-        "all_data": all_data,
+        "all_panel_rows": all_panel_rows,
         "removed_footer_rows": removed_footer_rows,
         "removed_empty_rows": removed_empty_rows,
         "col_stats": col_stats,
@@ -951,7 +1000,7 @@ def extract_with_patterns(page, context=None, log_path=None):
                             })
     # Build headers/data if any matches
     if results:
-        headers = guess_headers_from_row(results[0][1])
+        headers, _ = guess_headers_from_row(results[0][1], context=context)
         data = []
         for heading, row, pat in results:
             cells = row.locator("> *")
@@ -1052,10 +1101,10 @@ def extract_all_candidates_from_data(headers, data):
     candidates = set()
     for row in data:
         val = row.get("Candidate", "")
-        # Split on newline or known party/candidate patterns
         for part in val.split("\n"):
             part = part.strip()
-            if part and not part.lower().startswith(("democratic", "republican", "working families", "conservative", "green", "libertarian", "independent", "write-in", "other")):
+            # Filter out party-only or generic lines
+            if part and not any(part.lower().startswith(pk) for pk in PARTY_KEYWORDS):
                 candidates.add(part)
     return candidates
 # 1. ML-based table detection (e.g., using a model to find tables in arbitrary HTML)
@@ -1226,73 +1275,94 @@ def find_best_header(headers, keywords):
 # HARMONIZATION & CLEANING
 # ===================================================================
 
-def harmonize_headers_and_data(headers: list, data: list) -> tuple:
+def harmonize_headers_and_data(headers: list, data: list, context: dict = None) -> tuple:
     """
     Ensures all rows have the same headers, filling missing fields with empty string.
     Deduplicates rows using a composite key of Location, Candidate, and Ballot Type columns.
-    Never collapses rows from different locations or ballot types with the same candidate.
-    Logs unique values in the detected location column for verification.
-    --- Only deduplicate if a valid composite key exists (location and candidate).
+    Always includes 'Percent Reported' if present in any row or context.
+    Logs unique values in the location column.
     """
-    # Deduplicate headers
-    all_headers = [h for h in headers if h is not None]
+    # 1. Collect all headers from input and data rows
+    all_headers = set(h for h in headers if h)
+    for row in data:
+        all_headers.update(row.keys())
+
+    # 2. Ensure 'Percent Reported' is present if in any row or context
+    percent_val = None
+    if any("Percent Reported" in row for row in data):
+        all_headers.add("Percent Reported")
+        for row in data:
+            if row.get("Percent Reported"):
+                percent_val = row["Percent Reported"]
+                break
+    if context and context.get("percent_reported"):
+        all_headers.add("Percent Reported")
+        percent_val = context["percent_reported"]
+
+    # 3. Build ordered headers: preserve input order, then add new ones
     seen = set()
-    deduped_headers = []
-    for h in all_headers:
-        if h not in deduped_headers:
-            deduped_headers.append(h)
+    ordered_headers = [h for h in headers if h in all_headers and not (h in seen or seen.add(h))]
+    ordered_headers += [h for h in all_headers if h not in seen and not seen.add(h)]
 
-    # Detect location column using librarian keywords
-    location_col = None
-    for h in deduped_headers:
-        if is_location_header(h):
-            location_col = h
-            break
+    # 4. Normalize location column to "Precinct"
+    location_col = next((h for h in ordered_headers if is_location_header(h)), None)
+    if location_col and location_col != "Precinct":
+        ordered_headers = ["Precinct" if h == location_col else h for h in ordered_headers]
+        for row in data:
+            row["Precinct"] = row.pop(location_col)
+        location_col = "Precinct"
 
-    # Detect candidate column
-    candidate_col = None
-    for h in deduped_headers:
-        if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS):
-            candidate_col = h
-            break
+    # 5. Identify candidate and ballot type columns
+    candidate_col = next((h for h in ordered_headers if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS)), None)
+    ballot_type_cols = [h for h in ordered_headers if any(bt.lower() in h.lower() for bt in BALLOT_TYPES)]
 
-    # Detect ballot type columns
-    ballot_type_cols = [h for h in deduped_headers if any(bt.lower() in h.lower() for bt in BALLOT_TYPES)]
-
-    # Always include all columns in output, but deduplicate by composite key
+    # 6. Deduplicate rows using composite key (location, candidate, ballot types)
     harmonized = []
     seen_keys = set()
     for row in data:
-        # --- Only deduplicate if both location_col and candidate_col are present and non-empty
-        if location_col and candidate_col and row.get(location_col, "") and row.get(candidate_col, ""):
+        full_row = {h: row.get(h, "") for h in ordered_headers}
+        # Fill missing Percent Reported from context if needed
+        if "Percent Reported" in ordered_headers and not full_row.get("Percent Reported") and percent_val:
+            full_row["Percent Reported"] = percent_val
+        # Deduplication key
+        if location_col and candidate_col and full_row.get(location_col) and full_row.get(candidate_col):
             key = (
-                row.get(location_col, ""),
-                row.get(candidate_col, ""),
-                *(row.get(bt, "") for bt in ballot_type_cols)
+                full_row.get(location_col, ""),
+                full_row.get(candidate_col, ""),
+                *(full_row.get(bt, "") for bt in ballot_type_cols)
             )
             if key in seen_keys:
                 continue
             seen_keys.add(key)
-        harmonized.append({h: row.get(h, "") for h in deduped_headers})
+        harmonized.append(full_row)
 
-    # Only prune columns if all values are empty/zero for that column across all rows
-    keep = []
-    n_rows = len(harmonized)
-    for h in deduped_headers:
-        if any(row.get(h, "") not in ("", "0") for row in harmonized):
-            keep.append(h)
-    if not keep and deduped_headers:
-        keep = deduped_headers
+    # 7. Remove columns that are all empty or zero
+    keep = [h for h in ordered_headers if any(row.get(h, "") not in ("", "0") for row in harmonized)]
+    if not keep and ordered_headers:
+        keep = ordered_headers
     harmonized = [{h: row.get(h, "") for h in keep} for row in harmonized]
 
-    # --- Location column detection and logging ---
-    unique_locations = set(row.get(location_col, "") for row in harmonized if location_col in row)
+    # 8. Log unique locations and warn if only one unique value
+    unique_locations = set(row.get(location_col, "") for row in harmonized if location_col and location_col in row)
     logger.info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
     print(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
     if location_col and len(unique_locations) <= 1:
         logger.warning(f"[HARMONIZE] WARNING: Only one unique value found in location column '{location_col}'. Extraction may be incorrect.")
 
-    return keep, harmonized
+    # 9. Reorder columns: Precinct, candidates, ballot types, then others
+    candidate_cols = [h for h in keep if any(k in h.lower() for k in CANDIDATE_KEYWORDS)]
+    ballot_type_cols = [h for h in keep if any(bt in h.lower() for bt in BALLOT_TYPES)]
+    ordered_final = []
+    if "Precinct" in keep:
+        ordered_final.append("Precinct")
+    ordered_final += sorted(set(candidate_cols + ballot_type_cols))
+    ordered_final += [h for h in keep if h not in candidate_cols + ballot_type_cols + ["Precinct"]]
+    # Remove duplicates while preserving order
+    seen_final = set()
+    ordered_final = [h for h in ordered_final if not (h in seen_final or seen_final.add(h))]
+
+    # 10. Return final headers and harmonized data
+    return ordered_final, [{h: row.get(h, "") for h in ordered_final} for row in harmonized]
 
 def deduplicate_headers(headers, data):
     """Remove duplicate headers by normalized name, keep first occurrence."""
@@ -1335,7 +1405,8 @@ def merge_table_data(headers_list, data_list):
         for row in data:
             match = None
             for mrow in merged_data:
-                if any(row.get(k) == mrow.get(k) and row.get(k) for k in all_headers):
+                keys = ["Precinct", "Candidate", "Party"]
+                if all(k in row and k in mrow and row[k] == mrow[k] and row[k] for k in keys if k in row):
                     match = mrow
                     break
             if match:
@@ -1349,9 +1420,26 @@ def merge_table_data(headers_list, data_list):
 
 def merge_multiline_candidate_rows(headers, data):
     """
-    Merge rows where candidate name and party are split across two rows.
-    Returns new headers and data.
+    Merge rows where candidate name and party are split across two rows or within a cell.
+    Ensures 'Precinct' and 'Percent Reported' columns are preserved and consistent.
+    - If a candidate cell contains a newline, split into candidate and party.
+    - If the next row is just a party, merge it.
+    - Always ensure 'Precinct' and 'Percent Reported' columns are present if found in any row.
     """
+    import re
+
+    # --- Detect if we have these columns in headers or data ---
+    has_precinct = "Precinct" in headers or any("Precinct" in row for row in data)
+    has_percent_reported = "Percent Reported" in headers or any("Percent Reported" in row for row in data)
+    # If not in headers but present in data, add to headers
+    if not has_precinct and any("Precinct" in row for row in data):
+        headers.append("Precinct")
+        has_precinct = True
+    if not has_percent_reported and any("Percent Reported" in row for row in data):
+        headers.append("Percent Reported")
+        has_percent_reported = True
+
+    # --- Main merge logic ---
     if "Candidate" not in headers:
         return headers, data
     merged_data = []
@@ -1359,33 +1447,111 @@ def merge_multiline_candidate_rows(headers, data):
     while i < len(data):
         row = data[i]
         candidate_val = row.get("Candidate", "")
-        # If candidate cell has a newline, merge into one cell
-        if "\n" in candidate_val:
-            parts = [p.strip() for p in candidate_val.split("\n") if p.strip()]
-            if len(parts) >= 2:
-                merged_name = f"{parts[0]} ({' '.join(parts[1:])})"
-                row["Candidate"] = merged_name
-            else:
-                row["Candidate"] = candidate_val.replace("\n", " ")
+        # Preserve Precinct and Percent Reported if present
+        precinct_val = row.get("Precinct", "")
+        percent_reported_val = row.get("Percent Reported", "")
+        party_abbrevs = ["DEM", "REP", "CON", "WOR", "IND", "GRN", "LIB", "Other", "Write-in"]
+        # Try to match pattern: [ABBR] Name[PartyName]
+        match = re.match(r"^([A-Z]{2,4})\s+(.+?)([A-Z][a-z]+)$", candidate_val)
+        if match:
+            abbr, name, party = match.groups()
+            row["Candidate"] = f"{abbr} {name}".strip()
+            row["Party"] = party
+            if has_precinct:
+                row["Precinct"] = precinct_val
+            if has_percent_reported:
+                row["Percent Reported"] = percent_reported_val
             merged_data.append(row)
             i += 1
-        # If next row is just a party, merge it
-        elif i + 1 < len(data):
-            next_row = data[i + 1]
-            next_candidate_val = next_row.get("Candidate", "")
-            # Only merge if all other columns are empty in next row
-            if next_candidate_val and all(not v for k, v in next_row.items() if k != "Candidate"):
-                merged_name = f"{candidate_val} ({next_candidate_val})"
-                row["Candidate"] = merged_name
-                merged_data.append(row)
-                i += 2
-            else:
+            continue
+        # PATCH: Try to split by known party abbreviations at start
+        for abbr in party_abbrevs:
+            if candidate_val.startswith(abbr + " "):
+                rest = candidate_val[len(abbr):].strip()
+                # Try to split at the last uppercase word (party)
+                m = re.match(r"(.+?)([A-Z][a-z]+)$", rest)
+                if m:
+                    name, party = m.groups()
+                    row["Candidate"] = f"{abbr} {name}".strip()
+                    row["Party"] = party
+                    if has_precinct:
+                        row["Precinct"] = precinct_val
+                    if has_percent_reported:
+                        row["Percent Reported"] = percent_reported_val
+                    merged_data.append(row)
+                    i += 1
+                    break
+        else:
+        # If candidate cell has a newline, split into candidate and party
+            if "\n" in candidate_val:
+                parts = [p.strip() for p in candidate_val.split("\n") if p.strip()]
+                if len(parts) == 2:
+                    row["Candidate"], row["Party"] = parts
+                elif len(parts) > 2:
+                    row["Candidate"] = parts[0]
+                    row["Party"] = " ".join(parts[1:])
+                else:
+                    row["Candidate"] = candidate_val.replace("\n", " ")
+                # Ensure columns are preserved
+                if has_precinct:
+                    row["Precinct"] = precinct_val
+                if has_percent_reported:
+                    row["Percent Reported"] = percent_reported_val
                 merged_data.append(row)
                 i += 1
-        else:
-            merged_data.append(row)
-            i += 1
+            # If next row is just a party, merge it
+            elif i + 1 < len(data):
+                next_row = data[i + 1]
+                next_candidate_val = next_row.get("Candidate", "")
+                # Only merge if all other columns are empty in next row
+                non_candidate_cols = [k for k in next_row if k != "Candidate" and next_row[k]]
+                if next_candidate_val and not non_candidate_cols:
+                    row["Party"] = next_candidate_val
+                    # Ensure columns are preserved
+                    if has_precinct:
+                        row["Precinct"] = precinct_val
+                    if has_percent_reported:
+                        row["Percent Reported"] = percent_reported_val
+                    merged_data.append(row)
+                    i += 2
+                else:
+                    if has_precinct:
+                        row["Precinct"] = precinct_val
+                    if has_percent_reported:
+                        row["Percent Reported"] = percent_reported_val
+                    merged_data.append(row)
+                    i += 1
+            else:
+                if has_precinct:
+                    row["Precinct"] = precinct_val
+                if has_percent_reported:
+                    row["Percent Reported"] = percent_reported_val
+                merged_data.append(row)
+                i += 1
+
+    # Add "Party" to headers if not present and any row has it
+    if any("Party" in row for row in merged_data) and "Party" not in headers:
+        headers.append("Party")
+    # Ensure 'Precinct' and 'Percent Reported' in headers if present in any row
+    if any("Precinct" in row for row in merged_data) and "Precinct" not in headers:
+        headers.append("Precinct")
+    if any("Percent Reported" in row for row in merged_data) and "Percent Reported" not in headers:
+        headers.append("Percent Reported")
     return headers, merged_data
+
+def combine_panel_tables_by_precinct(all_tables):
+    """
+    Combine all panel tables into one, using 'Precinct' as the unique location column.
+    """
+    combined_headers = set()
+    combined_data = []
+    for headers, data in all_tables:
+        combined_headers.update(headers)
+        combined_data.extend(data)
+    combined_headers = list(combined_headers)
+    # Harmonize to ensure all rows have all headers
+    combined_headers, combined_data = harmonize_headers_and_data(combined_headers, combined_data)
+    return combined_headers, combined_data
 
 # ===================================================================
 # ENTITY ANNOTATION & STRUCTURE VERIFICATION
@@ -1399,21 +1565,34 @@ def nlp_entity_annotate_table(
 ) -> Tuple[List[str], List[Dict[str, Any]], Dict[str, Any]]:
     """
     Annotate table with detected entities (people, locations, ballot types, numbers).
-    Works in concert with DOM/pattern extraction.
-    Returns enriched headers, data, and entity_info summary.
+    Improved: Uses both 'Candidate' and 'Party' fields for entity extraction.
     """
     logger.info("[TABLE_CORE][nlp_entity_annotate_table] Starting NLP entity annotation.")
     if not coordinator:
         logger.warning("[TABLE_CORE][nlp_entity_annotate_table] No coordinator provided, skipping NLP annotation.")
         return headers, data, {}
 
+    # ML context integration
+    ml_confidence = context.get("ml_confidence") if context else None
+    association_log = context.get("association_log") if context else None
+    segments = context.get("segments") if context else None
+    panels = context.get("panels") if context else None
+
     entity_info = {
         "people": set(),
         "locations": set(),
         "ballot_types": set(),
         "numbers": set(),
-        "row_entities": []
+        "row_entities": [],
+        "ml_confidence": ml_confidence,
+        "association_log": association_log,
     }
+    # Optionally: log ML context for debugging
+    if ml_confidence is not None:
+        logger.info(f"[TABLE_CORE][nlp_entity_annotate_table] ML confidence: {ml_confidence:.2f}")
+    if association_log:
+        logger.info(f"[TABLE_CORE][nlp_entity_annotate_table] Association log: {association_log}")
+
     # Analyze headers for entity types
     header_entities = {}
     for h in headers:
@@ -1430,6 +1609,17 @@ def nlp_entity_annotate_table(
     annotated_data = []
     for row in data:
         row_ents = {"people": set(), "locations": set(), "ballot_types": set(), "numbers": set()}
+        for field in ["Candidate", "Party"]:
+            val = row.get(field, "")
+            if val:
+                ents = coordinator.extract_entities(val)
+                for ent, label in ents:
+                    if label == "PERSON":
+                        row_ents["people"].add(ent)
+                        entity_info["people"].add(ent)
+                    elif label in {"GPE", "LOC", "FAC"}:
+                        row_ents["locations"].add(ent)
+                        entity_info["locations"].add(ent)        
         for h in headers:
             val = row.get(h, "")
             if not val:
@@ -1841,20 +2031,23 @@ def pivot_to_wide_format(
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     logger.info("[TABLE_CORE][pivot_to_wide_format] Pivoting to wide format.")
 
-    # 1. Detect location header robustly, but never use "Candidate"
+    # 1. Detect location header robustly and normalize to "Precinct"
     location_header = None
     for h in headers:
         if is_location_header(h) and h.lower() != "candidate":
             location_header = h
             break
     if not location_header:
-        location_header = "Location"
+        location_header = "Precinct"
+    if location_header != "Precinct":
+        headers = ["Precinct" if h == location_header else h for h in headers]
+        for row in data:
+            row["Precinct"] = row.pop(location_header)
+        location_header = "Precinct"
 
     # 2. Gather all unique candidates and ballot types
     candidates = set(entity_info.get("people", []))
     ballot_types = set(entity_info.get("ballot_types", []))
-
-    # Fallback: try to infer from data if not found
     if not candidates:
         for row in data:
             val = row.get("Candidate", "")
@@ -1862,27 +2055,12 @@ def pivot_to_wide_format(
                 candidates.add(val)
     if not ballot_types:
         for h in headers:
-            if h != location_header and h != "Candidate":
+            if h not in (location_header, "Candidate"):
                 ballot_types.add(h)
     if not ballot_types:
         ballot_types = set(h for h in headers if h != location_header and h != "Candidate")
 
-    # --- If only one unique location, synthesize from contest title/context ---
-    location_values = set(row.get(location_header, "") for row in data if row.get(location_header, ""))
-    if len(location_values) <= 1:
-        synthetic_location = None
-        if context and "contest_title" in context:
-            synthetic_location = context["contest_title"]
-        elif context and "html_context" in context and "selected_race" in context["html_context"]:
-            synthetic_location = context["html_context"]["selected_race"]
-        else:
-            synthetic_location = "Unknown Location"
-        for row in data:
-            row[location_header] = synthetic_location
-        logger.warning(f"[TABLE_CORE][pivot_to_wide_format] Only one unique location found. Synthesized location: {synthetic_location}")
-        location_values = set([synthetic_location])
-
-    # 3. Build wide headers: always include all candidate/ballot type combos
+    # 3. Build wide headers: all candidate/ballot type combos
     wide_headers = [location_header]
     for candidate in sorted(candidates):
         for bt in sorted(ballot_types):
@@ -1890,23 +2068,25 @@ def pivot_to_wide_format(
     wide_headers.append("Grand Total")
 
     # 4. Build wide data, one row per unique location
+    location_values = set(row.get(location_header, "") for row in data if row.get(location_header, ""))
     wide_data = []
     for loc in sorted(location_values):
         out_row = {h: "" for h in wide_headers}
         out_row[location_header] = loc
         grand_total = 0
-        for row in data:
-            if row.get(location_header, "") == loc:
-                for candidate in candidates:
-                    for bt in ballot_types:
-                        key = f"{candidate} - {bt}"
-                        val = row.get(bt, "") if row.get("Candidate", "") == candidate else ""
-                        if val and key in out_row and not out_row[key]:
-                            out_row[key] = val
-                            try:
-                                grand_total += int(val.replace(",", ""))
-                            except Exception:
-                                pass
+        for candidate in candidates:
+            for bt in ballot_types:
+                val = ""
+                for row in data:
+                    if row.get(location_header, "") == loc and row.get("Candidate", "") == candidate:
+                        val = row.get(bt, "") or row.get(f"{bt}", "") or row.get(f"{candidate} - {bt}", "")
+                        break
+                out_row[f"{candidate} - {bt}"] = val if val not in (None, "") else "-"
+                try:
+                    if val and str(val).replace(",", "").isdigit():
+                        grand_total += int(str(val).replace(",", ""))
+                except Exception:
+                    pass
         out_row["Grand Total"] = str(grand_total)
         wide_data.append(out_row)
 
@@ -2051,14 +2231,16 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     Uses context, regex, NER, and library.
     Returns (location_header, percent_reported_header)
     """
-     # Use patterns from the context library if available
-    location_patterns = coordinator.library.get("location_patterns", [
-        "precinct", "ward", "district", "city", "municipal", "location", "area",
-        "ed", "district name", "division", "subdistrict", "polling place"
-    ])
-    percent_patterns = coordinator.library.get("percent_patterns", [
-        "% precincts reporting", "% reporting", "percent reporting"
-    ])
+    # Use patterns from the context library if available, else fall back to librarian
+    location_patterns = set()
+    percent_patterns = set()
+    if coordinator and hasattr(coordinator, "library"):
+        location_patterns = set(coordinator.library.get("location_patterns", []))
+        percent_patterns = set(coordinator.library.get("percent_patterns", []))
+    if not location_patterns:
+        location_patterns = set(LOCATION_KEYWORDS)
+    if not percent_patterns:
+        percent_patterns = set(PERCENT_KEYWORDS)
 
     norm_headers = [normalize_text(h) for h in headers]
     location_header = None
@@ -2084,7 +2266,7 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
                 break
 
     # 3. Try spaCy NER if available
-    if not location_header:
+    if not location_header and coordinator:
         for idx, h in enumerate(headers):
             entities = coordinator.extract_entities(h)
             for ent, label in entities:
@@ -2125,8 +2307,16 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     return location_header, percent_header
 
 def is_likely_header(row):
-    known_fields = {"candidate", "votes", "percent", "party", "district"}
-    return sum(1 for cell in row if cell.lower() in known_fields) >= 2
+    # Combine all relevant keywords into a single set for header detection
+    known_fields = (
+        set(k.lower() for k in CANDIDATE_KEYWORDS)
+        | set(k.lower() for k in PARTY_KEYWORDS)
+        | set(k.lower() for k in LOCATION_KEYWORDS)
+        | set(k.lower() for k in PERCENT_KEYWORDS)
+        | set(k.lower() for k in TOTAL_KEYWORDS)
+        | {"votes", "percent", "district", "party", "candidate"}
+    )
+    return sum(1 for cell in row if any(k in cell.lower() for k in known_fields)) >= 2
 
 # ===================================================================
 # ADVANCED/UTILITY FUNCTIONS
@@ -2524,6 +2714,9 @@ def is_location_header(header):
     for kw in LOCATION_KEYWORDS:
         if fuzzy_in(kw, header_norm) or contains_location_keyword(header_norm, LOCATION_KEYWORDS):
             return True
+    # Also match common abbreviations and variants
+    if header_norm in LOCATION_ABBREVIATIONS:
+        return True
     return False
 
 # ===================================================================
