@@ -4,6 +4,9 @@ from ..utils.shared_logic import normalize_state_name, normalize_county_name
 from ..utils.logger_instance import logger
 from ..utils.user_prompt import prompt_user_input, PromptCancelled
 from collections import defaultdict
+from ..bots.librarian import (
+    VALID_TYPES, CONTEST_KEYWORDS
+    )
 
 from typing import TYPE_CHECKING, List, Dict, Any, Optional
 if TYPE_CHECKING:
@@ -19,7 +22,7 @@ def normalize_contest_title(title: str) -> str:
     title = re.sub(r'\s*[\r\n]*Vote for \d+\s*', '', title, flags=re.IGNORECASE)
     return title.strip()
 
-def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator", context: dict, threshold: float = 0.85) -> bool:
+def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator", context: dict, threshold: float = 0.75) -> bool:
     """
     Use ML/NER to verify if the contest's year/type/title are likely correct.
     Returns True if above threshold, False otherwise.
@@ -36,13 +39,32 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
             if label == "DATE" and re.match(r"^(19|20)\d{2}$", ent):
                 year_score = 0.9
                 break
+
+    # --- Election type detection ---
     known_types = [t.lower() for t in coordinator.get_election_types()]
-    # PATCH: allow substring match
-    type_score = 1.0 if ctype and any(t in ctype.lower() for t in known_types) else 0.0
-    contest_keywords = ["president", "senate", "congress", "governor", "mayor", "school board", "proposition", "referendum", "assembly", "council", "trustee", "justice", "clerk"]
-    title_score = 1.0 if any(kw in title.lower() for kw in contest_keywords) else 0.0
+    ctype_norm = ctype.lower().replace("election", "").strip()
+    # Accept common election types even if not in known_types
+    type_score = 0.0
+    if ctype:
+        if any(t in ctype_norm for t in known_types):
+            type_score = 1.0
+        elif any(v in ctype_norm for v in VALID_TYPES):
+            type_score = 1.0
+        else:
+            # Partial match (e.g., "general" in "general election")
+            if any(v in ctype_norm for v in ["general", "primary", "presidential", "special", "runoff"]):
+                type_score = 0.8
+
+    # --- Contest keywords: for office/position, not election type ---
+
+    title_score = 1.0 if any(kw in title.lower() for kw in CONTEST_KEYWORDS) else 0.0
+
+    # --- ML/NER header score ---
     ml_score = coordinator.score_header(title, context)
-    score = 0.4 * year_score + 0.2 * type_score + 0.2 * title_score + 0.2 * ml_score
+
+    # --- Tune weights: prioritize year and type ---
+    score = 0.45 * year_score + 0.35 * type_score + 0.1 * title_score + 0.1 * ml_score
+
     if score < threshold:
         print(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type: {ctype}")
         print(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, total={score:.2f}")
