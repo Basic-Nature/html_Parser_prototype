@@ -228,7 +228,7 @@ def get_title_embedding_features(contests, model_name="all-MiniLM-L6-v2"):
     from sentence_transformers import SentenceTransformer
     model = SentenceTransformer(model_name)
     titles = [c.get("title", "") for c in contests]
-    return model.encode(titles)
+    return model.encode(titles, show_progress_bar=False)
 
 def show_progress_bar(task_desc, total, update_iter):
     with Progress(
