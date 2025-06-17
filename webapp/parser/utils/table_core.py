@@ -1336,8 +1336,8 @@ def harmonize_headers_and_data(headers: list, data: list, context: dict = None) 
             seen_keys.add(key)
         harmonized.append(full_row)
 
-    # 7. Remove columns that are all empty or zero
-    keep = [h for h in ordered_headers if any(row.get(h, "") not in ("", "0") for row in harmonized)]
+    # 7. Remove columns that are all empty or zero, but always keep columns present in input headers
+    keep = [h for h in ordered_headers if (h in headers) or any(row.get(h, "") not in ("", "0") for row in harmonized)]
     if not keep and ordered_headers:
         keep = ordered_headers
     harmonized = [{h: row.get(h, "") for h in keep} for row in harmonized]
@@ -1362,7 +1362,7 @@ def harmonize_headers_and_data(headers: list, data: list, context: dict = None) 
     ordered_final = [h for h in ordered_final if not (h in seen_final or seen_final.add(h))]
 
     # 10. Return final headers and harmonized data
-    return ordered_final, [{h: row.get(h, "") for h in ordered_final} for row in harmonized]
+    return keep, [{h: row.get(h, "") for h in keep} for row in harmonized]
 
 def deduplicate_headers(headers, data):
     """Remove duplicate headers by normalized name, keep first occurrence."""
@@ -1979,23 +1979,28 @@ def handle_candidate_major(headers, data, coordinator, context):
         for row in data:
             if row.get(location_header, "All") != loc:
                 continue
-            for candidate, party in candidate_party_map.items():
-                candidate_total = 0
-                for idx in ballot_type_cols:
-                    bt = headers[idx]
-                    col = f"{candidate} ({party}) - {bt}"
-                    val = ""
-                    if row[headers[candidate_col]] == candidate:
-                        val = row.get(headers[idx], "")
+            # Special columns
+            for pcol in percent_cols:
+                if pcol in out_row and row.get(pcol, ""):
+                    out_row[pcol] = row.get(pcol, "")
+            for mcol in misc_total_cols:
+                if mcol in out_row and row.get(mcol, ""):
+                    out_row[mcol] = row.get(mcol, "")
                     try:
-                        ival = int(val.replace(",", "")) if val else 0
+                        grand_total += int(row.get(mcol, "0").replace(",", ""))
                     except Exception:
-                        ival = 0
-                    out_row[col] = str(ival) if val != "" else ""
-                    candidate_total += ival
-                total_col = f"{candidate} ({party}) - Total"
-                out_row[total_col] = str(candidate_total)
-                grand_total += candidate_total
+                        pass
+            candidate = row.get(candidate_col, "")
+            party = row.get(party_col, "") if party_col else ""
+            for bt in ballot_types:
+                key = f"{candidate} ({party}) - {bt}" if party else f"{candidate} - {bt}"
+                val = row.get(bt, "")
+                if val and key in out_row:
+                    out_row[key] = val
+                    try:
+                        grand_total += int(val.replace(",", ""))
+                    except Exception:
+                        pass
         out_row["Grand Total"] = str(grand_total)
         output_data.append(out_row)
     return harmonize_headers_and_data(output_headers, output_data)
@@ -2070,13 +2075,22 @@ def pivot_to_wide_format(
             ballot_types_sorted.append(bt)
     # 3. Build wide headers: Precinct, % Reported, [Candidate - BallotType ... Total Vote], Grand Total
     wide_headers = [location_header]
-    if percent_header:
-        wide_headers.append(percent_header)
-    for candidate in sorted(candidates):
-        for bt in ballot_types_sorted:
-            wide_headers.append(f"{candidate} - {bt}")
-        wide_headers.append(f"{candidate} - Total Vote")
+    wide_headers.extend(percent_cols)
+    candidate_party_pairs = []
+    for row in data:
+        candidate = row.get(candidate_col, "")
+        party = row.get(party_col, "") if party_col else ""
+        if (candidate, party) not in candidate_party_pairs and candidate:
+            candidate_party_pairs.append((candidate, party))
+    for candidate, party in candidate_party_pairs:
+        for bt in ballot_types:
+            if party:
+                wide_headers.append(f"{candidate} ({party}) - {bt}")
+            else:
+                wide_headers.append(f"{candidate} - {bt}")
+    wide_headers.extend(misc_total_cols)
     wide_headers.append("Grand Total")
+
     # 4. Build wide data, one row per unique location
     location_values = set(row.get(location_header, "") for row in data if row.get(location_header, ""))
     wide_data = []
@@ -2180,7 +2194,6 @@ def pivot_precinct_major_to_wide(
     for bt in sorted(ballot_types_set):
         if bt not in ballot_types:
             ballot_types.append(bt)
-
     # Build output headers
     output_headers = [location_header, percent_header]
     candidate_columns = []
@@ -2335,408 +2348,3 @@ def is_likely_header(row):
         | {"votes", "percent", "district", "party", "candidate"}
     )
     return sum(1 for cell in row if any(k in cell.lower() for k in known_fields)) >= 2
-
-# ===================================================================
-# ADVANCED/UTILITY FUNCTIONS
-# ===================================================================
-
-def normalize_text(text):
-    """
-    Normalize text for comparison: lowercase, strip, remove accents.
-    """
-    if not isinstance(text, str):
-        text = str(text)
-    text = text.strip().lower()
-    text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
-    return text
-
-def normalize_header(header, lang="en"):
-    """
-    Normalize header for comparison: lower, strip, remove accents, and translate if needed.
-    """
-    header = header.strip().lower()
-    header = unicodedata.normalize('NFKD', header).encode('ascii', 'ignore').decode('ascii')
-    # Optionally: add translation for non-English headers here using a translation dictionary or service
-    # Example: if lang != "en": header = translate(header, lang)
-    return header
-
-def normalize_header_name(header):
-    """
-    Normalize header for deduplication and comparison.
-    Lowercase, strip, remove accents, and collapse whitespace.
-    """
-    if not isinstance(header, str):
-        header = str(header)
-    header = header.strip().lower()
-    header = unicodedata.normalize('NFKD', header).encode('ascii', 'ignore').decode('ascii')
-    header = re.sub(r"\s+", " ", header)
-    return header
-
-def is_date_like(val):
-    import dateutil.parser
-    try:
-        dateutil.parser.parse(val)
-        return True
-    except Exception:
-        return False
-
-def detect_language(headers):
-    """
-    Detect language of headers (very basic, can be replaced with langdetect).
-    """
-    try:
-        from langdetect import detect
-        text = " ".join(headers)
-        return detect(text)
-    except Exception:
-        return "en"
-
-def dynamic_required_columns(context, default_required=None):
-    """
-    Adjust required columns based on context.
-    """
-    if default_required is None:
-        default_required = {"Grand Total", "Precinct", "Location"}
-    # Example: if context says percent reported is not present, remove it
-    if not context.get("has_percent_reported", True):
-        default_required.discard("Percent Reported")
-    return default_required
-
-def log_failed_container(page, container, selector, idx, error_msg):
-    if container is None:
-        logger.error(f"[TABLE BUILDER] log_failed_container: container is None for selector {selector} idx {idx}")
-        return
-    try:
-        html = container.evaluate("el => el.outerHTML")
-        parent = container.locator("xpath=..")
-        parent_class = parent.get_attribute("class") or ""
-        parent_id = parent.get_attribute("id") or ""
-        heading = ""
-        heading_loc = container.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
-        if heading_loc.count() > 0:
-            heading = heading_loc.nth(0).inner_text().strip()
-        log_entry = {
-            "selector": selector,
-            "container_idx": idx,
-            "parent_class": parent_class,
-            "parent_id": parent_id,
-            "heading": heading,
-            "error": error_msg,
-            "html": html[:2000]  # Truncate for log size
-        }
-        log_path = get_safe_log_path(f"failed_container_{selector.replace('.', '_')}_{idx}.json")
-        with open(log_path, "w", encoding="utf-8") as f:
-            json.dump(log_entry, f, indent=2)
-        logger.error(f"[TABLE BUILDER] Failed container logged: {log_path}")
-    except Exception as e:
-        logger.error(f"[TABLE BUILDER] Could not log failed container: {e}")
-
-def get_safe_log_path(filename="dom_pattern_log.jsonl"):
-    """
-    Returns a safe log path inside the PROJECT_ROOT/log directory.
-    Prevents path-injection and directory traversal.
-    """
-    # Use the parent of BASE_DIR as the project root
-    project_root = os.path.dirname(BASE_DIR)
-    log_dir = os.path.join(project_root, "log")
-    os.makedirs(log_dir, exist_ok=True)
-    safe_filename = os.path.basename(filename)
-    return os.path.join(log_dir, safe_filename)
-
-def suggest_new_row_classes_from_logs(log_dir):
-    """
-    Analyze failed container logs and suggest new likely row classes/IDs.
-    """
-    class_counter = Counter()
-    parent_counter = Counter()
-    for path in glob.glob(os.path.join(log_dir, "failed_container_*.json")):
-        with open(path, "r", encoding="utf-8") as f:
-            entry = json.load(f)
-            cls = entry.get("parent_class", "")
-            if cls:
-                for c in cls.split():
-                    class_counter[c] += 1
-            parent_id = entry.get("parent_id", "")
-            if parent_id:
-                parent_counter[parent_id] += 1
-    # Suggest top classes/IDs as new selectors
-    suggested_classes = [c for c, _ in class_counter.most_common(10)]
-    suggested_ids = [pid for pid, _ in parent_counter.most_common(5)]
-    print("Suggested new row classes:", suggested_classes)
-    print("Suggested new row IDs:", suggested_ids)
-    return suggested_classes, suggested_ids
-
-def load_dom_patterns(log_path=None):
-    """
-    Loads all DOM patterns, returns a list of dicts.
-    """
-    if log_path is None:
-        log_path = get_safe_log_path()
-    if not os.path.exists(log_path):
-        return []
-    with open(log_path, "r", encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
-
-def remove_footer_and_summary_rows(data, headers):
-    """
-    Remove rows that are likely summary, totals, or repeated headers.
-    --- Only remove if 'total' or 'summary' appears in a column that is a total/summary column.
-    """
-    filtered = []
-    total_cols = [h for h in headers if any(kw in h.lower() for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS))]
-    for row in data:
-        values = list(row.values())
-        # --- Only remove if 'total' or 'summary' appears in a total/summary column
-        remove = False
-        for h in total_cols:
-            v = row.get(h, "")
-            if any(kw in str(v).lower() for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS)):
-                remove = True
-                break
-        # --- Do not remove if header row repeated (keep as is)
-        if not remove:
-            filtered.append(row)
-    return filtered
-
-def remove_outlier_and_empty_rows(data, min_non_empty=2):
-    """
-    Remove rows with too many empty or repeated values.
-    --- Only remove if truly all values are empty.
-    """
-    filtered = []
-    for row in data:
-        values = list(row.values())
-        non_empty = [v for v in values if v not in ("", None)]
-        # --- Only remove if all values are empty
-        if len(non_empty) > 0:
-            filtered.append(row)
-    return filtered
-
-def review_learned_table_structures(log_path=None):
-    """
-    CLI to review/edit learned table structures.
-    """
-    # --- Use log directory parent to webapp for default path
-    if log_path is None:
-        LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
-        log_path = os.path.join(LOG_PARENT_DIR, "table_structure_learning_log.jsonl")
-    if not os.path.exists(log_path):
-        print("No learned table structures found.")
-        return
-
-    entries = []
-    with open(log_path, "r", encoding="utf-8") as f:
-        for line in f:
-            try:
-                entry = json.loads(line)
-                entries.append(entry)
-            except Exception:
-                continue
-
-    for idx, entry in enumerate(entries):
-        print(f"\n[{idx}] Contest: {entry.get('contest_title')}")
-        print(f"    Headers: {entry.get('headers')}")
-        print(f"    Context: {entry.get('context')}")
-        print(f"    Result: {entry.get('result')}")
-        print("-" * 40)
-
-    while True:
-        cmd = input("\nEnter entry number to delete/edit, or 'q' to quit: ").strip()
-        if cmd.lower() == "q":
-            break
-        if cmd.isdigit():
-            idx = int(cmd)
-            if 0 <= idx < len(entries):
-                action = input("Delete (d) or Edit (e) this entry? [d/e]: ").strip().lower()
-                if action == "d":
-                    entries.pop(idx)
-                    print("Entry deleted.")
-                elif action == "e":
-                    new_headers = input("Enter new headers as comma-separated values: ").strip().split(",")
-                    entries[idx]["headers"] = [h.strip() for h in new_headers]
-                    print("Headers updated.")
-                else:
-                    print("Unknown action.")
-            else:
-                print("Invalid entry number.")
-        # Save changes
-        with open(log_path, "w", encoding="utf-8") as f:
-            for entry in entries:
-                f.write(json.dumps(entry) + "\n")
-        print("Changes saved.")
-
-def table_signature(headers):
-    return hashlib.md5(json.dumps(headers, sort_keys=True).encode()).hexdigest()
-
-def load_table_structure_cache():
-    if os.path.exists(TABLE_STRUCTURE_CACHE_PATH):
-        with open(TABLE_STRUCTURE_CACHE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-def save_table_structure_cache(cache):
-    with open(TABLE_STRUCTURE_CACHE_PATH, "w", encoding="utf-8") as f:
-        json.dump(cache, f, indent=2)
-
-def cache_table_structure(domain, headers, structure):
-    cache = load_table_structure_cache()
-    sig = f"{domain}:{table_signature(headers)}"
-    cache[sig] = structure
-    save_table_structure_cache(cache)
-
-def get_cached_table_structure(domain, headers):
-    cache = load_table_structure_cache()
-    sig = f"{domain}:{table_signature(headers)}"
-    return cache.get(sig)
-
-def guess_contest_title(table_headers, known_titles):
-    """
-    Try to match table headers to known contest titles using fuzzy matching.
-    """
-    import difflib
-    for header in table_headers:
-        matches = difflib.get_close_matches(header, known_titles, n=1, cutoff=0.7)
-        if matches:
-            return matches[0]
-    return None
-
-def extract_title_from_html_near_table(table_idx, dom_nodes, window=5):
-    """
-    Scan nearby DOM nodes for likely contest titles.
-    """
-    idx_range = range(max(0, table_idx - window), min(len(dom_nodes), table_idx + window + 1))
-    for idx in idx_range:
-        node = dom_nodes[idx]
-        if node.get("tag", "").lower() in {"h1", "h2", "h3", "caption"}:
-            text = node.get("html", "").strip()
-            if text and len(text.split()) > 2:
-                return text
-    return None
-
-def merge_multirow_headers(header_rows):
-    """
-    Merge multiple header rows (e.g., stacked headers) into a single header list.
-    """
-    merged = []
-    for cols in zip(*header_rows):
-        merged_col = " ".join([c for c in cols if c and c.strip() and not c.strip().isdigit()])
-        merged.append(merged_col.strip())
-    return merged
-
-def fuzzy_merge_headers(headers, threshold=0.85):
-    """
-    Merge similar headers using fuzzy matching.
-    """
-    import difflib
-    merged = []
-    used = set()
-    for i, h in enumerate(headers):
-        if i in used:
-            continue
-        group = [h]
-        for j, h2 in enumerate(headers):
-            if i != j and j not in used:
-                score = difflib.SequenceMatcher(None, normalize_header(h), normalize_header(h2)).ratio()
-                if score > threshold:
-                    group.append(h2)
-                    used.add(j)
-        merged.append(group[0])  # Keep the first as canonical
-        used.add(i)
-    return merged
-
-def profile_extraction_step(func):
-    """
-    Decorator to profile extraction speed.
-    """
-    def wrapper(*args, **kwargs):
-        start = time.time()
-        result = func(*args, **kwargs)
-        elapsed = time.time() - start
-        logger.info(f"[PROFILE] {func.__name__} took {elapsed:.3f}s")
-        return result
-    return wrapper
-
-def log_decision(decision, context=None):
-    """
-    Log not just errors but also decisions made by heuristics for later review.
-    """
-    logger.info(f"[DECISION] {decision} | Context: {context}")
-
-def robust_html_fallback(page):
-    """
-    Add more robust fallbacks for broken or inconsistent markup.
-    """
-    try:
-        html = page.content()
-        # Try to parse with BeautifulSoup as a fallback
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(html, "html.parser")
-        tables = soup.find_all("table")
-        all_tables = []
-        for table in tables:
-            rows = table.find_all("tr")
-            headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
-            data = []
-            for row in rows[1:]:
-                cells = row.find_all(["td", "th"])
-                data.append({headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))})
-            all_tables.append((headers, data))
-        return all_tables
-    except Exception as e:
-        logger.error(f"[HTML FALLBACK] Error: {e}")
-        return []
-
-def handle_nested_tables(page):
-    """
-    Handle tables within tables or complex nested DOM structures.
-    """
-    tables = page.locator("table table")
-    results = []
-    for i in range(tables.count()):
-        table = tables.nth(i)
-        if table is not None:
-            headers, data, _ = extract_table_data(table)
-            results.append((headers, data))
-    return results
-
-def fuzzy_in(word, text, threshold=0.7):
-    """Return True if word is in text by substring or fuzzy match."""
-    word = word.lower()
-    text = text.lower()
-    if word in text:
-        return True
-    # Fuzzy match: allow for partials (e.g., "town" in "orangetown")
-    ratio = SequenceMatcher(None, word, text).ratio()
-    return ratio >= threshold
-
-def normalize_for_matching(text):
-    text = text.lower()
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    return text.strip()
-
-def contains_location_keyword(text, keywords=LOCATION_KEYWORDS):
-    text_norm = normalize_for_matching(text)
-    for kw in keywords:
-        # Match as a whole word or as a suffix/prefix (e.g., "orangetown")
-        if re.search(rf"\b{re.escape(kw)}\b", text_norm):
-            return True
-        if kw in text_norm:
-            return True
-    return False
-
-def is_location_header(header):
-    """
-    Robustly determine if a header is a location column using fuzzy, substring, and regex matching.
-    """
-    header_norm = normalize_for_matching(header)
-    for kw in LOCATION_KEYWORDS:
-        if fuzzy_in(kw, header_norm) or contains_location_keyword(header_norm, LOCATION_KEYWORDS):
-            return True
-    # Also match common abbreviations and variants
-    if header_norm in LOCATION_ABBREVIATIONS:
-        return True
-    return False
-
-# ===================================================================
-# END OF FILE
-# ===================================================================

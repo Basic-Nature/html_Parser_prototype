@@ -313,7 +313,6 @@ def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", mi
     Returns a list of panel dicts, each with ML confidence and association logs.
     """
     from bs4 import BeautifulSoup
-    from sentence_transformers import SentenceTransformer
     import numpy as np
 
     panel_tags = PANEL_TAGS
@@ -326,7 +325,7 @@ def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", mi
     model = ModelRegistry.get_sentence_transformer(ml_model_name)
 
     # --- Helper: Get embedding for a segment (panel/table/heading) ---
-    def get_embedding(seg, model=None, cache_hits=None, cache_misses=None):
+    def get_embedding(seg, model=None, cache_hits=None, cache_misses=None, non_interactive=False):
         html = seg.get("html", "")
         tag = seg.get("tag", "")
         attrs = " ".join([f"{k}={v}" for k, v in seg.get("attrs", {}).items()])
@@ -343,7 +342,7 @@ def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", mi
             f"[cyan]Please wait for [bold]{tag}[/bold] {attrs[:40]}... to load, this may take a while...[/cyan]",
             spinner="dots"
         ):
-            emb = model.encode(f"{tag} {attrs} {text}", convert_to_numpy=True, show_progress_bar=False)
+            emb = model.encode(f"{tag} {attrs} {text}", convert_to_numpy=True, show_progress_bar=False, non_interactive=False)
         save_embedding(identity, emb)
         return emb
 
@@ -951,6 +950,7 @@ def scan_html_for_context(
     context_cache=None,
     rejected_downloads: Optional[set] = None,
     ml_model_name="all-MiniLM-L6-v2",
+    non_interactive=False,
 ) -> Dict[str, Any]:
     """
     Advanced HTML scanner with ML-driven DOM pattern clustering, active learning, dynamic tagging,

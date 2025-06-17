@@ -114,10 +114,16 @@ def build_dynamic_table(
     # --- 5. User/ML confirmation and learning (if enabled) ---
     if learning_mode:
         contest_title = context.get("contest_title") or "Unknown Contest"
-        headers, data = prompt_user_to_confirm_table_structure(
+        headers_confirmed, data_confirmed = prompt_user_to_confirm_table_structure(
             headers, data, domain, contest_title, coordinator
         )
-        headers, data = harmonize_headers_and_data(headers, data)
+        # Do not re-harmonize or re-pivot after user confirmation; use as final output
+        headers, data = headers_confirmed, data_confirmed
+        # Ensure all user-added columns are present in all rows
+        for h in headers:
+            for row in data:
+                if h not in row:
+                    row[h] = ""
     return headers, data, entity_info
 
 # ===================================================================
@@ -306,6 +312,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
         if resp in ("", "y", "yes"):
             new_headers = candidate_headers
             should_log = True
+            # Advance feedback loop and break after acceptance
             break
         elif resp in ("n", "no"):
             denied_structures[sig] = denied_structures.get(sig, 0) + 1
@@ -382,6 +389,11 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
                     rprint(f"[green]Added column '{col}'[/green]")
             columns_changed = True
             structure_candidates[candidate_idx] = candidate_headers
+            # Ensure added columns are present in all rows
+            for row in data:
+                for col in candidate_headers:
+                    if col not in row:
+                        row[col] = ""
         elif resp in ("next", "nxt"):
             candidate_idx = (candidate_idx + 1) % len(structure_candidates)
             continue
