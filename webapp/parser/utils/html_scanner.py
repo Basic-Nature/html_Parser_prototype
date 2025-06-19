@@ -13,7 +13,6 @@ from rich.console import Console
 from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
 from ..utils.model_registry import ModelRegistry
-from sentence_transformers import SentenceTransformer
 from ..bots.manual_correction_bot import update_segment_in_context_library
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, DISTRICT_REGEX, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
