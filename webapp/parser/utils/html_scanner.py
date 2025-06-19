@@ -953,20 +953,16 @@ def scan_html_for_context(
     if rejected_downloads is None:
         rejected_downloads = set()
     page_hash = get_page_hash(page)
-    if context_cache is not None and page_hash in context_cache:
+    # Ensure context_cache is initialized
+    if context_cache is None:
+        context_cache = load_context_cache_from_disk()
+    # Try to load full context_result from disk cache if available
+    if page_hash in context_cache:
         logger.info(f"[SCAN] Using cached context for {target_url}")
         rprint("[bold green][CACHE] Entire context loaded from cache. Skipping scan.[/bold green]")
         return context_cache[page_hash]
 
-    if os.path.exists(CONTEXT_LIBRARY_PATH):
-        with open(CONTEXT_LIBRARY_PATH, "rb") as f:
-            CONTEXT_LIBRARY = orjson.loads(f.read())
-        supported_formats = CONTEXT_LIBRARY.get("supported_formats", {})
-        supported_links = [link for link in CONTEXT_LIBRARY.get("download_links", []) if link["format"] in supported_formats]
-    else:
-        supported_formats = {}
-        supported_links = []
-
+    # Always define context_result before any return
     context_result = {
         "raw_html": "",
         "tagged_segments": [],
@@ -1045,7 +1041,6 @@ def scan_html_for_context(
                 ]
 
         # --- 5. HTML tag extraction for context organization (with ML) ---
-        context_cache = load_context_cache_from_disk()
         pattern_kb = load_pattern_kb()
         segments_with_attrs = extract_tagged_segments_with_attrs(
             html,
@@ -1221,7 +1216,7 @@ def batch_get_segment_embeddings(model, segments):
     Returns a list of embeddings in the same order as segments.
     """
     identities = [segment_identity_hash(seg) for seg in segments]
-    # Try to load from cache
+    # Try to load from disk cache
     cached = [load_embedding(identity) for identity in identities]
     to_compute = [i for i, emb in enumerate(cached) if emb is None]
     if to_compute:
@@ -1235,6 +1230,6 @@ def batch_get_segment_embeddings(model, segments):
         # Batch encode
         new_embs = model.encode(texts, convert_to_numpy=True, show_progress_bar=False, batch_size=16)
         for i, idx in enumerate(to_compute):
-            save_embedding(identities[idx], new_embs[i])
+            save_embedding(identities[idx], new_embs[i])  # Save to disk cache
             cached[idx] = new_embs[i]
     return cached
