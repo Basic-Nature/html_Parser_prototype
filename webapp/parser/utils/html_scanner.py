@@ -25,6 +25,7 @@ import numpy as np
 console = Console()
 from bs4 import BeautifulSoup, Tag
 from ..utils.embedding_cache import save_embedding, load_embedding
+import traceback
 
 embedding_cache_hits = set()
 embedding_cache_misses = set()
@@ -104,8 +105,20 @@ def extract_tagged_segments_with_attrs(
     context_library: dict = None
 ) -> List[Dict[str, Any]]:
     """
-    Extracts DOM segments with attributes and ML-driven semantic labels.
+    Extract DOM segments with attributes and ML-driven semantic labels.
     Each segment gets: ml_label, ml_confidence, pattern_id.
+    Uses selectolax for fast parsing, falls back to BeautifulSoup on error.
+    Args:
+        html: HTML string to parse.
+        context_cache: Optional cache for segment context.
+        include_data_attrs: Whether to include data-* attributes.
+        fallback_on_error: If True, fallback to BeautifulSoup on error.
+        ml_model_name: Name of the ML model to use for labeling.
+        pattern_kb: Optional pattern knowledge base.
+        ml_threshold: Confidence threshold for ML labeling.
+        context_library: Optional context library for segment lookup.
+    Returns:
+        List of segment dicts with attributes and ML labels.
     """
     from sentence_transformers import SentenceTransformer
     
@@ -137,7 +150,7 @@ def extract_tagged_segments_with_attrs(
     if context_library is None:
         context_library = {}
     if context_cache is None:
-        context_cache = load_context_cache_from_disk(context_library)
+        context_cache = load_context_cache_from_disk()
 
     try:
         tree = HTMLParser(html)
@@ -235,84 +248,89 @@ def extract_tagged_segments_with_attrs(
         logger.info(f"[PERF] DOM extraction (selectolax+ML) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
         return segments
     except Exception as e:
-        logger.error(f"[FALLBACK] selectolax failed: {e}")
+        logger.error(f"[FALLBACK] selectolax failed: {e}", extra={"traceback": traceback.format_exc(), "html_snippet": html[:200]})
         if not fallback_on_error:
             raise
         # Fallback: BeautifulSoup, but still add ML labels
-        soup = BeautifulSoup(html, "html.parser")
-        def walk_bs4(node, parent_idx=None, heading_idx=None, start_search=0):
-            if not isinstance(node, Tag):
-                return start_search
-            tag = node.name.lower()
-            if tag not in HTML_TAGS:
-                log_unknown_tag(tag)
-                for child in node.children:
-                    start_search = walk_bs4(child, parent_idx, heading_idx, start_search)
-                return start_search
-            tag_html = str(node)
-            start, end = html.find(tag_html, start_search), -1
-            if start != -1:
-                end = start + len(tag_html)
-            attrs = extract_attrs_bs4(node)
-            for k in attrs:
-                log_unknown_attr(k)
-            classes = attrs.get("class", "").split() if "class" in attrs else []
-            id_ = attrs.get("id", "")
-            is_button = tag == "button" or (tag == "input" and attrs.get("type", "").lower() in ["button", "submit"])
-            is_clickable = is_button or tag == "a" or "onclick" in attrs or "btn" in classes or "button" in classes
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            def walk_bs4(node, parent_idx=None, heading_idx=None, start_search=0):
+                if not isinstance(node, Tag):
+                    return start_search
+                tag = node.name.lower()
+                if tag not in HTML_TAGS:
+                    log_unknown_tag(tag)
+                    for child in node.children:
+                        start_search = walk_bs4(child, parent_idx, heading_idx, start_search)
+                    return start_search
+                tag_html = str(node)
+                start, end = html.find(tag_html, start_search), -1
+                if start != -1:
+                    end = start + len(tag_html)
+                attrs = extract_attrs_bs4(node)
+                for k in attrs:
+                    log_unknown_attr(k)
+                classes = attrs.get("class", "").split() if "class" in attrs else []
+                id_ = attrs.get("id", "")
+                is_button = tag == "button" or (tag == "input" and attrs.get("type", "").lower() in ["button", "submit"])
+                is_clickable = is_button or tag == "a" or "onclick" in attrs or "btn" in classes or "button" in classes
 
-            this_heading_idx = heading_idx
-            if tag in heading_tags:
-                this_heading_idx = len(segments)
+                this_heading_idx = heading_idx
+                if tag in heading_tags:
+                    this_heading_idx = len(segments)
 
-            seg = {
-                "tag": tag,
-                "attrs": attrs,
-                "classes": classes,
-                "id": id_,
-                "html": tag_html,
-                "is_button": is_button,
-                "is_clickable": is_clickable,
-                "parent_idx": parent_idx,
-                "children": [],
-                "start": start,
-                "end": end,
-                "_idx": len(segments),
-                "context_heading": None
-            }
-            # ML-driven labeling
-            attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
-            seg_hash = hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + seg["html"][:200]).encode("utf-8")).hexdigest()
-            cached = get_cached_segment(tag, attrs, seg["html"])
-            if cached:
-                seg["ml_label"] = cached["ml_label"]
-                seg["ml_confidence"] = cached["ml_confidence"]
-                seg["pattern_id"] = cached["pattern_id"]
-                seg["segment_hash"] = seg_hash
-            else:
-                label, confidence, pattern_id = ml_classify_segment(seg, model, pattern_kb, threshold=ml_threshold)
-                seg["ml_label"] = label
-                seg["ml_confidence"] = confidence
-                seg["pattern_id"] = pattern_id
-                seg["segment_hash"] = seg_hash
+                seg = {
+                    "tag": tag,
+                    "attrs": attrs,
+                    "classes": classes,
+                    "id": id_,
+                    "html": tag_html,
+                    "is_button": is_button,
+                    "is_clickable": is_clickable,
+                    "parent_idx": parent_idx,
+                    "children": [],
+                    "start": start,
+                    "end": end,
+                    "_idx": len(segments),
+                    "context_heading": None
+                }
+                # ML-driven labeling
+                attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
+                seg_hash = hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + seg["html"][:200]).encode("utf-8")).hexdigest()
+                cached = get_cached_segment(tag, attrs, seg["html"])
+                if cached:
+                    seg["ml_label"] = cached["ml_label"]
+                    seg["ml_confidence"] = cached["ml_confidence"]
+                    seg["pattern_id"] = cached["pattern_id"]
+                    seg["segment_hash"] = seg_hash
+                else:
+                    label, confidence, pattern_id = ml_classify_segment(seg, model, pattern_kb, threshold=ml_threshold)
+                    seg["ml_label"] = label
+                    seg["ml_confidence"] = confidence
+                    seg["pattern_id"] = pattern_id
+                    seg["segment_hash"] = seg_hash
 
-        root = soup.find("html") or soup.find("body") or soup
-        walk_bs4(root)
+            root = soup.find("html") or soup.find("body") or soup
+            walk_bs4(root)
 
-        for seg in segments:
-            if seg["tag"] in panel_tags or seg["tag"] == "table":
-                parent_idx = seg["parent_idx"]
-                heading_html = None
-                while parent_idx is not None:
-                    parent = segments[parent_idx]
-                    if parent["tag"] in heading_tags:
-                        heading_html = parent["html"]
-                        break
-                    parent_idx = parent["parent_idx"]
-                seg["context_heading"] = heading_html
+            for seg in segments:
+                if seg["tag"] in panel_tags or seg["tag"] == "table":
+                    parent_idx = seg["parent_idx"]
+                    heading_html = None
+                    while parent_idx is not None:
+                        parent = segments[parent_idx]
+                        if parent["tag"] in heading_tags:
+                            heading_html = parent["html"]
+                            break
+                        parent_idx = parent["parent_idx"]
+                    seg["context_heading"] = heading_html
 
-        logger.info(f"[PERF] DOM extraction (BeautifulSoup fallback+ML) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
-        return segments
+            logger.info(f"[PERF] DOM extraction (BeautifulSoup fallback+ML) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
+            return segments
+        except Exception as bs4e:
+            logger.error(f"[ERROR] BeautifulSoup fallback also failed: {bs4e}", extra={"traceback": traceback.format_exc(), "html_snippet": html[:200]})
+            raise
+
 # --- not being used yet, but useful for future ---
 def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", min_panel_score=0.65):
     """
@@ -483,7 +501,14 @@ def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", mi
 def extract_heading_text_from_panel_or_ancestors(panel_seg, segments, max_depth=6):
     from bs4 import BeautifulSoup
     from difflib import get_close_matches
-    
+    # --- Cache BeautifulSoup objects for unique HTML strings ---
+    soup_cache = {}
+    def get_soup(html):
+        if html in soup_cache:
+            return soup_cache[html]
+        soup = BeautifulSoup(html, "html.parser")
+        soup_cache[html] = soup
+        return soup
     # --- 1. Get HTML for this panel, fallback to concatenating children if empty ---
     def get_full_html(seg):
         html = seg.get("html", "")
@@ -498,7 +523,7 @@ def extract_heading_text_from_panel_or_ancestors(panel_seg, segments, max_depth=
         return "\n".join(child_htmls)
 
     html = get_full_html(panel_seg)
-    soup = BeautifulSoup(html, "html.parser")
+    soup = get_soup(html)
     found_texts = []
 
     # 2. Try heading tags first (as before)
@@ -568,9 +593,9 @@ def extract_heading_text_from_panel_or_ancestors(panel_seg, segments, max_depth=
                 if child_html:
                     child_htmls.append(child_html)
             parent_html = "\n".join(child_htmls)
-        soup = BeautifulSoup(parent_html, "html.parser")
+        parent_soup = get_soup(parent_html)
         for tag in HEADING_TAGS:
-            el = soup.find(tag)
+            el = parent_soup.find(tag)
             if el and el.get_text(strip=True):
                 txt = el.get_text(strip=True)
                 found_texts.append(txt)
@@ -643,6 +668,9 @@ def extract_attrs(attr_str):
     return attrs
 # Load or initialize the DOM pattern knowledge base
 def load_pattern_kb():
+    global _pattern_kb_cache
+    if _pattern_kb_cache is not None:
+        return _pattern_kb_cache
     kb = []
     path = safe_log_path("dom_pattern_kb.jsonl")
     if os.path.exists(path):
@@ -652,6 +680,7 @@ def load_pattern_kb():
                     kb.append(orjson.loads(line))
                 except Exception:
                     continue
+    _pattern_kb_cache = kb
     return kb
 
 def save_pattern_kb(kb):
@@ -939,6 +968,16 @@ def scan_html_for_context(
     """
     Advanced HTML scanner with ML-driven DOM pattern clustering, active learning, dynamic tagging,
     confidence-driven processing, and persistent knowledge base.
+    Args:
+        target_url: The URL being scanned.
+        page: Page object with .content() and .url.
+        debug: If True, print debug output.
+        context_cache: Optional context cache dict.
+        rejected_downloads: Set of download links to skip.
+        ml_model_name: Name of ML model for segment labeling.
+        non_interactive: If True, disables user prompts.
+    Returns:
+        context_result: Dict with scan results, segments, metadata, and errors if any.
     """
     context_library = None
     if os.path.exists(CONTEXT_LIBRARY_PATH):
@@ -1150,9 +1189,10 @@ def scan_html_for_context(
             save_context_library(context_library)
    
     except Exception as e:
-        rprint(f"[SCAN ERROR] HTML parsing failed: {e}")
-        logger.error(f"[SCAN ERROR] HTML parsing failed: {e}")
-        context_result["error"] = f"[SCAN ERROR] HTML parsing failed: {e}"
+        tb = traceback.format_exc()
+        rprint(f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}")
+        logger.error(f"[SCAN ERROR] HTML parsing failed: {e}", extra={"traceback": tb, "url": getattr(page, 'url', None)})
+        context_result["error"] = f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}"
 
     logger.debug(f"Available formats detected: {context_result['available_formats']}")
     if context_cache is not None:
@@ -1171,17 +1211,20 @@ def get_log_folder():
     return log_folder
 
 def load_context_cache_from_disk(filename="context_cache.json"):
+    global _context_cache_cache
+    if _context_cache_cache is not None:
+        return _context_cache_cache
     log_folder = get_log_folder()
     path = os.path.join(log_folder, filename)
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
-                return orjson.loads(f.read())
+                _context_cache_cache = orjson.loads(f.read())
+                return _context_cache_cache
         except Exception as e:
             logger.error(f"[ERROR] Failed to load {filename}: {e}")
-            # Optionally, backup or delete the corrupted file
-            # os.rename(path, path + ".corrupt")
             return {}
+    _context_cache_cache = {}
     return {}
 
 def _to_json_safe(obj):
@@ -1213,23 +1256,40 @@ def segment_identity_hash(segment):
 def batch_get_segment_embeddings(model, segments):
     """
     Efficiently get embeddings for a list of segments using batch encoding and cache.
+    Skips segments with empty/trivial HTML (whitespace, only icons), returns None for those.
     Returns a list of embeddings in the same order as segments.
     """
-    identities = [segment_identity_hash(seg) for seg in segments]
-    # Try to load from disk cache
-    cached = [load_embedding(identity) for identity in identities]
-    to_compute = [i for i, emb in enumerate(cached) if emb is None]
+    def is_trivial(seg):
+        html = seg.get("html", "")
+        if not html or not html.strip():
+            return True
+        # Heuristic: skip if only whitespace or only a single icon span
+        tag = seg.get("tag", "")
+        classes = [c.lower() for c in seg.get("classes", [])]
+        if tag == "span" and len(classes) > 0 and all("icon" in cls for cls in classes) and not re.sub(r"<[^>]+>", "", html).strip():
+            return True
+        return False
+
+    identities = [segment_identity_hash(seg) if not is_trivial(seg) else None for seg in segments]
+    cached = [load_embedding(identity) if identity else None for identity in identities]
+    to_compute = [i for i, emb in enumerate(cached) if emb is None and identities[i] is not None]
     if to_compute:
         texts = []
+        idx_map = []
         for idx in to_compute:
             seg = segments[idx]
             tag = seg.get("tag", "")
             attrs = " ".join([f"{k}={v}" for k, v in seg.get("attrs", {}).items()])
             text = BeautifulSoup(seg.get("html", ""), "html.parser").get_text(" ", strip=True)
+            if not text.strip():
+                # If text is still empty, skip
+                continue
             texts.append(f"{tag} {attrs} {text}")
-        # Batch encode
-        new_embs = model.encode(texts, convert_to_numpy=True, show_progress_bar=False, batch_size=16)
-        for i, idx in enumerate(to_compute):
-            save_embedding(identities[idx], new_embs[i])  # Save to disk cache
-            cached[idx] = new_embs[i]
-    return cached
+            idx_map.append(idx)
+        if texts:
+            new_embs = model.encode(texts, convert_to_numpy=True, show_progress_bar=False, batch_size=16)
+            for i, idx in enumerate(idx_map):
+                save_embedding(identities[idx], new_embs[i])  # Save to disk cache
+                cached[idx] = new_embs[i]
+    # For trivial segments, return None (or could use np.zeros if preferred)
+    return [emb if identity else None for emb, identity in zip(cached, identities)]
