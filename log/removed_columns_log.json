@@ -4,5 +4,10 @@
     "Town": 1,
     "Precinct": 1,
     "Candidate": 1
+  },
+  "Unknown Contest": {
+    "CON": 2,
+    "REP": 2,
+    "WOR Chrissy": 2
   }
 }

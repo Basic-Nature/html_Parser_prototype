@@ -64,8 +64,27 @@ def safe_log_path(filename: str, log_dir: str = "log") -> str:
 def _sanitize_log_filename(name: str) -> str:
     return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
 
+def _normalize_html_for_hash(html: str, maxlen: int = 256) -> str:
+    """
+    Normalize and truncate HTML for hashing: collapse whitespace, strip, and limit length.
+    Remove dynamic attributes (e.g., ng-*, _ngcontent-*, timestamps, random ids) for robustness.
+    """
+    import re
+    # Remove Angular and similar dynamic attributes
+    html = re.sub(r'\s(_ngcontent-[^=]+|ng-version|ng-star-inserted|_nghost-[^=]+|_ngcontent-[^=]+|aria-checked|tabindex|style|data-[^=]+|id|class)="[^"]*"', '', html)
+    # Remove timestamps and numbers that look like datetimes
+    html = re.sub(r'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}', '', html)
+    html = re.sub(r'\d{1,2}/\d{1,2}/\d{2,4}', '', html)
+    html = re.sub(r'\d{1,2}:\d{2}(:\d{2})? ?(am|pm|AM|PM)?', '', html)
+    # Collapse whitespace
+    html = re.sub(r'\s+', ' ', html.strip())
+    return html[:maxlen]
+
 def extract_attrs_bs4(bs4_tag: Tag) -> Dict[str, Any]:
-    """Extract attributes from a BeautifulSoup Tag object, including data-* attributes."""
+    """
+    Extract attributes from a BeautifulSoup Tag object, including data-* attributes.
+    Returns a dictionary of attribute names to values.
+    """
     attrs = {}
     for k, v in bs4_tag.attrs.items():
         if isinstance(v, list):
@@ -104,20 +123,11 @@ def extract_tagged_segments_with_attrs(
     context_library: dict = None
 ) -> List[Dict[str, Any]]:
     """
-    Extract DOM segments with attributes and ML-driven semantic labels.
+    Extracts DOM segments with attributes and ML-driven semantic labels.
+    This function recursively walks the DOM tree (using selectolax or BeautifulSoup fallback),
+    collecting all relevant segments, their attributes, and context relationships (parent, children, headings, panels).
     Each segment gets: ml_label, ml_confidence, pattern_id.
-    Uses selectolax for fast parsing, falls back to BeautifulSoup on error.
-    Args:
-        html: HTML string to parse.
-        context_cache: Optional cache for segment context.
-        include_data_attrs: Whether to include data-* attributes.
-        fallback_on_error: If True, fallback to BeautifulSoup on error.
-        ml_model_name: Name of the ML model to use for labeling.
-        pattern_kb: Optional pattern knowledge base.
-        ml_threshold: Confidence threshold for ML labeling.
-        context_library: Optional context library for segment lookup.
-    Returns:
-        List of segment dicts with attributes and ML labels.
+    The recursive walk ensures deeply nested panels, headings, and tables are all discovered and context is preserved.
     """
     from sentence_transformers import SentenceTransformer
     
@@ -154,6 +164,12 @@ def extract_tagged_segments_with_attrs(
     try:
         tree = HTMLParser(html)
         def walk(node, parent_idx=None, heading_idx=None, panel_idx=None):
+            """
+            Recursively walk the DOM tree, collecting segments and their relationships.
+            - parent_idx: index of parent segment
+            - heading_idx: index of nearest heading ancestor
+            - panel_idx: index of nearest panel ancestor
+            """
             tag = node.tag
             if not tag or tag.lower() not in HTML_TAGS:
                 log_unknown_tag(tag)
@@ -254,6 +270,11 @@ def extract_tagged_segments_with_attrs(
         try:
             soup = BeautifulSoup(html, "html.parser")
             def walk_bs4(node, parent_idx=None, heading_idx=None, start_search=0):
+                """
+                Recursively walk the DOM tree with BeautifulSoup, collecting segments and relationships.
+                - parent_idx: index of parent segment
+                - heading_idx: index of nearest heading ancestor
+                """
                 if not isinstance(node, Tag):
                     return start_search
                 tag = node.name.lower()
@@ -705,6 +726,22 @@ def append_feedback_log(entry):
     path = safe_log_path("segment_feedback_log.jsonl")
     with open(path, "ab") as f:
         f.write(orjson.dumps(entry) + b"\n")
+    # --- Ensure feedback is also loaded into pattern KB cache for immediate effect ---
+    if "pattern_id" in entry and "label" in entry and "html" in entry:
+        # Use the same hash logic as segment_identity_hash
+        seg_hash = segment_identity_hash({"tag": entry.get("tag", ""), "attrs": entry.get("attrs", {}), "html": entry["html"]})
+        kb_entry = {
+            "pattern_id": entry["pattern_id"],
+            "label": entry["label"],
+            "embedding": entry.get("embedding", []),
+            "example_html": entry["html"][:500],
+            "segment_hash": seg_hash,
+            "timestamp": entry.get("timestamp", 0),
+        }
+        # Add to in-memory pattern KB cache if available
+        global _pattern_kb_cache
+        if _pattern_kb_cache is not None:
+            _pattern_kb_cache.append(kb_entry)
 
 def get_page_hash(page):
     content = page.content()
@@ -1244,13 +1281,17 @@ def save_context_cache_to_disk(context_cache, filename="context_cache.json"):
 def segment_identity_hash(segment):
     """
     Returns a SHA-256 hash for segment identity (NOT for passwords).
-    Do NOT use SHA-256 for password hashing—use bcrypt, argon2, or scrypt for passwords.
+    Uses normalized/truncated HTML for performance on large segments.
+    Ignores dynamic attributes and normalizes whitespace for robustness.
     """
     tag = segment.get("tag", "")
     attrs = segment.get("attrs", {})
+    # Remove dynamic attributes from attrs for hashing
+    attrs_filtered = {k: v for k, v in attrs.items() if not (k.startswith('_ngcontent-') or k.startswith('_nghost-') or k.startswith('ng-') or k.startswith('data-') or k in {'style', 'id', 'class', 'tabindex', 'aria-checked'})}
     html = segment.get("html", "")
-    attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
-    return hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + html).encode("utf-8")).hexdigest()
+    attrs_sorted = {k: attrs_filtered[k] for k in sorted(attrs_filtered)}
+    html_norm = _normalize_html_for_hash(html)
+    return hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + html_norm).encode("utf-8")).hexdigest()
 
 def batch_get_segment_embeddings(model, segments):
     """
@@ -1292,3 +1333,7 @@ def batch_get_segment_embeddings(model, segments):
                 cached[idx] = new_embs[i]
     # For trivial segments, return None (or could use np.zeros if preferred)
     return [emb if identity else None for emb, identity in zip(cached, identities)]
+
+# --- Module-level caches for pattern_kb and context_cache ---
+_pattern_kb_cache = None
+_context_cache_cache = None

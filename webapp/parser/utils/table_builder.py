@@ -4,12 +4,14 @@
 # Centralizes user feedback, ML learning, and structure confirmation.
 # ===================================================================
 
+import copy
 import os
 import json
 import time
 from rich.table import Table
 from ..bots.librarian import (
     LOCATION_KEYWORDS,
+    PERCENT_KEYWORDS,  
 )
 from typing import List, Dict, Tuple, Any, Optional, TYPE_CHECKING
 from ..utils.logger_instance import logger
@@ -95,7 +97,20 @@ def build_dynamic_table(
     else:
         merged_headers, merged_data = [], []
     merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
-    # --- 3. NLP Entity Annotation ---
+
+    # --- [NEW] Ensure all required percent columns are present ---
+    # Normalize headers for matching
+    def normalize_header(h):
+        return h.strip().lower().replace("%", "percent").replace("  ", " ")
+    norm_headers = set(normalize_header(h) for h in merged_headers)
+    # Add any missing percent/fully reported columns
+    for percent_col in PERCENT_KEYWORDS:
+        norm_percent_col = normalize_header(percent_col)
+        if norm_percent_col not in norm_headers:
+            merged_headers.append(percent_col)
+            for row in merged_data:
+                row[percent_col] = ""
+    # ...existing code...
     try:
         annotated_headers, annotated_data, entity_info = nlp_entity_annotate_table(
             merged_headers, merged_data, context=context, coordinator=coordinator
@@ -200,7 +215,6 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     Interactive CLI for user to confirm, correct, or reject table structure.
     Ensures 'Percent Reported' is always included if present in data or context.
     """
-    import copy
 
     should_log = True
     columns_changed = False
@@ -310,10 +324,11 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
             rprint("  [Prev] Show previous candidate structure")
         resp = input("Accept, Reject, mark Columns, reorder, Rename, Add, Next, or Prev? [Y/n/c/o/r/a/next/prev]: ").strip().lower()
         if resp in ("", "y", "yes"):
-            new_headers = candidate_headers
-            should_log = True
-            # Advance feedback loop and break after acceptance
-            break
+            # Accept and immediately return, breaking the loop
+            if should_log and hasattr(coordinator, "log_table_structure"):
+                coordinator.log_table_structure(domain, new_headers, data)
+            new_headers, data = harmonize_headers_and_data(new_headers, data)
+            return new_headers, data
         elif resp in ("n", "no"):
             denied_structures[sig] = denied_structures.get(sig, 0) + 1
             with open(denied_structures_path, "w", encoding="utf-8") as f:

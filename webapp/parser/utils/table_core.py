@@ -42,7 +42,8 @@ from ..bots.librarian import (
     TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS,
     PARTY_KEYWORDS,
-    LOCATION_ABBREVIATIONS
+    LOCATION_ABBREVIATIONS,
+    normalize_segment_text
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -1795,7 +1796,7 @@ def rescan_and_verify(headers: List[str], data: List[Dict[str, Any]], coordinato
 # STRUCTURE DETECTION, CLASSIFICATION, PIVOTING
 # ===================================================================
 
-def force_fully_wide_format(headers, data, context=None):
+def force_fully_wide_format(headers, data, coordinator: "ContextCoordinator" = None, context=None):
     """
     Pivot to fully wide format: one row per location (real or synthetic),
     columns for each candidate/party/ballot type pair, plus special columns like
@@ -1847,10 +1848,15 @@ def force_fully_wide_format(headers, data, context=None):
     candidate_party_pairs = []
     for row in data:
         candidate = row.get(candidate_col, "")
-        party = row.get(party_col, "") if party_col else ""
-        if (candidate, party) not in candidate_party_pairs and candidate:
-            candidate_party_pairs.append((candidate, party))
-    for candidate, party in candidate_party_pairs:
+        party = ""
+        ents = coordinator.extract_entities(candidate)
+        for ent, label in ents:
+            if label in {"ORG", "NORP"}:
+                party = ent
+        if not party:
+            party = "Other"
+        candidate_party_pairs.append((candidate, party))
+    for candidate, party in sorted(candidate_party_pairs):
         for bt in ballot_types:
             if party:
                 wide_headers.append(f"{candidate} ({party}) - {bt}")
@@ -1943,14 +1949,26 @@ def handle_candidate_major(headers, data, coordinator, context):
     """
     Handles tables where each row is a candidate, columns are ballot types.
     """
+    # Detect location and percent columns
     location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
     if not location_header:
         location_header = "Precinct"
     if not percent_header:
         percent_header = "Percent Reported"
+        
+    # Detect candidate, party, and ballot type columns    
     structure_info = detect_table_structure(headers, data, coordinator)
     candidate_col = structure_info.get("candidate_col", 0)
+    party_col = structure_info.get("party_col", None)
     ballot_type_cols = structure_info.get("ballot_type_cols", list(range(1, len(headers))))
+    
+    # Get ballot type names
+    ballot_types = [headers[idx] for idx in ballot_type_cols]
+
+    # Special columns
+    percent_cols = [h for h in headers if any(kw in h.lower() for kw in PERCENT_KEYWORDS)]
+    misc_total_cols = [h for h in headers if any(kw in h.lower() for kw in (TOTAL_KEYWORDS | MISC_FOOTER_KEYWORDS))]
+    
     output_headers = [percent_header, location_header]
     candidate_party_map = {}
     for row in data:
@@ -1964,11 +1982,12 @@ def handle_candidate_major(headers, data, coordinator, context):
             party = "Other"
         candidate_party_map[candidate] = party
     for candidate, party in candidate_party_map.items():
-        for idx in ballot_type_cols:
-            bt = headers[idx]
+        for bt in ballot_types:
             output_headers.append(f"{candidate} ({party}) - {bt}")
         output_headers.append(f"{candidate} ({party}) - Total")
     output_headers.append("Grand Total")
+    
+    # Build output data
     output_data = []
     location_vals = set(row.get(location_header, "All") for row in data)
     for loc in location_vals:
@@ -1979,23 +1998,28 @@ def handle_candidate_major(headers, data, coordinator, context):
         for row in data:
             if row.get(location_header, "All") != loc:
                 continue
-            for candidate, party in candidate_party_map.items():
-                candidate_total = 0
-                for idx in ballot_type_cols:
-                    bt = headers[idx]
-                    col = f"{candidate} ({party}) - {bt}"
-                    val = ""
-                    if row[headers[candidate_col]] == candidate:
-                        val = row.get(headers[idx], "")
+            # Special columns
+            for pcol in percent_cols:
+                if pcol in out_row and row.get(pcol, ""):
+                    out_row[pcol] = row.get(pcol, "")
+            for mcol in misc_total_cols:
+                if mcol in out_row and row.get(mcol, ""):
+                    out_row[mcol] = row.get(mcol, "")
                     try:
-                        ival = int(val.replace(",", "")) if val else 0
+                        grand_total += int(row.get(mcol, "0").replace(",", ""))
                     except Exception:
-                        ival = 0
-                    out_row[col] = str(ival) if val != "" else ""
-                    candidate_total += ival
-                total_col = f"{candidate} ({party}) - Total"
-                out_row[total_col] = str(candidate_total)
-                grand_total += candidate_total
+                        pass
+            candidate = row.get(candidate_col, "")
+            party = row.get(party_col, "") if party_col else ""
+            for bt in ballot_types:
+                key = f"{candidate} ({party}) - {bt}" if party else f"{candidate} - {bt}"
+                val = row.get(bt, "")
+                if val and key in out_row:
+                    out_row[key] = val
+                    try:
+                        grand_total += int(val.replace(",", ""))
+                    except Exception:
+                        pass
         out_row["Grand Total"] = str(grand_total)
         output_data.append(out_row)
     return harmonize_headers_and_data(output_headers, output_data)
@@ -2030,7 +2054,6 @@ def pivot_to_wide_format(
     context: dict = None
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     logger.info("[TABLE_CORE][pivot_to_wide_format] Pivoting to wide format.")
-    from ..bots.librarian import BALLOT_TYPE_SORT_ORDER, normalize_segment_text
     # 1. Detect location header robustly and normalize to "Precinct"
     location_header = None
     percent_header = None
@@ -2180,8 +2203,7 @@ def pivot_precinct_major_to_wide(
     for bt in sorted(ballot_types_set):
         if bt not in ballot_types:
             ballot_types.append(bt)
-
-    # Build output headers
+    # 3. Build output headers
     output_headers = [location_header, percent_header]
     candidate_columns = []
     for candidate, party in sorted(candidate_party_set):
@@ -2726,7 +2748,10 @@ def contains_location_keyword(text, keywords=LOCATION_KEYWORDS):
 
 def is_location_header(header):
     """
-    Robustly determine if a header is a location column using fuzzy, substring, and regex matching.
+    Robustly determine if a header is a location column using LOCATION_KEYWORDS and abbreviations.
+    This is the SINGLE SOURCE OF TRUTH for location column detection.
+    - Uses normalization, substring, fuzzy, and regex matching.
+    - Always update LOCATION_KEYWORDS in librarian.py for new variants.
     """
     header_norm = normalize_for_matching(header)
     for kw in LOCATION_KEYWORDS:
@@ -2736,7 +2761,3 @@ def is_location_header(header):
     if header_norm in LOCATION_ABBREVIATIONS:
         return True
     return False
-
-# ===================================================================
-# END OF FILE
-# ===================================================================

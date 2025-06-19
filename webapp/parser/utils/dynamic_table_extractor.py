@@ -188,7 +188,10 @@ def score_candidate(candidate, context, coordinator):
     """
     Score a candidate table structure using ML/NLP and heuristics.
     Returns (score, rationale).
+    Adds a bonus if a location column is present (using is_location_header),
+    and penalizes if missing when context expects one.
     """
+    from .table_core import is_location_header
     headers = candidate.get("headers", [])
     rows = candidate.get("rows", [])
     rationale = []
@@ -226,6 +229,17 @@ def score_candidate(candidate, context, coordinator):
         entity_bonus = 0.2 * (entity_hits / len(headers))
     rationale.append(f"Entity bonus: {entity_bonus:.2f} ({entity_hits}/{len(headers)} headers)")
 
+    # 4b. [NEW] Bonus for location column, penalty if missing and context expects one
+    has_location_col = any(is_location_header(h) for h in headers)
+    location_bonus = 0.15 if has_location_col else 0.0
+    location_penalty = 0.0
+    if not has_location_col and context and context.get("require_location_column", True):
+        location_penalty = -0.15
+    if location_bonus:
+        rationale.append("Location column bonus: +0.15 (location column detected)")
+    if location_penalty:
+        rationale.append("Location column penalty: -0.15 (location column missing, expected)")
+
     # 5. Penalty for generic headers (Column 1, etc.)
     generic_headers = sum(1 for h in headers if re.match(r"Column \d+", h))
     generic_penalty = -0.2 * (generic_headers / len(headers)) if headers else 0
@@ -239,7 +253,9 @@ def score_candidate(candidate, context, coordinator):
         0.2 * col_score +
         fill_penalty +
         entity_bonus +
-        generic_penalty
+        generic_penalty +
+        location_bonus +
+        location_penalty
     )
     score = max(0.0, min(1.0, score))
     rationale.append(f"Final score: {score:.2f}")
@@ -597,7 +613,9 @@ def review_dom_patterns(log_path=None):
         print("-" * 40)
 
     while True:
-        cmd = input("\nEnter entry number to approve/delete, or 'q' to quit: ").strip()
+        cmd = input("\nEnter entry number to approve/delete, or 'q' to quit: ")
+
+        cmd = cmd.strip()
         if cmd.lower() == "q":
             break
         if cmd.isdigit():
