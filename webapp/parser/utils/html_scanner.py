@@ -95,6 +95,7 @@ def extract_custom_attrs(attrs: Dict[str, Any], include_data: bool = True) -> Di
 
 def extract_tagged_segments_with_attrs(
     html: str,
+    context_cache: Optional[Dict[str, Any]] = None,
     include_data_attrs: bool = True,
     fallback_on_error: bool = True,
     ml_model_name: str = "all-MiniLM-L6-v2",
@@ -107,10 +108,13 @@ def extract_tagged_segments_with_attrs(
     Each segment gets: ml_label, ml_confidence, pattern_id.
     """
     from sentence_transformers import SentenceTransformer
+    
     def get_cached_segment(tag, attrs, html_snippet):
         # Try to find a matching segment in pattern_kb or context_library
         attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
         key = hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + html_snippet[:200]).encode("utf-8")).hexdigest()
+        if context_cache and key in context_cache:
+            return context_cache[key]
         if pattern_kb:
             for entry in pattern_kb:
                 if entry.get("segment_hash") == key:
@@ -130,6 +134,10 @@ def extract_tagged_segments_with_attrs(
     model = ModelRegistry.get_sentence_transformer(ml_model_name)
     if pattern_kb is None:
         pattern_kb = load_pattern_kb()
+    if context_library is None:
+        context_library = {}
+    if context_cache is None:
+        context_cache = load_context_cache_from_disk(context_library)
 
     try:
         tree = HTMLParser(html)
@@ -305,46 +313,22 @@ def extract_tagged_segments_with_attrs(
 
         logger.info(f"[PERF] DOM extraction (BeautifulSoup fallback+ML) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
         return segments
-
+# --- not being used yet, but useful for future ---
 def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", min_panel_score=0.65):
     """
     Advanced: Extract panels and their associated tables from DOM segments.
     Uses ML embeddings, clustering, DOM proximity, and semantic heuristics for robust extraction.
     Returns a list of panel dicts, each with ML confidence and association logs.
     """
-    from bs4 import BeautifulSoup
     import numpy as np
 
     panel_tags = PANEL_TAGS
-    heading_tags = HEADING_TAGS
 
     idx_to_seg = {seg["_idx"]: seg for seg in segments if "_idx" in seg}
     table_segs = [seg for seg in segments if seg.get("tag") == "table"]
 
     # --- ML Model for Embeddings ---
     model = ModelRegistry.get_sentence_transformer(ml_model_name)
-
-    # --- Helper: Get embedding for a segment (panel/table/heading) ---
-    def get_embedding(seg, model=None, cache_hits=None, cache_misses=None, non_interactive=False):
-        html = seg.get("html", "")
-        tag = seg.get("tag", "")
-        attrs = " ".join([f"{k}={v}" for k, v in seg.get("attrs", {}).items()])
-        text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
-        identity = segment_identity_hash(seg)
-        emb = load_embedding(identity)
-        if emb is not None:
-            if cache_hits is not None:
-                cache_hits.add(identity)
-            return emb
-        if cache_misses is not None:
-            cache_misses.add(identity)
-        with console.status(
-            f"[cyan]Please wait for [bold]{tag}[/bold] {attrs[:40]}... to load, this may take a while...[/cyan]",
-            spinner="dots"
-        ):
-            emb = model.encode(f"{tag} {attrs} {text}", convert_to_numpy=True, show_progress_bar=False, non_interactive=False)
-        save_embedding(identity, emb)
-        return emb
 
     # --- Helper: Find all panel-like segments ---
     panel_segs = [
@@ -956,7 +940,6 @@ def scan_html_for_context(
     Advanced HTML scanner with ML-driven DOM pattern clustering, active learning, dynamic tagging,
     confidence-driven processing, and persistent knowledge base.
     """
-    context_cache = load_context_cache_from_disk()
     context_library = None
     if os.path.exists(CONTEXT_LIBRARY_PATH):
         with open(CONTEXT_LIBRARY_PATH, "rb") as f:
@@ -1062,9 +1045,11 @@ def scan_html_for_context(
                 ]
 
         # --- 5. HTML tag extraction for context organization (with ML) ---
+        context_cache = load_context_cache_from_disk()
         pattern_kb = load_pattern_kb()
         segments_with_attrs = extract_tagged_segments_with_attrs(
             html,
+            context_cache=context_cache,
             include_data_attrs=True,
             fallback_on_error=True,
             ml_model_name="all-MiniLM-L6-v2",

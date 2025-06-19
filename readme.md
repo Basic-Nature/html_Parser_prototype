@@ -104,7 +104,7 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
         `python -m spacy download en_core_web_sm`
      2. Set up your `.env` file as needed.
      3. Start the web server:  
-        `python webapp/Smart_Elections_Parser_Webapp.py`
+        `python -m webapp.Smart_Elections_Parser_Webapp`
      4. Open your browser to `http://localhost:5000`
    - The web UI is optional—**all core parser features remain available via the CLI**.
 
