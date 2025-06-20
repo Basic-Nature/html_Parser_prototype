@@ -23,7 +23,9 @@ ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").l
 import numpy as np
 console = Console()
 from bs4 import BeautifulSoup, Tag
-from ..utils.embedding_cache import save_embedding, load_embedding
+from ..utils.embedding_cache import (
+    save_embedding, load_embedding, get_embedding_from_memory, is_trivial_segment
+)
 import traceback
 from functools import lru_cache
 
@@ -141,29 +143,21 @@ def get_embedding_from_memory(identity, full_text, model_id):
 
 def get_segment_embedding(model, segment, cache_hits=None, cache_misses=None):
     identity = segment_identity_hash(segment)
-    emb = load_embedding(identity)
+    emb = get_embedding_from_memory(identity)
     if emb is not None:
         if cache_hits is not None:
             cache_hits.add(identity)
         return emb
-    # In-memory cache (model_id is model_name or repr(model))
+    # If not in memory cache, compute and save
     text = segment.get("html", "")
     tag = segment.get("tag", "")
     attrs = " ".join([f"{k}={v}" for k, v in segment.get("attrs", {}).items()])
     full_text = f"{tag} {attrs} {text}"
-    model_id = getattr(model, 'name_or_path', str(model))
-    try:
-        emb = get_embedding_from_memory(identity, full_text, model_id)
-        save_embedding(identity, emb)
-        if cache_misses is not None:
-            cache_misses.add(identity)
-        return emb
-    except Exception:
-        emb = model.encode(full_text, convert_to_numpy=True, show_progress_bar=False)
-        save_embedding(identity, emb)
-        if cache_misses is not None:
-            cache_misses.add(identity)
-        return emb
+    emb = model.encode(full_text, convert_to_numpy=True, show_progress_bar=False)
+    save_embedding(identity, emb)
+    if cache_misses is not None:
+        cache_misses.add(identity)
+    return emb
 
 def extract_tagged_segments_with_attrs(
     html: str,
@@ -378,7 +372,7 @@ def extract_tagged_segments_with_attrs(
                     seg["ml_confidence"] = 1.0
                     seg["pattern_id"] = None
                     segments.append(seg)
-                    return start_search
+                    return seg["_idx"]
                 # ML-driven labeling
                 attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
                 seg_hash = hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + seg["html"][:200]).encode("utf-8")).hexdigest()
@@ -1380,8 +1374,8 @@ def batch_get_segment_embeddings(model, segments):
             return True
         return False
 
-    identities = [segment_identity_hash(seg) if not is_trivial(seg) else None for seg in segments]
-    cached = [load_embedding(identity) if identity else None for identity in identities]
+    identities = [segment_identity_hash(seg) if not is_trivial_segment(seg) else None for seg in segments]
+    cached = [get_embedding_from_memory(identity) if identity else None for identity in identities]
     to_compute = [i for i, emb in enumerate(cached) if emb is None and identities[i] is not None]
     if to_compute:
         texts = []
