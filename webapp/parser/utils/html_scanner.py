@@ -76,20 +76,18 @@ def _save_label_cache():
     with open(path, "wb") as f:
         f.write(orjson.dumps(_LABEL_CACHE, option=orjson.OPT_INDENT_2))
 
-def cache_segment_label(html_snippet, label):
-    """Persistently cache the label for a segment (by normalized HTML)."""
-    norm = _normalize_html_for_hash(html_snippet)
+def cache_segment_label(seg_hash, label):
+    """Persistently cache the label for a segment (by robust segment hash)."""
     with _LABEL_CACHE_LOCK:
         cache = _load_label_cache()
-        cache[norm] = {"label": label, "timestamp": int(time.time())}
+        cache[seg_hash] = {"label": label, "timestamp": int(time.time())}
         _save_label_cache()
 
-def get_cached_segment_label(html_snippet):
+def get_cached_segment_label(seg_hash):
     """Retrieve a cached label for a segment, or None if not found."""
-    norm = _normalize_html_for_hash(html_snippet)
     with _LABEL_CACHE_LOCK:
         cache = _load_label_cache()
-        entry = cache.get(norm)
+        entry = cache.get(seg_hash)
         if entry:
             return entry.get("label")
         return None
@@ -1120,31 +1118,34 @@ def ml_classify_segment(segment, model, pattern_kb, threshold=0.85):
     return best_label, best_conf, best_pattern_id
 
 def prompt_for_segment_label(segment):
+    # Use robust segment identity hash for deduplication
+    seg_hash = segment_identity_hash(segment)
+    # Check persistent cache first
+    cached_label = get_cached_segment_label(seg_hash)
+    if cached_label:
+        return cached_label
     # Try canonical and cache-based auto-labeling first
     html_preview = segment.get("html", "")
     canonical_label = get_canonical_segment_label(html_preview)
     if canonical_label:
-        cache_segment_label(html_preview, canonical_label)
+        cache_segment_label(seg_hash, canonical_label)
         return canonical_label
-    cached_label = get_cached_segment_label(html_preview)
-    if cached_label:
-        return cached_label
-    # Try to auto-label using rules
     auto = auto_label_segment(segment)
     if auto != "ignore" and auto != "unknown":
-        cache_segment_label(html_preview, auto)
+        cache_segment_label(seg_hash, auto)
         return auto
     if not ENABLE_SEGMENT_LABEL_PROMPT:
         return "unknown"
     # Fallback to user prompt if ambiguous
     if not html_preview:
         html_preview = f"[No HTML] tag={segment.get('tag')} attrs={segment.get('attrs')}"
+
     rprint(f"\n[bold yellow]Segment needs review:[/bold yellow]\n{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
     rprint(
         "[cyan]What is the semantic role of this segment? (e.g., results_table, ballot_toggle, heading, panel, candidate_panel, location_panel, ballot_type, results_timestamp, download_link, clickable, footer, legend, contest_title, party_label, vote_method, reporting_status, summary, error_message, warning, info_box, navigation, pagination, tab, modal, tooltip, ignore, unknown, etc.)[/cyan]"
     )
     label = prompt_user_input("> ").strip()
-    cache_segment_label(html_preview, label)
+    cache_segment_label(seg_hash, label)
     return label
 
 def scan_html_for_context(
@@ -1443,17 +1444,19 @@ def save_context_cache_to_disk(context_cache, filename="context_cache.json"):
 def segment_identity_hash(segment):
     """
     Returns a SHA-256 hash for segment identity (NOT for passwords).
-    Uses normalized/truncated HTML for performance on large segments.
+    Uses normalized/truncated HTML, tag, and classes for performance and deduplication.
     Ignores dynamic attributes and normalizes whitespace for robustness.
     """
-    tag = segment.get("tag", "")
+    tag = segment.get("tag", "").lower()
+    classes = " ".join(sorted([c.lower() for c in segment.get("classes", [])]))
     attrs = segment.get("attrs", {})
     # Remove dynamic attributes from attrs for hashing
     attrs_filtered = {k: v for k, v in attrs.items() if not (k.startswith('_ngcontent-') or k.startswith('_nghost-') or k.startswith('ng-') or k.startswith('data-') or k in {'style', 'id', 'class', 'tabindex', 'aria-checked'})}
-    html = segment.get("html", "")
-    attrs_sorted = {k: attrs_filtered[k] for k in sorted(attrs_filtered)}
-    html_norm = _normalize_html_for_hash(html)
-    return hashlib.sha256((tag + orjson.dumps(attrs_sorted, option=orjson.OPT_SORT_KEYS).decode() + html_norm).encode("utf-8")).hexdigest()
+    html = segment.get("html", "").lower()
+    # Aggressive normalization: strip all whitespace, remove dynamic attrs, collapse spaces
+    html_norm = re.sub(r'\s+', ' ', re.sub(r'\s*([=;:,])\s*', r'\1', re.sub(r'\s+', ' ', html.strip())))[:256]
+    base = tag + "|" + classes + "|" + orjson.dumps(attrs_filtered, option=orjson.OPT_SORT_KEYS).decode() + "|" + html_norm
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 def batch_get_segment_embeddings(model, segments):
     """
