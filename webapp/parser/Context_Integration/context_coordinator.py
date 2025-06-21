@@ -20,7 +20,6 @@ from ..utils.shared_logic import (
     scan_buttons_with_progress, keyphrase_match,
     normalize_state_name, normalize_county_name
 )
-from sentence_transformers import SentenceTransformer, util
 from sklearn.preprocessing import LabelEncoder
 import subprocess
 from rich.console import Console
@@ -77,6 +76,7 @@ def get_semantic_score(model, text1, text2):
         return 0.0
     emb1 = model.encode(text1, convert_to_tensor=False, show_progress_bar=False)
     emb2 = model.encode(text2, convert_to_tensor=False, show_progress_bar=False)
+    from sentence_transformers import util
     return float(util.pytorch_cos_sim(emb1, emb2)[0][0])
 
 def merge_and_rank_candidates(memory_candidates, dom_candidates, context, keywords, model,
@@ -173,6 +173,10 @@ class ContextCoordinator:
         self.last_raw_context = None 
         self.clicked_button_selectors = set()
         self.accepted_buttons_cache = {}
+        self._semantic_model = None
+        if enable_ml:
+            from ..utils.model_registry import ModelRegistry
+            self._semantic_model = ModelRegistry.get_sentence_transformer("all-MiniLM-L6-v2")
         if alert_monitor:
             self.start_alert_monitoring()
 
@@ -269,6 +273,7 @@ class ContextCoordinator:
         Compute a fuzzy string similarity score between two strings.
         """
         from fuzzywuzzy import fuzz
+        model = self._semantic_model
         return fuzz.ratio(str(a), str(b))
                
     def log_field_selection(
@@ -1025,8 +1030,6 @@ class ContextCoordinator:
         """
         if fuzzy_thresholds is None:
             fuzzy_thresholds = [0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5]
-        if not hasattr(self, "_semantic_model"):
-            self._semantic_model = SentenceTransformer("all-MiniLM-L6-v2")
         model = self._semantic_model
         context = context or {}
         context.update({

@@ -225,8 +225,8 @@ def scan_environment():
     }
 
 def get_title_embedding_features(contests, model_name="all-MiniLM-L6-v2"):
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer(model_name)
+    from ..utils.model_registry import ModelRegistry
+    model = ModelRegistry.get_sentence_transformer(model_name)
     titles = [c.get("title", "") for c in contests]
     return model.encode(titles, show_progress_bar=False)
 

@@ -404,13 +404,14 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
     model_save_path = model_save_path or os.path.join(base_dir, "fine_tuned_table_headers")
     os.makedirs(model_save_path, exist_ok=True)
 
+    from ..utils.model_registry import ModelRegistry
     # Load existing model for further training if present
     if os.path.exists(os.path.join(model_save_path, "config.json")):
         print(f"Loading existing model from {model_save_path} for further fine-tuning...")
-        model = SentenceTransformer(model_save_path)
+        model = ModelRegistry.get_sentence_transformer(model_name=model_save_path, use_finetuned=False)
     else:
         print("No existing fine-tuned model found. Starting from base model.")
-        model = SentenceTransformer("all-MiniLM-L6-v2")
+        model = ModelRegistry.get_sentence_transformer(model_name="all-MiniLM-L6-v2", use_finetuned=False)
 
     train_dataloader = DataLoader(train_examples, shuffle=True, batch_size=8)
     train_loss = losses.CosineSimilarityLoss(model)
