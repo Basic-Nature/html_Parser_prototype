@@ -342,13 +342,19 @@ class ContextOrganizer:
         if not isinstance(lib_buttons, list):
             lib_buttons = []
         all_buttons = raw_buttons + lib_buttons
+        unmatched_buttons = []
         for btn in all_buttons:
+            matched = False
             for c in contests:
                 if c["title"].lower() in btn.get("label", "").lower():
                     buttons_by_contest[c["title"]].append(btn)
+                    matched = True
                 elif "election" in btn.get("label", "").lower() and "election" in c["title"].lower():
                     buttons_by_contest[c["title"]].append(btn)
-        if not any(btn in v for v in buttons_by_contest.values()):
+                    matched = True
+            if not matched:
+                unmatched_buttons.append(btn)
+        for btn in unmatched_buttons:
             buttons_by_contest["__unmatched__"].append(btn)
 
         tables_by_contest = defaultdict(list)
