@@ -273,6 +273,9 @@ def extract_tagged_segments_with_attrs(
 
     # Load ML model and pattern KB/context only once
     model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
+    if model is None:
+        logger.error("[ERROR] SentenceTransformer model could not be loaded. Check model path and files.")
+        raise RuntimeError("SentenceTransformer model could not be loaded. Aborting segment extraction.")
     if pattern_kb is None:
         pattern_kb = load_pattern_kb()
     if context_library is None:

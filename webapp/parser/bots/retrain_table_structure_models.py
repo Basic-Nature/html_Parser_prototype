@@ -13,6 +13,11 @@ from ..config import CONTEXT_DB_PATH, MODEL_DIR
 
 import spacy
 from spacy.training import Example
+import logging
+import argparse
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("manual_correction_bot")
 
 ELECTION_ENTITY_LABELS = [
     "CONTEST", "CANDIDATE", "PARTY", "COUNTY", "STATE", "DISTRICT", "VOTE_METHOD",
@@ -378,10 +383,23 @@ def get_all_confirmed_structures():
     ]
 
 def run_manual_correction_bot():
+    """
+    Run the manual correction bot as a subprocess, capturing output and errors.
+    """
     import subprocess
-    # manual_correction_bot.py is in the same folder as this script
     script_path = os.path.join(os.path.dirname(__file__), "manual_correction_bot.py")
-    subprocess.run(["python", script_path, "--fields", "tables", "--feedback", "--enhanced"])
+    try:
+        result = subprocess.run(
+            ["python", script_path, "--fields", "tables", "--feedback", "--enhanced"],
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        print(result.stdout)
+        if result.stderr:
+            print(result.stderr)
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Manual correction bot failed: {e.stderr}")
 
 def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
     """
@@ -389,44 +407,67 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
     Loads the existing model for further training if present, otherwise starts from base.
     Always saves to the same folder (no timestamp).
     """
+    import shutil
     train_examples = []
     for struct in confirmed_structures:
-        contest_title = struct["contest_title"]
-        headers = struct["headers"]
+        contest_title = struct.get("contest_title", "")
+        headers = struct.get("headers", [])
         for header in headers:
             train_examples.append(InputExample(texts=[contest_title, header], label=1.0))
     if not train_examples:
         print("No training examples found. Aborting retraining.")
         return
 
-    # Always use the same folder for the model
     base_dir = MODEL_DIR if 'MODEL_DIR' in globals() else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../model"))
     model_save_path = model_save_path or os.path.join(base_dir, "fine_tuned_table_headers")
     os.makedirs(model_save_path, exist_ok=True)
 
     from ..utils.model_registry import ModelRegistry
-    # Load existing model for further training if present
-    if os.path.exists(os.path.join(model_save_path, "config.json")):
-        print(f"Loading existing model from {model_save_path} for further fine-tuning...")
-        model = ModelRegistry.get_sentence_transformer(model_name=model_save_path, use_finetuned=False)
-    else:
-        print("No existing fine-tuned model found. Starting from base model.")
-        model = ModelRegistry.get_sentence_transformer(model_name="all-MiniLM-L6-v2", use_finetuned=False)
-
+    # Robust model loading: check for model files
+    model = None
+    model_files = ["config.json", "pytorch_model.bin", "model.safetensors", "tf_model.h5", "model.ckpt.index", "flax_model.msgpack"]
+    model_files_exist = any(os.path.exists(os.path.join(model_save_path, f)) for f in model_files)
+    if model_files_exist:
+        print(f"Attempting to load existing model from {model_save_path} for further fine-tuning...")
+        try:
+            model = ModelRegistry.get_sentence_transformer(model_name=model_save_path, use_finetuned=False)
+        except Exception as e:
+            print(f"[WARN] Failed to load existing model: {e}")
+            model = None
+    if model is None:
+        print("Falling back to base model (all-MiniLM-L6-v2).")
+        try:
+            model = ModelRegistry.get_sentence_transformer(model_name="all-MiniLM-L6-v2", use_finetuned=False)
+        except Exception as e:
+            print(f"[ERROR] Could not load base SentenceTransformer: {e}")
+            return
+    # Defensive: clean up incomplete/corrupt model directory before saving
+    for f in model_files:
+        fpath = os.path.join(model_save_path, f)
+        if os.path.exists(fpath) and os.path.getsize(fpath) == 0:
+            print(f"[CLEANUP] Removing empty/corrupt file: {fpath}")
+            try:
+                os.remove(fpath)
+            except Exception:
+                pass
     train_dataloader = DataLoader(train_examples, shuffle=True, batch_size=8)
     train_loss = losses.CosineSimilarityLoss(model)
-
     print(f"Retraining SentenceTransformer on {len(train_examples)} pairs...")
-    model.fit(
-        train_objectives=[(train_dataloader, train_loss)],
-        epochs=1,
-        warmup_steps=10,
-        show_progress_bar=True
-    )
-
-    safe_model_save(model, model_save_path)
-    print(f"Fine-tuned model saved to: {model_save_path}")
-
+    try:
+        model.fit(
+            train_objectives=[(train_dataloader, train_loss)],
+            epochs=1,
+            warmup_steps=10,
+            show_progress_bar=True
+        )
+    except Exception as e:
+        print(f"[ERROR] Model training failed: {e}")
+        return
+    try:
+        safe_model_save(model, model_save_path)
+        print(f"Fine-tuned model saved to: {model_save_path}")
+    except Exception as e:
+        print(f"[ERROR] Model save failed: {e}")
 def segment_hash(segment):
     """Generate a stable hash for a DOM segment based on tag, attrs, and first 200 chars of HTML."""
     tag = segment.get("tag", "")

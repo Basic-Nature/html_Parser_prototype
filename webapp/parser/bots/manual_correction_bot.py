@@ -331,164 +331,56 @@ def feedback_loop(
     if not new_entries:
         print(f"[INFO] No new entries to review for {field_type}.")
         return
-    
-    print(f"\n[FEEDBACK] Review new context library entries for [bold]{field_type}[/bold]:")
-    context_library = load_context_library(context_library_path)
-    changed = False
-
     print(f"\n[FEEDBACK] Review new context library entries for [bold]{field_type}[/bold]:")
     context_library = load_context_library(context_library_path)
     changed = False
     accepted, edited, removed = 0, 0, 0
     undo_stack = []
-
     skip_all = False
     accept_all = False
-
     for context_key, values in new_entries.items():
         if skip_all or accept_all:
-            break
+            continue
         print(f"\nContext: {context_key}")
         for idx, val in enumerate(values):
-            if skip_all:
-                break
-            if accept_all:
-                print(f"    [ACCEPTED] {val!r}")
+            print(f"  [{idx+1}] {val}")
+            # Add spaCy/ML/LLM feedback here if enhanced
+            if enhanced:
+                feedback = spacy_feedback_on_entry(val, args=args)
+                if feedback:
+                    print(f"    [spaCy] Entities: {feedback.get('entities', [])}")
+                    for suggestion in feedback.get('suggestions', []):
+                        print(f"    [spaCy] Suggestion: {suggestion}")
+            # TODO: Add LLM feedback if llm_api_key is provided
+            # Accept/edit/remove prompt (simplified for batch mode)
+            user_input = input("    Accept [a], Edit [e], Remove [r], Skip [s], Accept All [A], Skip All [S]: ").strip().lower()
+            if user_input == "a":
                 accepted += 1
-                continue
-            print(f"  {idx}: {val!r}")
-            ml_score = ml_score_entry({"extracted_value": val}, coordinator=coordinator)
-            if enhanced and nlp:
-                analysis = spacy_feedback_on_entry({"extracted_value": val}, args=args)
-                if analysis.get("entities"):
-                    print(f"    [spaCy entities]: {analysis['entities']}")
-                if analysis.get("suggestions"):
-                    print(f"    [spaCy suggestions]: {analysis['suggestions']}")
-            print(f"    [ML score]: {ml_score:.2f}")
-            resp = input(
-                "    [A]ccept / [E]dit / [R]emove / [B]atch Edit / [D]ebate / [S]uggest / [L]LM / [C]ancel / [S]kip all / [Y] Accept all / [U]ndo? (A/E/R/B/D/S/L/C/S/Y/U): "
-            ).strip().lower()
-            if resp == "c":
-                print("[INFO] Cancelled by user. Exiting feedback loop.")
-                return
-            if resp == "s":
-                skip_all = True
-                break
-            if resp == "y":
-                accept_all = True
-                accepted += 1
-                continue
-            if resp == "u" and undo_stack:
-                last_action = undo_stack.pop()
-                # Implement undo logic here
-                print("[INFO] Undo last action (not fully implemented).")
-                continue
-            if resp == "b":
-                batch_val = input("    Enter new value for all similar entries: ").strip()
-                for i, v in enumerate(values):
-                    if v == val:
-                        values[i] = batch_val
-                        edited += 1
                 changed = True
-                continue
-            if resp == "d":
-                print("[DEBATE] Should this process be handled differently?")
-                print(
-                    "  1. Keep as is\n"
-                    "  2. Move to another field\n"
-                    "  3. Mark as ambiguous\n"
-                    "  4. ML Suggestion\n"
-                    "  5. LLM Suggestion\n"
-                    "  6. LLM (Anthropic)\n"
-                    "  7. Custom LLM prompt\n"
-                    "  8. Cancel debate"
-                )
-                debate_choice = input("  Enter choice (1-8): ").strip()
-                if debate_choice == "2":
-                    new_field = input("    Enter new field type: ").strip()
-                    print(f"    [INFO] Would move to field: {new_field} (not implemented in this demo)")
-                elif debate_choice == "3":
-                    print("    [INFO] Marked as ambiguous for further review.")
-                elif debate_choice == "4":
-                    suggested = ml_suggest_field({"extracted_value": val}, coordinator=coordinator)
-                    print(f"    [ML SUGGESTION] This entry may belong in: {suggested or 'unknown'}")
-                elif debate_choice == "5":
-                    llm_suggestion = llm_suggest_action(
-                        {"extracted_value": val},
-                        context={"context_key": context_key},
-                        api_key=llm_api_key,
-                        model=llm_model,
-                        provider="openai",
-                        system_prompt=llm_system_prompt,
-                        extra_instructions=llm_extra_instructions,
-                    )
-                    print(f"    [LLM SUGGESTION - OpenAI]: {llm_suggestion or 'No suggestion'}")
-                elif debate_choice == "6":
-                    llm_suggestion = llm_suggest_action(
-                        {"extracted_value": val},
-                        context={"context_key": context_key},
-                        api_key=llm_api_key,
-                        model="claude-3-opus-20240229",
-                        provider="anthropic",
-                        system_prompt=llm_system_prompt,
-                        extra_instructions=llm_extra_instructions,
-                    )
-                    print(f"    [LLM SUGGESTION - Anthropic]: {llm_suggestion or 'No suggestion'}")
-                elif debate_choice == "7":
-                    custom_prompt = input("    Enter custom instructions for the LLM: ").strip()
-                    llm_suggestion = llm_suggest_action(
-                        {"extracted_value": val},
-                        context={"context_key": context_key},
-                        api_key=llm_api_key,
-                        model=llm_model,
-                        provider=llm_provider,
-                        system_prompt=llm_system_prompt,
-                        extra_instructions=custom_prompt,
-                    )
-                    print(f"    [LLM SUGGESTION - Custom]: {llm_suggestion or 'No suggestion'}")
-                elif debate_choice == "8":
-                    print("    [INFO] Debate cancelled.")
-                continue
-            if resp == "l":
-                llm_suggestion = llm_suggest_action(
-                    {"extracted_value": val},
-                    context={"context_key": context_key},
-                    api_key=llm_api_key,
-                    model=llm_model,
-                    provider=llm_provider,
-                    system_prompt=llm_system_prompt,
-                    extra_instructions=llm_extra_instructions,
-                )
-                print(f"    [LLM SUGGESTION]: {llm_suggestion or 'No suggestion'}")
-                continue
-            if resp == "s":
-                suggested = ml_suggest_field({"extracted_value": val}, coordinator=coordinator)
-                print(f"    [ML SUGGESTION] This entry may belong in: {suggested or 'unknown'}")
-                continue
-            if resp == "e":
-                new_val = input("      New value: ").strip()
+            elif user_input == "e":
+                new_val = input("    Enter new value: ").strip()
                 if new_val:
-                    if field_type in {"buttons", "panels", "tables"}:
-                        context_library[field_type][context_key][idx] = new_val
-                    else:
-                        context_library[field_type][idx] = new_val
-                    print("    [UPDATED]")
+                    val["extracted_value"] = new_val
                     edited += 1
                     changed = True
-            elif resp == "r":
-                if field_type in {"buttons", "panels", "tables"}:
-                    context_library[field_type][context_key].remove(val)
-                else:
-                    context_library[field_type].remove(val)
-                print("    [REMOVED]")
+            elif user_input == "r":
                 removed += 1
+                values[idx] = None
                 changed = True
-            else:
-                print("    [ACCEPTED]")
+            elif user_input == "s":
+                continue
+            elif user_input == "a":
+                accept_all = True
                 accepted += 1
+                changed = True
+            elif user_input == "s":
+                skip_all = True
+                continue
+        # Remove deleted
+        values = [v for v in values if v]
+        new_entries[context_key] = values
     if changed:
         save_context_library(context_library, context_library_path)
-        print(f"[INFO] Context library updated with feedback for {field_type}.")
     print(f"[SUMMARY] Accepted: {accepted}, Edited: {edited}, Removed: {removed}")
 
 def highlight_anomalies(context_library, field_type):
