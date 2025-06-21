@@ -1045,31 +1045,42 @@ def auto_label_segment(segment):
     # --- 15. Fallback: unknown/ambiguous, needs review ---
     return "unknown"
 
+def embedding_cache_hash(segment, model_id):
+    """
+    Construct a robust hash for embedding cache that includes segment content and model identifier.
+    """
+    tag = segment.get("tag", "")
+    attrs = segment.get("attrs", {})
+    # Remove dynamic attributes from attrs for hashing
+    attrs_filtered = {k: v for k, v in attrs.items() if not (k.startswith('_ngcontent-') or k.startswith('_nghost-') or k.startswith('ng-') or k.startswith('data-') or k in {'style', 'id', 'class', 'tabindex', 'aria-checked'})}
+    html = segment.get("html", "")
+    attrs_sorted = {k: attrs_filtered[k] for k in sorted(attrs_filtered)}
+    html_norm = _normalize_html_for_hash(html)
+    base = tag + orjson.dumps(attrs_sorted).decode() + html_norm + str(model_id)
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
+
 def get_segment_embedding(model, segment, cache_hits=None, cache_misses=None):
-    identity = segment_identity_hash(segment)
-    emb = load_embedding(identity)
+    model_id = getattr(model, 'name_or_path', str(model))
+    identity = embedding_cache_hash(segment, model_id)
+    emb = get_embedding_from_memory(identity)
     if emb is not None:
         if cache_hits is not None:
             cache_hits.add(identity)
         return emb
-    # In-memory cache (model_id is model_name or repr(model))
+    # In-memory cache miss, compute embedding
     text = segment.get("html", "")
     tag = segment.get("tag", "")
     attrs = " ".join([f"{k}={v}" for k, v in segment.get("attrs", {}).items()])
     full_text = f"{tag} {attrs} {text}"
-    model_id = getattr(model, 'name_or_path', str(model))
     try:
-        emb = get_embedding_from_memory(identity, full_text, model_id)
-        save_embedding(identity, emb)
-        if cache_misses is not None:
-            cache_misses.add(identity)
-        return emb
-    except Exception:
         emb = model.encode(full_text, convert_to_numpy=True, show_progress_bar=False)
         save_embedding(identity, emb)
         if cache_misses is not None:
             cache_misses.add(identity)
         return emb
+    except Exception:
+        # Fallback: return None if embedding fails
+        return None
 
 def cosine_sim(a, b):
     if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
@@ -1431,7 +1442,8 @@ def batch_get_segment_embeddings(model, segments):
     Skips segments with empty/trivial HTML (whitespace, only icons), returns None for those.
     Returns a list of embeddings in the same order as segments.
     """
-    identities = [segment_identity_hash(seg) if not is_trivial_segment(seg) else None for seg in segments]
+    model_id = getattr(model, 'name_or_path', str(model))
+    identities = [embedding_cache_hash(seg, model_id) if not is_trivial_segment(seg) else None for seg in segments]
     cached = [get_embedding_from_memory(identity) if identity else None for identity in identities]
     to_compute = [i for i, emb in enumerate(cached) if emb is None and identities[i] is not None]
     if to_compute:
