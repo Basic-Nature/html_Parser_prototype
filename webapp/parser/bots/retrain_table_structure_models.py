@@ -243,13 +243,23 @@ def load_spacy_ner_examples(jsonl_path):
             examples.append((text, {"entities": entities}))
     return examples
 
+# Label priority for deduplication: higher in the list = higher priority
+LABEL_PRIORITY = [
+    "CANDIDATE", "PARTY", "VOTE_METHOD", "PRECINCT", "DISTRICT", "COUNTY", "STATE", "TOTAL", "ELECTION_TYPE", "OFFICE", "WRITE_IN", "MISC", "BALLOT_MEASURE", "LOCATION", "DATE", "INCUMBENT", "WINNER", "LOSER", "UNOPPOSED", "PROPOSITION", "AMENDMENT", "DISTRICT_TYPE", "JURISDICTION", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "AFFIDAVIT", "OTHER"
+]
+
 def remove_overlapping_entities(entities):
     """
     Remove overlapping and duplicate-span entities from a list of (start, end, label) tuples.
-    Keeps the longest span first, then next non-overlapping, and only one label per span.
+    Keeps the longest span first, then next non-overlapping, and only one label per span (by priority).
     """
-    # Sort by start, then by longest span (descending)
-    entities = sorted(entities, key=lambda x: (x[0], -(x[1] - x[0])))
+    def label_rank(label):
+        try:
+            return LABEL_PRIORITY.index(label)
+        except ValueError:
+            return len(LABEL_PRIORITY)
+    # Sort by start, then by longest span (descending), then by label priority
+    entities = sorted(entities, key=lambda x: (x[0], -(x[1] - x[0]), label_rank(x[2])))
     result = []
     last_end = -1
     seen_spans = set()

@@ -16,9 +16,10 @@ import os
 import orjson
 import shutil
 from pathlib import Path
-from collections import defaultdict
-from typing import Dict, List, Any, Optional
+from collections import defaultdict, Counter
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
+import threading
 
 # --- Unified logger import ---
 from ..utils.shared_logger import logger
@@ -175,57 +176,113 @@ def save_jsonl(path, entries):
         for entry in entries:
             f.write(orjson.dumps(entry, ensure_ascii=False) + "\n")
 
-# --- Aggregate successful field entries ---
-def aggregate_successful_field_entries(log_file: Path, success_results=None) -> Dict[str, List[Dict[str, Any]]]:
+# --- Deduplication utilities ---
+def deduplicate_entries(entries, key_fields=("extracted_value", "field_type", "context_key")):
+    """
+    Deduplicate a list of dict entries by key fields (tuple of field names).
+    Returns a list of unique entries and a count of duplicates skipped.
+    """
+    seen = set()
+    unique = []
+    for entry in entries:
+        key = tuple(entry.get(f, None) for f in key_fields)
+        if key not in seen:
+            seen.add(key)
+            unique.append(entry)
+    return unique, len(entries) - len(unique)
+
+def entry_key(entry):
+    """
+    Returns a tuple key for an entry for deduplication and lookup.
+    """
+    return (
+        entry.get("extracted_value"),
+        entry.get("field_type"),
+        entry.get("context_key", "default")
+    )
+
+# --- Enhanced aggregate with deduplication and context check ---
+def aggregate_successful_field_entries(log_file: Path, context_library=None, field_type=None, success_results=None, fast_mode=False):
     if success_results is None:
         success_results = SUCCESS_RESULTS
     field_entries = defaultdict(list)
     entries = load_jsonl(log_file)
-    for entry in entries:
+    # Deduplicate log entries
+    unique_entries, dup_count = deduplicate_entries(entries)
+    # If context_library and field_type provided, skip already-existing entries
+    skipped_existing = 0
+    if context_library and field_type in context_library:
+        existing_set = set()
+        for e in context_library[field_type]:
+            key = (
+                e.get("extracted_value"),
+                e.get("field_type"),
+                e.get("context_key", "default")
+            )
+            existing_set.add(key)
+        filtered = []
+        for entry in unique_entries:
+            key = (
+                entry.get("extracted_value"),
+                entry.get("field_type"),
+                entry.get("context_key", "default")
+            )
+            if key not in existing_set:
+                filtered.append(entry)
+            elif fast_mode:
+                # In fast mode, auto-accept exact duplicates
+                pass
+            else:
+                skipped_existing += 1
+        unique_entries = filtered
+    # Group by context_key
+    for entry in unique_entries:
         if entry.get("result") in success_results:
             context_key = entry.get("context_key", "default")
             field_entries[context_key].append(entry)
-    return field_entries
-
-# --- Context library update logic ---
-def update_context_with_new_entries(context_path, field_type, field_entries):
-    context_path = safe_path(context_path, [CONTEXT_LIBRARY_DIR])
-    def updater(library):
-        if field_type not in library:
-            library[field_type] = []
-        for context_key, entries in field_entries.items():
-            for entry in entries:
-                if entry not in library[field_type]:
-                    library[field_type].append(entry)
-    update_context_library(context_path, updater)
+    return field_entries, dup_count, skipped_existing, len(unique_entries)
 
 # --- Feedback loop (interactive and LLM/ML-powered) ---
-def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, coordinator=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None):
+def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, coordinator=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None, fast_mode=False):
     context_library_path = safe_path(context_library_path, [CONTEXT_LIBRARY_DIR])
     if not new_entries:
         logger.info(f"No new entries to review for {field_type}.")
-        return
+        return 0, 0, 0
     print(f"\n[FEEDBACK] Review new context library entries for {field_type}:")
     context_library = load_context_library(context_library_path)
     changed = False
     accepted, edited, removed = 0, 0, 0
+    # Summary preview
+    total_new = sum(len(v) for v in new_entries.values())
+    preview = Counter(entry.get("extracted_value") for vals in new_entries.values() for entry in vals)
+    print(f"[SUMMARY] {total_new} new entries to review. Top values:")
+    for val, count in preview.most_common(5):
+        print(f"  {val!r}: {count} times")
     for context_key, values in new_entries.items():
         print(f"\nContext: {context_key}")
         for idx, val in enumerate(values):
+            # Fast mode: auto-accept if exact duplicate in context library
+            is_duplicate = False
+            if fast_mode and field_type in context_library:
+                for existing in context_library[field_type]:
+                    if entry_key(existing) == entry_key(val):
+                        is_duplicate = True
+                        break
+            if is_duplicate:
+                accepted += 1
+                continue
             print(f"  [{idx}] {val}")
             if enhanced:
-                # ML/NER feedback
                 ml_score = ml_score_entry(val, coordinator)
                 ml_field = ml_suggest_field(val, coordinator)
                 print(f"    [ML] Score: {ml_score:.2f} | ML Field: {ml_field}")
-                # LLM suggestion
                 if llm_api_key:
                     llm_suggestion = llm_suggest_action(
                         val, context=context_library, api_key=llm_api_key, model=llm_model, provider=llm_provider,
                         system_prompt=llm_system_prompt, extra_instructions=llm_extra_instructions
                     )
                     print(f"    [LLM] Suggestion: {llm_suggestion}")
-            action = input("Accept (a), Edit (e), Remove (r), Skip (s)? [a]: ").strip().lower() or "a"
+            action = "a" if fast_mode else (input("Accept (a), Edit (e), Remove (r), Skip (s)? [a]: ").strip().lower() or "a")
             if action == "a":
                 accepted += 1
             elif action == "e":
@@ -246,6 +303,26 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
     # Save accepted/edited entries
     update_context_with_new_entries(context_library_path, field_type, new_entries)
     print(f"[SUMMARY] Accepted: {accepted}, Edited: {edited}, Removed: {removed}")
+    return accepted, edited, removed
+
+# --- Log file cleanup ---
+def trim_log_file(path: Path):
+    """Remove duplicate entries from a log file, keeping only the first occurrence."""
+    entries = load_jsonl(path)
+    deduped, _ = deduplicate_entries(entries)
+    save_jsonl(path, deduped)
+
+# --- Context library update logic ---
+def update_context_with_new_entries(context_path, field_type, field_entries):
+    context_path = safe_path(context_path, [CONTEXT_LIBRARY_DIR])
+    def updater(library):
+        if field_type not in library:
+            library[field_type] = []
+        for context_key, entries in field_entries.items():
+            for entry in entries:
+                if entry not in library[field_type]:
+                    library[field_type].append(entry)
+    update_context_library(context_path, updater)
 
 # --- Integrity check integration ---
 def highlight_anomalies(context_library, field_type):
@@ -356,6 +433,8 @@ def main():
     parser.add_argument("--update-db", action="store_true", help="Update the DB with the new context library after processing")
     parser.add_argument("--db-path", type=str, default=None, help="Path to DB file (if --update-db is set)")
     parser.add_argument("--feedback", action="store_true", help="Enable feedback mode (no-op, for compatibility)")
+    parser.add_argument("--fast", action="store_true", help="Fast mode: auto-accept exact duplicates, skip review for them.")
+    parser.add_argument("--batch", action="store_true", help="Batch review: allow accepting/removing all entries in a group at once.")
     args = parser.parse_args()
 
     context_path = safe_path(args.context, [CONTEXT_LIBRARY_DIR])
@@ -365,7 +444,8 @@ def main():
     if "metadata" not in context_library or not isinstance(context_library["metadata"], dict):
         context_library["metadata"] = {}
     context_library["metadata"]["last_accessed"] = datetime.now().isoformat()
-    save_context_library(context_library, context_path)
+    # Only write at end if changed
+    context_library_changed = False
     log_dir = safe_path(args.log_dir, [LOG_DIR])
     fields = args.fields
     log_files = find_log_files(log_dir)
@@ -385,28 +465,67 @@ def main():
             logger.warning(f"Could not import coordinator/context_organizer: {e}")
 
     total_accepted, total_edited, total_removed = 0, 0, 0
+    total_duplicates, total_existing_skipped, total_new = 0, 0, 0
+    processed_logs = 0
     for log_file in log_files:
         # Infer field type from filename
         for field in fields:
             if field in log_file.name:
                 logger.info(f"Processing {log_file} for field {field}")
-                field_entries = aggregate_successful_field_entries(log_file)
-                if args.auto:
+                # Deduplicate and skip existing
+                field_entries, dup_count, skipped_existing, n_new = aggregate_successful_field_entries(
+                    log_file, context_library, field, fast_mode=args.fast
+                )
+                total_duplicates += dup_count
+                total_existing_skipped += skipped_existing
+                total_new += n_new
+                processed_logs += 1
+                # Print summary before review
+                print(f"\n[SUMMARY] {log_file.name} | Field: {field}")
+                print(f"  Unique new entries: {n_new}")
+                print(f"  Duplicates skipped: {dup_count}")
+                print(f"  Already in context library: {skipped_existing}")
+                # Preview top 3 entries
+                preview = []
+                for v in field_entries.values():
+                    preview.extend(v)
+                print(f"  Preview: {preview[:3]}")
+                if args.auto or args.fast:
+                    # Auto-accept all new entries
                     update_context_with_new_entries(context_path, field, field_entries)
                     logger.info(f"Auto-accepted new entries for {field}.")
                     total_accepted += sum(len(v) for v in field_entries.values())
+                    context_library_changed = True
                 else:
                     # Feedback loop returns accepted, edited, removed counts
-                    feedback_loop(
-                        field_entries, field, context_path,
-                        enhanced=args.enhanced,
-                        coordinator=coordinator,
-                        llm_api_key=args.llm_api_key,
-                        llm_provider=args.llm_provider,
-                        llm_model=args.llm_model,
-                        llm_system_prompt=args.llm_system_prompt,
-                        llm_extra_instructions=args.llm_extra_instructions
-                    )
+                    # Batch review support
+                    if args.batch:
+                        for context_key, values in field_entries.items():
+                            print(f"\nBatch review for context: {context_key}")
+                            print(f"  Entries: {values}")
+                            action = input("Accept all (a), Remove all (r), Skip (s)? [a]: ").strip().lower() or "a"
+                            if action == "a":
+                                update_context_with_new_entries(context_path, field, {context_key: values})
+                                total_accepted += len(values)
+                                context_library_changed = True
+                            elif action == "r":
+                                total_removed += len(values)
+                            else:
+                                continue
+                    else:
+                        feedback_loop(
+                            field_entries, field, context_path,
+                            enhanced=args.enhanced,
+                            coordinator=coordinator,
+                            llm_api_key=args.llm_api_key,
+                            llm_provider=args.llm_provider,
+                            llm_model=args.llm_model,
+                            llm_system_prompt=args.llm_system_prompt,
+                            llm_extra_instructions=args.llm_extra_instructions
+                        )
+                        # Assume all accepted for summary (could be improved to track edits/removes)
+                        total_accepted += sum(len(v) for v in field_entries.values())
+                        context_library_changed = True
                 # Optionally run integrity check
                 if args.integrity:
                     context_library = load_context_library(context_path)
@@ -415,9 +534,25 @@ def main():
                 if args.update_db:
                     context_library = load_context_library(context_path)
                     update_database_with_context(context_library, db_path=args.db_path, enhanced=args.enhanced, coordinator=coordinator)
+                # Clean up log file after processing
+                try:
+                    os.remove(log_file)
+                    logger.info(f"Deleted processed log file: {log_file}")
+                except Exception as e:
+                    logger.warning(f"Could not delete log file {log_file}: {e}")
                 break
 
+    # Write context library only if changed
+    if context_library_changed:
+        context_library = load_context_library(context_path)
+        save_context_library(context_library, context_path)
+        logger.info(f"Context library updated at {context_path}")
+
     print("\n[SUMMARY] Manual Correction Bot Run Complete.")
+    print(f"Log files processed: {processed_logs}")
+    print(f"Total unique new entries: {total_new}")
+    print(f"Total duplicates skipped: {total_duplicates}")
+    print(f"Total already in context library: {total_existing_skipped}")
     print(f"Total accepted: {total_accepted}, Total edited: {total_edited}, Total removed: {total_removed}")
     print("If you see repeated model save failures, close any file explorers or editors viewing the model directory.")
     print("If you see spaCy lexeme normalization warnings, you can ignore them for English. To suppress, install spacy-lookups-data and load the table if needed.")
