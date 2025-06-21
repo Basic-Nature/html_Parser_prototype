@@ -1,13 +1,3 @@
-{
-  "Orangetown Town Council\nVote for 1": {
-    "District": 1,
-    "Town": 1,
-    "Precinct": 1,
-    "Candidate": 1
-  },
-  "Unknown Contest": {
-    "CON": 2,
-    "REP": 2,
-    "WOR Chrissy": 2
-  }
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:a64ebd4bb7f7f693d325a68583ae6fc6c19f05366384c8b2e05c6a60a3977e2b
+size 211

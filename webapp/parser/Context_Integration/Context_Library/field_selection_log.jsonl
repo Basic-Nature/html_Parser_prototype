@@ -1,3 +1,3 @@
-{"timestamp": "2025-05-28T15:10:00Z", "field_type": "district", "field_name": "district", "extracted_value": "Rockland", "method": "ml", "score": 0.92, "result": "pass", "context": {"contest_title": "Haverstraw Village Trustee", "year": 2024, "state": "ny", "county": "rockland"}, "user_feedback": null}
-{"timestamp": "2025-05-28T15:11:00Z", "field_type": "candidate", "field_name": "candidate", "extracted_value": "Jane Doe", "method": "fuzzy", "score": 0.65, "result": "undefined", "context": {"contest_title": "County Clerk", "year": 2024, "state": "ny"}, "user_feedback": "John Doe"}
-{"timestamp": "2025-05-28T15:12:00Z", "field_type": "contest", "field_name": "contest_title", "extracted_value": "Supreme Court Justice 9th Judicial District", "method": "manual", "score": 1.0, "result": "manual_pass", "context": {"year": 2024, "state": "ny", "county": "rockland"}, "user_feedback": null}
+version https://git-lfs.github.com/spec/v1
+oid sha256:9299d22b72366a67b45e4e65252f1fbb9a49a4c8d0bab7ba6e45bc73f87370ff
+size 895
