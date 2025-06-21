@@ -48,6 +48,8 @@ uploads/
 *.pdf
 .output_cache.jsonl
 .processed_urls
+fine_tuned_table_headers_tmp/
+fine_tuned_spacy_ner_tmp/
 
 # ----------------------------
 # Browser Drivers and Cache
