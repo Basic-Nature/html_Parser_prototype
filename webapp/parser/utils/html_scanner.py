@@ -188,7 +188,8 @@ def extract_tagged_segments_with_attrs(
     context_cache: Optional[Dict[str, Any]] = None,
     include_data_attrs: bool = True,
     fallback_on_error: bool = True,
-    ml_model_name: str = "all-MiniLM-L6-v2",
+    model_name: Optional[str] = None,
+    use_finetuned: bool = True,
     pattern_kb: list = None,
     ml_threshold: float = 0.85,
     context_library: dict = None
@@ -202,7 +203,6 @@ def extract_tagged_segments_with_attrs(
     Batch embedding is used for non-trivial segments for speed.
     All file/directory paths are constructed using config.py constants only.
     """
-    from sentence_transformers import SentenceTransformer
 
     def get_cached_segment(tag, attrs, html_snippet):
         attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
@@ -272,7 +272,7 @@ def extract_tagged_segments_with_attrs(
     panel_tags = PANEL_TAGS
 
     # Load ML model and pattern KB/context only once
-    model = ModelRegistry.get_sentence_transformer(ml_model_name)
+    model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
     if pattern_kb is None:
         pattern_kb = load_pattern_kb()
     if context_library is None:
@@ -479,7 +479,7 @@ def extract_tagged_segments_with_attrs(
             raise
 
 # --- not being used yet, but useful for future ---
-def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", min_panel_score=0.65):
+def extract_panel_table_hierarchy(segments, model_name: Optional[str] = None, use_finetuned: bool = True, min_panel_score=0.65):
     """
     Advanced: Extract panels and their associated tables from DOM segments.
     Uses ML embeddings, clustering, DOM proximity, and semantic heuristics for robust extraction.
@@ -493,7 +493,7 @@ def extract_panel_table_hierarchy(segments, ml_model_name="all-MiniLM-L6-v2", mi
     table_segs = [seg for seg in segments if seg.get("tag") == "table"]
 
     # --- ML Model for Embeddings ---
-    model = ModelRegistry.get_sentence_transformer(ml_model_name)
+    model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
 
     # --- Helper: Find all panel-like segments ---
     panel_segs = [
@@ -1130,7 +1130,8 @@ def scan_html_for_context(
     debug=False,
     context_cache=None,
     rejected_downloads: Optional[set] = None,
-    ml_model_name="all-MiniLM-L6-v2",
+    model_name: Optional[str] = None,
+    use_finetuned: bool = True,
     non_interactive=False,
 ) -> Dict[str, Any]:
     """
@@ -1142,7 +1143,7 @@ def scan_html_for_context(
         debug: If True, print debug output.
         context_cache: Optional context cache dict.
         rejected_downloads: Set of download links to skip.
-        ml_model_name: Name of ML model for segment labeling.
+        model_name: Name of ML model for segment labeling.
         non_interactive: If True, disables user prompts.
     Returns:
         context_result: Dict with scan results, segments, metadata, and errors if any.
@@ -1254,7 +1255,6 @@ def scan_html_for_context(
             context_cache=context_cache,
             include_data_attrs=True,
             fallback_on_error=True,
-            ml_model_name="all-MiniLM-L6-v2",
             pattern_kb=pattern_kb,
             ml_threshold=0.85,
             context_library=context_library
@@ -1263,7 +1263,7 @@ def scan_html_for_context(
         context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
 
         # --- 6. ML-driven DOM pattern clustering and tagging ---
-        model = ModelRegistry.get_sentence_transformer(ml_model_name)
+        model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
         pattern_matches = []
         segments_needing_review = []
 

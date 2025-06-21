@@ -45,7 +45,7 @@ class ModelRegistry:
     _nlp_models = {}
     _custom_models = {}
     _model_paths = {
-        "sentence_transformer": os.path.join(MODEL_DIR, "fine_tuned_table_headers_tmp"),
+        "sentence_transformer": os.path.join(MODEL_DIR, "fine_tuned_table_headers"),
         "spacy_ner": os.path.join(MODEL_DIR, "fine_tuned_spacy_ner"),
     }
     _loaded_info = {}
