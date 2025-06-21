@@ -1,3 +1,12 @@
+def robust_orjson_loads(val):
+    """Load JSON robustly from either bytes or str."""
+    if isinstance(val, bytes):
+        return orjson.loads(val)
+    elif isinstance(val, str):
+        return orjson.loads(val.encode("utf-8"))
+    else:
+        raise TypeError(f"Cannot decode type {type(val)} with orjson")
+
 import hashlib
 import orjson
 import os
@@ -1478,12 +1487,3 @@ def batch_get_segment_embeddings(model, segments):
 # --- Module-level caches for pattern_kb and context_cache ---
 _pattern_kb_cache = None
 _context_cache_cache = None
-
-def robust_orjson_loads(val):
-    """Load JSON robustly from either bytes or str."""
-    if isinstance(val, bytes):
-        return orjson.loads(val)
-    elif isinstance(val, str):
-        return orjson.loads(val.encode("utf-8"))
-    else:
-        raise TypeError(f"Cannot decode type {type(val)} with orjson")

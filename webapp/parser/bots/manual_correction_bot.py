@@ -309,9 +309,15 @@ def ensure_context_library(path):
     path = safe_path(path, [CONTEXT_LIBRARY_DIR])
     if not path.exists():
         logger.info(f"Context library not found at {path}, initializing with default structure.")
-        save_context_library(DEFAULT_STRUCTURE, path)
-        return DEFAULT_STRUCTURE.copy()
+        struct = DEFAULT_STRUCTURE.copy()
+        struct["schema_version"] = SCHEMA_VERSION
+        save_context_library(struct, path)
+        return struct
     context_lib = load_context_library(path)
+    # Always set schema_version if missing
+    if "schema_version" not in context_lib:
+        context_lib["schema_version"] = SCHEMA_VERSION
+        save_context_library(context_lib, path)
     if context_lib.get("schema_version") != SCHEMA_VERSION:
         logger.warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
     return context_lib
@@ -355,7 +361,9 @@ def main():
     context_path = safe_path(args.context, [CONTEXT_LIBRARY_DIR])
     # --- Ensure context library exists and is valid ---
     context_library = ensure_context_library(context_path)
-    # Example: manual update and save
+    # Ensure 'metadata' key exists and is a dict
+    if "metadata" not in context_library or not isinstance(context_library["metadata"], dict):
+        context_library["metadata"] = {}
     context_library["metadata"]["last_accessed"] = datetime.now().isoformat()
     save_context_library(context_library, context_path)
     log_dir = safe_path(args.log_dir, [LOG_DIR])

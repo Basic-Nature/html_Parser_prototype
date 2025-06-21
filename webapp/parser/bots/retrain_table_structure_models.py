@@ -494,7 +494,8 @@ def segment_hash(segment):
     tag = segment.get("tag", "")
     attrs = segment.get("attrs", {})
     html = segment.get("html", "")[:200]
-    return hashlib.sha256((tag + orjson.dumps(attrs, sort_keys=True) + html).encode("utf-8")).hexdigest()
+    # Use OPT_SORT_KEYS for orjson
+    return hashlib.sha256((tag + orjson.dumps(attrs, option=orjson.OPT_SORT_KEYS).decode() + html).encode("utf-8")).hexdigest()
 
 def load_cached_segment_hashes(context_library):
     """Return a set of all segment_hashes in the context library."""

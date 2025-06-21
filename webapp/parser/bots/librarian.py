@@ -1,6 +1,8 @@
 import json, os, re
 from typing import Set, List, Dict, Any
 from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
+import orjson
+
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
 # --- Central Dynamic Sets (used everywhere) ---
 HTML_TAGS: Set[str] = set([
@@ -105,16 +107,44 @@ def extend_ballot_types(new_types: List[str]):
     BALLOT_TYPES.extend([t for t in new_types if t not in BALLOT_TYPES])
 
 # --- Context Library Integration ---
-def load_context_library():
-    if os.path.exists(CONTEXT_LIBRARY_PATH):
-        with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
-            context_lib = json.load(f)
-            extend_panel_tags(context_lib.get("panel_tags", []))
-            extend_heading_tags(context_lib.get("heading_tags", []))
-            extend_custom_attr_patterns(context_lib.get("custom_attr_patterns", []))
-            extend_location_keywords(context_lib.get("location_keywords", []))
-            extend_candidate_keywords(context_lib.get("candidate_keywords", []))
-            extend_ballot_types(context_lib.get("ballot_types", []))
+def robust_orjson_loads(val):
+    if isinstance(val, bytes):
+        return orjson.loads(val)
+    elif isinstance(val, str):
+        return orjson.loads(val.encode("utf-8"))
+    else:
+        raise TypeError(f"Cannot decode type {type(val)} with orjson")
+
+def load_context_library(path=CONTEXT_LIBRARY_PATH):
+    # If file is missing or empty, initialize with default structure
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        context_lib = {
+            "panel_tags": list(PANEL_TAGS),
+            "heading_tags": list(HEADING_TAGS),
+            "custom_attr_patterns": [pat.pattern for pat in CUSTOM_ATTR_PATTERNS],
+            "location_keywords": list(LOCATION_KEYWORDS),
+            "candidate_keywords": list(CANDIDATE_KEYWORDS),
+            "ballot_types": list(BALLOT_TYPES),
+        }
+        with open(path, "wb") as f:
+            f.write(orjson.dumps(context_lib, option=orjson.OPT_INDENT_2))
+        return context_lib
+    with open(path, "rb") as f:
+        context_lib = robust_orjson_loads(f.read())
+    # Extend dynamic sets with loaded values
+    if "panel_tags" in context_lib:
+        extend_panel_tags(context_lib["panel_tags"])
+    if "heading_tags" in context_lib:
+        extend_heading_tags(context_lib["heading_tags"])
+    if "custom_attr_patterns" in context_lib:
+        extend_custom_attr_patterns(context_lib["custom_attr_patterns"])
+    if "location_keywords" in context_lib:
+        extend_location_keywords(context_lib["location_keywords"])
+    if "candidate_keywords" in context_lib:
+        extend_candidate_keywords(context_lib["candidate_keywords"])
+    if "ballot_types" in context_lib:
+        extend_ballot_types(context_lib["ballot_types"])
+    return context_lib
 
 def save_context_library():
     context_lib = {
