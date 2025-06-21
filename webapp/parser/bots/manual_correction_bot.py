@@ -21,8 +21,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 # --- Unified logger import ---
-from ..utils.shared_logger import get_shared_logger
-logger = get_shared_logger("manual_correction_bot")
+from ..utils.shared_logger import logger
 
 # --- Context schema utility import ---
 from ..utils.context_schema import (
