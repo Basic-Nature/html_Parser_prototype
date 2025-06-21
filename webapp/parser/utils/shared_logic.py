@@ -280,7 +280,7 @@ def save_context_library(lib, path=None):
         path = CONTEXT_LIBRARY_PATH
     safe_path = safe_join(BASE_DIR, os.path.relpath(path, BASE_DIR))
     with open(safe_path, "w", encoding="utf-8") as f:
-        orjson.dump(lib, f, indent=2, ensure_ascii=False)
+        orjson.dumps(lib, f, indent=2, ensure_ascii=False)
 
 def update_domain_selector_cache(domain, selector, label, success=True):
     lib = load_context_library()

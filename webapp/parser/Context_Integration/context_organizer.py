@@ -115,6 +115,15 @@ def save_table_structure_to_db(contest_title, headers, context, ml_confidence=No
     conn.commit()
     conn.close()
 
+def robust_orjson_loads(val):
+    """Load JSON robustly from either bytes or str."""
+    if isinstance(val, bytes):
+        return orjson.loads(val)
+    elif isinstance(val, str):
+        return orjson.loads(val.encode("utf-8"))
+    else:
+        raise TypeError(f"Cannot decode type {type(val)} with orjson")
+
 def get_table_structure_from_db(contest_title, context=None):
     db_path = _safe_db_path(CONTEXT_DB_PATH)
     conn = sqlite3.connect(db_path)
@@ -125,8 +134,8 @@ def get_table_structure_from_db(contest_title, context=None):
     row = cur.fetchone()
     conn.close()
     if row:
-        headers = orjson.loads(row[0])
-        context = orjson.loads(row[1])
+        headers = robust_orjson_loads(row[0])
+        context = robust_orjson_loads(row[1])
         ml_confidence = row[2]
         return {"headers": headers, "context": context, "ml_confidence": ml_confidence}
     return None
@@ -614,8 +623,8 @@ class ContextOrganizer:
         row = cur.fetchone()
         conn.close()
         if row:
-            headers = orjson.loads(row[0])
-            context = orjson.loads(row[1])
+            headers = robust_orjson_loads(row[0])
+            context = robust_orjson_loads(row[1])
             ml_confidence = row[2]
             return {"headers": headers, "context": context, "ml_confidence": ml_confidence}
         return None
@@ -707,11 +716,8 @@ class ContextOrganizer:
 
         # Load or initialize the library
         if os.path.exists(path):
-            with open(path, "r+", encoding="utf-8") as f:
-                try:
-                    library = orjson.loads(f.read())
-                except Exception:
-                    library = default_library.copy()
+            with open(path, "rb") as f:
+                library = orjson.loads(f.read())
         else:
             library = default_library.copy()
 
@@ -730,8 +736,8 @@ class ContextOrganizer:
         # (e.g., for contests, tables, etc.)
 
         # Write back to file
-        with open(path, "w", encoding="utf-8") as f:
-            orjson.dump(library, f, indent=2)
+        with open(path, "wb") as f:
+            f.write(orjson.dumps(library, option=orjson.OPT_INDENT_2))
         
     @staticmethod
     def segment_hash(segment):
@@ -739,7 +745,7 @@ class ContextOrganizer:
         tag = segment.get("tag", "")
         attrs = segment.get("attrs", {})
         html = segment.get("html", "")[:200]
-        return hashlib.sha256((tag + orjson.dumps(attrs, sort_keys=True) + html).encode("utf-8")).hexdigest()
+        return hashlib.sha256((tag + orjson.dumps(attrs, option=orjson.OPT_SORT_KEYS) + html).encode("utf-8")).hexdigest()
 
     def store_segments_by_hash(self, segments):
         """Store segments in the context library by their hash for future reuse."""

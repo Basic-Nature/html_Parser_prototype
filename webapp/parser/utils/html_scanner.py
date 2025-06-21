@@ -54,7 +54,7 @@ def _load_label_cache():
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
-                _LABEL_CACHE = orjson.loads(f.read())
+                _LABEL_CACHE = robust_orjson_loads(f.read())
         except Exception:
             _LABEL_CACHE = {}
     else:
@@ -99,7 +99,7 @@ def load_additional_tags_from_context_library():
     tags = set()
     if os.path.exists(CONTEXT_LIBRARY_PATH):
         with open(CONTEXT_LIBRARY_PATH, "rb") as f:
-            context_lib = orjson.loads(f.read())
+            context_lib = robust_orjson_loads(f.read())
             for key in ["panel_tags", "table_tags", "section_keywords"]:
                 if key in context_lib and isinstance(context_lib[key], list):
                     tags.update([t.lower() for t in context_lib[key] if isinstance(t, str)])
@@ -206,7 +206,7 @@ def extract_tagged_segments_with_attrs(
 
     def get_cached_segment(tag, attrs, html_snippet):
         attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
-        key = hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + html_snippet[:200]).encode("utf-8")).hexdigest()
+        key = hashlib.sha256((tag + orjson.dumps(attrs_sorted, option=orjson.OPT_SORT_KEYS).decode() + html_snippet[:200]).encode("utf-8")).hexdigest()
         if context_cache and key in context_cache:
             return context_cache[key]
         if pattern_kb:
@@ -827,7 +827,7 @@ def load_pattern_kb():
         with open(path, "rb") as f:
             for line in f:
                 try:
-                    kb.append(orjson.loads(line))
+                    kb.append(robust_orjson_loads(line))
                 except Exception:
                     continue
     _pattern_kb_cache = kb
@@ -839,7 +839,7 @@ def save_pattern_kb(kb):
         for entry in kb:
             if "embedding" in entry and isinstance(entry["embedding"], np.ndarray):
                 entry["embedding"] = entry["embedding"].tolist()
-            f.write(orjson.dumps(entry) + b"\n")
+            f.write(orjson.dumps(entry, option=orjson.OPT_INDENT_2) + b"\n")
             
 def append_pattern_kb(entry):
     # Convert any ndarray to list before saving
@@ -847,7 +847,7 @@ def append_pattern_kb(entry):
         entry["embedding"] = entry["embedding"].tolist()
     path = safe_log_path("dom_pattern_kb.jsonl")
     with open(path, "ab") as f:
-        f.write(orjson.dumps(entry) + b"\n")
+        f.write(orjson.dumps(entry, option=orjson.OPT_INDENT_2) + b"\n")
         
 def append_feedback_log(entry):
     # Convert any ndarray to list before saving
@@ -855,7 +855,7 @@ def append_feedback_log(entry):
         entry["embedding"] = entry["embedding"].tolist()    
     path = safe_log_path("segment_feedback_log.jsonl")
     with open(path, "ab") as f:
-        f.write(orjson.dumps(entry) + b"\n")
+        f.write(orjson.dumps(entry, option=orjson.OPT_INDENT_2) + b"\n")
     # --- Ensure feedback is also loaded into pattern KB cache for immediate effect ---
     if "pattern_id" in entry and "label" in entry and "html" in entry:
         # Use the same hash logic as segment_identity_hash
@@ -1059,7 +1059,7 @@ def embedding_cache_hash(segment, model_id):
     html = segment.get("html", "")
     attrs_sorted = {k: attrs_filtered[k] for k in sorted(attrs_filtered)}
     html_norm = _normalize_html_for_hash(html)
-    base = tag + orjson.dumps(attrs_sorted).decode() + html_norm + str(model_id)
+    base = tag + orjson.dumps(attrs_sorted, option=orjson.OPT_SORT_KEYS).decode() + html_norm + str(model_id)
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 def get_segment_embedding(model, segment, cache_hits=None, cache_misses=None):
@@ -1165,7 +1165,7 @@ def scan_html_for_context(
     context_library = None
     if os.path.exists(CONTEXT_LIBRARY_PATH):
         with open(CONTEXT_LIBRARY_PATH, "rb") as f:
-            CONTEXT_LIBRARY = orjson.loads(f.read())
+            CONTEXT_LIBRARY = robust_orjson_loads(f.read())
             context_library = CONTEXT_LIBRARY
         supported_formats = CONTEXT_LIBRARY.get("supported_formats", {})
         supported_links = [link for link in CONTEXT_LIBRARY.get("download_links", []) if link["format"] in supported_formats]
@@ -1280,7 +1280,14 @@ def scan_html_for_context(
         model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
         pattern_matches = []
         segments_needing_review = []
-
+        seen = set()
+        unique_segments = []
+        for seg in segments_with_attrs:
+            html_norm = _normalize_html_for_hash(seg['html'])
+            if html_norm not in seen:
+                seen.add(html_norm)
+                unique_segments.append(seg)
+        segments_with_attrs = unique_segments    
         for seg in segments_with_attrs:
             # Already labeled in extract_tagged_segments_with_attrs, but check for low confidence
             if seg["ml_confidence"] < 0.7 or seg["ml_label"] == "unknown":
@@ -1401,7 +1408,7 @@ def load_context_cache_from_disk(filename="context_cache.json"):
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
-                _context_cache_cache = orjson.loads(f.read())
+                _context_cache_cache = robust_orjson_loads(f.read())
                 return _context_cache_cache
         except Exception as e:
             logger.error(f"[ERROR] Failed to load {filename}: {e}")
@@ -1437,7 +1444,7 @@ def segment_identity_hash(segment):
     html = segment.get("html", "")
     attrs_sorted = {k: attrs_filtered[k] for k in sorted(attrs_filtered)}
     html_norm = _normalize_html_for_hash(html)
-    return hashlib.sha256((tag + orjson.dumps(attrs_sorted).decode() + html_norm).encode("utf-8")).hexdigest()
+    return hashlib.sha256((tag + orjson.dumps(attrs_sorted, option=orjson.OPT_SORT_KEYS).decode() + html_norm).encode("utf-8")).hexdigest()
 
 def batch_get_segment_embeddings(model, segments):
     """
@@ -1471,3 +1478,12 @@ def batch_get_segment_embeddings(model, segments):
 # --- Module-level caches for pattern_kb and context_cache ---
 _pattern_kb_cache = None
 _context_cache_cache = None
+
+def robust_orjson_loads(val):
+    """Load JSON robustly from either bytes or str."""
+    if isinstance(val, bytes):
+        return orjson.loads(val)
+    elif isinstance(val, str):
+        return orjson.loads(val.encode("utf-8"))
+    else:
+        raise TypeError(f"Cannot decode type {type(val)} with orjson")
