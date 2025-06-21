@@ -201,8 +201,7 @@ def finalize_election_output(
     Finalize and write election output to CSV and metadata JSON.
     Output is always placed in a subfolder of the project root (parent of webapp).
     """
-    from ..Context_Integration.context_organizer import append_to_context_library, organize_context
-    from ..config import BASE_DIR
+    from ..Context_Integration.context_organizer import ContextOrganizer, organize_context
     import re
 
     if context is None:
@@ -232,7 +231,8 @@ def finalize_election_output(
         enriched_meta["state"] = state or "Unknown"
     if not enriched_meta.get("county"):
         enriched_meta["county"] = county or "Unknown"
-    append_to_context_library({"metadata": enriched_meta})
+    organizer = ContextOrganizer()
+    organizer.append_to_context_library({"metadata": enriched_meta})
 
     # Build output path safely under output folder at project root
     def safe_filename(s):

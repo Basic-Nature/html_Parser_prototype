@@ -1,7 +1,6 @@
 import re
-from ..utils.shared_logger import rprint
+from ..utils.shared_logger import rprint, logger
 from ..utils.shared_logic import normalize_state_name, normalize_county_name
-from ..utils.logger_instance import logger
 from ..utils.user_prompt import prompt_user_input, PromptCancelled
 from collections import defaultdict
 from ..bots.librarian import (

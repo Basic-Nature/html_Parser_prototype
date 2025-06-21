@@ -7,7 +7,7 @@
 import os
 from pathlib import Path
 import csv
-from ....utils.logger_instance import logger
+from ....utils.shared_logger import logger
 from ....utils.shared_logger import rprint
 from ....utils.output_utils import finalize_election_output
 from ....config import CONTEXT_DB_PATH, BASE_DIR

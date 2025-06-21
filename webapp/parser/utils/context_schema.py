@@ -23,8 +23,8 @@ def load_context_library(path):
         save_context_library(DEFAULT_STRUCTURE, path)
         return DEFAULT_STRUCTURE.copy()
     try:
-        with _CONTEXT_LOCK, open(path, "r", encoding="utf-8") as f:
-            data = orjson.load(f)
+        with _CONTEXT_LOCK, open(path, "rb") as f:
+            data = orjson.loads(f.read())
             if data.get("schema_version") != SCHEMA_VERSION:
                 logger.warning("Schema version mismatch! Consider migrating context library.")
             return data
@@ -34,8 +34,8 @@ def load_context_library(path):
 
 def save_context_library(data, path):
     path = Path(path)
-    with _CONTEXT_LOCK, open(path, "w", encoding="utf-8") as f:
-        orjson.dump(data, f, indent=2, ensure_ascii=False)
+    with _CONTEXT_LOCK, open(path, "wb") as f:
+        f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2))
 
 def update_context_library(path, update_fn):
     """Atomic update: load, modify with update_fn, save."""

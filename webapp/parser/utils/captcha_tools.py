@@ -6,8 +6,7 @@
 import time
 import os
 import platform
-from ..utils.logger_instance import logger
-from ..utils.shared_logger import rprint
+from ..utils.shared_logger import rprint, logger
 import json
 from ..config import CONTEXT_LIBRARY_PATH
 

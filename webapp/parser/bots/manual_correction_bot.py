@@ -276,7 +276,7 @@ def update_database_with_context(library, db_path=None, enhanced=True, coordinat
             coordinator.update_db_with_context(library, db_path)
         else:
             with open(db_path, "w", encoding="utf-8") as f:
-                orjson.dump(library, f, indent=2, ensure_ascii=False)
+                orjson.dumps(library, f, indent=2, ensure_ascii=False)
         logger.info(f"Database updated at {db_path}")
     except Exception as e:
         logger.error(f"Failed to update DB: {e}")
@@ -300,6 +300,39 @@ def import_correction_session(import_file, dest_path):
     shutil.copy2(import_file, dest_path)
     print(f"[INFO] Imported correction session from {import_file} to {dest_path}")
 
+# --- Example: Context Library Initialization and Version Check ---
+def ensure_context_library(path):
+    """
+    Ensure the context library exists and is at the correct schema version.
+    If missing, create with DEFAULT_STRUCTURE. Warn if schema version mismatches.
+    """
+    path = safe_path(path, [CONTEXT_LIBRARY_DIR])
+    if not path.exists():
+        logger.info(f"Context library not found at {path}, initializing with default structure.")
+        save_context_library(DEFAULT_STRUCTURE, path)
+        return DEFAULT_STRUCTURE.copy()
+    context_lib = load_context_library(path)
+    if context_lib.get("schema_version") != SCHEMA_VERSION:
+        logger.warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
+    return context_lib
+
+def validate_training_data(train_data, nlp):
+    """
+    Validate and skip misaligned spaCy NER training examples to avoid [W030] warnings.
+    """
+    from spacy.training import offsets_to_biluo_tags
+    valid_data = []
+    for text, annots in train_data:
+        try:
+            tags = offsets_to_biluo_tags(nlp.make_doc(text), annots["entities"])
+            if "-" in tags:
+                logger.warning(f"Skipping misaligned entity in: {text}")
+                continue
+            valid_data.append((text, annots))
+        except Exception as e:
+            logger.warning(f"Error validating entity alignment: {e}")
+    return valid_data
+
 # --- Main CLI logic ---
 def main():
     parser = argparse.ArgumentParser(description="Deep ML/LLM-enhanced batch review and correction bot for all context fields.")
@@ -316,9 +349,15 @@ def main():
     parser.add_argument("--integrity", action="store_true", help="Highlight anomalies using integrity_check")
     parser.add_argument("--update-db", action="store_true", help="Update the DB with the new context library after processing")
     parser.add_argument("--db-path", type=str, default=None, help="Path to DB file (if --update-db is set)")
+    parser.add_argument("--feedback", action="store_true", help="Enable feedback mode (no-op, for compatibility)")
     args = parser.parse_args()
 
     context_path = safe_path(args.context, [CONTEXT_LIBRARY_DIR])
+    # --- Ensure context library exists and is valid ---
+    context_library = ensure_context_library(context_path)
+    # Example: manual update and save
+    context_library["metadata"]["last_accessed"] = datetime.now().isoformat()
+    save_context_library(context_library, context_path)
     log_dir = safe_path(args.log_dir, [LOG_DIR])
     fields = args.fields
     log_files = find_log_files(log_dir)
@@ -337,6 +376,7 @@ def main():
         except Exception as e:
             logger.warning(f"Could not import coordinator/context_organizer: {e}")
 
+    total_accepted, total_edited, total_removed = 0, 0, 0
     for log_file in log_files:
         # Infer field type from filename
         for field in fields:
@@ -346,7 +386,9 @@ def main():
                 if args.auto:
                     update_context_with_new_entries(context_path, field, field_entries)
                     logger.info(f"Auto-accepted new entries for {field}.")
+                    total_accepted += sum(len(v) for v in field_entries.values())
                 else:
+                    # Feedback loop returns accepted, edited, removed counts
                     feedback_loop(
                         field_entries, field, context_path,
                         enhanced=args.enhanced,
@@ -366,6 +408,12 @@ def main():
                     context_library = load_context_library(context_path)
                     update_database_with_context(context_library, db_path=args.db_path, enhanced=args.enhanced, coordinator=coordinator)
                 break
+
+    print("\n[SUMMARY] Manual Correction Bot Run Complete.")
+    print(f"Total accepted: {total_accepted}, Total edited: {total_edited}, Total removed: {total_removed}")
+    print("If you see repeated model save failures, close any file explorers or editors viewing the model directory.")
+    print("If you see spaCy lexeme normalization warnings, you can ignore them for English. To suppress, install spacy-lookups-data and load the table if needed.")
+    print("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
 
 if __name__ == "__main__":
     main()

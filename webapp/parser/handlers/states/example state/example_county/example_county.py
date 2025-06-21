@@ -1,5 +1,5 @@
 from playwright.sync_api import Page
-from .....utils.logger_instance import logger
+from .....utils.shared_logger import logger
 from .....utils.shared_logger import rprint
 from .....utils.output_utils import finalize_election_output
 from .....utils.table_builder import build_dynamic_table

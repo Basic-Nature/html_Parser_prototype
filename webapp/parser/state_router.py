@@ -8,7 +8,7 @@
 import os
 import importlib
 from typing import Optional, Dict, Any, List, Tuple
-from .utils.logger_instance import logger
+from .utils.shared_logger import logger
 from .config import CONTEXT_LIBRARY_PATH
 import difflib 
 import json

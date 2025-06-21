@@ -4,8 +4,8 @@ import hashlib
 import json
 from urllib.parse import urljoin
 from datetime import datetime
-from ..utils.logger_instance import logger
-from ..Context_Integration.context_organizer import append_to_context_library
+from ..utils.shared_logger import logger
+from ..Context_Integration.context_organizer import ContextOrganizer
 
 DOWNLOAD_MANIFEST = "input/.download_manifest.jsonl"
 
@@ -95,7 +95,8 @@ def download_file(page_url, href, context_info=None, check_hash=False):
         update_download_manifest(entry)
         # Optionally update context library
         if context_info:
-            append_to_context_library({"downloads": [entry]})
+            organizer = ContextOrganizer()
+            organizer.append_to_context_library({"downloads": [entry]})
         return save_path
     except Exception as e:
         logger.error(f"[ERROR] Failed to download {file_url}: {e}")

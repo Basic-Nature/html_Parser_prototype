@@ -4,7 +4,7 @@ import re
 import sqlite3
 from pathlib import Path
 from typing import Dict, Any
-from ..config import CONTEXT_DB_PATH, BASE_DIR
+from ..config import CONTEXT_DB_PATH, BASE_DIR, CONTEXT_LIBRARY_PATH
 
 DB_PATH = CONTEXT_DB_PATH
 
@@ -84,7 +84,6 @@ def fetch_contests_by_filter(filters=None, limit=100, db_path=None):
 def append_to_context_library(data, path=None):
     from ..utils.shared_logic import load_context_library
     if path is None:
-        from ..Context_Integration.context_organizer import CONTEXT_LIBRARY_PATH
         path = CONTEXT_LIBRARY_PATH
     safe_path = _safe_db_path(path)
     library = load_context_library(safe_path)

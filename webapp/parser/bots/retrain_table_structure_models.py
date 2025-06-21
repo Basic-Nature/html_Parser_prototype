@@ -1,11 +1,12 @@
 import os
 import sqlite3
-import json
+import orjson
 import re
 import datetime
 import hashlib
+import subprocess
 from collections import Counter
-from sentence_transformers import SentenceTransformer, InputExample, losses
+from sentence_transformers import InputExample, losses
 from torch.utils.data import DataLoader
 from ..utils.shared_logic import load_context_library
 from ..Context_Integration.context_organizer import _safe_db_path
@@ -15,6 +16,7 @@ import spacy
 from spacy.training import Example
 import logging
 import argparse
+import gc
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("manual_correction_bot")
@@ -60,15 +62,18 @@ ENTITY_PATTERNS = [
 ]
 
 def safe_model_save(model, model_save_path, retries=3):
-    import time, shutil
-    for attempt in range(retries):
+    import time
+    import shutil
+    import gc
+    for attempt in range(1, retries+1):
         try:
-            # Call the model's save method, not safe_model_save recursively!
             model.save(model_save_path)
+            print(f"[INFO] Model saved successfully on attempt {attempt}.")
             return
         except Exception as e:
-            print(f"[WARN] Model save failed (attempt {attempt+1}): {e}")
-            time.sleep(2)
+            print(f"[WARN] Model save failed (attempt {attempt}): {e}")
+            time.sleep(2 * attempt)
+            gc.collect()
     # Try saving to a temp dir and moving
     tmp_path = model_save_path + "_tmp"
     try:
@@ -77,8 +82,8 @@ def safe_model_save(model, model_save_path, retries=3):
         shutil.move(tmp_path, model_save_path)
         print(f"[INFO] Model saved via temp path workaround.")
     except Exception as e:
-        print(f"[ERROR] Final model save failed: {e}")
-        
+        print(f"[ERROR] Final model save failed: {e}\nIf you see repeated save failures, close any file explorers or editors viewing the model directory.")
+
 def append_training_data(new_data, path="spacy_ner_train_data.jsonl"):
     """
     Appends new training data to a JSONL file in the log directory, deduplicating by text/entities,
@@ -93,19 +98,19 @@ def append_training_data(new_data, path="spacy_ner_train_data.jsonl"):
         raise ValueError("Unsafe path detected for training data output!")
     existing = set()
     if os.path.exists(safe_path):
-        with open(safe_path, "r", encoding="utf-8") as f:
+        with open(safe_path, "rb") as f:
             for line in f:
                 existing.add(line.strip())
-    with open(safe_path, "a", encoding="utf-8") as f:
+    with open(safe_path, "ab") as f:
         for text, annots in new_data:
             entry = {
                 "text": text,
                 "entities": annots["entities"],
                 "timestamp": datetime.datetime.now().isoformat()
             }
-            line = json.dumps(entry, ensure_ascii=False)
-            if line not in existing:
-                f.write(line + "\n")
+            line = orjson.dumps(entry, option=orjson.OPT_APPEND_NEWLINE)
+            if line.strip() not in existing:
+                f.write(line)
 
 def save_training_data_jsonl(train_data, path="spacy_ner_train_data.jsonl"):
     # Save to the log/ directory at the project root
@@ -116,9 +121,9 @@ def save_training_data_jsonl(train_data, path="spacy_ner_train_data.jsonl"):
     safe_path = os.path.join(log_dir, filename)
     if not os.path.abspath(safe_path).startswith(log_dir):
         raise ValueError("Unsafe path detected for training data output!")
-    with open(safe_path, "w", encoding="utf-8") as f:
+    with open(safe_path, "wb") as f:
         for text, annots in train_data:
-            f.write(json.dumps({"text": text, "entities": annots["entities"]}, ensure_ascii=False) + "\n")
+            f.write(orjson.dumps({"text": text, "entities": annots["entities"]}, option=orjson.OPT_APPEND_NEWLINE))
     print(f"Saved spaCy NER training data to {safe_path}")
 
 def cluster_container_patterns(log_dir=None, n_clusters=5):
@@ -127,7 +132,6 @@ def cluster_container_patterns(log_dir=None, n_clusters=5):
     Prints cluster assignments and common selectors/classes/headings.
     """
     import glob
-    import json
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.cluster import KMeans
 
@@ -137,8 +141,8 @@ def cluster_container_patterns(log_dir=None, n_clusters=5):
     htmls = []
     meta = []
     for path in glob.glob(os.path.join(log_dir, "failed_container_*.json")):
-        with open(path, "r", encoding="utf-8") as f:
-            entry = json.load(f)
+        with open(path, "rb") as f:
+            entry = orjson.loads(f.read())
             htmls.append(entry.get("html", ""))
             meta.append(entry)
     if not htmls:
@@ -231,9 +235,9 @@ def load_spacy_ner_examples(jsonl_path):
     examples = []
     if not os.path.exists(jsonl_path):
         return examples
-    with open(jsonl_path, "r", encoding="utf-8") as f:
+    with open(jsonl_path, "rb") as f:
         for line in f:
-            obj = json.loads(line)
+            obj = orjson.loads(line)
             text = obj["text"]
             entities = obj["entities"]
             examples.append((text, {"entities": entities}))
@@ -255,16 +259,36 @@ def remove_overlapping_entities(entities):
         # else: skip this entity because it overlaps
     return result
 
+def validate_training_data(train_data, nlp, logger=None):
+    """
+    Validate and skip misaligned spaCy NER training examples to avoid [W030] warnings.
+    """
+    from spacy.training import offsets_to_biluo_tags
+    valid_data = []
+    for text, annots in train_data:
+        try:
+            tags = offsets_to_biluo_tags(nlp.make_doc(text), annots["entities"])
+            if "-" in tags:
+                if logger:
+                    logger.warning(f"Skipping misaligned entity in: {text}")
+                continue
+            valid_data.append((text, annots))
+        except Exception as e:
+            if logger:
+                logger.warning(f"Error validating entity alignment: {e}")
+    return valid_data
+
 def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model_save_path="fine_tuned_spacy_ner"):
 
     nlp = spacy.blank("en")
     try:
         from spacy.lookups import Lookups
         lookups = Lookups()
+        # The following may fail for English, which is fine.
         lookups.add_table("lexeme_norm", spacy.lookups.load_lookups_data("en", tables=["lexeme_norm"]).get_table("lexeme_norm"))
         nlp.vocab.lookups = lookups
     except Exception as e:
-        print("[spaCy] Could not load lexeme normalization table. You may ignore this if not using a supported language. Error:", e)
+        print("[spaCy] Could not load lexeme normalization table. You may ignore this for English. To suppress, install spacy-lookups-data and load the table if needed. Error:", e)
 
     if "ner" not in nlp.pipe_names:
         ner = nlp.add_pipe("ner")
@@ -317,6 +341,8 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
                 entities = remove_overlapping_entities(entities)
                 train_data.append((header, {"entities": entities}))
 
+    # Validate and skip misaligned entities
+    train_data = validate_training_data(train_data, nlp, logger)
     save_training_data_jsonl(train_data)
     entity_frequency_analysis(train_data)
 
@@ -324,24 +350,20 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     examples = []
     for text, annots in train_data:
         doc = nlp.make_doc(text)
-        # Remove overlapping entities before creating Example (defensive)
         annots["entities"] = remove_overlapping_entities(annots["entities"])
         example = Example.from_dict(doc, annots)
         examples.append(example)
-
     if not examples:
         print("No NER training examples found. Skipping spaCy NER retraining.")
         return
-
     optimizer = nlp.begin_training()
     for i in range(10):
         losses = {}
         nlp.update(examples, drop=0.2, losses=losses)
         if "ner" in losses:
-            print(f"spaCy NER retraining epoch {i+1}, loss: {losses['ner']:.4f}")
+            print(f"spaCy NER retraining epoch {i+1}, loss: {losses['ner']}")
         else:
-            print(f"spaCy NER retraining epoch {i+1}, no NER loss reported.")
-
+            print(f"spaCy NER retraining epoch {i+1}, loss: N/A")
     nlp.to_disk(model_save_path)
     print(f"Fine-tuned spaCy NER model saved to: {model_save_path}")
 
@@ -376,8 +398,8 @@ def get_all_confirmed_structures():
     return [
         {
             "contest_title": row[0],
-            "headers": json.loads(row[1]),
-            "context": json.loads(row[2])
+            "headers": orjson.loads(row[1]) if isinstance(row[1], (bytes, bytearray)) else orjson.loads(row[1].encode("utf-8")),
+            "context": orjson.loads(row[2]) if isinstance(row[2], (bytes, bytearray)) else orjson.loads(row[2].encode("utf-8"))
         }
         for row in rows
     ]
@@ -386,11 +408,10 @@ def run_manual_correction_bot():
     """
     Run the manual correction bot as a subprocess, capturing output and errors.
     """
-    import subprocess
     script_path = os.path.join(os.path.dirname(__file__), "manual_correction_bot.py")
     try:
         result = subprocess.run(
-            ["python", script_path, "--fields", "tables", "--feedback", "--enhanced"],
+            ["python", script_path, "--fields", "tables", "--enhanced"],
             check=True,
             capture_output=True,
             text=True
@@ -473,7 +494,7 @@ def segment_hash(segment):
     tag = segment.get("tag", "")
     attrs = segment.get("attrs", {})
     html = segment.get("html", "")[:200]
-    return hashlib.sha256((tag + json.dumps(attrs, sort_keys=True) + html).encode("utf-8")).hexdigest()
+    return hashlib.sha256((tag + orjson.dumps(attrs, sort_keys=True) + html).encode("utf-8")).hexdigest()
 
 def load_cached_segment_hashes(context_library):
     """Return a set of all segment_hashes in the context library."""
@@ -497,14 +518,13 @@ def main():
         structure_info = struct.get("corrected_structure", {})
         headers = struct.get("headers", [])
         data = struct.get("sample_rows", [{}])
-        with open(feedback_log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps({
+        with open(feedback_log_path, "ab") as f:
+            f.write(orjson.dumps({
                 "original_structure": old_structure_info,
                 "corrected_structure": structure_info,
                 "headers": headers,
                 "sample_row": data[0] if data else {},
-            }) + "\n")
-
+            }, option=orjson.OPT_APPEND_NEWLINE))
     context_library = load_context_library()
     cached_hashes = load_cached_segment_hashes(context_library)
     deduped_train_data = []
@@ -518,5 +538,10 @@ def main():
     retrain_sentence_transformer(deduped_train_data)
     retrain_spacy_ner_advanced(deduped_train_data, context_library)
     cluster_container_patterns()
+    print("\n[SUMMARY] Table Structure Model Retraining Complete.")
+    print("If you see repeated model save failures, close any file explorers or editors viewing the model directory.")
+    print("If you see spaCy lexeme normalization warnings, you can ignore them for English. To suppress, install spacy-lookups-data and load the table if needed.")
+    print("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
+    gc.collect()
 if __name__ == "__main__":
     main()

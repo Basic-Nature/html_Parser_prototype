@@ -9,8 +9,7 @@ import os
 import random
 import time
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
-from ..utils.logger_instance import logger
-from ..utils.shared_logger import rprint
+from ..utils.shared_logger import rprint, logger
 from ..config import CONTEXT_LIBRARY_PATH
 
 # Load user agents and captcha indicators from context library

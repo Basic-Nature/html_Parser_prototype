@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import LabelEncoder
+from sklearn.decomposition import PCA
 import matplotlib
 # Use Agg backend for non-GUI environments # (e.g., servers, CI/CD pipelines)
 matplotlib.use('Agg')

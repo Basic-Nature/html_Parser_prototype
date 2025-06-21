@@ -1,7 +1,7 @@
 # shared_logic.py - Common parsing utilities for context-integrated pipeline
 from datetime import datetime
 import difflib
-import json
+import orjson
 import os
 import platform
 import re
@@ -9,7 +9,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, Sp
 import time
 from ..utils.shared_logger import rprint, logger
 from ..utils.user_prompt import prompt_user_input
-from ..config import BASE_DIR
+from ..config import BASE_DIR, CONTEXT_LIBRARY_PATH
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -20,8 +20,8 @@ def load_state_county_mappings():
         os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
     )
     if os.path.exists(context_lib_path):
-        with open(context_lib_path, "r", encoding="utf-8") as f:
-            context_lib = json.load(f)
+        with open(context_lib_path, "rb") as f:
+            context_lib = orjson.loads(f.read())
         state_map = context_lib.get("state_module_map", {})
         county_map = context_lib.get("Known_state_to_county_map", {})
         return state_map, county_map
@@ -268,21 +268,19 @@ def safe_join(base, *paths):
 
 def load_context_library(path=None):
     if path is None:
-        from ..Context_Integration.context_organizer import CONTEXT_LIBRARY_PATH
         path = CONTEXT_LIBRARY_PATH
     safe_path = safe_join(BASE_DIR, os.path.relpath(path, BASE_DIR))
     if not os.path.exists(safe_path):
         return {}
-    with open(safe_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with open(safe_path, "rb") as f:
+        return orjson.loads(f.read())
 
 def save_context_library(lib, path=None):
     if path is None:
-        from ..Context_Integration.context_organizer import CONTEXT_LIBRARY_PATH
         path = CONTEXT_LIBRARY_PATH
     safe_path = safe_join(BASE_DIR, os.path.relpath(path, BASE_DIR))
     with open(safe_path, "w", encoding="utf-8") as f:
-        json.dump(lib, f, indent=2, ensure_ascii=False)
+        orjson.dump(lib, f, indent=2, ensure_ascii=False)
 
 def update_domain_selector_cache(domain, selector, label, success=True):
     lib = load_context_library()

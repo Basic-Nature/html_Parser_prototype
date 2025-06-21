@@ -26,12 +26,12 @@ from playwright.sync_api import sync_playwright, Page
 
 # --- Local imports (all logic is modularized) ---
 from .Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
-from .Context_Integration.context_organizer import append_to_context_library, load_context_library, organize_context
+from .Context_Integration.context_organizer import load_context_library, organize_context, ContextOrganizer
 from .config import BASE_DIR, CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
 from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler as get_state_handler
 from .utils.browser_utils import browser_pipeline
-from .utils.db_utils import append_to_context_library, load_processed_urls
+from .utils.db_utils import load_processed_urls
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.format_router import route_format_handler
 
@@ -221,7 +221,8 @@ def organize_context_with_cache(raw_context, button_features=None, panel_feature
 
     # Optionally append to the context library
     if use_library and organized:
-        append_to_context_library(organized, path=CONTEXT_LIBRARY_PATH)
+        organizer = ContextOrganizer()
+        organizer.append_to_context_library(organized, path=CONTEXT_LIBRARY_PATH)
 
     # If cache is provided, deduplicate contests/buttons against it
     if cache:

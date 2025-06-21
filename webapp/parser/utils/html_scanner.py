@@ -13,7 +13,7 @@ from rich.console import Console
 from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
 from ..utils.model_registry import ModelRegistry
-from ..bots.manual_correction_bot import update_segment_in_context_library
+from ..utils.context_schema import update_context_library
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, DISTRICT_REGEX, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
     extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
@@ -1308,7 +1308,7 @@ def scan_html_for_context(
                 segments_needing_review.append(seg)
                 # --- update context library with the correction ---
                 if context_library is not None and seg.get("segment_hash"):
-                    update_segment_in_context_library(context_library, seg["segment_hash"], user_label)
+                    update_context_library(context_library, seg["segment_hash"], user_label)
                     # Optionally save immediately:
                     save_context_library(context_library)
             else:

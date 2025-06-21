@@ -8,7 +8,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     from ...Context_Integration.context_coordinator import ContextCoordinator
     from ...state_router import get_handler, list_available_handlers, fuzzy_match_handler
     from ...utils.shared_logic import normalize_state_name, normalize_county_name
-    from ...utils.logger_instance import logger
+    from ...utils.shared_logger import logger
     from ...utils.user_prompt import prompt_user_input
     import json
     import os
