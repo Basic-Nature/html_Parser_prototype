@@ -64,11 +64,16 @@ class ModelRegistry:
         Load and cache a SentenceTransformer model.
         If use_finetuned is True, tries to load the fine-tuned model from disk first.
         Ensures only one instance per model is loaded (efficient caching).
+        Optimized to prevent invalid model names/paths and repeated failed loads.
         """
         if SentenceTransformer is None:
             raise ImportError("sentence_transformers is not installed.")
         with _lock:
             base_name = model_name or "all-MiniLM-L6-v2"
+            # Validate model_name: must be a string and not a model object or repr
+            if not isinstance(base_name, str) or base_name.strip() == "" or base_name.startswith("SentenceTransformer("):
+                logger.error(f"Invalid model_name for SentenceTransformer: {base_name!r}. Using default 'all-MiniLM-L6-v2'.")
+                base_name = "all-MiniLM-L6-v2"
             key = f"sentence_transformer:{base_name}:{use_finetuned}"
             if key in cls._models:
                 return cls._models[key]
@@ -85,6 +90,9 @@ class ModelRegistry:
                         return model
                     except Exception as e:
                         logger.error(f"Failed to load fine-tuned SentenceTransformer: {e}")
+                        # Do not retry with the same key if it failed
+                        cls._models[key] = None
+                        return None
             # Fallback to base model
             logger.info(f"Loading base SentenceTransformer: {base_name}")
             try:
@@ -94,7 +102,9 @@ class ModelRegistry:
                 return model
             except Exception as e:
                 logger.error(f"Failed to load base SentenceTransformer: {e}")
-                raise
+                # Do not retry with the same key if it failed
+                cls._models[key] = None
+                return None
 
     @classmethod
     def get_spacy_model(cls, model_name=None, use_finetuned=True):
