@@ -245,23 +245,26 @@ def load_spacy_ner_examples(jsonl_path):
 
 def remove_overlapping_entities(entities):
     """
-    Remove overlapping entities from a list of (start, end, label) tuples.
-    Keeps the longest span first, then next non-overlapping, etc.
+    Remove overlapping and duplicate-span entities from a list of (start, end, label) tuples.
+    Keeps the longest span first, then next non-overlapping, and only one label per span.
     """
     # Sort by start, then by longest span (descending)
     entities = sorted(entities, key=lambda x: (x[0], -(x[1] - x[0])))
     result = []
     last_end = -1
+    seen_spans = set()
     for start, end, label in entities:
-        if start >= last_end:
+        if start >= last_end and (start, end) not in seen_spans:
             result.append((start, end, label))
             last_end = end
-        # else: skip this entity because it overlaps
+            seen_spans.add((start, end))
+        # else: skip this entity because it overlaps or is a duplicate span
     return result
 
 def validate_training_data(train_data, nlp, logger=None):
     """
     Validate and skip misaligned spaCy NER training examples to avoid [W030] warnings.
+    Pre-check alignment before creating Example.
     """
     from spacy.training import offsets_to_biluo_tags
     valid_data = []
@@ -283,8 +286,9 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     nlp = spacy.blank("en")
     try:
         from spacy.lookups import Lookups
+        import spacy.lookups
         lookups = Lookups()
-        # The following may fail for English, which is fine.
+        # Always load lexeme_norm if available (suppresses warning)
         lookups.add_table("lexeme_norm", spacy.lookups.load_lookups_data("en", tables=["lexeme_norm"]).get_table("lexeme_norm"))
         nlp.vocab.lookups = lookups
     except Exception as e:
