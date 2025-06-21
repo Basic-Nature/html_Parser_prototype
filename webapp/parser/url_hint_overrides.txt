@@ -1,8 +1,3 @@
-{
-  "results.arizona.vote": "handlers.states.arizona",
-  "rockland-county-ny": "handlers.states.new_york.county.rockland",
-  "electionreturns.pa.gov": "handlers.states.pennsylvania",
-  "clarityelections.com/GA/Fulton": "handlers.states.georgia.county.fulton",
-  "flelectionfiles.floridados.gov": "handlers.states.florida",
-  "elections.myflorida.com": "handlers.states.florida"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:bc12b3e7f9b0b86d98658c32ba11cd051952ff481d7c8974395fa91e692ea888
+size 386
