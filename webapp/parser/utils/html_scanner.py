@@ -24,10 +24,9 @@ import numpy as np
 console = Console()
 from bs4 import BeautifulSoup, Tag
 from ..utils.embedding_cache import (
-    save_embedding, load_embedding, get_embedding_from_memory, is_trivial_segment
+    save_embedding, load_embedding, get_embedding_from_memory
 )
 import traceback
-from functools import lru_cache
 
 embedding_cache_hits = set()
 embedding_cache_misses = set()
@@ -129,35 +128,6 @@ def is_trivial_segment(seg):
     if tag == "span" and len(classes) > 0 and all("icon" in cls for cls in classes) and not re.sub(r"<[^>]+>", "", html).strip():
         return True
     return False
-
-# In-memory LRU cache for segment embeddings (size can be tuned)
-@lru_cache(maxsize=2048)
-def get_embedding_from_memory(identity, full_text, model_id):
-    # model_id is a string to ensure cache key uniqueness per model
-    # The model itself is not hashable, so pass its id or name
-    from sentence_transformers import SentenceTransformer
-    model = ModelRegistry.get_sentence_transformer(model_id)
-    return model.encode(full_text, convert_to_numpy=True, show_progress_bar=False)
-
-# Patch get_segment_embedding to use in-memory cache
-
-def get_segment_embedding(model, segment, cache_hits=None, cache_misses=None):
-    identity = segment_identity_hash(segment)
-    emb = get_embedding_from_memory(identity)
-    if emb is not None:
-        if cache_hits is not None:
-            cache_hits.add(identity)
-        return emb
-    # If not in memory cache, compute and save
-    text = segment.get("html", "")
-    tag = segment.get("tag", "")
-    attrs = " ".join([f"{k}={v}" for k, v in segment.get("attrs", {}).items()])
-    full_text = f"{tag} {attrs} {text}"
-    emb = model.encode(full_text, convert_to_numpy=True, show_progress_bar=False)
-    save_embedding(identity, emb)
-    if cache_misses is not None:
-        cache_misses.add(identity)
-    return emb
 
 def extract_tagged_segments_with_attrs(
     html: str,
@@ -1363,17 +1333,6 @@ def batch_get_segment_embeddings(model, segments):
     Skips segments with empty/trivial HTML (whitespace, only icons), returns None for those.
     Returns a list of embeddings in the same order as segments.
     """
-    def is_trivial(seg):
-        html = seg.get("html", "")
-        if not html or not html.strip():
-            return True
-        # Heuristic: skip if only whitespace or only a single icon span
-        tag = seg.get("tag", "")
-        classes = [c.lower() for c in seg.get("classes", [])]
-        if tag == "span" and len(classes) > 0 and all("icon" in cls for cls in classes) and not re.sub(r"<[^>]+>", "", html).strip():
-            return True
-        return False
-
     identities = [segment_identity_hash(seg) if not is_trivial_segment(seg) else None for seg in segments]
     cached = [get_embedding_from_memory(identity) if identity else None for identity in identities]
     to_compute = [i for i, emb in enumerate(cached) if emb is None and identities[i] is not None]
@@ -1386,7 +1345,6 @@ def batch_get_segment_embeddings(model, segments):
             attrs = " ".join([f"{k}={v}" for k, v in seg.get("attrs", {}).items()])
             text = BeautifulSoup(seg.get("html", ""), "html.parser").get_text(" ", strip=True)
             if not text.strip():
-                # If text is still empty, skip
                 continue
             texts.append(f"{tag} {attrs} {text}")
             idx_map.append(idx)
@@ -1395,7 +1353,6 @@ def batch_get_segment_embeddings(model, segments):
             for i, idx in enumerate(idx_map):
                 save_embedding(identities[idx], new_embs[i])  # Save to disk cache
                 cached[idx] = new_embs[i]
-    # For trivial segments, return None (or could use np.zeros if preferred)
     return [emb if identity else None for emb, identity in zip(cached, identities)]
 
 # --- Module-level caches for pattern_kb and context_cache ---

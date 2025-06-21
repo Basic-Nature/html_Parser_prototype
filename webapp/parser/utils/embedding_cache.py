@@ -14,20 +14,6 @@ def get_embedding_from_memory(segment_hash):
 _batch_cache = {}
 _batch_cache_lock = threading.Lock()
 
-def is_trivial_segment(seg):
-    html = seg.get("html", "")
-    tag = seg.get("tag", "")
-    if not html or not html.strip():
-        return True
-    if tag in {"br", "hr", "wbr"} and not html.strip():
-        return True
-    if html.strip() in {"&nbsp;", "&#160;"}:
-        return True
-    classes = [c.lower() for c in seg.get("classes", [])]
-    if tag == "span" and len(classes) > 0 and all("icon" in cls for cls in classes) and not re.sub(r"<[^>]+>", "", html).strip():
-        return True
-    return False
-
 def get_embedding_cache_db_path():
     from ..config import BASE_DIR
     log_folder = os.path.join(os.path.dirname(BASE_DIR), "log")
