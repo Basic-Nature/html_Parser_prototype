@@ -7,8 +7,7 @@ import platform
 import re
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, SpinnerColumn
 import time
-from ..utils.logger_instance import logger
-from ..utils.shared_logger import rprint
+from ..utils.shared_logger import rprint, logger
 from ..utils.user_prompt import prompt_user_input
 from ..config import BASE_DIR
 from typing import TYPE_CHECKING

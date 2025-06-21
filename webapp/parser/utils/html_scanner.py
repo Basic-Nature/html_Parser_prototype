@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
 from ..utils.download_utils import download_file
 from ..utils.format_router import route_format_handler 
-from ..utils.logger_instance import logger
+from ..utils.shared_logger import logger
 from rich import print as rprint
 from rich.console import Console
 from ..utils.user_prompt import prompt_user_input

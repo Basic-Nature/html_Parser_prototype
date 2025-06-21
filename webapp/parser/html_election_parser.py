@@ -21,7 +21,7 @@ from multiprocessing import Pool
 
 from dotenv import load_dotenv
 from rich.console import Console
-from .utils.shared_logger import rprint
+from .utils.shared_logger import rprint, logger
 from playwright.sync_api import sync_playwright, Page
 
 # --- Local imports (all logic is modularized) ---
@@ -37,7 +37,6 @@ from .utils.format_router import route_format_handler
 
 
 from .utils.html_scanner import scan_html_for_context
-from .utils.logger_instance import logger
 from .utils.shared_logic import infer_state_county_from_url, safe_join
 from .utils.user_prompt import prompt_user_input
 import hashlib

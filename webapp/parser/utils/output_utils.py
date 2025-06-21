@@ -3,8 +3,7 @@ import json
 import os
 import collections.abc
 from datetime import datetime
-from ..utils.shared_logger import rprint
-from ..utils.logger_instance import logger
+from ..utils.shared_logger import rprint, logger
 from ..utils.table_builder import build_dynamic_table, harmonize_headers_and_data
 from ..config import CONTEXT_DB_PATH, BASE_DIR
 from ..utils.user_prompt import prompt_yes_no

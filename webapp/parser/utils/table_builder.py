@@ -14,8 +14,7 @@ from ..bots.librarian import (
     PERCENT_KEYWORDS,  
 )
 from typing import List, Dict, Tuple, Any, Optional, TYPE_CHECKING
-from ..utils.logger_instance import logger
-from ..utils.shared_logger import rprint
+from ..utils.shared_logger import rprint, logger
 from ..config import BASE_DIR
 
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
