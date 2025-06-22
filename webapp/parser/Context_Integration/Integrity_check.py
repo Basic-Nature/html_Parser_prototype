@@ -146,6 +146,9 @@ def auto_tune_contamination(
     plot: bool = False
 ) -> float:
     clf = IsolationForest(contamination=initial_contamination, random_state=42)
+    if X is None or len(X) == 0:
+        print("No contest features to check for anomalies.")
+        return
     clf.fit(X)
     scores = -clf.decision_function(X)
     cutoff = np.percentile(scores, 90)

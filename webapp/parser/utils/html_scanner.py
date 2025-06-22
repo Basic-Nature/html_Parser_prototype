@@ -212,12 +212,24 @@ def extract_tagged_segments_with_attrs(
     """
 
     def get_cached_segment(tag, attrs, html_snippet):
+        cache = load_context_cache_from_disk()
+        cache = [e for e in cache if isinstance(e, dict)]
+        for entry in cache:
+            if entry.get("tag") != tag:
+                continue
+            if entry.get("attrs") != attrs:
+                continue
+            if "html_snippet" in entry and html_snippet.startswith(entry["html_snippet"]):
+                return entry
         attrs_sorted = {k: attrs[k] for k in sorted(attrs)}
         key = hashlib.sha256((tag + orjson.dumps(attrs_sorted, option=orjson.OPT_SORT_KEYS).decode() + html_snippet[:200]).encode("utf-8")).hexdigest()
         if context_cache and key in context_cache:
             return context_cache[key]
         if pattern_kb:
             for entry in pattern_kb:
+                if not isinstance(entry, dict):
+                    logger.warning(f"Non-dict entry in cache: {entry!r}")
+                    continue
                 if entry.get("segment_hash") == key:
                     return entry
         if context_library:
@@ -237,6 +249,12 @@ def extract_tagged_segments_with_attrs(
             return seg
         # Try cache/context KB
         cached = get_cached_segment(seg["tag"], seg["attrs"], seg["html"])
+        if isinstance(cached, list):
+            cached = [e for e in cached if isinstance(e, dict)]
+            if cached:
+                cached = cached[0]
+            else:
+                cached = None
         if cached:
             seg["ml_label"] = cached.get("ml_label", "unknown")
             seg["ml_confidence"] = cached.get("ml_confidence", 1.0)
@@ -1158,6 +1176,7 @@ def scan_html_for_context(
     use_finetuned: bool = True,
     non_interactive=False,
 ) -> Dict[str, Any]:
+    from ..utils.shared_logic import infer_state_county_from_url
     """
     Advanced HTML scanner with ML-driven DOM pattern clustering, active learning, dynamic tagging,
     confidence-driven processing, and persistent knowledge base.
@@ -1172,6 +1191,7 @@ def scan_html_for_context(
     Returns:
         context_result: Dict with scan results, segments, metadata, and errors if any.
     """
+    
     context_library = None
     if os.path.exists(CONTEXT_LIBRARY_PATH):
         with open(CONTEXT_LIBRARY_PATH, "rb") as f:
@@ -1207,7 +1227,7 @@ def scan_html_for_context(
         "pattern_kb_matches": [],
         "segments_needing_review": [],
     }
-
+    from ..utils.shared_logic import infer_state_county_from_url
     try:
         page_url = target_url or page.url
         SCAN_WAIT_SECONDS = 3
@@ -1215,7 +1235,11 @@ def scan_html_for_context(
         time.sleep(SCAN_WAIT_SECONDS)
         html = page.content()
         context_result["raw_html"] = html
-
+        state, county = infer_state_county_from_url(page_url)
+        if state:
+            context_result["state"] = state
+        if county:
+            context_result["county"] = county
         # --- 3. Download link extraction and merging ---
         dynamic_links = extract_download_links_from_html(html)
         all_links = { (l["href"], l["format"]): l for l in (supported_links + dynamic_links) }
