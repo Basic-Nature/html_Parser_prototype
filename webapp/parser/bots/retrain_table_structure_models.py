@@ -8,6 +8,7 @@ import subprocess
 import time
 import shutil
 import gc
+import sys
 from ..utils.model_registry import ModelRegistry
 from collections import Counter
 from sentence_transformers import InputExample, losses
@@ -577,6 +578,17 @@ def main():
         if seg_hash not in cached_hashes:
             deduped_train_data.append(struct)
     print(f"Deduplicated to {len(deduped_train_data)} unique structures for training.")
+
+    # Before retraining, scan for misaligned NER examples
+    scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
+    scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
+    print("[INFO] Scanning for misaligned NER examples before retraining...")
+    scan_result = subprocess.run(scan_cmd)
+    if scan_result.returncode == 2:
+        print("[ERROR] Misaligned NER examples found. Launching manual_correction_bot and aborting retraining.")
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "manual_correction_bot.py"), "--fields", "tables", "--enhanced"])
+        print("[INFO] Please correct misalignments and rerun retraining.")
+        sys.exit(2)
 
     # Use deduped_train_data for retraining
     retrain_sentence_transformer(deduped_train_data)

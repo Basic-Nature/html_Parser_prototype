@@ -20,6 +20,9 @@ from collections import defaultdict, Counter
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import threading
+import subprocess
+import sys
+import time
 
 # --- Unified logger import ---
 from ..utils.shared_logger import logger
@@ -461,7 +464,29 @@ def main():
     parser.add_argument("--feedback", action="store_true", help="Enable feedback mode (no-op, for compatibility)")
     parser.add_argument("--fast", action="store_true", help="Fast mode: auto-accept exact duplicates, skip review for them.")
     parser.add_argument("--batch", action="store_true", help="Batch review: allow accepting/removing all entries in a group at once.")
+    parser.add_argument("--self-heal", action="store_true", help="Loop: scan -> correct -> rescan until clean or max retries")
+    parser.add_argument("--max-retries", type=int, default=3, help="Max self-heal attempts")
+    parser.add_argument("--cooldown", type=int, default=2, help="Seconds to wait between self-heal attempts")
     args = parser.parse_args()
+
+    if args.self_heal:
+        scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
+        for attempt in range(1, args.max_retries + 1):
+            print(f"\n[SELF-HEAL] Attempt {attempt}...")
+            scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
+            scan_result = subprocess.run(scan_cmd)
+            if scan_result.returncode == 0:
+                print("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
+                break
+            print("[SELF-HEAL] Misalignments found. Running manual correction...")
+            # Run the normal correction logic (call main() recursively, but without --self-heal)
+            args.self_heal = False
+            main()
+            print(f"[SELF-HEAL] Sleeping {args.cooldown}s before rescanning...")
+            time.sleep(args.cooldown)
+        else:
+            print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+        return
 
     context_path = safe_path(args.context, [CONTEXT_LIBRARY_DIR])
     # --- Ensure context library exists and is valid ---

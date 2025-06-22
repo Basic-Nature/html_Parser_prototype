@@ -2,6 +2,9 @@ import json, os, re
 from typing import Set, List, Dict, Any
 from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
 import orjson
+import subprocess
+import sys
+import time
 
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
 # --- Central Dynamic Sets (used everywhere) ---
@@ -242,6 +245,34 @@ def get_cached_segment_label(text: str) -> str:
     norm = normalize_segment_text(text)
     return _segment_label_cache.get(norm)
 
+# --- Self-Heal Mode ---
+def self_heal_context_library(max_retries=3, cooldown=2):
+    """Self-heal: scan for misaligned NER, run correction bot, reload context library, repeat until clean or max_retries."""
+    scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
+    for attempt in range(1, max_retries + 1):
+        print(f"\n[LIBRARIAN SELF-HEAL] Attempt {attempt}...")
+        scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
+        scan_result = subprocess.run(scan_cmd)
+        if scan_result.returncode == 0:
+            print("[LIBRARIAN SELF-HEAL] Data is clean. Exiting self-heal mode.")
+            return 0
+        print("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
+        bot_cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--enhanced"]
+        subprocess.run(bot_cmd)
+        print(f"[LIBRARIAN SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+        time.sleep(cooldown)
+    print("[LIBRARIAN SELF-HEAL] Max retries reached. Some misalignments may remain.")
+    return 2
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Librarian utility for context library management.")
+    parser.add_argument("--self-heal", action="store_true", help="Loop: scan -> correct -> rescan until clean or max retries")
+    parser.add_argument("--max-retries", type=int, default=3, help="Max self-heal attempts")
+    parser.add_argument("--cooldown", type=int, default=2, help="Seconds to wait between self-heal attempts")
+    args = parser.parse_args()
+    if args.self_heal:
+        sys.exit(self_heal_context_library(args.max_retries, args.cooldown))
 # --- Export all sets for use in other modules ---
 __all__ = [
     "HTML_TAGS", "PANEL_TAGS", "HEADING_TAGS", "CUSTOM_ATTR_PATTERNS", "DISTRICT_REGEX",

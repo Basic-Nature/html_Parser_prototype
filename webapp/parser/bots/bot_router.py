@@ -59,14 +59,19 @@ BOT_MODULES = {
     # Add more bots here as needed
 }
 
-def run_bot_task(bot_name, args=None, context=None):
+def run_bot_task(bot_name, args=None, context=None, self_heal=False, max_retries=3, cooldown=2):
     """
-    Run a bot by name with optional arguments.
+    Run a bot by name with optional arguments and self-heal mode.
     Args:
         bot_name: str, key in BOT_MODULES
         args: list of str, command-line arguments
         context: dict, optional context for future extension
+        self_heal: bool, enable self-heal loop for supported bots
+        max_retries: int, max attempts for self-heal loop
+        cooldown: int, cooldown period between self-heal attempts (seconds)
     """
+    if self_heal:
+        return self_heal_loop(bot_name, args, max_retries, cooldown)
     module = BOT_MODULES.get(bot_name)
     if not module:
         print(f"[ERROR] Unknown bot: {bot_name}")
@@ -284,3 +289,23 @@ def suggest_bots(context=None):
 # Attach both suggestion engines for flexibility
 run_bot_task.suggest_bots = suggest_bots
 run_bot_task.ai_suggest_bots = ai_suggest_bots
+
+def self_heal_loop(bot_name, args=None, max_retries=3, cooldown=2):
+    """Loop: scan -> correct -> rescan, until clean or max_retries reached."""
+    scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
+    for attempt in range(1, max_retries + 1):
+        print(f"\n[SELF-HEAL] Attempt {attempt}...")
+        scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
+        scan_result = subprocess.run(scan_cmd)
+        if scan_result.returncode == 0:
+            print("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
+            return 0
+        print(f"[SELF-HEAL] Misalignments found. Launching {bot_name}...")
+        bot_cmd = [sys.executable, "-m", f"webapp.parser.bots.{bot_name}"]
+        if args:
+            bot_cmd.extend(args)
+        subprocess.run(bot_cmd)
+        print(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+        time.sleep(cooldown)
+    print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+    return 2
