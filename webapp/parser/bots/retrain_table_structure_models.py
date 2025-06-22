@@ -5,6 +5,10 @@ import re
 import datetime
 import hashlib
 import subprocess
+import time
+import shutil
+import gc
+from ..utils.model_registry import ModelRegistry
 from collections import Counter
 from sentence_transformers import InputExample, losses
 from torch.utils.data import DataLoader
@@ -13,9 +17,11 @@ from ..Context_Integration.context_organizer import _safe_db_path
 from ..config import CONTEXT_DB_PATH, MODEL_DIR
 
 import spacy
-from spacy.training import Example
+from spacy.training import Example, offsets_to_biluo_tags
 from spacy.lookups import Lookups
-
+import glob
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
 import logging
 import argparse
 import gc
@@ -64,9 +70,7 @@ ENTITY_PATTERNS = [
 ]
 
 def safe_model_save(model, model_save_path, retries=3):
-    import time
-    import shutil
-    import gc
+
     for attempt in range(1, retries+1):
         try:
             model.save(model_save_path)
@@ -133,9 +137,7 @@ def cluster_container_patterns(log_dir=None, n_clusters=5):
     Cluster container HTML snippets and metadata for ML/NLP training.
     Prints cluster assignments and common selectors/classes/headings.
     """
-    import glob
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.cluster import KMeans
+
 
     if log_dir is None:
         log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log"))
@@ -202,7 +204,6 @@ def extract_candidates_from_context(context):
     return list(candidates)
 
 def entity_frequency_analysis(train_data):
-    from collections import Counter
     counter = Counter()
     for _, annots in train_data:
         for _, _, label in annots["entities"]:
@@ -278,7 +279,6 @@ def validate_training_data(train_data, nlp, logger=None):
     Validate and skip misaligned spaCy NER training examples to avoid [W030] warnings.
     Pre-check alignment before creating Example.
     """
-    from spacy.training import offsets_to_biluo_tags
     valid_data = []
     for text, annots in train_data:
         try:
@@ -441,7 +441,6 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
     Loads the existing model for further training if present, otherwise starts from base.
     Always saves to the same folder (no timestamp).
     """
-    import shutil
     train_examples = []
     for struct in confirmed_structures:
         contest_title = struct.get("contest_title", "")
@@ -456,7 +455,6 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
     model_save_path = model_save_path or os.path.join(base_dir, "fine_tuned_table_headers")
     os.makedirs(model_save_path, exist_ok=True)
 
-    from ..utils.model_registry import ModelRegistry
     # Robust model loading: check for model files
     model = None
     model_files = ["config.json", "pytorch_model.bin", "model.safetensors", "tf_model.h5", "model.ckpt.index", "flax_model.msgpack"]
