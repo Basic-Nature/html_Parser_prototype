@@ -1,11 +1,3 @@
-def robust_orjson_loads(val):
-    """Load JSON robustly from either bytes or str."""
-    if isinstance(val, bytes):
-        return orjson.loads(val)
-    elif isinstance(val, str):
-        return orjson.loads(val.encode("utf-8"))
-    else:
-        raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
 import hashlib
 import orjson
@@ -46,6 +38,15 @@ import threading
 _LABEL_CACHE_FILENAME = "segment_label_cache.json"
 _LABEL_CACHE_LOCK = threading.Lock()
 _LABEL_CACHE = None
+
+def robust_orjson_loads(val):
+    """Load JSON robustly from either bytes or str."""
+    if isinstance(val, bytes):
+        return orjson.loads(val)
+    elif isinstance(val, str):
+        return orjson.loads(val.encode("utf-8"))
+    else:
+        raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
 def _get_label_cache_path():
     log_dir = os.path.join(os.path.dirname(BASE_DIR), "log")
@@ -509,6 +510,48 @@ def extract_tagged_segments_with_attrs(
         except Exception as bs4e:
             logger.error(f"[ERROR] BeautifulSoup fallback also failed: {bs4e}", extra={"traceback": traceback.format_exc(), "html_snippet": html[:200]})
             raise
+
+def canonicalize_segment(html):
+    # Remove whitespace, lowercase, sort attributes, remove dynamic IDs/classes, collapse text for hashing
+    # For <br>, just return '<br>'
+    html = html.strip().lower()
+    if html == '<br>' or html == '<br/>':
+        return '<br>'
+    # Remove ng-*, data-*, id, class attributes (except for semantic classes)
+    import re
+    html = re.sub(r'\s_ngcontent-[^=]+="[^"]*"', '', html)
+    html = re.sub(r'\sclass="[^"]*"', '', html)
+    html = re.sub(r'\sid="[^"]*"', '', html)
+    html = re.sub(r'\sdata-[^=]+="[^"]*"', '', html)
+    html = re.sub(r'\sng-\w+="[^"]*"', '', html)
+    html = re.sub(r'\s+', ' ', html)
+    return html
+
+def segment_hash(html):
+    canon = canonicalize_segment(html)
+    return hashlib.sha256(canon.encode('utf-8')).hexdigest()
+
+def load_segment_label_cache(path):
+    if os.path.exists(path):
+        with open(path, 'rb') as f:
+            return orjson.loads(f.read())
+    return {}
+
+def save_segment_label_cache(cache, path):
+    with open(path, 'wb') as f:
+        f.write(orjson.dumps(cache))
+
+# In your segment review loop, before prompting:
+# cache_path = 'segment_label_cache.json'
+# segment_label_cache = load_segment_label_cache(cache_path)
+# h = segment_hash(segment_html)
+# if h in segment_label_cache:
+#     label = segment_label_cache[h]
+#     # Use label, skip prompt
+# else:
+#     # Prompt user, then:
+#     segment_label_cache[h] = user_label
+#     save_segment_label_cache(segment_label_cache, cache_path)
 
 # --- not being used yet, but useful for future ---
 def extract_panel_table_hierarchy(segments, model_name: Optional[str] = None, use_finetuned: bool = True, min_panel_score=0.65):
