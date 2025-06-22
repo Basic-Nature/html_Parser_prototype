@@ -16,7 +16,7 @@ BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type
 context_cache = {}
 accepted_buttons_cache = {}
 
-def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, non_interactive=False):
+def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, non_interactive=False, **kwargs):
     """
     Rockland County handler: all logic in one place.
     - Scans HTML for context and contests

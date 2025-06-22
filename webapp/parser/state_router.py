@@ -49,7 +49,6 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None) -> Optional[
     Logs all routing attempts and fallbacks.
     Now validates detected county against available handlers and context library.
     """
-    import importlib
     from .Context_Integration.context_coordinator import ContextCoordinator, dynamic_state_county_detection
 
     # Step 1: Enrich context using the coordinator (NLP, ML, etc.)

@@ -227,7 +227,10 @@ def print_date_anomalies(date_anomalies):
     console.print(table)
 
 def print_auto_tune_result(contamination):
-    console.print(Panel(f"Auto-tuned contamination: [bold green]{contamination:.4f}[/bold green]", title="IsolationForest Auto-Tune"))
+    if contamination is None:
+        console.print(Panel("Auto-tuned contamination: [bold yellow]N/A[/bold yellow]", title="IsolationForest Auto-Tune"))
+    else:
+        console.print(Panel(f"Auto-tuned contamination: [bold green]{contamination:.4f}[/bold green]", title="IsolationForest Auto-Tune"))
 
 def print_analyze_contest_titles(results):
     print_issues_table(results["integrity_issues"], title="Integrity Issues")

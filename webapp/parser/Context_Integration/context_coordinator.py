@@ -11,7 +11,7 @@ Production-grade Context Coordinator for Election Data Pipeline
 import re
 import os
 import numpy as np
-import json
+import orjson
 import datetime
 import types
 from fuzzywuzzy import fuzz, process
@@ -36,7 +36,7 @@ from .Integrity_check import (
     advanced_cross_field_validation,
     print_integrity_summary
 )
-from .context_organizer import organize_context
+from .context_organizer import ContextOrganizer
 import inspect
 # --- Config ---
 SAMPLE_JSON_PATH = os.path.join(os.path.dirname(__file__), "sample.json")
@@ -193,14 +193,14 @@ class ContextCoordinator:
         Organize raw context (from HTML/DOM or DB), deduplicate, cluster, and enrich with NLP.
         """
         self.last_raw_context = raw_context  # <-- Store the latest raw context
-        self.organized = organize_context(
-            raw_context,
+        organizer = ContextOrganizer(
             use_library=True,
             enable_ml=self.enable_ml,
             contamination=contamination,
             n_estimators=n_estimators,
             random_state=random_state
         )
+        self.organized = organizer.organize_context(raw_context)
         self._enrich_contests_with_nlp()
         return self.organized
 
@@ -313,8 +313,8 @@ class ContextCoordinator:
             "user_feedback": user_feedback
         }
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry), ensure_ascii=False) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def extract_entities(self, text):
         """
@@ -926,10 +926,10 @@ class ContextCoordinator:
         # 1. Check button selection log for a successful match
         log_path = "button_selection_log.jsonl"
         if os.path.exists(log_path):
-            with open(log_path, "r", encoding="utf-8") as f:
+            with open(log_path, "rb") as f:
                 for line in f:
                     try:
-                        entry = json.loads(line)
+                        entry = orjson.loads(line)
                     except Exception:
                         continue
                     # Check for a successful result for this contest_title/keyword/url
@@ -1010,8 +1010,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "pattern_attempts_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def get_best_button_advanced(
         self,
@@ -1189,8 +1189,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "button_learning_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def _get_confirmed_button_from_log(self, contest_title, keywords, context):
         """
@@ -1199,10 +1199,10 @@ class ContextCoordinator:
         log_path = os.path.join("log", "button_learning_log.jsonl")
         if not os.path.exists(log_path):
             return None
-        with open(log_path, "r", encoding="utf-8") as f:
+        with open(log_path, "rb") as f:
             for line in f:
                 try:
-                    entry = json.loads(line)
+                    entry = orjson.loads(line)
                 except Exception:
                     continue
                 if entry.get("contest_title") == contest_title and entry.get("result") == "learning_confirmed":
@@ -1227,8 +1227,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "button_selection_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     # --- Table structure learning/lookup ---
     def get_table_structure(self, contest_title, context=None, learning_mode=True):
@@ -1238,10 +1238,10 @@ class ContextCoordinator:
         log_path = os.path.join("log", "table_structure_learning_log.jsonl")
         # 1. Learning mode: check log for confirmed structure
         if learning_mode and os.path.exists(log_path):
-            with open(log_path, "r", encoding="utf-8") as f:
+            with open(log_path, "rb") as f:
                 for line in f:
                     try:
-                        entry = json.loads(line)
+                        entry = orjson.loads(line)
                     except Exception:
                         continue
                     if entry.get("contest_title") == contest_title and entry.get("result") == "learning_confirmed":
@@ -1262,8 +1262,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "table_structure_learning_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     # --- CLI for reviewing/editing corrections and feedback ---
     def review_and_edit_corrections(self, field_type="buttons"):
@@ -1359,8 +1359,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_contests_access_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def _log_get_buttons_access(self, contest_title, keyword, url):
         log_entry = {
@@ -1374,8 +1374,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_buttons_access_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def _log_get_best_button_access(self, contest_title, keywords, class_hint, url):
         log_entry = {
@@ -1389,8 +1389,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_best_button_access_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def _log_get_panel_access(self, contest_title):
         log_entry = {
@@ -1401,8 +1401,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_panel_access_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def _log_get_tables_access(self, contest_title):
         log_entry = {
@@ -1413,8 +1413,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_tables_access_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def _log_get_candidates_access(self, contest_title):
         log_entry = {
@@ -1425,8 +1425,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_candidates_access_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def _log_get_districts_access(self, state, county):
         log_entry = {
@@ -1438,8 +1438,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_districts_access_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def _log_get_states_access(self):
         log_entry = {
@@ -1449,8 +1449,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_states_access_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def _log_get_election_types_access(self):
         log_entry = {
@@ -1460,8 +1460,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_election_types_access_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def _log_get_years_access(self):
         log_entry = {
@@ -1471,8 +1471,8 @@ class ContextCoordinator:
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_years_access_log.jsonl")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_for_json(log_entry)) + "\n")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
     def start_alert_monitoring(self, db_path=None, poll_interval=10):
         """

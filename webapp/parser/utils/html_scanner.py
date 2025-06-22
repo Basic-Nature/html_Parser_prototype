@@ -16,6 +16,7 @@ from typing import Dict, Any, List, Optional
 from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
 from ..utils.download_utils import download_file
 from ..utils.format_router import route_format_handler 
+from ..utils.shared_logic import infer_state_county_from_url
 from ..utils.shared_logger import logger
 from rich import print as rprint
 from rich.console import Console
@@ -36,7 +37,7 @@ from ..utils.embedding_cache import (
     save_embedding, load_embedding, get_embedding_from_memory
 )
 import traceback
-
+from difflib import get_close_matches
 embedding_cache_hits = set()
 embedding_cache_misses = set()
 
@@ -114,7 +115,6 @@ def load_additional_tags_from_context_library():
 HTML_TAGS |= load_additional_tags_from_context_library()
 
 def safe_log_path(filename: str, log_dir: str = "log") -> str:
-    from ..config import BASE_DIR
     filename = _sanitize_log_filename(filename)
     parent_dir = os.path.dirname(BASE_DIR)
     log_folder = os.path.join(parent_dir, log_dir)
@@ -132,7 +132,6 @@ def _normalize_html_for_hash(html: str, maxlen: int = 256) -> str:
     Normalize and truncate HTML for hashing: collapse whitespace, strip, and limit length.
     Remove dynamic attributes (e.g., ng-*, _ngcontent-*, timestamps, random ids) for robustness.
     """
-    import re
     # Remove Angular and similar dynamic attributes
     html = re.sub(r'\s(_ngcontent-[^=]+|ng-version|ng-star-inserted|_nghost-[^=]+|_ngcontent-[^=]+|aria-checked|tabindex|style|data-[^=]+|id|class)="[^"]*"', '', html)
     # Remove timestamps and numbers that look like datetimes
@@ -210,7 +209,8 @@ def extract_tagged_segments_with_attrs(
     Batch embedding is used for non-trivial segments for speed.
     All file/directory paths are constructed using config.py constants only.
     """
-
+    if context_cache is not None:
+        clean_cache_inplace(context_cache)
     def get_cached_segment(tag, attrs, html_snippet):
         cache = load_context_cache_from_disk()
         cache = [e for e in cache if isinstance(e, dict)]
@@ -295,7 +295,11 @@ def extract_tagged_segments_with_attrs(
     segments: List[Dict[str, Any]] = []
     heading_tags = HEADING_TAGS
     panel_tags = PANEL_TAGS
-
+    if pattern_kb is not None and isinstance(pattern_kb, list):
+        pattern_kb[:] = [e for e in pattern_kb if isinstance(e, dict)]
+    if context_library is not None and isinstance(context_library, dict):
+        if "cached_segments" in context_library and isinstance(context_library["cached_segments"], list):
+            context_library["cached_segments"] = [e for e in context_library["cached_segments"] if isinstance(e, dict)]
     # Load ML model and pattern KB/context only once
     model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
     if model is None:
@@ -513,13 +517,13 @@ def extract_panel_table_hierarchy(segments, model_name: Optional[str] = None, us
     Uses ML embeddings, clustering, DOM proximity, and semantic heuristics for robust extraction.
     Returns a list of panel dicts, each with ML confidence and association logs.
     """
-    import numpy as np
 
     panel_tags = PANEL_TAGS
 
     idx_to_seg = {seg["_idx"]: seg for seg in segments if "_idx" in seg}
     table_segs = [seg for seg in segments if seg.get("tag") == "table"]
-
+    if isinstance(segments, list):
+        segments[:] = [s for s in segments if isinstance(s, dict)]
     # --- ML Model for Embeddings ---
     model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
 
@@ -674,10 +678,11 @@ def extract_panel_table_hierarchy(segments, model_name: Optional[str] = None, us
     return panels
 
 def extract_heading_text_from_panel_or_ancestors(panel_seg, segments, max_depth=6):
-    from bs4 import BeautifulSoup
-    from difflib import get_close_matches
+
     # --- Cache BeautifulSoup objects for unique HTML strings ---
     soup_cache = {}
+    if isinstance(segments, list):
+        segments[:] = [s for s in segments if isinstance(s, dict)]
     def get_soup(html):
         if html in soup_cache:
             return soup_cache[html]
@@ -1087,10 +1092,12 @@ def embedding_cache_hash(segment, model_id):
     base = tag + orjson.dumps(attrs_sorted, option=orjson.OPT_SORT_KEYS).decode() + html_norm + str(model_id)
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
-def get_segment_embedding(model, segment, cache_hits=None, cache_misses=None):
+def get_segment_embedding(model, segment, cache=None, cache_hits=None, cache_misses=None):
     model_id = getattr(model, 'name_or_path', str(model))
     identity = embedding_cache_hash(segment, model_id)
     emb = get_embedding_from_memory(identity)
+    if cache is not None:
+        clean_cache_inplace(cache)    
     if emb is not None:
         if cache_hits is not None:
             cache_hits.add(identity)
@@ -1176,7 +1183,6 @@ def scan_html_for_context(
     use_finetuned: bool = True,
     non_interactive=False,
 ) -> Dict[str, Any]:
-    from ..utils.shared_logic import infer_state_county_from_url
     """
     Advanced HTML scanner with ML-driven DOM pattern clustering, active learning, dynamic tagging,
     confidence-driven processing, and persistent knowledge base.
@@ -1227,7 +1233,6 @@ def scan_html_for_context(
         "pattern_kb_matches": [],
         "segments_needing_review": [],
     }
-    from ..utils.shared_logic import infer_state_county_from_url
     try:
         page_url = target_url or page.url
         SCAN_WAIT_SECONDS = 3
@@ -1436,19 +1441,38 @@ def get_log_folder():
 def load_context_cache_from_disk(filename="context_cache.json"):
     global _context_cache_cache
     if _context_cache_cache is not None:
+        # Filter out non-dict entries
+        _context_cache_cache = {k: v for k, v in _context_cache_cache.items() if isinstance(v, dict)}
         return _context_cache_cache
     log_folder = get_log_folder()
     path = os.path.join(log_folder, filename)
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
-                _context_cache_cache = robust_orjson_loads(f.read())
+                raw_cache = robust_orjson_loads(f.read())
+                # Filter out non-dict entries
+                _context_cache_cache = {k: v for k, v in raw_cache.items() if isinstance(v, dict)}
                 return _context_cache_cache
         except Exception as e:
             logger.error(f"[ERROR] Failed to load {filename}: {e}")
             return {}
     _context_cache_cache = {}
     return {}
+
+def clean_cache_inplace(cache):
+    """
+    Remove all non-dict entries from the cache in-place. Returns number of removed entries.
+    """
+    if isinstance(cache, dict):
+        keys_to_remove = [k for k, v in cache.items() if not isinstance(v, dict)]
+        for k in keys_to_remove:
+            del cache[k]
+        return len(keys_to_remove)
+    elif isinstance(cache, list):
+        original_len = len(cache)
+        cache[:] = [v for v in cache if isinstance(v, dict)]
+        return original_len - len(cache)
+    return 0
 
 def _to_json_safe(obj):
     if isinstance(obj, np.ndarray):
@@ -1492,6 +1516,8 @@ def batch_get_segment_embeddings(model, segments):
     identities = [embedding_cache_hash(seg, model_id) if not is_trivial_segment(seg) else None for seg in segments]
     cached = [get_embedding_from_memory(identity) if identity else None for identity in identities]
     to_compute = [i for i, emb in enumerate(cached) if emb is None and identities[i] is not None]
+    if isinstance(segments, list):
+        segments[:] = [s for s in segments if isinstance(s, dict)]    
     if to_compute:
         texts = []
         idx_map = []

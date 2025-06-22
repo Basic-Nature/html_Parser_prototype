@@ -416,6 +416,32 @@ def validate_training_data(train_data, nlp):
             logger.warning(f"Error validating entity alignment: {e}")
     return valid_data
 
+def summarize_misaligned_entities(log_path=None, top_n=10):
+    """
+    Scan misaligned NER examples and print the most frequent problematic texts for review/cleaning.
+    """
+    if log_path is None:
+        log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_misaligned.jsonl"))
+    if not os.path.exists(log_path):
+        print("[MISALIGNED] No misaligned NER examples found.")
+        return
+    counter = Counter()
+    with open(log_path, "rb") as f:
+        for line in f:
+            try:
+                obj = orjson.loads(line)
+                text = obj.get("text", "")
+                counter[text] += 1
+            except Exception:
+                continue
+    if not counter:
+        print("[MISALIGNED] No misaligned NER examples found.")
+        return
+    print(f"\n[MISALIGNED] Top {top_n} most frequent misaligned NER texts:")
+    for text, count in counter.most_common(top_n):
+        print(f"  {repr(text)}: {count} times")
+    print("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data.")
+
 # --- Main CLI logic ---
 def main():
     parser = argparse.ArgumentParser(description="Deep ML/LLM-enhanced batch review and correction bot for all context fields.")
@@ -560,3 +586,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    summarize_misaligned_entities()

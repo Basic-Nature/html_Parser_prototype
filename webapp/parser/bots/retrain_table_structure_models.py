@@ -294,12 +294,17 @@ def validate_training_data(train_data, nlp, logger=None):
     return valid_data
 
 def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model_save_path="fine_tuned_spacy_ner"):
+    import importlib
     nlp = spacy.blank("en")
+    # --- Robust lexeme normalization loading ---
     try:
-        # Always load lexeme_norm if available (suppresses warning)
-        lookups = Lookups()
-        lookups.add_table("lexeme_norm", spacy.lookups.load_lookups_data("en", tables=["lexeme_norm"]).get_table("lexeme_norm"))
-        nlp.vocab.lookups = lookups
+        lookups_mod = importlib.util.find_spec("spacy.lookups")
+        if lookups_mod and hasattr(Lookups(), "add_table"):
+            lookups = Lookups()
+            # Only attempt to load lexeme_norm if the function exists
+            if hasattr(spacy.lookups, "load_lookups_data"):
+                lookups.add_table("lexeme_norm", spacy.lookups.load_lookups_data("en", tables=["lexeme_norm"]).get_table("lexeme_norm"))
+                nlp.vocab.lookups = lookups
     except Exception as e:
         print("[spaCy] Could not load lexeme normalization table. You may ignore this for English. To suppress, install spacy-lookups-data and load the table if needed. Error:", e)
 
@@ -341,7 +346,7 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
         context_candidates = extract_candidates_from_context(context)
         context["known_candidates"] = list(set(context.get("known_candidates", []) + context_candidates))
         all_candidates.update(context["known_candidates"])
-        all_parties.update([p for p in re.findall(r"\b(?:Democratic|Republican|Libertarian|Green|Independent|Conservative|Working Families|Write-in|Other)\b", " ".join(headers), re.IGNORECASE)])
+        all_parties.update([p for p in re.findall(r"\\b(?:Democratic|Republican|Libertarian|Green|Independent|Conservative|Working Families|Write-in|Other)\\b", " ".join(headers), re.IGNORECASE)])
         all_counties.update(context.get("known_counties", []))
         all_states.update(context.get("known_states", []))
         all_districts.update(context.get("known_districts", []))
@@ -354,10 +359,37 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
                 entities = remove_overlapping_entities(entities)
                 train_data.append((header, {"entities": entities}))
 
-    # Validate and skip misaligned entities
-    train_data = validate_training_data(train_data, nlp, logger)
+    # Validate and skip misaligned entities, log skipped
+    misaligned_count = 0
+    misaligned_examples = []
+    valid_data = []
+    from spacy.training import offsets_to_biluo_tags
+    for text, annots in train_data:
+        try:
+            tags = offsets_to_biluo_tags(nlp.make_doc(text), annots["entities"])
+            if "-" in tags:
+                misaligned_count += 1
+                misaligned_examples.append({"text": text, "entities": annots["entities"]})
+                if logger:
+                    logger.warning(f"Skipping misaligned entity in: {text}")
+                continue
+            valid_data.append((text, annots))
+        except Exception as e:
+            misaligned_count += 1
+            misaligned_examples.append({"text": text, "entities": annots["entities"], "error": str(e)})
+            if logger:
+                logger.warning(f"Error validating entity alignment: {e}")
+    if misaligned_examples:
+        # Save misaligned examples for review
+        misaligned_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_misaligned.jsonl"))
+        with open(misaligned_path, "wb") as f:
+            for ex in misaligned_examples:
+                f.write(orjson.dumps(ex, option=orjson.OPT_APPEND_NEWLINE))
+        print(f"[NER] Skipped {misaligned_count} misaligned examples. Saved to {misaligned_path}")
+    train_data = valid_data
     save_training_data_jsonl(train_data)
     entity_frequency_analysis(train_data)
+    print(f"[NER] Used {len(train_data)} valid examples, skipped {misaligned_count} misaligned.")
 
     # Convert to spaCy Example objects
     examples = []
