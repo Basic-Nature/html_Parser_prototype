@@ -547,6 +547,25 @@ def load_cached_segment_hashes(context_library):
 
 
 
+def scan_in_memory_ner_examples(train_data, verbose=False):
+    """Scan a list of (text, annots) NER examples for misalignments using spaCy's offsets_to_biluo_tags."""
+    import spacy
+    from spacy.training import offsets_to_biluo_tags
+    nlp = spacy.blank("en")
+    misaligned = []
+    for text, annots in train_data:
+        try:
+            tags = offsets_to_biluo_tags(nlp.make_doc(text), annots["entities"])
+            if "-" in tags:
+                misaligned.append((text, annots["entities"]))
+                if verbose:
+                    print(f"MISALIGNED: {text} {annots['entities']}")
+        except Exception as e:
+            misaligned.append((text, annots["entities"]))
+            if verbose:
+                print(f"ERROR: {text} {annots['entities']} ({e})")
+    return misaligned
+
 def main():
     if os.getenv("REVIEW_WITH_MANUAL_BOT", "false").lower() == "true":
         run_manual_correction_bot()
@@ -579,13 +598,59 @@ def main():
             deduped_train_data.append(struct)
     print(f"Deduplicated to {len(deduped_train_data)} unique structures for training.")
 
-    # Before retraining, scan for misaligned NER examples
-    scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
-    scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
-    print("[INFO] Scanning for misaligned NER examples before retraining...")
-    scan_result = subprocess.run(scan_cmd)
-    if scan_result.returncode == 2:
-        print("[ERROR] Misaligned NER examples found. Launching manual_correction_bot and aborting retraining.")
+    # Build NER training data (auto-label, dedupe, etc.)
+    train_data = []
+    all_candidates = set()
+    all_parties = set()
+    all_counties = set()
+    all_states = set()
+    all_districts = set()
+    all_locations = set()
+    
+    # --- Load extra examples from JSONL file ---
+    extra_examples = load_spacy_ner_examples(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_train_data.jsonl"))
+    )
+    if extra_examples:
+        print(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
+    train_data.extend(extra_examples)
+
+    for struct in deduped_train_data:
+        headers = struct["headers"]
+        context = struct.get("context", {})
+        context.update({
+            "known_counties": context_library.get("known_counties", []),
+            "known_cities": context_library.get("known_cities", []),
+            "known_states": context_library.get("known_states", []),
+            "known_candidates": context_library.get("known_candidates", []),
+            "known_districts": context_library.get("known_districts", []),
+        })
+        context_candidates = extract_candidates_from_context(context)
+        context["known_candidates"] = list(set(context.get("known_candidates", []) + context_candidates))
+        all_candidates.update(context["known_candidates"])
+        all_parties.update([p for p in re.findall(r"\\b(?:Democratic|Republican|Libertarian|Green|Independent|Conservative|Working Families|Write-in|Other)\\b", " ".join(headers), re.IGNORECASE)])
+        all_counties.update(context.get("known_counties", []))
+        all_states.update(context.get("known_states", []))
+        all_districts.update(context.get("known_districts", []))
+        all_locations.update(context.get("known_cities", []))
+        
+        for header in headers:
+            entities = auto_label_header(header, context)
+            if entities:
+                # Remove overlapping entities before adding to train_data
+                entities = remove_overlapping_entities(entities)
+                train_data.append((header, {"entities": entities}))
+
+    # Scan in-memory NER examples for misalignments before retraining
+    print("[INFO] Scanning in-memory NER training data for misalignments before retraining...")
+    misaligned = scan_in_memory_ner_examples(train_data, verbose=True)
+    if misaligned:
+        print(f"[ERROR] {len(misaligned)} misaligned NER examples found in final training data. Launching manual_correction_bot and aborting retraining.")
+        # Optionally, save misaligned examples for review
+        misaligned_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_misaligned.jsonl"))
+        with open(misaligned_path, "wb") as f:
+            for text, entities in misaligned:
+                f.write(orjson.dumps({"text": text, "entities": entities}, option=orjson.OPT_APPEND_NEWLINE))
         subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "manual_correction_bot.py"), "--fields", "tables", "--enhanced"])
         print("[INFO] Please correct misalignments and rerun retraining.")
         sys.exit(2)
