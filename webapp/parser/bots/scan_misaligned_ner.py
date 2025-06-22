@@ -5,7 +5,7 @@ from spacy.training import offsets_to_biluo_tags
 import orjson
 import subprocess
 import time
-
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
 def scan_misaligned(jsonl_path="log/spacy_ner_train_data.jsonl", verbose=False):
     nlp = spacy.blank("en")
     misaligned = []
@@ -43,7 +43,7 @@ def self_heal_loop(jsonl_path, verbose, max_retries=3, cooldown=2):
             print("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
             return 0
         print("[SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
-        subprocess.run([sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"])
+        subprocess.run([sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"], check=True, cwd=project_root)
         print(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
         time.sleep(cooldown)
     print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
@@ -66,5 +66,5 @@ if __name__ == "__main__":
         exit_code = scan_misaligned(args.jsonl, args.verbose)
         if args.auto_correct and exit_code == 2:
             print("\n[INFO] Launching manual_correction_bot for review...")
-            subprocess.run([sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"])
+            subprocess.run([sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"], check=True, cwd=project_root)
     sys.exit(exit_code)

@@ -7,7 +7,7 @@ Ensures models are loaded once, cached, and reused across modules.
 Integrates with config.py for model directory paths.
 Optimized for robust, singleton-style loading, device selection, path validation, and logging.
 """
-
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
 import threading
 import os
 import logging
@@ -143,7 +143,7 @@ class ModelRegistry:
                 # Auto-download if missing
                 import subprocess
                 logger.info(f"Downloading spaCy model: {base_name}")
-                subprocess.run([sys.executable, "-m", "spacy", "download", base_name], check=True)
+                subprocess.run([sys.executable, "-m", "spacy", "download", base_name], check=True, cwd=project_root)
                 nlp = spacy.load(base_name)
                 cls._nlp_models[key] = nlp
                 cls._loaded_info[key] = base_name

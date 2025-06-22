@@ -5,7 +5,7 @@ import orjson
 import subprocess
 import sys
 import time
-
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
 # --- Central Dynamic Sets (used everywhere) ---
 HTML_TAGS: Set[str] = set([
@@ -252,13 +252,13 @@ def self_heal_context_library(max_retries=3, cooldown=2):
     for attempt in range(1, max_retries + 1):
         print(f"\n[LIBRARIAN SELF-HEAL] Attempt {attempt}...")
         scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
-        scan_result = subprocess.run(scan_cmd)
+        scan_result = subprocess.run(scan_cmd, check=True, cwd=project_root)
         if scan_result.returncode == 0:
             print("[LIBRARIAN SELF-HEAL] Data is clean. Exiting self-heal mode.")
             return 0
         print("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
         bot_cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--enhanced"]
-        subprocess.run(bot_cmd)
+        subprocess.run(bot_cmd, check=True, cwd=project_root)
         print(f"[LIBRARIAN SELF-HEAL] Sleeping {cooldown}s before rescanning...")
         time.sleep(cooldown)
     print("[LIBRARIAN SELF-HEAL] Max retries reached. Some misalignments may remain.")

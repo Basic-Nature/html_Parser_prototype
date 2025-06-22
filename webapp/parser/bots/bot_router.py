@@ -5,7 +5,7 @@ import os
 import json
 import time
 from datetime import datetime
-
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
 try:
     import openai
 except ImportError:
@@ -81,7 +81,7 @@ def run_bot_task(bot_name, args=None, context=None, self_heal=False, max_retries
         cmd.extend(args)
     print(f"[BOT ROUTER] Running bot: {bot_name} ({' '.join(cmd)})")
     try:
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, cwd=project_root)
     except Exception as e:
         print(f"[BOT ROUTER][ERROR] Failed to run {bot_name}: {e}")
         if bot_name == "retrain_table_structure_models":
@@ -296,7 +296,7 @@ def self_heal_loop(bot_name, args=None, max_retries=3, cooldown=2):
     for attempt in range(1, max_retries + 1):
         print(f"\n[SELF-HEAL] Attempt {attempt}...")
         scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
-        scan_result = subprocess.run(scan_cmd)
+        scan_result = subprocess.run(scan_cmd, check=True, cwd=project_root)
         if scan_result.returncode == 0:
             print("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
             return 0
@@ -304,7 +304,7 @@ def self_heal_loop(bot_name, args=None, max_retries=3, cooldown=2):
         bot_cmd = [sys.executable, "-m", f"webapp.parser.bots.{bot_name}"]
         if args:
             bot_cmd.extend(args)
-        subprocess.run(bot_cmd)
+        subprocess.run(bot_cmd, check=True, cwd=project_root)
         print(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
         time.sleep(cooldown)
     print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")

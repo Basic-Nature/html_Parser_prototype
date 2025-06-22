@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 from ..utils.shared_logic import load_context_library
 from ..Context_Integration.context_organizer import _safe_db_path
 from ..config import CONTEXT_DB_PATH, MODEL_DIR
-
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
 import spacy
 from spacy.training import Example, offsets_to_biluo_tags
 from spacy.lookups import Lookups
@@ -459,6 +459,7 @@ def run_manual_correction_bot():
         result = subprocess.run(
             ["python", script_path, "--fields", "tables", "--enhanced"],
             check=True,
+            cwd=project_root,
             capture_output=True,
             text=True
         )
@@ -651,7 +652,7 @@ def main():
         with open(misaligned_path, "wb") as f:
             for text, entities in misaligned:
                 f.write(orjson.dumps({"text": text, "entities": entities}, option=orjson.OPT_APPEND_NEWLINE))
-        subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "manual_correction_bot.py"), "--fields", "tables", "--enhanced"])
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "manual_correction_bot.py"), "--fields", "tables", "--enhanced"], check=True, cwd=project_root)
         print("[INFO] Please correct misalignments and rerun retraining.")
         sys.exit(2)
 

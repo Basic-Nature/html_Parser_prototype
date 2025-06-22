@@ -23,7 +23,7 @@ from ..utils.shared_logic import (
 from sklearn.preprocessing import LabelEncoder
 import subprocess
 from rich.console import Console
-
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
 console = Console()
 
 from ..utils.spacy_utils import (
@@ -1271,7 +1271,7 @@ class ContextCoordinator:
         Launch the manual_correction_bot CLI for reviewing/editing corrections and feedback.
         """
         script_path = os.path.join(os.path.dirname(__file__), "..", "bots", "manual_correction_bot.py")
-        subprocess.run(["python", script_path, "--fields", field_type, "--feedback", "--enhanced"])
+        subprocess.run(["python", script_path, "--fields", field_type, "--feedback", "--enhanced"], check=True, cwd=project_root)
 
     # --- Learning mode: auto-apply corrections from log/database ---
     def enable_learning_mode(self):

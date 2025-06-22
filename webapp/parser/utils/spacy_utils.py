@@ -3,7 +3,7 @@ spacy_utils.py
 
 Advanced spaCy NLP utilities for election data integrity, context validation, and interference mitigation.
 """
-
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
 import spacy
 from collections import Counter
 from typing import List, Tuple, Dict, Any, Set, Optional
@@ -16,7 +16,7 @@ try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
     import subprocess
-    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=True)
+    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=True, cwd=project_root)
     nlp = spacy.load("en_core_web_sm")
 
 # --- Core NLP Utilities ---
