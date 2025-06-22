@@ -14,6 +14,8 @@ from ..config import CONTEXT_DB_PATH, MODEL_DIR
 
 import spacy
 from spacy.training import Example
+from spacy.lookups import Lookups
+
 import logging
 import argparse
 import gc
@@ -292,13 +294,10 @@ def validate_training_data(train_data, nlp, logger=None):
     return valid_data
 
 def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model_save_path="fine_tuned_spacy_ner"):
-
     nlp = spacy.blank("en")
     try:
-        from spacy.lookups import Lookups
-        import spacy.lookups
-        lookups = Lookups()
         # Always load lexeme_norm if available (suppresses warning)
+        lookups = Lookups()
         lookups.add_table("lexeme_norm", spacy.lookups.load_lookups_data("en", tables=["lexeme_norm"]).get_table("lexeme_norm"))
         nlp.vocab.lookups = lookups
     except Exception as e:
