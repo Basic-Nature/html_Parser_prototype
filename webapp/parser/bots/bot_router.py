@@ -54,7 +54,9 @@ def run_orchestration_plugins(context=None):
 
 BOT_MODULES = {
     "retrain_table_structure_models": "webapp.parser.bots.retrain_table_structure_models",
-    "manual_correction_bot": "webapp.parser.bots.manual_correction_bot",
+    "manual_correction_bot": "webapp.parser.bots.manual_correction_bot --enhanced --feedback --update-db",
+    "scan_misaligned_ner": "webapp.parser.bots.scan_misaligned_ner",
+    
     # Add more bots here as needed
 }
 

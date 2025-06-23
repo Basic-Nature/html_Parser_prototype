@@ -27,7 +27,7 @@ from playwright.sync_api import sync_playwright, Page
 # --- Local imports (all logic is modularized) ---
 from .Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
 from .Context_Integration.context_organizer import load_context_library, organize_context, ContextOrganizer
-from .config import BASE_DIR, CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
+from .config import BASE_DIR, CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH, PROJECT_ROOT
 from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler as get_state_handler
 from .utils.browser_utils import browser_pipeline
