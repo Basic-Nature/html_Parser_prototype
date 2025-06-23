@@ -3,7 +3,7 @@ spacy_utils.py
 
 Advanced spaCy NLP utilities for election data integrity, context validation, and interference mitigation.
 """
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+
 import spacy
 from collections import Counter
 from typing import List, Tuple, Dict, Any, Set, Optional
@@ -11,6 +11,8 @@ import re
 import os
 import json
 from ..config import CONTEXT_LIBRARY_PATH
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+
 # Load spaCy model globally for efficiency, auto-download if missing
 try:
     nlp = spacy.load("en_core_web_sm")

@@ -7,12 +7,12 @@ Ensures models are loaded once, cached, and reused across modules.
 Integrates with config.py for model directory paths.
 Optimized for robust, singleton-style loading, device selection, path validation, and logging.
 """
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+
 import threading
 import os
 import logging
 import sys
-
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
 from ..config import MODEL_DIR
 
 try:
