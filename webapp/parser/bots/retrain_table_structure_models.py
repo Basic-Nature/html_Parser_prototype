@@ -636,6 +636,9 @@ def main():
         all_locations.update(context.get("known_cities", []))
         
         for header in headers:
+            # Skip problematic headers that cause repeated misalignments
+            if header.strip().lower().startswith("totals -"):
+                continue
             entities = auto_label_header(header, context)
             if entities:
                 # Remove overlapping entities before adding to train_data
@@ -652,10 +655,10 @@ def main():
         with open(misaligned_path, "wb") as f:
             for text, entities in misaligned:
                 f.write(orjson.dumps({"text": text, "entities": entities}, option=orjson.OPT_APPEND_NEWLINE))
-        # Run scan_misaligned_ner as a module for diagnostics
+        # Run scan_misaligned_ner as a module for diagnostics (use --jsonl, not --input)
         try:
             subprocess.run([
-                sys.executable, "-m", "webapp.parser.bots.scan_misaligned_ner", "--input", misaligned_path
+                sys.executable, "-m", "webapp.parser.bots.scan_misaligned_ner", "--jsonl", misaligned_path
             ], check=True, cwd=PROJECT_ROOT, env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT)})
         except Exception as e:
             print(f"[WARN] scan_misaligned_ner diagnostics failed: {e}")

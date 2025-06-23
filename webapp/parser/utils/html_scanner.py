@@ -37,6 +37,9 @@ import threading
 _LABEL_CACHE_FILENAME = "segment_label_cache.json"
 _LABEL_CACHE_LOCK = threading.Lock()
 _LABEL_CACHE = None
+_context_cache = None
+_pattern_kb_cache = None
+
 
 def robust_orjson_loads(val):
     """Load JSON robustly from either bytes or str."""
@@ -1566,11 +1569,11 @@ def get_log_folder():
     return log_folder
 
 def load_context_cache_from_disk(filename="context_cache.json"):
-    global _context_cache_cache
-    if _context_cache_cache is not None:
+    global _context_cache
+    if _context_cache is not None:
         # Filter out non-dict entries
-        _context_cache_cache = {k: v for k, v in _context_cache_cache.items() if isinstance(v, dict)}
-        return _context_cache_cache
+        _context_cache = {k: v for k, v in _context_cache.items() if isinstance(v, dict)}
+        return _context_cache
     log_folder = get_log_folder()
     path = os.path.join(log_folder, filename)
     if os.path.exists(path):
@@ -1578,12 +1581,12 @@ def load_context_cache_from_disk(filename="context_cache.json"):
             with open(path, "rb") as f:
                 raw_cache = robust_orjson_loads(f.read())
                 # Filter out non-dict entries
-                _context_cache_cache = {k: v for k, v in raw_cache.items() if isinstance(v, dict)}
-                return _context_cache_cache
+                _context_cache = {k: v for k, v in raw_cache.items() if isinstance(v, dict)}
+                return _context_cache
         except Exception as e:
             logger.error(f"[ERROR] Failed to load {filename}: {e}")
             return {}
-    _context_cache_cache = {}
+    _context_cache = {}
     return {}
 
 def clean_cache_inplace(cache):
