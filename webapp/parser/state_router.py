@@ -12,6 +12,7 @@ from .utils.shared_logger import logger
 from .config import CONTEXT_LIBRARY_PATH
 import difflib 
 import json
+import re
 from .utils.shared_logic import normalize_state_name, normalize_county_name
 def import_handler(module_path: str):
     """
@@ -42,97 +43,205 @@ STATE_HANDLER_BASE_PATH = os.path.join(
     os.path.dirname(__file__), "handlers", "states"
 )
 
-def get_handler(context: Dict[str, Any], url: Optional[str] = None) -> Optional[Any]:
+# === Handler Map Caching ===
+HANDLER_MAP = {
+    "states": [],
+    "counties_by_state": {},
+    "last_loaded": None
+}
+FUZZY_MATCH_THRESHOLD = 0.6  # Default, can be overridden
+DEBUG_MODE = False
+
+def preload_handler_map():
+    """Scan and cache all available state/county handlers."""
+    states = list_available_states()
+    counties_by_state = {s: list_available_counties(s) for s in states}
+    HANDLER_MAP["states"] = states
+    HANDLER_MAP["counties_by_state"] = counties_by_state
+    HANDLER_MAP["last_loaded"] = time.time()
+    logger.info(f"[Router] Handler map preloaded: {len(states)} states, {sum(len(c) for c in counties_by_state.values())} counties.")
+
+def reload_handler_map():
+    preload_handler_map()
+    logger.info("[Router] Handler map reloaded.")
+
+# Preload on import
+import time
+preload_handler_map()
+
+def scan_url_for_state_county(url: str, available_states: List[str], available_counties_by_state: Dict[str, List[str]]) -> Tuple[Optional[str], Optional[str], List[str]]:
+    """
+    Scan the URL for state/county clues using regex and keyword heuristics.
+    Returns (state, county, log_entries)
+    """
+    log_entries = []
+    if not url:
+        log_entries.append("[URL Scan] No URL provided.")
+        return None, None, log_entries
+    url_lower = url.lower()
+    # Try to match state in URL
+    state_match = None
+    for state in available_states:
+        if state in url_lower:
+            state_match = state
+            log_entries.append(f"[URL Scan] Matched state '{state}' in URL.")
+            break
+    # Try to match county in URL (if state found)
+    county_match = None
+    if state_match:
+        counties = available_counties_by_state.get(state_match, [])
+        for county in counties:
+            if county in url_lower:
+                county_match = county
+                log_entries.append(f"[URL Scan] Matched county '{county}' in URL.")
+                break
+    # Fuzzy match if not found
+    if not state_match:
+        matches = fuzzy_match_handler(url_lower, available_states)
+        if matches:
+            state_match = matches[0]
+            log_entries.append(f"[URL Scan] Fuzzy matched state '{state_match}' in URL.")
+    if state_match and not county_match:
+        counties = available_counties_by_state.get(state_match, [])
+        matches = fuzzy_match_handler(url_lower, counties)
+        if matches:
+            county_match = matches[0]
+            log_entries.append(f"[URL Scan] Fuzzy matched county '{county_match}' in URL.")
+    return state_match, county_match, log_entries
+
+
+def fuzzy_match_handler(query: str, choices: list, n=3, cutoff=None, debug=False) -> list:
+    """
+    Return a list of close matches for query from choices.
+    cutoff: float, fuzzy match threshold (default: FUZZY_MATCH_THRESHOLD)
+    debug: bool, if True, log match scores
+    """
+    if not query or not choices:
+        return []
+    cutoff = cutoff if cutoff is not None else FUZZY_MATCH_THRESHOLD
+    matches = difflib.get_close_matches(query, choices, n=n, cutoff=cutoff)
+    if debug and matches:
+        logger.info(f"[Router][Fuzzy] Query '{query}' matches: {matches} (cutoff={cutoff})")
+    return matches
+
+def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool = False, fuzzy_cutoff: float = None) -> Any:
     """
     Dynamically resolves and returns the best handler module for the given context.
-    Uses dynamic_state_county_detection for robust detection.
-    Logs all routing attempts and fallbacks.
-    Now validates detected county against available handlers and context library.
+    Now scans the URL first for state/county clues, then context, then context library, then filesystem.
+    Logs all routing attempts, available options, and fallbacks.
+    Returns a dict with keys: 'handler', 'summary', 'log', 'error' (if any)
     """
     from .Context_Integration.context_coordinator import ContextCoordinator, dynamic_state_county_detection
-
-    # Step 1: Enrich context using the coordinator (NLP, ML, etc.)
+    summary = {"attempts": [], "final": None, "error": None}
+    log = []
+    # Use preloaded handler map
+    available_states = HANDLER_MAP["states"]
+    available_counties_by_state = HANDLER_MAP["counties_by_state"]
+    context_library_states = list(STATE_MODULE_MAP.keys()) if STATE_MODULE_MAP else []
+    if debug:
+        logger.info(f"[Router] Available states (filesystem): {available_states}")
+        logger.info(f"[Router] Available states (context library): {context_library_states}")
+        for s in available_states:
+            logger.info(f"[Router] Counties for state '{s}': {available_counties_by_state[s]}")
+    # Step 1: Scan URL for clues first
+    url_state, url_county, url_log = scan_url_for_state_county(url or context.get('url', ''), available_states, available_counties_by_state)
+    for entry in url_log:
+        log.append(entry)
+        if debug:
+            logger.info(entry)
+    # Step 2: Enrich context using the coordinator (NLP, ML, etc.)
     coordinator = ContextCoordinator(use_library=True, enable_ml=False, alert_monitor=False)
     enriched = coordinator.organize_and_enrich(context)
     html = context.get("raw_html", "") or (enriched.get("raw_html") if enriched else "")
     context_library = coordinator.library
-
-    # Step 2: Use dynamic_state_county_detection for best guess
+    # Step 3: Use dynamic_state_county_detection for best guess (context, html, context library)
     county, state, handler_path, detection_log = dynamic_state_county_detection(
         context, html, context_library, debug=True
     )
-
-    # --- NEW: Validate detected county before setting in context ---
-    valid_county = None
+    for log_entry in detection_log:
+        log.append(f"[Context Detection] {log_entry}")
+        if debug:
+            logger.info(f"[Router] [Context Detection] {log_entry}")
+    # Step 4: Decide on state/county using priority: URL > context > context library > filesystem
     valid_state = None
-    available_states = list_available_states()
-    # Normalize state
-    if state:
+    valid_county = None
+    fuzzy_cutoff = fuzzy_cutoff if fuzzy_cutoff is not None else FUZZY_MATCH_THRESHOLD
+    # 1. Use URL scan if found
+    if url_state:
+        valid_state = url_state
+        if url_county:
+            valid_county = url_county
+        summary["attempts"].append(f"URL scan: state={url_state}, county={url_county}")
+    # 2. Else use context detection
+    if not valid_state and state:
         normalized_state = normalize_state_name(state)
         if normalized_state in available_states:
             valid_state = normalized_state
         else:
-            # Fuzzy match state
-            matches = fuzzy_match_handler(normalized_state, available_states)
+            matches = fuzzy_match_handler(normalized_state, available_states, cutoff=fuzzy_cutoff, debug=debug)
             if matches:
                 valid_state = matches[0]
-    else:
-        valid_state = None
-
-    available_counties = list_available_counties(valid_state) if valid_state else []
-    if county:
+                summary["attempts"].append(f"Fuzzy matched state '{normalized_state}' to '{valid_state}'")
+    if valid_state and not valid_county and county:
         normalized_county = normalize_county_name(county)
-        if normalized_county in available_counties:
+        counties = available_counties_by_state.get(valid_state, [])
+        if normalized_county in counties:
             valid_county = normalized_county
         else:
-            # Check if county is actually a district of a known county (context_library)
+            # Check if county is a district of a known county (context_library)
             known_county_to_district = context_library.get("Known_county_to_district_map", {})
             for county_name, districts in known_county_to_district.items():
                 if normalized_county in [normalize_county_name(d) for d in districts]:
                     valid_county = normalize_county_name(county_name)
-                    logger.info(f"[Router] '{county}' matched as district of county '{county_name}'. Using '{county_name}'.")
+                    log.append(f"'{county}' matched as district of county '{county_name}'. Using '{county_name}'.")
                     break
             if not valid_county:
-                # Fuzzy match county
-                matches = fuzzy_match_handler(normalized_county, available_counties)
+                matches = fuzzy_match_handler(normalized_county, counties, cutoff=fuzzy_cutoff, debug=debug)
                 if matches:
                     valid_county = matches[0]
-                    logger.info(f"[Router] '{county}' not found. Fuzzy matched to '{valid_county}'.")
-
-    # Step 3: Update context with validated values for downstream use
+                    log.append(f"'{county}' not found. Fuzzy matched to '{valid_county}'.")
+    # Step 5: Update context with validated values for downstream use
     if valid_state:
         context["state"] = valid_state
     if valid_county:
         context["county"] = valid_county
-
-    # Step 4: Log detection steps
-    logger.info("[Router] Detection log:")
-    for log_entry in detection_log:
-        logger.info(f"    {log_entry}")
-
-    # Step 5: Attempt to import the handler module
-    # Try county handler first if both are valid
+    summary["final"] = {"state": valid_state, "county": valid_county}
+    log.append(f"Final resolved state: {valid_state}, county: {valid_county}")
+    # Step 6: Attempt to import the handler module
+    handler = None
+    error = None
+    attempted_paths = []
     if valid_state and valid_county:
         handler_path = f"webapp.parser.handlers.states.{valid_state}.county.{valid_county}"
-        logger.info(f"[Router] Attempting to import handler: {handler_path}")
-        module = import_handler(handler_path)
-        if module:
-            logger.info(f"[Router] Routed to handler: {handler_path}")
-            return module
+        attempted_paths.append(handler_path)
+        log.append(f"Attempting to import handler: {handler_path}")
+        handler = import_handler(handler_path)
+        if handler:
+            log.append(f"Routed to handler: {handler_path}")
         else:
-            logger.warning(f"[Router] Could not import handler: {handler_path}")
-
+            log.append(f"Could not import handler: {handler_path}")
     # Fallback to state-level handler if county handler not found
-    if valid_state:
+    if not handler and valid_state:
         fallback_path = f"webapp.parser.handlers.states.{valid_state}"
-        logger.info(f"[Router] Attempting fallback to state handler: {fallback_path}")
-        module = import_handler(fallback_path)
-        if module:
-            logger.info(f"[Router] Routed to fallback state handler: {fallback_path}")
-            return module
-
-    logger.warning("[Router] No suitable handler found for context.")
-    return None
+        attempted_paths.append(fallback_path)
+        log.append(f"Attempting fallback to state handler: {fallback_path}")
+        handler = import_handler(fallback_path)
+        if handler:
+            log.append(f"Routed to fallback state handler: {fallback_path}")
+        else:
+            log.append(f"Could not import fallback state handler: {fallback_path}")
+    if not handler:
+        error = {
+            "message": "No suitable handler found for context.",
+            "attempted_paths": attempted_paths,
+            "final_state": valid_state,
+            "final_county": valid_county,
+            "log": log
+        }
+        log.append("No suitable handler found for context.")
+    summary["log"] = log
+    summary["error"] = error
+    return {"handler": handler, "summary": summary}
 
 def list_available_handlers(level: str = "state", state: str = None) -> list:
     """
@@ -171,30 +280,52 @@ def list_available_counties(state_key: str) -> list:
             counties.append(fname)
     return sorted(counties)
 
-def fuzzy_match_handler(query: str, choices: list, n=3, cutoff=0.6) -> list:
-    """
-    Return a list of close matches for query from choices.
-    """
-    if not query or not choices:
-        return []
-    return difflib.get_close_matches(query, choices, n=n, cutoff=cutoff)
-
 def cli():
-    """Simple CLI for state_router utilities."""
+    """CLI for state_router utilities."""
     import argparse
     parser = argparse.ArgumentParser(description="State Router CLI Utility")
     parser.add_argument("--list-states", action="store_true", help="List all available state handlers")
     parser.add_argument("--list-counties", metavar="STATE", help="List all available county handlers for a state")
+    parser.add_argument("--test-route", metavar="URL_OR_CONTEXT", help="Test routing for a given URL or JSON context file")
+    parser.add_argument("--debug", action="store_true", help="Enable debug/verbose logging")
+    parser.add_argument("--reload", action="store_true", help="Reload handler map before running")
+    parser.add_argument("--fuzzy-cutoff", type=float, default=None, help="Fuzzy match threshold (default: 0.6)")
     args = parser.parse_args()
-
+    global DEBUG_MODE
+    if args.debug:
+        DEBUG_MODE = True
+    if args.reload:
+        reload_handler_map()
     if args.list_states:
         print("Available states:")
-        for state in list_available_states():
+        for state in HANDLER_MAP["states"]:
             print(f" - {state}")
     elif args.list_counties:
         print(f"Available counties for {args.list_counties}:")
-        for county in list_available_counties(args.list_counties):
+        for county in HANDLER_MAP["counties_by_state"].get(args.list_counties, []):
             print(f" - {county}")
+    elif args.test_route:
+        # Try to load as JSON context, else treat as URL
+        import json
+        import os
+        test_input = args.test_route
+        context = None
+        url = None
+        if os.path.isfile(test_input):
+            with open(test_input, "r", encoding="utf-8") as f:
+                context = json.load(f)
+        else:
+            url = test_input
+            context = {"url": url}
+        result = get_handler(context, url=url, debug=DEBUG_MODE, fuzzy_cutoff=args.fuzzy_cutoff)
+        print("\n=== Routing Summary ===")
+        for entry in result["summary"]["log"]:
+            print(entry)
+        if result["handler"]:
+            print("\n[Result] Handler module imported successfully.")
+        else:
+            print("\n[Result] No handler found.")
+            print(json.dumps(result["summary"]["error"], indent=2))
     else:
         parser.print_help()
 

@@ -152,6 +152,8 @@ class ContextOrganizer:
         logger=None,
         db_path=None,
         context_library_path=None,
+        debug=False,
+        fuzzy_cutoff=0.6
     ):
         from ..utils.shared_logger import logger as shared_logger
         self.use_library = use_library
@@ -167,6 +169,8 @@ class ContextOrganizer:
         self.organized = None
         self.processed_urls = load_processed_urls()
         self.output_cache = load_output_cache()
+        self.debug = debug
+        self.fuzzy_cutoff = fuzzy_cutoff
         ensure_db_schema()
         create_table_structures_table()
         monitor_db_for_alerts(poll_interval=10)
@@ -232,17 +236,17 @@ class ContextOrganizer:
         embedding_model=None,
         plot_anomalies=True,
         plot_clusters_flag=True,
+        debug=None,
+        fuzzy_cutoff=None
     ):
         """
         Organizes the context for a parsed HTML page, including DOM structure, contests, panels, buttons, tables, and ML features.
-        Leverages accurate DOM indices and relationships for downstream ML and semantic analysis.
+        Now includes dynamic state/county detection, verbose logging, and returns a detailed result object.
         """
-        use_library = self.use_library if use_library is None else use_library
-        enable_ml = self.enable_ml if enable_ml is None else enable_ml
-        contamination = self.contamination if contamination is None else contamination
-        n_estimators = self.n_estimators if n_estimators is None else n_estimators
-        random_state = self.random_state if random_state is None else random_state
-        embedding_model = self.embedding_model if embedding_model is None else embedding_model
+        debug = self.debug if debug is None else debug
+        fuzzy_cutoff = self.fuzzy_cutoff if fuzzy_cutoff is None else fuzzy_cutoff
+        log = []
+        summary = {"attempts": [], "final": None, "error": None}
 
         if "panels" in raw_context and isinstance(raw_context["panels"], list):
             raw_context["panels"] = {}
@@ -467,8 +471,34 @@ class ContextOrganizer:
         conn.commit()
         conn.close()
 
+        # --- Dynamic state/county detection ---
+        from .context_coordinator import dynamic_state_county_detection
+        html = raw_context.get("raw_html", "")
+        context_library = self.library
+        county, state, handler_path, detection_log = dynamic_state_county_detection(
+            raw_context, html, context_library, debug=debug
+        )
+        for log_entry in detection_log:
+            log.append(f"[Dynamic Detection] {log_entry}")
+            if debug:
+                self.logger.info(f"[ContextOrganizer][Dynamic Detection] {log_entry}")
+        # Attach detected state/county to context
+        if state:
+            raw_context["state"] = state
+        if county:
+            raw_context["county"] = county
+        summary["final"] = {"state": state, "county": county}
+        log.append(f"Final detected state: {state}, county: {county}")
+
+        # At the end, return a detailed result object
+        result = {
+            "organized": organized,
+            "summary": summary,
+            "log": log,
+            "error": None
+        }
         self.organized = organized
-        return organized
+        return result
 
     def build_dom_tree(self, segments):
         """
