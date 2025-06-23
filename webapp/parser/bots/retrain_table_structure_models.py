@@ -452,16 +452,16 @@ def get_all_confirmed_structures():
 
 def run_manual_correction_bot():
     """
-    Run the manual correction bot as a subprocess, capturing output and errors.
+    Run the manual correction bot robustly as a module, capturing output and errors.
     """
-    script_path = os.path.join(os.path.dirname(__file__), "manual_correction_bot.py")
     try:
         result = subprocess.run(
-            ["python", script_path, "--fields", "tables", "--enhanced"],
+            [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"],
             check=True,
             cwd=PROJECT_ROOT,
             capture_output=True,
-            text=True
+            text=True,
+            env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT)}
         )
         print(result.stdout)
         if result.stderr:
@@ -575,7 +575,7 @@ def main():
     print(f"Found {len(confirmed_structures)} confirmed table structures.")
 
     # Log user feedback/corrections for ML ---
-    feedback_log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../log/structure_feedback_log.jsonl"))
+    feedback_log_path = os.path.join(PROJECT_ROOT, "log", "structure_feedback_log.jsonl")
     os.makedirs(os.path.dirname(feedback_log_path), exist_ok=True)
     for struct in confirmed_structures:
         # Assume struct contains both original and corrected structure info if available
@@ -610,7 +610,7 @@ def main():
     
     # --- Load extra examples from JSONL file ---
     extra_examples = load_spacy_ner_examples(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_train_data.jsonl"))
+        os.path.join(PROJECT_ROOT, "log", "spacy_ner_train_data.jsonl")
     )
     if extra_examples:
         print(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
@@ -646,13 +646,21 @@ def main():
     print("[INFO] Scanning in-memory NER training data for misalignments before retraining...")
     misaligned = scan_in_memory_ner_examples(train_data, verbose=True)
     if misaligned:
-        print(f"[ERROR] {len(misaligned)} misaligned NER examples found in final training data. Launching manual_correction_bot and aborting retraining.")
-        # Optionally, save misaligned examples for review
-        misaligned_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_misaligned.jsonl"))
+        print(f"[ERROR] {len(misaligned)} misaligned NER examples found in final training data. Running diagnostics and launching manual_correction_bot. Aborting retraining.")
+        # Save misaligned examples for review
+        misaligned_path = os.path.join(PROJECT_ROOT, "log", "spacy_ner_misaligned.jsonl")
         with open(misaligned_path, "wb") as f:
             for text, entities in misaligned:
                 f.write(orjson.dumps({"text": text, "entities": entities}, option=orjson.OPT_APPEND_NEWLINE))
-        subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "manual_correction_bot.py"), "--fields", "tables", "--enhanced"], check=True, cwd=PROJECT_ROOT)
+        # Run scan_misaligned_ner as a module for diagnostics
+        try:
+            subprocess.run([
+                sys.executable, "-m", "webapp.parser.bots.scan_misaligned_ner", "--input", misaligned_path
+            ], check=True, cwd=PROJECT_ROOT, env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT)})
+        except Exception as e:
+            print(f"[WARN] scan_misaligned_ner diagnostics failed: {e}")
+        # Launch manual correction bot robustly as a module
+        run_manual_correction_bot()
         print("[INFO] Please correct misalignments and rerun retraining.")
         sys.exit(2)
 
