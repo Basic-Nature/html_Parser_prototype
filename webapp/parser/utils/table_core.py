@@ -31,7 +31,7 @@ import time
 import hashlib
 from ..utils.shared_logger import logger, rprint
 from ..utils.ml_table_detector import detect_tables_ml
-from ..config import BASE_DIR
+from ..config import BASE_DIR, PROJECT_ROOT
 from difflib import get_close_matches
 from ..bots.librarian import (
     LOCATION_KEYWORDS,
@@ -55,6 +55,15 @@ BALLOT_TYPES = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
 ]
 
+def get_safe_log_path(filename):
+    """
+    Returns a safe log path inside the PROJECT_ROOT/log directory.
+    Prevents path-injection and directory traversal.
+    """
+    log_dir = os.path.join(PROJECT_ROOT, "log")
+    os.makedirs(log_dir, exist_ok=True)
+    safe_filename = os.path.basename(filename)
+    return os.path.join(log_dir, safe_filename)
 
 context_cache = {}
 
@@ -2453,17 +2462,7 @@ def log_failed_container(page, container, selector, idx, error_msg):
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Could not log failed container: {e}")
 
-def get_safe_log_path(filename="dom_pattern_log.jsonl"):
-    """
-    Returns a safe log path inside the PROJECT_ROOT/log directory.
-    Prevents path-injection and directory traversal.
-    """
-    # Use the parent of BASE_DIR as the project root
-    project_root = os.path.dirname(BASE_DIR)
-    log_dir = os.path.join(project_root, "log")
-    os.makedirs(log_dir, exist_ok=True)
-    safe_filename = os.path.basename(filename)
-    return os.path.join(log_dir, safe_filename)
+
 
 def suggest_new_row_classes_from_logs(log_dir):
     """
@@ -2493,7 +2492,7 @@ def load_dom_patterns(log_path=None):
     Loads all DOM patterns, returns a list of dicts.
     """
     if log_path is None:
-        log_path = get_safe_log_path()
+        log_path = get_safe_log_path("dom_pattern_log.jsonl")
     if not os.path.exists(log_path):
         return []
     with open(log_path, "r", encoding="utf-8") as f:
@@ -2540,8 +2539,7 @@ def review_learned_table_structures(log_path=None):
     """
     # --- Use log directory parent to webapp for default path
     if log_path is None:
-        LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
-        log_path = os.path.join(LOG_PARENT_DIR, "table_structure_learning_log.jsonl")
+        log_path = get_safe_log_path("table_structure_learning_log.jsonl")
     if not os.path.exists(log_path):
         print("No learned table structures found.")
         return

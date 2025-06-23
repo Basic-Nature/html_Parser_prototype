@@ -5,7 +5,18 @@ from spacy.training import offsets_to_biluo_tags
 import orjson
 import subprocess
 import time
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+from pathlib import Path
+from ..config import PROJECT_ROOT
+
+LOG_DIR = Path(PROJECT_ROOT) / "log"
+
+def resolve_jsonl_path(jsonl_path):
+    # If absolute, use as-is; else, join with LOG_DIR
+    p = Path(jsonl_path)
+    if not p.is_absolute():
+        p = LOG_DIR / p
+    return str(p)
+
 def scan_misaligned(jsonl_path="log/spacy_ner_train_data.jsonl", verbose=False):
     nlp = spacy.blank("en")
     misaligned = []
@@ -43,7 +54,7 @@ def self_heal_loop(jsonl_path, verbose, max_retries=3, cooldown=2):
             print("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
             return 0
         print("[SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
-        subprocess.run([sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"], check=True, cwd=project_root)
+        subprocess.run([sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"], check=True, cwd=PROJECT_ROOT)
         print(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
         time.sleep(cooldown)
     print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
@@ -60,11 +71,12 @@ if __name__ == "__main__":
     parser.add_argument("--cooldown", type=int, default=2, help="Seconds to wait between self-heal attempts")
     args = parser.parse_args()
 
+    jsonl_path = resolve_jsonl_path(args.jsonl)
     if args.self_heal:
-        exit_code = self_heal_loop(args.jsonl, args.verbose, args.max_retries, args.cooldown)
+        exit_code = self_heal_loop(jsonl_path, args.verbose, args.max_retries, args.cooldown)
     else:
-        exit_code = scan_misaligned(args.jsonl, args.verbose)
+        exit_code = scan_misaligned(jsonl_path, args.verbose)
         if args.auto_correct and exit_code == 2:
             print("\n[INFO] Launching manual_correction_bot for review...")
-            subprocess.run([sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"], check=True, cwd=project_root)
+            subprocess.run([sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"], check=True, cwd=PROJECT_ROOT)
     sys.exit(exit_code)

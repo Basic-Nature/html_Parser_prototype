@@ -12,7 +12,7 @@ import re
 import os
 import numpy as np
 import orjson
-import datetime
+from datetime import datetime, timezone
 import types
 from fuzzywuzzy import fuzz, process
 from ..utils.shared_logger import rprint
@@ -23,7 +23,8 @@ from ..utils.shared_logic import (
 from sklearn.preprocessing import LabelEncoder
 import subprocess
 from rich.console import Console
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+from ..config import PROJECT_ROOT
+
 console = Console()
 
 from ..utils.spacy_utils import (
@@ -295,14 +296,14 @@ class ContextCoordinator:
         # Always use log/ as the directory, and sanitize the filename
         safe_field_type = _sanitize_log_filename(field_type)
         if log_path is None:
-            log_path = os.path.join("log", f"{safe_field_type}_selection_log.jsonl")
+            log_path = os.path.join(PROJECT_ROOT, "log", f"{safe_field_type}_selection_log.jsonl")
         else:
             # Only use the filename part, sanitize it, and force it into log/
             base = os.path.basename(log_path)
             safe_base = _sanitize_log_filename(base)
-            log_path = os.path.join("log", safe_base)
+            log_path = os.path.join(PROJECT_ROOT, "log", safe_base)
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "field_type": field_type,
             "field_name": field_name,
             "extracted_value": extracted_value,
@@ -924,7 +925,9 @@ class ContextCoordinator:
         First, check the button selection log for a successful match.
         """
         # 1. Check button selection log for a successful match
-        log_path = "button_selection_log.jsonl"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "button_selection_log.jsonl")
         if os.path.exists(log_path):
             with open(log_path, "rb") as f:
                 for line in f:
@@ -1001,13 +1004,13 @@ class ContextCoordinator:
     def log_pattern_attempt(self, label, pattern, result, context=None):
         """Log each pattern attempt for self-learning."""
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "label": label,
             "pattern": pattern,
             "result": result,  # e.g., "match", "no_match", "clicked", "skipped"
             "context": context or {}
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "pattern_attempts_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1186,7 +1189,7 @@ class ContextCoordinator:
             "context": context,
             "result": "learning_confirmed"
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "button_learning_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1196,7 +1199,7 @@ class ContextCoordinator:
         """
         Retrieve a previously confirmed button from the learning log.
         """
-        log_path = os.path.join("log", "button_learning_log.jsonl")
+        log_path = os.path.join(PROJECT_ROOT, "log", "button_learning_log.jsonl")
         if not os.path.exists(log_path):
             return None
         with open(log_path, "rb") as f:
@@ -1224,7 +1227,7 @@ class ContextCoordinator:
             "selector": button.get("selector"),
             "result": result
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "button_selection_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1235,7 +1238,7 @@ class ContextCoordinator:
         """
         Retrieve or learn the expected table structure for a contest.
         """
-        log_path = os.path.join("log", "table_structure_learning_log.jsonl")
+        log_path = os.path.join(PROJECT_ROOT, "log", "table_structure_learning_log.jsonl")
         # 1. Learning mode: check log for confirmed structure
         if learning_mode and os.path.exists(log_path):
             with open(log_path, "rb") as f:
@@ -1259,7 +1262,7 @@ class ContextCoordinator:
             "context": context,
             "result": "learning_confirmed"
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "table_structure_learning_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1271,7 +1274,7 @@ class ContextCoordinator:
         Launch the manual_correction_bot CLI for reviewing/editing corrections and feedback.
         """
         script_path = os.path.join(os.path.dirname(__file__), "..", "bots", "manual_correction_bot.py")
-        subprocess.run(["python", script_path, "--fields", field_type, "--feedback", "--enhanced"], check=True, cwd=project_root)
+        subprocess.run(["python", script_path, "--fields", field_type, "--feedback", "--enhanced"], check=True, cwd=PROJECT_ROOT)
 
     # --- Learning mode: auto-apply corrections from log/database ---
     def enable_learning_mode(self):
@@ -1352,11 +1355,11 @@ class ContextCoordinator:
 
     def _log_get_contests_access(self, filters):
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_contests",
             "filters": filters,
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_contests_access_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1364,14 +1367,14 @@ class ContextCoordinator:
 
     def _log_get_buttons_access(self, contest_title, keyword, url):
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_buttons",
             "contest_title": contest_title,
             "keyword": keyword,
             "url": url,
         }
 
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_buttons_access_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1379,14 +1382,14 @@ class ContextCoordinator:
 
     def _log_get_best_button_access(self, contest_title, keywords, class_hint, url):
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_best_button",
             "contest_title": contest_title,
             "keywords": keywords,
             "class_hint": class_hint,
             "url": url,
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_best_button_access_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1394,11 +1397,11 @@ class ContextCoordinator:
 
     def _log_get_panel_access(self, contest_title):
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_panel",
             "contest_title": contest_title,
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_panel_access_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1406,11 +1409,11 @@ class ContextCoordinator:
 
     def _log_get_tables_access(self, contest_title):
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_tables",
             "contest_title": contest_title,
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_tables_access_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1418,11 +1421,11 @@ class ContextCoordinator:
 
     def _log_get_candidates_access(self, contest_title):
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_candidates",
             "contest_title": contest_title,
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_candidates_access_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1430,12 +1433,12 @@ class ContextCoordinator:
 
     def _log_get_districts_access(self, state, county):
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_districts",
             "state": state,
             "county": county,
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_districts_access_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1443,10 +1446,10 @@ class ContextCoordinator:
 
     def _log_get_states_access(self):
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_states",
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_states_access_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1454,10 +1457,10 @@ class ContextCoordinator:
 
     def _log_get_election_types_access(self):
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_election_types",
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_election_types_access_log.jsonl")
         with open(log_path, "ab") as f:
@@ -1465,10 +1468,10 @@ class ContextCoordinator:
 
     def _log_get_years_access(self):
         log_entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_years",
         }
-        log_dir = "log"
+        log_dir = os.path.join(PROJECT_ROOT, "log")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "get_years_access_log.jsonl")
         with open(log_path, "ab") as f:

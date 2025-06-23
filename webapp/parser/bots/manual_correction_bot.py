@@ -23,7 +23,7 @@ import threading
 import subprocess
 import sys
 import time
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+
 # --- Unified logger import ---
 from ..utils.shared_logger import logger
 
@@ -37,10 +37,13 @@ from ..utils.context_schema import (
 )
 
 # --- Config ---
-from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
+# --- Directory and file constants ---
+from ..config import PROJECT_ROOT, BASE_DIR, CONTEXT_LIBRARY_PATH
 
-LOG_DIR = Path(BASE_DIR).parent / "log"
+LOG_DIR = Path(PROJECT_ROOT) / "log"
 CONTEXT_LIBRARY_DIR = Path(BASE_DIR) / "parser" / "Context_Integration" / "Context_Library"
+
+# Log and data file paths
 FIELD_LOG_SUFFIX = "_selection_log.jsonl"
 SEGMENT_FEEDBACK_LOG = LOG_DIR / "segment_feedback_log.jsonl"
 PATTERN_KB_FILE = LOG_DIR / "dom_pattern_kb.jsonl"
@@ -474,7 +477,7 @@ def main():
         for attempt in range(1, args.max_retries + 1):
             print(f"\n[SELF-HEAL] Attempt {attempt}...")
             scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
-            scan_result = subprocess.run(scan_cmd, check=True, cwd=project_root)
+            scan_result = subprocess.run(scan_cmd, check=True, cwd=PROJECT_ROOT)
             if scan_result.returncode == 0:
                 print("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
                 break

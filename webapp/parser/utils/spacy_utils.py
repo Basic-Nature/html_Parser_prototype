@@ -10,15 +10,15 @@ from typing import List, Tuple, Dict, Any, Set, Optional
 import re
 import os
 import json
-from ..config import CONTEXT_LIBRARY_PATH
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT
+
 
 # Load spaCy model globally for efficiency, auto-download if missing
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
     import subprocess
-    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=True, cwd=project_root)
+    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=True, cwd=PROJECT_ROOT)
     nlp = spacy.load("en_core_web_sm")
 
 # --- Core NLP Utilities ---

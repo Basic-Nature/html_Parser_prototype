@@ -12,8 +12,8 @@ import threading
 import os
 import logging
 import sys
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
-from ..config import MODEL_DIR
+
+from ..config import MODEL_DIR, PROJECT_ROOT
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -143,7 +143,7 @@ class ModelRegistry:
                 # Auto-download if missing
                 import subprocess
                 logger.info(f"Downloading spaCy model: {base_name}")
-                subprocess.run([sys.executable, "-m", "spacy", "download", base_name], check=True, cwd=project_root)
+                subprocess.run([sys.executable, "-m", "spacy", "download", base_name], check=True, cwd=PROJECT_ROOT)
                 nlp = spacy.load(base_name)
                 cls._nlp_models[key] = nlp
                 cls._loaded_info[key] = base_name

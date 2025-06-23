@@ -5,7 +5,7 @@ import os
 import json
 import time
 from datetime import datetime
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+from ..config import PROJECT_ROOT, BASE_DIR
 try:
     import openai
 except ImportError:
@@ -35,8 +35,7 @@ For field-specific correction: --fields contests states --feedback --enhanced
 """
 ORCHESTRATION_PLUGINS = []
 
-WEBAPP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .../webapp
-PROJECT_ROOT = os.path.dirname(WEBAPP_DIR)  # parent of webapp
+WEBAPP_DIR = BASE_DIR
 DEFAULT_LOG_DIR = os.path.join(PROJECT_ROOT, "log")
 
 def register_orchestration_plugin(plugin_func):
@@ -82,9 +81,10 @@ def run_bot_task(bot_name, args=None, context=None, self_heal=False, max_retries
     print(f"[BOT ROUTER] Running bot: {bot_name} ({' '.join(cmd)})")
     env = os.environ.copy()
     # Ensure project root is in PYTHONPATH
-    env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = PROJECT_ROOT + os.pathsep + env.get("PYTHONPATH", "")
+    
     try:
-        subprocess.run(cmd, check=True, cwd=project_root, env=env)
+        subprocess.run(cmd, check=True, cwd=PROJECT_ROOT, env=env)
     except Exception as e:
         print(f"[BOT ROUTER][ERROR] Failed to run {bot_name}: {e}")
         if bot_name == "retrain_table_structure_models":
@@ -299,7 +299,7 @@ def self_heal_loop(bot_name, args=None, max_retries=3, cooldown=2):
     for attempt in range(1, max_retries + 1):
         print(f"\n[SELF-HEAL] Attempt {attempt}...")
         scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
-        scan_result = subprocess.run(scan_cmd, check=True, cwd=project_root)
+        scan_result = subprocess.run(scan_cmd, check=True, cwd=PROJECT_ROOT, capture_output=True, text=True)
         if scan_result.returncode == 0:
             print("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
             return 0
@@ -307,7 +307,7 @@ def self_heal_loop(bot_name, args=None, max_retries=3, cooldown=2):
         bot_cmd = [sys.executable, "-m", f"webapp.parser.bots.{bot_name}"]
         if args:
             bot_cmd.extend(args)
-        subprocess.run(bot_cmd, check=True, cwd=project_root)
+        subprocess.run(bot_cmd, check=True, cwd=PROJECT_ROOT)
         print(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
         time.sleep(cooldown)
     print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
