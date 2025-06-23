@@ -12,6 +12,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     from ...utils.user_prompt import prompt_user_input
     import json
     import os
+    import importlib
 
     # 1. Organize and enrich context
     html_context = context or {}
@@ -25,13 +26,15 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     coordinator.organize_and_enrich(html_context)
     organized = coordinator.organized or {}
 
-    # 3. Attempt to find handler (first pass)
-    # Normalize state/county before passing to get_handler
+    # 3. Normalize state/county before passing to get_handler
     if "state" in html_context:
         html_context["state"] = normalize_state_name(html_context["state"])
     if "county" in html_context:
         html_context["county"] = normalize_county_name(html_context["county"])
-    handler = get_handler(html_context, url=getattr(page, "url", None))
+
+    # 4. Attempt to find handler (first pass)
+    handler_info = get_handler(html_context, url=getattr(page, "url", None))
+    handler = handler_info["handler"] if isinstance(handler_info, dict) else handler_info
     handler_found = handler and hasattr(handler, "parse") and handler is not parse
 
     # --- Routing diagnostics ---
@@ -39,18 +42,15 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     routing_trace.append(f"Initial state: {html_context.get('state')}, county: {html_context.get('county')}")
     attempts = []
 
-    # 4. Feedback loop: If handler not found, try ML/NLP and prompt user
+    # 5. Feedback loop: If handler not found, try ML/NLP and prompt user
     if not handler_found:
         handler_path = prompt_user_input("Enter handler path manually (or leave blank to skip): ").strip()
         if handler_path:
             try:
-                import importlib
                 handler_mod = importlib.import_module(handler_path)
-                # If the module itself is callable (function), use it directly
                 if callable(handler_mod):
                     handler = handler_mod
                     handler_found = True
-                # Otherwise, look for a .parse method
                 elif hasattr(handler_mod, "parse"):
                     handler = handler_mod.parse
                     handler_found = True
@@ -162,7 +162,8 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                 # If we get here, both state and county are valid
                 html_context["state"] = user_state
                 html_context["county"] = user_county
-                handler = get_handler(html_context, url=url)
+                handler_info = get_handler(html_context, url=url)
+                handler = handler_info["handler"] if isinstance(handler_info, dict) else handler_info
                 handler_found = handler and hasattr(handler, "parse") and handler is not parse
                 attempts.append({
                     "method": "manual_prompt",
@@ -170,14 +171,14 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                     "user_county": user_county
                 })
                 routing_trace.append(f"User override: state={user_state}, county={user_county}")
-                break
+                if handler_found:
+                    break
 
             # Optionally allow user to specify handler path directly
             if not handler_found:
                 handler_path = prompt_user_input("Enter handler path manually (or leave blank to skip): ").strip()
                 if handler_path:
                     try:
-                        import importlib
                         handler_mod = importlib.import_module(handler_path)
                         handler = getattr(handler_mod, "parse", None)
                         handler_found = handler is not None
@@ -189,15 +190,15 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                     except Exception as e:
                         logger.error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
                         routing_trace.append(f"Failed manual handler import: {handler_path} ({e})")
-                        
-    # 5. If handler found after feedback, route and return
+
+    # 6. If handler found after feedback, route and return
     if handler_found:
-        logger.info(f"[HTML Handler] Routing to state/county handler: {handler.__name__}")
+        logger.info(f"[HTML Handler] Routing to state/county handler: {getattr(handler, '__name__', str(handler))}")
         logger.info(f"[HTML Handler] Routing trace: {routing_trace}")
         # Pass enriched context and coordinator downstream
         return handler.parse(page, coordinator, html_context, non_interactive=non_interactive, **kwargs)
 
-    # 6. If still not found, log all attempts and provide actionable error
+    # 7. If still not found, log all attempts and provide actionable error
     log_dir = "log"
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, "html_handler_routing_failures.jsonl")

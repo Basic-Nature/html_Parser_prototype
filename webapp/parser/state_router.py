@@ -269,6 +269,47 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
     summary["error"] = error
     return {"handler": handler, "summary": summary}
 
+def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, debug=False):
+    """
+    List available handlers dynamically, with options for level (state/county), fuzzy matching, refresh, and diagnostics.
+    Returns sorted, deduplicated results. Normalizes input for robust lookup.
+    """
+    if refresh:
+        preload_handler_map()
+    handlers = {}
+    states = HANDLER_MAP["states"] if HANDLER_MAP["states"] else list_available_states()
+    counties_by_state = HANDLER_MAP["counties_by_state"] if HANDLER_MAP["counties_by_state"] else {s: list_available_counties(s) for s in states}
+    # Normalize state input
+    norm_state = normalize_state_name(state) if state else None
+    if debug:
+        logger.info(f"[list_available_handlers] level={level}, state={state}, fuzzy={fuzzy}, refresh={refresh}")
+    for s in states:
+        counties = counties_by_state.get(s, [])
+        handlers[s] = sorted(set(counties))
+    if level == "state":
+        return sorted(set(handlers.keys()))
+    if level == "county" and norm_state:
+        counties = handlers.get(norm_state, [])
+        if fuzzy and state:
+            # Fuzzy match state if not found
+            import difflib
+            matches = difflib.get_close_matches(norm_state, handlers.keys(), n=3, cutoff=FUZZY_MATCH_THRESHOLD)
+            if matches:
+                counties = handlers.get(matches[0], [])
+                if debug:
+                    logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
+        return sorted(set(counties))
+    if fuzzy and state:
+        # Fuzzy match state at top level
+        import difflib
+        matches = difflib.get_close_matches(norm_state, handlers.keys(), n=3, cutoff=FUZZY_MATCH_THRESHOLD)
+        if matches:
+            if debug:
+                logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
+            return {matches[0]: handlers[matches[0]]}
+    return handlers
+
+# --- CLI improvements for diagnostics and robust output ---
 def cli():
     """CLI for state_router utilities."""
     import argparse
@@ -279,44 +320,48 @@ def cli():
     parser.add_argument("--debug", action="store_true", help="Enable debug/verbose logging")
     parser.add_argument("--reload", action="store_true", help="Reload handler map before running")
     parser.add_argument("--fuzzy-cutoff", type=float, default=None, help="Fuzzy match threshold (default: 0.6)")
+    parser.add_argument("--fuzzy", action="store_true", help="Enable fuzzy matching for handler listing")
+    parser.add_argument("--refresh", action="store_true", help="Refresh handler map before listing")
     args = parser.parse_args()
     global DEBUG_MODE
     if args.debug:
         DEBUG_MODE = True
-    if args.reload:
+    if args.reload or args.refresh:
         reload_handler_map()
     if args.list_states:
         print("Available states:")
-        for state in HANDLER_MAP["states"]:
+        for state in list_available_handlers(level="state", fuzzy=args.fuzzy, refresh=args.refresh, debug=args.debug):
             print(f" - {state}")
     elif args.list_counties:
-        print(f"Available counties for {args.list_counties}:")
-        for county in HANDLER_MAP["counties_by_state"].get(args.list_counties, []):
-            print(f" - {county}")
+        state = args.list_counties
+        counties = list_available_handlers(level="county", state=state, fuzzy=args.fuzzy, refresh=args.refresh, debug=args.debug)
+        if counties:
+            print(f"Available counties for {state}:")
+            for county in counties:
+                print(f" - {county}")
+        else:
+            print(f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
     elif args.test_route:
         # Try to load as JSON context, else treat as URL
-        import json
-        import os
         test_input = args.test_route
         context = None
         url = None
+        import json
         if os.path.isfile(test_input):
             with open(test_input, "r", encoding="utf-8") as f:
-                context = json.load(f)
+                try:
+                    context = json.load(f)
+                except Exception as e:
+                    print(f"Failed to load context from file: {e}")
+                    return
         else:
             url = test_input
-            context = {"url": url}
-        result = get_handler(context, url=url, debug=DEBUG_MODE, fuzzy_cutoff=args.fuzzy_cutoff)
-        print("\n=== Routing Summary ===")
-        for entry in result["summary"]["log"]:
-            print(entry)
+        result = get_handler(context or {}, url=url, debug=args.debug, fuzzy_cutoff=args.fuzzy_cutoff)
+        print("Routing result:")
+        print(json.dumps(result["summary"], indent=2, ensure_ascii=False))
         if result["handler"]:
-            print("\n[Result] Handler module imported successfully.")
+            print(f"Handler module: {getattr(result['handler'], '__name__', str(result['handler']))}")
         else:
-            print("\n[Result] No handler found.")
-            print(json.dumps(result["summary"]["error"], indent=2))
+            print("No suitable handler found.")
     else:
         parser.print_help()
-
-if __name__ == "__main__":
-    cli()
