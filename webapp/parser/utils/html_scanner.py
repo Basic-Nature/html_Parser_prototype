@@ -1,4 +1,3 @@
-
 import hashlib
 import orjson
 import os
@@ -379,29 +378,65 @@ def extract_tagged_segments_with_attrs(
         root = tree.body or tree.html or tree.root
         walk(root)
 
-        # --- Batch embedding for non-trivial segments ---
-        nontrivial_indices = [i for i, seg in enumerate(segments) if not is_trivial_segment(seg)]
-        nontrivial_segments = [segments[i] for i in nontrivial_indices]
-        if nontrivial_segments:
-            embs = batch_get_segment_embeddings(model, nontrivial_segments)
-        else:
-            embs = []
-        # Assign labels (trivial: ignore, nontrivial: batch ML)
-        emb_idx = 0
-        for i, seg in enumerate(segments):
-            if is_trivial_segment(seg):
-                seg["ml_label"] = "ignore"
-                seg["ml_confidence"] = 1.0
-                seg["pattern_id"] = None
-                if seg.get("html"):
-                    cache_segment_label(seg["html"], "ignore")
-            else:
-                emb = embs[emb_idx] if emb_idx < len(embs) else None
-                label_segment(seg, emb=emb)
-                emb_idx += 1
-
+        # --- Batch embedding for all segments (robust for large files, with diagnostics and chunking) ---
+        import math
+        CHUNK_SIZE = 1024  # Tune as needed for memory/performance
+        seg_hashes = []
+        seg_htmls = []
+        for seg in segments:
+            seg_html = seg.get("html", "")
+            seg_hash_val = segment_hash(seg_html)
+            seg_hashes.append(seg_hash_val)
+            seg_htmls.append(seg_html)
+        total_segments = len(seg_hashes)
+        logger.info(f"[EMBED] Total segments: {total_segments}")
+        from ..utils.embedding_cache import load_embeddings_batch, save_embeddings_batch
+        hash_to_embedding = {}
+        cache_hits = 0
+        cache_misses = 0
+        # Chunked batch loading
+        for i in range(0, total_segments, CHUNK_SIZE):
+            chunk_hashes = seg_hashes[i:i+CHUNK_SIZE]
+            chunk_result = load_embeddings_batch(chunk_hashes)
+            hash_to_embedding.update(chunk_result)
+            hits = sum(1 for v in chunk_result.values() if v is not None)
+            cache_hits += hits
+            cache_misses += len(chunk_hashes) - hits
+            logger.debug(f"[EMBED] Batch {i//CHUNK_SIZE+1}: {hits} hits, {len(chunk_hashes)-hits} misses")
+        logger.info(f"[EMBED] Total cache hits: {cache_hits}, misses: {cache_misses}")
+        # Identify missing hashes
+        missing = [(h, html) for h, html in zip(seg_hashes, seg_htmls) if hash_to_embedding.get(h) is None]
+        # Chunked batch computation and saving
+        if missing:
+            logger.info(f"[EMBED] Computing {len(missing)} missing embeddings in chunks of {CHUNK_SIZE}")
+            for i in range(0, len(missing), CHUNK_SIZE):
+                chunk = missing[i:i+CHUNK_SIZE]
+                missing_hashes, missing_htmls = zip(*chunk)
+                try:
+                    new_embs = model.encode(list(missing_htmls), convert_to_numpy=True, show_progress_bar=False)
+                except Exception as e:
+                    logger.error(f"[EMBED] Batch embedding computation failed: {e}")
+                    continue
+                save_embeddings_batch(list(zip(missing_hashes, new_embs)))
+                for h, emb in zip(missing_hashes, new_embs):
+                    hash_to_embedding[h] = emb
+                logger.debug(f"[EMBED] Saved {len(chunk)} new embeddings to cache.")
+        # Assign embeddings to segments
+        for seg, h in zip(segments, seg_hashes):
+            seg["_embedding"] = hash_to_embedding[h]
+        logger.info(f"[EMBED] Embedding assignment complete for {len(segments)} segments.")
         # Second pass: assign context_heading and panel_ancestor_heading
         for seg in segments:
+            seg_html = seg.get("html", "")
+            seg_hash_val = segment_hash(seg_html)
+            embedding = load_embedding(seg_hash_val)
+            if embedding is not None:
+                seg["_embedding"] = embedding
+            else:
+                # Compute and save embedding if needed
+                emb = model.encode(seg_html, convert_to_numpy=True, show_progress_bar=False)
+                save_embedding(seg_hash_val, emb)
+                seg["_embedding"] = emb
             if seg["tag"] in panel_tags or seg["tag"] == "table":
                 parent_idx = seg["parent_idx"]
                 heading_html = None
@@ -473,26 +508,46 @@ def extract_tagged_segments_with_attrs(
             root = soup.find("html") or soup.find("body") or soup
             walk_bs4(root)
 
-            # Batch embedding for non-trivial segments (BeautifulSoup fallback)
-            nontrivial_indices = [i for i, seg in enumerate(segments) if not is_trivial_segment(seg)]
-            nontrivial_segments = [segments[i] for i in nontrivial_indices]
-            if nontrivial_segments:
-                embs = batch_get_segment_embeddings(model, nontrivial_segments)
-            else:
-                embs = []
-            emb_idx = 0
-            for i, seg in enumerate(segments):
-                if is_trivial_segment(seg):
-                    seg["ml_label"] = "ignore"
-                    seg["ml_confidence"] = 1.0
-                    seg["pattern_id"] = None
-                    if seg.get("html"):
-                        cache_segment_label(seg["html"], "ignore")
-                else:
-                    emb = embs[emb_idx] if emb_idx < len(embs) else None
-                    label_segment(seg, emb=emb)
-                    emb_idx += 1
-
+            # Batch embedding for all segments (BeautifulSoup fallback, with diagnostics and chunking)
+            seg_hashes = []
+            seg_htmls = []
+            for seg in segments:
+                seg_html = seg.get("html", "")
+                seg_hash_val = segment_hash(seg_html)
+                seg_hashes.append(seg_hash_val)
+                seg_htmls.append(seg_html)
+            total_segments = len(seg_hashes)
+            logger.info(f"[EMBED] (BS4) Total segments: {total_segments}")
+            hash_to_embedding = {}
+            cache_hits = 0
+            cache_misses = 0
+            for i in range(0, total_segments, CHUNK_SIZE):
+                chunk_hashes = seg_hashes[i:i+CHUNK_SIZE]
+                chunk_result = load_embeddings_batch(chunk_hashes)
+                hash_to_embedding.update(chunk_result)
+                hits = sum(1 for v in chunk_result.values() if v is not None)
+                cache_hits += hits
+                cache_misses += len(chunk_hashes) - hits
+                logger.debug(f"[EMBED] (BS4) Batch {i//CHUNK_SIZE+1}: {hits} hits, {len(chunk_hashes)-hits} misses")
+            logger.info(f"[EMBED] (BS4) Total cache hits: {cache_hits}, misses: {cache_misses}")
+            missing = [(h, html) for h, html in zip(seg_hashes, seg_htmls) if hash_to_embedding.get(h) is None]
+            if missing:
+                logger.info(f"[EMBED] (BS4) Computing {len(missing)} missing embeddings in chunks of {CHUNK_SIZE}")
+                for i in range(0, len(missing), CHUNK_SIZE):
+                    chunk = missing[i:i+CHUNK_SIZE]
+                    missing_hashes, missing_htmls = zip(*chunk)
+                    try:
+                        new_embs = model.encode(list(missing_htmls), convert_to_numpy=True, show_progress_bar=False)
+                    except Exception as e:
+                        logger.error(f"[EMBED] (BS4) Batch embedding computation failed: {e}")
+                        continue
+                    save_embeddings_batch(list(zip(missing_hashes, new_embs)))
+                    for h, emb in zip(missing_hashes, new_embs):
+                        hash_to_embedding[h] = emb
+                    logger.debug(f"[EMBED] (BS4) Saved {len(chunk)} new embeddings to cache.")
+            for seg, h in zip(segments, seg_hashes):
+                seg["_embedding"] = hash_to_embedding[h]
+            logger.info(f"[EMBED] (BS4) Embedding assignment complete for {len(segments)} segments.")
             for seg in segments:
                 if seg["tag"] in panel_tags or seg["tag"] == "table":
                     parent_idx = seg["parent_idx"]
@@ -504,7 +559,6 @@ def extract_tagged_segments_with_attrs(
                             break
                         parent_idx = parent["parent_idx"]
                     seg["context_heading"] = heading_html
-
             logger.info(f"[PERF] DOM extraction (BeautifulSoup fallback+ML+batch) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
             return segments
         except Exception as bs4e:
@@ -962,7 +1016,18 @@ def extract_download_links_from_html(html, exts=(".csv", ".json", ".pdf")):
 
 # --- ML/Embedding/Clustering helpers ---
 
-def auto_label_segment(segment):
+def auto_label_segment(
+    segment,
+    context_library=None,
+    context_cache=None,
+    model_name=None,
+    use_finetuned=True,
+    ml_threshold=0.7
+):
+    if context_library is None:
+        logger.warning("context_library is None!")
+    else:
+        logger.info(f"context_library keys: {list(context_library.keys())}")
     tag = segment.get("tag", "")
     classes = [c.lower() for c in segment.get("classes", [])]
     attrs = segment.get("attrs", {})
@@ -1047,7 +1112,6 @@ def auto_label_segment(segment):
 
     # --- 7. Context-driven: party, vote method, contest, etc. ---
     # Use context_library if available
-    global context_library  # or pass as argument
     if 'party' in context_library:
         known_parties = [p.lower() for p in context_library['party']]
         if text in known_parties or html in known_parties:
@@ -1205,7 +1269,7 @@ def ml_classify_segment(segment, model, pattern_kb, threshold=0.85):
         return "unknown", best_conf, None
     return best_label, best_conf, best_pattern_id
 
-def prompt_for_segment_label(segment):
+def prompt_for_segment_label(segment, context_library=None):
     # Use robust segment identity hash for deduplication
     seg_hash = segment_identity_hash(segment)
     # Check persistent cache first
@@ -1218,7 +1282,7 @@ def prompt_for_segment_label(segment):
     if canonical_label:
         cache_segment_label(seg_hash, canonical_label)
         return canonical_label
-    auto = auto_label_segment(segment)
+    auto = auto_label_segment(segment, context_library=context_library)
     if auto != "ignore" and auto != "unknown":
         cache_segment_label(seg_hash, auto)
         return auto
@@ -1393,7 +1457,7 @@ def scan_html_for_context(
         for seg in segments_with_attrs:
             # Already labeled in extract_tagged_segments_with_attrs, but check for low confidence
             if seg["ml_confidence"] < 0.7 or seg["ml_label"] == "unknown":
-                user_label = prompt_for_segment_label(seg)
+                user_label = prompt_for_segment_label(seg, context_library=context_library)
                 seg["ml_label"] = user_label
                 seg["ml_confidence"] = 1.0
                 seg["pattern_id"] = f"pattern_{hashlib.sha256(seg['html'].encode('utf-8')).hexdigest()[:10]}"
@@ -1559,6 +1623,7 @@ def segment_identity_hash(segment):
     Ignores dynamic attributes and normalizes whitespace for robustness.
     """
     tag = segment.get("tag", "").lower()
+
     classes = " ".join(sorted([c.lower() for c in segment.get("classes", [])]))
     attrs = segment.get("attrs", {})
     # Remove dynamic attributes from attrs for hashing
@@ -1599,7 +1664,3 @@ def batch_get_segment_embeddings(model, segments):
                 save_embedding(identities[idx], new_embs[i])  # Save to disk cache
                 cached[idx] = new_embs[i]
     return [emb if identity else None for emb, identity in zip(cached, identities)]
-
-# --- Module-level caches for pattern_kb and context_cache ---
-_pattern_kb_cache = None
-_context_cache_cache = None

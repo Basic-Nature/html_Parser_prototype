@@ -149,6 +149,7 @@ class ContextOrganizer:
         n_estimators=100,
         random_state=42,
         embedding_model="all-MiniLM-L6-v2",
+        plot_anomalies=True,
         logger=None,
         db_path=None,
         context_library_path=None,
@@ -161,7 +162,8 @@ class ContextOrganizer:
         self.contamination = contamination
         self.n_estimators = n_estimators
         self.random_state = random_state
-        self.embedding_model = embedding_model
+        self.embedding_model = embedding_model  # can be string or model object
+        self.plot_anomalies = plot_anomalies
         self.logger = logger or shared_logger
         self.db_path = db_path or CONTEXT_DB_PATH
         self.context_library_path = context_library_path or CONTEXT_LIBRARY_PATH
@@ -174,6 +176,20 @@ class ContextOrganizer:
         ensure_db_schema()
         create_table_structures_table()
         monitor_db_for_alerts(poll_interval=10)
+        # --- Embedding model validation/loading ---
+        self.embedding_model_obj = None
+        try:
+            from ..utils.model_registry import ModelRegistry
+            if isinstance(self.embedding_model, str):
+                self.embedding_model_obj = ModelRegistry.get_sentence_transformer(self.embedding_model)
+                self.logger.info(f"[CONTEXT ORGANIZER] Loaded embedding model: {self.embedding_model}")
+            else:
+                self.embedding_model_obj = self.embedding_model
+                self.logger.info(f"[CONTEXT ORGANIZER] Using provided embedding model object.")
+        except Exception as e:
+            self.logger.error(f"[CONTEXT ORGANIZER] Failed to load embedding model: {e}")
+            self.embedding_model_obj = None
+        self.logger.info(f"[CONTEXT ORGANIZER] plot_anomalies set to: {self.plot_anomalies}")
 
     @staticmethod
     def _default_library():
@@ -234,7 +250,7 @@ class ContextOrganizer:
         n_estimators=None,
         random_state=None,
         embedding_model=None,
-        plot_anomalies=True,
+        plot_anomalies=None,
         plot_clusters_flag=True,
         debug=None,
         fuzzy_cutoff=None
@@ -242,11 +258,33 @@ class ContextOrganizer:
         """
         Organizes the context for a parsed HTML page, including DOM structure, contests, panels, buttons, tables, and ML features.
         Now includes dynamic state/county detection, verbose logging, and returns a detailed result object.
+        Enhanced: robust keyword-based grouping, use_library/cache integration, and diagnostics.
         """
+        from ..bots.librarian import (
+            LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, CONTEST_KEYWORDS, PERCENT_KEYWORDS, TOTAL_KEYWORDS, MISC_FOOTER_KEYWORDS
+        )
         debug = self.debug if debug is None else debug
         fuzzy_cutoff = self.fuzzy_cutoff if fuzzy_cutoff is None else fuzzy_cutoff
+        # --- Use class-level embedding_model and plot_anomalies unless overridden ---
+        embedding_model = embedding_model if embedding_model is not None else self.embedding_model_obj
+        plot_anomalies = plot_anomalies if plot_anomalies is not None else self.plot_anomalies
+        self.logger.info(f"[CONTEXT ORGANIZER] organize_context using embedding_model: {getattr(embedding_model, 'model_name_or_path', str(embedding_model)) if embedding_model is not None else 'None'}")
+        self.logger.info(f"[CONTEXT ORGANIZER] organize_context plot_anomalies: {plot_anomalies}")
         log = []
         summary = {"attempts": [], "final": None, "error": None}
+
+        # --- Use/merge context library if provided ---
+        context_library = self.library.copy() if hasattr(self, 'library') else {}
+        if use_library:
+            context_library.update(use_library)
+            log.append("[LIBRARY] Merged use_library into context_library.")
+        # --- Use cache if provided ---
+        if cache is not None:
+            if hasattr(self, '_context_cache'):
+                self._context_cache.update(cache)
+            else:
+                self._context_cache = cache.copy()
+            log.append(f"[CACHE] Using provided cache with {len(cache)} entries.")
 
         if "panels" in raw_context and isinstance(raw_context["panels"], list):
             raw_context["panels"] = {}
@@ -269,21 +307,20 @@ class ContextOrganizer:
             "end": None,
             "_idx": 0
         }
-        # Shift all indices by 1 to accommodate virtual root at _idx=0
         for seg in tagged_segments:
             seg["_idx"] = seg.get("_idx", 0) + 1
             if seg.get("parent_idx") is None:
-                seg["parent_idx"] = 0  # Point to virtual root
+                seg["parent_idx"] = 0
             elif isinstance(seg["parent_idx"], int):
                 seg["parent_idx"] += 1
             seg["children"] = [c + 1 if isinstance(c, int) else c for c in seg.get("children", [])]
         tagged_segments = [virtual_root] + tagged_segments
 
-        # Replace dom_parts and lambda utilities with instance methods
         dom_tree = self.build_dom_tree(tagged_segments)
         dom_tree["source_url"] = url_value
         dom_parts = self.expose_dom_parts(dom_tree)
 
+        # --- Robust contest organization using all available keywords ---
         contests = []
         contest_titles = set()
         for c in raw_context.get("contests", []):
@@ -299,36 +336,40 @@ class ContextOrganizer:
                     "county": raw_context.get("county"),
                     "raw": c
                 })
-        for c in self.library.get("contests", []):
+        for c in context_library.get("contests", []):
             norm_title = normalize_label(c.get("title", c.get("label", str(c))))
             if norm_title not in contest_titles:
                 contests.append(c)
                 contest_titles.add(norm_title)
-
-        features = []
-        le_state = LabelEncoder()
-        le_county = LabelEncoder()
-        states = [c.get("state", "unknown") for c in contests]
-        counties = [c.get("county", "unknown") for c in contests]
-        le_state.fit(states)
-        le_county.fit(counties)
+        # --- Keyword-based grouping for contests ---
+        keyword_sets = {
+            "location": LOCATION_KEYWORDS,
+            "candidate": CANDIDATE_KEYWORDS,
+            "party": PARTY_KEYWORDS,
+            "ballot_type": set(BALLOT_TYPES),
+            "contest": CONTEST_KEYWORDS,
+            "percent": PERCENT_KEYWORDS,
+            "total": TOTAL_KEYWORDS,
+            "footer": MISC_FOOTER_KEYWORDS
+        }
+        contest_groups = {k: [] for k in keyword_sets}
         for c in contests:
-            features.append([
-                le_state.transform([c.get("state", "unknown")])[0],
-                le_county.transform([c.get("county", "unknown")])[0],
-                int(c.get("year", 0)) if str(c.get("year", "0")).isdigit() else 0,
-                len(c.get("title", "")),
-            ])
-        features = np.array(features)
-        embedding_features = get_title_embedding_features(contests, model_name=embedding_model)
-        X = np.hstack([features, embedding_features])
+            title = c.get("title", "").lower()
+            for group, keywords in keyword_sets.items():
+                if any(kw in title for kw in keywords):
+                    contest_groups[group].append(c)
+        log.append(f"[KEYWORDS] Contest groups: {{k: len(v) for k,v in contest_groups.items()}}")
 
-        if contamination is None:
-            if len(X) > 10:
-                contamination = auto_tune_contamination(X, plot=plot_anomalies)
-            else:
-                contamination = 0.2 if len(X) < 10 else 0.1
-
+        # --- Robust panel/table/button grouping using keywords and library ---
+        def group_by_keywords(items, label_field="label"):
+            groups = {k: [] for k in keyword_sets}
+            for item in items:
+                label = item.get(label_field, "").lower()
+                for group, keywords in keyword_sets.items():
+                    if any(kw in label for kw in keywords):
+                        groups[group].append(item)
+            return groups
+        # Panels
         panels = {}
         for c in contests:
             panel = None
@@ -336,11 +377,15 @@ class ContextOrganizer:
                 panel = next((p for p in panel_features if normalize_label(p.get("label", "")) == normalize_label(c["title"])), None)
             if not panel:
                 panel = raw_context.get("panels", {}).get(c["title"])
+            if not panel and "panels" in context_library:
+                panel = next((p for p in context_library["panels"] if normalize_label(p.get("label", "")) == normalize_label(c["title"])), None)
             panels[c["title"]] = panel
-
+        panel_groups = group_by_keywords([p for p in panels.values() if p], label_field="label")
+        log.append(f"[KEYWORDS] Panel groups: {{k: len(v) for k,v in panel_groups.items()}}")
+        # Buttons
         buttons_by_contest = defaultdict(list)
         raw_buttons = button_features or raw_context.get("buttons", [])
-        lib_buttons = self.library.get("buttons", [])
+        lib_buttons = context_library.get("buttons", [])
         if not isinstance(raw_buttons, list):
             raw_buttons = []
         if not isinstance(lib_buttons, list):
@@ -360,10 +405,12 @@ class ContextOrganizer:
                 unmatched_buttons.append(btn)
         for btn in unmatched_buttons:
             buttons_by_contest["__unmatched__"].append(btn)
-
+        button_groups = group_by_keywords(all_buttons, label_field="label")
+        log.append(f"[KEYWORDS] Button groups: {{k: len(v) for k,v in button_groups.items()}}")
+        # Tables
         tables_by_contest = defaultdict(list)
         raw_tables = raw_context.get("tables", [])
-        lib_tables = self.library.get("tables", [])
+        lib_tables = context_library.get("tables", [])
         if not isinstance(raw_tables, list):
             raw_tables = []
         if not isinstance(lib_tables, list):
@@ -375,7 +422,9 @@ class ContextOrganizer:
                     tables_by_contest[c["title"]].append(tbl)
             if not any(tbl in v for v in tables_by_contest.values()):
                 tables_by_contest["__unmatched__"].append(tbl)
-                
+        table_groups = group_by_keywords(all_tables, label_field="label")
+        log.append(f"[KEYWORDS] Table groups: {{k: len(v) for k,v in table_groups.items()}}")
+
         metadata = {
             "state": raw_context.get("state"),
             "county": raw_context.get("county"),
@@ -418,8 +467,81 @@ class ContextOrganizer:
         if len(contests) > 50:
             rprint(f"[bold red][CONTEXT ORGANIZER][/bold red] High contest count detected — possible congestion.\n  [dim]Context:[/dim] contest_count={len(contests)}")
 
+        # --- Advanced relationship extraction: party/candidate/district/state/county mappings ---
+        party_to_candidates = defaultdict(set)
+        candidate_to_party = defaultdict(set)
+        candidate_to_district = defaultdict(set)
+        district_to_candidates = defaultdict(set)
+        state_to_counties = defaultdict(set)
+        county_to_state = dict()
+        # Use contests, panels, tables, and DOM segments for mapping
+        for c in contests:
+            party = c.get("party") or c.get("party_label") or c.get("affiliation")
+            candidate = c.get("candidate") or c.get("candidates")
+            district = c.get("district") or c.get("district_name")
+            state = c.get("state")
+            county = c.get("county")
+            # Handle lists and strings
+            if isinstance(candidate, str):
+                candidate = [candidate]
+            if isinstance(party, str):
+                party = [party]
+            if isinstance(district, str):
+                district = [district]
+            # Party <-> Candidate
+            if party and candidate:
+                for p in party:
+                    for cand in candidate:
+                        if p and cand:
+                            party_to_candidates[p.strip()].add(cand.strip())
+                            candidate_to_party[cand.strip()].add(p.strip())
+            # Candidate <-> District
+            if candidate and district:
+                for cand in candidate:
+                    for d in district:
+                        if cand and d:
+                            candidate_to_district[cand.strip()].add(d.strip())
+                            district_to_candidates[d.strip()].add(cand.strip())
+            # State <-> County
+            if state and county:
+                state_to_counties[state.strip()].add(county.strip())
+                county_to_state[county.strip()] = state.strip()
+        # Also scan panels/tables for party/candidate/district/state/county
+        for group in [panels.values(), tables_by_contest.values()]:
+            for items in group:
+                if isinstance(items, dict):
+                    items = [items]
+                for item in items:
+                    label = (item.get("label") or "").lower()
+                    for p in PARTY_KEYWORDS:
+                        if p in label:
+                            party_to_candidates[p].add(label)
+                    for cand in CANDIDATE_KEYWORDS:
+                        if cand in label:
+                            candidate_to_party[label].add(cand)
+                    for d in CONTEST_KEYWORDS:
+                        if d in label:
+                            candidate_to_district[label].add(d)
+        # Convert sets to sorted lists for output
+        party_to_candidates = {k: sorted(v) for k, v in party_to_candidates.items()}
+        candidate_to_party = {k: sorted(v) for k, v in candidate_to_party.items()}
+        candidate_to_district = {k: sorted(v) for k, v in candidate_to_district.items()}
+        district_to_candidates = {k: sorted(v) for k, v in district_to_candidates.items()}
+        state_to_counties = {k: sorted(v) for k, v in state_to_counties.items()}
+        # Log mappings for diagnostics
+        log.append(f"[RELATIONSHIPS] party_to_candidates: { {k: len(v) for k,v in party_to_candidates.items()} }")
+        log.append(f"[RELATIONSHIPS] candidate_to_party: { {k: len(v) for k,v in candidate_to_party.items()} }")
+        log.append(f"[RELATIONSHIPS] candidate_to_district: { {k: len(v) for k,v in candidate_to_district.items()} }")
+        log.append(f"[RELATIONSHIPS] district_to_candidates: { {k: len(v) for k,v in district_to_candidates.items()} }")
+        log.append(f"[RELATIONSHIPS] state_to_counties: { {k: len(v) for k,v in state_to_counties.items()} }")
+        log.append(f"[RELATIONSHIPS] county_to_state: {county_to_state}")
+
         organized = {
             "contests": contests,
+            "contest_groups": contest_groups,
+            "panel_groups": panel_groups,
+            "button_groups": button_groups,
+            "table_groups": table_groups,
             "buttons": dict(buttons_by_contest),
             "panels": panels,
             "tables": dict(tables_by_contest),
@@ -432,6 +554,13 @@ class ContextOrganizer:
             "extract_html_by_idx": lambda idx, html=raw_context.get("raw_html", ""): self.extract_html_by_idx(dom_tree["nodes"], idx, html),
             "extract_subtree_html": lambda idx, html=raw_context.get("raw_html", ""): self.extract_subtree_html(dom_tree["nodes"], idx, html),
             "group_nodes_by_label": lambda label_field="ml_label": self.group_nodes_by_label(dom_tree["nodes"], label_field),
+            # --- Advanced mappings for downstream use ---
+            "party_to_candidates": party_to_candidates,
+            "candidate_to_party": candidate_to_party,
+            "candidate_to_district": candidate_to_district,
+            "district_to_candidates": district_to_candidates,
+            "state_to_counties": state_to_counties,
+            "county_to_state": county_to_state,
         }
         valid_years = [
             c.get("year")
@@ -474,7 +603,6 @@ class ContextOrganizer:
         # --- Dynamic state/county detection ---
         from .context_coordinator import dynamic_state_county_detection
         html = raw_context.get("raw_html", "")
-        context_library = self.library
         county, state, handler_path, detection_log = dynamic_state_county_detection(
             raw_context, html, context_library, debug=debug
         )
@@ -482,7 +610,6 @@ class ContextOrganizer:
             log.append(f"[Dynamic Detection] {log_entry}")
             if debug:
                 self.logger.info(f"[ContextOrganizer][Dynamic Detection] {log_entry}")
-        # Attach detected state/county to context
         if state:
             raw_context["state"] = state
         if county:
@@ -490,7 +617,6 @@ class ContextOrganizer:
         summary["final"] = {"state": state, "county": county}
         log.append(f"Final detected state: {state}, county: {county}")
 
-        # At the end, return a detailed result object
         result = {
             "organized": organized,
             "summary": summary,

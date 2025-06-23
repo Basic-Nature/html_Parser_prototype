@@ -80,8 +80,11 @@ def run_bot_task(bot_name, args=None, context=None, self_heal=False, max_retries
     if args:
         cmd.extend(args)
     print(f"[BOT ROUTER] Running bot: {bot_name} ({' '.join(cmd)})")
+    env = os.environ.copy()
+    # Ensure project root is in PYTHONPATH
+    env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
     try:
-        subprocess.run(cmd, check=True, cwd=project_root)
+        subprocess.run(cmd, check=True, cwd=project_root, env=env)
     except Exception as e:
         print(f"[BOT ROUTER][ERROR] Failed to run {bot_name}: {e}")
         if bot_name == "retrain_table_structure_models":

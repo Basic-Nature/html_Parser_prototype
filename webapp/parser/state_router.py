@@ -14,6 +14,10 @@ import difflib
 import json
 import re
 from .utils.shared_logic import normalize_state_name, normalize_county_name
+
+# Preload on import
+import time
+
 def import_handler(module_path: str):
     """
     Dynamically import a handler module by its dotted path.
@@ -52,6 +56,30 @@ HANDLER_MAP = {
 FUZZY_MATCH_THRESHOLD = 0.6  # Default, can be overridden
 DEBUG_MODE = False
 
+def list_available_states() -> list:
+    """List all available state handler modules (normalized names)."""
+    base_path = STATE_HANDLER_BASE_PATH
+    if not os.path.isdir(base_path):
+        logger.warning("[Router] handlers/states directory not found.")
+        return []
+    return sorted([d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))])
+
+def list_available_counties(state_key: str) -> list:
+    """
+    List all available county handler modules for a given state (normalized names, no .py).
+    """
+    base_path = os.path.join(STATE_HANDLER_BASE_PATH, state_key, "county")
+    if not os.path.isdir(base_path):
+        logger.warning(f"[Router] counties directory not found for state: {state_key}")
+        return []
+    counties = []
+    for fname in os.listdir(base_path):
+        if fname.endswith(".py") and not fname.startswith("__"):
+            counties.append(fname[:-3])  # strip .py
+        elif os.path.isdir(os.path.join(base_path, fname)):
+            counties.append(fname)
+    return sorted(counties)
+
 def preload_handler_map():
     """Scan and cache all available state/county handlers."""
     states = list_available_states()
@@ -65,9 +93,7 @@ def reload_handler_map():
     preload_handler_map()
     logger.info("[Router] Handler map reloaded.")
 
-# Preload on import
-import time
-preload_handler_map()
+
 
 def scan_url_for_state_county(url: str, available_states: List[str], available_counties_by_state: Dict[str, List[str]]) -> Tuple[Optional[str], Optional[str], List[str]]:
     """
@@ -242,43 +268,6 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
     summary["log"] = log
     summary["error"] = error
     return {"handler": handler, "summary": summary}
-
-def list_available_handlers(level: str = "state", state: str = None) -> list:
-    """
-    List all available handler modules for a given level.
-    level: "state" or "county"
-    If level is "county", state must be provided (normalized, e.g., "new_york").
-    """
-    if level == "state":
-        return list_available_states()
-    elif level == "county" and state:
-        return list_available_counties(state)
-    else:
-        return []
-
-def list_available_states() -> list:
-    """List all available state handler modules (normalized names)."""
-    base_path = STATE_HANDLER_BASE_PATH
-    if not os.path.isdir(base_path):
-        logger.warning("[Router] handlers/states directory not found.")
-        return []
-    return sorted([d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))])
-
-def list_available_counties(state_key: str) -> list:
-    """
-    List all available county handler modules for a given state (normalized names, no .py).
-    """
-    base_path = os.path.join(STATE_HANDLER_BASE_PATH, state_key, "county")
-    if not os.path.isdir(base_path):
-        logger.warning(f"[Router] counties directory not found for state: {state_key}")
-        return []
-    counties = []
-    for fname in os.listdir(base_path):
-        if fname.endswith(".py") and not fname.startswith("__"):
-            counties.append(fname[:-3])  # strip .py
-        elif os.path.isdir(os.path.join(base_path, fname)):
-            counties.append(fname)
-    return sorted(counties)
 
 def cli():
     """CLI for state_router utilities."""
