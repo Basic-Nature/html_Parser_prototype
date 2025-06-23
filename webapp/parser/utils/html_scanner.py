@@ -968,6 +968,7 @@ def auto_label_segment(segment):
     attrs = segment.get("attrs", {})
     html = segment.get("html", "").lower()
     id_ = segment.get("id", "").lower()
+    text = segment.get("text", "").strip().lower() if segment.get("text") else ""
 
     # --- 0. Always-ignored tags/classes/ids ---
     ALWAYS_IGNORE_TAGS = {
@@ -1010,17 +1011,12 @@ def auto_label_segment(segment):
         "icon-bg-center", "icon-bg-middle", "icon-bg-end", "icon-bg-start", "icon-bg-first", "icon-bg-last", "icon-bg-prev",
         "icon-bg-next", "icon-bg-prev", "icon-bg-next", "icon-bg-prev", "icon-bg-next"
     }
-    ICON_TAGS = {"i", "svg", "path", "g", "span"}  # span is only icon if class matches
-
-    # If it's an icon tag with icon class, or a span with only icon class, ignore
+    ICON_TAGS = {"i", "svg", "path", "g", "span"}
     if tag in ICON_TAGS and (ICON_CLASSES & set(classes)):
-        # If the span has only icon classes or is empty, ignore
         if tag != "span" or (set(classes) <= ICON_CLASSES and not html.strip()):
             return "ignore"
-        # If span has only icon classes and no text, ignore
         if tag == "span" and set(classes) <= ICON_CLASSES and not re.sub(r"<[^>]+>", "", html).strip():
             return "ignore"
-    # Empty span or i
     if tag in {"i", "span"} and not html.strip():
         return "ignore"
 
@@ -1049,11 +1045,31 @@ def auto_label_segment(segment):
     if tag == "table":
         return "results_table"
 
-    # --- 7. Location/candidate panel ---
-    if any(kw in html for kw in LOCATION_KEYWORDS):
-        return "location_panel"
-    if any(kw in html for kw in CANDIDATE_KEYWORDS):
-        return "candidate_panel"
+    # --- 7. Context-driven: party, vote method, contest, etc. ---
+    # Use context_library if available
+    global context_library  # or pass as argument
+    if 'party' in context_library:
+        known_parties = [p.lower() for p in context_library['party']]
+        if text in known_parties or html in known_parties:
+            return "party_label"
+    if 'vote_methods' in context_library:
+        known_vote_methods = [v.lower() for v in context_library['vote_methods']]
+        if text in known_vote_methods or html in known_vote_methods:
+            return "vote_method"
+    if 'contests' in context_library:
+        known_contests = [c["title"].lower() for c in context_library['contests'] if "title" in c]
+        if text in known_contests or html in known_contests:
+            return "contest_title"
+    # Fuzzy match for party label
+    from difflib import get_close_matches
+    if 'party' in context_library:
+        close = get_close_matches(text, [p.lower() for p in context_library['party']], n=1, cutoff=0.85)
+        if close:
+            return "party_label"
+    if 'vote_methods' in context_library:
+        close = get_close_matches(text, [v.lower() for v in context_library['vote_methods']], n=1, cutoff=0.85)
+        if close:
+            return "vote_method"
 
     # --- 8. Ballot type ---
     if any(bt in html for bt in BALLOT_TYPES):
@@ -1101,7 +1117,7 @@ def auto_label_segment(segment):
     # --- 13. Fallback: ignore if only contains a single icon or decorative element ---
     if tag == "span" and len(classes) > 0 and all(cls in ICON_CLASSES for cls in classes):
         return "ignore"
-
+    
     # --- 14. Fallback: ignore if only contains a single child which is an icon ---
     # (You can expand this with more DOM context if needed.)
     
@@ -1117,8 +1133,12 @@ def auto_label_segment(segment):
     #                 pass
     # except Exception:
     #     pass
-    
-    # --- 15. Fallback: unknown/ambiguous, needs review ---
+    # --- 15. Canonical label mapping ---
+    canonical = get_canonical_segment_label(text)
+    if canonical:
+        return canonical
+
+    # --- 16. Fallback: unknown/ambiguous, needs review ---
     return "unknown"
 
 def embedding_cache_hash(segment, model_id):
