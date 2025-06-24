@@ -14,6 +14,8 @@ import logging
 import re
 import threading
 import time
+import sys
+import psycopg2
 from pathlib import Path
 from datetime import datetime
 from typing import cast, Dict, Any, List
@@ -23,6 +25,8 @@ from dotenv import load_dotenv
 from rich.console import Console
 from .utils.shared_logger import rprint, logger
 from playwright.sync_api import sync_playwright, Page
+from sqlalchemy.exc import OperationalError
+
 
 # --- Local imports (all logic is modularized) ---
 from .Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
@@ -497,58 +501,68 @@ def resolve_and_parse(page, context, url):
 def main():
     # --- Bot integration: run bot tasks if enabled ---
     if ENABLE_BOT_TASKS and run_bot_task:
-        run_bot_task("scan_and_notify", context={})
+        try:
+            run_bot_task("scan_and_notify", context={})
+        except (OperationalError, psycopg2.OperationalError) as db_err:
+            logger.error(f"[DB ERROR] Could not connect to the database: {db_err}")
+            print("[FATAL] Database connection failed. Exiting pipeline.")
+            sys.exit(1)
         return
 
-    if process_format_override():
-        return
+    try:
+        if process_format_override():
+            return
 
-    ensure_input_directory()
-    ensure_output_directory()
+        ensure_input_directory()
+        ensure_output_directory()
 
-    urls = load_urls()
-    logging.debug(f"Raw URLs loaded: {urls}")
-    logging.debug(f"Loaded {len(urls)} raw URLs from urls.txt")
+        urls = load_urls()
+        logging.debug(f"Raw URLs loaded: {urls}")
+        logging.debug(f"Loaded {len(urls)} raw URLs from urls.txt")
 
-    max_urls = os.getenv("MAX_URLS_DISPLAYED")
-    if max_urls and max_urls.isdigit():
-        urls = urls[:int(max_urls)]
+        max_urls = os.getenv("MAX_URLS_DISPLAYED")
+        if max_urls and max_urls.isdigit():
+            urls = urls[:int(max_urls)]
 
-    if not urls:
-        logging.error("No URLs to process. Exiting.")
-        return
+        if not urls:
+            logging.error("No URLs to process. Exiting.")
+            return
 
-    processed_info = load_processed_urls()
-    logging.debug(f"{len(urls)} URLs remain after filtering .processed_urls")
+        processed_info = load_processed_urls()
+        logging.debug(f"{len(urls)} URLs remain after filtering .processed_urls")
 
-    selected_urls = prompt_url_selection(urls, processed_info)
-    if not selected_urls:
-        logging.info("No URLs selected. Exiting.")
-        return
+        selected_urls = prompt_url_selection(urls, processed_info)
+        if not selected_urls:
+            logging.info("No URLs selected. Exiting.")
+            return
 
-    # --- Multiprocessing for batch mode ---
-    if ENABLE_PARALLEL:
-        with Pool() as pool:
-            pool.starmap(process_url, [(url, processed_info) for url in selected_urls])
-    else:
+        # --- Multiprocessing for batch mode ---
+        if ENABLE_PARALLEL:
+            with Pool() as pool:
+                pool.starmap(process_url, [(url, processed_info) for url in selected_urls])
+        else:
+            for url in selected_urls:
+                process_url(url, processed_info)
+        summary = {"success": 0, "fail": 0, "partial": 0, "error": 0, "flagged": 0}
+        processed = load_processed_urls()
         for url in selected_urls:
-            process_url(url, processed_info)  
-    summary = {"success": 0, "fail": 0, "partial": 0, "error": 0, "flagged": 0}
-    processed = load_processed_urls()
-    for url in selected_urls:
-        status = processed.get(url, {}).get("status", "unprocessed")
-        if status in summary:
-            summary[status] += 1
-        if processed.get(url, {}).get("flagged_for_review"):
-            summary["flagged"] += 1
+            status = processed.get(url, {}).get("status", "unprocessed")
+            if status in summary:
+                summary[status] += 1
+            if processed.get(url, {}).get("flagged_for_review"):
+                summary["flagged"] += 1
 
-    print("\n[SUMMARY]")
-    print(f"  URLs processed: {len(selected_urls)}")
-    print(f"  Success: {summary['success']}")
-    print(f"  Failures: {summary['fail']}")
-    print(f"  Partial: {summary['partial']}")
-    print(f"  Errors: {summary['error']}")
-    print(f"  Flagged for review: {summary['flagged']}")          
+        print("\n[SUMMARY]")
+        print(f"  URLs processed: {len(selected_urls)}")
+        print(f"  Success: {summary['success']}")
+        print(f"  Failures: {summary['fail']}")
+        print(f"  Partial: {summary['partial']}")
+        print(f"  Errors: {summary['error']}")
+        print(f"  Flagged for review: {summary['flagged']}")
+    except (OperationalError, psycopg2.OperationalError) as db_err:
+        logger.error(f"[DB ERROR] Could not connect to the database: {db_err}")
+        print("[FATAL] Database connection failed. Exiting pipeline.")
+        sys.exit(1)          
 
 def get_or_scan_context(page, coordinator, rejected_downloads=None):
     if rejected_downloads is None:

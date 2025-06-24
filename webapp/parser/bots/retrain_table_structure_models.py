@@ -13,7 +13,7 @@ from collections import Counter
 from sentence_transformers import InputExample, losses
 from torch.utils.data import DataLoader
 from ..utils.shared_logic import load_context_library
-from ..Context_Integration.context_organizer import _safe_db_path
+from ..utils.db_utils import _safe_db_path
 from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT
 
 import spacy

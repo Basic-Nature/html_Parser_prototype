@@ -14,6 +14,7 @@ import sys
 from threading import Thread
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
 from webapp.parser.config import BASE_DIR
+from webapp.parser.utils.shared_logic import utcnow
 # Load environment variables from .env
 load_dotenv()
 
@@ -108,7 +109,7 @@ def allowed_file(filename):
 
 def append_history(data):
     snapshot = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": utcnow().isoformat() + "Z",
         "data": data
     }
     with open(HISTORY_FILE, "a", encoding="utf-8") as f:

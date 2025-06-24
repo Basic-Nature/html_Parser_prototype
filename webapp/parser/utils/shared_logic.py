@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
+def utcnow():
+    return datetime.datetime.now(datetime.timezone.utc)
 
 def load_state_county_mappings():
     context_lib_path = os.path.join(
