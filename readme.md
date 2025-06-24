@@ -10,6 +10,11 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 
 ### Major Additions
 
+- **Important Change**
+
+- Must download postgresql from website directly
+- <https://www.postgresql.org/download/windows/>
+
 - **Dynamic Table Extraction & Structure Learning**
   - Centralized in `table_core.py` and `dynamic_table_extractor.py`
   - Multi-strategy extraction: HTML tables, repeated DOM, pattern-based, ML/LLM, and plugin-based
