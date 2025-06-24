@@ -15,6 +15,7 @@ from threading import Thread
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
 from webapp.parser.config import BASE_DIR
 from webapp.parser.utils.shared_logic import utcnow
+from webapp.parser.bots.bot_router import run_pipeline
 # Load environment variables from .env
 load_dotenv()
 
@@ -403,4 +404,5 @@ def upload_to_uploads():
     return redirect(request.referrer or url_for("manage_data"))
 
 if __name__ == "__main__":
+    run_pipeline()
     socketio.run(app, debug=True)

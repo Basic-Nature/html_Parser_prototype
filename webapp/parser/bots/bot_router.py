@@ -5,7 +5,9 @@ import os
 import json
 import time
 from datetime import datetime
-from ..config import PROJECT_ROOT, BASE_DIR
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
+from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL
 try:
     import openai
 except ImportError:
@@ -60,6 +62,17 @@ BOT_MODULES = {
     # Add more bots here as needed
 }
 
+def check_db_connection():
+    """Check if the database is available before running DB-dependent bots."""
+    try:
+        engine = create_engine(POSTGRES_URL)
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+        return True
+    except Exception as e:
+        print(f"[BOT ROUTER][ERROR] Database unavailable: {e}")
+        return False
+
 def run_bot_task(bot_name, args=None, context=None, self_heal=False, max_retries=3, cooldown=2):
     """
     Run a bot by name with optional arguments and self-heal mode.
@@ -76,22 +89,55 @@ def run_bot_task(bot_name, args=None, context=None, self_heal=False, max_retries
     module = BOT_MODULES.get(bot_name)
     if not module:
         print(f"[ERROR] Unknown bot: {bot_name}")
-        return
+        return False
     cmd = [sys.executable, "-m", module]
     if args:
         cmd.extend(args)
     print(f"[BOT ROUTER] Running bot: {bot_name} ({' '.join(cmd)})")
     env = os.environ.copy()
-    # Ensure project root is in PYTHONPATH
     env["PYTHONPATH"] = PROJECT_ROOT + os.pathsep + env.get("PYTHONPATH", "")
-    
     try:
         subprocess.run(cmd, check=True, cwd=PROJECT_ROOT, env=env)
+        return True
     except Exception as e:
         print(f"[BOT ROUTER][ERROR] Failed to run {bot_name}: {e}")
         if bot_name == "retrain_table_structure_models":
             print("[HINT] If on Windows, ensure no file explorer or editor is open on the model directory and try again.")
+        return False
 
+def print_bot_summary(results):
+    print("\n[BOT ROUTER] Pipeline Summary:")
+    print("Bot Name                   | Status")
+    print("---------------------------|--------")
+    for bot, status in results.items():
+        print(f"{bot:<27}| {status}")
+
+def run_pipeline():
+    """Run the main bot pipeline with DB checks and summary output."""
+    results = {}
+
+    # Check DB before running DB-dependent bots
+    if not check_db_connection():
+        print("[BOT ROUTER] Skipping DB-dependent bots: database is not available.")
+        results["retrain_table_structure_models"] = "skipped"
+        results["manual_correction_bot"] = "skipped"
+        print_bot_summary(results)
+        return
+
+    # Run retrain bot
+    if run_bot_task("retrain_table_structure_models"):
+        results["retrain_table_structure_models"] = "success"
+        # Only run correction if retrain succeeded
+        if run_bot_task("manual_correction_bot", args=["--enhanced", "--feedback", "--update-db"]):
+            results["manual_correction_bot"] = "success"
+        else:
+            results["manual_correction_bot"] = "fail"
+    else:
+        results["retrain_table_structure_models"] = "fail"
+        results["manual_correction_bot"] = "skipped"
+
+    print_bot_summary(results)
+   
 def scan_and_notify(context):
     logging.info("[BOT] Scanning for new results and sending notifications (not yet implemented).")
     return True
@@ -314,3 +360,7 @@ def self_heal_loop(bot_name, args=None, max_retries=3, cooldown=2):
         time.sleep(cooldown)
     print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
     return 2
+
+# Optional: If you want to run this as a script directly
+if __name__ == "__main__":
+    run_pipeline()
