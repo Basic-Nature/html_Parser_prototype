@@ -14,7 +14,7 @@ class Contest(Base):
     type = Column(String)
     state = Column(String)
     county = Column(String)
-    metadata = Column(JSON)
+    # metadata = Column(JSON)
 
 class TableStructure(Base):
     __tablename__ = 'table_structures'
@@ -71,4 +71,11 @@ class EmbeddingCache(Base):
     segment_hash = Column(String, primary_key=True)
     embedding = Column(LargeBinary)
 
+class Alert(Base):
+    __tablename__ = 'alerts'
+    id = Column(Integer, primary_key=True)
+    level = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    context = Column(JSON)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 # Add more models as needed for your project (e.g., users, logs, etc.)
