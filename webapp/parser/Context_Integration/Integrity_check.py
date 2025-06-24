@@ -11,13 +11,16 @@ import matplotlib.pyplot as plt
 import threading
 import json
 import time
-import sqlite3
 from pathlib import Path
 from ..utils.shared_logger import rprint
 from typing import List, Dict, Any, Tuple, Optional
 from ..utils.spacy_utils import extract_dates
 from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
 from ..utils import db_utils
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+from webapp.parser.utils.db_utils import get_session
+from webapp.parser.utils.models import Alert
 # --- Rich imports for CLI output ---
 from rich.console import Console
 from rich.table import Table
@@ -25,20 +28,9 @@ from rich.panel import Panel
 
 console = Console()
 
-def _ensure_alerts_table(db_path=None):
-    path = db_utils._safe_db_path(db_path or CONTEXT_DB_PATH)
-    conn = sqlite3.connect(path)
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS alerts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        level TEXT,
-        msg TEXT,
-        context TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    conn.commit()
-    conn.close()
+def _ensure_alerts_table():
+    # Table is managed by SQLAlchemy migrations; nothing to do here
+    pass
 _ensure_alerts_table()
 
 # --- Data Processing Functions (unchanged) ---
@@ -244,19 +236,20 @@ def print_analyze_contest_titles(results):
 # --- Real-Time Monitoring (unchanged) ---
 
 def monitor_db_for_alerts(db_path: str = None, poll_interval: int = 10):
-    path = db_utils._safe_db_path(db_path or CONTEXT_DB_PATH)
+    """
+    Monitor the alerts table in PostgreSQL for new alerts in real time using SQLAlchemy.
+    """
+    last_alert_id = 0
     def monitor():
-        last_alert_id = 0
+        nonlocal last_alert_id
         while True:
             try:
-                conn = sqlite3.connect(path)
-                cursor = conn.cursor()
-                cursor.execute("SELECT id, level, msg, context, created_at FROM alerts WHERE id > ? ORDER BY id ASC", (last_alert_id,))
-                rows = cursor.fetchall()
-                for row in rows:
-                    last_alert_id = row[0]
-                    rprint(f"[REAL-TIME ALERT][{row[1]}] {row[2]} | Context: {row[3]} | ALERT_TYPE: {row[1]}")
-                conn.close()
+                with get_session() as session:
+                    stmt = select(Alert).where(Alert.id > last_alert_id).order_by(Alert.id.asc())
+                    rows = session.execute(stmt).scalars().all()
+                    for row in rows:
+                        last_alert_id = row.id
+                        rprint(f"[REAL-TIME ALERT][{row.level}] {row.msg} | Context: {row.context} | ALERT_TYPE: {row.level}")
             except Exception as e:
                 print(f"[MONITOR] Error in real-time alert monitor: {e}")
             time.sleep(poll_interval)

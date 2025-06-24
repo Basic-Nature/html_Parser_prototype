@@ -1,5 +1,4 @@
 import os
-import sqlite3
 import orjson
 import re
 import datetime
@@ -26,6 +25,10 @@ from sklearn.cluster import KMeans
 import logging
 import argparse
 import gc
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+from webapp.parser.utils.db_utils import get_session
+from webapp.parser.utils.models import TableStructure, Entity
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("manual_correction_bot")
@@ -212,24 +215,19 @@ def entity_frequency_analysis(train_data):
     print("Entity frequency:", counter)
 
 def update_db_with_new_entities(new_entities, db_path):
-    conn = sqlite3.connect(db_path)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS entities (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            entity_type TEXT,
-            value TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    for entity_type, values in new_entities.items():
-        for value in values:
-            conn.execute(
-                "INSERT OR IGNORE INTO entities (entity_type, value) VALUES (?, ?)",
-                (entity_type, value)
-            )
-    conn.commit()
-    conn.close()
-    print(f"Updated DB with new entities: { {k: len(v) for k,v in new_entities.items()} }")
+    """
+    Update the Entity table in PostgreSQL with new entities using SQLAlchemy.
+    """
+    with get_session() as session:
+        for entity_type, values in new_entities.items():
+            for value in values:
+                exists = session.execute(
+                    select(Entity).where(Entity.entity_type == entity_type, Entity.value == value)
+                ).scalar_one_or_none()
+                if not exists:
+                    session.add(Entity(entity_type=entity_type, value=value))
+        session.commit()
+    print(f"Updated DB with new entities: {{ { {k: len(v) for k,v in new_entities.items()} } }}")
 
 def load_spacy_ner_examples(jsonl_path):
     """
@@ -434,18 +432,18 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     update_db_with_new_entities(new_entities, _safe_db_path(CONTEXT_DB_PATH))
     
 def get_all_confirmed_structures():
-    db_path = _safe_db_path(CONTEXT_DB_PATH)
-    conn = sqlite3.connect(db_path)
-    cur = conn.execute(
-        "SELECT contest_title, headers, context FROM table_structures WHERE confirmed_by_user = 1"
-    )
-    rows = cur.fetchall()
-    conn.close()
+    """
+    Retrieve all confirmed table structures from PostgreSQL using SQLAlchemy.
+    """
+    with get_session() as session:
+        rows = session.execute(
+            select(TableStructure).where(TableStructure.confirmed_by_user == True)
+        ).scalars().all()
     return [
         {
-            "contest_title": row[0],
-            "headers": orjson.loads(row[1]) if isinstance(row[1], (bytes, bytearray)) else orjson.loads(row[1].encode("utf-8")),
-            "context": orjson.loads(row[2]) if isinstance(row[2], (bytes, bytearray)) else orjson.loads(row[2].encode("utf-8"))
+            "contest_title": row.contest_title,
+            "headers": orjson.loads(row.headers) if isinstance(row.headers, (str, bytes, bytearray)) else row.headers,
+            "context": orjson.loads(row.context) if isinstance(row.context, (str, bytes, bytearray)) else row.context
         }
         for row in rows
     ]

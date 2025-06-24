@@ -1,9 +1,13 @@
 import re
-import sqlite3
 import numpy as np
 import os
 from functools import lru_cache
 import threading
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
+from webapp.parser.utils.db_utils import get_session
+from webapp.parser.utils.models import EmbeddingCache
 
 # --- In-memory LRU cache for single-segment embedding retrieval ---
 @lru_cache(maxsize=2048)
@@ -14,37 +18,29 @@ def get_embedding_from_memory(segment_hash):
 _batch_cache = {}
 _batch_cache_lock = threading.Lock()
 
-def get_embedding_cache_db_path():
-    from ..config import BASE_DIR
-    log_folder = os.path.join(os.path.dirname(BASE_DIR), "log")
-    os.makedirs(log_folder, exist_ok=True)
-    return os.path.join(log_folder, "embedding_cache.sqlite3")
-
 _db_lock = threading.Lock()
 
 def ensure_embedding_cache_table():
-    db_path = get_embedding_cache_db_path()
-    with _db_lock:
-        conn = sqlite3.connect(db_path)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS embeddings (
-                segment_hash TEXT PRIMARY KEY,
-                embedding BLOB
-            )
-        """)
-        conn.commit()
-        conn.close()
+    # Table is managed by SQLAlchemy migrations; nothing to do here
+    pass
 
 def save_embedding(segment_hash, embedding):
-    """Save a single embedding to the cache."""
+    """Save a single embedding to the cache (PostgreSQL via SQLAlchemy)."""
     ensure_embedding_cache_table()
-    db_path = get_embedding_cache_db_path()
+    emb_bytes = np.array(embedding).astype(np.float32).tobytes()
     with _db_lock:
-        conn = sqlite3.connect(db_path)
-        emb_bytes = np.array(embedding).astype(np.float32).tobytes()
-        conn.execute("REPLACE INTO embeddings (segment_hash, embedding) VALUES (?, ?)", (segment_hash, emb_bytes))
-        conn.commit()
-        conn.close()
+        with get_session() as session:
+            try:
+                obj = session.get(EmbeddingCache, segment_hash)
+                if obj:
+                    obj.embedding = emb_bytes
+                else:
+                    obj = EmbeddingCache(segment_hash=segment_hash, embedding=emb_bytes)
+                    session.add(obj)
+                session.commit()
+            except SQLAlchemyError as e:
+                session.rollback()
+                raise e
     # Update in-memory cache
     with _batch_cache_lock:
         _batch_cache[segment_hash] = np.array(embedding, dtype=np.float32)
@@ -55,14 +51,11 @@ def load_embedding(segment_hash):
         if segment_hash in _batch_cache:
             return _batch_cache[segment_hash]
     ensure_embedding_cache_table()
-    db_path = get_embedding_cache_db_path()
     with _db_lock:
-        conn = sqlite3.connect(db_path)
-        cur = conn.execute("SELECT embedding FROM embeddings WHERE segment_hash = ?", (segment_hash,))
-        row = cur.fetchone()
-        conn.close()
-    if row:
-        emb = np.frombuffer(row[0], dtype=np.float32)
+        with get_session() as session:
+            obj = session.get(EmbeddingCache, segment_hash)
+    if obj and obj.embedding:
+        emb = np.frombuffer(obj.embedding, dtype=np.float32)
         with _batch_cache_lock:
             _batch_cache[segment_hash] = emb
         return emb
@@ -75,13 +68,21 @@ def save_embeddings_batch(hash_emb_list):
     if not hash_emb_list:
         return
     ensure_embedding_cache_table()
-    db_path = get_embedding_cache_db_path()
     with _db_lock:
-        conn = sqlite3.connect(db_path)
-        data = [(h, np.array(e).astype(np.float32).tobytes()) for h, e in hash_emb_list]
-        conn.executemany("REPLACE INTO embeddings (segment_hash, embedding) VALUES (?, ?)", data)
-        conn.commit()
-        conn.close()
+        with get_session() as session:
+            try:
+                for h, e in hash_emb_list:
+                    emb_bytes = np.array(e).astype(np.float32).tobytes()
+                    obj = session.get(EmbeddingCache, h)
+                    if obj:
+                        obj.embedding = emb_bytes
+                    else:
+                        obj = EmbeddingCache(segment_hash=h, embedding=emb_bytes)
+                        session.add(obj)
+                session.commit()
+            except SQLAlchemyError as e:
+                session.rollback()
+                raise e
     # Update in-memory cache
     with _batch_cache_lock:
         for h, e in hash_emb_list:
@@ -93,7 +94,6 @@ def load_embeddings_batch(segment_hashes):
     Returns a dict: {segment_hash: embedding or None}
     """
     ensure_embedding_cache_table()
-    db_path = get_embedding_cache_db_path()
     result = {h: None for h in segment_hashes}
     # First, try in-memory cache
     with _batch_cache_lock:
@@ -104,13 +104,19 @@ def load_embeddings_batch(segment_hashes):
     missing = [h for h in segment_hashes if result[h] is None]
     if missing:
         with _db_lock:
-            conn = sqlite3.connect(db_path)
-            placeholders = ",".join("?" for _ in missing)
-            cur = conn.execute(f"SELECT segment_hash, embedding FROM embeddings WHERE segment_hash IN ({placeholders})", missing)
-            for h, emb_bytes in cur.fetchall():
-                emb = np.frombuffer(emb_bytes, dtype=np.float32)
-                result[h] = emb
-                with _batch_cache_lock:
-                    _batch_cache[h] = emb
-            conn.close()
+            with get_session() as session:
+                stmt = select(EmbeddingCache).where(EmbeddingCache.segment_hash.in_(missing))
+                for obj in session.execute(stmt).scalars():
+                    emb = np.frombuffer(obj.embedding, dtype=np.float32)
+                    result[obj.segment_hash] = emb
+                    with _batch_cache_lock:
+                        _batch_cache[obj.segment_hash] = emb
     return result
+
+# --- SQLAlchemy ORM model for embedding cache (if not already present) ---
+# class EmbeddingCache(Base):
+#     __tablename__ = 'embeddings'
+#     segment_hash = Column(String, primary_key=True)
+#     embedding = Column(LargeBinary)
+#
+# Ensure this model is present in models.py and included in Alembic migrations.

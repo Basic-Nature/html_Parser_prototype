@@ -13,107 +13,117 @@ from collections import defaultdict
 import hashlib
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
-
-# Only import what is used from db_utils
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from ..utils.db_utils import (
     load_processed_urls,
     load_output_cache,
     normalize_label,
-    _safe_db_path,
+    get_session,
 )
+from ..utils.models import Contest, TableStructure
 from ..utils.shared_logic import get_title_embedding_features, load_context_library, scan_environment
 from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies,
     auto_tune_contamination, election_integrity_checks, monitor_db_for_alerts
 )
 from ..utils.shared_logger import logger, rprint
-import sqlite3
-
 from rich.console import Console
 
 console = Console()
 
-# If you want to suppress the progress bar from SentenceTransformer
-# os.environ["TRANSFORMERS_NO_PROGRESS_BAR"] = "1"
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="\n[%(levelname)s] %(message)s\n"
-)
 from ..config import BASE_DIR, CONTEXT_LIBRARY_PATH, CONTEXT_DB_PATH
-# Paths
 
 PROCESSED_URLS_CACHE = os.path.join(BASE_DIR, ".processed_urls")
 OUTPUT_CACHE = os.path.join(BASE_DIR, ".output_cache.jsonl")
 INPUT_DIR = os.path.join(BASE_DIR, "input")
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 
-# --- DB Schema Setup ---
+# --- DB Schema Setup (now handled by Alembic migrations) ---
 def ensure_db_schema():
-    path = _safe_db_path(CONTEXT_DB_PATH)
-    conn = sqlite3.connect(path)
-    cursor = conn.cursor()
-    cursor.executescript("""
-    CREATE TABLE IF NOT EXISTS contests (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        year INTEGER,
-        type TEXT,
-        state TEXT,
-        county TEXT,
-        metadata JSON,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS alerts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        level TEXT,
-        msg TEXT,
-        context JSON,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
-    conn.commit()
-    conn.close()
+    # Schema is managed by Alembic migrations; nothing to do here
+    pass
 
 ensure_db_schema()
 
 processed_urls = load_processed_urls()
 output_cache = load_output_cache()
 
-def create_table_structures_table():
-    db_path = _safe_db_path(CONTEXT_DB_PATH)
-    conn = sqlite3.connect(db_path)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS table_structures (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            contest_title TEXT,
-            headers TEXT,
-            context TEXT,
-            confirmed_by_user INTEGER DEFAULT 0,
-            ml_confidence REAL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
-    
-create_table_structures_table()
-
 def save_table_structure_to_db(contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
-    db_path = _safe_db_path(CONTEXT_DB_PATH)
-    conn = sqlite3.connect(db_path)
-    conn.execute(
-        "INSERT INTO table_structures (contest_title, headers, context, ml_confidence, confirmed_by_user) VALUES (?, ?, ?, ?, ?)",
-        (
-            contest_title,
-            orjson.dumps(headers),
-            orjson.dumps(context),
-            ml_confidence if ml_confidence is not None else None,
-            int(confirmed_by_user)
+    """
+    Upsert a table structure using SQLAlchemy ORM. Updates if contest_title exists, else inserts.
+    """
+    try:
+        with get_session() as session:
+            obj = session.execute(
+                select(TableStructure).where(TableStructure.contest_title == contest_title)
+            ).scalar_one_or_none()
+            if obj:
+                obj.headers = orjson.dumps(headers)
+                obj.context = orjson.dumps(context)
+                obj.ml_confidence = ml_confidence
+                obj.confirmed_by_user = confirmed_by_user
+            else:
+                obj = TableStructure(
+                    contest_title=contest_title,
+                    headers=orjson.dumps(headers),
+                    context=orjson.dumps(context),
+                    ml_confidence=ml_confidence,
+                    confirmed_by_user=confirmed_by_user
+                )
+                session.add(obj)
+            session.commit()
+    except SQLAlchemyError as e:
+        logger.error(f"[DB][TableStructure] Error saving: {e}")
+        raise
+
+def get_table_structure_from_db(contest_title, context=None):
+    """
+    Retrieve the best-matching table structure for a contest_title using SQLAlchemy ORM.
+    """
+    try:
+        with get_session() as session:
+            row = session.execute(
+                select(TableStructure).where(TableStructure.contest_title == contest_title)
+                .order_by(TableStructure.confirmed_by_user.desc(), TableStructure.ml_confidence.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+        if row:
+            headers = robust_orjson_loads(row.headers)
+            context = robust_orjson_loads(row.context)
+            ml_confidence = row.ml_confidence
+            return {"headers": headers, "context": context, "ml_confidence": ml_confidence}
+        return None
+    except SQLAlchemyError as e:
+        logger.error(f"[DB][TableStructure] Error loading: {e}")
+        return None
+
+def upsert_contest(session, contest_dict):
+    """
+    Upsert a contest using SQLAlchemy ORM. Updates if exists, else inserts.
+    """
+    obj = session.execute(
+        select(Contest).where(
+            Contest.title == contest_dict.get("title"),
+            Contest.year == contest_dict.get("year"),
+            Contest.type == contest_dict.get("type"),
+            Contest.state == contest_dict.get("state"),
+            Contest.county == contest_dict.get("county")
         )
-    )
-    conn.commit()
-    conn.close()
+    ).scalar_one_or_none()
+    if obj:
+        obj.metadata = orjson.dumps(contest_dict)
+    else:
+        obj = Contest(
+            title=contest_dict.get("title"),
+            year=contest_dict.get("year"),
+            type=contest_dict.get("type"),
+            state=contest_dict.get("state"),
+            county=contest_dict.get("county"),
+            metadata=orjson.dumps(contest_dict)
+        )
+        session.add(obj)
 
 def robust_orjson_loads(val):
     """Load JSON robustly from either bytes or str."""
@@ -123,22 +133,6 @@ def robust_orjson_loads(val):
         return orjson.loads(val.encode("utf-8"))
     else:
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
-
-def get_table_structure_from_db(contest_title, context=None):
-    db_path = _safe_db_path(CONTEXT_DB_PATH)
-    conn = sqlite3.connect(db_path)
-    cur = conn.execute(
-        "SELECT headers, context, ml_confidence FROM table_structures WHERE contest_title = ? ORDER BY confirmed_by_user DESC, ml_confidence DESC LIMIT 1",
-        (contest_title,)
-    )
-    row = cur.fetchone()
-    conn.close()
-    if row:
-        headers = robust_orjson_loads(row[0])
-        context = robust_orjson_loads(row[1])
-        ml_confidence = row[2]
-        return {"headers": headers, "context": context, "ml_confidence": ml_confidence}
-    return None
 
 class ContextOrganizer:
     def __init__(
@@ -174,8 +168,6 @@ class ContextOrganizer:
         self.debug = debug
         self.fuzzy_cutoff = fuzzy_cutoff
         ensure_db_schema()
-        create_table_structures_table()
-        monitor_db_for_alerts(poll_interval=10)
         # --- Embedding model validation/loading ---
         self.embedding_model_obj = None
         try:
@@ -581,24 +573,14 @@ class ContextOrganizer:
             f"  [magenta]Anomalies:[/magenta] {len(anomalies)}  [yellow]Integrity issues:[/yellow] {len(integrity_issues)}"
         )
 
-        # Insert contests into DB for persistent storage and future ML
-        db_path = _safe_db_path(CONTEXT_DB_PATH)
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        for c in contests:
-            cursor.execute("""
-                INSERT OR IGNORE INTO contests (title, year, type, state, county, metadata)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                c.get("title"),
-                c.get("year"),
-                c.get("type"),
-                c.get("state"),
-                c.get("county"),
-                orjson.dumps(c)
-            ))
-        conn.commit()
-        conn.close()
+        # Insert or update contests robustly using SQLAlchemy ORM
+        try:
+            with get_session() as session:
+                for c in contests:
+                    upsert_contest(session, c)
+                session.commit()
+        except SQLAlchemyError as e:
+            self.logger.error(f"[DB][Contest] Error upserting contests: {e}")
 
         # --- Dynamic state/county detection ---
         from .context_coordinator import dynamic_state_county_detection
@@ -760,180 +742,10 @@ class ContextOrganizer:
         }
 
     def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
-        db_path = _safe_db_path(CONTEXT_DB_PATH)
-        conn = sqlite3.connect(db_path)
-        conn.execute(
-            "INSERT INTO table_structures (contest_title, headers, context, ml_confidence, confirmed_by_user) VALUES (?, ?, ?, ?, ?)",
-            (
-                contest_title,
-                orjson.dumps(headers),
-                orjson.dumps(context),
-                ml_confidence if ml_confidence is not None else None,
-                int(confirmed_by_user)
-            )
-        )
-        conn.commit()
-        conn.close()
+        save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
 
     def get_table_structure_from_db(self, contest_title, context=None):
-        db_path = _safe_db_path(CONTEXT_DB_PATH)
-        conn = sqlite3.connect(db_path)
-        cur = conn.execute(
-            "SELECT headers, context, ml_confidence FROM table_structures WHERE contest_title = ? ORDER BY confirmed_by_user DESC, ml_confidence DESC LIMIT 1",
-            (contest_title,)
-        )
-        row = cur.fetchone()
-        conn.close()
-        if row:
-            headers = robust_orjson_loads(row[0])
-            context = robust_orjson_loads(row[1])
-            ml_confidence = row[2]
-            return {"headers": headers, "context": context, "ml_confidence": ml_confidence}
-        return None
-
-    def correct_and_update_contest(self, contest_id, correction_data):
-        """
-        Update a contest in the DB and context library, then re-organize context.
-        """
-        from ..utils.db_utils import update_contest_in_db
-        # 1. Update DB
-        update_contest_in_db({"id": contest_id, **correction_data})
-        # 2. Update context library if needed
-        for key, value in correction_data.items():
-            # Example: add new county/state mapping if not present
-            if key == "county" and value not in self.library.get("known_counties", []):
-                self.library.setdefault("known_counties", []).append(value)
-            # Add similar logic for other fields as needed
-        # 3. Save updated context library (if you persist it)
-        # save_context_library(self.library)
-        # 4. Re-organize context
-        self.organized = None
-        # 5. Log correction
-        self.log_field_selection(
-            field_type="contest",
-            field_name="correction",
-            extracted_value=correction_data,
-            method="manual",
-            score=1.0,
-            result="manual_pass",
-            context={"contest_id": contest_id},
-            user_feedback=None
-        )
-
-    @staticmethod
-    def safe_filename(s):
-        """Sanitize a string to be safe for use as a filename or path component."""
-        s = str(s)
-        s = s.replace("..", "").replace("/", "").replace("\\", "")
-        return "".join(c if c.isalnum() or c in " _-" else "_" for c in s).strip() or "Unknown"
-
-    def append_to_context_library(self, new_data, path=None):
-        # Normalize the path to remove any double slashes/backslashes
-        path = os.path.normpath(path or self.context_library_path)
-        # Default structure with all expected keys
-        default_library = {
-            "contests": [],
-            "buttons": [],
-            "panels": [],
-            "tables": [],
-            "alerts": [],
-            "labels": [],
-            "election": [],
-            "regex": [],
-            "HTML_TAGS": [],
-            "common_output_headers": [],
-            "common_error_patterns": [],
-            "domain_selectors": {},
-            "domain_scrolls": {},
-            "button_keywords": [],
-            "contest_type_patterns": [],
-            "vote_method_patterns": [],
-            "location_patterns": [],
-            "percent_patterns": [],
-            "anomaly_log": [],
-            "user_feedback": [],
-            "download_link_patterns": [],
-            "panel_tags": [],
-            "table_tags": [],
-            "section_keywords": [],
-            "output_file_patterns": [],
-            "active_domains": [],
-            "inactive_domains": [],
-            "captcha_patterns": [],
-            "captcha_solutions": {},
-            "last_updated": None,
-            "version": "1.2.0",
-            "Known_state_to_county_map": {},
-            "Known_county_to_district_map": {},
-            "state_module_map": {},
-            "selectors": {},
-            "known_states": [],
-            "known_counties": [],
-            "known_districts": [],
-            "known_cities": [],
-            "precinct_header_tags": [],
-            "default_noisy_labels": [],
-            "download_links": []
-        }
-
-        # Load or initialize the library
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                library = orjson.loads(f.read())
-        else:
-            library = default_library.copy()
-
-        # Ensure all keys exist
-        for key, default_val in default_library.items():
-            if key not in library:
-                library[key] = default_val
-
-        # Merge download_links (deduplicate by (href, format))
-        existing_links = { (self.safe_filename(l.get("href", "")), l.get("format", "")): l for l in library.get("download_links", []) }
-        new_links = { (self.safe_filename(l.get("href", "")), l.get("format", "")): l for l in new_data.get("metadata", {}).get("download_links", []) }
-        merged_links = list({**existing_links, **new_links}.values())
-        library["download_links"] = merged_links
-
-        # Optionally sanitize other filename/path fields in new_data if needed
-        # (e.g., for contests, tables, etc.)
-
-        # Write back to file
-        with open(path, "wb") as f:
-            f.write(orjson.dumps(library, option=orjson.OPT_INDENT_2))
-        
-    @staticmethod
-    def segment_hash(segment):
-        """Generate a stable hash for a DOM segment based on tag, attrs, and first 200 chars of HTML."""
-        tag = segment.get("tag", "")
-        attrs = segment.get("attrs", {})
-        html = segment.get("html", "")[:200]
-        return hashlib.sha256((tag + orjson.dumps(attrs, option=orjson.OPT_SORT_KEYS) + html).encode("utf-8")).hexdigest()
-
-    def store_segments_by_hash(self, segments):
-        """Store segments in the context library by their hash for future reuse."""
-        if "cached_segments" not in self.library:
-            self.library["cached_segments"] = []
-        known_hashes = {seg.get("segment_hash") for seg in self.library["cached_segments"]}
-        for seg in segments:
-            seg_hash = self.segment_hash(seg)
-            if seg_hash not in known_hashes:
-                self.library["cached_segments"].append({
-                    "segment_hash": seg_hash,
-                    "ml_label": seg.get("ml_label"),
-                    "ml_confidence": seg.get("ml_confidence"),
-                    "pattern_id": seg.get("pattern_id"),
-                    "tag": seg.get("tag"),
-                    "attrs": seg.get("attrs"),
-                    "selector": f"{seg.get('tag')}#{seg.get('id')}" if seg.get('id') else seg.get('tag'),
-                    # Optionally add more fields
-                })
-
-    def get_segment_by_hash(self, seg_hash):
-        """Retrieve a segment from the context library by its hash."""
-        for seg in self.library.get("cached_segments", []):
-            if seg.get("segment_hash") == seg_hash:
-                return seg
-        return None
+        return get_table_structure_from_db(contest_title, context)
 
 # --- Backward-compatible function for legacy imports ---
 def organize_context(*args, **kwargs):

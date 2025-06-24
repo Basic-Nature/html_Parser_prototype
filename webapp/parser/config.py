@@ -11,6 +11,8 @@ CONTEXT_LIBRARY_PATH = os.path.join(
 MODEL_DIR = os.path.dirname(BASE_DIR)
 # Usage: for subprocesses, set cwd=PROJECT_ROOT and ensure PROJECT_ROOT is in PYTHONPATH
 
+POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql+psycopg2://user:password@localhost:5432/yourdb")
+
 if __name__ == "__main__":
     print("PROJECT_ROOT:", PROJECT_ROOT)
     print("BASE_DIR:", BASE_DIR)

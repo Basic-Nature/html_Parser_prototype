@@ -2,16 +2,17 @@
 log_cleaner_bot.py
 
 Automated log/cache cleaner for Smart Elections pipeline.
-- Scans the log and Context_Library directories for all .json/.jsonl/.html/.db files.
+- Scans the log and Context_Library directories for all .json/.jsonl/.html files.
 - Deduplicates and compacts each file.
 - Tracks file sizes and cleans files that exceed a configurable threshold (default: 200MB).
 - Handles malformed files gracefully and reports errors.
 - Flags files that remain too large after cleaning.
 - Optionally, handles [MISALIGNED] warnings for NER data.
+- Optionally, performs PostgreSQL VACUUM/ANALYZE maintenance using SQLAlchemy.
 - Can be called from other scripts or run as a scheduled daemon.
 
 Usage:
-    python -m webapp.parser.bots.log_cleaner_bot [--log-dir log] [--context-lib-dir .../Context_Library] [--max-size-mb 200] [--daemon] [--interval-min 60]
+    python -m webapp.parser.bots.log_cleaner_bot [--log-dir log] [--context-lib-dir .../Context_Library] [--max-size-mb 200] [--daemon] [--interval-min 60] [--db-maintenance]
 Manual one-off clean:
 python -m webapp.parser.bots.log_cleaner_bot
 Daemon mode (every 30 minutes):
@@ -26,15 +27,18 @@ import orjson
 import argparse
 import time
 import threading
-import glob
-import sqlite3
 from pathlib import Path
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+
+# --- SQLAlchemy imports for DB maintenance ---
+from webapp.parser.utils.db_utils import get_engine, get_session
 
 DEFAULT_LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "log")
 DEFAULT_CONTEXT_LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "webapp", "parser", "Context_Integration", "Context_Library")
 DEFAULT_MAX_SIZE_MB = 10
 MISALIGNED_KEYWORDS = ["misaligned", "pattern-excluding"]
-ALLOWED_EXTS = (".json", ".jsonl", ".html", ".db")
+ALLOWED_EXTS = (".json", ".jsonl", ".html")
 
 
 def is_jsonl_file(fname):
@@ -45,9 +49,6 @@ def is_json_file(fname):
 
 def is_html_file(fname):
     return fname.endswith(".html")
-
-def is_db_file(fname):
-    return fname.endswith(".db")
 
 def safe_path(path, allowed_roots):
     path = os.path.abspath(path)
@@ -134,18 +135,6 @@ def clean_html(path):
     except Exception as e:
         return None, None, None, str(e)
 
-def clean_db(path):
-    try:
-        # Vacuum the SQLite DB to compact it
-        conn = sqlite3.connect(path)
-        conn.execute("VACUUM;")
-        conn.commit()
-        conn.close()
-        size = os.path.getsize(path)
-        return size, size, 0, None
-    except Exception as e:
-        return None, None, None, str(e)
-
 def human_size(num_bytes):
     for unit in ['B','KB','MB','GB']:
         if num_bytes < 1024.0:
@@ -180,8 +169,6 @@ def clean_dir(target_dir, allowed_roots, max_size_bytes):
                     before, after, misaligned, err = clean_json(path)
                 elif is_html_file(fname):
                     before, after, misaligned, err = clean_html(path)
-                elif is_db_file(fname):
-                    before, after, misaligned, err = clean_db(path)
                 else:
                     continue
                 if err:
@@ -200,7 +187,28 @@ def clean_dir(target_dir, allowed_roots, max_size_bytes):
                     flagged_large.append((fname, human_size(new_size)))
     return cleaned_files, total_before, total_after, flagged_large, misaligned_summary, errors
 
-def run_log_cleaner(log_dir=DEFAULT_LOG_DIR, context_lib_dir=DEFAULT_CONTEXT_LIB_DIR, max_size_mb=DEFAULT_MAX_SIZE_MB):
+def run_db_maintenance(engine=None, session=None):
+    """
+    Perform PostgreSQL VACUUM and ANALYZE on all tables using SQLAlchemy.
+    """
+    print("[DB] Starting PostgreSQL VACUUM/ANALYZE maintenance...")
+    try:
+        if engine is None:
+            engine = get_engine()
+        with engine.connect() as conn:
+            # Get all table names
+            tables = conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public';")).fetchall()
+            for (table,) in tables:
+                print(f"[DB] VACUUM (ANALYZE) {table} ...")
+                try:
+                    conn.execute(text(f"VACUUM (ANALYZE) {table};"))
+                except SQLAlchemyError as e:
+                    print(f"[DB][ERROR] Could not vacuum {table}: {e}")
+        print("[DB] VACUUM/ANALYZE complete.")
+    except Exception as e:
+        print(f"[DB][ERROR] Maintenance failed: {e}")
+
+def run_log_cleaner(log_dir=DEFAULT_LOG_DIR, context_lib_dir=DEFAULT_CONTEXT_LIB_DIR, max_size_mb=DEFAULT_MAX_SIZE_MB, db_maintenance=False):
     max_size_bytes = int(max_size_mb * 1024 * 1024)
     allowed_roots = [log_dir, context_lib_dir]
     print(f"[CLEAN] Cleaning log dir: {log_dir}")
@@ -226,11 +234,13 @@ def run_log_cleaner(log_dir=DEFAULT_LOG_DIR, context_lib_dir=DEFAULT_CONTEXT_LIB
         print("[CLEAN][ERROR] Some files could not be cleaned:")
         for fname, err in errors:
             print(f"  {fname}: {err}")
+    if db_maintenance:
+        run_db_maintenance()
 
-def schedule_log_cleaner(interval_min=60, **kwargs):
+def schedule_log_cleaner(interval_min=60, db_maintenance=False, **kwargs):
     def loop():
         while True:
-            run_log_cleaner(**kwargs)
+            run_log_cleaner(db_maintenance=db_maintenance, **kwargs)
             time.sleep(interval_min * 60)
     t = threading.Thread(target=loop, daemon=True)
     t.start()
@@ -244,16 +254,17 @@ def main():
     parser.add_argument("--max-size-mb", type=float, default=DEFAULT_MAX_SIZE_MB, help="Max file size in MB before cleaning is triggered")
     parser.add_argument("--daemon", action="store_true", help="Run as a background daemon (periodic cleaning)")
     parser.add_argument("--interval-min", type=int, default=60, help="Interval in minutes for daemon mode")
+    parser.add_argument("--db-maintenance", action="store_true", help="Perform PostgreSQL VACUUM/ANALYZE maintenance after cleaning")
     args = parser.parse_args()
     if args.daemon:
-        schedule_log_cleaner(interval_min=args.interval_min, log_dir=args.log_dir, context_lib_dir=args.context_lib_dir, max_size_mb=args.max_size_mb)
+        schedule_log_cleaner(interval_min=args.interval_min, log_dir=args.log_dir, context_lib_dir=args.context_lib_dir, max_size_mb=args.max_size_mb, db_maintenance=args.db_maintenance)
         try:
             while True:
                 time.sleep(3600)
         except KeyboardInterrupt:
             print("[CLEAN] Daemon stopped.")
     else:
-        run_log_cleaner(log_dir=args.log_dir, context_lib_dir=args.context_lib_dir, max_size_mb=args.max_size_mb)
+        run_log_cleaner(log_dir=args.log_dir, context_lib_dir=args.context_lib_dir, max_size_mb=args.max_size_mb, db_maintenance=args.db_maintenance)
 
 if __name__ == "__main__":
     main()
