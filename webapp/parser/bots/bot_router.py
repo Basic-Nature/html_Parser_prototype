@@ -54,6 +54,24 @@ def run_orchestration_plugins(context=None):
             print(f"[BOT ROUTER][PLUGIN ERROR] {e}")
     return suggestions
 
+def start_postgres_service(service_name="postgresql-x64-15"):
+    try:
+        subprocess.run(["net", "start", service_name], check=True, capture_output=True)
+        print(f"[INFO] PostgreSQL service '{service_name}' started.")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Could not start PostgreSQL service: {e}")
+        return False
+
+def stop_postgres_service(service_name="postgresql-x64-15"):
+    try:
+        subprocess.run(["net", "stop", service_name], check=True, capture_output=True)
+        print(f"[INFO] PostgreSQL service '{service_name}' stopped.")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Could not stop PostgreSQL service: {e}")
+        return False
+
 BOT_MODULES = {
     "retrain_table_structure_models": "webapp.parser.bots.retrain_table_structure_models",
     "manual_correction_bot": "webapp.parser.bots.manual_correction_bot",
