@@ -8,6 +8,13 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL
+
+from webapp.parser.bots.log_cleaner_bot import run_log_cleaner
+from webapp.parser.utils.context_migration import migrate_all
+from webapp.parser.bots.scan_misaligned_ner import scan_misaligned
+from webapp.parser.Context_Integration import context_organizer, context_coordinator, Integrity_check
+from webapp.parser.bots.librarian import load_context_library
+
 try:
     import openai
 except ImportError:
@@ -123,6 +130,20 @@ def run_bot_task(bot_name, args=None, context=None, self_heal=False, max_retries
             print("[HINT] If on Windows, ensure no file explorer or editor is open on the model directory and try again.")
         return False
 
+def run_subprocess_module(module, args=None, env=None):
+    cmd = [sys.executable, "-m", module]
+    if args:
+        cmd.extend(args)
+    print(f"[BOT ROUTER] Running: {' '.join(cmd)}")
+    env = env or os.environ.copy()
+    env["PYTHONPATH"] = PROJECT_ROOT + os.pathsep + env.get("PYTHONPATH", "")
+    try:
+        subprocess.run(cmd, check=True, cwd=PROJECT_ROOT, env=env)
+        return True
+    except Exception as e:
+        print(f"[BOT ROUTER][ERROR] Failed to run {module}: {e}")
+        return False
+
 def print_bot_summary(results):
     print("\n[BOT ROUTER] Pipeline Summary:")
     print("Bot Name                   | Status")
@@ -133,26 +154,89 @@ def print_bot_summary(results):
 def run_pipeline():
     """Run the main bot pipeline with DB checks and summary output."""
     results = {}
+    print("[BOT ROUTER] Step 1: Cleaning logs/context and migrating to PostgreSQL...")
+    try:
+        run_log_cleaner()
+        migrate_all()
+        results["log_cleaner_bot"] = "success"
+        results["context_migration"] = "success"
+    except Exception as e:
+        print(f"[BOT ROUTER][ERROR] Log cleaning or migration failed: {e}")
+        results["log_cleaner_bot"] = "fail"
+        results["context_migration"] = "fail"
+        print_bot_summary(results)
+        return
 
-    # Check DB before running DB-dependent bots
+    # 2. Check DB before running DB-dependent bots
     if not check_db_connection():
         print("[BOT ROUTER] Skipping DB-dependent bots: database is not available.")
+        results["scan_misaligned_ner"] = "skipped"
         results["retrain_table_structure_models"] = "skipped"
         results["manual_correction_bot"] = "skipped"
         print_bot_summary(results)
         return
 
-    # Run retrain bot
-    if run_bot_task("retrain_table_structure_models"):
-        results["retrain_table_structure_models"] = "success"
-        # Only run correction if retrain succeeded
-        if run_bot_task("manual_correction_bot", args=["--enhanced", "--feedback", "--update-db"]):
-            results["manual_correction_bot"] = "success"
+    # 3. Scan for misaligned NER examples before retraining
+    print("[BOT ROUTER] Step 2: Scanning for misaligned NER examples...")
+    try:
+        misaligned_exit_code = scan_misaligned()
+        if misaligned_exit_code == 0:
+            results["scan_misaligned_ner"] = "clean"
         else:
-            results["manual_correction_bot"] = "fail"
+            results["scan_misaligned_ner"] = "misaligned"
+            print("[BOT ROUTER][WARNING] Misaligned NER examples found. Consider running manual_correction_bot.")
+    except Exception as e:
+        print(f"[BOT ROUTER][ERROR] scan_misaligned_ner failed: {e}")
+        results["scan_misaligned_ner"] = "fail"
+
+    # 4. Retrain table structure models
+    print("[BOT ROUTER] Step 3: Retraining table structure models...")
+    retrain_success = run_subprocess_module("webapp.parser.bots.retrain_table_structure_models")
+    results["retrain_table_structure_models"] = "success" if retrain_success else "fail"
+
+    # 5. Run manual correction bot if retrain succeeded
+    if retrain_success:
+        print("[BOT ROUTER] Step 4: Running manual correction bot...")
+        correction_success = run_subprocess_module(
+            "webapp.parser.bots.manual_correction_bot",
+            args=["--enhanced", "--feedback", "--update-db"]
+        )
+        results["manual_correction_bot"] = "success" if correction_success else "fail"
     else:
-        results["retrain_table_structure_models"] = "fail"
         results["manual_correction_bot"] = "skipped"
+
+    # 6. Run orchestration plugins (context_organizer, context_coordinator, integrity_check, librarian, etc.)
+    print("[BOT ROUTER] Step 5: Running orchestration plugins and context modules...")
+    context = load_context_library()
+    try:
+        # Example: Run integrity check and print summary
+        contests = context.get("contests", [])
+        if contests:
+            Integrity_check.print_integrity_summary(contests)
+            results["integrity_check"] = "success"
+        else:
+            results["integrity_check"] = "no_contests"
+        # Example: Organize context
+        organizer = context_organizer.ContextOrganizer()
+        organized = organizer.organize_context(context)
+        results["context_organizer"] = "success"
+        # Example: Use context coordinator
+        coordinator = context_coordinator.ContextCoordinator()
+        coordinator.organize_and_enrich(context)
+        results["context_coordinator"] = "success"
+    except Exception as e:
+        print(f"[BOT ROUTER][ERROR] Context modules failed: {e}")
+        results["integrity_check"] = "fail"
+        results["context_organizer"] = "fail"
+        results["context_coordinator"] = "fail"
+
+    # 7. Run any additional orchestration plugins
+    try:
+        plugin_results = run_orchestration_plugins(context)
+        results["orchestration_plugins"] = "success" if plugin_results else "none"
+    except Exception as e:
+        print(f"[BOT ROUTER][ERROR] Orchestration plugins failed: {e}")
+        results["orchestration_plugins"] = "fail"
 
     print_bot_summary(results)
    

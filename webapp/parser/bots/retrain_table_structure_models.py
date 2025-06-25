@@ -14,7 +14,7 @@ from sentence_transformers import InputExample, losses
 from torch.utils.data import DataLoader
 from ..utils.shared_logic import load_context_library
 from ..utils.db_utils import _safe_db_path
-from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT
+from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, POSTGRES_URL
 
 import spacy
 from spacy.training import Example, offsets_to_biluo_tags
@@ -26,8 +26,8 @@ import logging
 import argparse
 import gc
 from sqlalchemy.orm import Session
-from sqlalchemy import select
-from webapp.parser.utils.db_utils import get_session
+from sqlalchemy import select, inspect
+from webapp.parser.utils.db_utils import get_session, create_engine
 from webapp.parser.utils.models import TableStructure, Entity
 
 logging.basicConfig(level=logging.INFO)
@@ -565,7 +565,24 @@ def scan_in_memory_ner_examples(train_data, verbose=False):
                 print(f"ERROR: {text} {annots['entities']} ({e})")
     return misaligned
 
+def ensure_table_structures_exists():
+    """
+    Ensure the 'table_structures' table exists in the database.
+    If not, create all tables defined in models.
+    """
+    engine = create_engine(POSTGRES_URL)
+    inspector = inspect(engine)
+    if 'table_structures' not in inspector.get_table_names():
+        print("[INFO] 'table_structures' table not found. Creating all tables...")
+        from webapp.parser.utils.models import Base
+        Base.metadata.create_all(engine)
+        print("[INFO] All tables created.")
+    else:
+        print("[INFO] 'table_structures' table exists.")
+
+
 def main():
+    ensure_table_structures_exists()
     if os.getenv("REVIEW_WITH_MANUAL_BOT", "false").lower() == "true":
         run_manual_correction_bot()
 

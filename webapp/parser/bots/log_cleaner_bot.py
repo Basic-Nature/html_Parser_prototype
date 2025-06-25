@@ -33,6 +33,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 # --- SQLAlchemy imports for DB maintenance ---
 from webapp.parser.utils.db_utils import get_engine, get_session
+from webapp.parser.utils.context_migration import migrate_all
 
 DEFAULT_LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "log")
 DEFAULT_CONTEXT_LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "webapp", "parser", "Context_Integration", "Context_Library")
@@ -236,6 +237,8 @@ def run_log_cleaner(log_dir=DEFAULT_LOG_DIR, context_lib_dir=DEFAULT_CONTEXT_LIB
             print(f"  {fname}: {err}")
     if db_maintenance:
         run_db_maintenance()
+    migrate_all()
+    print("[CLEAN] Context/log migration to PostgreSQL complete.")
 
 def schedule_log_cleaner(interval_min=60, db_maintenance=False, **kwargs):
     def loop():

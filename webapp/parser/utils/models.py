@@ -1,4 +1,16 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, ForeignKey, Boolean, Float, LargeBinary
+from sqlalchemy import (
+    Column, 
+    Integer, 
+    String, 
+    DateTime, 
+    Text, 
+    JSON, 
+    ForeignKey, 
+    Boolean, 
+    Float, 
+    LargeBinary, 
+    create_engine
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 import uuid
@@ -80,3 +92,10 @@ class Alert(Base):
     created_at = Column(DateTime, default=utcnow)
 
 # Add more models as needed for your project (e.g., users, logs, etc.)
+if __name__ == "__main__":
+    # Import POSTGRES_URL from config
+    from ..config import POSTGRES_URL
+    engine = create_engine(POSTGRES_URL)
+    print(f"Creating all tables in: {POSTGRES_URL}")
+    Base.metadata.create_all(engine)
+    print("All tables created.")

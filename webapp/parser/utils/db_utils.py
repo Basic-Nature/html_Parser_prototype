@@ -13,6 +13,7 @@ from ..config import POSTGRES_URL, CONTEXT_LIBRARY_PATH
 # Set up SQLAlchemy engine and session
 engine = create_engine(POSTGRES_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+_engine = None  # for lazy initialization if needed
 
 # --- Robust session context manager ---
 @contextmanager
@@ -27,6 +28,12 @@ def get_session():
         raise
     finally:
         session.close()
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        _engine = create_engine(POSTGRES_URL, echo=False, future=True)
+    return _engine
 
 # --- DB Path Safety (for legacy compatibility, not used for SQLAlchemy) ---
 def _safe_db_path(path):
