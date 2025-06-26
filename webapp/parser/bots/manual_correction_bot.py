@@ -319,12 +319,15 @@ def trim_log_file(path: Path):
 def update_context_with_new_entries(context_path, field_type, field_entries):
     context_path = safe_path(context_path, [CONTEXT_LIBRARY_DIR])
     def updater(library):
-        if field_type not in library:
-            library[field_type] = []
+        # Ensure the field_type exists and is a dict (grouped by context_key)
+        if field_type not in library or not isinstance(library[field_type], dict):
+            library[field_type] = {}
         for context_key, entries in field_entries.items():
+            if context_key not in library[field_type]:
+                library[field_type][context_key] = []
             for entry in entries:
-                if entry not in library[field_type]:
-                    library[field_type].append(entry)
+                if entry not in library[field_type][context_key]:
+                    library[field_type][context_key].append(entry)
     update_context_library(context_path, updater)
 
 # --- Integrity check integration ---

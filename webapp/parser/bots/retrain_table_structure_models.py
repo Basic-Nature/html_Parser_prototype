@@ -14,7 +14,7 @@ from sentence_transformers import InputExample, losses
 from torch.utils.data import DataLoader
 from ..utils.shared_logic import load_context_library
 from ..utils.db_utils import _safe_db_path
-from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, POSTGRES_URL
+from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, POSTGRES_URL, LOG_DIR
 
 import spacy
 from spacy.training import Example, offsets_to_biluo_tags
@@ -97,13 +97,11 @@ def safe_model_save(model, model_save_path, retries=3):
 def append_training_data(new_data, path="spacy_ner_train_data.jsonl"):
     """
     Appends new training data to a JSONL file in the log directory, deduplicating by text/entities,
-    and adds a timestamp to each entry. Uses the log_dir as the parent of the model_dir for safety.
+    and adds a timestamp to each entry.
     """
-    main_dir = MODEL_DIR if 'MODEL_DIR' in globals() else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../model"))
-    log_dir = os.path.abspath(os.path.join(os.path.dirname(main_dir), "log"))
+    log_dir = LOG_DIR
     os.makedirs(log_dir, exist_ok=True)
     safe_path = os.path.abspath(os.path.join(log_dir, path))
-    # Harden: ensure safe_path is inside log_dir
     if not safe_path.startswith(log_dir):
         raise ValueError("Unsafe path detected for training data output!")
     existing = set()
@@ -123,8 +121,7 @@ def append_training_data(new_data, path="spacy_ner_train_data.jsonl"):
                 f.write(line)
 
 def save_training_data_jsonl(train_data, path="spacy_ner_train_data.jsonl"):
-    # Save to the log/ directory at the project root
-    log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log"))
+    log_dir = LOG_DIR
     os.makedirs(log_dir, exist_ok=True)
     filename = os.path.basename(path)
     filename = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', filename)
@@ -142,9 +139,8 @@ def cluster_container_patterns(log_dir=None, n_clusters=5):
     Prints cluster assignments and common selectors/classes/headings.
     """
 
-
     if log_dir is None:
-        log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log"))
+        log_dir = LOG_DIR
 
     htmls = []
     meta = []
@@ -325,7 +321,7 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     
     # --- Load extra examples from JSONL file ---
     extra_examples = load_spacy_ner_examples(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_train_data.jsonl"))
+        os.path.join(LOG_DIR, "spacy_ner_train_data.jsonl")
     )
     if extra_examples:
         print(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
@@ -380,7 +376,7 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
                 logger.warning(f"Error validating entity alignment: {e}")
     if misaligned_examples:
         # Save misaligned examples for review
-        misaligned_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_misaligned.jsonl"))
+        misaligned_path = os.path.join(LOG_DIR, "spacy_ner_misaligned.jsonl")
         with open(misaligned_path, "wb") as f:
             for ex in misaligned_examples:
                 f.write(orjson.dumps(ex, option=orjson.OPT_APPEND_NEWLINE))
@@ -590,7 +586,7 @@ def main():
     print(f"Found {len(confirmed_structures)} confirmed table structures.")
 
     # Log user feedback/corrections for ML ---
-    feedback_log_path = os.path.join(PROJECT_ROOT, "log", "structure_feedback_log.jsonl")
+    feedback_log_path = os.path.join(LOG_DIR, "structure_feedback_log.jsonl")
     os.makedirs(os.path.dirname(feedback_log_path), exist_ok=True)
     for struct in confirmed_structures:
         # Assume struct contains both original and corrected structure info if available
@@ -625,7 +621,7 @@ def main():
     
     # --- Load extra examples from JSONL file ---
     extra_examples = load_spacy_ner_examples(
-        os.path.join(PROJECT_ROOT, "log", "spacy_ner_train_data.jsonl")
+        os.path.join(LOG_DIR, "spacy_ner_train_data.jsonl")
     )
     if extra_examples:
         print(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
@@ -666,7 +662,7 @@ def main():
     if misaligned:
         print(f"[ERROR] {len(misaligned)} misaligned NER examples found in final training data. Running diagnostics and launching manual_correction_bot. Aborting retraining.")
         # Save misaligned examples for review
-        misaligned_path = os.path.join(PROJECT_ROOT, "log", "spacy_ner_misaligned.jsonl")
+        misaligned_path = os.path.join(LOG_DIR, "spacy_ner_misaligned.jsonl")
         with open(misaligned_path, "wb") as f:
             for text, entities in misaligned:
                 f.write(orjson.dumps({"text": text, "entities": entities}, option=orjson.OPT_APPEND_NEWLINE))

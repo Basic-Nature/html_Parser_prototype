@@ -4,7 +4,7 @@ import os
 import re
 import time
 from typing import Dict, Any, List, Optional
-from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
+from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR
 from ..utils.download_utils import download_file
 from ..utils.format_router import route_format_handler 
 from ..utils.shared_logic import infer_state_county_from_url, update_context_library
@@ -50,12 +50,7 @@ def robust_orjson_loads(val):
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
 def _get_label_cache_path():
-    log_dir = os.path.join(os.path.dirname(BASE_DIR), "log")
-    os.makedirs(log_dir, exist_ok=True)
-    path = os.path.join(log_dir, _LABEL_CACHE_FILENAME)
-    # Prevent path traversal
-    if not os.path.abspath(path).startswith(os.path.abspath(log_dir)):
-        raise ValueError("Unsafe label cache path detected!")
+    path = safe_cache_path(_LABEL_CACHE_FILENAME)
     return path
 
 def _load_label_cache():
@@ -116,10 +111,18 @@ def load_additional_tags_from_context_library():
     return tags
 HTML_TAGS |= load_additional_tags_from_context_library()
 
+def safe_cache_path(filename: str) -> str:
+    filename = _sanitize_log_filename(filename)
+    cache_folder = CACHE_DIR
+    os.makedirs(cache_folder, exist_ok=True)
+    full_path = os.path.join(cache_folder, filename)
+    if not os.path.abspath(full_path).startswith(os.path.abspath(cache_folder)):
+        raise ValueError("Unsafe cache path detected!")
+    return full_path
+
 def safe_log_path(filename: str, log_dir: str = "log") -> str:
     filename = _sanitize_log_filename(filename)
-    parent_dir = os.path.dirname(BASE_DIR)
-    log_folder = os.path.join(parent_dir, log_dir)
+    log_folder = LOG_DIR
     os.makedirs(log_folder, exist_ok=True)
     full_path = os.path.join(log_folder, filename)
     if not os.path.abspath(full_path).startswith(os.path.abspath(log_folder)):
@@ -598,7 +601,7 @@ def save_segment_label_cache(cache, path):
         f.write(orjson.dumps(cache))
 
 # In your segment review loop, before prompting:
-# cache_path = 'segment_label_cache.json'
+# cache_path = 'segment_label_cache.jsonl'
 # segment_label_cache = load_segment_label_cache(cache_path)
 # h = segment_hash(segment_html)
 # if h in segment_label_cache:
@@ -1562,24 +1565,20 @@ def scan_html_for_context(
     return context_result
 
 def get_log_folder():
-    parent_dir = os.path.dirname(BASE_DIR)  # One level above webapp
-    log_folder = os.path.join(parent_dir, "log")
+    log_folder = LOG_DIR
     os.makedirs(log_folder, exist_ok=True)
     return log_folder
 
 def load_context_cache_from_disk(filename="context_cache.json"):
     global _context_cache
     if _context_cache is not None:
-        # Filter out non-dict entries
         _context_cache = {k: v for k, v in _context_cache.items() if isinstance(v, dict)}
         return _context_cache
-    log_folder = get_log_folder()
-    path = os.path.join(log_folder, filename)
+    path = safe_cache_path(filename)
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
                 raw_cache = robust_orjson_loads(f.read())
-                # Filter out non-dict entries
                 _context_cache = {k: v for k, v in raw_cache.items() if isinstance(v, dict)}
                 return _context_cache
         except Exception as e:
@@ -1587,6 +1586,11 @@ def load_context_cache_from_disk(filename="context_cache.json"):
             return {}
     _context_cache = {}
     return {}
+
+def save_context_cache_to_disk(context_cache, filename="context_cache.json"):
+    path = safe_cache_path(filename)
+    with open(path, "wb") as f:
+        f.write(orjson.dumps(_to_json_safe(context_cache), option=orjson.OPT_INDENT_2))
 
 def clean_cache_inplace(cache):
     """
@@ -1611,12 +1615,6 @@ def _to_json_safe(obj):
     if isinstance(obj, list):
         return [_to_json_safe(v) for v in obj]
     return obj
-
-def save_context_cache_to_disk(context_cache, filename="context_cache.json"):
-    log_folder = get_log_folder()
-    path = os.path.join(log_folder, filename)
-    with open(path, "wb") as f:
-        f.write(orjson.dumps(_to_json_safe(context_cache), option=orjson.OPT_INDENT_2))
         
 def segment_identity_hash(segment):
     """

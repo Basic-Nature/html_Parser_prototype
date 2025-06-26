@@ -31,7 +31,7 @@ import time
 import hashlib
 from ..utils.shared_logger import logger, rprint
 from ..utils.ml_table_detector import detect_tables_ml
-from ..config import BASE_DIR, PROJECT_ROOT
+from ..config import CACHE_DIR, PROJECT_ROOT, LOG_DIR
 from difflib import get_close_matches
 from ..bots.librarian import (
     LOCATION_KEYWORDS,
@@ -50,17 +50,14 @@ if TYPE_CHECKING:
 
 # --- CONSTANTS & GLOBALS ---
 
-TABLE_STRUCTURE_CACHE_PATH = os.path.join(BASE_DIR, "parser", "Context_Integration", "Context_Library", "table_structure_cache.json")
-BALLOT_TYPES = [
-    "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
-]
+TABLE_STRUCTURE_CACHE_PATH = os.path.join(CACHE_DIR, "table_structure_cache.json")
 
 def get_safe_log_path(filename):
     """
     Returns a safe log path inside the PROJECT_ROOT/log directory.
     Prevents path-injection and directory traversal.
     """
-    log_dir = os.path.join(PROJECT_ROOT, "log")
+    log_dir = LOG_DIR
     os.makedirs(log_dir, exist_ok=True)
     safe_filename = os.path.basename(filename)
     return os.path.join(log_dir, safe_filename)
@@ -99,6 +96,20 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 
     extraction_logs = []
     all_tables = []
+
+    # --- Try to use cached structure if available ---
+    domain = None
+    if extraction_context:
+        domain = extraction_context.get("domain") or extraction_context.get("url")
+    cached_headers, cached_data = None, None
+    if domain:
+        # Try to get cached structure for this domain and headers
+        # If existing_headers provided, use those for signature, else try after extraction
+        if existing_headers:
+            cached = get_cached_table_structure(domain, existing_headers)
+            if cached:
+                logger.info(f"[TABLE BUILDER] Using cached table structure for domain: {domain}")
+                return cached.get("headers", []), cached.get("data", [])
 
     # --- ML context integration ---
     ml_confidence = extraction_context.get("ml_confidence", []) if extraction_context else None
@@ -362,6 +373,15 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         )
         # 5. Feedback/correction loop (user-in-the-loop)
         combined_headers, combined_data = feedback_correction_loop(combined_headers, combined_data, extraction_context)
+        if domain:
+            cache_table_structure(domain, combined_headers, {
+                "headers": combined_headers,
+                "data": combined_data,
+                "entity_info": entity_info,
+                "context": extraction_context
+            })
+            logger.info(f"[TABLE BUILDER] Cached table structure for domain: {domain}")
+
         return combined_headers, combined_data
 
     # --- Only now try fallback NLP extraction ---
@@ -1069,7 +1089,7 @@ def extract_repeated_dom_structures(page, container_selectors=None, min_row_coun
     Dynamically updates likely_row_classes from log analysis.
     """
     # --- Dynamically update likely_row_classes from logs ---
-    log_dir = os.path.join(os.path.dirname(BASE_DIR), "log")
+    log_dir = LOG_DIR
     suggested_classes, suggested_ids = suggest_new_row_classes_from_logs(log_dir)
     likely_row_classes = [
         "row", "table-row", "ballot-option", "candidate-info", "result-row", "precinct-row"
@@ -1107,10 +1127,33 @@ def extract_repeated_dom_structures(page, container_selectors=None, min_row_coun
                 log_failed_container(page, container, selector, i, str(e))
     return results
 
-def extract_all_candidates_from_data(headers, data):
+def extract_all_candidates_from_data(headers, data, extraction_context=None):
+    """
+    Extract all unique candidate names from the data, using the provided headers and context.
+    Optionally uses extraction_context for more robust candidate column detection.
+    """
     candidates = set()
+    # Try to find the candidate column robustly
+    candidate_col = None
+    # 1. Use context if available
+    if extraction_context and "candidate_column" in extraction_context:
+        candidate_col = extraction_context["candidate_column"]
+    # 2. Fallback: look for best header match
+    if not candidate_col:
+        for h in headers:
+            if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS):
+                candidate_col = h
+                break
+    # 3. Fallback: use "Candidate" if present
+    if not candidate_col and "Candidate" in headers:
+        candidate_col = "Candidate"
+    # 4. If still not found, skip extraction
+    if not candidate_col:
+        logger.warning("[extract_all_candidates_from_data] No candidate column found in headers or context.")
+        return candidates
+
     for row in data:
-        val = row.get("Candidate", "")
+        val = row.get(candidate_col, "")
         for part in val.split("\n"):
             part = part.strip()
             # Filter out party-only or generic lines
@@ -1122,6 +1165,7 @@ def ml_based_table_detection(page, extraction_context=None):
     """
     Use a machine learning model to detect and extract tables from arbitrary HTML.
     Returns a list of (headers, data, diagnostics) tuples.
+    Each diagnostics dict includes the extraction_context for traceability.
     """
     try:
         ml_tables = detect_tables_ml(page.content())
@@ -1129,12 +1173,19 @@ def ml_based_table_detection(page, extraction_context=None):
         for idx, table_dict in enumerate(ml_tables):
             headers = table_dict.get("headers", [])
             data = table_dict.get("data", [])
+            # Optionally, correlate context to this table (if available)
+            context = extraction_context if extraction_context else {}
             diagnostics = {
                 "ml_table_index": idx,
                 "row_count": len(data),
-                "headers": headers
+                "headers": headers,
+                "extraction_context": context
             }
+            # Optionally, attach context to each row for downstream traceability
             if headers and data:
+                # Optionally, add context to each row (comment out if not needed)
+                # for row in data:
+                #     row["_extraction_context"] = context
                 results.append((headers, data, diagnostics))
         return results
     except Exception as e:

@@ -13,6 +13,13 @@ CONTEXT_DB_PATH = os.path.join(BASE_DIR, "parser", "Context_Integration", "Conte
 CONTEXT_LIBRARY_PATH = os.path.join(
     BASE_DIR, "parser", "Context_Integration", "Context_Library", "context_library.json"
 )
+CONTEXT_LIBRARY_DIR = os.path.dirname(CONTEXT_LIBRARY_PATH)
+
+# Ensure log and cache directories exist inside Context_Library
+LOG_DIR = os.path.join(CONTEXT_LIBRARY_DIR, "log")
+CACHE_DIR = os.path.join(CONTEXT_LIBRARY_DIR, "cache")
+os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs(CACHE_DIR, exist_ok=True)
 MODEL_DIR = os.path.dirname(BASE_DIR)
 # Usage: for subprocesses, set cwd=PROJECT_ROOT and ensure PROJECT_ROOT is in PYTHONPATH
 

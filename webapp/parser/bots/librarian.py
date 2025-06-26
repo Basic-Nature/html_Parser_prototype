@@ -1,6 +1,6 @@
 import json, os, re
 from typing import Set, List, Dict, Any
-from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT
+from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT, LOG_DIR
 import orjson
 import subprocess
 import sys
@@ -162,10 +162,9 @@ UNKNOWN_TAGS_LOG = set()
 UNKNOWN_ATTRS_LOG = set()
 
 def _get_log_path(filename: str) -> str:
-    # Get the parent directory of webapp (i.e., project root)
-    log_dir = os.path.join(PROJECT_ROOT, "log")
-    os.makedirs(log_dir, exist_ok=True)
-    return os.path.join(log_dir, filename)
+    # Use the centralized LOG_DIR for all logs
+    os.makedirs(LOG_DIR, exist_ok=True)
+    return os.path.join(LOG_DIR, filename)
 
 def log_unknown_tag(tag: str):
     if tag not in HTML_TAGS:

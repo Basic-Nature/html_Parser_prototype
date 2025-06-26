@@ -6,7 +6,7 @@
 
 import copy
 import os
-import json
+import orjson
 import time
 from rich.table import Table
 from ..bots.librarian import (
@@ -15,7 +15,7 @@ from ..bots.librarian import (
 )
 from typing import List, Dict, Tuple, Any, Optional, TYPE_CHECKING
 from ..utils.shared_logger import rprint, logger
-from ..config import BASE_DIR
+from ..config import BASE_DIR, CACHE_DIR
 
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
 
@@ -60,14 +60,15 @@ def build_dynamic_table(
     if data is None:
         data = []
     if headers is None:
-        headers = []        
+        headers = []
     if "coordinator" not in context or context["coordinator"] is None:
         context["coordinator"] = coordinator
     # Ensure panel_heading/Precinct is in context for downstream use
     if "panel_heading" in context and "Precinct" not in context:
-        context["Precinct"] = context["panel_heading"]        
+        context["Precinct"] = context["panel_heading"]
     page = context.get("page", [])
     from ..utils.dynamic_table_extractor import dynamic_table_extractor
+
     # --- 1. Gather all panel tables if present ---
     all_panel_tables = []
     if "panels" in context and context["panels"]:
@@ -86,6 +87,7 @@ def build_dynamic_table(
         h, d = dynamic_table_extractor(page, context, coordinator)
         if h and d:
             all_panel_tables.append((h, d))
+
     # --- 2. Merge and harmonize all tables ---
     if all_panel_tables:
         from ..utils.table_core import merge_table_data
@@ -98,18 +100,17 @@ def build_dynamic_table(
     merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
 
     # --- [NEW] Ensure all required percent columns are present ---
-    # Normalize headers for matching
     def normalize_header(h):
         return h.strip().lower().replace("%", "percent").replace("  ", " ")
     norm_headers = set(normalize_header(h) for h in merged_headers)
-    # Add any missing percent/fully reported columns
     for percent_col in PERCENT_KEYWORDS:
         norm_percent_col = normalize_header(percent_col)
         if norm_percent_col not in norm_headers:
             merged_headers.append(percent_col)
             for row in merged_data:
                 row[percent_col] = ""
-    # ...existing code...
+
+    # --- 3. NLP entity annotation ---
     try:
         annotated_headers, annotated_data, entity_info = nlp_entity_annotate_table(
             merged_headers, merged_data, context=context, coordinator=coordinator
@@ -119,20 +120,49 @@ def build_dynamic_table(
         annotated_headers, annotated_data = merged_headers, merged_data
         entity_info = {}
     headers, data = harmonize_headers_and_data(annotated_headers, annotated_data)
+
     # --- 4. Pivot to wide format before feedback ---
-    try:
-        wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
-        headers, data = harmonize_headers_and_data(wide_headers, wide_data)
-    except Exception as e:
-        logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
-    # --- 5. User/ML confirmation and learning (if enabled) ---
+    if pivot_to_wide:
+        try:
+            wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
+            headers, data = harmonize_headers_and_data(wide_headers, wide_data)
+        except Exception as e:
+            logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+
+    # --- 5. Optionally load from cache for debugging ---
+    if debug:
+        cached = _load_table_builder_cache(domain, latest=True)
+        if cached:
+            logger.info(f"[TABLE_BUILDER] Loaded cached table for domain '{domain}'.")
+            headers, data = cached.get("headers", headers), cached.get("data", data)
+            entity_info = cached.get("entity_info", entity_info)
+
+    # --- 6. User/ML confirmation and learning (if enabled) ---
     if learning_mode:
         contest_title = context.get("contest_title", []) or "Unknown Contest"
-        headers_confirmed, data_confirmed = prompt_user_to_confirm_table_structure(
-            headers, data, domain, contest_title, coordinator
-        )
-        # Do not re-harmonize or re-pivot after user confirmation; use as final output
-        headers, data = headers_confirmed, data_confirmed
+        feedback_loops = 0
+        while feedback_loops < max_feedback_loops:
+            if confirm_table_structure_callback:
+                headers_confirmed, data_confirmed = confirm_table_structure_callback(
+                    headers, data, domain, contest_title, coordinator
+                )
+            else:
+                headers_confirmed, data_confirmed = prompt_user_to_confirm_table_structure(
+                    headers, data, domain, contest_title, coordinator
+                )
+            # Save to cache after user confirmation if debug is enabled
+            if debug:
+                _save_table_builder_cache(domain, {
+                    "headers": headers_confirmed,
+                    "data": data_confirmed,
+                    "entity_info": entity_info,
+                    "timestamp": time.time()
+                })
+            # Accept if user made changes or confirmed, else loop for feedback
+            if headers_confirmed != headers or data_confirmed != data or not learning_mode:
+                headers, data = headers_confirmed, data_confirmed
+                break
+            feedback_loops += 1
         # Ensure all user-added columns are present in all rows
         for h in headers:
             for row in data:
@@ -145,10 +175,10 @@ def build_dynamic_table(
 # ===================================================================
 
 def _get_table_builder_cache_dir():
-    # Always log to parent of webapp/logs/table_builder_cache
-    from ..config import BASE_DIR
-    log_parent = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
-    cache_dir = os.path.join(log_parent, "table_builder_cache")
+    """
+    Returns the directory for table builder cache files, nested under CACHE_DIR for consistency.
+    """
+    cache_dir = os.path.join(CACHE_DIR, "table_builder_cache")
     os.makedirs(cache_dir, exist_ok=True)
     return cache_dir
 
@@ -158,12 +188,13 @@ def _save_table_builder_cache(domain, persistent_cache, keep_last_n=5):
     Keeps only the last N cache files per domain to avoid stale data buildup.
     """
     cache_dir = _get_table_builder_cache_dir()
+    os.makedirs(cache_dir, exist_ok=True)
     # Use timestamp for uniqueness, but sanitize domain for filename
     safe_domain = "".join(c for c in domain if c.isalnum() or c in ("-", "_"))
     timestamp = int(persistent_cache.get("timestamp", time.time()))
     cache_path = os.path.join(cache_dir, f"{safe_domain}_{timestamp}_table.json")
-    with open(cache_path, "w", encoding="utf-8") as f:
-        json.dump(persistent_cache, f, indent=2)
+    with open(cache_path, "wb") as f:
+        f.write(orjson.dumps(persistent_cache, option=orjson.OPT_INDENT_2))
     # Cleanup: keep only last N cache files per domain
     files = sorted(
         [f for f in os.listdir(cache_dir) if f.startswith(safe_domain)],
@@ -181,6 +212,8 @@ def _list_table_builder_cache(domain=None):
     List available cache files for a domain (or all if domain is None).
     """
     cache_dir = _get_table_builder_cache_dir()
+    if not os.path.exists(cache_dir):
+        return []
     files = os.listdir(cache_dir)
     if domain:
         safe_domain = "".join(c for c in domain if c.isalnum() or c in ("-", "_"))
@@ -196,13 +229,13 @@ def _load_table_builder_cache(domain, latest=True):
         return None
     cache_dir = _get_table_builder_cache_dir()
     if latest:
-        with open(os.path.join(cache_dir, files[0]), "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(os.path.join(cache_dir, files[0]), "rb") as f:
+            return orjson.loads(f.read())
     else:
         caches = []
         for fn in files:
-            with open(os.path.join(cache_dir, fn), "r", encoding="utf-8") as f:
-                caches.append(json.load(f))
+            with open(os.path.join(cache_dir, fn), "rb") as f:
+                caches.append(orjson.loads(f.read()))
         return caches
     
 # ===================================================================
@@ -221,25 +254,24 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     # Always include 'Percent Reported' if present in any row
     if any("Percent Reported" in row for row in data) and "Percent Reported" not in new_headers:
         new_headers.append("Percent Reported")
-    # --- Use LOG_PARENT_DIR for all log files
-    denied_structures_path = os.path.join(LOG_PARENT_DIR, "denied_table_structures.json")
+    # --- Use CACHE_DIR for all cache files ---
+    os.makedirs(CACHE_DIR, exist_ok=True)
+
+    # Denied structures cache
+    denied_structures_path = os.path.join(CACHE_DIR, "denied_table_structures.json")
     denied_structures = {}
-    denied_structures_dir = os.path.dirname(denied_structures_path)
-    os.makedirs(denied_structures_dir, exist_ok=True)
     if os.path.exists(denied_structures_path):
-        with open(denied_structures_path, "r", encoding="utf-8") as f:
-            denied_structures = json.load(f)
+        with open(denied_structures_path, "rb") as f:
+            denied_structures = orjson.loads(f.read())
     sig = f"{domain}:{table_signature(headers)}"
     denied_count = denied_structures.get(sig, 0)
 
-    removed_columns_log_path = os.path.join(LOG_PARENT_DIR, "removed_columns_log.json")
-    removed_columns_log_dir = os.path.dirname(removed_columns_log_path)
-    os.makedirs(removed_columns_log_dir, exist_ok=True)
+    # Removed columns cache
+    removed_columns_log_path = os.path.join(CACHE_DIR, "removed_columns_cache.json")
+    removed_columns_log = {}
     if os.path.exists(removed_columns_log_path):
-        with open(removed_columns_log_path, "r", encoding="utf-8") as f:
-            removed_columns_log = json.load(f)
-    else:
-        removed_columns_log = {}
+        with open(removed_columns_log_path, "rb") as f:
+            removed_columns_log = orjson.loads(f.read())
 
     # ML/NLP suggestions
     ml_scores = []
@@ -268,12 +300,12 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
         new_headers, data = harmonize_headers_and_data(new_headers, data)
         ml_scores = [coordinator.score_header(h, {"contest_title": contest_title}) for h in new_headers]
         avg_score = sum(ml_scores) / len(ml_scores) if ml_scores else 0
-        
+
     # Multiple structure candidates (if available)
     structure_candidates = [new_headers]
     alt_headers = []
     for idx, (h, ent, label) in enumerate(nlp_suggestions):
-        if ent and ent != h and idx < len(alt):
+        if ent and ent != h and idx < len(new_headers):
             alt = copy.deepcopy(new_headers)
             alt[idx] = ent
             alt_headers.append(alt)
@@ -327,14 +359,17 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
             if should_log and hasattr(coordinator, "log_table_structure"):
                 coordinator.log_table_structure(domain, new_headers, data)
             new_headers, data = harmonize_headers_and_data(new_headers, data)
+            if columns_changed:
+                logger.info(f"[TABLE BUILDER] Columns were changed by user before acceptance.")
             return new_headers, data
         elif resp in ("n", "no"):
             denied_structures[sig] = denied_structures.get(sig, 0) + 1
-            with open(denied_structures_path, "w", encoding="utf-8") as f:
-                json.dump(denied_structures, f, indent=2)
-            logger.info(f"[TABLE BUILDER] User declined to log table structure for '{contest_title}'. Denied {denied_structures[sig]} times.")
-            if denied_structures[sig] >= 3:
-                logger.warning(f"[TABLE BUILDER] Structure for '{contest_title}' denied {denied_structures[sig]} times. Will not auto-apply in future.")
+            denied_count = denied_structures[sig]
+            with open(denied_structures_path, "wb") as f:
+                f.write(orjson.dumps(denied_structures, option=orjson.OPT_INDENT_2))
+            logger.info(f"[TABLE BUILDER] User declined to log table structure for '{contest_title}'. Denied {denied_count} times.")
+            if denied_count >= 3:
+                logger.warning(f"[TABLE BUILDER] Structure for '{contest_title}' denied {denied_count} times. Will not auto-apply in future.")
             retry = input("Would you like to retry correction? [y/N]: ").strip().lower()
             if retry in ("y", "yes"):
                 continue
@@ -358,8 +393,8 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
                 data = [{h: row.get(h, "") for h in candidate_headers} for row in data]
                 columns_changed = True
                 structure_candidates[candidate_idx] = candidate_headers
-            with open(removed_columns_log_path, "w", encoding="utf-8") as f:
-                json.dump(removed_columns_log, f, indent=2)
+            with open(removed_columns_log_path, "wb") as f:
+                f.write(orjson.dumps(removed_columns_log, option=orjson.OPT_INDENT_2))
         elif resp == "o":
             rprint("Enter new order of columns as space/comma-separated numbers (starting from 1):")
             for idx, h in enumerate(candidate_headers):
@@ -435,6 +470,8 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
             )
     # Always harmonize before returning
     new_headers, data = harmonize_headers_and_data(new_headers, data)
+    if columns_changed:
+        logger.info(f"[TABLE BUILDER] Columns were changed by user in the final structure.")
     return new_headers, data
 
 # ===================================================================

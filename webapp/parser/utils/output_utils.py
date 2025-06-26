@@ -5,7 +5,7 @@ import collections.abc
 from datetime import datetime
 from ..utils.shared_logger import rprint, logger
 from ..utils.table_builder import build_dynamic_table, harmonize_headers_and_data
-from ..config import CONTEXT_DB_PATH, BASE_DIR
+from ..config import CONTEXT_DB_PATH, BASE_DIR, LOG_DIR
 from ..utils.user_prompt import prompt_yes_no
 
 CACHE_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
@@ -17,10 +17,6 @@ def get_project_root():
 def get_output_root():
     # Output folder at the project root
     return os.path.join(get_project_root(), "output")
-
-def get_log_root():
-    # Log folder at the project root
-    return os.path.join(get_project_root(), "log")
 
 def safe_join(base, *paths):
     """
@@ -315,7 +311,9 @@ def finalize_election_output(
     rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
 
     if enable_user_feedback or os.environ.get("ENABLE_USER_FEEDBACK", "false").lower() == "true":
-        feedback_log_path = safe_join(output_path, "user_feedback_log.jsonl")
+        feedback_log_path = safe_join(LOG_DIR, "user_feedback_log.jsonl")
+        os.makedirs(LOG_DIR, exist_ok=True)
+        # Only one log file is needed; remove global_feedback_log_path duplication
         feedback = input("\n[Feedback] Would you like to provide feedback or corrections for this output? (Leave blank to skip):\n> ").strip()
         if feedback:
             feedback_entry = {
