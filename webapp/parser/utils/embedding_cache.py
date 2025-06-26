@@ -1,14 +1,16 @@
 import re
 import numpy as np
 import os
+from rich.console import Console
 from functools import lru_cache
 import threading
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from webapp.parser.utils.db_utils import get_session
 from webapp.parser.utils.models import EmbeddingCache
-
+console = Console()
 # --- In-memory LRU cache for single-segment embedding retrieval ---
 @lru_cache(maxsize=2048)
 def get_embedding_from_memory(segment_hash):
@@ -63,26 +65,32 @@ def load_embedding(segment_hash):
 
 def save_embeddings_batch(hash_emb_list):
     """
-    Save a batch of (segment_hash, embedding) tuples.
+    Save a batch of (segment_hash, embedding) tuples using PostgreSQL upsert (ON CONFLICT DO UPDATE).
+    This prevents unique constraint errors and ensures robust batch saving.
     """
     if not hash_emb_list:
         return
     ensure_embedding_cache_table()
+    # Prepare data for bulk upsert
+    records = []
+    for h, e in hash_emb_list:
+        emb_bytes = np.array(e).astype(np.float32).tobytes()
+        records.append({"segment_hash": h, "embedding": emb_bytes})
     with _db_lock:
         with get_session() as session:
             try:
-                for h, e in hash_emb_list:
-                    emb_bytes = np.array(e).astype(np.float32).tobytes()
-                    obj = session.get(EmbeddingCache, h)
-                    if obj:
-                        obj.embedding = emb_bytes
-                    else:
-                        obj = EmbeddingCache(segment_hash=h, embedding=emb_bytes)
-                        session.add(obj)
+                stmt = insert(EmbeddingCache).values(records)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['segment_hash'],
+                    set_={'embedding': stmt.excluded.embedding}
+                )
+                session.execute(stmt)
                 session.commit()
             except SQLAlchemyError as e:
                 session.rollback()
-                raise e
+                # Print only the error message in a static line
+                console.print(f"[red][BATCH EMBEDDING ERROR][/red] {str(e)}", highlight=False, end="\r")
+                raise
     # Update in-memory cache
     with _batch_cache_lock:
         for h, e in hash_emb_list:

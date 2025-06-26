@@ -1477,11 +1477,11 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
-    def start_alert_monitoring(self, POSTGRES_URL=None, poll_interval=10):
+    def start_alert_monitoring(self):
         """
         Start real-time alert monitoring in a background thread.
         """
-        monitor_db_for_alerts(POSTGRES_URL=POSTGRES_URL, poll_interval=poll_interval)
+        monitor_db_for_alerts()
 
     # --- Reporting ---
 
@@ -1926,7 +1926,7 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
 
 # --- Alert Monitoring (run in production) ---
 def start_alert_monitoring():
-    monitor_db_for_alerts(POSTGRES_URL=POSTGRES_URL, poll_interval=10)
+    monitor_db_for_alerts()
 
 # --- CLI Entrypoint ---
 if __name__ == "__main__":

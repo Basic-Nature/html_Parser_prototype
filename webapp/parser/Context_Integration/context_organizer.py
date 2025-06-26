@@ -6,11 +6,13 @@ Handles data formatting, ML anomaly detection, cache-aware learning, clustering,
 Delegates NLP/semantic logic to the context_coordinator and spacy_utils modules.
 """
 
+import datetime
 import os
 import orjson
 import logging
 from collections import defaultdict
 import hashlib
+import collections.abc
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
 from sqlalchemy.orm import Session
@@ -25,8 +27,7 @@ from ..utils.db_utils import (
 from ..utils.models import Contest, TableStructure
 from ..utils.shared_logic import get_title_embedding_features, load_context_library, scan_environment
 from .Integrity_check import (
-    detect_anomalies_with_ml, print_ml_anomalies,
-    auto_tune_contamination, election_integrity_checks, monitor_db_for_alerts
+    detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
 from ..utils.shared_logger import logger, rprint
 from rich.console import Console
@@ -741,11 +742,81 @@ class ContextOrganizer:
             "roots": dom_tree["roots"]
         }
 
+    def append_to_context_library(self, organized, path=None, merge_lists=True, deduplicate=True):
+        """
+        Robustly append or update the organized context into the context library JSON file.
+        - merge_lists: If True, lists are merged (with deduplication if deduplicate=True).
+        - deduplicate: If True, removes duplicates from merged lists based on dict content or value.
+        """
+
+        def merge_dicts(a, b):
+            """Recursively merge dict b into dict a."""
+            for k, v in b.items():
+                if k in a:
+                    if isinstance(a[k], dict) and isinstance(v, dict):
+                        merge_dicts(a[k], v)
+                    elif isinstance(a[k], list) and isinstance(v, list) and merge_lists:
+                        combined = a[k] + v
+                        if deduplicate:
+                            # Remove duplicates (works for dicts and primitives)
+                            seen = set()
+                            deduped = []
+                            for item in combined:
+                                try:
+                                    key = orjson.dumps(item) if isinstance(item, collections.abc.Hashable) else str(item)
+                                except Exception:
+                                    key = str(item)
+                                if key not in seen:
+                                    seen.add(key)
+                                    deduped.append(item)
+                            a[k] = deduped
+                        else:
+                            a[k] = combined
+                    else:
+                        a[k] = v
+                else:
+                    a[k] = v
+            return a
+
+        path = path or self.context_library_path
+        try:
+            if os.path.exists(path):
+                with open(path, "rb") as f:
+                    library = orjson.loads(f.read())
+            else:
+                library = {}
+            library = merge_dicts(library, organized)
+            library["last_updated"] = datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+            with open(path, "wb") as f:
+                f.write(orjson.dumps(library, option=orjson.OPT_INDENT_2))
+            self.logger.info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
+        except Exception as e:
+            self.logger.error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")
+
     def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
-        save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
+        """
+        Save or update a table structure for a contest in the database.
+        """
+        try:
+            save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
+            self.logger.info(f"[CONTEXT ORGANIZER] Saved table structure for contest: {contest_title}")
+        except Exception as e:
+            self.logger.error(f"[CONTEXT ORGANIZER] Failed to save table structure: {e}")
 
     def get_table_structure_from_db(self, contest_title, context=None):
-        return get_table_structure_from_db(contest_title, context)
+        """
+        Retrieve a table structure for a contest from the database.
+        """
+        try:
+            result = get_table_structure_from_db(contest_title, context)
+            if result:
+                self.logger.info(f"[CONTEXT ORGANIZER] Loaded table structure for contest: {contest_title}")
+            else:
+                self.logger.warning(f"[CONTEXT ORGANIZER] No table structure found for contest: {contest_title}")
+            return result
+        except Exception as e:
+            self.logger.error(f"[CONTEXT ORGANIZER] Failed to load table structure: {e}")
+            return None
 
 # --- Backward-compatible function for legacy imports ---
 def organize_context(*args, **kwargs):
