@@ -223,13 +223,13 @@ def finalize_election_output(
     enriched_meta = organized.get("metadata", meta)
 
     # Defensive: ensure required fields
-    if not enriched_meta.get("race"):
+    if not enriched_meta.get("race", []):
         enriched_meta["race"] = contest_title or "Unknown"
-    if not enriched_meta.get("year") or not (str(enriched_meta["year"]).isdigit() and len(str(enriched_meta["year"])) == 4):
+    if not enriched_meta.get("year", []) or not (str(enriched_meta["year"]).isdigit() and len(str(enriched_meta["year"])) == 4):
         enriched_meta["year"] = meta.get("year", "Unknown")
-    if not enriched_meta.get("state"):
+    if not enriched_meta.get("state", []):
         enriched_meta["state"] = state or "Unknown"
-    if not enriched_meta.get("county"):
+    if not enriched_meta.get("county", []):
         enriched_meta["county"] = county or "Unknown"
     organizer = ContextOrganizer()
     organizer.append_to_context_library({"metadata": enriched_meta})

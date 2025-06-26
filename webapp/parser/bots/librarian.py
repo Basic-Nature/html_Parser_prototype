@@ -5,7 +5,7 @@ import orjson
 import subprocess
 import sys
 import time
-
+from ..utils.shared_logic import update_context_library_field
 
 # --- Central Dynamic Sets (used everywhere) ---
 HTML_TAGS: Set[str] = set([
@@ -150,16 +150,12 @@ def load_context_library(path=CONTEXT_LIBRARY_PATH):
     return context_lib
 
 def save_context_library():
-    context_lib = {
-        "panel_tags": list(PANEL_TAGS),
-        "heading_tags": list(HEADING_TAGS),
-        "custom_attr_patterns": [pat.pattern for pat in CUSTOM_ATTR_PATTERNS],
-        "location_keywords": list(LOCATION_KEYWORDS),
-        "candidate_keywords": list(CANDIDATE_KEYWORDS),
-        "ballot_types": list(BALLOT_TYPES),
-    }
-    with open(CONTEXT_LIBRARY_PATH, "w", encoding="utf-8") as f:
-        json.dump(context_lib, f, indent=2)
+    update_context_library_field("panel_tags", list(PANEL_TAGS))
+    update_context_library_field("heading_tags", list(HEADING_TAGS))
+    update_context_library_field("custom_attr_patterns", [pat.pattern for pat in CUSTOM_ATTR_PATTERNS])
+    update_context_library_field("location_keywords", list(LOCATION_KEYWORDS))
+    update_context_library_field("candidate_keywords", list(CANDIDATE_KEYWORDS))
+    update_context_library_field("ballot_types", list(BALLOT_TYPES))
 
 # --- Unknown Tag/Attr Logging for ML/LLM Feedback ---
 UNKNOWN_TAGS_LOG = set()

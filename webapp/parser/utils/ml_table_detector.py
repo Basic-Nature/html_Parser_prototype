@@ -40,11 +40,11 @@ def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
     Use an LLM (OpenAI, Anthropic, Gemini, local, etc.) to extract tables from HTML.
     Returns a list of {headers, data, meta}.
     """
-    llm_provider = (options.get("llm_provider") or os.getenv("LLM_PROVIDER", "openai")).lower()
-    llm_model = options.get("llm_model") or os.getenv("LLM_MODEL", "gpt-4-turbo")
-    llm_api_key = options.get("llm_api_key") or os.getenv("LLM_API_KEY")
-    system_prompt = options.get("llm_system_prompt") or os.getenv("LLM_SYSTEM_PROMPT")
-    extra_instructions = options.get("llm_extra_instructions") or os.getenv("LLM_EXTRA_INSTRUCTIONS")
+    llm_provider = (options.get("llm_provider", []) or os.getenv("LLM_PROVIDER", "openai")).lower()
+    llm_model = options.get("llm_model", []) or os.getenv("LLM_MODEL", "gpt-4-turbo")
+    llm_api_key = options.get("llm_api_key", []) or os.getenv("LLM_API_KEY")
+    system_prompt = options.get("llm_system_prompt", []) or os.getenv("LLM_SYSTEM_PROMPT")
+    extra_instructions = options.get("llm_extra_instructions", []) or os.getenv("LLM_EXTRA_INSTRUCTIONS")
     prompt = (
         (system_prompt or "You are an expert at extracting tabular data from HTML. ")
         + "Given the following HTML, extract all tables (including non-standard, visually-styled, or grid-like tables). "

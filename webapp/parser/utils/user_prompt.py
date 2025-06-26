@@ -228,8 +228,8 @@ def prompt_for_metadata(metadata_fields):
     for field, opts in metadata_fields.items():
         responses[field] = prompt_for_metadata_field(
             field,
-            suggestions=opts.get("suggestions"),
-            default=opts.get("default")
+            suggestions=opts.get("suggestions", []),
+            default=opts.get("default", [])
         )
     return responses
 

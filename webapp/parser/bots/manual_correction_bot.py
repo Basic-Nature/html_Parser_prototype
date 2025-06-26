@@ -26,16 +26,13 @@ import time
 
 # --- Unified logger import ---
 from ..utils.shared_logger import logger
-
-# --- Context schema utility import ---
-from ..utils.context_schema import (
-    load_context_library,
+from ..utils.shared_logic import (
     save_context_library,
     update_context_library,
     SCHEMA_VERSION,
     DEFAULT_STRUCTURE,
+    load_context_library,
 )
-
 # --- Config ---
 # --- Directory and file constants ---
 from ..config import PROJECT_ROOT, BASE_DIR, CONTEXT_LIBRARY_PATH

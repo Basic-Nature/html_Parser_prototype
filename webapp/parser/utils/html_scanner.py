@@ -7,14 +7,13 @@ from typing import Dict, Any, List, Optional
 from ..config import CONTEXT_LIBRARY_PATH, BASE_DIR
 from ..utils.download_utils import download_file
 from ..utils.format_router import route_format_handler 
-from ..utils.shared_logic import infer_state_county_from_url
+from ..utils.shared_logic import infer_state_county_from_url, update_context_library
 from ..utils.shared_logger import logger
 from rich import print as rprint
 from rich.console import Console
 from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
 from ..utils.model_registry import ModelRegistry
-from ..utils.context_schema import update_context_library
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, DISTRICT_REGEX, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
     extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
@@ -91,9 +90,9 @@ def get_cached_segment_label(seg_hash):
     """Retrieve a cached label for a segment, or None if not found."""
     with _LABEL_CACHE_LOCK:
         cache = _load_label_cache()
-        entry = cache.get(seg_hash)
+        entry = cache.get(seg_hash, {})
         if entry:
-            return entry.get("label")
+            return entry.get("label", [])
         return None
 
 # Example: dynamically extend from learning/feedback
@@ -218,9 +217,9 @@ def extract_tagged_segments_with_attrs(
         cache = load_context_cache_from_disk()
         cache = [e for e in cache if isinstance(e, dict)]
         for entry in cache:
-            if entry.get("tag") != tag:
+            if entry.get("tag", []) != tag:
                 continue
-            if entry.get("attrs") != attrs:
+            if entry.get("attrs", []) != attrs:
                 continue
             if "html_snippet" in entry and html_snippet.startswith(entry["html_snippet"]):
                 return entry
@@ -233,11 +232,11 @@ def extract_tagged_segments_with_attrs(
                 if not isinstance(entry, dict):
                     logger.warning(f"Non-dict entry in cache: {entry!r}")
                     continue
-                if entry.get("segment_hash") == key:
+                if entry.get("segment_hash", []) == key:
                     return entry
         if context_library:
             for seg in context_library.get("cached_segments", []):
-                if seg.get("segment_hash") == key:
+                if seg.get("segment_hash", []) == key:
                     return seg
         return None
 
@@ -247,7 +246,7 @@ def extract_tagged_segments_with_attrs(
             seg["ml_label"] = "ignore"
             seg["ml_confidence"] = 1.0
             seg["pattern_id"] = None
-            if seg.get("html"):
+            if seg.get("html", []):
                 cache_segment_label(seg["html"], "ignore")
             return seg
         # Try cache/context KB
@@ -261,8 +260,8 @@ def extract_tagged_segments_with_attrs(
         if cached:
             seg["ml_label"] = cached.get("ml_label", "unknown")
             seg["ml_confidence"] = cached.get("ml_confidence", 1.0)
-            seg["pattern_id"] = cached.get("pattern_id")
-            seg["segment_hash"] = cached.get("segment_hash")
+            seg["pattern_id"] = cached.get("pattern_id", [])
+            seg["segment_hash"] = cached.get("segment_hash", [])
             return seg
         # ML-driven labeling (optionally use precomputed embedding)
         if emb is not None:
@@ -277,7 +276,7 @@ def extract_tagged_segments_with_attrs(
                 if sim > best_conf:
                     best_conf = sim
                     best_label = entry.get("label", "unknown")
-                    best_pattern_id = entry.get("pattern_id")
+                    best_pattern_id = entry.get("pattern_id", [])
             if best_conf < ml_threshold:
                 seg["ml_label"] = "unknown"
                 seg["ml_confidence"] = best_conf
@@ -452,7 +451,7 @@ def extract_tagged_segments_with_attrs(
                 seg["context_heading"] = heading_html
             if seg["tag"] == "table" and seg["panel_ancestor_idx"] is not None:
                 panel_node = segments[seg["panel_ancestor_idx"]]
-                seg["panel_ancestor_heading"] = panel_node.get("context_heading")
+                seg["panel_ancestor_heading"] = panel_node.get("context_heading", [])
 
         logger.info(f"[PERF] DOM extraction (selectolax+ML+batch) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
         return segments
@@ -621,7 +620,7 @@ def extract_panel_table_hierarchy(segments, model_name: Optional[str] = None, us
     panel_tags = PANEL_TAGS
 
     idx_to_seg = {seg["_idx"]: seg for seg in segments if "_idx" in seg}
-    table_segs = [seg for seg in segments if seg.get("tag") == "table"]
+    table_segs = [seg for seg in segments if seg.get("tag", []) == "table"]
     if isinstance(segments, list):
         segments[:] = [s for s in segments if isinstance(s, dict)]
     # --- ML Model for Embeddings ---
@@ -631,15 +630,15 @@ def extract_panel_table_hierarchy(segments, model_name: Optional[str] = None, us
     panel_segs = [
         seg for seg in segments
         if (
-            (seg.get("tag") == "div" and "p-panel" in seg.get("classes", []))
-            or (seg.get("tag") in panel_tags)
+            (seg.get("tag", []) == "div" and "p-panel" in seg.get("classes", []))
+            or (seg.get("tag", []) in panel_tags)
             or any(
                 kw in (seg.get("classes", []) + [seg.get("id", "")])
                 for kw in [
                     "panel", "card", "container", "box", "section-panel", "results", "content", "main", "section", "p-panel-content"
                 ]
             )
-            or seg.get("ml_label") in ("panel", "location_panel", "candidate_panel")
+            or seg.get("ml_label", []) in ("panel", "location_panel", "candidate_panel")
         )
     ]
 
@@ -654,13 +653,13 @@ def extract_panel_table_hierarchy(segments, model_name: Optional[str] = None, us
         for table in table_segs:
             # DOM proximity: walk up from table to see if panel is ancestor
             dom_score = 0
-            parent_idx = table.get("parent_idx")
+            parent_idx = table.get("parent_idx", [])
             hops = 0
             while parent_idx is not None and hops < 10:
                 if parent_idx == panel["_idx"]:
                     dom_score = 1.0 - 0.1 * hops  # closer is better
                     break
-                parent_idx = idx_to_seg.get(parent_idx, {}).get("parent_idx")
+                parent_idx = idx_to_seg.get(parent_idx, {}).get("parent_idx", [])
                 hops += 1
             # ML similarity
             ml_score = float(np.dot(panel["_embedding"], table["_embedding"]) /
@@ -698,9 +697,9 @@ def extract_panel_table_hierarchy(segments, model_name: Optional[str] = None, us
         # Improved heading extraction
         heading = extract_heading_text_from_panel_or_ancestors(panel, segments)
         if not heading:
-            heading = panel.get("context_heading")
+            heading = panel.get("context_heading", [])
         if not heading:
-            heading = panel.get("panel_ancestor_heading")
+            heading = panel.get("panel_ancestor_heading", [])
         if not heading:
             heading = f"Panel {panel['_idx']}"
         # Debug output if heading is still generic
@@ -710,9 +709,9 @@ def extract_panel_table_hierarchy(segments, model_name: Optional[str] = None, us
 
         panels.append({
             "panel_idx": panel["_idx"],
-            "panel_tag": panel.get("tag"),
+            "panel_tag": panel.get("tag", []),
             "panel_heading": heading,
-            "panel_html": panel.get("html"),
+            "panel_html": panel.get("html", []),
             "fully_reported": "",  # Could add ML extraction for reporting status
             "ml_confidence": float(np.mean([s["score"] for _, s in tables_and_scores])),
             "tables": [
@@ -743,13 +742,13 @@ def extract_panel_table_hierarchy(segments, model_name: Optional[str] = None, us
     for t, s in orphan_tables:
         heading = extract_heading_text_from_panel_or_ancestors(t, segments)
         if not heading:
-            heading = t.get("context_heading")
+            heading = t.get("context_heading", [])
         if not heading:
-            heading = t.get("panel_ancestor_heading")
+            heading = t.get("panel_ancestor_heading", [])
         if not heading:
             heading = f"Panel {t['_idx']}"
         if not heading or heading.startswith("Panel"):
-            print(f"[DEBUG] Orphan table idx={t['_idx']} has no heading. context_heading={t.get('context_heading')}, panel_ancestor_heading={t.get('panel_ancestor_heading')}")
+            print(f"[DEBUG] Orphan table idx={t['_idx']} has no heading. context_heading={t.get('context_heading', [])}, panel_ancestor_heading={t.get('panel_ancestor_heading', [])}")
             print(f"[DEBUG] Table HTML snippet: {t.get('html', '')[:200]}")
 
         panels.append({
@@ -860,7 +859,7 @@ def extract_heading_text_from_panel_or_ancestors(panel_seg, segments, max_depth=
             return close[0]
 
     # 6. Fallback: walk up ancestors
-    parent_idx = panel_seg.get("parent_idx")
+    parent_idx = panel_seg.get("parent_idx", [])
     depth = 0
     while parent_idx is not None and depth < max_depth:
         parent = segments[parent_idx]
@@ -884,7 +883,7 @@ def extract_heading_text_from_panel_or_ancestors(panel_seg, segments, max_depth=
                     return match.group(0)
                 if len(txt) < 40 and any(word in txt.lower() for word in LOCATION_KEYWORDS):
                     return txt
-        parent_idx = parent.get("parent_idx")
+        parent_idx = parent.get("parent_idx", [])
         depth += 1
 
     # 7. Fuzzy match on ancestors if nothing found
@@ -896,7 +895,7 @@ def extract_heading_text_from_panel_or_ancestors(panel_seg, segments, max_depth=
             return close[0]
 
     # 8. Debug: print panel HTML if heading is still None
-    rprint(f"[red][DEBUG] No heading found for panel idx={panel_seg.get('_idx')}. Panel HTML snippet:\n{html[:300]}...[/red]")
+    rprint(f"[red][DEBUG] No heading found for panel idx={panel_seg.get('_idx', [])}. Panel HTML snippet:\n{html[:300]}...[/red]")
 
     return None
 
@@ -1036,7 +1035,7 @@ def auto_label_segment(
     attrs = segment.get("attrs", {})
     html = segment.get("html", "").lower()
     id_ = segment.get("id", "").lower()
-    text = segment.get("text", "").strip().lower() if segment.get("text") else ""
+    text = segment.get("text", "").strip().lower() if segment.get("text", []) else ""
 
     # --- 0. Always-ignored tags/classes/ids ---
     ALWAYS_IGNORE_TAGS = {
@@ -1096,7 +1095,7 @@ def auto_label_segment(
 
     # --- 3. Ballot toggle/button ---
     BUTTON_CLASSES = {"btn", "button", "toggle", "switch", "p-button", "mat-button", "v-btn", "ant-btn", "el-button"}
-    if segment.get("is_button") or BUTTON_CLASSES & set(classes) or "toggle" in id_:
+    if segment.get("is_button", []) or BUTTON_CLASSES & set(classes) or "toggle" in id_:
         return "ballot_toggle"
 
     # --- 4. Heading ---
@@ -1143,7 +1142,7 @@ def auto_label_segment(
         return "ballot_type"
 
     # --- 9. Clickable (fallback for links/buttons) ---
-    if segment.get("is_clickable"):
+    if segment.get("is_clickable", []):
         return "clickable"
 
     # --- 10. Results timestamp (robust, real-world) ---
@@ -1267,7 +1266,7 @@ def ml_classify_segment(segment, model, pattern_kb, threshold=0.85):
         if sim > best_conf:
             best_conf = sim
             best_label = entry.get("label", "unknown")
-            best_pattern_id = entry.get("pattern_id")
+            best_pattern_id = entry.get("pattern_id", [])
     if best_conf < threshold:
         return "unknown", best_conf, None
     return best_label, best_conf, best_pattern_id
@@ -1293,7 +1292,7 @@ def prompt_for_segment_label(segment, context_library=None):
         return "unknown"
     # Fallback to user prompt if ambiguous
     if not html_preview:
-        html_preview = f"[No HTML] tag={segment.get('tag')} attrs={segment.get('attrs')}"
+        html_preview = f"[No HTML] tag={segment.get('tag', [])} attrs={segment.get('attrs', [])}"
 
     rprint(f"\n[bold yellow]Segment needs review:[/bold yellow]\n{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
     rprint(
@@ -1366,7 +1365,7 @@ def scan_html_for_context(
     try:
         page_url = target_url or page.url
         SCAN_WAIT_SECONDS = 3
-        logger.info(f"[SCAN] Waiting {SCAN_WAIT_SECONDS} to scan page content...")
+        logger.info(f"[SCAN] Waiting {SCAN_WAIT_SECONDS} seconds to scan page content...")
         time.sleep(SCAN_WAIT_SECONDS)
         html = page.content()
         context_result["raw_html"] = html
@@ -1459,7 +1458,7 @@ def scan_html_for_context(
         segments_with_attrs = unique_segments    
         for seg in segments_with_attrs:
             # Already labeled in extract_tagged_segments_with_attrs, but check for low confidence
-            if seg["ml_confidence"] < 0.7 or seg["ml_label"] == "unknown":
+            if seg.get("ml_confidence", 0.0) < 0.7 or seg.get("ml_label", "unknown") == "unknown":
                 user_label = prompt_for_segment_label(seg, context_library=context_library)
                 seg["ml_label"] = user_label
                 seg["ml_confidence"] = 1.0
@@ -1483,7 +1482,7 @@ def scan_html_for_context(
                 })
                 segments_needing_review.append(seg)
                 # --- update context library with the correction ---
-                if context_library is not None and seg.get("segment_hash"):
+                if context_library is not None and seg.get("segment_hash", []):
                     update_context_library(context_library, seg["segment_hash"], user_label)
                     # Optionally save immediately:
                     save_context_library(context_library)
@@ -1532,9 +1531,9 @@ def scan_html_for_context(
         if context_library is not None:
             if "cached_segments" not in context_library:
                 context_library["cached_segments"] = []
-            known_hashes = {seg.get("segment_hash") for seg in context_library["cached_segments"]}
+            known_hashes = {seg.get("segment_hash", []) for seg in context_library["cached_segments"]}
             for seg in segments_with_attrs:
-                if seg.get("segment_hash") and seg["segment_hash"] not in known_hashes:
+                if seg.get("segment_hash", []) and seg["segment_hash"] not in known_hashes:
                     # Only store minimal info needed for reuse
                     context_library["cached_segments"].append({
                         "segment_hash": seg["segment_hash"],

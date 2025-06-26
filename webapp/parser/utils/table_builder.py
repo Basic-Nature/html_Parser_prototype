@@ -66,7 +66,7 @@ def build_dynamic_table(
     # Ensure panel_heading/Precinct is in context for downstream use
     if "panel_heading" in context and "Precinct" not in context:
         context["Precinct"] = context["panel_heading"]        
-    page = context.get("page")
+    page = context.get("page", [])
     from ..utils.dynamic_table_extractor import dynamic_table_extractor
     # --- 1. Gather all panel tables if present ---
     all_panel_tables = []
@@ -74,9 +74,9 @@ def build_dynamic_table(
         for panel in context["panels"]:
             for table in panel.get("tables", []):
                 table_context = context.copy()
-                table_context["panel_heading"] = panel.get("panel_heading")
-                table_context["Precinct"] = panel.get("panel_heading")
-                table_context["table_html"] = table.get("table_html")
+                table_context["panel_heading"] = panel.get("panel_heading", [])
+                table_context["Precinct"] = panel.get("Precinct", [])
+                table_context["table_html"] = table.get("table_html", [])
                 h, d = dynamic_table_extractor(page, table_context, coordinator, table_html=table.get("table_html"))
                 if h and d:
                     all_panel_tables.append((h, d))
@@ -127,7 +127,7 @@ def build_dynamic_table(
         logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
     # --- 5. User/ML confirmation and learning (if enabled) ---
     if learning_mode:
-        contest_title = context.get("contest_title") or "Unknown Contest"
+        contest_title = context.get("contest_title", []) or "Unknown Contest"
         headers_confirmed, data_confirmed = prompt_user_to_confirm_table_structure(
             headers, data, domain, contest_title, coordinator
         )

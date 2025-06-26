@@ -1,6 +1,6 @@
 
 import csv
-from datetime import datetime
+from datetime import datetime, timezone
 from difflib import get_close_matches
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, session, url_for, flash, send_file, send_from_directory
@@ -14,7 +14,6 @@ import subprocess
 from threading import Thread
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
 from webapp.parser.config import BASE_DIR, POSTGRES_URL 
-from webapp.parser.utils.shared_logic import utcnow
 from webapp.parser.bots.bot_router import run_pipeline, start_postgres_service, stop_postgres_service
 # Load environment variables from .env
 load_dotenv()
@@ -110,7 +109,7 @@ def allowed_file(filename):
 
 def append_history(data):
     snapshot = {
-        "timestamp": utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "data": data
     }
     with open(HISTORY_FILE, "a", encoding="utf-8") as f:

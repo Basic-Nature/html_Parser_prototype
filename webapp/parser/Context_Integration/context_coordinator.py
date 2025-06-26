@@ -205,44 +205,6 @@ class ContextCoordinator:
         self._enrich_contests_with_nlp()
         return self.organized
 
-    def correct_and_update_contest(self, contest_id, correction_data):
-        """
-        Update a contest in the DB and context library, then re-organize context.
-        """
-        from ..utils.db_utils import update_contest_in_db
-        from ..utils.shared_logic import save_context_library  # If you have a save function
-
-        # 1. Update DB
-        update_contest_in_db({"id": contest_id, **correction_data})
-
-        # 2. Update context library if needed
-        for key, value in correction_data.items():
-            if key == "county" and value not in self.library.get("known_counties", []):
-                self.library.setdefault("known_counties", []).append(value)
-            if key == "state" and value not in self.library.get("known_states", []):
-                self.library.setdefault("known_states", []).append(value)
-            # Add similar logic for other fields as needed
-
-        # 3. Save updated context library (if you persist it)
-        save_context_library(self.library)  # Uncomment if you have this function
-
-        # 4. Re-organize context using the last raw context
-        self.organized = None
-        if self.last_raw_context is not None:
-            self.organize_and_enrich(self.last_raw_context)
-
-        # 5. Log correction
-        self.log_field_selection(
-            field_type="contest",
-            field_name="correction",
-            extracted_value=correction_data,
-            method="manual",
-            score=1.0,
-            result="manual_pass",
-            context={"contest_id": contest_id},
-            user_feedback=None
-        )
-
     def submit_user_feedback(self, field_type, field_name, correct_value, context):
         self.log_field_selection(
             field_type=field_type,
@@ -909,7 +871,7 @@ class ContextCoordinator:
         """
         Return contests, optionally filtered by state, county, year, type, etc.
         """       
-        contests = self.organized["contests"] if self.organized else []
+        contests = self.organized.get("contests", [])
         if not filters:
             return contests
         def match(c):
@@ -1553,7 +1515,7 @@ class ContextCoordinator:
         Update a contest in the DB and context library, then re-organize context.
         """
         from ..utils.db_utils import update_contest_in_db
-        from ..utils.shared_logic import save_context_library  # If you have a save function
+        from ..utils.shared_logic import load_context_library, save_context_library
 
         # 1. Update DB
         update_contest_in_db({"id": contest_id, **correction_data})
@@ -1567,7 +1529,9 @@ class ContextCoordinator:
             # Add similar logic for other fields as needed
 
         # 3. Save updated context library (if you persist it)
-        save_context_library(self.library)  # Uncomment if you have this function
+        full_lib = load_context_library()
+        full_lib.update(self.library)
+        save_context_library(full_lib)
 
         # 4. Re-organize context
         self.organized = None

@@ -101,16 +101,16 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     all_tables = []
 
     # --- ML context integration ---
-    ml_confidence = extraction_context.get("ml_confidence") if extraction_context else None
-    association_log = extraction_context.get("association_log") if extraction_context else None
-    segments = extraction_context.get("segments") if extraction_context else None
-    panels = extraction_context.get("panels") if extraction_context else None
+    ml_confidence = extraction_context.get("ml_confidence", []) if extraction_context else None
+    association_log = extraction_context.get("association_log", []) if extraction_context else None
+    segments = extraction_context.get("segments", []) if extraction_context else None
+    panels = extraction_context.get("panels", []) if extraction_context else None
 
     # 1. DOM structure extraction (divs, lists, etc.)
     try:
         headers_dom, data_dom, diagnostics_dom = extract_rows_and_headers_from_dom(
             page,
-            coordinator=extraction_context.get("coordinator") if extraction_context else None,
+            coordinator=extraction_context.get("coordinator", []) if extraction_context else None,
             context=extraction_context
         )
         if headers_dom and data_dom:
@@ -166,7 +166,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             if table is not None:
                 headers_tab, data_tab, diagnostics_tab = extract_table_data(
                     table,
-                    coordinator=extraction_context.get("coordinator") if extraction_context else None,
+                    coordinator=extraction_context.get("coordinator", []) if extraction_context else None,
                     structure_info={"context": extraction_context} if extraction_context else None
                 )
                 if headers_tab and data_tab:
@@ -193,7 +193,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # 4. Table extraction with heading/location context
     try:
         headers_loc, data_loc, diagnostics_loc = extract_all_tables_with_location(
-            page, coordinator=extraction_context.get("coordinator") if extraction_context else None, context=extraction_context
+            page, coordinator=extraction_context.get("coordinator", []) if extraction_context else None, context=extraction_context
         )
         if headers_loc and data_loc:
             all_tables.append((headers_loc, data_loc))
@@ -346,7 +346,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         # 2. Merge candidate/party fields
         combined_headers, combined_data = merge_multiline_candidate_rows(combined_headers, combined_data)
         # 3. Entity annotation and structure verification (pass ML context)
-        coordinator = extraction_context.get("coordinator") if extraction_context else None
+        coordinator = extraction_context.get("coordinator", []) if extraction_context else None
         entity_info = {
             "ml_confidence": ml_confidence,
             "association_log": association_log,
@@ -466,7 +466,7 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
                         row["Precinct"] = row.pop(location_col)
                 # Fill missing values with heading
                 for row in data:
-                    if not row.get("Precinct"):
+                    if not row.get("Precinct", []):
                         row["Precinct"] = heading
 
             percent_col = find_best_header(headers, PERCENT_KEYWORDS)
@@ -479,7 +479,7 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
                     row[percent_col] = percent_value
             else:
                 for row in data:
-                    if not row.get(percent_col):
+                    if not row.get(percent_col, []):
                         row[percent_col] = percent_value
 
             all_headers.update(headers)
@@ -606,9 +606,9 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
 
         # --- After extracting headers and data ---
         # If no location column, but context provides one, inject it
-        context = structure_info.get("context") if structure_info else {}
-        panel_heading = context.get("panel_heading") or context.get("Precinct") or context.get("district")
-        location_col = entity_preview.get("location_column") or (
+        context = structure_info.get("context", []) if structure_info else {}
+        panel_heading = context.get("panel_heading", []) or context.get("Precinct", []) or context.get("district", [])
+        location_col = entity_preview.get("location_column", []) or (
             next((h for h in headers if is_location_header(h)), None)
         ) or "Precinct"
         if location_col and location_col != "Precinct":
@@ -642,7 +642,7 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         known_districts = set()
         if coordinator and hasattr(coordinator, "library"):
             county_map = coordinator.library.get("Known_county_to_district_map", {})
-            if county and county_map.get(county.title()):
+            if county and county_map.get(county.title(), []):
                 known_districts = set(d.lower() for d in county_map[county.title()])
 
         # --- Robust Location & Percent Detection: Score all candidates, don't stop at first ---
@@ -770,7 +770,7 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         # Optionally, fill percent_col in all rows if found
         if percent_col and percent_value:
             for row in data:
-                if not row.get(percent_col):
+                if not row.get(percent_col, []):
                     row[percent_col] = percent_value
 
         # Log NLP-style preview
@@ -969,7 +969,7 @@ def extract_with_patterns(page, context=None, log_path=None):
     Returns (headers, data, diagnostics)
     """
     patterns = load_dom_patterns(log_path)
-    approved = [p for p in patterns if p.get("approved")]
+    approved = [p for p in patterns if p.get("approved", [])]
     results = []
     diagnostics = {
         "patterns_tried": len(patterns),
@@ -978,11 +978,11 @@ def extract_with_patterns(page, context=None, log_path=None):
     }
     for pat in approved:
         selector = pat["selector"]
-        cell_selectors = pat.get("cell_selectors") or [pat.get("cell_selector", "> *")]
+        cell_selectors = pat.get("cell_selectors", []) or [pat.get("cell_selector", "> *")]
         containers = page.locator(selector)
         for i in range(containers.count()):
             container = containers.nth(i)
-            heading = pat.get("heading") or f"Pattern: {selector} #{i+1}"
+            heading = pat.get("heading", []) or f"Pattern: {selector} #{i+1}"
             for cell_selector in cell_selectors:
                 children = container.locator(cell_selector)
                 if children.count() > 0:
@@ -1203,7 +1203,7 @@ def custom_plugin_extraction(page, extraction_context=None):
     Returns a list of (headers, data, diagnostics) tuples.
     """
     try:
-        plugins = extraction_context.get("plugins") if extraction_context else []
+        plugins = extraction_context.get("plugins", []) if extraction_context else []
         results = []
         for idx, plugin in enumerate(plugins):
             try:
@@ -1231,7 +1231,7 @@ def feedback_correction_loop(headers, data, extraction_context=None):
     Returns possibly corrected (headers, data).
     """
     try:
-        if extraction_context and extraction_context.get("interactive"):
+        if extraction_context and extraction_context.get("interactive", []):
             print("\n[FEEDBACK] Review extracted headers and data:")
             print("Headers:", headers)
             for i, row in enumerate(data[:5]):
@@ -1302,10 +1302,10 @@ def harmonize_headers_and_data(headers: list, data: list, context: dict = None) 
     if any("Percent Reported" in row for row in data):
         all_headers.add("Percent Reported")
         for row in data:
-            if row.get("Percent Reported"):
+            if row.get("Percent Reported", []):
                 percent_val = row["Percent Reported"]
                 break
-    if context and context.get("percent_reported"):
+    if context and context.get("percent_reported", []):
         all_headers.add("Percent Reported")
         percent_val = context["percent_reported"]
 
@@ -1332,10 +1332,10 @@ def harmonize_headers_and_data(headers: list, data: list, context: dict = None) 
     for row in data:
         full_row = {h: row.get(h, "") for h in ordered_headers}
         # Fill missing Percent Reported from context if needed
-        if "Percent Reported" in ordered_headers and not full_row.get("Percent Reported") and percent_val:
+        if "Percent Reported" in ordered_headers and not full_row.get("Percent Reported", []) and percent_val:
             full_row["Percent Reported"] = percent_val
         # Deduplication key
-        if location_col and candidate_col and full_row.get(location_col) and full_row.get(candidate_col):
+        if location_col and candidate_col and full_row.get(location_col, []) and full_row.get(candidate_col, []):
             key = (
                 full_row.get(location_col, ""),
                 full_row.get(candidate_col, ""),
@@ -1421,7 +1421,7 @@ def merge_table_data(headers_list, data_list):
                     break
             if match:
                 for h in all_headers:
-                    if not match.get(h) and row.get(h):
+                    if not match.get(h, []) and row.get(h, []):
                         match[h] = row[h]
             else:
                 merged_data.append(row)
@@ -1583,10 +1583,10 @@ def nlp_entity_annotate_table(
         return headers, data, {}
 
     # ML context integration
-    ml_confidence = context.get("ml_confidence") if context else None
-    association_log = context.get("association_log") if context else None
-    segments = context.get("segments") if context else None
-    panels = context.get("panels") if context else None
+    ml_confidence = context.get("ml_confidence", []) if context else None
+    association_log = context.get("association_log", []) if context else None
+    segments = context.get("segments", []) if context else None
+    panels = context.get("panels", []) if context else None
 
     entity_info = {
         "people": set(),
@@ -1678,25 +1678,25 @@ def verify_table_structure(
     logger.info("[TABLE_CORE][verify_table_structure] Verifying table structure using NLP and DOM info.")
     missing = []
     # Check for location
-    has_location = bool(entity_info.get("locations")) or any(
+    has_location = bool(entity_info.get("locations", [])) or any(
         any(lk in h.lower() for lk in LOCATION_KEYWORDS) for h in headers
     )
     if not has_location:
         missing.append("location")
     # Check for candidate/person
-    has_candidate = bool(entity_info.get("people")) or any(
+    has_candidate = bool(entity_info.get("people", [])) or any(
         coordinator and any(label == "PERSON" for ent, label in coordinator.extract_entities(h)) for h in headers
     )
     if not has_candidate:
         missing.append("candidate")
     # Check for ballot type
-    has_ballot_type = bool(entity_info.get("ballot_types")) or any(
+    has_ballot_type = bool(entity_info.get("ballot_types", [])) or any(
         any(bt.lower() in h.lower() for bt in BALLOT_TYPES) for h in headers
     )
     if not has_ballot_type:
         missing.append("ballot_type")
     # Check for numbers
-    has_numbers = bool(entity_info.get("numbers")) or any(
+    has_numbers = bool(entity_info.get("numbers", [])) or any(
         any(c.isdigit() for c in row.values()) for row in data
     )
     if not has_numbers:
@@ -1817,8 +1817,7 @@ def force_fully_wide_format(headers, data, coordinator: "ContextCoordinator" = N
         location_col = "Location"
         for idx, row in enumerate(data):
             row[location_col] = (
-                context.get("contest_title") if context and context.get("contest_title")
-                else f"Row {idx+1}"
+                context.get("contest_title", []) if context and context.get("contest_title", []) else f"Row {idx+1}"
             )
 
     # 2. Find candidate and party columns
@@ -1936,11 +1935,11 @@ def detect_table_structure(
     location_cols = []
     ballot_type_cols = []
     for idx, h in enumerate(headers):
-        if entity_info.get("people") and any(p in h for p in entity_info["people"]):
+        if entity_info.get("people", []) and any(p in h for p in entity_info["people"]):
             candidate_cols.append(idx)
-        if entity_info.get("locations") and any(l in h for l in entity_info["locations"]):
+        if entity_info.get("locations", []) and any(l in h for l in entity_info["locations"]):
             location_cols.append(idx)
-        if entity_info.get("ballot_types") and any(bt in h for bt in entity_info["ballot_types"]):
+        if entity_info.get("ballot_types", []) and any(bt in h for bt in entity_info["ballot_types"]):
             ballot_type_cols.append(idx)
         # Fallback: heuristics
         if is_location_header(h):
@@ -2440,8 +2439,8 @@ def log_failed_container(page, container, selector, idx, error_msg):
     try:
         html = container.evaluate("el => el.outerHTML")
         parent = container.locator("xpath=..")
-        parent_class = parent.get_attribute("class") or ""
-        parent_id = parent.get_attribute("id") or ""
+        parent_class = parent.get_attribute("class", []) or ""
+        parent_id = parent.get_attribute("id", []) or ""
         heading = ""
         heading_loc = container.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
         if heading_loc.count() > 0:
@@ -2554,10 +2553,10 @@ def review_learned_table_structures(log_path=None):
                 continue
 
     for idx, entry in enumerate(entries):
-        print(f"\n[{idx}] Contest: {entry.get('contest_title')}")
-        print(f"    Headers: {entry.get('headers')}")
-        print(f"    Context: {entry.get('context')}")
-        print(f"    Result: {entry.get('result')}")
+        print(f"\n[{idx}] Contest: {entry.get('contest_title', [])}")
+        print(f"    Headers: {entry.get('headers', [])}")
+        print(f"    Context: {entry.get('context', [])}")
+        print(f"    Result: {entry.get('result', [])}")
         print("-" * 40)
 
     while True:
@@ -2607,7 +2606,7 @@ def cache_table_structure(domain, headers, structure):
 def get_cached_table_structure(domain, headers):
     cache = load_table_structure_cache()
     sig = f"{domain}:{table_signature(headers)}"
-    return cache.get(sig)
+    return cache.get(sig, [])
 
 def guess_contest_title(table_headers, known_titles):
     """

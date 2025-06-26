@@ -1,6 +1,7 @@
 import re
 import numpy as np
 import os
+import logging
 from rich.console import Console
 from functools import lru_cache
 import threading
@@ -11,6 +12,11 @@ from sqlalchemy.dialects.postgresql import insert
 from webapp.parser.utils.db_utils import get_session
 from webapp.parser.utils.models import EmbeddingCache
 console = Console()
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
+
 # --- In-memory LRU cache for single-segment embedding retrieval ---
 @lru_cache(maxsize=2048)
 def get_embedding_from_memory(segment_hash):
@@ -42,7 +48,8 @@ def save_embedding(segment_hash, embedding):
                 session.commit()
             except SQLAlchemyError as e:
                 session.rollback()
-                raise e
+                console.print(f"[red][EMBEDDING ERROR][/red] {str(e)}", highlight=False)
+                return
     # Update in-memory cache
     with _batch_cache_lock:
         _batch_cache[segment_hash] = np.array(embedding, dtype=np.float32)
@@ -90,7 +97,7 @@ def save_embeddings_batch(hash_emb_list):
                 session.rollback()
                 # Print only the error message in a static line
                 console.print(f"[red][BATCH EMBEDDING ERROR][/red] {str(e)}", highlight=False, end="\r")
-                raise
+                return
     # Update in-memory cache
     with _batch_cache_lock:
         for h, e in hash_emb_list:
@@ -120,11 +127,3 @@ def load_embeddings_batch(segment_hashes):
                     with _batch_cache_lock:
                         _batch_cache[obj.segment_hash] = emb
     return result
-
-# --- SQLAlchemy ORM model for embedding cache (if not already present) ---
-# class EmbeddingCache(Base):
-#     __tablename__ = 'embeddings'
-#     segment_hash = Column(String, primary_key=True)
-#     embedding = Column(LargeBinary)
-#
-# Ensure this model is present in models.py and included in Alembic migrations.

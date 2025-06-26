@@ -33,7 +33,7 @@ def relaunch_browser_fullscreen_if_needed(_, url, timeout=300, user_agent=None, 
     if proxy:
         driver_kwargs["proxy"] = proxy
     driver = Driver(**driver_kwargs)
-    driver.get(url)
+    driver.get(url, [])
     try:
         driver.maximize_window()
     except Exception:
@@ -72,7 +72,7 @@ def relaunch_browser_stealth(_, url, user_agent=None, proxy=None):
     if proxy:
         driver_kwargs["proxy"] = proxy
     driver = Driver(**driver_kwargs)
-    driver.get(url)
+    driver.get(url, [])
     return None, None, driver, user_agent
 
 def close_driver(driver):

@@ -14,8 +14,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 import uuid
-import datetime
-from ..utils.shared_logic import utcnow
+from datetime import datetime, timezone
+
 Base = declarative_base()
 
 class Contest(Base):
@@ -36,13 +36,13 @@ class TableStructure(Base):
     context = Column(Text, nullable=False)
     confirmed_by_user = Column(Boolean, default=False)
     ml_confidence = Column(Float)
-    created_at = Column(DateTime, default=utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 class BatchMetadata(Base):
     __tablename__ = 'batch_metadata'
     batch_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source = Column(String)
-    started_at = Column(DateTime, default=utcnow)
+    started_at = Column(DateTime, default=datetime.now(timezone.utc))
     completed_at = Column(DateTime)
     status = Column(String)
 
@@ -54,7 +54,7 @@ class StagingElectionResult(Base):
     county = Column(String)
     source_url = Column(String)
     raw_html = Column(Text)
-    parsed_at = Column(DateTime, default=utcnow)
+    parsed_at = Column(DateTime, default=datetime.now(timezone.utc))
     status = Column(String, default='pending')
 
 class WarehouseElectionResult(Base):
@@ -69,14 +69,14 @@ class WarehouseElectionResult(Base):
     votes = Column(Integer)
     precinct = Column(String)
     election_date = Column(DateTime)
-    processed_at = Column(DateTime, default=utcnow)
+    processed_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 class Entity(Base):
     __tablename__ = 'entities'
     id = Column(Integer, primary_key=True)
     entity_type = Column(String, nullable=False)
     value = Column(String, nullable=False, index=True)
-    created_at = Column(DateTime, default=utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 class EmbeddingCache(Base):
     __tablename__ = 'embeddings'
@@ -89,7 +89,7 @@ class Alert(Base):
     level = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     context = Column(JSON)
-    created_at = Column(DateTime, default=utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 # Add more models as needed for your project (e.g., users, logs, etc.)
 if __name__ == "__main__":
