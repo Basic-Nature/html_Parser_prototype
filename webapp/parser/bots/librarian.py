@@ -85,6 +85,8 @@ ALWAYS_IGNORE_CLASSES = {
 ALWAYS_IGNORE_IDS = {
         "skip-link", "hidden", "aria-hidden"
     }
+ROOT_CONTAINER_TAGS = {"body", "html", "app-root"}
+
 ICON_CLASSES = {
         "pi", "bi", "fa", "fas", "far", "fal", "fad", "fab", "glyphicon", "icon", "material-icons",
         "mdi", "octicon", "feather", "ion", "ionicon", "anticon", "euiicon", "p-button-icon", "p-icon",
@@ -328,7 +330,7 @@ __all__ = [
     "extend_location_keywords", "extend_candidate_keywords", "extend_ballot_types",
     "log_unknown_tag", "log_unknown_attr", "integrate_llm_feedback", "save_context_library",
     "CANONICAL_SEGMENT_LABELS", "normalize_segment_text", "get_canonical_segment_label", "cache_segment_label", "get_cached_segment_label",
-    "ALWAYS_IGNORE_TAGS", "ALWAYS_IGNORE_CLASSES", "ALWAYS_IGNORE_IDS", "ICON_CLASSES", "ICON_TAGS", "BUTTON_CLASSES",
+    "ROOT_CONTAINER_TAGS", "ALWAYS_IGNORE_TAGS", "ALWAYS_IGNORE_CLASSES", "ALWAYS_IGNORE_IDS", "ICON_CLASSES", "ICON_TAGS", "BUTTON_CLASSES",
     "HEADING_CLASSES", "PANEL_CLASSES", "TIMESTAMP_CLASSES", "STRUCTURAL_TAGS", "TIMESTAMP_ID_PATTERNS", "TIMESTAMP_ATTRS",
     "STRUCTURAL_TAGS"
 ]

@@ -17,7 +17,7 @@ from ..utils.model_registry import ModelRegistry
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, DISTRICT_REGEX, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
     extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
-    log_unknown_tag, log_unknown_attr, get_canonical_segment_label, cache_segment_label, get_cached_segment_label,
+    log_unknown_tag, log_unknown_attr, get_canonical_segment_label, cache_segment_label, get_cached_segment_label, ROOT_CONTAINER_TAGS,
     ALWAYS_IGNORE_TAGS, ALWAYS_IGNORE_CLASSES, ALWAYS_IGNORE_IDS, ICON_CLASSES, ICON_TAGS, BUTTON_CLASSES,
     HEADING_CLASSES, PANEL_CLASSES, TIMESTAMP_CLASSES, STRUCTURAL_TAGS, TIMESTAMP_ID_PATTERNS, TIMESTAMP_ATTRS,
     STRUCTURAL_TAGS
@@ -1074,7 +1074,7 @@ def auto_label_segment(
     text = segment.get("text", "").strip().lower() if segment.get("text", []) else ""
 
     # --- 5. Explicitly ignore root/container tags ---
-    ROOT_CONTAINER_TAGS = {"body", "html", "app-root"}
+    
     if tag in ROOT_CONTAINER_TAGS:
         return "ignore"
     if tag == "div" and ("container" in classes or "main" in classes) and not html.strip():
