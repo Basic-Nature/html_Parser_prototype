@@ -1025,22 +1025,59 @@ def auto_label_segment(
     segment,
     context_library=None,
     context_cache=None,
+    pattern_kb=None,
     model_name=None,
     use_finetuned=True,
     ml_threshold=0.7
 ):
-    if context_library is None:
-        logger.warning("context_library is None!")
-    else:
-        logger.info(f"context_library keys: {list(context_library.keys())}")
-    tag = segment.get("tag", "")
+    """
+    Improved auto_label_segment:
+    - Checks persistent cache, context_cache, context_library, and pattern_kb for prior labels.
+    - Explicitly ignores root/container tags.
+    - Uses all available context for robust labeling.
+    - Falls back to ML/heuristics only if no prior label is found.
+    """
+    # --- 0. Robust segment hash for deduplication ---
+    seg_hash = segment_identity_hash(segment)
+
+    # --- 1. Check persistent label cache ---
+    cached_label = get_cached_segment_label(seg_hash)
+    if cached_label:
+        return cached_label
+
+    # --- 2. Check context_cache ---
+    if context_cache and seg_hash in context_cache:
+        label = context_cache[seg_hash].get("ml_label")
+        if label:
+            return label
+
+    # --- 3. Check context_library cached_segments ---
+    if context_library and "cached_segments" in context_library:
+        for seg in context_library["cached_segments"]:
+            if seg.get("segment_hash") == seg_hash and seg.get("ml_label"):
+                return seg["ml_label"]
+
+    # --- 4. Check pattern_kb ---
+    if pattern_kb:
+        for entry in pattern_kb:
+            if entry.get("segment_hash") == seg_hash and entry.get("label"):
+                return entry["label"]
+
+    tag = segment.get("tag", "").lower()
     classes = [c.lower() for c in segment.get("classes", [])]
     attrs = segment.get("attrs", {})
     html = segment.get("html", "").lower()
     id_ = segment.get("id", "").lower()
     text = segment.get("text", "").strip().lower() if segment.get("text", []) else ""
 
-    # --- 0. Always-ignored tags/classes/ids ---
+    # --- 5. Explicitly ignore root/container tags ---
+    ROOT_CONTAINER_TAGS = {"body", "html", "app-root"}
+    if tag in ROOT_CONTAINER_TAGS:
+        return "ignore"
+    if tag == "div" and ("container" in classes or "main" in classes) and not html.strip():
+        return "ignore"
+
+    # --- 6. Always-ignored tags/classes/ids ---
     ALWAYS_IGNORE_TAGS = {
         "script", "style", "svg", "path", "defs", "g", "canvas", "noscript", "meta", "link", "base", "title"
     }
@@ -1050,7 +1087,6 @@ def auto_label_segment(
     ALWAYS_IGNORE_IDS = {
         "skip-link", "hidden", "aria-hidden"
     }
-
     if tag in ALWAYS_IGNORE_TAGS:
         return "ignore"
     if set(classes) & ALWAYS_IGNORE_CLASSES:
@@ -1058,9 +1094,8 @@ def auto_label_segment(
     if id_ in ALWAYS_IGNORE_IDS:
         return "ignore"
 
-    # --- 1. Decorative/icon detection (very thorough) ---
+    # --- 7. Decorative/icon detection ---
     ICON_CLASSES = {
-        # Bootstrap, FontAwesome, PrimeIcons, Material, etc.
         "pi", "bi", "fa", "fas", "far", "fal", "fad", "fab", "glyphicon", "icon", "material-icons",
         "mdi", "octicon", "feather", "ion", "ionicon", "anticon", "euiicon", "p-button-icon", "p-icon",
         "fa-solid", "fa-regular", "fa-light", "fa-duotone", "fa-brands", "fa-stack", "fa-stack-1x", "fa-stack-2x",
@@ -1069,17 +1104,16 @@ def auto_label_segment(
         "uicon", "uik", "uik-icon", "uik-button-icon", "octicon", "octicon-alert", "octicon-info", "octicon-check",
         "octicon-x", "octicon-star", "octicon-stop", "octicon-download", "octicon-upload", "octicon-arrow", "octicon-chevron",
         "octicon-dot", "octicon-dot-fill", "octicon-dot-outline", "octicon-dot-circle", "octicon-dot-square",
-        # Common icon/decoration patterns
         "icon-label", "icon-btn", "icon-button", "icon-container", "icon-wrapper", "icon-box", "icon-bg", "icon-bg-light",
         "icon-bg-dark", "icon-bg-primary", "icon-bg-secondary", "icon-bg-success", "icon-bg-danger", "icon-bg-warning",
-        "icon-bg-info", "icon-bg-light", "icon-bg-dark", "icon-bg-white", "icon-bg-black", "icon-bg-gray", "icon-bg-grey",
-        "icon-bg-transparent", "icon-bg-gradient", "icon-bg-image", "icon-bg-pattern", "icon-bg-shape", "icon-bg-circle",
-        "icon-bg-square", "icon-bg-rectangle", "icon-bg-oval", "icon-bg-round", "icon-bg-pill", "icon-bg-dot", "icon-bg-line",
+        "icon-bg-info", "icon-bg-white", "icon-bg-black", "icon-bg-gray", "icon-bg-grey", "icon-bg-transparent",
+        "icon-bg-gradient", "icon-bg-image", "icon-bg-pattern", "icon-bg-shape", "icon-bg-circle", "icon-bg-square",
+        "icon-bg-rectangle", "icon-bg-oval", "icon-bg-round", "icon-bg-pill", "icon-bg-dot", "icon-bg-line",
         "icon-bg-arrow", "icon-bg-chevron", "icon-bg-star", "icon-bg-heart", "icon-bg-check", "icon-bg-x", "icon-bg-plus",
         "icon-bg-minus", "icon-bg-close", "icon-bg-open", "icon-bg-expand", "icon-bg-collapse", "icon-bg-menu", "icon-bg-more",
         "icon-bg-less", "icon-bg-up", "icon-bg-down", "icon-bg-left", "icon-bg-right", "icon-bg-top", "icon-bg-bottom",
         "icon-bg-center", "icon-bg-middle", "icon-bg-end", "icon-bg-start", "icon-bg-first", "icon-bg-last", "icon-bg-prev",
-        "icon-bg-next", "icon-bg-prev", "icon-bg-next", "icon-bg-prev", "icon-bg-next"
+        "icon-bg-next"
     }
     ICON_TAGS = {"i", "svg", "path", "g", "span"}
     if tag in ICON_TAGS and (ICON_CLASSES & set(classes)):
@@ -1090,65 +1124,62 @@ def auto_label_segment(
     if tag in {"i", "span"} and not html.strip():
         return "ignore"
 
-    # --- 2. Download links ---
+    # --- 8. Download links ---
     if tag == "a" and "href" in attrs:
         href = str(attrs["href"]).lower()
         if any(href.endswith(ext) for ext in [".csv", ".json", ".pdf", ".xlsx", ".zip", ".xls", ".doc", ".docx"]):
             return "download_link"
 
-    # --- 3. Ballot toggle/button ---
+    # --- 9. Ballot toggle/button ---
     BUTTON_CLASSES = {"btn", "button", "toggle", "switch", "p-button", "mat-button", "v-btn", "ant-btn", "el-button"}
     if segment.get("is_button", []) or BUTTON_CLASSES & set(classes) or "toggle" in id_:
         return "ballot_toggle"
 
-    # --- 4. Heading ---
+    # --- 10. Heading ---
     HEADING_CLASSES = {"heading", "header", "title", "h1", "h2", "h3", "h4", "h5", "h6", "section-title", "panel-title"}
     if tag in HEADING_TAGS or HEADING_CLASSES & set(classes):
         return "heading"
 
-    # --- 5. Panel/section/card/box ---
+    # --- 11. Panel/section/card/box ---
     PANEL_CLASSES = {"panel", "card", "container", "box", "section-panel", "mat-card", "el-card", "ant-card", "v-card"}
     if tag in PANEL_TAGS or PANEL_CLASSES & set(classes):
         return "panel"
 
-    # --- 6. Table ---
+    # --- 12. Table ---
     if tag == "table":
         return "results_table"
 
-    # --- 7. Context-driven: party, vote method, contest, etc. ---
-    # Use context_library if available
-    if 'party' in context_library:
-        known_parties = [p.lower() for p in context_library['party']]
-        if text in known_parties or html in known_parties:
-            return "party_label"
-    if 'vote_methods' in context_library:
-        known_vote_methods = [v.lower() for v in context_library['vote_methods']]
-        if text in known_vote_methods or html in known_vote_methods:
-            return "vote_method"
-    if 'contests' in context_library:
-        known_contests = [c["title"].lower() for c in context_library['contests'] if "title" in c]
-        if text in known_contests or html in known_contests:
-            return "contest_title"
-    # Fuzzy match for party label
+    # --- 13. Context-driven: party, vote method, contest, etc. ---
     from difflib import get_close_matches
-    if 'party' in context_library:
-        close = get_close_matches(text, [p.lower() for p in context_library['party']], n=1, cutoff=0.85)
-        if close:
-            return "party_label"
-    if 'vote_methods' in context_library:
-        close = get_close_matches(text, [v.lower() for v in context_library['vote_methods']], n=1, cutoff=0.85)
-        if close:
-            return "vote_method"
+    if context_library:
+        if 'party' in context_library:
+            known_parties = [p.lower() for p in context_library['party']]
+            if text in known_parties or html in known_parties:
+                return "party_label"
+            close = get_close_matches(text, known_parties, n=1, cutoff=0.85)
+            if close:
+                return "party_label"
+        if 'vote_methods' in context_library:
+            known_vote_methods = [v.lower() for v in context_library['vote_methods']]
+            if text in known_vote_methods or html in known_vote_methods:
+                return "vote_method"
+            close = get_close_matches(text, known_vote_methods, n=1, cutoff=0.85)
+            if close:
+                return "vote_method"
+        if 'contests' in context_library:
+            known_contests = [c["title"].lower() for c in context_library['contests'] if "title" in c]
+            if text in known_contests or html in known_contests:
+                return "contest_title"
 
-    # --- 8. Ballot type ---
+    # --- 14. Ballot type ---
     if any(bt in html for bt in BALLOT_TYPES):
         return "ballot_type"
 
-    # --- 9. Clickable (fallback for links/buttons) ---
+    # --- 15. Clickable (fallback for links/buttons) ---
     if segment.get("is_clickable", []):
         return "clickable"
 
-    # --- 10. Results timestamp (robust, real-world) ---
+    # --- 16. Results timestamp ---
     TIMESTAMP_CLASSES = {
         "time-ago", "timestamp", "last-updated", "results-timestamp", "update-time", "posted", "modified", "date", "datetime"
     }
@@ -1158,7 +1189,6 @@ def auto_label_segment(
     TIMESTAMP_ATTRS = [
         "timeago", "datetime", "data-timestamp", "data-updated", "data-date", "data-time", "data-last-updated"
     ]
-    # Check tag, class, id, or attributes
     if (
         tag in {"span", "time", "div", "p", "small", "label"}
         and (
@@ -1167,47 +1197,32 @@ def auto_label_segment(
             or any(attr in attrs for attr in TIMESTAMP_ATTRS)
             or any(re.search(pat, " ".join(attrs.keys())) for pat in TIMESTAMP_ID_PATTERNS)
             or re.search(r"\bago\b|\bupdated\b|\blast\b|\bposted\b|\bas of\b|\breported\b", html)
-            or re.search(r"\b\d{1,2}:\d{2}\s*(am|pm)?\b", html)  # time like 12:34 or 12:34 pm
-            or re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", html)   # date like 1/2/2024
-            or re.search(r"\b\d{4}-\d{2}-\d{2}\b", html)         # ISO date
+            or re.search(r"\b\d{1,2}:\d{2}\s*(am|pm)?\b", html)
+            or re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", html)
+            or re.search(r"\b\d{4}-\d{2}-\d{2}\b", html)
         )
     ):
         return "results_timestamp"
 
-    # --- 11. Fallback: ignore common empty/structural tags ---
+    # --- 17. Fallback: ignore common empty/structural tags ---
     STRUCTURAL_TAGS = {"br", "hr", "wbr", "col", "colgroup", "thead", "tbody", "tfoot", "tr", "th", "td"}
     if tag in STRUCTURAL_TAGS and not html.strip():
         return "ignore"
 
-    # --- 12. Fallback: ignore if only whitespace or non-breaking space ---
+    # --- 18. Fallback: ignore if only whitespace or non-breaking space ---
     if not html.strip() or html.strip() in {"&nbsp;", "&#160;"}:
         return "ignore"
 
-    # --- 13. Fallback: ignore if only contains a single icon or decorative element ---
+    # --- 19. Fallback: ignore if only contains a single icon or decorative element ---
     if tag == "span" and len(classes) > 0 and all(cls in ICON_CLASSES for cls in classes):
         return "ignore"
-    
-    # --- 14. Fallback: ignore if only contains a single child which is an icon ---
-    # (You can expand this with more DOM context if needed.)
-    
-    # --- X. User feedback-driven ignore patterns (optional, advanced) ---
-    # You can periodically load feedback log and add new ignore patterns here.
-    # Example:
-    # try:
-    #     with open(safe_log_path("segment_feedback_log.jsonl"), "r", encoding="utf-8") as f:
-    #         for line in f:
-    #             entry = json.loads(line)
-    #             if entry.get("label") == "ignore":
-    #                 # Add pattern to ignore list, e.g. by class, tag, or id
-    #                 pass
-    # except Exception:
-    #     pass
-    # --- 15. Canonical label mapping ---
+
+    # --- 20. Canonical label mapping ---
     canonical = get_canonical_segment_label(text)
     if canonical:
         return canonical
 
-    # --- 16. Fallback: unknown/ambiguous, needs review ---
+    # --- 21. Fallback: unknown/ambiguous, needs review ---
     return "unknown"
 
 def embedding_cache_hash(segment, model_id):
