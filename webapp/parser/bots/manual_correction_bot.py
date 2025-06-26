@@ -352,7 +352,7 @@ def highlight_anomalies(context_library, field_type):
 # --- DB update logic (optional) ---
 def update_database_with_context(library, db_path=None, enhanced=True, coordinator=None):
     if not db_path:
-        db_path = CONTEXT_LIBRARY_DIR / "context_library_db.json"
+        db_path = CONTEXT_LIBRARY_DIR / "context_library.json"
     db_path = safe_path(db_path, [CONTEXT_LIBRARY_DIR])
     try:
         if enhanced and coordinator and hasattr(coordinator, "update_db_with_context"):

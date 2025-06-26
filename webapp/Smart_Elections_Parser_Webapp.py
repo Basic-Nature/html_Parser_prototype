@@ -10,10 +10,10 @@ import importlib
 from io import StringIO
 import json
 import os
-import sys
+import subprocess
 from threading import Thread
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
-from webapp.parser.config import BASE_DIR
+from webapp.parser.config import BASE_DIR, POSTGRES_URL 
 from webapp.parser.utils.shared_logic import utcnow
 from webapp.parser.bots.bot_router import run_pipeline, start_postgres_service, stop_postgres_service
 # Load environment variables from .env
@@ -154,6 +154,19 @@ def load_overrides():
             return json.load(f)
     return {}
 
+def postgres_service_status(service_name):
+    try:
+        result = subprocess.run(["sc", "query", service_name], capture_output=True, text=True)
+        if "RUNNING" in result.stdout:
+            return "running"
+        elif "STOPPED" in result.stdout:
+            return "stopped"
+        else:
+            return "unknown"
+    except Exception as e:
+        print(f"[ERROR] Could not check service status: {e}")
+        return "error"
+
 def save_overrides(data):
     with open(HINT_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
@@ -201,6 +214,11 @@ def handle_disconnect():
     print("Client disconnected")
     emit('parser_output', "Disconnected from server.\n")
 @app.route("/edit-hint", methods=["POST"])
+
+@app.route("/data_framework", methods=["GET", "POST"])
+def data_framework():
+    # You can add logic here or just return a placeholder
+    return render_template("data_framework.html")
 
 @app.route("/download/input/<filename>")
 def download_input_file(filename):
@@ -338,6 +356,13 @@ def handle_parser_prompt(data):
 @app.route("/run-parser")
 def run_parser_page():
     return render_template("run_parser.html")
+
+@socketio.on('data_framework')
+def handle_data_framework(data):
+    print(f"Received data_framework event: {data}")
+    session_id = session.get('sid') if 'sid' in session else request.sid
+    output = postgres_service_status(ervice_name=None)
+    emit('parser_output', output, room=session_id)
 
 @socketio.on('run_parser')
 def handle_run_parser():

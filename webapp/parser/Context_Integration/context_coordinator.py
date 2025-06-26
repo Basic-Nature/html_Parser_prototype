@@ -23,7 +23,7 @@ from ..utils.shared_logic import (
 from sklearn.preprocessing import LabelEncoder
 import subprocess
 from rich.console import Console
-from ..config import PROJECT_ROOT
+from ..config import PROJECT_ROOT, POSTGRES_URL
 
 console = Console()
 
@@ -1477,14 +1477,12 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
-    def start_alert_monitoring(self, db_path=None, poll_interval=10):
+    def start_alert_monitoring(self, POSTGRES_URL=None, poll_interval=10):
         """
         Start real-time alert monitoring in a background thread.
         """
-    
-        from ..utils.db_utils import DB_PATH
-        monitor_db_for_alerts(db_path=db_path, poll_interval=poll_interval)
-    
+        monitor_db_for_alerts(POSTGRES_URL=POSTGRES_URL, poll_interval=poll_interval)
+
     # --- Reporting ---
 
     def report_summary(self):
@@ -1928,8 +1926,7 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
 
 # --- Alert Monitoring (run in production) ---
 def start_alert_monitoring():
-    from ..utils.db_utils import DB_PATH
-    monitor_db_for_alerts(db_path=DB_PATH, poll_interval=10)
+    monitor_db_for_alerts(POSTGRES_URL=POSTGRES_URL, poll_interval=10)
 
 # --- CLI Entrypoint ---
 if __name__ == "__main__":

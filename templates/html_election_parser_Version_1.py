@@ -21,10 +21,15 @@ def launch_browser():
 def list_static_contests(page):
     headers = page.query_selector_all('h1, h2, h3, .header, .title, .contest-header')
     contests = []
+    seen = {}
     for h in headers:
         txt = h.inner_text().strip()
-        if any(k in txt for k in ["Electors", "Senator", "Assembly", "Justice", "Proposition"]):
-            contests.append(txt)
+        if any(k in txt for k in ["Electors", "Senator", "Assembly", "Justice", "Proposition", "County Clerk", "District Attorney", "County Court Judge", "Family Court Judge", "Town Council", "Mayor", "Trustee", "Amendment"]):
+            # Deduplicate: prefer longer/more informative version
+            key = txt.split("\n")[0].strip()
+            if key not in seen or len(txt) > len(seen[key]):
+                seen[key] = txt
+    contests = list(seen.values())
     if contests:
         print("[INFO] Contests available in static page content:")
         for idx, c in enumerate(contests):
@@ -33,19 +38,14 @@ def list_static_contests(page):
 
 # Attempts to match the user's contest input to available contest titles on the page.
 # Supports exact, partial, or indexed selection (e.g. '[2] United States Senator').
-def extract_visible_contest_title(page, target_static_contest=None):
-    page.wait_for_timeout(1000)
-    headings = page.query_selector_all('h1, h2, h3, .header, .title, .contest-header')
-    all_titles = []
-    seen = set()
-    for h in headings:
-        text = h.inner_text().strip()
-        if text and any(k in text for k in ["Electors", "Senator", "Assembly", "Justice", "Proposition"]):
-            if text not in seen:
-                all_titles.append(text)
-                seen.add(text)
+def extract_visible_contest_title(contests, target_static_contest=None):
+    all_titles = contests
     if target_static_contest:
         cleaned_input = target_static_contest.strip()
+        if cleaned_input.isdigit():
+            idx = int(cleaned_input)
+            if 0 <= idx < len(all_titles):
+                return all_titles[idx]
         if cleaned_input.startswith("[") and "]" in cleaned_input:
             idx_str = cleaned_input[1:cleaned_input.index("]")]
             if idx_str.isdigit():
@@ -76,14 +76,16 @@ def interact_with_enhancedvoting_ui(page, contest_title):
         page.wait_for_selector("text=View results by election district", timeout=10000)
         view_links = page.locator("a:has-text('View results by election district')")
         clicked = False
+        # Use only the first line of contest_title for matching
+        contest_main = contest_title.split("\n")[0].strip()
         for i in range(view_links.count()):
             candidate = view_links.nth(i)
             section_heading = candidate.locator("xpath=ancestor::p-panel[1]//h1")
-            if section_heading.count() > 0 and contest_title.lower() in section_heading.inner_text().strip().lower():
+            if section_heading.count() > 0 and contest_main.lower() in section_heading.inner_text().strip().lower():
                 candidate.scroll_into_view_if_needed()
                 candidate.click()
                 clicked = True
-                print(f"[INFO] Clicked contest-specific 'View results' for: {contest_title}")
+                print(f"[INFO] Clicked contest-specific 'View results' for: {contest_main}")
                 break
         if not clicked:
             print(f"[ERROR] Could not find matching 'View results' link for contest: {contest_title}. Please verify your selection.")
@@ -139,20 +141,27 @@ def extract_table_data(page):
     except:
         report_status = ""
 
-    """Parses precinct tables and returns structured candidate-method vote data."""
     all_candidates = set()
     method_names = []
     precinct_data = []
     all_elements = page.query_selector_all('h3, strong, b, span, table')
     current_precinct = None
+    dynamic_precinct_label = "Precinct Name"
+    precinct_keywords = ["Ward", "District", "Precinct", "Point", "Town", "Municipal", "Borough", "Village", "Division", "Area", "Section"]
+    found_label = None
 
     for el in all_elements:
         tag = el.evaluate("e => e.tagName").strip().upper()
         if tag in ["H3", "STRONG", "B", "SPAN"]:
             label = el.inner_text().strip()
-            # Dynamically infer precincts by common structural patterns (e.g., 'Ward' or numeric suffix)
-            if any(w in label for w in ["Ward", "District", "Precinct", "Point", "Town"]) or any(char.isdigit() for char in label):
+            # Dynamically infer precincts by common structural patterns
+            if any(w in label for w in precinct_keywords) or any(char.isdigit() for char in label):
                 current_precinct = label
+                if not found_label:
+                    for w in precinct_keywords:
+                        if w.lower() in label.lower():
+                            found_label = w
+                            break
         elif tag == "TABLE" and current_precinct:
             headers = el.query_selector_all('thead tr th')
             rows = el.query_selector_all('tbody tr')
@@ -178,7 +187,10 @@ def extract_table_data(page):
                 total_votes = cells[-1]
                 all_candidates.add(canonical)
                 row_blocks.append((canonical, method_votes, total_votes))
-            full_row = {"% Precincts Reporting": report_status, "Precinct Name": current_precinct}
+            # Use dynamic label if found
+            if found_label:
+                dynamic_precinct_label = found_label
+            full_row = {"% Precincts Reporting": report_status, dynamic_precinct_label: current_precinct}
             for candidate, method_votes, total in row_blocks:
                 for method, vote in zip(method_names, method_votes):
                     full_row[f"{candidate} - {method}"] = vote
@@ -193,8 +205,8 @@ def extract_table_data(page):
                     full_row[total_col] = "-"
             precinct_data.append(full_row)
             current_precinct = None
-    headers_out = sorted([col for col in precinct_data[0] if col not in ("Precinct Name", "% Precincts Reporting")] if precinct_data else [])
-    return headers_out, precinct_data
+    headers_out = sorted([col for col in precinct_data[0] if col not in (dynamic_precinct_label, "% Precincts Reporting")] if precinct_data else [])
+    return headers_out, precinct_data, dynamic_precinct_label
 
 # === Validate Parsed Data ===
 def validate_data(rows, expected_columns):
@@ -206,12 +218,12 @@ def validate_data(rows, expected_columns):
     return True
 
 # === Write to Output CSV ===
-def write_to_csv(contest_name, headers, data):
+def write_to_csv(contest_name, headers, data, dynamic_precinct_label):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_name = contest_name.replace(' ', '_').replace('\n', '').replace(':', '').replace('/', '_')
     filename = os.path.join(OUTPUT_DIR, f"{safe_name}_{timestamp}.csv")
     with open(filename, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["% Precincts Reporting", "Precinct Name"] + headers)
+        writer = csv.DictWriter(f, fieldnames=["% Precincts Reporting", dynamic_precinct_label] + headers)
         writer.writeheader()
         for row in data:
             writer.writerow(row)
@@ -224,18 +236,18 @@ def main(url):
     page.wait_for_timeout(2000)
 
     static_races = list_static_contests(page)
-    print("[INPUT] Please type part of the contest name you'd like to extract:")
+    print("[INPUT] Please type part of the contest name or index you'd like to extract:")
     target_static_contest = input("> ").strip()
 
-    contest_title = extract_visible_contest_title(page, target_static_contest)
+    contest_title = extract_visible_contest_title(static_races, target_static_contest)
     print(f"[INFO] Extracting contest: {contest_title}")
 
     interact_with_enhancedvoting_ui(page, contest_title)
 
-    headers, structured_data = extract_table_data(page)
+    headers, structured_data, dynamic_precinct_label = extract_table_data(page)
     if structured_data:
         if validate_data(structured_data, headers):
-            write_to_csv(contest_title, headers, structured_data)
+            write_to_csv(contest_title, headers, structured_data, dynamic_precinct_label)
         else:
             print("[WARNING] Data validation failed.")
     else:
