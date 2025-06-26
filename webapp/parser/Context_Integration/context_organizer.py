@@ -6,7 +6,7 @@ Handles data formatting, ML anomaly detection, cache-aware learning, clustering,
 Delegates NLP/semantic logic to the context_coordinator and spacy_utils modules.
 """
 
-import datetime
+from datetime import datetime, timezone
 import os
 import orjson
 import logging
@@ -786,7 +786,7 @@ class ContextOrganizer:
             else:
                 library = {}
             library = merge_dicts(library, organized)
-            library["last_updated"] = datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+            library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             with open(path, "wb") as f:
                 f.write(orjson.dumps(library, option=orjson.OPT_INDENT_2))
             self.logger.info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
