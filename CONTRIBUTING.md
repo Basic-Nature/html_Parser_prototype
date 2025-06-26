@@ -7,7 +7,7 @@ This project is designed to be scalable, readable, and resilient — please read
 
 ---
 -Strategy going forward for mass handling of large datasets.
-Here’s a strategic gameplan for integrating **Python + SQLAlchemy + PostgreSQL** and **C#/.NET + PostgreSQL** to maximize strengths, minimize weaknesses, and support scalable, high-performance batch election parsing and data warehousing:
+**Python + SQLAlchemy + PostgreSQL** and **C#/.NET + PostgreSQL** to maximize strengths, minimize weaknesses, and support scalable, high-performance batch election parsing and data warehousing:
 
 ---
 

@@ -114,6 +114,167 @@ This document provides a high-level overview of the architecture and responsibil
 
 ---
 
+## 🧬 Data Architecture: Context, Logs, and Database Flow
+
+This project uses a modular, auditable pipeline for election data parsing, context management, and ML/NLP retraining. Below is a detailed breakdown of how context, logs, and databases interact, and recommendations for optimizing structure and paths.
+
+---
+
+### 1. **Core Data Flows and Roles**
+
+#### **A. Context Library (`context_library.json`)**
+
+- **Purpose:**  
+  - The original, central source of contextual knowledge (states, counties, contests, patterns, etc.).
+  - Used for lookups, normalization, and as a knowledge base for parsing and ML.
+- **Location:**  
+  - `webapp/parser/Context_Integration/Context_Library/context_library.json`
+- **Accessed by:**  
+  - `context_coordinator.py`, `context_organizer.py`, `librarian.py`, and ML bots.
+
+#### **B. Context Library DB (`context_library_db.json`)**
+
+- **Purpose:**  
+  - A more structured or expanded version of the context library, possibly for ML or audit.
+  - Generated/updated by `manual_correction_bot.py` and possibly others.
+- **Location:**  
+  - Same directory as above.
+- **Accessed by:**  
+  - Correction bots, possibly ML retraining scripts.
+
+#### **C. Context DB (`context_elections.db`)**
+
+- **Purpose:**  
+  - Legacy SQLite DB, now mostly replaced by PostgreSQL.
+  - May still be referenced for backward compatibility or migration.
+- **Location:**  
+  - Same directory as above.
+- **Accessed by:**  
+  - Should be phased out if you’re fully on PostgreSQL.
+
+#### **D. PostgreSQL (`POSTGRES_URL`)**
+
+- **Purpose:**  
+  - The main, production-grade relational database for all structured data (contests, table structures, entities, etc.).
+  - Used for robust querying, updates, and ML training data storage.
+- **Accessed by:**  
+  - All SQLAlchemy-based models and session logic.
+
+#### **E. Logs (`log/` directory)**
+
+- **Purpose:**  
+  - Store all extraction, correction, feedback, and anomaly logs as `.jsonl` files.
+  - Serve as the audit trail and as a source for manual/ML correction and retraining.
+- **Accessed by:**  
+  - `manual_correction_bot.py`, `librarian.py`, retraining scripts, and context bots.
+
+---
+
+### 2. **How Data Flows Through the Pipeline**
+
+#### **Step 1: Extraction & Parsing**
+
+- **HTML and other sources are parsed** using Playwright and handlers.
+- **Contextual clues** (state, county, contest, etc.) are extracted using the context library and ML/NLP.
+- **Results and context** are logged to `.jsonl` files in `log/`.
+
+#### **Step 2: Context Coordination & Organization**
+
+- **`context_coordinator.py` and `context_organizer.py`:**
+  - Use the context library for normalization and enrichment.
+  - Organize parsed data, deduplicate, and run integrity checks.
+  - May update the context library with new findings.
+
+#### **Step 3: Logging & Feedback**
+
+- **All field extractions, corrections, and feedback** are logged as `.jsonl` files.
+- **Manual and ML-powered correction bots** (`manual_correction_bot.py`) review these logs, allow user or ML/LLM corrections, and update the context library and/or context_library_db.
+
+#### **Step 4: Database Update**
+
+- **Confirmed/corrected data** is written to PostgreSQL via SQLAlchemy models.
+- **Table structures, contests, and entities** are upserted for robust querying and ML training.
+
+#### **Step 5: ML/NLP Retraining**
+
+- **NER and other models** are retrained using the corrected data from logs and the context library.
+- **Retraining scripts** (e.g., `retrain_table_structure_models.py`) pull from both the context library and the database.
+
+---
+
+### 3. **Where Each File Fits**
+
+| File/Module                       | Main Role                                                                                   | Reads From                | Writes To                 |
+|------------------------------------|--------------------------------------------------------------------------------------------|---------------------------|---------------------------|
+| `context_library.json`             | Central knowledge base for context, patterns, mappings                                     | Used by all context code  | Updated by librarian/correction bots |
+| `context_library_db.json`          | Structured/expanded context for ML/audit (optional)                                        | Correction bots, ML       | Correction bots           |
+| `context_elections.db`             | Legacy SQLite DB (should be phased out)                                                    | Legacy code               | Legacy code               |
+| `POSTGRES_URL` (PostgreSQL)        | Main relational DB for all structured data                                                 | SQLAlchemy models         | SQLAlchemy models         |
+| `log/*.jsonl`                      | All logs: extraction, correction, feedback, anomalies, etc.                                | Correction bots, ML       | All pipeline components   |
+| `manual_correction_bot.py`         | Reviews logs, allows corrections, updates context library and DB                           | log/, context_library     | context_library, DB       |
+| `librarian.py`                     | Centralizes context knowledge, extends/updates context library                             | context_library           | context_library           |
+| `context_coordinator.py`           | Orchestrates context enrichment, integrity, and ML checks                                 | context_library, DB       | log/                      |
+| `context_organizer.py`             | Organizes parsed context, deduplicates, runs ML, updates DB                               | context_library, DB       | DB, log/                  |
+| `retrain_table_structure_models.py`| Retrains NER and other models using context and logs                                       | context_library, DB, log/ | model files, log/         |
+| `config.py`                        | Centralizes all paths and DB connection strings                                            | .env, filesystem          | N/A                       |
+
+---
+
+### 4. **Optimization Recommendations**
+
+#### **A. Paths and Structure**
+
+- **Single Source of Truth:**  
+  - Use `context_library.json` as the canonical context source.
+  - Use `librarian.py` for all context extension and updates.
+- **Phase Out Legacy DB:**  
+  - Remove all references to `context_elections.db` unless needed for migration.
+- **Explicit Context Library DB:**  
+  - If you need a structured context DB for ML, always generate it from `context_library.json` and logs, not as a separate manual source.
+
+#### **B. Database Usage**
+
+- **PostgreSQL for All Structured Data:**  
+  - All confirmed contests, table structures, entities, etc. should be stored in PostgreSQL.
+  - Use SQLAlchemy models for all DB access.
+- **Context Library for Knowledge, Not Data:**  
+  - Use the context library for normalization, mapping, and as a knowledge base, not for storing raw data.
+
+#### **C. Logging and Correction**
+
+- **All logs go to `log/` directory** with clear naming conventions.
+- **Manual/ML correction bots** should always update both the context library and the DB as needed.
+
+#### **D. ML/NLP Retraining**
+
+- **Always pull training data from the latest context library and DB.**
+- **Keep logs of all corrections and retraining sessions** for auditability.
+
+#### **E. Migration and Maintenance**
+
+- **Use migration scripts** (like `context_migration.py`) to move legacy data into PostgreSQL.
+- **Document all paths and roles** in your README or a `docs/` folder for future maintainers.
+
+---
+
+### 5. **Summary Diagram**
+
+[HTML/CSV/PDF] | v [Parser/Handlers] ---> [log/*.jsonl] <---+ | | v v [context_organizer.py] <--- [context_library.json] <--- [librarian.py] | | v v [context_coordinator.py] <--- [manual_correction_bot.py] | | v v [PostgreSQL (SQLAlchemy models)] <--- [context_migration.py] | v [ML/NLP Retraining Scripts]
+
+---
+
+### 6. **Actionable Steps**
+
+1. **Audit all code for references to `context_elections.db` and remove/replace with PostgreSQL.**
+2. **Ensure all context knowledge is loaded from and saved to `context_library.json` via `librarian.py`.**
+3. **Make sure all logs are written to `log/` and processed by correction bots.**
+4. **Use PostgreSQL as the only source of structured, confirmed data for ML and reporting.**
+5. **Document all key paths and their roles in your project.**
+
+---
+
+Contributions welcome! See `CONTRIBUTING.md` to get started.
+
 ## 📂 Data Flow Example
 
 1. **User chooses URL** from `urls.txt` (prompted via `prompt_user_input`).
