@@ -18,6 +18,9 @@ from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, DISTRICT_REGEX, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
     extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
     log_unknown_tag, log_unknown_attr, get_canonical_segment_label, cache_segment_label, get_cached_segment_label,
+    ALWAYS_IGNORE_TAGS, ALWAYS_IGNORE_CLASSES, ALWAYS_IGNORE_IDS, ICON_CLASSES, ICON_TAGS, BUTTON_CLASSES,
+    HEADING_CLASSES, PANEL_CLASSES, TIMESTAMP_CLASSES, STRUCTURAL_TAGS, TIMESTAMP_ID_PATTERNS, TIMESTAMP_ATTRS,
+    STRUCTURAL_TAGS
 )
 ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 import numpy as np
@@ -1078,15 +1081,7 @@ def auto_label_segment(
         return "ignore"
 
     # --- 6. Always-ignored tags/classes/ids ---
-    ALWAYS_IGNORE_TAGS = {
-        "script", "style", "svg", "path", "defs", "g", "canvas", "noscript", "meta", "link", "base", "title"
-    }
-    ALWAYS_IGNORE_CLASSES = {
-        "visually-hidden", "sr-only", "skip-link", "screen-reader", "aria-hidden", "d-none", "hidden", "offscreen"
-    }
-    ALWAYS_IGNORE_IDS = {
-        "skip-link", "hidden", "aria-hidden"
-    }
+
     if tag in ALWAYS_IGNORE_TAGS:
         return "ignore"
     if set(classes) & ALWAYS_IGNORE_CLASSES:
@@ -1095,27 +1090,7 @@ def auto_label_segment(
         return "ignore"
 
     # --- 7. Decorative/icon detection ---
-    ICON_CLASSES = {
-        "pi", "bi", "fa", "fas", "far", "fal", "fad", "fab", "glyphicon", "icon", "material-icons",
-        "mdi", "octicon", "feather", "ion", "ionicon", "anticon", "euiicon", "p-button-icon", "p-icon",
-        "fa-solid", "fa-regular", "fa-light", "fa-duotone", "fa-brands", "fa-stack", "fa-stack-1x", "fa-stack-2x",
-        "fa-fw", "fa-li", "fa-border", "fa-spin", "fa-pulse", "fa-inverse", "fa-layers", "fa-layers-text", "fa-layers-counter",
-        "oi", "eva", "eva-icon", "remixicon", "ri", "icofont", "icn", "flaticon", "glyph", "iconify", "iconfont",
-        "uicon", "uik", "uik-icon", "uik-button-icon", "octicon", "octicon-alert", "octicon-info", "octicon-check",
-        "octicon-x", "octicon-star", "octicon-stop", "octicon-download", "octicon-upload", "octicon-arrow", "octicon-chevron",
-        "octicon-dot", "octicon-dot-fill", "octicon-dot-outline", "octicon-dot-circle", "octicon-dot-square",
-        "icon-label", "icon-btn", "icon-button", "icon-container", "icon-wrapper", "icon-box", "icon-bg", "icon-bg-light",
-        "icon-bg-dark", "icon-bg-primary", "icon-bg-secondary", "icon-bg-success", "icon-bg-danger", "icon-bg-warning",
-        "icon-bg-info", "icon-bg-white", "icon-bg-black", "icon-bg-gray", "icon-bg-grey", "icon-bg-transparent",
-        "icon-bg-gradient", "icon-bg-image", "icon-bg-pattern", "icon-bg-shape", "icon-bg-circle", "icon-bg-square",
-        "icon-bg-rectangle", "icon-bg-oval", "icon-bg-round", "icon-bg-pill", "icon-bg-dot", "icon-bg-line",
-        "icon-bg-arrow", "icon-bg-chevron", "icon-bg-star", "icon-bg-heart", "icon-bg-check", "icon-bg-x", "icon-bg-plus",
-        "icon-bg-minus", "icon-bg-close", "icon-bg-open", "icon-bg-expand", "icon-bg-collapse", "icon-bg-menu", "icon-bg-more",
-        "icon-bg-less", "icon-bg-up", "icon-bg-down", "icon-bg-left", "icon-bg-right", "icon-bg-top", "icon-bg-bottom",
-        "icon-bg-center", "icon-bg-middle", "icon-bg-end", "icon-bg-start", "icon-bg-first", "icon-bg-last", "icon-bg-prev",
-        "icon-bg-next"
-    }
-    ICON_TAGS = {"i", "svg", "path", "g", "span"}
+
     if tag in ICON_TAGS and (ICON_CLASSES & set(classes)):
         if tag != "span" or (set(classes) <= ICON_CLASSES and not html.strip()):
             return "ignore"
@@ -1131,17 +1106,17 @@ def auto_label_segment(
             return "download_link"
 
     # --- 9. Ballot toggle/button ---
-    BUTTON_CLASSES = {"btn", "button", "toggle", "switch", "p-button", "mat-button", "v-btn", "ant-btn", "el-button"}
+    
     if segment.get("is_button", []) or BUTTON_CLASSES & set(classes) or "toggle" in id_:
         return "ballot_toggle"
 
     # --- 10. Heading ---
-    HEADING_CLASSES = {"heading", "header", "title", "h1", "h2", "h3", "h4", "h5", "h6", "section-title", "panel-title"}
+    
     if tag in HEADING_TAGS or HEADING_CLASSES & set(classes):
         return "heading"
 
     # --- 11. Panel/section/card/box ---
-    PANEL_CLASSES = {"panel", "card", "container", "box", "section-panel", "mat-card", "el-card", "ant-card", "v-card"}
+    
     if tag in PANEL_TAGS or PANEL_CLASSES & set(classes):
         return "panel"
 
@@ -1180,15 +1155,7 @@ def auto_label_segment(
         return "clickable"
 
     # --- 16. Results timestamp ---
-    TIMESTAMP_CLASSES = {
-        "time-ago", "timestamp", "last-updated", "results-timestamp", "update-time", "posted", "modified", "date", "datetime"
-    }
-    TIMESTAMP_ID_PATTERNS = [
-        r"timestamp", r"time[-_]?ago", r"last[-_]?updated", r"update[-_]?time", r"posted", r"modified", r"date", r"datetime"
-    ]
-    TIMESTAMP_ATTRS = [
-        "timeago", "datetime", "data-timestamp", "data-updated", "data-date", "data-time", "data-last-updated"
-    ]
+
     if (
         tag in {"span", "time", "div", "p", "small", "label"}
         and (
@@ -1205,7 +1172,7 @@ def auto_label_segment(
         return "results_timestamp"
 
     # --- 17. Fallback: ignore common empty/structural tags ---
-    STRUCTURAL_TAGS = {"br", "hr", "wbr", "col", "colgroup", "thead", "tbody", "tfoot", "tr", "th", "td"}
+    
     if tag in STRUCTURAL_TAGS and not html.strip():
         return "ignore"
 
