@@ -162,7 +162,9 @@ def load_overrides():
             return json.load(f)
     return {}
 
-def postgres_service_status(service_name):
+def postgres_service_status(service_name=None):
+    if service_name is None:
+        service_name = POSTGRES_SERVICE_NAME
     try:
         result = subprocess.run(["sc", "query", service_name], capture_output=True, text=True)
         if "RUNNING" in result.stdout:
@@ -369,7 +371,7 @@ def run_parser_page():
 def handle_data_framework(data):
     print(f"Received data_framework event: {data}")
     session_id = session.get('sid') if 'sid' in session else request.sid
-    output = postgres_service_status(ervice_name=None)
+    output = postgres_service_status(POSTGRES_SERVICE_NAME)
     emit('parser_output', output, room=session_id)
 
 @socketio.on('run_parser')
