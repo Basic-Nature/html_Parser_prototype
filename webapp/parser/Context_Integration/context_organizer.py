@@ -502,6 +502,8 @@ class ContextOrganizer:
         # Also scan panels/tables for party/candidate/district/state/county
         for group in [panels.values(), tables_by_contest.values()]:
             for items in group:
+                if items is None:
+                    continue  # <-- Fix: skip None
                 if isinstance(items, dict):
                     items = [items]
                 for item in items:

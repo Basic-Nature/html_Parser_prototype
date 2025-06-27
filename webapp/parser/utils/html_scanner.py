@@ -14,6 +14,7 @@ from rich.console import Console
 from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
 from ..utils.model_registry import ModelRegistry
+from ..utils.user_prompt import PromptCancelled
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, DISTRICT_REGEX, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
     extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
@@ -1034,33 +1035,33 @@ def auto_label_segment(
     ml_threshold=0.7
 ):
     """
-    Improved auto_label_segment:
+    Robust auto_label_segment:
     - Checks persistent cache, context_cache, context_library, and pattern_kb for prior labels.
     - Explicitly ignores root/container tags.
     - Uses all available context for robust labeling.
     - Falls back to ML/heuristics only if no prior label is found.
+    - If model_name/pattern_kb provided, uses ML similarity as a fallback.
     """
-    # --- 0. Robust segment hash for deduplication ---
     seg_hash = segment_identity_hash(segment)
 
-    # --- 1. Check persistent label cache ---
+    # 1. Persistent label cache
     cached_label = get_cached_segment_label(seg_hash)
     if cached_label:
         return cached_label
 
-    # --- 2. Check context_cache ---
+    # 2. Context cache
     if context_cache and seg_hash in context_cache:
         label = context_cache[seg_hash].get("ml_label")
         if label:
             return label
 
-    # --- 3. Check context_library cached_segments ---
+    # 3. Context library
     if context_library and "cached_segments" in context_library:
         for seg in context_library["cached_segments"]:
             if seg.get("segment_hash") == seg_hash and seg.get("ml_label"):
                 return seg["ml_label"]
 
-    # --- 4. Check pattern_kb ---
+    # 4. Pattern KB
     if pattern_kb:
         for entry in pattern_kb:
             if entry.get("segment_hash") == seg_hash and entry.get("label"):
@@ -1073,15 +1074,13 @@ def auto_label_segment(
     id_ = segment.get("id", "").lower()
     text = segment.get("text", "").strip().lower() if segment.get("text", []) else ""
 
-    # --- 5. Explicitly ignore root/container tags ---
-    
+    # 5. Ignore root/container tags
     if tag in ROOT_CONTAINER_TAGS:
         return "ignore"
     if tag == "div" and ("container" in classes or "main" in classes) and not html.strip():
         return "ignore"
 
-    # --- 6. Always-ignored tags/classes/ids ---
-
+    # 6. Always-ignored tags/classes/ids
     if tag in ALWAYS_IGNORE_TAGS:
         return "ignore"
     if set(classes) & ALWAYS_IGNORE_CLASSES:
@@ -1089,8 +1088,7 @@ def auto_label_segment(
     if id_ in ALWAYS_IGNORE_IDS:
         return "ignore"
 
-    # --- 7. Decorative/icon detection ---
-
+    # 7. Decorative/icon detection
     if tag in ICON_TAGS and (ICON_CLASSES & set(classes)):
         if tag != "span" or (set(classes) <= ICON_CLASSES and not html.strip()):
             return "ignore"
@@ -1099,34 +1097,31 @@ def auto_label_segment(
     if tag in {"i", "span"} and not html.strip():
         return "ignore"
 
-    # --- 8. Download links ---
+    # 8. Download links
     if tag == "a" and "href" in attrs:
         href = str(attrs["href"]).lower()
         if any(href.endswith(ext) for ext in [".csv", ".json", ".pdf", ".xlsx", ".zip", ".xls", ".doc", ".docx"]):
             return "download_link"
 
-    # --- 9. Ballot toggle/button ---
-    
+    # 9. Ballot toggle/button
     if segment.get("is_button", []) or BUTTON_CLASSES & set(classes) or "toggle" in id_:
         return "ballot_toggle"
 
-    # --- 10. Heading ---
-    
+    # 10. Heading
     if tag in HEADING_TAGS or HEADING_CLASSES & set(classes):
         return "heading"
 
-    # --- 11. Panel/section/card/box ---
-    
+    # 11. Panel/section/card/box
     if tag in PANEL_TAGS or PANEL_CLASSES & set(classes):
         return "panel"
 
-    # --- 12. Table ---
+    # 12. Table
     if tag == "table":
         return "results_table"
 
-    # --- 13. Context-driven: party, vote method, contest, etc. ---
-    from difflib import get_close_matches
+    # 13. Context-driven: party, vote method, contest, etc.
     if context_library:
+        from difflib import get_close_matches
         if 'party' in context_library:
             known_parties = [p.lower() for p in context_library['party']]
             if text in known_parties or html in known_parties:
@@ -1146,16 +1141,15 @@ def auto_label_segment(
             if text in known_contests or html in known_contests:
                 return "contest_title"
 
-    # --- 14. Ballot type ---
+    # 14. Ballot type
     if any(bt in html for bt in BALLOT_TYPES):
         return "ballot_type"
 
-    # --- 15. Clickable (fallback for links/buttons) ---
+    # 15. Clickable (fallback for links/buttons)
     if segment.get("is_clickable", []):
         return "clickable"
 
-    # --- 16. Results timestamp ---
-
+    # 16. Results timestamp
     if (
         tag in {"span", "time", "div", "p", "small", "label"}
         and (
@@ -1171,25 +1165,47 @@ def auto_label_segment(
     ):
         return "results_timestamp"
 
-    # --- 17. Fallback: ignore common empty/structural tags ---
-    
+    # 17. Fallback: ignore common empty/structural tags
     if tag in STRUCTURAL_TAGS and not html.strip():
         return "ignore"
 
-    # --- 18. Fallback: ignore if only whitespace or non-breaking space ---
+    # 18. Fallback: ignore if only whitespace or non-breaking space
     if not html.strip() or html.strip() in {"&nbsp;", "&#160;"}:
         return "ignore"
 
-    # --- 19. Fallback: ignore if only contains a single icon or decorative element ---
+    # 19. Fallback: ignore if only contains a single icon or decorative element
     if tag == "span" and len(classes) > 0 and all(cls in ICON_CLASSES for cls in classes):
         return "ignore"
 
-    # --- 20. Canonical label mapping ---
+    # 20. Canonical label mapping
     canonical = get_canonical_segment_label(text)
     if canonical:
         return canonical
 
-    # --- 21. Fallback: unknown/ambiguous, needs review ---
+    # 21. ML fallback if model_name and pattern_kb provided
+    if model_name and pattern_kb:
+        try:
+            from ..utils.model_registry import ModelRegistry
+            model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
+            emb = get_segment_embedding(model, segment)
+            if emb is not None:
+                import numpy as np
+                best_label = "unknown"
+                best_conf = 0.0
+                for entry in pattern_kb:
+                    kb_emb = np.array(entry.get("embedding", []))
+                    if kb_emb.shape != emb.shape:
+                        continue
+                    sim = float(np.dot(emb, kb_emb) / (np.linalg.norm(emb) * np.linalg.norm(kb_emb) + 1e-8))
+                    if sim > best_conf:
+                        best_conf = sim
+                        best_label = entry.get("label", "unknown")
+                if best_conf >= ml_threshold and best_label != "unknown":
+                    return best_label
+        except Exception:
+            pass  # If ML fails, just fall through to unknown
+
+    # 22. Fallback: unknown/ambiguous, needs review
     return "unknown"
 
 def embedding_cache_hash(segment, model_id):
@@ -1530,6 +1546,10 @@ def scan_html_for_context(
             # Save back to disk
             save_context_library(context_library)
    
+    except PromptCancelled:
+        rprint("[yellow][SCAN CANCELLED] HTML parsing was cancelled by the user.[/yellow]")
+        logger.info("[SCAN CANCELLED] HTML parsing was cancelled by the user.")
+        context_result["error"] = "HTML parsing was cancelled by the user."
     except Exception as e:
         tb = traceback.format_exc()
         rprint(f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}")
