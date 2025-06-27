@@ -11,7 +11,7 @@ import os
 import orjson
 import logging
 from collections import defaultdict
-import hashlib
+import types
 import collections.abc
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
@@ -50,6 +50,14 @@ ensure_db_schema()
 
 processed_urls = load_processed_urls()
 output_cache = load_output_cache()
+
+def remove_functions(obj):
+    if isinstance(obj, dict):
+        return {k: remove_functions(v) for k, v in obj.items() if not isinstance(v, types.FunctionType)}
+    elif isinstance(obj, list):
+        return [remove_functions(v) for v in obj]
+    else:
+        return obj
 
 def save_table_structure_to_db(contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
     """
@@ -546,9 +554,6 @@ class ContextOrganizer:
             "integrity_issues": integrity_issues,
             "dom_tree": dom_tree,
             "dom_parts": dom_parts,
-            "extract_html_by_idx": lambda idx, html=raw_context.get("raw_html", ""): self.extract_html_by_idx(dom_tree["nodes"], idx, html),
-            "extract_subtree_html": lambda idx, html=raw_context.get("raw_html", ""): self.extract_subtree_html(dom_tree["nodes"], idx, html),
-            "group_nodes_by_label": lambda label_field="ml_label": self.group_nodes_by_label(dom_tree["nodes"], label_field),
             # --- Advanced mappings for downstream use ---
             "party_to_candidates": party_to_candidates,
             "candidate_to_party": candidate_to_party,
@@ -787,7 +792,7 @@ class ContextOrganizer:
                     library = orjson.loads(f.read())
             else:
                 library = {}
-            library = merge_dicts(library, organized)
+            library = merge_dicts(library, remove_functions(organized))
             library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             with open(path, "wb") as f:
                 f.write(orjson.dumps(library, option=orjson.OPT_INDENT_2))
