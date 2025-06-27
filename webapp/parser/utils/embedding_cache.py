@@ -79,14 +79,16 @@ def load_embedding(segment_hash):
         if segment_hash in _batch_cache:
             return _batch_cache[segment_hash]
     ensure_embedding_cache_table()
+    obj = None
     with _db_lock:
         with get_session() as session:
             obj = session.get(EmbeddingCache, segment_hash)
-    if obj and obj.embedding:
-        emb = np.frombuffer(obj.embedding, dtype=np.float32)
-        with _batch_cache_lock:
-            _batch_cache[segment_hash] = emb
-        return emb
+            # Access .embedding inside the session!
+            if obj and obj.embedding:
+                emb = np.frombuffer(obj.embedding, dtype=np.float32)
+                with _batch_cache_lock:
+                    _batch_cache[segment_hash] = emb
+                return emb
     return None
 
 def save_embeddings_batch(hash_emb_list):
