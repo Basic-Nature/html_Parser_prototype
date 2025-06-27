@@ -423,12 +423,11 @@ def validate_training_data(train_data, nlp):
     return valid_data
 
 def summarize_misaligned_entities(log_path=None, top_n=10):
-    """
-    Scan misaligned NER examples and print the most frequent problematic texts for review/cleaning.
-    """
+    from pathlib import Path
+    from ..config import LOG_DIR
     if log_path is None:
-        log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../log/spacy_ner_misaligned.jsonl"))
-    if not os.path.exists(log_path):
+        log_path = Path(LOG_DIR) / "spacy_ner_misaligned.jsonl"
+    if not log_path.exists():
         print("[MISALIGNED] No misaligned NER examples found.")
         return
     counter = Counter()

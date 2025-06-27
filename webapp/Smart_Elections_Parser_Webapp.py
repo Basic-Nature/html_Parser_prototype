@@ -1,7 +1,6 @@
 import atexit
-from webapp.parser.bots.bot_router import start_postgres_service, stop_postgres_service
+from webapp.parser.postgres_service_control import start_postgres_service, stop_postgres_service
 
-# Start PostgreSQL service at launch
 _service_started = start_postgres_service()
 
 def stop_if_started():
@@ -442,5 +441,7 @@ def upload_to_uploads():
     return redirect(request.referrer or url_for("manage_data"))
 
 if __name__ == "__main__":
-    run_pipeline()
+    # Only run pipeline in the reloader child process, not the parent
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+        run_pipeline()
     socketio.run(app, debug=True)

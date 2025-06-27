@@ -1,4 +1,7 @@
 import os
+# Import and start the service before anything else
+
+
 from dotenv import load_dotenv
 
 load_dotenv()
