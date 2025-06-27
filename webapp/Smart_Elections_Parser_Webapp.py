@@ -13,7 +13,7 @@ import os
 import subprocess
 from threading import Thread
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
-from webapp.parser.config import BASE_DIR, POSTGRES_URL 
+from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT 
 from webapp.parser.bots.bot_router import run_pipeline, start_postgres_service, stop_postgres_service
 # Load environment variables from .env
 load_dotenv()
@@ -31,13 +31,13 @@ socketio_handler.setLevel(logging.INFO)
 logging.getLogger().addHandler(socketio_handler)
 
 ALLOWED_EXTENSIONS = {"csv", "json", "pdf", "txt"}
-INPUT_FOLDER = os.path.join(BASE_DIR, "input")
-OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")
+INPUT_FOLDER = os.path.join(PROJECT_ROOT, "input")
+OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "output")
 # Data folders
 PARSER_DIR = os.path.join(BASE_DIR, "parser")
 HINT_FILE = os.path.join(PARSER_DIR, "url_hint_overrides.txt")
 HISTORY_FILE = os.path.join(PARSER_DIR, "url_hint_history.jsonl")
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
+UPLOAD_FOLDER = os.path.join(PROJECT_ROOT, "uploads")
 URLS_FILE = os.path.join(PARSER_DIR, "urls.txt")
 
 # Store URLs in memory for the session (for demo; in production, use session or DB)
