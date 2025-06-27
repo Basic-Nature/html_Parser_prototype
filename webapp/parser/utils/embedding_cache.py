@@ -7,9 +7,10 @@ from functools import lru_cache
 import threading
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import select
+from sqlalchemy.orm.exc import DetachedInstanceError
+from sqlalchemy import select, inspect
 from sqlalchemy.dialects.postgresql import insert
-from webapp.parser.utils.db_utils import get_session
+from webapp.parser.utils.db_utils import get_session, engine
 from webapp.parser.utils.models import EmbeddingCache
 console = Console()
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
@@ -20,7 +21,17 @@ logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 # --- In-memory LRU cache for single-segment embedding retrieval ---
 @lru_cache(maxsize=2048)
 def get_embedding_from_memory(segment_hash):
-    return load_embedding(segment_hash)
+    try:
+        emb = load_embedding(segment_hash)
+        if emb is None:
+            console.print(f"[yellow][EMBEDDING CACHE] No embedding found for hash: {segment_hash}[/yellow]", highlight=False)
+        return emb
+    except DetachedInstanceError as e:
+        console.print(f"[red][EMBEDDING CACHE ERROR][/red] DetachedInstanceError for hash {segment_hash}: {str(e)}", highlight=False)
+        return None
+    except Exception as e:
+        console.print(f"[red][EMBEDDING CACHE ERROR][/red] Unexpected error for hash {segment_hash}: {str(e)}", highlight=False)
+        return None
 
 # --- In-memory process-level cache for batch operations ---
 _batch_cache = {}
@@ -29,8 +40,16 @@ _batch_cache_lock = threading.Lock()
 _db_lock = threading.Lock()
 
 def ensure_embedding_cache_table():
-    # Table is managed by SQLAlchemy migrations; nothing to do here
-    pass
+    inspector = inspect(engine)
+    table_name = EmbeddingCache.__tablename__
+    if not inspector.has_table(table_name):
+        console.print(f"[yellow][EMBEDDING CACHE] Table '{table_name}' does not exist. Creating...[/yellow]", highlight=False)
+        try:
+            EmbeddingCache.metadata.create_all(engine, tables=[EmbeddingCache.__table__])
+            console.print(f"[green][EMBEDDING CACHE] Table '{table_name}' created.[/green]", highlight=False)
+        except Exception as e:
+            console.print(f"[red][EMBEDDING CACHE ERROR] Failed to create table '{table_name}': {e}[/red]", highlight=False)
+            raise
 
 def save_embedding(segment_hash, embedding):
     """Save a single embedding to the cache (PostgreSQL via SQLAlchemy)."""
