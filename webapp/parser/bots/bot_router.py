@@ -5,7 +5,7 @@ import os
 import json
 import time
 from datetime import datetime
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL, POSTGRES_SERVICE_NAME
 
@@ -75,6 +75,10 @@ def start_postgres_service(service_name=None):
         print(result.stdout)
         return True
     except subprocess.CalledProcessError as e:
+        # Treat "already been started" as success
+        if e.stderr and "already been started" in e.stderr:
+            print(f"[INFO] PostgreSQL service '{service_name}' is already running.")
+            return True
         print(f"[ERROR] Could not start PostgreSQL service: {e}")
         print("STDOUT:", e.stdout)
         print("STDERR:", e.stderr)
@@ -104,7 +108,7 @@ def check_db_connection():
     try:
         engine = create_engine(POSTGRES_URL)
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         return True
     except Exception as e:
         print(f"[BOT ROUTER][ERROR] Database unavailable: {e}")

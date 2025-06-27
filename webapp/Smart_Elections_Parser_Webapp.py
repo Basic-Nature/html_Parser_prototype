@@ -16,8 +16,17 @@ from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_we
 from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
 from webapp.parser.bots.bot_router import run_pipeline, start_postgres_service, stop_postgres_service
 # Load environment variables from .env
+import atexit
 load_dotenv()
+# Start PostgreSQL service at launch
+_service_started = start_postgres_service()
 
+def stop_if_started():
+    if _service_started:
+        stop_postgres_service()
+
+# Register the cleanup function to run on exit
+atexit.register(stop_if_started)
 app = Flask(__name__)
 socketio = SocketIO(app)
 
@@ -428,11 +437,5 @@ def upload_to_uploads():
     return redirect(request.referrer or url_for("manage_data"))
 
 if __name__ == "__main__":
-    # Start PostgreSQL service
-    started = start_postgres_service(POSTGRES_SERVICE_NAME)  # Use your actual service name
-    try:
-        run_pipeline()
-        socketio.run(app, debug=True)
-    finally:
-        if started:
-            stop_postgres_service(POSTGRES_SERVICE_NAME)
+    run_pipeline()
+    socketio.run(app, debug=True)
