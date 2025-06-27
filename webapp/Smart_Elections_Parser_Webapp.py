@@ -13,7 +13,7 @@ import os
 import subprocess
 from threading import Thread
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
-from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT 
+from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
 from webapp.parser.bots.bot_router import run_pipeline, start_postgres_service, stop_postgres_service
 # Load environment variables from .env
 load_dotenv()
@@ -429,10 +429,10 @@ def upload_to_uploads():
 
 if __name__ == "__main__":
     # Start PostgreSQL service
-    started = start_postgres_service("postgresql-x64-15")  # Use your actual service name
+    started = start_postgres_service(POSTGRES_SERVICE_NAME)  # Use your actual service name
     try:
         run_pipeline()
         socketio.run(app, debug=True)
     finally:
         if started:
-            stop_postgres_service("postgresql-x64-15")
+            stop_postgres_service(POSTGRES_SERVICE_NAME)

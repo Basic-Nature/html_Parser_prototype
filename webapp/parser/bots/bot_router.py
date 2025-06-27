@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
-from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL
+from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL, POSTGRES_SERVICE_NAME
 
 from webapp.parser.bots.log_cleaner_bot import run_log_cleaner
 from webapp.parser.utils.context_migration import migrate_all
@@ -61,7 +61,9 @@ def run_orchestration_plugins(context=None):
             print(f"[BOT ROUTER][PLUGIN ERROR] {e}")
     return suggestions
 
-def start_postgres_service(service_name="postgresql-x64-15"):
+def start_postgres_service(service_name=None):
+    if service_name is None:
+        service_name = POSTGRES_SERVICE_NAME
     try:
         subprocess.run(["net", "start", service_name], check=True, capture_output=True)
         print(f"[INFO] PostgreSQL service '{service_name}' started.")
@@ -70,7 +72,9 @@ def start_postgres_service(service_name="postgresql-x64-15"):
         print(f"[ERROR] Could not start PostgreSQL service: {e}")
         return False
 
-def stop_postgres_service(service_name="postgresql-x64-15"):
+def stop_postgres_service(service_name=None):
+    if service_name is None:
+        service_name = POSTGRES_SERVICE_NAME
     try:
         subprocess.run(["net", "stop", service_name], check=True, capture_output=True)
         print(f"[INFO] PostgreSQL service '{service_name}' stopped.")

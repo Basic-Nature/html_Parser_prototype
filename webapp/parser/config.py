@@ -34,7 +34,7 @@ POSTGRES_URL = os.getenv(
     "POSTGRES_URL",
     f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 )
-
+POSTGRES_SERVICE_NAME = os.getenv("POSTGRES_SERVICE_NAME", "Check PostgreSQL service name in .env")
 def ensure_postgres_db():
     """Ensure the target database exists, create if not."""
     if not all([POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_HOST, POSTGRES_PORT]):
