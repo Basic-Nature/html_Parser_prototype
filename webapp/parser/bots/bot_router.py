@@ -65,11 +65,19 @@ def start_postgres_service(service_name=None):
     if service_name is None:
         service_name = POSTGRES_SERVICE_NAME
     try:
-        subprocess.run(["net", "start", service_name], check=True, capture_output=True)
+        result = subprocess.run(
+            ["net", "start", service_name],
+            check=True,
+            capture_output=True,
+            text=True
+        )
         print(f"[INFO] PostgreSQL service '{service_name}' started.")
+        print(result.stdout)
         return True
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Could not start PostgreSQL service: {e}")
+        print("STDOUT:", e.stdout)
+        print("STDERR:", e.stderr)
         return False
 
 def stop_postgres_service(service_name=None):
