@@ -5,7 +5,7 @@ import orjson
 import subprocess
 import sys
 import time
-from ..utils.shared_logic import update_context_library_field
+from ..utils.shared_logic import save_context_library
 
 # --- Central Dynamic Sets (used everywhere) ---
 HTML_TAGS: Set[str] = set([
@@ -214,14 +214,6 @@ def load_context_library(path=CONTEXT_LIBRARY_PATH):
         extend_ballot_types(context_lib["ballot_types"])
     return context_lib
 
-def save_context_library():
-    update_context_library_field("panel_tags", list(PANEL_TAGS))
-    update_context_library_field("heading_tags", list(HEADING_TAGS))
-    update_context_library_field("custom_attr_patterns", [pat.pattern for pat in CUSTOM_ATTR_PATTERNS])
-    update_context_library_field("location_keywords", list(LOCATION_KEYWORDS))
-    update_context_library_field("candidate_keywords", list(CANDIDATE_KEYWORDS))
-    update_context_library_field("ballot_types", list(BALLOT_TYPES))
-
 # --- Unknown Tag/Attr Logging for ML/LLM Feedback ---
 UNKNOWN_TAGS_LOG = set()
 UNKNOWN_ATTRS_LOG = set()
@@ -328,8 +320,8 @@ __all__ = [
     "MISC_FOOTER_KEYWORDS", "CANDIDATE_KEYWORDS", "PARTY_KEYWORDS", "LOCATION_ABBREVIATIONS", "VALID_TYPES", "CONTEST_KEYWORDS",
     "extend_panel_tags", "extend_heading_tags", "extend_html_tags", "extend_custom_attr_patterns",
     "extend_location_keywords", "extend_candidate_keywords", "extend_ballot_types",
-    "log_unknown_tag", "log_unknown_attr", "integrate_llm_feedback", "save_context_library",
-    "CANONICAL_SEGMENT_LABELS", "normalize_segment_text", "get_canonical_segment_label", "cache_segment_label", "get_cached_segment_label",
+    "log_unknown_tag", "log_unknown_attr", "integrate_llm_feedback","CANONICAL_SEGMENT_LABELS", 
+    "normalize_segment_text", "get_canonical_segment_label", "cache_segment_label", "get_cached_segment_label",
     "ROOT_CONTAINER_TAGS", "ALWAYS_IGNORE_TAGS", "ALWAYS_IGNORE_CLASSES", "ALWAYS_IGNORE_IDS", "ICON_CLASSES", "ICON_TAGS", "BUTTON_CLASSES",
     "HEADING_CLASSES", "PANEL_CLASSES", "TIMESTAMP_CLASSES", "STRUCTURAL_TAGS", "TIMESTAMP_ID_PATTERNS", "TIMESTAMP_ATTRS",
     "STRUCTURAL_TAGS"

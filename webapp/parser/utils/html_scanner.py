@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR
 from ..utils.download_utils import download_file
 from ..utils.format_router import route_format_handler 
-from ..utils.shared_logic import infer_state_county_from_url, update_context_library
+from ..utils.shared_logic import infer_state_county_from_url, update_context_library, save_context_library
 from ..utils.shared_logger import logger
 from rich import print as rprint
 from rich.console import Console
@@ -99,10 +99,6 @@ extend_panel_tags(["custom-panel"])
 extend_custom_attr_patterns([r"^x-data-"])
 extend_heading_tags(["custom-heading", "special-h2"])
 extend_html_tags(["custom-element", "widget"])
-
-def save_context_library(context_library, context_library_path=CONTEXT_LIBRARY_PATH):
-    with open(context_library_path, "wb") as f:
-        f.write(orjson.dumps(context_library, option=orjson.OPT_INDENT_2))
         
 def load_additional_tags_from_context_library():
     tags = set()

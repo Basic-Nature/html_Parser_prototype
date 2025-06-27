@@ -5,6 +5,7 @@ import orjson
 import os
 import platform
 import re
+import time
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, SpinnerColumn
 import threading
 from ..utils.shared_logger import rprint, logger
@@ -14,6 +15,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 import shutil
+import tempfile
 
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
@@ -279,14 +281,61 @@ def safe_join(base, *paths):
     return final_path
 
 def load_context_library(path=CONTEXT_LIBRARY_PATH):
+    """
+    Loads the context library, ensuring it is never lost:
+    - If missing, creates with default structure.
+    - If empty or corrupt, backs up and re-initializes.
+    - If missing keys, adds them (preserving existing data).
+    """
     safe_path = path
-    if not os.path.exists(safe_path):
-        return {}
-    with open(safe_path, "rb") as f:
-        data = f.read()
-        if not data:
-            return {}
-        return orjson.loads(data)
+    # Ensure parent directory exists
+    os.makedirs(os.path.dirname(safe_path), exist_ok=True)
+
+    # Helper: merge missing keys from default
+    def merge_defaults(existing, defaults):
+        changed = False
+        for k, v in defaults.items():
+            if k not in existing:
+                existing[k] = v
+                changed = True
+            # Optionally, recursively merge dicts (if you want deep merge)
+            elif isinstance(v, dict) and isinstance(existing[k], dict):
+                if merge_defaults(existing[k], v):
+                    changed = True
+        return changed
+
+    # If file does not exist or is empty, create with defaults
+    if not os.path.exists(safe_path) or os.path.getsize(safe_path) == 0:
+        with open(safe_path, "wb") as f:
+            f.write(orjson.dumps(DEFAULT_STRUCTURE))
+        return DEFAULT_STRUCTURE.copy()
+
+    # Try to load, back up and re-init if corrupt
+    try:
+        with open(safe_path, "rb") as f:
+            data = f.read()
+            if not data:
+                # Empty file, treat as missing
+                with open(safe_path, "wb") as fw:
+                    fw.write(orjson.dumps(DEFAULT_STRUCTURE))
+                return DEFAULT_STRUCTURE.copy()
+            lib = orjson.loads(data)
+    except Exception as e:
+        # Backup corrupt file before overwriting
+        backup_path = safe_path + ".corrupt"
+        try:
+            os.rename(safe_path, backup_path)
+        except Exception:
+            pass
+        with open(safe_path, "wb") as f:
+            f.write(orjson.dumps(DEFAULT_STRUCTURE))
+        return DEFAULT_STRUCTURE.copy()
+
+    # Merge in any missing keys from default (preserve existing data)
+    if merge_defaults(lib, DEFAULT_STRUCTURE):
+        # Save the updated structure with new keys
+        save_context_library(lib, safe_path)
+    return lib
     
 def update_context_library(path, update_fn):
     """
@@ -303,17 +352,29 @@ def backup_context_library(path=CONTEXT_LIBRARY_PATH):
     Make a timestamped backup of the context library before overwriting.
     """
     if os.path.exists(path):
-        backup_path = path + ".bak"
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{path}.{timestamp}.bak"
         shutil.copy2(path, backup_path)
 
 def save_context_library(lib, path=None):
+    """
+    Robustly save the context library:
+    - Always makes a timestamped backup before writing.
+    - Writes atomically (temp file, then replace).
+    - Never truncates or loses data on failure.
+    """
     if path is None:
         path = CONTEXT_LIBRARY_PATH
     safe_path = safe_join(BASE_DIR, os.path.relpath(path, BASE_DIR))
     backup_context_library(safe_path)
     data = orjson.dumps(lib, option=orjson.OPT_INDENT_2)
-    with open(safe_path, "wb") as f:
-        f.write(data)
+    # Write to a temp file first
+    dir_name = os.path.dirname(safe_path)
+    with tempfile.NamedTemporaryFile("wb", dir=dir_name, delete=False) as tf:
+        tf.write(data)
+        temp_path = tf.name
+    # Atomically replace the original file
+    os.replace(temp_path, safe_path)
 
 def merge_and_save_context_library(partial_dict, path=CONTEXT_LIBRARY_PATH):
     """
@@ -328,8 +389,11 @@ def update_context_library_field(key, value, path=CONTEXT_LIBRARY_PATH):
     Safely update a top-level key in the context library.
     """
     lib = load_context_library(path)
+    old_value = lib.get(key, None)
     lib[key] = value
     save_context_library(lib, path)
+    # Optionally log the change
+    logger.info(f"Updated context_library field '{key}': {old_value} -> {value}")
 
 def update_domain_selector_cache(domain, selector, label, success=True):
     lib = load_context_library()
