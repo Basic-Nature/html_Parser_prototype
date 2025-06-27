@@ -1,3 +1,14 @@
+import atexit
+from webapp.parser.bots.bot_router import start_postgres_service, stop_postgres_service
+
+# Start PostgreSQL service at launch
+_service_started = start_postgres_service()
+
+def stop_if_started():
+    if _service_started:
+        stop_postgres_service()
+
+atexit.register(stop_if_started)
 
 import csv
 from datetime import datetime, timezone
@@ -14,19 +25,11 @@ import subprocess
 from threading import Thread
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
 from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
-from webapp.parser.bots.bot_router import run_pipeline, start_postgres_service, stop_postgres_service
+from webapp.parser.bots.bot_router import run_pipeline
 # Load environment variables from .env
-import atexit
+
 load_dotenv()
-# Start PostgreSQL service at launch
-_service_started = start_postgres_service()
 
-def stop_if_started():
-    if _service_started:
-        stop_postgres_service()
-
-# Register the cleanup function to run on exit
-atexit.register(stop_if_started)
 app = Flask(__name__)
 socketio = SocketIO(app)
 
