@@ -282,8 +282,6 @@ def load_context_library(path=CONTEXT_LIBRARY_PATH):
     safe_path = path
     if not os.path.exists(safe_path):
         return {}
-    print(f"[DEBUG] Attempting to load context library from: {safe_path}")
-    print(f"[DEBUG] Current working directory: {os.getcwd()}")
     with open(safe_path, "rb") as f:
         data = f.read()
         if not data:
