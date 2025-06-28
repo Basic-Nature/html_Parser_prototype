@@ -8,7 +8,10 @@ from datetime import datetime
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL
-
+import smtplib
+from email.message import EmailMessage
+import requests
+from requests.auth import HTTPBasicAuth
 from ..bots.log_cleaner_bot import run_log_cleaner
 from ..utils.context_migration import migrate_all
 from ..bots.scan_misaligned_ner import scan_misaligned
@@ -153,12 +156,12 @@ def run_pipeline():
     if not check_db_connection():
         print("[BOT ROUTER] Skipping DB-dependent bots: database is not available.")
         results["scan_misaligned_ner"] = "skipped"
-        results["retrain_table_structure_models"] = "skipped"
         results["manual_correction_bot"] = "skipped"
+        results["retrain_table_structure_models"] = "skipped"
         print_bot_summary(results)
         return
 
-    # 3. Scan for misaligned NER examples before retraining
+    # 3. Scan for misaligned NER examples
     print("[BOT ROUTER] Step 2: Scanning for misaligned NER examples...")
     try:
         misaligned_exit_code = scan_misaligned()
@@ -166,44 +169,129 @@ def run_pipeline():
             results["scan_misaligned_ner"] = "clean"
         else:
             results["scan_misaligned_ner"] = "misaligned"
-            print("[BOT ROUTER][WARNING] Misaligned NER examples found. Consider running manual_correction_bot.")
+            print("[BOT ROUTER][WARNING] Misaligned NER examples found. Running manual_correction_bot before retraining.")
     except Exception as e:
         print(f"[BOT ROUTER][ERROR] scan_misaligned_ner failed: {e}")
         results["scan_misaligned_ner"] = "fail"
 
-    # 4. Retrain table structure models
-    print("[BOT ROUTER] Step 3: Retraining table structure models...")
-    retrain_success = run_subprocess_module("webapp.parser.bots.retrain_table_structure_models")
-    results["retrain_table_structure_models"] = "success" if retrain_success else "fail"
+    # 4. Build dynamic arguments for manual_correction_bot
+    correction_args = []
+    # Use enhanced ML/NER/LLM if available
+    if os.getenv("ENABLE_ENHANCED", "true").lower() == "true":
+        correction_args.append("--enhanced")
+    # Use feedback loop if user wants review, else auto-accept
+    if os.getenv("CORRECTION_MODE", "feedback").lower() == "feedback":
+        correction_args.append("--feedback")
+    else:
+        correction_args.append("--auto")
+    # Integrity check if flagged or in production
+    if os.getenv("INTEGRITY_CHECK", "false").lower() == "true":
+        correction_args.append("--integrity")
+    # Always update DB if in production or as needed
+    if os.getenv("UPDATE_DB", "true").lower() == "true":
+        correction_args.append("--update-db")
+    # Use LLM if API key is present
+    llm_api_key = os.getenv("LLM_API_KEY")
+    llm_provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    llm_model = os.getenv("LLM_MODEL", "gpt-4-turbo")
+    if llm_api_key:
+        correction_args.extend([
+            "--llm-api-key", llm_api_key,
+            "--llm-provider", llm_provider,
+            "--llm-model", llm_model
+        ])
+        # Anthropic-specific options
+        if llm_provider == "anthropic" and os.getenv("ANTHROPIC_SYSTEM_PROMPT"):
+            correction_args.extend(["--llm-system-prompt", os.getenv("ANTHROPIC_SYSTEM_PROMPT")])
+        elif llm_provider == "gemini" and os.getenv("GEMINI_SYSTEM_PROMPT"):
+            correction_args.extend(["--llm-system-prompt", os.getenv("GEMINI_SYSTEM_PROMPT")])
+        elif llm_provider == "local" and os.getenv("LOCAL_LLM_PATH"):
+            correction_args.extend(["--llm-model-path", os.getenv("LOCAL_LLM_PATH")])
+        if os.getenv("LLM_SYSTEM_PROMPT"):
+            correction_args.extend(["--llm-system-prompt", os.getenv("LLM_SYSTEM_PROMPT")])
+        if os.getenv("LLM_EXTRA_INSTRUCTIONS"):
+            correction_args.extend(["--llm-extra-instructions", os.getenv("LLM_EXTRA_INSTRUCTIONS")])
+    # Filter by context key or value if set
+    if os.getenv("FILTER_CONTEXT_KEY"):
+        correction_args.extend(["--filter-context-key", os.getenv("FILTER_CONTEXT_KEY")])
+    if os.getenv("FILTER_VALUE"):
+        correction_args.extend(["--filter-value", os.getenv("FILTER_VALUE")])
+    # Specify fields if needed
+    if os.getenv("FIELDS"):
+        correction_args.extend(["--fields"] + os.getenv("FIELDS").split(","))
+    # Use custom context or log-dir if set
+    if os.getenv("CONTEXT_PATH"):
+        correction_args.extend(["--context", os.getenv("CONTEXT_PATH")])
+    if os.getenv("LOG_DIR"):
+        correction_args.extend(["--log-dir", os.getenv("LOG_DIR")])
+    # Dry-run mode
+    if os.getenv("DRY_RUN", "false").lower() == "true":
+        correction_args.append("--dry-run")
+    # Disable coordinator/organizer if needed
+    if os.getenv("NO_COORDINATOR", "false").lower() == "true":
+        correction_args.append("--no-coordinator")
+    if os.getenv("NO_ORGANIZER", "false").lower() == "true":
+        correction_args.append("--no-organizer")
+    # Advanced features from manual_correction_bot
+    if os.getenv("BATCH_MODE", "false").lower() == "true":
+        correction_args.append("--batch")
+    if os.getenv("FAST_MODE", "false").lower() == "true":
+        correction_args.append("--fast")
+    if os.getenv("FLUSH_CACHE", "false").lower() == "true":
+        correction_args.append("--flush-cache")
+    if os.getenv("CACHE_EXPIRE_DAYS"):
+        correction_args.extend(["--cache-expire-days", os.getenv("CACHE_EXPIRE_DAYS")])
+    if os.getenv("EXPORT_AUDIT_LOG"):
+        correction_args.extend(["--export-audit-log", os.getenv("EXPORT_AUDIT_LOG")])
+    if os.getenv("REST_API", "false").lower() == "true":
+        correction_args.append("--rest-api")
+    if os.getenv("SELF_HEAL", "false").lower() == "true":
+        correction_args.append("--self-heal")
+        if os.getenv("MAX_RETRIES"):
+            correction_args.extend(["--max-retries", os.getenv("MAX_RETRIES")])
+        if os.getenv("COOLDOWN"):
+            correction_args.extend(["--cooldown", os.getenv("COOLDOWN")])
+    if os.getenv("DB_PATH"):
+        correction_args.extend(["--db-path", os.getenv("DB_PATH")])
 
-    # 5. Run manual correction bot if retrain succeeded
-    if retrain_success:
-        print("[BOT ROUTER] Step 4: Running manual correction bot...")
+    # 5. Run manual correction bot for misalignments or general cleanup
+    correction_success = None
+    if results.get("scan_misaligned_ner") == "misaligned":
+        print("[BOT ROUTER] Step 3: Running manual correction bot for misalignments...")
+        # Always include --fields contests for targeted misalignment cleanup
+        misalignment_args = ["--fields", "contests"] + correction_args
         correction_success = run_subprocess_module(
             "webapp.parser.bots.manual_correction_bot",
-            args=["--enhanced", "--feedback", "--update-db"]
+            args=misalignment_args
         )
         results["manual_correction_bot"] = "success" if correction_success else "fail"
     else:
-        results["manual_correction_bot"] = "skipped"
+        print("[BOT ROUTER] Step 3: Running manual correction bot for general structure cleanup...")
+        correction_success = run_subprocess_module(
+            "webapp.parser.bots.manual_correction_bot",
+            args=correction_args
+        )
+        results["manual_correction_bot"] = "success" if correction_success else "fail"
 
-    # 6. Run orchestration plugins (context_organizer, context_coordinator, integrity_check, librarian, etc.)
+    # 6. Retrain table structure models (after correction)
+    print("[BOT ROUTER] Step 4: Retraining table structure models...")
+    retrain_success = run_subprocess_module("webapp.parser.bots.retrain_table_structure_models")
+    results["retrain_table_structure_models"] = "success" if retrain_success else "fail"
+
+    # 7. Run orchestration plugins (context_organizer, context_coordinator, integrity_check, librarian, etc.)
     print("[BOT ROUTER] Step 5: Running orchestration plugins and context modules...")
     context = load_context_library()
     print("Type of context:", type(context))
     try:
-        # Example: Run integrity check and print summary
         contests = context.get("contests", [])
         if contests:
             Integrity_check.print_integrity_summary(contests)
             results["integrity_check"] = "success"
         else:
             results["integrity_check"] = "no_contests"
-        # Example: Organize context
         organizer = context_organizer.ContextOrganizer()
         organized = organizer.organize_context(context)
         results["context_organizer"] = "success"
-        # Example: Use context coordinator
         coordinator = context_coordinator.ContextCoordinator()
         coordinator.organize_and_enrich(context)
         results["context_coordinator"] = "success"
@@ -213,7 +301,7 @@ def run_pipeline():
         results["context_organizer"] = "fail"
         results["context_coordinator"] = "fail"
 
-    # 7. Run any additional orchestration plugins
+    # 8. Run any additional orchestration plugins
     try:
         plugin_results = run_orchestration_plugins(context)
         results["orchestration_plugins"] = "success" if plugin_results else "none"
@@ -224,15 +312,117 @@ def run_pipeline():
     print_bot_summary(results)
    
 def scan_and_notify(context):
-    logging.info("[BOT] Scanning for new results and sending notifications (not yet implemented).")
-    return True
+    """
+    Scan for new results in the context and send notifications if new or important results are found.
+    This function can be extended to check for specific keys, statuses, or thresholds.
+    """
+    logging.info("[BOT] Scanning for new results and sending notifications...")
+    new_results = []
+    # Example: Scan for new contests or results
+    if context and "contests" in context:
+        for contest in context["contests"]:
+            if contest.get("status") == "new" or contest.get("notify", False):
+                new_results.append(contest)
+    if new_results:
+        for result in new_results:
+            message = f"New contest detected: {result.get('name', 'Unknown')}"
+            send_notification(message, context=result)
+        logging.info(f"[BOT] Notifications sent for {len(new_results)} new results.")
+        return True
+    else:
+        logging.info("[BOT] No new results found for notification.")
+        return False
 
 def batch_status_report(context):
-    logging.info("[BOT] Generating batch status report (not yet implemented).")
-    return True
+    """
+    Generate a batch status report from the context and optionally send or log it.
+    """
+    logging.info("[BOT] Generating batch status report...")
+    report = []
+    if context and "contests" in context:
+        for contest in context["contests"]:
+            status = contest.get("status", "unknown")
+            name = contest.get("name", "Unnamed")
+            report.append(f"{name}: {status}")
+    report_text = "\n".join(report)
+    if report_text:
+        logging.info(f"[BOT] Batch Status Report:\n{report_text}")
+        # Optionally, send the report via notification
+        send_notification("Batch Status Report:\n" + report_text)
+        return report_text
+    else:
+        logging.info("[BOT] No contests found for batch status report.")
+        return ""
 
-def send_notification(message, context=None):
+def send_notification(message, context=None, email=None):
+    """
+    Send a notification. Supports email, Slack, and SMS (Twilio).
+    """
     logging.info(f"[BOT] Sending notification: {message}")
+
+    # Email notification
+    if os.getenv("NOTIFY_EMAILS", "false").lower() == "true":
+        email_to = email or os.getenv("NOTIFY_EMAIL")
+        if email_to:
+            try:
+                smtp_server = os.getenv("SMTP_SERVER", "localhost")
+                smtp_port = int(os.getenv("SMTP_PORT", 25))
+                smtp_user = os.getenv("SMTP_USER")
+                smtp_pass = os.getenv("SMTP_PASS")
+                msg = EmailMessage()
+                msg.set_content(message)
+                msg["Subject"] = "Pipeline Notification"
+                msg["From"] = os.getenv("SMTP_FROM", "noreply@example.com")
+                msg["To"] = email_to
+                with smtplib.SMTP(smtp_server, smtp_port) as server:
+                    if smtp_user and smtp_pass:
+                        server.starttls()
+                        server.login(smtp_user, smtp_pass)
+                    server.send_message(msg)
+                logging.info(f"[BOT] Email notification sent to {email_to}")
+            except Exception as e:
+                logging.error(f"[BOT] Failed to send email notification: {e}")
+
+    # Slack notification
+    if os.getenv("NOTIFY_SLACK", "false").lower() == "true":
+        slack_webhook = os.getenv("SLACK_WEBHOOK_URL")
+        if slack_webhook:
+            try:
+                slack_data = {"text": message}
+                resp = requests.post(slack_webhook, json=slack_data)
+                if resp.status_code == 200:
+                    logging.info("[BOT] Slack notification sent.")
+                else:
+                    logging.error(f"[BOT] Slack notification failed: {resp.text}")
+            except Exception as e:
+                logging.error(f"[BOT] Failed to send Slack notification: {e}")
+
+    # SMS notification (Twilio)
+    if os.getenv("NOTIFY_SMS", "false").lower() == "true":
+        twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
+        twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
+        twilio_from = os.getenv("TWILIO_FROM")
+        twilio_to = os.getenv("TWILIO_TO")
+        if twilio_sid and twilio_token and twilio_from and twilio_to:
+            try:
+                sms_url = f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json"
+                sms_data = {
+                    "From": twilio_from,
+                    "To": twilio_to,
+                    "Body": message
+                }
+                resp = requests.post(
+                    sms_url,
+                    data=sms_data,
+                    auth=HTTPBasicAuth(twilio_sid, twilio_token)
+                )
+                if resp.status_code == 201:
+                    logging.info("[BOT] SMS notification sent.")
+                else:
+                    logging.error(f"[BOT] SMS notification failed: {resp.text}")
+            except Exception as e:
+                logging.error(f"[BOT] Failed to send SMS notification: {e}")
+
     return True
 
 def get_file_age_days(path):
