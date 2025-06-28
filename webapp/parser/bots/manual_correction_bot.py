@@ -24,6 +24,7 @@ import subprocess
 import sys
 import time
 from tempfile import NamedTemporaryFile
+import importlib
 from fastapi import FastAPI
 import uvicorn
 # --- Unified logger import ---
@@ -693,13 +694,18 @@ def main():
     context_organizer = None
     if args.enhanced:
         try:
-            import importlib
-            coordinator_mod = importlib.import_module(PROJECT_ROOT, "webapp.parser.Context_Integration.context_coordinator")
+            coordinator_mod = importlib.import_module("webapp.parser.Context_Integration.context_coordinator")
             coordinator = getattr(coordinator_mod, "ContextCoordinator", None)
-            organizer_mod = importlib.import_module(PROJECT_ROOT, "webapp.parser.Context_Integration.context_organizer")
-            context_organizer = getattr(organizer_mod, "context_organizer", None)
         except Exception as e:
-            logger.warning(f"Could not import coordinator/context_organizer: {e}")
+            logger.warning(f"Could not import context_coordinator: {e}")
+            coordinator = None
+
+        try:
+            organizer_mod = importlib.import_module("webapp.parser.Context_Integration.context_organizer")
+            context_organizer = getattr(organizer_mod, "ContextOrganizer", None)
+        except Exception as e:
+            logger.warning(f"Could not import context_organizer: {e}")
+            context_organizer = None
 
     total_accepted, total_edited, total_removed = 0, 0, 0
     total_duplicates, total_existing_skipped, total_new = 0, 0, 0
