@@ -41,8 +41,6 @@ from .Integrity_check import (
 )
 from .context_organizer import ContextOrganizer
 import inspect
-# --- Config ---
-SAMPLE_JSON_PATH = os.path.join(os.path.dirname(__file__), "sample.json")
 
 def safe_for_json(obj):
     """Recursively remove non-serializable items from dicts/lists."""
