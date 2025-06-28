@@ -33,7 +33,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 # --- SQLAlchemy imports for DB maintenance ---
 from ..utils.db_utils import get_engine, get_session
-from webapp.parser.utils.context_migration import migrate_all
+from .context_migration import migrate_all
 from ..config import LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
 
 DEFAULT_MAX_SIZE_MB = 10

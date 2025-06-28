@@ -13,7 +13,7 @@ from email.message import EmailMessage
 import requests
 from requests.auth import HTTPBasicAuth
 from ..bots.log_cache_cleaner_bot import run_log_cache_cleaner
-from ..utils.context_migration import migrate_all
+from ..bots.context_migration import migrate_all
 from ..bots.scan_misaligned_ner import scan_misaligned
 from ..Context_Integration import context_organizer, context_coordinator, Integrity_check
 from ..bots.librarian import load_context_library
