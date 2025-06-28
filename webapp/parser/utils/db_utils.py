@@ -10,6 +10,8 @@ from contextlib import contextmanager
 from .models import Contest, TableStructure, BatchMetadata, StagingElectionResult, WarehouseElectionResult, Base
 from ..config import POSTGRES_URL, CONTEXT_LIBRARY_PATH
 
+from ..bots.librarian import load_context_library
+
 # Set up SQLAlchemy engine and session
 engine = create_engine(POSTGRES_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -97,7 +99,6 @@ def fetch_contests_by_filter(filters: Optional[dict] = None, limit: int = 100, s
             session.close()
 
 def append_to_context_library(data, path=None):
-    from ..utils.shared_logic import load_context_library
     if path is None:
         path = CONTEXT_LIBRARY_PATH
     safe_path = _safe_db_path(path)

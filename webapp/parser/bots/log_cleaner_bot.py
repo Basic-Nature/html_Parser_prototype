@@ -32,8 +32,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 # --- SQLAlchemy imports for DB maintenance ---
-from webapp.parser.utils.db_utils import get_engine, get_session
-from webapp.parser.utils.context_migration import migrate_all
+from ..utils.db_utils import get_engine, get_session
+from ..utils.context_migration import migrate_all
 
 DEFAULT_LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "log")
 DEFAULT_CONTEXT_LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "webapp", "parser", "Context_Integration", "Context_Library")

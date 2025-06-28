@@ -10,8 +10,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy import select, inspect
 from sqlalchemy.dialects.postgresql import insert
-from webapp.parser.utils.db_utils import get_session, engine
-from webapp.parser.utils.models import EmbeddingCache
+from ..utils.db_utils import get_session, engine
+from ..utils.models import EmbeddingCache
 console = Console()
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)

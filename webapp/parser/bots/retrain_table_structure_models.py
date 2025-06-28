@@ -12,7 +12,7 @@ from ..utils.model_registry import ModelRegistry
 from collections import Counter
 from sentence_transformers import InputExample, losses
 from torch.utils.data import DataLoader
-from ..utils.shared_logic import load_context_library
+from ..bots.librarian import load_context_library
 from ..utils.db_utils import _safe_db_path
 from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, POSTGRES_URL, LOG_DIR
 
@@ -27,9 +27,9 @@ import argparse
 import gc
 from sqlalchemy.orm import Session
 from sqlalchemy import select, inspect
-from webapp.parser.utils.db_utils import get_session, create_engine
-from webapp.parser.utils.models import TableStructure, Entity
-
+from ..utils.db_utils import get_session, create_engine
+from ..utils.models import TableStructure, Entity
+from ..utils.models import Base
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("manual_correction_bot")
 
@@ -570,7 +570,6 @@ def ensure_table_structures_exists():
     inspector = inspect(engine)
     if 'table_structures' not in inspector.get_table_names():
         print("[INFO] 'table_structures' table not found. Creating all tables...")
-        from webapp.parser.utils.models import Base
         Base.metadata.create_all(engine)
         print("[INFO] All tables created.")
     else:

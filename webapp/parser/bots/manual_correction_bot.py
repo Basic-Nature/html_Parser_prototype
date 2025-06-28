@@ -28,7 +28,7 @@ from fastapi import FastAPI
 import uvicorn
 # --- Unified logger import ---
 from ..utils.shared_logger import logger
-from ..utils.shared_logic import (
+from ..bots.librarian import (
     save_context_library,
     update_context_library,
     SCHEMA_VERSION,

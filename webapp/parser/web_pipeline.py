@@ -1,4 +1,4 @@
-from webapp.parser.html_election_parser import process_url
+from .html_election_parser import process_url
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 

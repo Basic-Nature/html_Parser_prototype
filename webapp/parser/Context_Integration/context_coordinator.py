@@ -20,6 +20,7 @@ from ..utils.shared_logic import (
     scan_buttons_with_progress, keyphrase_match,
     normalize_state_name, normalize_county_name
 )
+from ..bots.librarian import load_context_library, save_context_library
 from sklearn.preprocessing import LabelEncoder
 import subprocess
 from rich.console import Console
@@ -166,7 +167,6 @@ class ContextCoordinator:
     Use this class to access contests, buttons, panels, tables, candidates, districts, etc.
     """
     def __init__(self, use_library=True, enable_ml=True, alert_monitor=True):
-        from ..utils.shared_logic import load_context_library
         self.library = load_context_library() if use_library else {}
         self.enable_ml = enable_ml
         self.alert_monitor = alert_monitor
@@ -1500,7 +1500,6 @@ class ContextCoordinator:
         Update a contest in the DB and context library, then re-organize context.
         """
         from ..utils.db_utils import update_contest_in_db
-        from ..utils.shared_logic import load_context_library, save_context_library
 
         # 1. Update DB
         update_contest_in_db({"id": contest_id, **correction_data})

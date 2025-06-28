@@ -1,8 +1,8 @@
 import orjson
 from pathlib import Path
-from webapp.parser.utils.db_utils import create_table_structure, get_session
-from webapp.parser.utils.models import TableStructure
-from webapp.parser.config import PROJECT_ROOT
+from ..utils.db_utils import create_table_structure, get_session
+from ..utils.models import TableStructure
+from ..config import PROJECT_ROOT
 import json
 
 def table_structure_exists(session, contest_title, headers, context):

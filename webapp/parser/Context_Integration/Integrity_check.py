@@ -19,8 +19,8 @@ from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
 from ..utils import db_utils
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from webapp.parser.utils.db_utils import get_session
-from webapp.parser.utils.models import Alert
+from ..utils.db_utils import get_session
+from ..utils.models import Alert
 # --- Rich imports for CLI output ---
 from rich.console import Console
 from rich.table import Table

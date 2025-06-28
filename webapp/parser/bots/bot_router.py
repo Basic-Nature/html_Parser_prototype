@@ -9,11 +9,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL
 
-from webapp.parser.bots.log_cleaner_bot import run_log_cleaner
-from webapp.parser.utils.context_migration import migrate_all
-from webapp.parser.bots.scan_misaligned_ner import scan_misaligned
-from webapp.parser.Context_Integration import context_organizer, context_coordinator, Integrity_check
-from webapp.parser.bots.librarian import load_context_library
+from ..bots.log_cleaner_bot import run_log_cleaner
+from ..utils.context_migration import migrate_all
+from ..bots.scan_misaligned_ner import scan_misaligned
+from ..Context_Integration import context_organizer, context_coordinator, Integrity_check
+from ..bots.librarian import load_context_library
 
 try:
     import openai

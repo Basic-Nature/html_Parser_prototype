@@ -25,7 +25,8 @@ from ..utils.db_utils import (
     get_session,
 )
 from ..utils.models import Contest, TableStructure
-from ..utils.shared_logic import get_title_embedding_features, load_context_library, scan_environment
+from ..utils.shared_logic import scan_environment
+from ..bots.librarian import load_context_library
 from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
