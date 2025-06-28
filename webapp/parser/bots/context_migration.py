@@ -17,8 +17,15 @@ def migrate_table_structures_from_jsonl(jsonl_path):
     count = 0
     with get_session() as session:
         with open(jsonl_path, "r", encoding="utf-8") as f:
-            for line in f:
-                entry = orjson.loads(line)
+            for idx, line in enumerate(f, 1):
+                try:
+                    entry = orjson.loads(line)
+                except Exception as e:
+                    print(f"[MIGRATE][WARN] {jsonl_path} line {idx}: Skipping malformed line: {e}")
+                    continue
+                if not isinstance(entry, dict):
+                    print(f"[MIGRATE][WARN] {jsonl_path} line {idx}: Skipping non-dict entry: {entry}")
+                    continue
                 if entry.get("result") == "learning_confirmed" or entry.get("confirmed_by_user", False):
                     contest_title = entry.get("contest_title", "")
                     headers = orjson.dumps(entry.get("headers", [])).decode()
@@ -38,14 +45,21 @@ def migrate_table_structures_from_json(json_path):
     count = 0
     with get_session() as session:
         with open(json_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            try:
+                data = json.load(f)
+            except Exception as e:
+                print(f"[MIGRATE][WARN] {json_path}: Skipping malformed file: {e}")
+                return
             if isinstance(data, list):
                 entries = data
             elif isinstance(data, dict):
                 entries = data.get("table_structures", [])
             else:
                 entries = []
-            for entry in entries:
+            for idx, entry in enumerate(entries, 1):
+                if not isinstance(entry, dict):
+                    print(f"[MIGRATE][WARN] {json_path} entry {idx}: Skipping non-dict entry: {entry}")
+                    continue
                 contest_title = entry.get("contest_title", "")
                 headers = orjson.dumps(entry.get("headers", [])).decode()
                 context = orjson.dumps(entry.get("context", {})).decode()

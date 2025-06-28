@@ -36,7 +36,7 @@ from ..utils.db_utils import get_engine, get_session
 from .context_migration import migrate_all
 from ..config import LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
 
-DEFAULT_MAX_SIZE_MB = 10
+DEFAULT_MAX_SIZE_MB = 250
 MISALIGNED_KEYWORDS = ["misaligned", "pattern-excluding"]
 ALLOWED_EXTS = (".json", ".jsonl", ".html")
 
@@ -59,15 +59,34 @@ def safe_path(path, allowed_roots):
     raise ValueError(f"Unsafe path detected: {path}")
 
 def clean_jsonl(path):
+    """
+    Advanced cleaner for .jsonl files:
+    - Deduplicates entries (by full serialization)
+    - Skips malformed lines, logs count
+    - Handles empty files gracefully
+    - Flags entries with misaligned keywords
+    - Optionally sorts entries (by a key if desired)
+    - Removes null/empty dict/empty list entries
+    - Optionally truncates if file is too large (not implemented here)
+    """
+    malformed_count = 0
+    null_count = 0
+    empty_count = 0
     try:
         with open(path, "rb") as f:
             lines = [line for line in f if line.strip()]
         entries = []
         seen = set()
         misaligned = []
-        for line in lines:
+        for idx, line in enumerate(lines, 1):
             try:
                 entry = orjson.loads(line)
+                if entry is None:
+                    null_count += 1
+                    continue
+                if isinstance(entry, (dict, list)) and not entry:
+                    empty_count += 1
+                    continue
                 key = orjson.dumps(entry)
                 if key not in seen:
                     seen.add(key)
@@ -76,63 +95,159 @@ def clean_jsonl(path):
                 if any(kw in str(entry).lower() for kw in MISALIGNED_KEYWORDS):
                     misaligned.append(entry)
             except Exception:
+                malformed_count += 1
                 continue  # skip malformed lines
+        # Optionally sort entries by a field, e.g. timestamp
+        # entries.sort(key=lambda e: e.get("timestamp", ""), reverse=False)
         with open(path, "wb") as f:
             for entry in entries:
                 f.write(orjson.dumps(entry) + b"\n")
-        return len(lines), len(entries), len(misaligned), None
+        return (
+            len(lines),
+            len(entries),
+            len(misaligned),
+            None if malformed_count == 0 and null_count == 0 and empty_count == 0
+            else f"Malformed: {malformed_count}, Null: {null_count}, Empty: {empty_count}"
+        )
     except Exception as e:
         return None, None, None, str(e)
 
 def clean_json(path):
+    """
+    Advanced cleaner for .json files:
+    - Handles empty files (overwrites with {})
+    - Deduplicates dict keys or list entries
+    - Skips malformed entries in lists
+    - Removes null/empty dict/empty list entries
+    - Handles malformed JSON gracefully
+    - Optionally sorts dict keys
+    - Optionally truncates if file is too large (not implemented here)
+    """
+    malformed_count = 0
+    null_count = 0
+    empty_count = 0
     try:
+        # Handle empty file gracefully
+        if os.path.getsize(path) == 0:
+            with open(path, "wb") as f:
+                f.write(orjson.dumps({}))
+            return 0, 0, 0, None
         with open(path, "rb") as f:
-            data = orjson.loads(f.read())
+            try:
+                data = orjson.loads(f.read())
+            except Exception as e:
+                # Overwrite with empty dict if totally malformed
+                with open(path, "wb") as wf:
+                    wf.write(orjson.dumps({}))
+                return 0, 0, 0, f"Malformed JSON, reset to empty: {e}"
         if isinstance(data, dict):
             before = len(data)
             seen = set()
             deduped = {}
             for k, v in data.items():
+                if v is None:
+                    null_count += 1
+                    continue
+                if isinstance(v, (dict, list)) and not v:
+                    empty_count += 1
+                    continue
                 if k not in seen:
                     seen.add(k)
                     deduped[k] = v
             after = len(deduped)
+            # Optionally sort keys
+            # deduped = dict(sorted(deduped.items()))
             with open(path, "wb") as f:
                 f.write(orjson.dumps(deduped, option=orjson.OPT_INDENT_2))
-            return before, after, 0, None
+            return before, after, 0, None if null_count == 0 and empty_count == 0 else f"Null: {null_count}, Empty: {empty_count}"
         elif isinstance(data, list):
             before = len(data)
             seen = set()
             deduped = []
-            for entry in data:
-                key = orjson.dumps(entry)
-                if key not in seen:
-                    seen.add(key)
-                    deduped.append(entry)
+            for idx, entry in enumerate(data, 1):
+                try:
+                    if entry is None:
+                        null_count += 1
+                        continue
+                    if isinstance(entry, (dict, list)) and not entry:
+                        empty_count += 1
+                        continue
+                    key = orjson.dumps(entry)
+                    if key not in seen:
+                        seen.add(key)
+                        deduped.append(entry)
+                except Exception:
+                    malformed_count += 1
+                    continue
             after = len(deduped)
             with open(path, "wb") as f:
                 f.write(orjson.dumps(deduped, option=orjson.OPT_INDENT_2))
-            return before, after, 0, None
+            return before, after, 0, None if malformed_count == 0 and null_count == 0 and empty_count == 0 else f"Malformed: {malformed_count}, Null: {null_count}, Empty: {empty_count}"
         else:
-            return 0, 0, 0, "Unknown JSON structure"
+            # Unknown structure, reset to empty dict
+            with open(path, "wb") as f:
+                f.write(orjson.dumps({}))
+            return 0, 0, 0, "Unknown JSON structure, reset to empty"
     except Exception as e:
+        # If the error is due to empty file, handle gracefully
+        if "zero-length" in str(e) or "empty document" in str(e):
+            with open(path, "wb") as f:
+                f.write(orjson.dumps({}))
+            return 0, 0, 0, None
         return None, None, None, str(e)
-
+    
 def clean_html(path):
+    """
+    Robust cleaner for .html files:
+    - Removes duplicate lines
+    - Minifies whitespace
+    - Handles empty and malformed files gracefully
+    - Removes lines that are only whitespace or HTML comments
+    - Optionally strips HTML tags (commented out, can be enabled)
+    - Handles encoding errors
+    - Returns detailed stats and errors
+    """
     try:
-        # Remove duplicate lines, minify whitespace, keep only unique lines
+        if os.path.getsize(path) == 0:
+            # Overwrite with a minimal HTML skeleton if desired, or just empty
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("")
+            return 0, 0, 0, None
+
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             lines = [line.strip() for line in f if line.strip()]
+
         seen = set()
         deduped = []
+        comment_count = 0
         for line in lines:
+            # Remove HTML comments
+            if line.startswith("<!--") and line.endswith("-->"):
+                comment_count += 1
+                continue
+            # Optionally, strip HTML tags (uncomment if needed)
+            # import re
+            # line = re.sub(r'<[^>]+>', '', line)
             if line not in seen:
                 seen.add(line)
                 deduped.append(line)
+
+        # Optionally, reformat as minimal HTML if file is now empty
+        if not deduped:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("")
+            return len(lines), 0, comment_count, None
+
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n".join(deduped))
-        return len(lines), len(deduped), 0, None
+
+        return len(lines), len(deduped), comment_count, None
     except Exception as e:
+        # If the error is due to empty file, handle gracefully
+        if "zero-length" in str(e) or "empty document" in str(e):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("")
+            return 0, 0, 0, None
         return None, None, None, str(e)
 
 def human_size(num_bytes):
@@ -190,23 +305,47 @@ def clean_dir(target_dir, allowed_roots, max_size_bytes):
 def run_db_maintenance(engine=None, session=None):
     """
     Perform PostgreSQL VACUUM and ANALYZE on all tables using SQLAlchemy.
+    - Handles connection errors, permission errors, and logs all actions.
+    - Skips system tables and warns if no tables found.
+    - Optionally supports ANALYZE only if VACUUM is not allowed.
+    - Returns a summary of actions and errors.
     """
     print("[DB] Starting PostgreSQL VACUUM/ANALYZE maintenance...")
+    summary = {"vacuumed": [], "skipped": [], "errors": []}
     try:
         if engine is None:
             engine = get_engine()
         with engine.connect() as conn:
-            # Get all table names
-            tables = conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public';")).fetchall()
+            # Get all user tables (skip system tables)
+            tables = conn.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = 'public';")
+            ).fetchall()
+            if not tables:
+                print("[DB][WARNING] No user tables found in schema 'public'.")
+                return summary
             for (table,) in tables:
+                if table.startswith("pg_") or table.startswith("sql_"):
+                    summary["skipped"].append(table)
+                    continue
                 print(f"[DB] VACUUM (ANALYZE) {table} ...")
                 try:
                     conn.execute(text(f"VACUUM (ANALYZE) {table};"))
+                    summary["vacuumed"].append(table)
                 except SQLAlchemyError as e:
                     print(f"[DB][ERROR] Could not vacuum {table}: {e}")
-        print("[DB] VACUUM/ANALYZE complete.")
+                    # Try ANALYZE only if VACUUM fails
+                    try:
+                        conn.execute(text(f"ANALYZE {table};"))
+                        print(f"[DB][INFO] ANALYZE succeeded for {table} after VACUUM failed.")
+                        summary["vacuumed"].append(f"{table} (ANALYZE only)")
+                    except Exception as e2:
+                        print(f"[DB][ERROR] Could not analyze {table}: {e2}")
+                        summary["errors"].append((table, str(e2)))
+            print(f"[DB] VACUUM/ANALYZE complete. Tables vacuumed: {len(summary['vacuumed'])}, skipped: {len(summary['skipped'])}, errors: {len(summary['errors'])}")
     except Exception as e:
         print(f"[DB][ERROR] Maintenance failed: {e}")
+        summary["errors"].append(("__connection__", str(e)))
+    return summary
 
 def run_log_cache_cleaner(log_dir=LOG_DIR, context_lib_dir=CONTEXT_LIBRARY_DIR, cache_dir=CACHE_DIR, max_size_mb=DEFAULT_MAX_SIZE_MB, db_maintenance=False):
     max_size_bytes = int(max_size_mb * 1024 * 1024)

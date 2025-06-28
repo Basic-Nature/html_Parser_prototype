@@ -430,20 +430,25 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
 def get_all_confirmed_structures():
     """
     Retrieve all confirmed table structures from PostgreSQL using SQLAlchemy.
+    Returns a list of dicts, not ORM objects, to avoid DetachedInstanceError.
     """
     with get_session() as session:
         rows = session.execute(
             select(TableStructure).where(TableStructure.confirmed_by_user == True)
         ).scalars().all()
-    return [
-        {
-            "contest_title": row.contest_title,
-            "headers": orjson.loads(row.headers) if isinstance(row.headers, (str, bytes, bytearray)) else row.headers,
-            "context": orjson.loads(row.context) if isinstance(row.context, (str, bytes, bytearray)) else row.context
-        }
-        for row in rows
-    ]
-
+        # Extract all needed fields while session is open
+        result = []
+        for row in rows:
+            result.append({
+                "contest_title": row.contest_title,
+                "headers": orjson.loads(row.headers) if isinstance(row.headers, (str, bytes, bytearray)) else row.headers,
+                "context": orjson.loads(row.context) if isinstance(row.context, (str, bytes, bytearray)) else row.context,
+                "original_structure": getattr(row, "original_structure", {}),
+                "corrected_structure": getattr(row, "corrected_structure", {}),
+                "sample_rows": getattr(row, "sample_rows", [{}]),
+            })
+        return result
+    
 def run_manual_correction_bot():
     """
     Run the manual correction bot robustly as a module, capturing output and errors.
