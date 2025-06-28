@@ -12,6 +12,7 @@ from sqlalchemy import select, inspect
 from sqlalchemy.dialects.postgresql import insert
 from ..utils.db_utils import get_session, engine
 from ..utils.models import EmbeddingCache
+from ..config import LOG_DIR, CACHE_DIR
 console = Console()
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)

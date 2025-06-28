@@ -55,13 +55,19 @@ def robust_orjson_loads(val):
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
 def _get_label_cache_path():
+    # Always use safe_cache_path for the label cache
     path = safe_cache_path(_LABEL_CACHE_FILENAME)
+    # Windows MAX_PATH is 260 by default
+    if os.name == "nt" and len(os.path.abspath(path)) >= 260:
+        # Fallback: use a short temp directory
+        import tempfile
+        short_path = os.path.join(tempfile.gettempdir(), _LABEL_CACHE_FILENAME)
+        logger.warning(f"[CACHE] Path too long for Windows, using temp path: {short_path}")
+        return short_path
     return path
 
 def _load_label_cache():
     global _LABEL_CACHE
-    if _LABEL_CACHE is not None:
-        return _LABEL_CACHE
     path = _get_label_cache_path()
     if os.path.exists(path):
         try:
@@ -78,7 +84,7 @@ def _save_label_cache():
     path = _get_label_cache_path()
     with open(path, "wb") as f:
         f.write(orjson.dumps(_LABEL_CACHE, option=orjson.OPT_INDENT_2))
-
+        
 def cache_segment_label(seg_hash, label):
     """Persistently cache the label for a segment (by robust segment hash)."""
     with _LABEL_CACHE_LOCK:
@@ -121,7 +127,7 @@ def safe_cache_path(filename: str) -> str:
         raise ValueError("Unsafe cache path detected!")
     return full_path
 
-def safe_log_path(filename: str, log_dir: str = "log") -> str:
+def safe_log_path(filename: str) -> str:
     filename = _sanitize_log_filename(filename)
     log_folder = LOG_DIR
     os.makedirs(log_folder, exist_ok=True)
@@ -433,6 +439,8 @@ def extract_tagged_segments_with_attrs(
         logger.info(f"[EMBED] Embedding assignment complete for {len(segments)} segments.")
         # Second pass: assign context_heading and panel_ancestor_heading
         for seg in segments:
+            emb = seg.get("_embedding")
+            label_segment(seg, emb=emb)            
             seg_html = seg.get("html", "")
             seg_hash_val = segment_hash(seg_html)
             embedding = load_embedding(seg_hash_val)
@@ -555,6 +563,8 @@ def extract_tagged_segments_with_attrs(
                 seg["_embedding"] = hash_to_embedding[h]
             logger.info(f"[EMBED] (BS4) Embedding assignment complete for {len(segments)} segments.")
             for seg in segments:
+                emb = seg.get("_embedding")
+                label_segment(seg, emb=emb)                
                 if seg["tag"] in panel_tags or seg["tag"] == "table":
                     parent_idx = seg["parent_idx"]
                     heading_html = None

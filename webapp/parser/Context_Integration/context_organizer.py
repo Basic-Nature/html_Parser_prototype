@@ -366,6 +366,8 @@ class ContextOrganizer:
         def group_by_keywords(items, label_field="label"):
             groups = {k: [] for k in keyword_sets}
             for item in items:
+                if not isinstance(item, dict):
+                    continue
                 label = item.get(label_field, "").lower()
                 for group, keywords in keyword_sets.items():
                     if any(kw in label for kw in keywords):
@@ -380,7 +382,12 @@ class ContextOrganizer:
             if not panel:
                 panel = raw_context.get("panels", {}).get(c["title"])
             if not panel and "panels" in context_library:
-                panel = next((p for p in context_library["panels"] if normalize_label(p.get("label", "")) == normalize_label(c["title"])), None)
+                # Only consider dicts, skip strings or other types
+                panel = next(
+                    (p for p in context_library["panels"]
+                    if isinstance(p, dict) and normalize_label(p.get("label", "")) == normalize_label(c["title"])),
+                    None
+                )
             panels[c["title"]] = panel
         panel_groups = group_by_keywords([p for p in panels.values() if p], label_field="label")
         log.append(f"[KEYWORDS] Panel groups: {{k: len(v) for k,v in panel_groups.items()}}")
@@ -395,6 +402,8 @@ class ContextOrganizer:
         all_buttons = raw_buttons + lib_buttons
         unmatched_buttons = []
         for btn in all_buttons:
+            if not isinstance(btn, dict):
+                continue
             matched = False
             for c in contests:
                 if c["title"].lower() in btn.get("label", "").lower():
@@ -419,6 +428,8 @@ class ContextOrganizer:
             lib_tables = []
         all_tables = raw_tables + lib_tables
         for tbl in all_tables:
+            if not isinstance(tbl, dict):
+                continue
             for c in contests:
                 if c["title"].lower() in tbl.get("label", "").lower():
                     tables_by_contest[c["title"]].append(tbl)
@@ -512,10 +523,12 @@ class ContextOrganizer:
         for group in [panels.values(), tables_by_contest.values()]:
             for items in group:
                 if items is None:
-                    continue  # <-- Fix: skip None
+                    continue
                 if isinstance(items, dict):
                     items = [items]
                 for item in items:
+                    if not isinstance(item, dict):
+                        continue
                     label = (item.get("label") or "").lower()
                     for p in PARTY_KEYWORDS:
                         if p in label:

@@ -15,7 +15,7 @@ import orjson
 from datetime import datetime, timezone
 import types
 from fuzzywuzzy import fuzz, process
-from ..utils.shared_logger import rprint
+from ..utils.shared_logger import rprint, logging
 from ..utils.shared_logic import (
     scan_buttons_with_progress, keyphrase_match,
     normalize_state_name, normalize_county_name
@@ -25,6 +25,7 @@ from sklearn.preprocessing import LabelEncoder
 import subprocess
 from rich.console import Console
 from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR
+import threading
 
 console = Console()
 
@@ -54,18 +55,6 @@ def safe_for_json(obj):
     else:
         return obj
 
-def get_Known_state_to_county_map(self):
-    return [s.lower().replace(" ", "_") for s in self.library.get("Known_state_to_county_map", [])]
-
-def get_Known_county_to_district_map(self):
-    return [c.lower().replace(" ", "_") for c in self.library.get("Known_county_to_district_map", [])]
-
-def get_known_states(self):
-    return [s.lower().replace(" ", "_") for s in self.library.get("known_states", [])]
-
-def get_known_counties(self):
-    return [c.lower().replace(" ", "_") for c in self.library.get("known_counties", [])]
-
 def _sanitize_log_filename(name):
     # Only allow alphanumeric, underscore, and dash
     return re.sub(r'[^a-zA-Z0-9_\-]', '_', name) 
@@ -81,14 +70,18 @@ def get_semantic_score(model, text1, text2):
     from sentence_transformers import util
     return float(util.pytorch_cos_sim(emb1, emb2)[0][0])
 
-def merge_and_rank_candidates(memory_candidates, dom_candidates, context, keywords, model,
-                             fuzzy_weight=0.3, semantic_weight=0.3, context_weight=0.2, hierarchy_weight=0.2):
+def merge_and_rank_candidates(
+    memory_candidates, dom_candidates, context, keywords, model,
+    fuzzy_weight=0.3, semantic_weight=0.3, context_weight=0.2, hierarchy_weight=0.2
+):
     """
     Merge memory and DOM candidates, deduplicate, and rank by combined fuzzy and semantic score.
     """
     seen = set()
     all_candidates = []
     for cand in memory_candidates + dom_candidates:
+        if not isinstance(cand, dict):
+            continue
         key = (cand.get("label", ""), cand.get("selector", ""))
         if key not in seen:
             seen.add(key)
@@ -107,6 +100,8 @@ def merge_and_rank_candidates(memory_candidates, dom_candidates, context, keywor
     contest_title = context.get("contest_title", "")
 
     for cand in all_candidates:
+        if not isinstance(cand, dict):
+            continue
         label = cand.get("label", "") or ""
         # Strong full-string match
         full_match = int(label.strip().lower() == contest_title.strip().lower())
@@ -149,9 +144,10 @@ def merge_and_rank_candidates(memory_candidates, dom_candidates, context, keywor
             hierarchy_weight * hierarchy_score
         )
 
+    all_candidates = [c for c in all_candidates if isinstance(c, dict)]
     all_candidates.sort(
         key=lambda c: (
-            c["combined_score"],
+            c.get("combined_score", 0),
             c.get("is_visible", False),
             c.get("is_clickable", False)
         ),
@@ -219,6 +215,30 @@ class ContextCoordinator:
         self._enrich_contests_with_nlp()         
         return self.organized
 
+    def get_Known_state_to_county_map(self):
+        items = self.library.get("Known_state_to_county_map", [])
+        if isinstance(items, dict):
+            items = items.keys()
+        return [str(s).lower().replace(" ", "_") for s in items]
+
+    def get_Known_county_to_district_map(self):
+        items = self.library.get("Known_county_to_district_map", [])
+        if isinstance(items, dict):
+            items = items.keys()
+        return [str(c).lower().replace(" ", "_") for c in items]
+
+    def get_known_states(self):
+        items = self.library.get("known_states", [])
+        if isinstance(items, dict):
+            items = items.keys()
+        return [str(s).lower().replace(" ", "_") for s in items]
+
+    def get_known_counties(self):
+        items = self.library.get("known_counties", [])
+        if isinstance(items, dict):
+            items = items.keys()
+        return [str(c).lower().replace(" ", "_") for c in items]
+
     def _enrich_contests_with_nlp(self):
         """
         Add NLP-derived fields (entities, locations, dates) to each contest.
@@ -226,6 +246,8 @@ class ContextCoordinator:
         if not self.organized or "contests" not in self.organized:
             return
         for c in self.organized["contests"]:
+            if not isinstance(c, dict):
+                continue
             title = c.get("title", "")
             c["entities"] = extract_entities(title)
             c["locations"] = extract_locations(title)
@@ -298,7 +320,10 @@ class ContextCoordinator:
         Extract the district from a contest using regex, spaCy NER, and fuzzy matching.
         Log the extraction attempt and result.
         """
+        if not isinstance(contest, dict):
+            return None
         title = contest.get("title", "")
+
         extracted_value = None
         score = 0.0
         method = "regex"
@@ -352,6 +377,8 @@ class ContextCoordinator:
         Extract the contest title using ML/NLP/manual methods.
         Log the extraction attempt and result.
         """
+        if not isinstance(contest, dict):
+            return None
         extracted_value = contest.get("title")
         score = 1.0 if extracted_value else 0.0
         method = "manual" if extracted_value else "undefined"
@@ -376,6 +403,8 @@ class ContextCoordinator:
         Extract candidate names from contest using ML/NLP/manual methods.
         Log the extraction attempt and result.
         """
+        if not isinstance(contest, dict):
+            return []
         # Example: Use entities if available
         candidates = []
         entities = contest.get("entities", [])
@@ -406,6 +435,8 @@ class ContextCoordinator:
         Extract party from contest using regex, spaCy NER, and fuzzy matching.
         Log the extraction attempt and result.
         """
+        if not isinstance(contest, dict):
+            return None
         title = contest.get("title", "")
         extracted_value = None
         score = 0.0
@@ -454,7 +485,7 @@ class ContextCoordinator:
             log_path="field_selection_log.jsonl"
         )
         return extracted_value
-
+    
     def extract_panel(self, contest_title):
         """
         Extract the panel for a given contest title using regex, spaCy NER, and direct lookup.
@@ -755,6 +786,8 @@ class ContextCoordinator:
         # 1. Regex for 4-digit years
         contests = self.get_contests()
         for c in contests:
+            if not isinstance(c, dict):
+                continue
             match = re.search(r"\b(19|20)\d{2}\b", str(c.get("title", "")))
             if match:
                 years.append(match.group(0))
@@ -766,6 +799,8 @@ class ContextCoordinator:
         # 2. spaCy NER for DATE
         if not years:
             for c in contests:
+                if not isinstance(c, dict):
+                    continue
                 entities = extract_entities(c.get("title", ""))
                 for ent, label in entities:
                     if label == "DATE" and re.match(r"\b(19|20)\d{2}\b", ent):
@@ -838,6 +873,8 @@ class ContextCoordinator:
         if not candidates:
             buttons = self.get_buttons(contest_title=contest_title, keyword=keyword, url=url)
             for btn in buttons:
+                if not isinstance(btn, dict):
+                    continue
                 label = btn.get("label")
                 if label:
                     candidates.append(label)
@@ -870,12 +907,16 @@ class ContextCoordinator:
     def get_contests(self, filters=None):
         """
         Return contests, optionally filtered by state, county, year, type, etc.
-        """       
+        """   
+        if not isinstance(self.organized, dict):
+            return []
         contests = self.organized.get("contests", [])
         if not filters:
             return contests
         def match(c):
             for k, v in filters.items():
+                if not isinstance(c, dict):
+                    return False
                 if str(c.get(k, "")).lower() != str(v).lower():
                     return False
             return True
@@ -895,6 +936,8 @@ class ContextCoordinator:
                     try:
                         entry = orjson.loads(line)
                     except Exception:
+                        continue
+                    if not isinstance(entry, dict):
                         continue
                     # Check for a successful result for this contest_title/keyword/url
                     if contest_title and entry.get("contest_title") == contest_title and entry.get("result", "").startswith("pass"):
@@ -935,6 +978,8 @@ class ContextCoordinator:
             keyword = keyword.lower()
             for btn_list in buttons_dict.values():
                 for btn in btn_list:
+                    if not isinstance(btn, dict):
+                        continue
                     if keyword in btn.get("label", "").lower() or keyword in btn.get("selector", "").lower():
                         results.append(btn)
             if results:
@@ -944,6 +989,8 @@ class ContextCoordinator:
         if url:
             for btn_list in buttons_dict.values():
                 for btn in btn_list:
+                    if not isinstance(btn, dict):  
+                        continue
                     if url in btn.get("selector", ""):
                         results.append(btn)
             if results:
@@ -1006,7 +1053,7 @@ class ContextCoordinator:
         # --- 1. Learning mode: check log/DB for confirmed button ---
         if learning_mode:
             learned_btn = self._get_confirmed_button_from_log(contest_title, keywords, context)
-            if learned_btn and learned_btn.get("selector") not in self.clicked_button_selectors:
+            if isinstance(learned_btn, dict) and learned_btn.get("selector") not in self.clicked_button_selectors:
                 selector_html = learned_btn.get("selector", "")
                 dom_candidates = []
                 # Use a broad selector for all clickable elements
@@ -1026,8 +1073,13 @@ class ContextCoordinator:
                             break
                     except Exception:
                         continue
-                if learned_btn.get("element_handle") and learned_btn.get("is_visible") and learned_btn.get("is_clickable"):
-                    rprint(f"[green][LEARNING] Auto-applying learned button: {learned_btn['label']}[/green]")
+                if (
+                    isinstance(learned_btn, dict)
+                    and learned_btn.get("element_handle")
+                    and learned_btn.get("is_visible")
+                    and learned_btn.get("is_clickable")
+                ):
+                    rprint(f"[green][LEARNING] Auto-applying learned button: {learned_btn.get('label')}[/green]")
                     try:
                         learned_btn["element_handle"].click()
                         page.wait_for_timeout(1500)
@@ -1089,7 +1141,7 @@ class ContextCoordinator:
 
         # --- 4. Merge, deduplicate, and rank all candidates ---
         all_candidates = merge_and_rank_candidates(memory_candidates, dom_candidates, context, keywords, model)
-        all_candidates = [c for c in all_candidates if c.get("selector") not in self.clicked_button_selectors]
+        all_candidates = [c for c in all_candidates if isinstance(c, dict) and c.get("selector") not in self.clicked_button_selectors]
 
         # --- 5. Adaptive threshold: try high, then lower if no match ---
         excluded_labels = set()
@@ -1097,15 +1149,20 @@ class ContextCoordinator:
             found = False
             for threshold in fuzzy_thresholds:
                 for idx, cand in enumerate(all_candidates):
-                    if cand["combined_score"] >= threshold and cand.get("is_visible") and cand.get("is_clickable"):
-                        if cand["label"] in excluded_labels:
+                    if not isinstance(cand, dict):
+                        continue
+                    if cand.get("combined_score", 0) >= threshold and cand.get("is_visible") and cand.get("is_clickable"):
+                        if cand.get("label") in excluded_labels:
                             continue
                         confirmed = True
                         if confirm_button_callback:
                             confirmed = confirm_button_callback(cand)
                         if confirmed:
-                            rprint(f"[bold green][Coordinator] Confirmed button: '{cand['label']}' (score={cand['combined_score']:.2f})[/bold green]")
-                            self._log_button_memory(cand, contest_title, f"confirmed_pass_{cand['combined_score']:.2f}")
+                            rprint(f"[bold green][Coordinator] Confirmed button: '{cand.get('label')}' (score={cand.get('combined_score', 0):.2f})[/bold green]")
+                            self._log_button_memory(cand, contest_title, f"confirmed_pass_{cand.get('combined_score', 0):.2f}")
+                            if not isinstance(cand, dict):
+                                rprint(f"[red][ERROR] Candidate is not a dict: {cand}[/red]")
+                                continue
                             if learning_mode:
                                 self._log_confirmed_button_for_learning(cand, contest_title, context)
                             self.clicked_button_selectors.add(cand.get("selector"))
@@ -1116,8 +1173,8 @@ class ContextCoordinator:
                                 pass
                             return cand, idx
                         else:
-                            excluded_labels.add(cand["label"])
-                            rprint(f"[yellow][Coordinator] Button '{cand['label']}' rejected, retrying...[/yellow]")
+                            excluded_labels.add(cand.get("label"))
+                            rprint(f"[yellow][Coordinator] Button '{cand.get('label')}' rejected, retrying...[/yellow]")
                             found = True
                             break
                 if found:
@@ -1127,6 +1184,8 @@ class ContextCoordinator:
 
         # --- 6. Feedback UI: Prompt user for manual correction ---
         if prompt_user_for_button:
+            if not isinstance(context, dict):
+                context = {}
             chosen_btn, chosen_idx = prompt_user_for_button(page, all_candidates, context.get("toggle_name", ""))
             if chosen_btn and chosen_idx is not None:
                 chosen_btn["context"] = context
@@ -1142,6 +1201,9 @@ class ContextCoordinator:
         """
         Log confirmed button for learning mode (auto-apply next time).
         """
+        # Ensure button is a dict before using .get()
+        if not isinstance(button, dict):
+            return
         log_entry = {
             "contest_title": contest_title,
             "button_label": button.get("label"),
@@ -1167,6 +1229,8 @@ class ContextCoordinator:
                     entry = orjson.loads(line)
                 except Exception:
                     continue
+                if not isinstance(entry, dict):
+                    continue
                 if entry.get("contest_title") == contest_title and entry.get("result") == "learning_confirmed":
                     return {
                         "label": entry.get("button_label"),
@@ -1175,11 +1239,14 @@ class ContextCoordinator:
                         "source": "learning"
                     }
         return None
-   
+
     def _log_button_memory(self, button, contest_title, result):
         """
         Log button selection attempts for future ML or rule improvements.
         """
+        # Ensure button is a dict before using .get()
+        if not isinstance(button, dict):
+            return
         log_entry = {
             "contest_title": contest_title,
             "button_label": button.get("label"),
@@ -1204,6 +1271,8 @@ class ContextCoordinator:
                     try:
                         entry = orjson.loads(line)
                     except Exception:
+                        continue
+                    if not isinstance(entry, dict):
                         continue
                     if entry.get("contest_title") == contest_title and entry.get("result") == "learning_confirmed":
                         return entry.get("headers")
@@ -1250,29 +1319,45 @@ class ContextCoordinator:
         """
         Retrieve the panel for a given contest title.
         """
-        return self.organized.get("panels", {}).get(contest_title) if self.organized else None
+        if not isinstance(self.organized, dict):
+            return None
+        panels = self.organized.get("panels", {})
+        if not isinstance(panels, dict):
+            return None
+        return panels.get(contest_title)
 
     def get_tables(self, contest_title):
         """
         Retrieve tables for a given contest title.
         """
-        return self.organized.get("tables", {}).get(contest_title, []) if self.organized else []
+        if not isinstance(self.organized, dict):
+            return []
+        tables = self.organized.get("tables", {})
+        if not isinstance(tables, dict):
+            return []
+        return tables.get(contest_title, [])
 
     def get_candidates(self, contest_title=None):
         """
         Extract candidate names from contest entities or table headers.
         """
         candidates = set()
-        contests = self.get_contests() if contest_title is None else [c for c in self.get_contests() if c.get("title") == contest_title]
+        contests = self.get_contests() if contest_title is None else [
+            c for c in self.get_contests() if isinstance(c, dict) and c.get("title") == contest_title
+        ]
         for c in contests:
+            if not isinstance(c, dict):
+                continue
             for ent, label in c.get("entities", []):
                 if label in {"PERSON", "CANDIDATE"}:
                     candidates.add(ent)
             # Optionally: parse table headers for candidate names
             for tbl in self.get_tables(c.get("title", "")):
+                if not isinstance(tbl, dict):
+                    continue
                 headers = tbl.get("headers", [])
                 for h in headers:
-                    if "candidate" in h.lower():
+                    if isinstance(h, str) and "candidate" in h.lower():
                         candidates.add(h)
         return list(candidates)
 
@@ -1280,25 +1365,34 @@ class ContextCoordinator:
         """
         Return known districts for a state/county from the library.
         """       
-        if not self.library:
+        if not isinstance(self.library, dict):
             return []
         if county:
-            return self.library.get("Known_county_to_district_map", {}).get(county, [])
+            districts_map = self.library.get("Known_county_to_district_map", {})
+            if isinstance(districts_map, dict):
+                return districts_map.get(county, [])
+            return []
         if state:
-            return self.library.get("Known_state_to_county_map", {}).get(state, [])
+            state_map = self.library.get("Known_state_to_county_map", {})
+            if isinstance(state_map, dict):
+                return state_map.get(state, [])
+            return []
         return self.library.get("known_districts", [])
 
     def get_states(self):
         """
         Return all known states from the library.
         """
-       
+        if not isinstance(self.library, dict):
+            return []
         return self.library.get("known_states", [])
 
     def get_election_types(self):
         """
         Return all known election types from the library.
         """       
+        if not isinstance(self.library, dict):
+            return []
         return self.library.get("election", [])
 
     def get_years(self):
@@ -1306,8 +1400,8 @@ class ContextCoordinator:
         Return all years found in contests.
         """      
         contests = self.get_contests()
-        return sorted({c.get("year") for c in contests if c.get("year")})
-
+        return sorted({c.get("year") for c in contests if isinstance(c, dict) and c.get("year")})
+    
     # --- Integrity & Anomaly Checks ---
 
     def _log_get_contests_access(self, filters):
@@ -1441,6 +1535,8 @@ class ContextCoordinator:
         all_entities = set()
         all_labels = set()
         for c in contests:
+            if not isinstance(c, dict):
+                continue
             for ent, label in c.get("entities", []):
                 all_entities.add(ent)
                 all_labels.add(label)
@@ -1462,38 +1558,60 @@ class ContextCoordinator:
         """
         Return contests, buttons, and patterns for contest_selector.
         """      
+        if not isinstance(self.library, dict):
+            noisy_patterns = []
+        else:
+            noisy_patterns = self.library.get("default_noisy_label_patterns", [])
         return {
             "contests": self.get_contests(),
             "buttons": self.get_buttons(),
-            "noisy_patterns": self.library.get("default_noisy_label_patterns", [])
+            "noisy_patterns": noisy_patterns
         }
 
     def get_for_table_builder(self):
         """
         Return precinct headers and table tags for table_builder.
         """        
+        if not isinstance(self.library, dict):
+            precinct_headers = []
+            table_tags = []
+        else:
+            precinct_headers = self.library.get("precinct_header_tags", [])
+            table_tags = self.library.get("table_tags", [])
         return {
-            "precinct_headers": self.library.get("precinct_header_tags", []),
-            "table_tags": self.library.get("table_tags", [])
+            "precinct_headers": precinct_headers,
+            "table_tags": table_tags
         }
 
     def get_for_html_handler(self):
         """
         Return panel tags, contest panel tags, and selectors for html_handler.
         """       
+        if not isinstance(self.library, dict):
+            panel_tags = []
+            contest_panel_tags = []
+            all_selectors = []
+        else:
+            panel_tags = self.library.get("panel_tags", [])
+            contest_panel_tags = self.library.get("contest_panel_tags", [])
+            selectors = self.library.get("selectors", {})
+            if not isinstance(selectors, dict):
+                all_selectors = []
+            else:
+                all_selectors = selectors.get("all_selectors", [])
         return {
-            "panel_tags": self.library.get("panel_tags", []),
-            "contest_panel_tags": self.library.get("contest_panel_tags", []),
-            "all_selectors": self.library.get("selectors", {}).get("all_selectors", [])
+            "panel_tags": panel_tags,
+            "contest_panel_tags": contest_panel_tags,
+            "all_selectors": all_selectors
         }
 
     def get_for_state_router(self):
         """
         Return state_module_map for state_router.
         """       
+        if not isinstance(self.library, dict):
+            return {}
         return self.library.get("state_module_map", {})
-
-    # --- Correction/Update ---
 
     def correct_and_update_contest(self, contest_id, correction_data):
         """
@@ -1505,11 +1623,17 @@ class ContextCoordinator:
         update_contest_in_db({"id": contest_id, **correction_data})
 
         # 2. Update context library if needed
+        if not isinstance(self.library, dict):
+            return
         for key, value in correction_data.items():
-            if key == "county" and value not in self.library.get("known_counties", []):
-                self.library.setdefault("known_counties", []).append(value)
-            if key == "state" and value not in self.library.get("known_states", []):
-                self.library.setdefault("known_states", []).append(value)
+            if key == "county":
+                known_counties = self.library.get("known_counties", [])
+                if value not in known_counties:
+                    self.library.setdefault("known_counties", []).append(value)
+            if key == "state":
+                known_states = self.library.get("known_states", [])
+                if value not in known_states:
+                    self.library.setdefault("known_states", []).append(value)
             # Add similar logic for other fields as needed
 
         # 3. Save updated context library (if you persist it)
@@ -1545,11 +1669,13 @@ class ContextCoordinator:
         features = []
         le_state = LabelEncoder()
         le_county = LabelEncoder()
-        states = [c.get("state", "unknown") for c in contests]
-        counties = [c.get("county", "unknown") for c in contests]
+        states = [c.get("state", "unknown") for c in contests if isinstance(c, dict)]
+        counties = [c.get("county", "unknown") for c in contests if isinstance(c, dict)]
         le_state.fit(states)
         le_county.fit(counties)
         for c in contests:
+            if not isinstance(c, dict):
+                continue
             features.append([
                 le_state.transform([c.get("state", "unknown")])[0],
                 le_county.transform([c.get("county", "unknown")])[0],
@@ -1562,6 +1688,8 @@ class ContextCoordinator:
         date_anomalies = []
         if expected_year:
             for c in contests:
+                if not isinstance(c, dict):
+                    continue
                 dates = c.get("dates", [])
                 if not any(str(expected_year) in d for d in dates):
                     date_anomalies.append(c)                          
@@ -1581,52 +1709,6 @@ def call_handler_with_coordinator(handler, *args, coordinator=None, **kwargs):
     else:
         return handler.parse(*args, **kwargs)
 
-    # --- Sample Usage ---
-
-def sample_usage():
-    """
-    Example: Run the coordinator on a sample context and print a summary.
-    """
-    rprint("[bold green]=== Sample Usage: ContextCoordinator ===[/bold green]")
-    # 1. Load a sample context (simulate HTML/DOM extraction)
-    sample_context = {
-        "contests": [
-            {"title": "2024 Presidential Election - New York", "year": 2024, "type": "Presidential", "state": "New York"},
-            {"title": "2022 Senate Race - California", "year": 2022, "type": "Senate", "state": "California"},
-            {"title": "2024 Mayoral Election - Houston, TX", "year": 2024, "type": "Mayoral", "state": "Texas"},
-            {"title": "2023 School Board - Miami", "year": 2023, "type": "School Board", "state": "Florida"},
-        ],
-        "buttons": [
-            {"label": "Show Results", "is_clickable": True, "is_visible": True},
-            {"label": "Vote Method", "is_clickable": True, "is_visible": True},
-            {"label": "Summary", "is_clickable": True, "is_visible": True}
-        ]
-    }
-    coordinator = ContextCoordinator()
-    coordinator.organize_and_enrich(sample_context)
-    coordinator.report_summary()
-    # Example: Get best button for a contest
-    btn = coordinator.get_best_button("2024 Presidential Election - New York", keywords=["Show Results"])
-    rprint(f"[bold green]Best button for NY Presidential:[/bold green] {btn}")
-    # Example: Get candidates for a contest
-    candidates = coordinator.get_candidates("2024 Presidential Election - New York")
-    rprint(f"[bold green]Candidates for NY Presidential:[/bold green] {candidates}")
-    # Example: Get districts for New York
-    districts = coordinator.get_districts(state="new_york")
-    rprint(f"[bold green]Districts for New York:[/bold green] {districts}")
-    # Example: Validate and check integrity
-    issues = coordinator.validate_and_check_integrity(expected_year=2024)
-    rprint(f"[bold green]Integrity/Anomaly Issues:[/bold green] {issues}")
-
-    # Example: Send data to output_utils (pseudo-code)
-    # from ..utils.output_utils import finalize_election_output
-    # headers, data = ... # Extracted from tables
-    # contest_title = "2024 Presidential Election - New York"
-    # metadata = coordinator.organized.get("metadata", {})
-    # finalize_election_output(headers, data, contest_title, metadata)
-
-    rprint("[bold green]=== End Sample Usage ===[/bold green]")
-
 import difflib
 
 def dynamic_state_county_detection(context, html, context_library, debug=False):
@@ -1637,20 +1719,34 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
     """
     detection_log = []
     # --- Load and normalize all mappings ---
+    if not isinstance(context_library, dict):
+        context_library = {}
     state_module_map = context_library.get("state_module_map", {})
+    if not isinstance(state_module_map, dict):
+        state_module_map = {}
     state_to_county = context_library.get("Known_state_to_county_map", {})
+    if not isinstance(state_to_county, dict):
+        state_to_county = {}
     county_to_district = context_library.get("Known_county_to_district_map", {})
+    if not isinstance(county_to_district, dict):
+        county_to_district = {}
     known_states = [normalize_state_name(s) for s in context_library.get("known_states", [])]
     all_counties = []
     for counties in state_to_county.values():
+        if not isinstance(counties, list):
+            continue
         all_counties.extend([normalize_county_name(c) for c in counties])
     all_counties = list(set(all_counties))
     all_districts = []
     for districts in county_to_district.values():
+        if not isinstance(districts, list):
+            continue
         all_districts.extend([normalize_county_name(d) for d in districts])
     all_districts = list(set(all_districts))
 
     # --- 1. Try context fields directly (normalize and validate) ---
+    if not isinstance(context, dict):
+        context = {}
     raw_county = context.get("county")
     raw_state = context.get("state")
     county = normalize_county_name(raw_county) if raw_county else None
@@ -1664,6 +1760,8 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
             # Map up to parent county
             parent_county = None
             for c, districts in county_to_district.items():
+                if not isinstance(districts, list):
+                    continue
                 if county in [normalize_county_name(d) for d in districts]:
                     parent_county = normalize_county_name(c)
                     break
@@ -1682,6 +1780,8 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
             detection_log.append(f"State found in context: {state} (validated as state)")
         else:
             # Try to map via state_module_map
+            if not isinstance(state_module_map, dict):
+                state_module_map = {}
             mapped_state = state_module_map.get(state, None)
             if mapped_state:
                 detection_log.append(f"State '{state}' found in context, mapped to '{mapped_state}' via state_module_map.")
@@ -1691,21 +1791,23 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
                 state = None
 
     # --- 2. Try to extract county from contest titles (if not found or not valid) ---
-    if not county and context.get("contests"):
-        for contest in context["contests"]:
+    contests = context.get("contests", []) if isinstance(context, dict) else []
+    if not county and contests:
+        for contest in contests:
+            if not isinstance(contest, dict):
+                continue
             title = contest.get("title", "")
-            # Try to match any county as a whole word in the title
             for c in all_counties:
                 if re.search(rf"\b{re.escape(c)}\b", title.lower()):
                     county = c
                     detection_log.append(f"County '{county}' detected from contest title: '{title}'")
                     break
             if not county:
-                # Try to match any district as a whole word in the title
                 for d in all_districts:
                     if re.search(rf"\b{re.escape(d)}\b", title.lower()):
-                        # Map up to parent county
                         for c, districts in county_to_district.items():
+                            if not isinstance(districts, list):
+                                continue
                             if d in [normalize_county_name(x) for x in districts]:
                                 county = normalize_county_name(c)
                                 detection_log.append(f"District '{d}' detected from contest title: '{title}', mapped to county '{county}'")
@@ -1716,7 +1818,7 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
                 break
 
     # --- 3. Try to extract county from URL (if still not found) ---
-    url = context.get("url", "")
+    url = context.get("url", "") if isinstance(context, dict) else ""
     if not county and url:
         for c in all_counties:
             if c in url.lower():
@@ -1727,6 +1829,8 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
             for d in all_districts:
                 if d in url.lower():
                     for c, districts in county_to_district.items():
+                        if not isinstance(districts, list):
+                            continue
                         if d in [normalize_county_name(x) for x in districts]:
                             county = normalize_county_name(c)
                             detection_log.append(f"District '{d}' detected from URL, mapped to county '{county}'")
@@ -1746,6 +1850,8 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
                 break
             elif ent in all_districts:
                 for c, districts in county_to_district.items():
+                    if not isinstance(districts, list):
+                        continue
                     if ent in [normalize_county_name(x) for x in districts]:
                         county = normalize_county_name(c)
                         detection_log.append(f"District '{ent}' detected from HTML NLP entity, mapped to county '{county}'")
@@ -1763,8 +1869,9 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
         else:
             matches = difflib.get_close_matches(" ".join(url_tokens), all_districts, n=1, cutoff=0.7)
             if matches:
-                # Map up to parent county
                 for c, districts in county_to_district.items():
+                    if not isinstance(districts, list):
+                        continue
                     if matches[0] in [normalize_county_name(x) for x in districts]:
                         county = normalize_county_name(c)
                         detection_log.append(f"District '{matches[0]}' fuzzy-matched from URL tokens, mapped to county '{county}'")
@@ -1773,6 +1880,8 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
     # --- 6. Now try to detect state, using county if found ---
     if not state and county:
         for s, counties in state_to_county.items():
+            if not isinstance(counties, list):
+                continue
             if county in [normalize_county_name(x) for x in counties]:
                 state = normalize_state_name(s)
                 detection_log.append(f"State '{state}' inferred from county '{county}'.")
@@ -1787,8 +1896,10 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
                 break
 
     # --- 8. Try to extract state from contest titles (if still not found) ---
-    if not state and context.get("contests"):
-        for contest in context["contests"]:
+    if not state and contests:
+        for contest in contests:
+            if not isinstance(contest, dict):
+                continue
             title = contest.get("title", "")
             for s in known_states:
                 if s in title.lower():
@@ -1819,66 +1930,84 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
 
     # --- 11. If state found but no county, check for available county handlers ---
     handler_path = None
-    if state and not county:
-        state_key = state
+    normalized_state = state  # already normalized by normalize_state_name
+    normalized_county = county  # already normalized by normalize_county_name
+
+    if normalized_state and not normalized_county:
+        # Check for county subdirectory
         county_dir = os.path.join(
-            os.path.dirname(__file__), "..", "handlers", "states", state_key, "county"
+            PROJECT_ROOT, "webapp", "parser", "handlers", "states", normalized_state, "county"
         )
-        county_dir = os.path.abspath(county_dir)
         available_counties = []
         if os.path.isdir(county_dir):
             for fname in os.listdir(county_dir):
                 if fname.endswith(".py") and not fname.startswith("__"):
                     county_name = fname[:-3]
                     available_counties.append(county_name)
-            detection_log.append(f"Available county handlers for state '{state}': {available_counties}")
-            # Try to match county from URL or HTML context to available counties
+            detection_log.append(f"Available county handlers for state '{normalized_state}': {available_counties}")
             url_and_html = (url + " " + html).lower()
             for c in available_counties:
                 if c in url_and_html:
-                    county = c
-                    detection_log.append(f"County '{county}' matched to available handler from URL/HTML context.")
+                    normalized_county = c
+                    detection_log.append(f"County '{normalized_county}' matched to available handler from URL/HTML context.")
                     break
-            if not county and available_counties:
+            if not normalized_county and available_counties:
                 detection_log.append("No matching county handler found in URL/HTML; will use state handler.")
         else:
-            detection_log.append(f"No county handler directory found for state '{state}'.")
+            detection_log.append(f"No county handler directory found for state '{normalized_state}'.")
 
-        # Set handler path
-        if county:
-            handler_path = f"webapp.parser.handlers.states.{state_key}.county.{county}"
+    # --- Set handler path based on what was found ---
+    if normalized_state and normalized_county:
+        handler_path = f"webapp.parser.handlers.states.{normalized_state}.county.{normalized_county}"
+    elif normalized_state:
+        # Try state-level handler file (e.g., webapp/parser/handlers/states/arizona/arizona.py)
+        state_handler_file = os.path.join(
+            PROJECT_ROOT, "webapp", "parser", "handlers", "states", normalized_state, f"{normalized_state}.py"
+        )
+        if os.path.isfile(state_handler_file):
+            handler_path = f"webapp.parser.handlers.states.{normalized_state}.{normalized_state}"
         else:
-            handler_path = f"webapp.parser.handlers.states.{state_key}"
-
-    # --- 12. If both found, set handler path ---
-    if state and county:
-        handler_path = f"webapp.parser.handlers.states.{state}.county.{county}"
-
-    # --- 13. If only state found, fallback to state handler ---
-    if state and not county and not handler_path:
-        handler_path = f"webapp.parser.handlers.states.{state}"
+            handler_path = f"webapp.parser.handlers.states.{normalized_state}"
 
     # --- 14. Final fallback ---
-    if not county:
+    if not normalized_county:
         detection_log.append("County could not be detected.")
-    if not state:
+    if not normalized_state:
         detection_log.append("State could not be detected.")
 
     if debug:
         for log in detection_log:
             print("[dynamic_state_county_detection]", log)
-
     return county, state, handler_path, detection_log
 
 # --- Alert Monitoring (run in production) ---
-def start_alert_monitoring():
-    monitor_db_for_alerts()
+def start_alert_monitoring(background=True):
+    """
+    Start real-time alert monitoring, optionally in a background thread.
+    """
+    def run_monitor():
+        try:
+            monitor_db_for_alerts()
+        except Exception as e:
+            logging.error(f"[ALERT MONITOR] Exception: {e}", exc_info=True)
+
+    if background:
+        t = threading.Thread(target=run_monitor, daemon=True)
+        t.start()
+        logging.info("[ALERT MONITOR] Started in background thread.")
+        return t
+    else:
+        run_monitor()
 
 # --- CLI Entrypoint ---
 if __name__ == "__main__":
-    sample_usage()
-    # To enable alert monitoring in production, uncomment:
-    # start_alert_monitoring()
+    import argparse
+    parser = argparse.ArgumentParser(description="ContextCoordinator CLI")
+    parser.add_argument("--monitor", action="store_true", help="Start alert monitoring")
+    parser.add_argument("--no-background", action="store_true", help="Run alert monitoring in foreground")
+    args = parser.parse_args()
 
-    # To add more sample cases, copy the sample_context and modify as needed.
-    # For production, instantiate ContextCoordinator and call organize_and_enrich with real context.
+    if args.monitor:
+        start_alert_monitoring(background=not args.no_background)
+    if not args.sample and not args.monitor:
+        parser.print_help()
