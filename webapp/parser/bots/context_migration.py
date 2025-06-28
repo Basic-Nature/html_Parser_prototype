@@ -2,7 +2,7 @@ import orjson
 from pathlib import Path
 from ..utils.db_utils import create_table_structure, get_session
 from ..utils.models import TableStructure
-from ..config import PROJECT_ROOT
+from ..config import CACHE_DIR, LOG_DIR, CONTEXT_LIBRARY_DIR
 import json
 
 def table_structure_exists(session, contest_title, headers, context):
@@ -60,10 +60,16 @@ def migrate_table_structures_from_json(json_path):
     print(f"[MIGRATE] Inserted {count} new table structures from {json_path}")
 
 def migrate_all():
-    log_dir = Path(PROJECT_ROOT) / "log"
-    context_dir = Path(PROJECT_ROOT) / "webapp" / "parser" / "Context_Integration" / "Context_Library"
-    files_to_migrate = list(log_dir.glob("*.jsonl")) + list(log_dir.glob("*.json")) + \
-                       list(context_dir.glob("*.jsonl")) + list(context_dir.glob("*.json"))
+    # Only .jsonl in LOG_DIR, only .json in CACHE_DIR, both in CONTEXT_LIBRARY_DIR
+    files_to_migrate = []
+    # LOG_DIR: only .jsonl
+    files_to_migrate += list(Path(LOG_DIR).glob("*.jsonl"))
+    # CACHE_DIR: only .json
+    files_to_migrate += list(Path(CACHE_DIR).glob("*.json"))
+    # CONTEXT_LIBRARY_DIR: both .jsonl and .json
+    files_to_migrate += list(Path(CONTEXT_LIBRARY_DIR).glob("*.jsonl"))
+    files_to_migrate += list(Path(CONTEXT_LIBRARY_DIR).glob("*.json"))
+
     for file_path in files_to_migrate:
         if file_path.suffix == ".jsonl":
             migrate_table_structures_from_jsonl(file_path)
