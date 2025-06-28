@@ -1788,21 +1788,63 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
                 detection_log.append(f"State '{state}' found in context, but not recognized.")
                 state = None
 
-    # --- 2. Try to extract county from contest titles (if not found or not valid) ---
+    # --- 2. Try to extract county from URL (move this up) ---
+    url = context.get("url", "") if isinstance(context, dict) else ""
+    if not county and url:
+        url_lower = url.lower()
+        # Exact match
+        for c in all_counties:
+            if c in url_lower:
+                county = c
+                detection_log.append(f"County '{county}' detected from URL.")
+                break
+        # District in URL
+        if not county:
+            for d in all_districts:
+                if d in url_lower:
+                    for c, districts in county_to_district.items():
+                        if not isinstance(districts, list):
+                            continue
+                        if d in [normalize_county_name(x) for x in districts]:
+                            county = normalize_county_name(c)
+                            detection_log.append(f"District '{d}' detected from URL, mapped to county '{county}'")
+                            break
+                    if county:
+                        break
+        # Fuzzy match county in URL
+        if not county:
+            url_tokens = re.split(r"[\W_]+", url_lower)
+            matches = difflib.get_close_matches(" ".join(url_tokens), all_counties, n=1, cutoff=0.7)
+            if matches:
+                county = matches[0]
+                detection_log.append(f"County '{county}' fuzzy-matched from URL tokens.")
+            else:
+                matches = difflib.get_close_matches(" ".join(url_tokens), all_districts, n=1, cutoff=0.7)
+                if matches:
+                    for c, districts in county_to_district.items():
+                        if not isinstance(districts, list):
+                            continue
+                        if matches[0] in [normalize_county_name(x) for x in districts]:
+                            county = normalize_county_name(c)
+                            detection_log.append(f"District '{matches[0]}' fuzzy-matched from URL tokens, mapped to county '{county}'")
+                            break
+
+    # --- 3. Try to extract county from contest titles (if not found or not valid) ---
     contests = context.get("contests", []) if isinstance(context, dict) else []
     if not county and contests:
         for contest in contests:
             if not isinstance(contest, dict):
                 continue
             title = contest.get("title", "")
+            title_lower = title.lower()
             for c in all_counties:
-                if re.search(rf"\b{re.escape(c)}\b", title.lower()):
+                if re.search(rf"\b{re.escape(c)}\b", title_lower):
                     county = c
                     detection_log.append(f"County '{county}' detected from contest title: '{title}'")
                     break
             if not county:
                 for d in all_districts:
-                    if re.search(rf"\b{re.escape(d)}\b", title.lower()):
+                    if re.search(rf"\b{re.escape(d)}\b", title_lower):
                         for c, districts in county_to_district.items():
                             if not isinstance(districts, list):
                                 continue
@@ -1814,27 +1856,6 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
                             break
             if county:
                 break
-
-    # --- 3. Try to extract county from URL (if still not found) ---
-    url = context.get("url", "") if isinstance(context, dict) else ""
-    if not county and url:
-        for c in all_counties:
-            if c in url.lower():
-                county = c
-                detection_log.append(f"County '{county}' detected from URL.")
-                break
-        if not county:
-            for d in all_districts:
-                if d in url.lower():
-                    for c, districts in county_to_district.items():
-                        if not isinstance(districts, list):
-                            continue
-                        if d in [normalize_county_name(x) for x in districts]:
-                            county = normalize_county_name(c)
-                            detection_log.append(f"District '{d}' detected from URL, mapped to county '{county}'")
-                            break
-                    if county:
-                        break
 
     # --- 4. Try to extract county from HTML using NLP entities ---
     if not county and html:
@@ -1857,25 +1878,7 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
                 if county:
                     break
 
-    # --- 5. Fuzzy match county if still not found ---
-    if not county and url:
-        url_tokens = re.split(r"[\W_]+", url.lower())
-        matches = difflib.get_close_matches(" ".join(url_tokens), all_counties, n=1, cutoff=0.7)
-        if matches:
-            county = matches[0]
-            detection_log.append(f"County '{county}' fuzzy-matched from URL tokens.")
-        else:
-            matches = difflib.get_close_matches(" ".join(url_tokens), all_districts, n=1, cutoff=0.7)
-            if matches:
-                for c, districts in county_to_district.items():
-                    if not isinstance(districts, list):
-                        continue
-                    if matches[0] in [normalize_county_name(x) for x in districts]:
-                        county = normalize_county_name(c)
-                        detection_log.append(f"District '{matches[0]}' fuzzy-matched from URL tokens, mapped to county '{county}'")
-                        break
-
-    # --- 6. Now try to detect state, using county if found ---
+    # --- 5. Now try to detect state, using county if found ---
     if not state and county:
         for s, counties in state_to_county.items():
             if not isinstance(counties, list):
@@ -1885,29 +1888,38 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
                 detection_log.append(f"State '{state}' inferred from county '{county}'.")
                 break
 
-    # --- 7. Try to extract state from URL (if still not found) ---
+    # --- 6. Try to extract state from URL (if still not found) ---
     if not state and url:
+        url_lower = url.lower()
         for s in known_states:
-            if s in url.lower():
+            if s in url_lower:
                 state = s
                 detection_log.append(f"State '{state}' detected from URL.")
                 break
+        # Fuzzy match state in URL
+        if not state:
+            url_tokens = re.split(r"[\W_]+", url_lower)
+            matches = difflib.get_close_matches(" ".join(url_tokens), known_states, n=1, cutoff=0.7)
+            if matches:
+                state = matches[0]
+                detection_log.append(f"State '{state}' fuzzy-matched from URL tokens.")
 
-    # --- 8. Try to extract state from contest titles (if still not found) ---
+    # --- 7. Try to extract state from contest titles (if still not found) ---
     if not state and contests:
         for contest in contests:
             if not isinstance(contest, dict):
                 continue
             title = contest.get("title", "")
+            title_lower = title.lower()
             for s in known_states:
-                if s in title.lower():
+                if s in title_lower:
                     state = s
                     detection_log.append(f"State '{state}' detected from contest title: '{title}'")
                     break
             if state:
                 break
 
-    # --- 9. Try to extract state from HTML using NLP entities ---
+    # --- 8. Try to extract state from HTML using NLP entities ---
     if not state and html:
         from ..utils.spacy_utils import extract_entities
         entities = extract_entities(html)
@@ -1918,15 +1930,7 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
                 detection_log.append(f"State '{state}' detected from HTML NLP entity.")
                 break
 
-    # --- 10. Fuzzy match state if still not found ---
-    if not state and url:
-        url_tokens = re.split(r"[\W_]+", url.lower())
-        matches = difflib.get_close_matches(" ".join(url_tokens), known_states, n=1, cutoff=0.7)
-        if matches:
-            state = matches[0]
-            detection_log.append(f"State '{state}' fuzzy-matched from URL tokens.")
-
-    # --- 11. If state found but no county, check for available county handlers ---
+    # --- 9. If state found but no county, check for available county handlers ---
     handler_path = None
     normalized_state = state  # already normalized by normalize_state_name
     normalized_county = county  # already normalized by normalize_county_name
@@ -1943,13 +1947,25 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
                     county_name = fname[:-3]
                     available_counties.append(county_name)
             detection_log.append(f"Available county handlers for state '{normalized_state}': {available_counties}")
-            url_and_html = (url + " " + html).lower()
+            url_and_html = ((url or "") + " " + (html or "")).lower()
+            # Try exact match in URL/HTML
             for c in available_counties:
                 if c in url_and_html:
                     normalized_county = c
                     detection_log.append(f"County '{normalized_county}' matched to available handler from URL/HTML context.")
                     break
+            # Try fuzzy match in URL/HTML
             if not normalized_county and available_counties:
+                tokens = re.split(r"[\W_]+", url_and_html)
+                matches = difflib.get_close_matches(" ".join(tokens), available_counties, n=1, cutoff=0.7)
+                if matches:
+                    normalized_county = matches[0]
+                    detection_log.append(f"County '{normalized_county}' fuzzy-matched to available handler from URL/HTML context.")
+            # If only one county handler is available, use it as a fallback
+            if not normalized_county and len(available_counties) == 1:
+                normalized_county = available_counties[0]
+                detection_log.append(f"Only one county handler available ('{normalized_county}'); using as fallback.")
+            elif not normalized_county:
                 detection_log.append("No matching county handler found in URL/HTML; will use state handler.")
         else:
             detection_log.append(f"No county handler directory found for state '{normalized_state}'.")
@@ -1967,7 +1983,7 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
         else:
             handler_path = f"webapp.parser.handlers.states.{normalized_state}"
 
-    # --- 14. Final fallback ---
+    # --- Final fallback ---
     if not normalized_county:
         detection_log.append("County could not be detected.")
     if not normalized_state:
@@ -1976,7 +1992,7 @@ def dynamic_state_county_detection(context, html, context_library, debug=False):
     if debug:
         for log in detection_log:
             print("[dynamic_state_county_detection]", log)
-    return county, state, handler_path, detection_log
+    return normalized_county, normalized_state, handler_path, detection_log
 
 # --- Alert Monitoring (run in production) ---
 def start_alert_monitoring(background=True):

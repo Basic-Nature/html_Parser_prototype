@@ -318,26 +318,6 @@ def load_context_library(path=CONTEXT_LIBRARY_PATH):
         extend_ballot_types(context_lib["ballot_types"])
 
     return context_lib
-
-    # Merge in any missing keys from default (preserve existing data)
-    if merge_defaults(context_lib, DEFAULT_STRUCTURE):
-        save_context_library(context_lib, safe_path)
-
-    # Extend dynamic sets with loaded values
-    if "panel_tags" in context_lib:
-        extend_panel_tags(context_lib["panel_tags"])
-    if "heading_tags" in context_lib:
-        extend_heading_tags(context_lib["heading_tags"])
-    if "custom_attr_patterns" in context_lib:
-        extend_custom_attr_patterns(context_lib["custom_attr_patterns"])
-    if "location_keywords" in context_lib:
-        extend_location_keywords(context_lib["location_keywords"])
-    if "candidate_keywords" in context_lib:
-        extend_candidate_keywords(context_lib["candidate_keywords"])
-    if "ballot_types" in context_lib:
-        extend_ballot_types(context_lib["ballot_types"])
-
-    return context_lib
     
 def update_context_library(path, update_fn):
     """

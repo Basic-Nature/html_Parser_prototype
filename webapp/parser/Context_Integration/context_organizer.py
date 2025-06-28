@@ -26,7 +26,7 @@ from ..utils.db_utils import (
 )
 from ..utils.models import Contest, TableStructure
 from ..utils.shared_logic import scan_environment
-from ..bots.librarian import load_context_library, save_context_library
+from ..bots.librarian import load_context_library, update_context_library
 from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
@@ -51,6 +51,15 @@ ensure_db_schema()
 
 processed_urls = load_processed_urls()
 output_cache = load_output_cache()
+
+def _to_json_safe(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, dict):
+        return {k: _to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_json_safe(v) for v in obj]
+    return obj
 
 def remove_functions(obj):
     if isinstance(obj, dict):
@@ -808,7 +817,7 @@ class ContextOrganizer:
                 library = {}
             library = merge_dicts(library, remove_functions(organized))
             library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            save_context_library(library, path)
+            update_context_library(_to_json_safe(library), path)
             self.logger.info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
         except Exception as e:
             self.logger.error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")

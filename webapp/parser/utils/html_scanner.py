@@ -379,7 +379,8 @@ def extract_tagged_segments_with_attrs(
                     seg["html"] = node.html if hasattr(node, "html") else ""
                 except Exception:
                     seg["html"] = ""
-            segments.append(seg)
+            seg["segment_hash"] = segment_identity_hash(seg)
+            segments.append(seg)                    
             this_idx = seg["_idx"]
             for child in node.iter(include_text=True):
                 child_idx = walk(child, this_idx, this_heading_idx, this_panel_idx)
@@ -516,6 +517,7 @@ def extract_tagged_segments_with_attrs(
                     "context_heading_idx": this_heading_idx,
                     "context_heading": None
                 }
+                seg["segment_hash"] = segment_identity_hash(seg)
                 segments.append(seg)
                 return seg["_idx"]
 
