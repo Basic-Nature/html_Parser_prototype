@@ -6,9 +6,7 @@ import orjson
 import subprocess
 import time
 from pathlib import Path
-from ..config import PROJECT_ROOT
-
-LOG_DIR = Path(PROJECT_ROOT) / "log"
+from ..config import LOG_DIR, PROJECT_ROOT
 
 def resolve_jsonl_path(jsonl_path):
     # If absolute, use as-is; else, join with LOG_DIR
@@ -17,10 +15,14 @@ def resolve_jsonl_path(jsonl_path):
         p = LOG_DIR / p
     return str(p)
 
-def scan_misaligned(jsonl_path="log/spacy_ner_train_data.jsonl", verbose=False):
+def scan_misaligned(jsonl_path=None, verbose=False):
     nlp = spacy.blank("en")
     misaligned = []
     total = 0
+    if jsonl_path is None:
+        jsonl_path = os.path.join(LOG_DIR, "spacy_ner_train_data.jsonl")
+    else:
+        jsonl_path = resolve_jsonl_path(jsonl_path)
     if not os.path.exists(jsonl_path):
         print(f"[ERROR] File not found: {jsonl_path}")
         return 1
@@ -63,7 +65,7 @@ def self_heal_loop(jsonl_path, verbose, max_retries=3, cooldown=2):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Scan spaCy NER training data for misaligned examples.")
-    parser.add_argument("--jsonl", type=str, default="log/spacy_ner_train_data.jsonl", help="Path to NER training data JSONL")
+    parser.add_argument("--jsonl", type=str, default=None, help="Path to NER training data JSONL (default: LOG_DIR/spacy_ner_train_data.jsonl)")
     parser.add_argument("--verbose", action="store_true", help="Print all misaligned examples")
     parser.add_argument("--auto-correct", action="store_true", help="Automatically run manual_correction_bot if misaligned examples are found")
     parser.add_argument("--self-heal", action="store_true", help="Loop: scan -> correct -> rescan until clean or max retries")
@@ -71,7 +73,8 @@ if __name__ == "__main__":
     parser.add_argument("--cooldown", type=int, default=2, help="Seconds to wait between self-heal attempts")
     args = parser.parse_args()
 
-    jsonl_path = resolve_jsonl_path(args.jsonl)
+    jsonl_path = args.jsonl if args.jsonl else os.path.join(LOG_DIR, "spacy_ner_train_data.jsonl")
+    jsonl_path = resolve_jsonl_path(jsonl_path)
     if args.self_heal:
         exit_code = self_heal_loop(jsonl_path, args.verbose, args.max_retries, args.cooldown)
     else:
