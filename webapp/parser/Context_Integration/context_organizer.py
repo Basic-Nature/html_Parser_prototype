@@ -817,7 +817,7 @@ class ContextOrganizer:
                 library = {}
             library = merge_dicts(library, remove_functions(organized))
             library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            update_context_library(_to_json_safe(library), path)
+            update_context_library(path, _to_json_safe(library))
             self.logger.info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
         except Exception as e:
             self.logger.error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")
