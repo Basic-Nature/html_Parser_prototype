@@ -73,6 +73,66 @@ ENTITY_PATTERNS = [
     # Add more as needed
 ]
 
+MISALIGNED_PATTERNS = [
+    r"^Totals - ",  # Exclude any header starting with 'Totals - '
+    # Add more patterns as needed
+]
+
+def is_misaligned_text(text):
+    for pat in MISALIGNED_PATTERNS:
+        if re.match(pat, text):
+            return True
+    return False
+
+def clean_misaligned_ner_jsonl(jsonl_path, extra_patterns=None):
+    """
+    Remove misaligned NER examples from a JSONL file based on patterns and alignment check.
+    Keeps only valid, aligned examples.
+    """
+    nlp = spacy.blank("en")
+    patterns = MISALIGNED_PATTERNS.copy()
+    if extra_patterns:
+        patterns.extend(extra_patterns)
+    def is_misaligned(text):
+        for pat in patterns:
+            if re.match(pat, text):
+                return True
+        return False
+
+    cleaned = []
+    misaligned = []
+    if not os.path.exists(jsonl_path):
+        return
+    with open(jsonl_path, "rb") as f:
+        for line in f:
+            obj = orjson.loads(line)
+            text = obj.get("text", "")
+            entities = obj.get("entities", [])
+            # Pattern-based skip
+            if is_misaligned(text):
+                misaligned.append(obj)
+                continue
+            # Alignment check
+            try:
+                tags = offsets_to_biluo_tags(nlp.make_doc(text), entities)
+                if "-" in tags:
+                    misaligned.append(obj)
+                    continue
+            except Exception:
+                misaligned.append(obj)
+                continue
+            cleaned.append(obj)
+    with open(jsonl_path, "wb") as f:
+        for obj in cleaned:
+            f.write(orjson.dumps(obj, option=orjson.OPT_APPEND_NEWLINE))
+    if misaligned:
+        misaligned_path = jsonl_path.replace(".jsonl", "_misaligned.jsonl")
+        with open(misaligned_path, "wb") as f:
+            for obj in misaligned:
+                f.write(orjson.dumps(obj, option=orjson.OPT_APPEND_NEWLINE))
+        print(f"[CLEAN] Removed {len(misaligned)} misaligned NER examples. Saved to {misaligned_path}")
+    print(f"[CLEAN] Cleaned NER training data saved to {jsonl_path}. Remaining: {len(cleaned)}")
+
 def safe_model_save(model, model_save_path, retries=3):
 
     for attempt in range(1, retries+1):
@@ -348,9 +408,10 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
         all_locations.update(context.get("known_cities", []))
         
         for header in headers:
+            if is_misaligned_text(header):
+                continue  # Skip known misaligned patterns
             entities = auto_label_header(header, context)
             if entities:
-                # Remove overlapping entities before adding to train_data
                 entities = remove_overlapping_entities(entities)
                 train_data.append((header, {"entities": entities}))
 
@@ -586,6 +647,10 @@ def main():
     if os.getenv("REVIEW_WITH_MANUAL_BOT", "false").lower() == "true":
         run_manual_correction_bot()
 
+    # --- Self-cleaner for NER training data ---
+    ner_train_jsonl = os.path.join(LOG_DIR, "spacy_ner_train_data.jsonl")
+    clean_misaligned_ner_jsonl(ner_train_jsonl)
+
     confirmed_structures = get_all_confirmed_structures()
     print(f"Found {len(confirmed_structures)} confirmed table structures.")
 
@@ -652,7 +717,7 @@ def main():
         
         for header in headers:
             # Skip problematic headers that cause repeated misalignments
-            if header.strip().lower().startswith("totals -"):
+            if is_misaligned_text(header):
                 continue
             entities = auto_label_header(header, context)
             if entities:
