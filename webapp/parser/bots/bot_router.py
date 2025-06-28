@@ -12,7 +12,7 @@ import smtplib
 from email.message import EmailMessage
 import requests
 from requests.auth import HTTPBasicAuth
-from ..bots.log_cleaner_bot import run_log_cleaner
+from ..bots.log_cache_cleaner_bot import run_log_cache_cleaner
 from ..utils.context_migration import migrate_all
 from ..bots.scan_misaligned_ner import scan_misaligned
 from ..Context_Integration import context_organizer, context_coordinator, Integrity_check
@@ -141,13 +141,13 @@ def run_pipeline():
     results = {}
     print("[BOT ROUTER] Step 1: Cleaning logs/context and migrating to PostgreSQL...")
     try:
-        run_log_cleaner()
+        run_log_cache_cleaner()
         migrate_all()
-        results["log_cleaner_bot"] = "success"
+        results["log_cache_cleaner_bot"] = "success"
         results["context_migration"] = "success"
     except Exception as e:
         print(f"[BOT ROUTER][ERROR] Log cleaning or migration failed: {e}")
-        results["log_cleaner_bot"] = "fail"
+        results["log_cache_cleaner_bot"] = "fail"
         results["context_migration"] = "fail"
         print_bot_summary(results)
         return

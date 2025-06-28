@@ -37,7 +37,7 @@ from ..bots.librarian import (
 )
 # --- Config ---
 # --- Directory and file constants ---
-from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR
+from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
 
 # Ensure these are Path objects
 LOG_DIR = Path(LOG_DIR)
@@ -243,12 +243,19 @@ def ml_suggest_field(entry, coordinator=None):
             return doc.ents[0].label_
     return None
 
-def find_log_files(log_dir=LOG_DIR):
+def find_log_files(log_dir=LOG_DIR, cache_dir=None, suffixes=(".jsonl", ".json")):
+    """
+    Recursively find all log files with given suffixes in log_dir and cache_dir.
+    """
     log_dir = safe_path(log_dir, [LOG_DIR])
-    if not log_dir.exists():
-        logger.warning(f"Log directory not found: {log_dir}")
-        return []
-    return list(log_dir.glob(f"*{FIELD_LOG_SUFFIX}"))
+    files = []
+    for suf in suffixes:
+        files.extend(log_dir.rglob(f"*{suf}"))
+    if cache_dir:
+        cache_dir = safe_path(cache_dir, [CONTEXT_LIBRARY_DIR])
+        for suf in suffixes:
+            files.extend(cache_dir.rglob(f"*{suf}"))
+    return files
 
 # --- JSONL utilities ---
 def load_jsonl(path):
@@ -270,12 +277,19 @@ def file_hash(path):
             h.update(chunk)
     return h.hexdigest()
 
-def find_log_files(log_dir=LOG_DIR):
+def find_log_files(log_dir=LOG_DIR, cache_dir=CACHE_DIR, suffixes=(".jsonl", ".json")):
+    """
+    Recursively find all log files with given suffixes in log_dir and cache_dir.
+    """
     log_dir = safe_path(log_dir, [LOG_DIR])
-    if not log_dir.exists():
-        logger.warning(f"Log directory not found: {log_dir}")
-        return []
-    return list(log_dir.glob(f"*{FIELD_LOG_SUFFIX}"))
+    files = []
+    for suf in suffixes:
+        files.extend(log_dir.rglob(f"*{suf}"))
+    if cache_dir:
+        cache_dir = safe_path(cache_dir, [CACHE_DIR])
+        for suf in suffixes:
+            files.extend(cache_dir.rglob(f"*{suf}"))
+    return files
 
 def load_jsonl_incremental(path, cache):
     """Read only new lines since last offset for this file."""
@@ -656,9 +670,11 @@ def main():
     context_library["metadata"]["last_accessed"] = datetime.now().isoformat()
     # Only write at end if changed
     context_library_changed = False
-    log_dir = safe_path(args.log_dir, [LOG_DIR])
+    log_dir = safe_path(LOG_DIR, [LOG_DIR]) if LOG_DIR else None
+    cache_dir = safe_path(CACHE_DIR, [CACHE_DIR]) if CACHE_DIR else None
     fields = args.fields
-    log_files = find_log_files(log_dir)
+    log_files = find_log_files(log_dir, cache_dir)
+    print(f"[DEBUG] All discovered log files: {[str(f) for f in log_files]}")
     logger.info(f"Discovered {len(log_files)} log files in {log_dir}")
 
     batch_entries = []

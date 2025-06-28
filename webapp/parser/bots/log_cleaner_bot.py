@@ -1,5 +1,5 @@
 """
-log_cleaner_bot.py
+log_cache_cleaner_bot.py
 
 Automated log/cache cleaner for Smart Elections pipeline.
 - Scans the log and Context_Library directories for all .json/.jsonl/.html files.
@@ -12,14 +12,14 @@ Automated log/cache cleaner for Smart Elections pipeline.
 - Can be called from other scripts or run as a scheduled daemon.
 
 Usage:
-    python -m webapp.parser.bots.log_cleaner_bot [--log-dir log] [--context-lib-dir .../Context_Library] [--max-size-mb 200] [--daemon] [--interval-min 60] [--db-maintenance]
+    python -m webapp.parser.bots.log_cache_cleaner_bot [--log-dir log] [--context-lib-dir .../Context_Library] [--max-size-mb 200] [--daemon] [--interval-min 60] [--db-maintenance]
 Manual one-off clean:
-python -m webapp.parser.bots.log_cleaner_bot
+python -m webapp.parser.bots.log_cache_cleaner_bot
 Daemon mode (every 30 minutes):
-python -m webapp.parser.bots.log_cleaner_bot --daemon --interval-min 30
+python -m webapp.parser.bots.log_cache_cleaner_bot --daemon --interval-min 30
 From another script:
-from webapp.parser.bots.log_cleaner_bot import run_log_cleaner
-run_log_cleaner()
+from webapp.parser.bots.log_cache_cleaner_bot import run_log_cache_cleaner
+run_log_cache_cleaner()
 """
 import os
 import sys
@@ -33,10 +33,9 @@ from sqlalchemy.exc import SQLAlchemyError
 
 # --- SQLAlchemy imports for DB maintenance ---
 from ..utils.db_utils import get_engine, get_session
-from ..utils.context_migration import migrate_all
+from webapp.parser.utils.context_migration import migrate_all
+from ..config import LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
 
-DEFAULT_LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "log")
-DEFAULT_CONTEXT_LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "webapp", "parser", "Context_Integration", "Context_Library")
 DEFAULT_MAX_SIZE_MB = 10
 MISALIGNED_KEYWORDS = ["misaligned", "pattern-excluding"]
 ALLOWED_EXTS = (".json", ".jsonl", ".html")
@@ -150,42 +149,42 @@ def clean_dir(target_dir, allowed_roots, max_size_bytes):
     errors = []
     flagged_large = []
     misaligned_summary = []
-    for root, dirs, files in os.walk(target_dir):
-        for fname in files:
-            if not fname.endswith(ALLOWED_EXTS):
+    # Recursively find all files with allowed extensions
+    for path in Path(target_dir).rglob("*"):
+        if not path.is_file() or not path.suffix in ALLOWED_EXTS:
+            continue
+        fname = str(path)
+        try:
+            safe_path(fname, allowed_roots)
+        except Exception as e:
+            errors.append((fname, f"Unsafe path: {e}"))
+            continue
+        size = os.path.getsize(fname)
+        needs_clean = size > max_size_bytes
+        # Always clean if too big, else only clean if user wants full sweep
+        if needs_clean or True:
+            if is_jsonl_file(fname):
+                before, after, misaligned, err = clean_jsonl(fname)
+            elif is_json_file(fname):
+                before, after, misaligned, err = clean_json(fname)
+            elif is_html_file(fname):
+                before, after, misaligned, err = clean_html(fname)
+            else:
                 continue
-            path = os.path.join(root, fname)
-            try:
-                safe_path(path, allowed_roots)
-            except Exception as e:
-                errors.append((fname, f"Unsafe path: {e}"))
+            if err:
+                print(f"[CLEAN][ERROR] Failed to clean {fname}: {err}")
+                errors.append((fname, err))
                 continue
-            size = os.path.getsize(path)
-            needs_clean = size > max_size_bytes
-            # Always clean if too big, else only clean if user wants full sweep
-            if needs_clean or True:
-                if is_jsonl_file(fname):
-                    before, after, misaligned, err = clean_jsonl(path)
-                elif is_json_file(fname):
-                    before, after, misaligned, err = clean_json(path)
-                elif is_html_file(fname):
-                    before, after, misaligned, err = clean_html(path)
-                else:
-                    continue
-                if err:
-                    print(f"[CLEAN][ERROR] Failed to clean {fname}: {err}")
-                    errors.append((fname, err))
-                    continue
-                print(f"[CLEAN] Cleaned {fname}. Original: {before}, After: {after}{' | MISALIGNED: '+str(misaligned) if misaligned else ''}")
-                cleaned_files += 1
-                total_before += before or 0
-                total_after += after or 0
-                if misaligned:
-                    misaligned_summary.append((fname, misaligned))
-                # Check if still too large
-                new_size = os.path.getsize(path)
-                if new_size > max_size_bytes:
-                    flagged_large.append((fname, human_size(new_size)))
+            print(f"[CLEAN] Cleaned {fname}. Original: {before}, After: {after}{' | MISALIGNED: '+str(misaligned) if misaligned else ''}")
+            cleaned_files += 1
+            total_before += before or 0
+            total_after += after or 0
+            if misaligned:
+                misaligned_summary.append((fname, misaligned))
+            # Check if still too large
+            new_size = os.path.getsize(fname)
+            if new_size > max_size_bytes:
+                flagged_large.append((fname, human_size(new_size)))
     return cleaned_files, total_before, total_after, flagged_large, misaligned_summary, errors
 
 def run_db_maintenance(engine=None, session=None):
@@ -209,19 +208,21 @@ def run_db_maintenance(engine=None, session=None):
     except Exception as e:
         print(f"[DB][ERROR] Maintenance failed: {e}")
 
-def run_log_cleaner(log_dir=DEFAULT_LOG_DIR, context_lib_dir=DEFAULT_CONTEXT_LIB_DIR, max_size_mb=DEFAULT_MAX_SIZE_MB, db_maintenance=False):
+def run_log_cache_cleaner(log_dir=LOG_DIR, context_lib_dir=CONTEXT_LIBRARY_DIR, cache_dir=CACHE_DIR, max_size_mb=DEFAULT_MAX_SIZE_MB, db_maintenance=False):
     max_size_bytes = int(max_size_mb * 1024 * 1024)
-    allowed_roots = [log_dir, context_lib_dir]
+    allowed_roots = [log_dir, context_lib_dir, cache_dir]
     print(f"[CLEAN] Cleaning log dir: {log_dir}")
     cleaned1, before1, after1, flagged1, misaligned1, errors1 = clean_dir(log_dir, allowed_roots, max_size_bytes)
     print(f"[CLEAN] Cleaning context library dir: {context_lib_dir}")
     cleaned2, before2, after2, flagged2, misaligned2, errors2 = clean_dir(context_lib_dir, allowed_roots, max_size_bytes)
-    cleaned_files = cleaned1 + cleaned2
-    total_before = before1 + before2
-    total_after = after1 + after2
-    flagged_large = flagged1 + flagged2
-    misaligned_summary = misaligned1 + misaligned2
-    errors = errors1 + errors2
+    print(f"[CLEAN] Cleaning cache dir: {cache_dir}")
+    cleaned3, before3, after3, flagged3, misaligned3, errors3 = clean_dir(cache_dir, allowed_roots, max_size_bytes)
+    cleaned_files = cleaned1 + cleaned2 + cleaned3
+    total_before = before1 + before2 + before3
+    total_after = after1 + after2 + after3
+    flagged_large = flagged1 + flagged2 + flagged3
+    misaligned_summary = misaligned1 + misaligned2 + misaligned3
+    errors = errors1 + errors2 + errors3
     print(f"[CLEAN] Finished cleaning {cleaned_files} files. Total entries: {total_before} -> {total_after}")
     if flagged_large:
         print("[CLEAN][WARNING] The following files are still too large after cleaning:")
@@ -240,10 +241,10 @@ def run_log_cleaner(log_dir=DEFAULT_LOG_DIR, context_lib_dir=DEFAULT_CONTEXT_LIB
     migrate_all()
     print("[CLEAN] Context/log migration to PostgreSQL complete.")
 
-def schedule_log_cleaner(interval_min=60, db_maintenance=False, **kwargs):
+def schedule_log_cache_cleaner(interval_min=60, db_maintenance=False, **kwargs):
     def loop():
         while True:
-            run_log_cleaner(db_maintenance=db_maintenance, **kwargs)
+            run_log_cache_cleaner(db_maintenance=db_maintenance, **kwargs)
             time.sleep(interval_min * 60)
     t = threading.Thread(target=loop, daemon=True)
     t.start()
@@ -252,22 +253,36 @@ def schedule_log_cleaner(interval_min=60, db_maintenance=False, **kwargs):
 
 def main():
     parser = argparse.ArgumentParser(description="Automated log/cache cleaner for Smart Elections pipeline.")
-    parser.add_argument("--log-dir", type=str, default=DEFAULT_LOG_DIR, help="Directory containing log/cache files")
-    parser.add_argument("--context-lib-dir", type=str, default=DEFAULT_CONTEXT_LIB_DIR, help="Context_Library directory")
+    parser.add_argument("--log-dir", type=str, default=LOG_DIR, help="Directory containing log/cache files")
+    parser.add_argument("--context-lib-dir", type=str, default=CONTEXT_LIBRARY_DIR, help="Context_Library directory")
+    parser.add_argument("--cache-dir", type=str, default=CACHE_DIR, help="Cache directory")
     parser.add_argument("--max-size-mb", type=float, default=DEFAULT_MAX_SIZE_MB, help="Max file size in MB before cleaning is triggered")
     parser.add_argument("--daemon", action="store_true", help="Run as a background daemon (periodic cleaning)")
     parser.add_argument("--interval-min", type=int, default=60, help="Interval in minutes for daemon mode")
     parser.add_argument("--db-maintenance", action="store_true", help="Perform PostgreSQL VACUUM/ANALYZE maintenance after cleaning")
     args = parser.parse_args()
     if args.daemon:
-        schedule_log_cleaner(interval_min=args.interval_min, log_dir=args.log_dir, context_lib_dir=args.context_lib_dir, max_size_mb=args.max_size_mb, db_maintenance=args.db_maintenance)
+        schedule_log_cache_cleaner(
+            interval_min=args.interval_min,
+            log_dir=args.log_dir,
+            context_lib_dir=args.context_lib_dir,
+            cache_dir=args.cache_dir,
+            max_size_mb=args.max_size_mb,
+            db_maintenance=args.db_maintenance
+        )
         try:
             while True:
                 time.sleep(3600)
         except KeyboardInterrupt:
             print("[CLEAN] Daemon stopped.")
     else:
-        run_log_cleaner(log_dir=args.log_dir, context_lib_dir=args.context_lib_dir, max_size_mb=args.max_size_mb, db_maintenance=args.db_maintenance)
+        run_log_cache_cleaner(
+            log_dir=args.log_dir,
+            context_lib_dir=args.context_lib_dir,
+            cache_dir=args.cache_dir,
+            max_size_mb=args.max_size_mb,
+            db_maintenance=args.db_maintenance
+        )
 
 if __name__ == "__main__":
     main()
