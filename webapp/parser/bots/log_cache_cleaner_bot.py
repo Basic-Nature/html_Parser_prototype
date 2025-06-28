@@ -60,19 +60,29 @@ def safe_path(path, allowed_roots):
 
 def clean_jsonl(path):
     """
-    Advanced cleaner for .jsonl files:
+    Robust cleaner for .jsonl files:
     - Deduplicates entries (by full serialization)
-    - Skips malformed lines, logs count
-    - Handles empty files gracefully
+    - Skips malformed, null, empty, and non-dict lines (counts each)
+    - Logs up to 5 examples of each problem type for diagnostics
     - Flags entries with misaligned keywords
     - Optionally sorts entries (by a key if desired)
-    - Removes null/empty dict/empty list entries
-    - Optionally truncates if file is too large (not implemented here)
+    - Handles empty files gracefully
+    - Returns detailed stats and errors
     """
     malformed_count = 0
     null_count = 0
     empty_count = 0
+    nondict_count = 0
+    malformed_examples = []
+    null_examples = []
+    empty_examples = []
+    nondict_examples = []
     try:
+        if os.path.getsize(path) == 0:
+            # Overwrite with empty file
+            with open(path, "wb") as f:
+                pass
+            return 0, 0, 0, None
         with open(path, "rb") as f:
             lines = [line for line in f if line.strip()]
         entries = []
@@ -81,33 +91,54 @@ def clean_jsonl(path):
         for idx, line in enumerate(lines, 1):
             try:
                 entry = orjson.loads(line)
-                if entry is None:
-                    null_count += 1
-                    continue
-                if isinstance(entry, (dict, list)) and not entry:
-                    empty_count += 1
-                    continue
-                key = orjson.dumps(entry)
-                if key not in seen:
-                    seen.add(key)
-                    entries.append(entry)
-                # Flag misaligned entries
-                if any(kw in str(entry).lower() for kw in MISALIGNED_KEYWORDS):
-                    misaligned.append(entry)
-            except Exception:
+            except Exception as e:
                 malformed_count += 1
-                continue  # skip malformed lines
+                if len(malformed_examples) < 5:
+                    malformed_examples.append(line[:100])
+                continue
+            if entry is None:
+                null_count += 1
+                if len(null_examples) < 5:
+                    null_examples.append(line[:100])
+                continue
+            if isinstance(entry, (dict, list)) and not entry:
+                empty_count += 1
+                if len(empty_examples) < 5:
+                    empty_examples.append(line[:100])
+                continue
+            if not isinstance(entry, dict):
+                nondict_count += 1
+                if len(nondict_examples) < 5:
+                    nondict_examples.append(str(entry)[:100])
+                continue
+            key = orjson.dumps(entry)
+            if key not in seen:
+                seen.add(key)
+                entries.append(entry)
+            # Flag misaligned entries
+            if any(kw in str(entry).lower() for kw in MISALIGNED_KEYWORDS):
+                misaligned.append(entry)
         # Optionally sort entries by a field, e.g. timestamp
         # entries.sort(key=lambda e: e.get("timestamp", ""), reverse=False)
         with open(path, "wb") as f:
             for entry in entries:
                 f.write(orjson.dumps(entry) + b"\n")
+        # Compose error/warning string if any problems found
+        error_parts = []
+        if malformed_count:
+            error_parts.append(f"Malformed: {malformed_count} (examples: {malformed_examples})")
+        if null_count:
+            error_parts.append(f"Null: {null_count} (examples: {null_examples})")
+        if empty_count:
+            error_parts.append(f"Empty: {empty_count} (examples: {empty_examples})")
+        if nondict_count:
+            error_parts.append(f"Non-dict: {nondict_count} (examples: {nondict_examples})")
+        error_str = "; ".join(error_parts) if error_parts else None
         return (
             len(lines),
             len(entries),
             len(misaligned),
-            None if malformed_count == 0 and null_count == 0 and empty_count == 0
-            else f"Malformed: {malformed_count}, Null: {null_count}, Empty: {empty_count}"
+            error_str
         )
     except Exception as e:
         return None, None, None, str(e)
