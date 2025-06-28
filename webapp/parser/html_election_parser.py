@@ -42,7 +42,8 @@ from .utils.format_router import route_format_handler
 
 
 from .utils.html_scanner import scan_html_for_context
-from .utils.shared_logic import infer_state_county_from_url, safe_join
+from .utils.shared_logic import infer_state_county_from_url
+from .bots.librarian import safe_join
 from .utils.user_prompt import prompt_user_input
 import hashlib
 

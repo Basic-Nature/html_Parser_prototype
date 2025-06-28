@@ -20,11 +20,11 @@ from ..utils.shared_logic import (
     scan_buttons_with_progress, keyphrase_match,
     normalize_state_name, normalize_county_name
 )
-from ..bots.librarian import load_context_library, save_context_library
+from ..bots.librarian import load_context_library, update_context_library
 from sklearn.preprocessing import LabelEncoder
 import subprocess
 from rich.console import Console
-from ..config import PROJECT_ROOT, POSTGRES_URL, LOG_DIR
+from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR
 
 console = Console()
 
@@ -1513,9 +1513,7 @@ class ContextCoordinator:
             # Add similar logic for other fields as needed
 
         # 3. Save updated context library (if you persist it)
-        full_lib = load_context_library()
-        full_lib.update(self.library)
-        save_context_library(full_lib)
+        update_context_library(CONTEXT_LIBRARY_PATH, lambda lib: lib.update(self.library))
 
         # 4. Re-organize context
         self.organized = None

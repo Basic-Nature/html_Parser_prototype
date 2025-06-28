@@ -7,8 +7,9 @@ from typing import Dict, Any, List, Optional
 from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR
 from ..utils.download_utils import download_file
 from ..utils.format_router import route_format_handler 
-from ..utils.shared_logic import infer_state_county_from_url, update_context_library, save_context_library
+from ..utils.shared_logic import infer_state_county_from_url 
 from ..utils.shared_logger import logger
+from ..bots.librarian import update_context_library
 from rich import print as rprint
 from rich.console import Console
 from ..utils.user_prompt import prompt_user_input
@@ -1480,9 +1481,14 @@ def scan_html_for_context(
                 segments_needing_review.append(seg)
                 # --- update context library with the correction ---
                 if context_library is not None and seg.get("segment_hash", []):
-                    update_context_library(context_library, seg["segment_hash"], user_label)
-                    # Optionally save immediately:
-                    save_context_library(context_library)
+                    update_context_library(
+                        CONTEXT_LIBRARY_PATH,
+                        lambda lib: lib.setdefault("cached_segments", []).append({
+                            "segment_hash": seg["segment_hash"],
+                            "ml_label": user_label,
+                            # ...other fields as needed...
+                        })
+                    )
             else:
                 pattern_matches.append({
                     "pattern_id": seg["pattern_id"],
@@ -1540,7 +1546,14 @@ def scan_html_for_context(
                         # Optionally add more fields if needed
                     })
             # Save back to disk
-            save_context_library(context_library)
+            update_context_library(
+                CONTEXT_LIBRARY_PATH,
+                lambda lib: lib.setdefault("cached_segments", []).append({
+                    "segment_hash": seg["segment_hash"],
+                    "ml_label": user_label,
+                    # ...other fields as needed...
+                })
+            )
    
     except PromptCancelled:
         rprint("[yellow][SCAN CANCELLED] HTML parsing was cancelled by the user.[/yellow]")

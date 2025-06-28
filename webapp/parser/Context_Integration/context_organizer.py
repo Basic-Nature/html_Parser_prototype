@@ -26,7 +26,7 @@ from ..utils.db_utils import (
 )
 from ..utils.models import Contest, TableStructure
 from ..utils.shared_logic import scan_environment
-from ..bots.librarian import load_context_library
+from ..bots.librarian import load_context_library, save_context_library
 from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
@@ -795,8 +795,7 @@ class ContextOrganizer:
                 library = {}
             library = merge_dicts(library, remove_functions(organized))
             library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            with open(path, "wb") as f:
-                f.write(orjson.dumps(library, option=orjson.OPT_INDENT_2))
+            save_context_library(library, path)
             self.logger.info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
         except Exception as e:
             self.logger.error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")

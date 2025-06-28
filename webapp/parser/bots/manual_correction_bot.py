@@ -29,7 +29,6 @@ import uvicorn
 # --- Unified logger import ---
 from ..utils.shared_logger import logger
 from ..bots.librarian import (
-    save_context_library,
     update_context_library,
     SCHEMA_VERSION,
     DEFAULT_STRUCTURE,
@@ -522,13 +521,13 @@ def ensure_context_library(path):
         logger.info(f"Context library not found at {path}, initializing with default structure.")
         struct = DEFAULT_STRUCTURE.copy()
         struct["schema_version"] = SCHEMA_VERSION
-        save_context_library(struct, path)
+        update_context_library(struct, path)
         return struct
     context_lib = load_context_library(path)
     # Always set schema_version if missing
     if "schema_version" not in context_lib:
         context_lib["schema_version"] = SCHEMA_VERSION
-        save_context_library(context_lib, path)
+        update_context_library(context_lib, path)
     if context_lib.get("schema_version") != SCHEMA_VERSION:
         logger.warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
     return context_lib
@@ -778,7 +777,7 @@ def main():
     # Write context library only if changed
     if context_library_changed:
         context_library = load_context_library(context_path)
-        save_context_library(context_library, context_path)
+        update_context_library(context_library, context_path)
         logger.info(f"Context library updated at {context_path}")
 
     print("\n[SUMMARY] Manual Correction Bot Run Complete.")

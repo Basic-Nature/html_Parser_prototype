@@ -5,7 +5,7 @@ import orjson
 import subprocess
 import sys
 import time
-from ..utils.shared_logic import save_context_library
+from ..bots.librarian import save_context_library
 from tempfile import NamedTemporaryFile
 import shutil
 from pathlib import Path
