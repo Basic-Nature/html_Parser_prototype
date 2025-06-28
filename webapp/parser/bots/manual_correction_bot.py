@@ -38,7 +38,13 @@ from ..bots.librarian import (
 # --- Directory and file constants ---
 from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR
 
+# Ensure these are Path objects
+LOG_DIR = Path(LOG_DIR)
+CONTEXT_LIBRARY_PATH = Path(CONTEXT_LIBRARY_PATH)
+CONTEXT_LIBRARY_DIR = Path(CONTEXT_LIBRARY_DIR)
 
+# Ensure directories exist
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_PATH = LOG_DIR / "manual_correction_cache.db"
 AUDIT_LOG_PATH = LOG_DIR / "manual_correction_audit.jsonl"
 BATCH_SIZE = 100

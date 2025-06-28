@@ -447,4 +447,5 @@ def self_heal_loop(bot_name, args=None, max_retries=3, cooldown=2):
 
 # Optional: If you want to run this as a script directly
 if __name__ == "__main__":
-    run_pipeline()
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not __debug__:
+        run_pipeline()
