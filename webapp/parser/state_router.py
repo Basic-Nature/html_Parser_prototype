@@ -9,7 +9,7 @@ import os
 import importlib
 from typing import Optional, Dict, Any, List, Tuple
 from .utils.shared_logger import logger
-from .config import CONTEXT_LIBRARY_PATH
+from .config import CONTEXT_LIBRARY_PATH, BASE_DIR
 import difflib 
 import json
 import re
@@ -43,9 +43,7 @@ else:
 
 LOADED_HANDLERS: Dict[str, Any] = {}
 
-STATE_HANDLER_BASE_PATH = os.path.join(
-    os.path.dirname(__file__), "handlers", "states"
-)
+STATE_HANDLER_BASE_PATH = os.path.join(BASE_DIR, "parser", "handlers", "states")
 
 # === Handler Map Caching ===
 HANDLER_MAP = {
