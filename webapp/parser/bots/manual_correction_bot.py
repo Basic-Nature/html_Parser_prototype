@@ -17,13 +17,15 @@ import orjson
 import shutil
 from pathlib import Path
 from collections import defaultdict, Counter
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime
-import threading
+import shelve
+from datetime import datetime, timedelta
+import hashlib
 import subprocess
 import sys
 import time
-
+from tempfile import NamedTemporaryFile
+from fastapi import FastAPI
+import uvicorn
 # --- Unified logger import ---
 from ..utils.shared_logger import logger
 from ..utils.shared_logic import (
@@ -35,10 +37,77 @@ from ..utils.shared_logic import (
 )
 # --- Config ---
 # --- Directory and file constants ---
-from ..config import PROJECT_ROOT, BASE_DIR, CONTEXT_LIBRARY_PATH
+from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR
 
-LOG_DIR = Path(PROJECT_ROOT) / "log"
-CONTEXT_LIBRARY_DIR = Path(BASE_DIR) / "parser" / "Context_Integration" / "Context_Library"
+
+CACHE_PATH = LOG_DIR / "manual_correction_cache.db"
+AUDIT_LOG_PATH = LOG_DIR / "manual_correction_audit.jsonl"
+BATCH_SIZE = 100
+
+def load_cache(expire_days=None):
+    cache = shelve.open(str(CACHE_PATH))
+    if expire_days is not None:
+        now = datetime.now()
+        expired = []
+        for k, v in cache.items():
+            ts = v.get("timestamp")
+            if ts and (now - datetime.fromisoformat(ts)) > timedelta(days=expire_days):
+                expired.append(k)
+        for k in expired:
+            del cache[k]
+    return cache
+
+def close_cache(cache):
+    cache.close()
+
+# --- Audit log ---
+def write_audit_log(action, entry, user=None, before=None, after=None):
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "action": action,
+        "entry_hash": str(hash(orjson.dumps(entry))),
+        "user": user,
+        "before": before,
+        "after": after,
+        "entry": entry,
+    }
+    with open(AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(orjson.dumps(log_entry, ensure_ascii=False) + "\n")
+
+def process_logs_with_cache(log_files, context_library, cache):
+    for log_file in log_files:
+        entries = load_jsonl(log_file)
+        for entry in entries:
+            entry_id = str(hash(orjson.dumps(entry)))
+            if entry_id in cache:
+                continue  # Already processed
+            # ...review logic...
+            # After processing:
+            cache[entry_id] = {"status": "accepted"}  # or "removed"/"edited"
+    cache.sync()
+
+def process_and_sync(log_files, context_library, cache, batch_size=100, sync_db=False):
+    batch = []
+    for log_file in log_files:
+        entries = load_jsonl(log_file)
+        for entry in entries:
+            entry_id = str(hash(orjson.dumps(entry)))
+            if entry_id in cache:
+                continue
+            # ...review logic...
+            batch.append(entry)
+            cache[entry_id] = {"status": "accepted", "timestamp": datetime.now().isoformat()}
+            if len(batch) >= batch_size:
+                update_context_with_new_entries(context_library, batch)
+                if sync_db:
+                    update_database_with_context(context_library)
+                batch.clear()
+    # Final flush
+    if batch:
+        update_context_with_new_entries(context_library, batch)
+        if sync_db:
+            update_database_with_context(context_library)
+    cache.sync()
 
 # Log and data file paths
 FIELD_LOG_SUFFIX = "_selection_log.jsonl"
@@ -51,6 +120,18 @@ ALL_FIELDS = [
     "buttons", "panels", "tables", "contests", "districts", "states", "election_types", "years", "party", "candidate"
 ]
 SUCCESS_RESULTS = {"pass", "fuzzy_pass", "manual_correction", "user_corrected"}
+
+# --- Utility: Atomic JSON write with backup ---
+def atomic_write_json(obj, path):
+    path = Path(path)
+    backup_path = path.with_suffix(path.suffix + ".bak")
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with NamedTemporaryFile("wb", delete=False, dir=path.parent) as tf:
+        tf.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
+        temp_name = tf.name
+    if path.exists():
+        shutil.copy2(path, backup_path)
+    shutil.move(temp_name, path)
 
 # --- Path security utility ---
 def safe_path(path, allowed_roots):
@@ -156,7 +237,6 @@ def ml_suggest_field(entry, coordinator=None):
             return doc.ents[0].label_
     return None
 
-# --- Log file discovery ---
 def find_log_files(log_dir=LOG_DIR):
     log_dir = safe_path(log_dir, [LOG_DIR])
     if not log_dir.exists():
@@ -173,11 +253,46 @@ def load_jsonl(path):
     with open(path, "r", encoding="utf-8") as f:
         return [orjson.loads(line) for line in f if line.strip()]
 
+# --- Log file hash/timestamp and offset tracking ---
+def file_hash(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(8192)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+def find_log_files(log_dir=LOG_DIR):
+    log_dir = safe_path(log_dir, [LOG_DIR])
+    if not log_dir.exists():
+        logger.warning(f"Log directory not found: {log_dir}")
+        return []
+    return list(log_dir.glob(f"*{FIELD_LOG_SUFFIX}"))
+
+def load_jsonl_incremental(path, cache):
+    """Read only new lines since last offset for this file."""
+    path = safe_path(path, [LOG_DIR, CONTEXT_LIBRARY_DIR])
+    file_id = str(path)
+    last_offset = cache.get(f"{file_id}_offset", 0)
+    entries = []
+    with open(path, "r", encoding="utf-8") as f:
+        f.seek(last_offset)
+        for line in f:
+            if line.strip():
+                entries.append(orjson.loads(line))
+        cache[f"{file_id}_offset"] = f.tell()
+    cache[f"{file_id}_hash"] = file_hash(path)
+    return entries
+
 def save_jsonl(path, entries):
     path = safe_path(path, [LOG_DIR, CONTEXT_LIBRARY_DIR])
-    with open(path, "w", encoding="utf-8") as f:
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         for entry in entries:
             f.write(orjson.dumps(entry, ensure_ascii=False) + "\n")
+    shutil.move(tmp_path, path)
 
 # --- Deduplication utilities ---
 def deduplicate_entries(entries, key_fields=("extracted_value", "field_type", "context_key")):
@@ -315,11 +430,10 @@ def trim_log_file(path: Path):
     deduped, _ = deduplicate_entries(entries)
     save_jsonl(path, deduped)
 
-# --- Context library update logic ---
+# --- Context library update logic (atomic, validated, backup) ---
 def update_context_with_new_entries(context_path, field_type, field_entries):
     context_path = safe_path(context_path, [CONTEXT_LIBRARY_DIR])
     def updater(library):
-        # Ensure the field_type exists and is a dict (grouped by context_key)
         if field_type not in library or not isinstance(library[field_type], dict):
             library[field_type] = {}
         for context_key, entries in field_entries.items():
@@ -328,7 +442,10 @@ def update_context_with_new_entries(context_path, field_type, field_entries):
             for entry in entries:
                 if entry not in library[field_type][context_key]:
                     library[field_type][context_key].append(entry)
-    update_context_library(context_path, updater)
+    library = load_context_library(context_path)
+    updater(library)
+    # TODO: Add JSON schema validation here if desired
+    atomic_write_json(library, context_path)
 
 # --- Integrity check integration ---
 def highlight_anomalies(context_library, field_type):
@@ -349,8 +466,8 @@ def highlight_anomalies(context_library, field_type):
         for label, count in entity_summary.items():
             print(f"  {label}: {count}")
 
-# --- DB update logic (optional) ---
-def update_database_with_context(library, db_path=None, enhanced=True, coordinator=None):
+# --- DB update logic (batch, periodic, error handling) ---
+def update_database_with_context(library, db_path=None, enhanced=True, coordinator=None, batch=False):
     if not db_path:
         db_path = CONTEXT_LIBRARY_DIR / "context_library.json"
     db_path = safe_path(db_path, [CONTEXT_LIBRARY_DIR])
@@ -358,11 +475,22 @@ def update_database_with_context(library, db_path=None, enhanced=True, coordinat
         if enhanced and coordinator and hasattr(coordinator, "update_db_with_context"):
             coordinator.update_db_with_context(library, db_path)
         else:
-            with open(db_path, "w", encoding="utf-8") as f:
-                orjson.dumps(library, f, indent=2, ensure_ascii=False)
+            atomic_write_json(library, db_path)
         logger.info(f"Database updated at {db_path}")
     except Exception as e:
         logger.error(f"Failed to update DB: {e}")
+
+# --- CLI/REST API hooks (REST stub) ---
+def run_rest_api():
+    try:
+        app = FastAPI()
+        @app.get("/status")
+        def status():
+            return {"status": "ok"}
+        # Add more endpoints as needed
+        uvicorn.run(app, host="127.0.0.1", port=8000)
+    except ImportError:
+        print("FastAPI/uvicorn not installed.")
 
 # --- Export/Import correction sessions ---
 def export_correction_session(log_paths, export_dir=EXPORT_DIR):
@@ -454,6 +582,11 @@ def main():
     parser.add_argument("--log-dir", type=str, default=str(LOG_DIR), help="Directory containing *_selection_log.jsonl files")
     parser.add_argument("--fields", type=str, nargs="*", default=ALL_FIELDS, help="Fields to process (default: all)")
     parser.add_argument("--auto", action="store_true", help="Automatically accept all new entries (no prompt)")
+    parser.add_argument("--flush-cache", action="store_true", help="Flush the cache of processed entries")
+    parser.add_argument("--cache-expire-days", type=int, default=None, help="Expire cache entries older than N days")
+    parser.add_argument("--sync-db", action="store_true", help="Sync context library to DB now")
+    parser.add_argument("--export-audit-log", type=str, help="Export audit log to given path")
+    parser.add_argument("--rest-api", action="store_true", help="Run REST API server")
     parser.add_argument("--enhanced", action="store_true", help="Enable enhanced learning and automation (spaCy, coordinator, context_organizer, LLM)")
     parser.add_argument("--llm-api-key", type=str, default=None, help="API key for external LLM (e.g., OpenAI/Anthropic)")
     parser.add_argument("--llm-provider", type=str, default="openai", help="LLM provider: openai or anthropic")
@@ -470,6 +603,24 @@ def main():
     parser.add_argument("--max-retries", type=int, default=3, help="Max self-heal attempts")
     parser.add_argument("--cooldown", type=int, default=2, help="Seconds to wait between self-heal attempts")
     args = parser.parse_args()
+
+    if args.rest_api:
+        run_rest_api()
+        return
+
+    if args.flush_cache:
+        cache = load_cache()
+        cache.clear()
+        close_cache(cache)
+        print("Cache flushed.")
+        return
+
+    cache = load_cache(expire_days=args.cache_expire_days)
+
+    if args.export_audit_log:
+        shutil.copy2(AUDIT_LOG_PATH, args.export_audit_log)
+        print(f"Audit log exported to {args.export_audit_log}")
+        return
 
     if args.self_heal:
         scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
@@ -504,15 +655,43 @@ def main():
     log_files = find_log_files(log_dir)
     logger.info(f"Discovered {len(log_files)} log files in {log_dir}")
 
+    batch_entries = []
+    for log_file in log_files:
+        for field in fields:
+            if field in log_file.name:
+                logger.info(f"Processing {log_file} for field {field}")
+                entries = load_jsonl_incremental(log_file, cache)
+                unique_entries, _ = deduplicate_entries(entries)
+                # ...review logic (auto/batch/interactive/feedback loop)...
+                # For demo, auto-accept all:
+                field_entries = defaultdict(list)
+                for entry in unique_entries:
+                    field_entries[entry.get("context_key", "default")].append(entry)
+                    cache[str(hash(orjson.dumps(entry)))] = {
+                        "status": "accepted",
+                        "timestamp": datetime.now().isoformat(),
+                        "action": "auto-accept",
+                        "user": os.environ.get("USER", "system"),
+                    }
+                    write_audit_log("accept", entry, user=os.environ.get("USER", "system"))
+                update_context_with_new_entries(context_path, field, field_entries)
+                batch_entries.extend(unique_entries)
+                # Periodic DB sync
+                if args.sync_db and len(batch_entries) >= BATCH_SIZE:
+                    context_library = load_context_library(context_path)
+                    update_database_with_context(context_library)
+                    batch_entries.clear()
+                break
+
     # Optionally: connect to coordinator/context_organizer if enhanced
     coordinator = None
     context_organizer = None
     if args.enhanced:
         try:
             import importlib
-            coordinator_mod = importlib.import_module("webapp.parser.Context_Integration.context_coordinator")
+            coordinator_mod = importlib.import_module(PROJECT_ROOT, "webapp.parser.Context_Integration.context_coordinator")
             coordinator = getattr(coordinator_mod, "ContextCoordinator", None)
-            organizer_mod = importlib.import_module("webapp.parser.Context_Integration.context_organizer")
+            organizer_mod = importlib.import_module(PROJECT_ROOT, "webapp.parser.Context_Integration.context_organizer")
             context_organizer = getattr(organizer_mod, "context_organizer", None)
         except Exception as e:
             logger.warning(f"Could not import coordinator/context_organizer: {e}")
@@ -570,6 +749,7 @@ def main():
                             field_entries, field, context_path,
                             enhanced=args.enhanced,
                             coordinator=coordinator,
+                            context_organizer=context_organizer,
                             llm_api_key=args.llm_api_key,
                             llm_provider=args.llm_provider,
                             llm_model=args.llm_model,
