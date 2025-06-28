@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
-from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL
+from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL, LOG_DIR
 import smtplib
 from email.message import EmailMessage
 import requests
@@ -48,7 +48,6 @@ For field-specific correction: --fields contests states --feedback --enhanced
 ORCHESTRATION_PLUGINS = []
 
 WEBAPP_DIR = BASE_DIR
-DEFAULT_LOG_DIR = os.path.join(PROJECT_ROOT, "log")
 
 def register_orchestration_plugin(plugin_func):
     """Register a plugin function for orchestration logic."""
@@ -440,7 +439,7 @@ def should_run_correction_bot(log_dir, last_run_time):
                 return True
     return False
 
-def summarize_logs(log_dir=DEFAULT_LOG_DIR, max_lines=100):
+def summarize_logs(log_dir=LOG_DIR, max_lines=100):
     """Summarize recent logs for AI context."""
     logs = []
     if not os.path.isdir(log_dir):
@@ -460,12 +459,12 @@ def ai_suggest_bots(context=None):
     """
     suggestions = []
     context = context or {}
-    log_dir = os.getenv("LOG_DIR", DEFAULT_LOG_DIR)
-    logs_summary = summarize_logs(log_dir)
+
+    logs_summary = summarize_logs(LOG_DIR)
     # Gather context for the LLM
     context = context or {}
-    log_dir = os.getenv("LOG_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "log"))
-    logs_summary = summarize_logs(log_dir)
+
+    logs_summary = summarize_logs(LOG_DIR)
     model_path = os.path.join(os.path.dirname(__file__), "..", "Context_Integration", "Context_Library", "table_structure_model.pkl")
     model_age = get_file_age_days(model_path)
     env_vars = {k: v for k, v in os.environ.items() if k.startswith("LLM_") or k in [
@@ -602,11 +601,10 @@ def suggest_bots(context=None):
         suggestions.append(("scan_and_notify", []))
 
     # Suggest batch_status_report if logs mention 'batch' or 'status'
-    log_dir = os.getenv("LOG_DIR", DEFAULT_LOG_DIR)
     last_run_time = time.time() - 3600  # Example: last hour
-    if should_run_correction_bot(log_dir, last_run_time):
+    if should_run_correction_bot(LOG_DIR, last_run_time):
         suggestions.append(("manual_correction_bot", correction_args))
-    if os.path.isdir(log_dir) and should_run_correction_bot(log_dir, last_run_time):
+    if os.path.isdir(LOG_DIR) and should_run_correction_bot(LOG_DIR, last_run_time):
         suggestions.append(("manual_correction_bot", correction_args))
 
     suggestions.extend(run_orchestration_plugins(context))
