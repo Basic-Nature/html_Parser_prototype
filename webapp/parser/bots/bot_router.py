@@ -190,6 +190,7 @@ def run_pipeline():
     # 6. Run orchestration plugins (context_organizer, context_coordinator, integrity_check, librarian, etc.)
     print("[BOT ROUTER] Step 5: Running orchestration plugins and context modules...")
     context = load_context_library()
+    print("Type of context:", type(context))
     try:
         # Example: Run integrity check and print summary
         contests = context.get("contests", [])
