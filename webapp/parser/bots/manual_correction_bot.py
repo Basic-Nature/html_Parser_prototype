@@ -674,7 +674,7 @@ def main():
     cache_dir = safe_path(CACHE_DIR, [CACHE_DIR]) if CACHE_DIR else None
     fields = args.fields
     log_files = find_log_files(log_dir, cache_dir)
-    print(f"[DEBUG] All discovered log files: {[str(f) for f in log_files]}")
+    # print(f"[DEBUG] All discovered log files: {[str(f) for f in log_files]}")
     logger.info(f"Discovered {len(log_files)} log files in {log_dir}")
 
     batch_entries = []

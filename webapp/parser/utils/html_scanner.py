@@ -970,12 +970,15 @@ def save_pattern_kb(kb):
     path = safe_log_path("dom_pattern_kb.jsonl")
     with open(path, "wb") as f:
         for entry in kb:
+            if not isinstance(entry, dict):
+                continue  # skip non-dict
             if "embedding" in entry and isinstance(entry["embedding"], np.ndarray):
                 entry["embedding"] = entry["embedding"].tolist()
             f.write(orjson.dumps(entry, option=orjson.OPT_INDENT_2) + b"\n")
-            
+
 def append_pattern_kb(entry):
-    # Convert any ndarray to list before saving
+    if not isinstance(entry, dict):
+        raise ValueError("Only dict entries can be written to dom_pattern_kb.jsonl")
     if "embedding" in entry and isinstance(entry["embedding"], np.ndarray):
         entry["embedding"] = entry["embedding"].tolist()
     path = safe_log_path("dom_pattern_kb.jsonl")
@@ -983,9 +986,10 @@ def append_pattern_kb(entry):
         f.write(orjson.dumps(entry, option=orjson.OPT_INDENT_2) + b"\n")
         
 def append_feedback_log(entry):
-    # Convert any ndarray to list before saving
+    if not isinstance(entry, dict):
+        raise ValueError("Only dict entries can be written to segment_feedback_log.jsonl")
     if "embedding" in entry and isinstance(entry["embedding"], np.ndarray):
-        entry["embedding"] = entry["embedding"].tolist()    
+        entry["embedding"] = entry["embedding"].tolist()
     path = safe_log_path("segment_feedback_log.jsonl")
     with open(path, "ab") as f:
         f.write(orjson.dumps(entry, option=orjson.OPT_INDENT_2) + b"\n")
@@ -1003,7 +1007,7 @@ def append_feedback_log(entry):
         }
         # Add to in-memory pattern KB cache if available
         global _pattern_kb_cache
-        if _pattern_kb_cache is not None:
+        if _pattern_kb_cache is not None and isinstance(_pattern_kb_cache, list):
             _pattern_kb_cache.append(kb_entry)
 
 def get_page_hash(page):
