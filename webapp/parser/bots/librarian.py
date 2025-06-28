@@ -9,6 +9,7 @@ from tempfile import NamedTemporaryFile
 import shutil
 from pathlib import Path
 from datetime import datetime, timezone
+import hashlib
 import time
 import threading
 import shutil
@@ -347,15 +348,58 @@ def update_context_library(path, update_fn):
         lib = load_context_library(path)
         update_fn(lib)
         save_context_library(lib, path)
-           
-def backup_context_library(path=CONTEXT_LIBRARY_PATH):
+
+def file_hash(path):
+    """Return SHA256 hash of file contents."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(8192)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+       
+def backup_context_library(path=CONTEXT_LIBRARY_PATH, max_backups=5):
     """
-    Make a timestamped backup of the context library before overwriting.
+    Make a timestamped backup of the context library before overwriting,
+    but only if the content has changed. Keep only the most recent `max_backups` backups.
     """
-    if os.path.exists(path):
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        backup_path = f"{path}.{timestamp}.bak"
-        shutil.copy2(path, backup_path)
+    if not os.path.exists(path):
+        return
+
+    # Check if last backup is identical; if so, skip backup
+    dir_ = os.path.dirname(path)
+    base = os.path.basename(path)
+    backups = sorted(
+        [f for f in os.listdir(dir_) if f.startswith(base) and f.endswith(".bak")],
+        reverse=True
+    )
+    current_hash = file_hash(path)
+    if backups:
+        last_backup_path = os.path.join(dir_, backups[0])
+        try:
+            if file_hash(last_backup_path) == current_hash:
+                # No change since last backup
+                return
+        except Exception:
+            pass
+
+    # Make new backup
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    backup_path = f"{path}.{timestamp}.bak"
+    shutil.copy2(path, backup_path)
+
+    # Prune old backups
+    backups = sorted(
+        [f for f in os.listdir(dir_) if f.startswith(base) and f.endswith(".bak")],
+        reverse=True
+    )
+    for old in backups[max_backups:]:
+        try:
+            os.remove(os.path.join(dir_, old))
+        except Exception:
+            pass
 
 def save_context_library(lib, path=None):
     """
