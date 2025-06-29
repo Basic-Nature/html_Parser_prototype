@@ -1,4 +1,4 @@
-import logging
+
 import subprocess
 import sys
 import os
@@ -19,7 +19,7 @@ from ..bots.context_migration import migrate_all
 from ..bots.scan_misaligned_ner import scan_misaligned
 from ..Context_Integration import context_organizer, context_coordinator, Integrity_check
 from ..bots.librarian import load_context_library
-
+from ..utils.shared_logger import logger
 try:
     import openai
 except ImportError:
@@ -360,7 +360,7 @@ def scan_and_notify(context):
     Scan for new results in the context and send notifications if new or important results are found.
     This function can be extended to check for specific keys, statuses, or thresholds.
     """
-    logging.info("[BOT] Scanning for new results and sending notifications...")
+    logger.info("[BOT] Scanning for new results and sending notifications...")
     new_results = []
     # Example: Scan for new contests or results
     if context and "contests" in context:
@@ -371,17 +371,17 @@ def scan_and_notify(context):
         for result in new_results:
             message = f"New contest detected: {result.get('name', 'Unknown')}"
             send_notification(message, context=result)
-        logging.info(f"[BOT] Notifications sent for {len(new_results)} new results.")
+        logger.info(f"[BOT] Notifications sent for {len(new_results)} new results.")
         return True
     else:
-        logging.info("[BOT] No new results found for notification.")
+        logger.info("[BOT] No new results found for notification.")
         return False
 
 def batch_status_report(context):
     """
     Generate a batch status report from the context and optionally send or log it.
     """
-    logging.info("[BOT] Generating batch status report...")
+    logger.info("[BOT] Generating batch status report...")
     report = []
     if context and "contests" in context:
         for contest in context["contests"]:
@@ -390,19 +390,19 @@ def batch_status_report(context):
             report.append(f"{name}: {status}")
     report_text = "\n".join(report)
     if report_text:
-        logging.info(f"[BOT] Batch Status Report:\n{report_text}")
+        logger.info(f"[BOT] Batch Status Report:\n{report_text}")
         # Optionally, send the report via notification
         send_notification("Batch Status Report:\n" + report_text)
         return report_text
     else:
-        logging.info("[BOT] No contests found for batch status report.")
+        logger.info("[BOT] No contests found for batch status report.")
         return ""
 
 def send_notification(message, context=None, email=None):
     """
     Send a notification. Supports email, Slack, and SMS (Twilio).
     """
-    logging.info(f"[BOT] Sending notification: {message}")
+    logger.info(f"[BOT] Sending notification: {message}")
 
     # Email notification
     if os.getenv("NOTIFY_EMAILS", "false").lower() == "true":
@@ -423,9 +423,9 @@ def send_notification(message, context=None, email=None):
                         server.starttls()
                         server.login(smtp_user, smtp_pass)
                     server.send_message(msg)
-                logging.info(f"[BOT] Email notification sent to {email_to}")
+                logger.info(f"[BOT] Email notification sent to {email_to}")
             except Exception as e:
-                logging.error(f"[BOT] Failed to send email notification: {e}")
+                logger.error(f"[BOT] Failed to send email notification: {e}")
 
     # Slack notification
     if os.getenv("NOTIFY_SLACK", "false").lower() == "true":
@@ -435,11 +435,11 @@ def send_notification(message, context=None, email=None):
                 slack_data = {"text": message}
                 resp = requests.post(slack_webhook, json=slack_data)
                 if resp.status_code == 200:
-                    logging.info("[BOT] Slack notification sent.")
+                    logger.info("[BOT] Slack notification sent.")
                 else:
-                    logging.error(f"[BOT] Slack notification failed: {resp.text}")
+                    logger.error(f"[BOT] Slack notification failed: {resp.text}")
             except Exception as e:
-                logging.error(f"[BOT] Failed to send Slack notification: {e}")
+                logger.error(f"[BOT] Failed to send Slack notification: {e}")
 
     # SMS notification (Twilio)
     if os.getenv("NOTIFY_SMS", "false").lower() == "true":
@@ -461,11 +461,11 @@ def send_notification(message, context=None, email=None):
                     auth=HTTPBasicAuth(twilio_sid, twilio_token)
                 )
                 if resp.status_code == 201:
-                    logging.info("[BOT] SMS notification sent.")
+                    logger.info("[BOT] SMS notification sent.")
                 else:
-                    logging.error(f"[BOT] SMS notification failed: {resp.text}")
+                    logger.error(f"[BOT] SMS notification failed: {resp.text}")
             except Exception as e:
-                logging.error(f"[BOT] Failed to send SMS notification: {e}")
+                logger.error(f"[BOT] Failed to send SMS notification: {e}")
 
     return True
 

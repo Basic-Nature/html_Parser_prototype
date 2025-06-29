@@ -22,7 +22,6 @@ from spacy.lookups import Lookups
 import glob
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
-import logging
 import argparse
 import gc
 from sqlalchemy.orm import Session
@@ -30,8 +29,8 @@ from sqlalchemy import select, inspect
 from ..utils.db_utils import get_session, create_engine
 from ..utils.models import TableStructure, Entity
 from ..utils.models import Base
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("manual_correction_bot")
+from ..utils.shared_logger import logger
+
 
 ELECTION_ENTITY_LABELS = [
     "CONTEST", "CANDIDATE", "PARTY", "COUNTY", "STATE", "DISTRICT", "VOTE_METHOD",

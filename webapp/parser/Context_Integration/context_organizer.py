@@ -911,29 +911,33 @@ class ContextOrganizer:
         except SQLAlchemyError as e:
             self.logger.error(f"[DB][Contest] Error upserting contests: {e}")
 
-        # --- Dynamic state/county detection ---
-        from .context_coordinator import dynamic_state_county_detection
-        html = raw_context.get("raw_html", "")
-        county, state, handler_path, detection_log = dynamic_state_county_detection(
-            raw_context, html, debug=True
+        missing_location = any(
+            not c.get("state") or not c.get("county")
+            for c in contests
         )
-        for log_entry in detection_log:
-            log.append(f"[Dynamic Detection] {log_entry}")
-            if debug:
-                self.logger.info(f"[ContextOrganizer][Dynamic Detection] {log_entry}")
-        if state:
-            raw_context["state"] = state
-        if county:
-            raw_context["county"] = county
-        summary["final"] = {"state": state, "county": county, "handler_path": handler_path}
-        log.append(f"Final detected state: {state}, county: {county}, handler_path: {handler_path}")
+
+        if missing_location:
+            from .context_coordinator import dynamic_state_county_detection
+            html = raw_context.get("raw_html", "")
+            county, state, handler_path, detection_log = dynamic_state_county_detection(
+                raw_context, html, debug=True
+            )
+            for log_entry in detection_log:
+                log.append(f"[Dynamic Detection] {log_entry}")
+                if debug:
+                    self.logger.info(f"[ContextOrganizer][Dynamic Detection] {log_entry}")
+            if state:
+                raw_context["state"] = state
+            if county:
+                raw_context["county"] = county
+            summary["final"] = {"state": state, "county": county, "handler_path": handler_path}
+            log.append(f"Final detected state: {state}, county: {county}, handler_path: {handler_path}")
 
         result = {
             "organized": organized,
             "summary": summary,
             "log": log,
             "error": None,
-            "handler_path": handler_path
         }
         self.organized = organized
         return result
