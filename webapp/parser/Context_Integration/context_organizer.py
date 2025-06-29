@@ -195,9 +195,14 @@ class ContextOrganizer:
             if isinstance(self.embedding_model, str):
                 self.embedding_model_obj = ModelRegistry.get_sentence_transformer(self.embedding_model)
                 self.logger.info(f"[CONTEXT ORGANIZER] Loaded embedding model: {self.embedding_model}")
-            else:
+            elif hasattr(self.embedding_model, "encode"):
+                # Looks like a SentenceTransformer or compatible model
                 self.embedding_model_obj = self.embedding_model
                 self.logger.info(f"[CONTEXT ORGANIZER] Using provided embedding model object.")
+            else:
+                # If it's a method, class, or something else, warn and set to None
+                self.logger.warning(f"[CONTEXT ORGANIZER] Provided embedding_model is not a recognized model instance or string. Type: {type(self.embedding_model)}. Setting to None.")
+                self.embedding_model_obj = None
         except Exception as e:
             self.logger.error(f"[CONTEXT ORGANIZER] Failed to load embedding model: {e}")
             self.embedding_model_obj = None
@@ -502,9 +507,13 @@ class ContextOrganizer:
         Uses ModelRegistry.get_model_name if available, else falls back to class name or str.
         """
         try:
-            # Use ModelRegistry utility if available
+            # If model is a method or not an instance, return its type
             if model is None:
                 return "None"
+            # Avoid passing a method or class to get_model_name
+            if callable(model) and not hasattr(model, "model_name_or_path"):
+                return f"{type(model).__name__} (not loaded)"
+            # Use ModelRegistry utility if available
             if hasattr(ModelRegistry, "get_model_name"):
                 name = ModelRegistry.get_model_name(model)
                 if name and isinstance(name, str):
