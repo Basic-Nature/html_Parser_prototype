@@ -7,13 +7,13 @@ import time
 import os
 import platform
 from ..utils.shared_logger import rprint, logger
-import json
+import orjson
 from ..config import CONTEXT_LIBRARY_PATH
 
 # Load CAPTCHA indicators from context library
 if os.path.exists(CONTEXT_LIBRARY_PATH):
-    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
-        CONTEXT_LIBRARY = json.load(f)
+    with open(CONTEXT_LIBRARY_PATH, "rb") as f:
+        CONTEXT_LIBRARY = orjson.loads(f.read())
     CLOUDFLARE_CAPTCHA_INDICATORS = CONTEXT_LIBRARY.get("cloudflare_captcha_indicators", [])
 else:
     logger.error("[captcha_tools] context_library.json not found. CAPTCHA detection will be limited.")

@@ -1,21 +1,23 @@
 import os
 import requests
 import hashlib
-import json
+import orjson
 from urllib.parse import urljoin
 from datetime import datetime
 from ..utils.shared_logger import logger
 from ..Context_Integration.context_organizer import ContextOrganizer
+from ..config import INPUT_DIR, OUTPUT_DIR
 
-DOWNLOAD_MANIFEST = "input/.download_manifest.jsonl"
+
+DOWNLOAD_MANIFEST = os.path.join(INPUT_DIR, ".download_manifest.jsonl")
 
 def ensure_input_directory():
     """Ensure the 'input' directory exists."""
-    os.makedirs("input", exist_ok=True)
+    os.makedirs(INPUT_DIR, exist_ok=True)
 
 def ensure_output_directory():
     """Ensure the 'output' directory exists."""
-    os.makedirs("output", exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def file_hash(filepath, algo="sha256", blocksize=65536):
     """Compute the hash of a file for deduplication/integrity."""
@@ -30,10 +32,10 @@ def load_download_manifest():
     if not os.path.exists(DOWNLOAD_MANIFEST):
         return {}
     manifest = {}
-    with open(DOWNLOAD_MANIFEST, "r", encoding="utf-8") as f:
+    with open(DOWNLOAD_MANIFEST, "rb") as f:
         for line in f:
             try:
-                entry = json.loads(line)
+                entry = orjson.loads(line)
                 manifest[entry.get("url") or entry.get("filename")] = entry
             except Exception:
                 continue
@@ -41,8 +43,8 @@ def load_download_manifest():
 
 def update_download_manifest(entry):
     """Append a new entry to the download manifest."""
-    with open(DOWNLOAD_MANIFEST, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+    with open(DOWNLOAD_MANIFEST, "ab") as f:
+        f.write(orjson.dumps(entry) + b"\n")
 
 def is_already_downloaded(url, filename=None, check_hash=False):
     """Check if a file has already been downloaded (by URL or filename, optionally by hash)."""
@@ -69,7 +71,7 @@ def download_file(page_url, href, context_info=None, check_hash=False):
     """
     ensure_input_directory()
     filename = os.path.basename(href)
-    save_path = os.path.join("input", filename)
+    save_path = os.path.join(INPUT_DIR, filename)
     file_url = urljoin(page_url, href)
 
     # Prevent re-download if already present
@@ -83,7 +85,7 @@ def download_file(page_url, href, context_info=None, check_hash=False):
         with open(save_path, "wb") as f:
             f.write(response.content)
         filehash = file_hash(save_path)
-        logger.info(f"[DOWNLOAD] Downloaded: {filename} -> input/")
+        logger.info(f"[DOWNLOAD] Downloaded: {filename} -> {INPUT_DIR}/")
         # Update manifest
         entry = {
             "url": file_url,

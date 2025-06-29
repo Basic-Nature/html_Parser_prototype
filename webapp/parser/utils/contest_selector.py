@@ -4,7 +4,7 @@ from ..utils.shared_logic import normalize_state_name, normalize_county_name
 from ..utils.user_prompt import prompt_user_input, PromptCancelled
 from collections import defaultdict
 from ..bots.librarian import (
-    VALID_TYPES, CONTEST_KEYWORDS
+    VALID_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP
     )
 
 from typing import TYPE_CHECKING, List, Dict, Any, Optional
@@ -168,9 +168,8 @@ def select_contest(
     norm_state = normalize_state_name(state)
     norm_county = normalize_county_name(county)
 
-    # Load district mapping
-    context_library = coordinator.library if hasattr(coordinator, "library") else {}
-    known_county_to_district = context_library.get("Known_county_to_district_map", {})
+    # Load precincts mapping
+    known_county_to_precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP
 
     def county_matches(contest_county):
         contest_county_norm = normalize_county_name(contest_county)
@@ -178,10 +177,10 @@ def select_contest(
             return True
         if contest_county_norm == norm_county:
             return True
-        # Check if contest county is a district of the selected county
-        for parent_county, districts in known_county_to_district.items():
+        # Check if contest county is a precincts of the selected county
+        for parent_county, precincts in known_county_to_precincts.items():
             if normalize_county_name(parent_county) == norm_county:
-                if contest_county_norm in [normalize_county_name(d) for d in districts]:
+                if contest_county_norm in [normalize_county_name(d) for d in precincts]:
                     return True
         return False
 

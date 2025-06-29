@@ -1,5 +1,6 @@
-import json, os, re
-from typing import Set, List
+import os, re
+
+from typing import Dict, Set, List
 from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT, LOG_DIR, BASE_DIR
 import orjson
 import subprocess
@@ -29,7 +30,260 @@ DEFAULT_STRUCTURE = {
 }
 _context_library_cache = None
 
+#: Maps normalized state names to a sorted list of their counties (all lowercase).
+KNOWN_STATE_TO_COUNTY_MAP: Dict[str, List[str]] = {
+    "alabama": sorted([
+        "autauga", "baldwin", "barbour", "bibb", "blount", "bullock", "butler", "calhoun", "chambers",
+        "cherokee", "chilton", "choctaw", "clarke", "cleburne", "coffee", "colbert", "coneucuh", "coosa",
+        "covington", "crenshaw", "cullman", "dale", "dallas", "de kalb", "elmore", "escambia", "etowah",
+        "fayette", "franklin"
+    ]),
+    "alaska": sorted([
+        "aleutians east", "aleutians west", "anchorage", "bethel", "bristol bay", "denali",
+        "fairbanks north star", "haines", "juneau", "kenai peninsula", "ketchikan gateway", "kipnuk",
+        "kodiak island", "lake and peninsula", "matanuska-susitna", "nome", "north slope", "northwest arctic",
+        "prince of wales-hyder", "sitka", "skagway", "southeast fairbanks", "valdez-cordova"
+    ]),
+    "arizona": sorted([
+        "apache", "coconino", "gila", "graham", "greenlee", "la paz", "maricopa", "mojave", "navajo",
+        "pima", "pinal", "santa cruz", "yavapai", "yuma"
+    ]),
+    "arkansas": sorted([
+        "arkansas", "ashley", "baxter", "benton", "boone", "bradley", "calhoun", "carroll", "chicot",
+        "clark", "clay", "cleburne", "columbia", "conway", "craighead", "crawford", "crittenden", "cross",
+        "dallas", "desha"
+    ]),
+    "california": sorted([
+        "alameda", "alpine", "amador", "butte", "calaveras", "colusa", "contra costa", "del norte",
+        "el dorado", "fresno", "glenn", "humboldt", "imperial", "inyo", "kern", "kings", "lake", "lassen",
+        "los angeles", "madera"
+    ]),
+    "colorado": sorted([
+        "adams", "alamosa", "arapahoe", "archuleta", "baca", "bent", "boulder", "broomfield", "chaffee",
+        "cheyenne", "clear creek", "conejos", "costilla", "crowley", "custer", "delta", "denver", "dolores",
+        "douglas", "eagle"
+    ]),
+    "connecticut": sorted([
+        "fairfield", "hartford", "litchfield", "middlesex", "new haven", "new london", "tolland", "windham"
+    ]),
+    "delaware": sorted([
+        "kent", "new castle", "sussex"
+    ]),
+    "district_of_columbia": ["district of columbia"],
+    "florida": sorted([
+        "alachua", "baker", "bay", "bradford", "brevard", "broward", "calhoun", "charlotte", "citrus",
+        "clay", "collier", "columbia", "de soto", "dixie", "duval", "escambia", "flagler", "franklin"
+    ]),
+    "georgia": sorted([
+        "appling", "atlanta", "bacon", "baker", "baldwin", "banks", "barrow", "bartow", "ben hill", "bibb",
+        "bleckley", "brantley", "brooks", "bulloch", "burke", "butts"
+    ]),
+    "hawaii": sorted([
+        "hawaii", "honolulu", "kalaheo", "kauai", "maui"
+    ]),
+    "idaho": sorted([
+        "ada", "adams", "bannock", "bear lake", "benewah", "bingham", "blaine", "boise", "bonner",
+        "bonneville", "boundary", "butte", "camas", "canyon", "caribou", "cassia"
+    ]),
+    "illinois": sorted([
+        "adams", "alexander", "bond", "boone", "brown", "bureau", "calhoun", "carroll", "cass",
+        "champaign", "christian", "clark", "clay", "clinton", "coles", "cook"
+    ]),
+    "indiana": sorted([
+        "adams", "allen", "bartholomew", "benton", "blackford", "boone", "brown", "carroll", "cass",
+        "clark", "clay", "clinton", "crawford", "dearborn", "decatur", "dekalb"
+    ]),
+    "iowa": sorted([
+        "adair", "adams", "allamakee", "appanoose", "audubon", "benton", "black hawk", "boone", "bremer",
+        "buchanan", "buena vista", "butler", "calhoun", "carroll", "cass"
+    ]),
+    "kansas": sorted([
+        "allen", "anderson", "atchison", "barber", "barton", "bourbon", "brown", "butler", "chase",
+        "chautauqua", "cherokee", "cheyenne", "clark", "clay", "cloud"
+    ]),
+    "kentucky": sorted([
+        "adair", "allen", "anderson", "ballard", "barren", "bell", "boone", "bourbon", "boyd", "boyle",
+        "bracken", "breathitt", "breckinridge", "bullitt", "butler"
+    ]),
+    "louisiana": sorted([
+        "acadia", "allen", "ascension", "assumption", "avoyelles", "bienville", "bossier", "caddo",
+        "calcasieu", "cameron", "catahoula", "claiborne", "concordia", "de soto", "east baton rouge"
+    ]),
+    "maine": sorted([
+        "androscoggin", "aroostook", "cumberland", "franklin", "hancock", "kennebec", "knox", "lincoln",
+        "oxford", "penobscot", "sagadahoc", "somerset", "waldo", "washington", "york"
+    ]),
+    "maryland": sorted([
+        "anne arundel", "baltimore", "calvert", "caroline", "carroll", "cecil", "charles", "dorchester",
+        "frederick", "garrett", "harford", "howard", "kent", "montgomery", "prince george's"
+    ]),
+    "massachusetts": sorted([
+        "barnstable", "berkshire", "bristol", "dukes", "essex", "franklin", "hampden", "hampshire",
+        "middlesex", "nantucket", "norfolk", "plymouth", "suffolk", "worcester"
+    ]),
+    "michigan": sorted([
+        "alcona", "alger", "allegan", "alpena", "antrim", "arenac", "baraga", "barry", "bay", "benzie",
+        "berrien", "branch", "calhoun", "cass", "charlevoix"
+    ]),
+    "minnesota": sorted([
+        "aitkin", "anoka", "becker", "beltrami", "benton", "big stone", "blue earth", "brown", "carver",
+        "cass", "chippewa", "chisago", "clay", "clearwater", "cook"
+    ]),
+    "mississippi": sorted([
+        "adams", "alcorn", "amite", "attala", "benton", "bolivar", "calhoun", "carroll", "chickasaw",
+        "choctaw", "claiborne", "clarke", "clay", "coahoma", "copiah"
+    ]),
+    "missouri": sorted([
+        "adair", "andrew", "atchison", "audrain", "barry", "barton", "bates", "benton", "bollinger",
+        "boone", "buchanan", "butler", "caldwell", "callaway", "camden"
+    ]),
+    "montana": sorted([
+        "beaverhead", "big horn", "blaine", "broadwater", "carbon", "carter", "cascade", "chouteau",
+        "custer", "daniels", "dawson", "deer lodge", "fallon", "fergus", "flathead"
+    ]),
+    "nebraska": sorted([
+        "adams", "antelope", "arthur", "banner", "blaine", "boone", "box butte", "boyd", "brown",
+        "buffalo", "burke", "butler", "cass", "cedar", "chase"
+    ]),
+    "nevada": sorted([
+        "carson city", "churchill", "clark", "douglas", "elko", "esmeralda", "eureka", "humboldt",
+        "lander", "lincoln", "lyon", "mineral", "nye", "pershing", "storey"
+    ]),
+    "new_hampshire": sorted([
+        "belknap", "carroll", "cheshire", "coos", "grafton", "hillsborough", "merrimack", "rockingham",
+        "strafford", "sullivan"
+    ]),
+    "new_jersey": sorted([
+        "atlantic", "bergen", "burlington", "camden", "cape may", "cumberland", "essex", "gloucester",
+        "hudson", "hunterdon", "mercer", "middlesex", "monmouth", "morris"
+    ]),
+    "new_mexico": sorted([
+        "bernalillo", "catron", "chaves", "cibola", "colfax", "de baca", "doña ana", "eddie", "grant",
+        "guadalupe", "harding", "hidalgo", "leonard wood", "los alamos", "luna"
+    ]),
+    "new_york": sorted([
+        "albany", "allegany", "bronx", "broome", "cattaraugus", "cayuga", "chautauqua", "chemung",
+        "chenango", "clinton", "columbia", "cortland", "delaware", "dutchess", "erie", "rockland"
+    ]),
+    "north_carolina": sorted([
+        "alamance", "alexander", "alleghany", "anson", "ashe", "avery", "beaufort", "bertie", "bladen",
+        "brunswick", "buncombe", "burke", "cabarrus", "caldwell", "camden"
+    ]),
+    "north_dakota": sorted([
+        "adams", "barnes", "burke", "cass", "cavalier", "dickey", "divide", "dunn", "edmunds", "emmons",
+        "foster", "golden valley", "grand forks", "grant", "hedinger"
+    ]),
+}
 # --- Central Dynamic Sets (used everywhere) ---
+
+STATE_MODULE_MAP: Dict[str, str] = {
+    state: (
+        "webapp.parser.handlers.states.dc.dc"
+        if state == "district_of_columbia"
+        else f"webapp.parser.handlers.states.{state}.{state}"
+    )
+    for state in KNOWN_STATE_TO_COUNTY_MAP.keys()
+}
+
+_CANONICAL_STATE_ABBR = {
+    "alabama": ["al", "ala"],
+    "alaska": ["ak"],
+    "arizona": ["az", "ariz"],
+    "arkansas": ["ar", "ark"],
+    "california": ["ca", "calif"],
+    "colorado": ["co", "colo"],
+    "connecticut": ["ct", "conn"],
+    "delaware": ["de", "del"],
+    "district_of_columbia": ["dc", "d.c."],
+    "florida": ["fl", "fla"],
+    "georgia": ["ga", "ga."],
+    "hawaii": ["hi"],
+    "idaho": ["id"],
+    "illinois": ["il", "ill"],
+    "indiana": ["in", "ind"],
+    "iowa": ["ia"],
+    "kansas": ["ks", "kans"],
+    "kentucky": ["ky", "ky."],
+    "louisiana": ["la", "la."],
+    "maine": ["me"],
+    "maryland": ["md", "md."],
+    "massachusetts": ["ma", "mass"],
+    "michigan": ["mi", "mich."],
+    "minnesota": ["mn", "minn"],
+    "mississippi": ["ms", "miss"],
+    "missouri": ["mo", "mo."],
+    "montana": ["mt", "mont"],
+    "nebraska": ["ne", "nebr"],
+    "nevada": ["nv", "nev"],
+    "new_hampshire": ["nh", "n.h."],
+    "new_jersey": ["nj", "n.j."],
+    "new_mexico": ["nm", "n. mex."],
+    "new_york": ["ny", "n.y."],
+    "north_carolina": ["nc", "n.c."],
+    "north_dakota": ["nd", "n. dak."],
+    "ohio": ["oh"],
+    "oklahoma": ["ok", "okla"],
+    "oregon": ["or", "ore"],
+    "pennsylvania": ["pa", "pa."],
+    "rhode_island": ["ri", "r.i."],
+    "south_carolina": ["sc", "s.c."],
+    "south_dakota": ["sd", "s. dak."],
+    "tennessee": ["tn", "tenn"],
+    "texas": ["tx", "tex"],
+    "utah": ["ut"],
+    "vermont": ["vt", "vt."],
+    "virginia": ["va", "va."],
+    "washington": ["wa", "wash"],
+    "west_virginia": ["wv", "w. va."],
+    "wisconsin": ["wi", "wis"],
+    "wyoming": ["wy", "wyo"],
+}
+
+STATE_ABBR = {
+    abbr: state
+    for state, abbrs in _CANONICAL_STATE_ABBR.items()
+    for abbr in abbrs + [state]
+}
+
+#: Maps normalized county names to a list of their precincts.
+KNOWN_COUNTY_TO_PRECINCTS_MAP: dict[str, list[str]] = {
+    "rockland": [
+        "haverstraw",
+        "clarkstown",
+        "ramapo",
+        "orangetown",
+        "stony point"
+    ],
+    "kings": [
+        "brooklyn",
+        "coney island",
+        "brownsville"
+    ],
+    "queens": [
+        "astoria",
+        "flushing",
+        "jamaica",
+        "long island city",
+        "forest hills"
+    ],
+    "los angeles": [
+        "central la",
+        "south la",
+        "east la"
+    ],
+    "cook": [
+        "chicago",
+        "evanston",
+        "oak park"
+    ],
+    "maricopa": [
+        "phoenix",
+        "mesa",
+        "chandler"
+    ],
+    # Add more counties and their districts/precincts as needed
+}
+
 HTML_TAGS: Set[str] = set([
     "html", "head", "title", "body", "h1", "h2", "h3", "h4", "h5", "h6",
     "b", "i", "center", "ul", "li", "br", "p", "hr", "img", "a", "span", "div", "button", "input", "form", "table"
@@ -322,11 +576,15 @@ def load_context_library(path=CONTEXT_LIBRARY_PATH):
 def update_context_library(path, update_fn):
     """
     Safely update the context library at `path` by applying `update_fn(library)`.
-    Loads, mutates, and saves the full dict atomically.
+    If a dict is passed instead of a function, it will update the library with that dict.
     """
     with _CONTEXT_LOCK:
         lib = load_context_library(path)
-        update_fn(lib)
+        # Accept either a function or a dict
+        if isinstance(update_fn, dict):
+            lib.update(update_fn)
+        else:
+            update_fn(lib)
         save_context_library(lib, path)
 
 def file_hash(path):
@@ -471,8 +729,8 @@ def log_unknown_tag(tag: str):
         UNKNOWN_TAGS_LOG.add(tag)
         try:
             log_path = _get_log_path("unknown_tags_log.jsonl")
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"tag": tag}) + "\n")
+            with open(log_path, "ab") as f:
+                f.write(orjson.dumps({"tag": tag}) + b"\n")
         except Exception:
             pass
 
@@ -481,8 +739,8 @@ def log_unknown_attr(attr: str):
         UNKNOWN_ATTRS_LOG.add(attr)
         try:
             log_path = _get_log_path("unknown_attrs_log.jsonl")
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"attr": attr}) + "\n")
+            with open(log_path, "ab") as f:
+                f.write(orjson.dumps({"attr": attr}) + b"\n")
         except Exception:
             pass
 
@@ -558,7 +816,7 @@ if __name__ == "__main__":
         sys.exit(self_heal_context_library(args.max_retries, args.cooldown))
 # --- Export all sets for use in other modules ---
 __all__ = [
-    "HTML_TAGS", "PANEL_TAGS", "HEADING_TAGS", "CUSTOM_ATTR_PATTERNS", "DISTRICT_REGEX",
+    "KNOWN_STATE_TO_COUNTY_MAP", "STATE_ABBR", "STATE_MODULE_MAP", "HTML_TAGS", "PANEL_TAGS", "HEADING_TAGS", "CUSTOM_ATTR_PATTERNS", "DISTRICT_REGEX",
     "BALLOT_TYPES", "BALLOT_TYPE_SORT_ORDER", "LOCATION_KEYWORDS", "PERCENT_KEYWORDS", "TOTAL_KEYWORDS",
     "MISC_FOOTER_KEYWORDS", "CANDIDATE_KEYWORDS", "PARTY_KEYWORDS", "LOCATION_ABBREVIATIONS", "VALID_TYPES", "CONTEST_KEYWORDS",
     "extend_panel_tags", "extend_heading_tags", "extend_html_tags", "extend_custom_attr_patterns",

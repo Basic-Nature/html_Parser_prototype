@@ -2,11 +2,13 @@ import logging
 import subprocess
 import sys
 import os
-import json
+import orjson
 import time
+import errno
 from datetime import datetime
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import create_engine, text, inspect
+from sqlalchemy.orm import sessionmaker
+from ..utils.models import TableStructure
 from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL, LOG_DIR
 import smtplib
 from email.message import EmailMessage
@@ -70,6 +72,21 @@ BOT_MODULES = {
     
     # Add more bots here as needed
 }
+
+def get_table_structure_age_days():
+    engine = create_engine(POSTGRES_URL)
+    inspector = inspect(engine)
+    if 'table_structures' not in inspector.get_table_names():
+        return None  # Table does not exist
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        latest = session.query(TableStructure).order_by(TableStructure.created_at.desc()).first()
+        if not latest or not latest.created_at:
+            return None  # No data
+        return (datetime.now(latest.created_at.tzinfo) - latest.created_at).days
+    finally:
+        session.close()
 
 def check_db_connection():
     """Check if the database is available before running DB-dependent bots."""
@@ -135,8 +152,36 @@ def print_bot_summary(results):
     for bot, status in results.items():
         print(f"{bot:<27}| {status}")
 
+def run_pipeline_once():
+    lockfile = os.path.join(PROJECT_ROOT, "pipeline.lock")
+    try:
+        # Try to create the lockfile exclusively
+        fd = os.open(lockfile, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        with os.fdopen(fd, "w") as f:
+            f.write("locked")
+    except FileExistsError:
+        print("[INFO] Pipeline already running or ran.")
+        return
+    except OSError as e:
+        if e.errno == errno.EEXIST:
+            print("[INFO] Pipeline already running or ran.")
+            return
+        else:
+            raise
+    try:
+        run_pipeline()
+    finally:
+        try:
+            os.remove(lockfile)
+        except Exception:
+            pass
+
 def run_pipeline():
     """Run the main bot pipeline with DB checks and summary output."""
+    if os.getenv("SKIP_BOT_TASKS", "false").lower() == "true":
+        if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not os.environ.get("FLASK_DEBUG"):
+            print("[INFO] Skipping bot tasks as requested (SKIP_BOT_TASKS=true).")
+        return
     results = {}
     print("[BOT ROUTER] Step 1: Cleaning logs/context and migrating to PostgreSQL...")
     try:
@@ -465,8 +510,7 @@ def ai_suggest_bots(context=None):
     context = context or {}
 
     logs_summary = summarize_logs(LOG_DIR)
-    model_path = os.path.join(os.path.dirname(__file__), "..", "Context_Integration", "Context_Library", "table_structure_model.pkl")
-    model_age = get_file_age_days(model_path)
+    model_age = get_table_structure_age_days()
     env_vars = {k: v for k, v in os.environ.items() if k.startswith("LLM_") or k in [
         "ENABLE_ENHANCED", "CORRECTION_MODE", "INTEGRITY_CHECK", "UPDATE_DB", "FIELDS"
     ]}
@@ -477,7 +521,7 @@ Respond as a JSON list of objects: [{{"bot": "bot_name", "args": ["--arg1", ...]
 
 Context:
 - Model file age (days): {model_age}
-- Environment variables: {json.dumps(env_vars)}
+- Environment variables: {orjson.dumps(env_vars).decode('utf-8')}
 - Recent logs: {logs_summary[:1000]}
 - Known bots: {list(BOT_MODULES.keys())}
 
@@ -502,7 +546,7 @@ Rules:
                 temperature=0.2,
             )
             content = response.choices[0].message.content
-            ai_suggestions = json.loads(content)
+            ai_suggestions = orjson.loads(content)
             for item in ai_suggestions:
                 bot = item.get("bot")
                 args = item.get("args", [])
@@ -522,8 +566,7 @@ def suggest_bots(context=None):
     """
     suggestions = []
     # --- Example: Always suggest retrainer if model is missing or old ---
-    model_path = os.path.join(os.path.dirname(__file__), "..", "Context_Integration", "Context_Library", "table_structure_model.pkl")
-    model_age = get_file_age_days(model_path)
+    model_age = get_table_structure_age_days()
     if model_age is None or model_age > 7:
         suggestions.append(("retrain_table_structure_models", []))
 
@@ -633,8 +676,3 @@ def self_heal_loop(bot_name, args=None, max_retries=3, cooldown=2):
         time.sleep(cooldown)
     print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
     return 2
-
-# Optional: If you want to run this as a script directly
-if __name__ == "__main__":
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not __debug__:
-        run_pipeline()

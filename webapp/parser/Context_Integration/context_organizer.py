@@ -164,8 +164,6 @@ class ContextOrganizer:
         embedding_model="all-MiniLM-L6-v2",
         plot_anomalies=True,
         logger=None,
-        db_path=None,
-        context_library_path=None,
         debug=False,
         fuzzy_cutoff=0.6
     ):
@@ -178,8 +176,8 @@ class ContextOrganizer:
         self.embedding_model = embedding_model  # can be string or model object
         self.plot_anomalies = plot_anomalies
         self.logger = logger or shared_logger
-        self.db_path = db_path or CONTEXT_DB_PATH
-        self.context_library_path = context_library_path or CONTEXT_LIBRARY_PATH
+        self.db_path = CONTEXT_DB_PATH
+        self.context_library_path = CONTEXT_LIBRARY_PATH
         self.library = load_context_library() if use_library else self._default_library()
         self.organized = None
         self.processed_urls = load_processed_urls()
@@ -236,14 +234,7 @@ class ContextOrganizer:
             "captcha_solutions": {},
             "last_updated": None,
             "version": "1.2.0",
-            "Known_state_to_county_map": {},
-            "Known_county_to_district_map": {},
-            "state_module_map": {},
             "selectors": {},
-            "known_states": [],
-            "known_counties": [],
-            "known_districts": [],
-            "known_cities": [],
             "precinct_header_tags": [],
             "default_noisy_labels": [],
             "download_links": []
@@ -348,6 +339,8 @@ class ContextOrganizer:
                     "raw": c
                 })
         for c in context_library.get("contests", []):
+            if not isinstance(c, dict):
+                continue
             norm_title = normalize_label(c.get("title", c.get("label", str(c))))
             if norm_title not in contest_titles:
                 contests.append(c)
@@ -402,10 +395,14 @@ class ContextOrganizer:
         log.append(f"[KEYWORDS] Panel groups: {{k: len(v) for k,v in panel_groups.items()}}")
         # Buttons
         buttons_by_contest = defaultdict(list)
+        if not isinstance(raw_context, dict):
+            raw_context = {"buttons": raw_context}
         raw_buttons = button_features or raw_context.get("buttons", [])
-        lib_buttons = context_library.get("buttons", [])
         if not isinstance(raw_buttons, list):
             raw_buttons = []
+        if not isinstance(context_library, dict):
+            context_library = {"buttons": []}
+        lib_buttons = context_library.get("buttons", [])
         if not isinstance(lib_buttons, list):
             lib_buttons = []
         all_buttons = raw_buttons + lib_buttons
@@ -429,10 +426,11 @@ class ContextOrganizer:
         log.append(f"[KEYWORDS] Button groups: {{k: len(v) for k,v in button_groups.items()}}")
         # Tables
         tables_by_contest = defaultdict(list)
+        
         raw_tables = raw_context.get("tables", [])
-        lib_tables = context_library.get("tables", [])
         if not isinstance(raw_tables, list):
             raw_tables = []
+        lib_tables = context_library.get("tables", [])
         if not isinstance(lib_tables, list):
             lib_tables = []
         all_tables = raw_tables + lib_tables
@@ -617,7 +615,7 @@ class ContextOrganizer:
         from .context_coordinator import dynamic_state_county_detection
         html = raw_context.get("raw_html", "")
         county, state, handler_path, detection_log = dynamic_state_county_detection(
-            raw_context, html, context_library, debug=debug
+            raw_context, html, debug=True
         )
         for log_entry in detection_log:
             log.append(f"[Dynamic Detection] {log_entry}")
@@ -627,14 +625,15 @@ class ContextOrganizer:
             raw_context["state"] = state
         if county:
             raw_context["county"] = county
-        summary["final"] = {"state": state, "county": county}
-        log.append(f"Final detected state: {state}, county: {county}")
+        summary["final"] = {"state": state, "county": county, "handler_path": handler_path}
+        log.append(f"Final detected state: {state}, county: {county}, handler_path: {handler_path}")
 
         result = {
             "organized": organized,
             "summary": summary,
             "log": log,
-            "error": None
+            "error": None,
+            "handler_path": handler_path
         }
         self.organized = organized
         return result
@@ -817,7 +816,7 @@ class ContextOrganizer:
                 library = {}
             library = merge_dicts(library, remove_functions(organized))
             library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            update_context_library(path, _to_json_safe(library))
+            update_context_library(path, lambda lib: lib.update(_to_json_safe(library)))
             self.logger.info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
         except Exception as e:
             self.logger.error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")

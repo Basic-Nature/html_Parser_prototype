@@ -10,76 +10,14 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, Sp
 
 from ..utils.shared_logger import rprint, logger
 from ..utils.user_prompt import prompt_user_input
+from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
+assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
+    "STATE_MODULE_MAP and KNOWN_STATE_TO_COUNTY_MAP keys are out of sync!"
 
-def load_state_county_mappings():
-    context_lib_path = os.path.join(
-        os.path.dirname(__file__), "..", "Context_Integration", "context_library.json"
-    )
-    if os.path.exists(context_lib_path):
-        with open(context_lib_path, "rb") as f:
-            context_lib = orjson.loads(f.read())
-        state_map = context_lib.get("state_module_map", {})
-        county_map = context_lib.get("Known_state_to_county_map", {})
-        return state_map, county_map
-    return {}, {}
-
-STATE_ABBR = {
-    "al": "alabama", "ala": "alabama",
-    "ak": "alaska",
-    "az": "arizona", "ariz": "arizona",
-    "ar": "arkansas", "ark": "arkansas",
-    "ca": "california", "calif": "california",
-    "co": "colorado", "colo": "colorado",
-    "ct": "connecticut", "conn": "connecticut",
-    "de": "delaware", "del": "delaware",
-    "dc": "district_of_columbia", "d.c.": "district_of_columbia",
-    "fl": "florida", "fla": "florida",
-    "ga": "georgia", "ga.": "georgia",
-    "hi": "hawaii",
-    "id": "idaho",
-    "il": "illinois", "ill": "illinois",
-    "in": "indiana", "ind": "indiana",
-    "ia": "iowa",
-    "ks": "kansas", "kans": "kansas",
-    "ky": "kentucky", "ky.": "kentucky",
-    "la": "louisiana", "la.": "louisiana",
-    "me": "maine",
-    "md": "maryland", "md.": "maryland",
-    "ma": "massachusetts", "mass": "massachusetts",
-    "mi": "michigan", "mich.": "michigan",
-    "mn": "minnesota", "minn": "minnesota",
-    "ms": "mississippi", "miss": "mississippi",
-    "mo": "missouri", "mo.": "missouri",
-    "mt": "montana", "mont": "montana",
-    "ne": "nebraska", "nebr": "nebraska",
-    "nv": "nevada", "nev": "nevada",
-    "nh": "new_hampshire", "n.h.": "new_hampshire",
-    "nj": "new_jersey", "n.j.": "new_jersey",
-    "nm": "new_mexico", "n. mex.": "new_mexico",
-    "ny": "new_york", "n.y.": "new_york",
-    "nc": "north_carolina", "n.c.": "north_carolina",
-    "nd": "north_dakota", "n. dak.": "north_dakota",
-    "oh": "ohio",
-    "ok": "oklahoma", "okla": "oklahoma",
-    "or": "oregon", "ore": "oregon",
-    "pa": "pennsylvania", "pa.": "pennsylvania",
-    "ri": "rhode_island", "r.i.": "rhode_island",
-    "sc": "south_carolina", "s.c.": "south_carolina",
-    "sd": "south_dakota", "s. dak.": "south_dakota",
-    "tn": "tennessee", "tenn": "tennessee",
-    "tx": "texas", "tex": "texas",
-    "ut": "utah",
-    "vt": "vermont", "vt.": "vermont",
-    "va": "virginia", "va.": "virginia",
-    "wa": "washington", "wash": "washington",
-    "wv": "west_virginia", "w. va.": "west_virginia",
-    "wi": "wisconsin", "wis": "wisconsin",
-    "wy": "wyoming", "wyo": "wyoming"
-}
 def normalize_state_name(name):
     """
     Normalize state names and abbreviations to snake_case full state name.
@@ -144,7 +82,8 @@ def infer_state_county_from_url(url: str):
     """
     url = url.lower()
     url_norm = url.replace("-", "_").replace(" ", "_")
-    state_map, county_map = load_state_county_mappings()
+    state_map = STATE_MODULE_MAP
+    county_map = KNOWN_STATE_TO_COUNTY_MAP
     IGNORED_TLDS = {
         "com", "org", "net", "gov", "edu", "co", "us", "info", "biz", "io", "me", "ca", "uk", "de", "fr", "jp"
     }
@@ -186,7 +125,10 @@ def infer_state_county_from_url(url: str):
 
     # --- 2. Try to match county (only if state is found) ---
     if state:
-        counties = county_map.get(state, [])
+        state_norm = normalize_state_name(state)
+        if state_norm not in county_map:
+            logger.warning(f"State '{state_norm}' not found in county map")
+        counties = county_map.get(state_norm, [])
         counties_norm = [normalize_county_name(c) for c in counties]
         # Try to match "-county" or "_county" in URL
         county_match = re.search(r'/([a-z0-9_\-]+)[-_]?county', url_norm)
@@ -214,6 +156,13 @@ def infer_state_county_from_url(url: str):
 
     return state, county
 
+def get_county_precincts(county_name):
+    county_norm = normalize_county_name(county_name)
+    return KNOWN_COUNTY_TO_PRECINCTS_MAP.get(county_norm)
+
+def get_state_counties(state_name):
+    state_norm = normalize_state_name(state_name)
+    return KNOWN_STATE_TO_COUNTY_MAP.get(state_norm)
 
 def scan_environment():
     return {

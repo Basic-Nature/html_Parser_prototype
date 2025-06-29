@@ -17,7 +17,7 @@ This ensures all table structure learning, harmonization, and feedback are centr
 """
 
 import os
-import json
+import orjson
 import re
 import unicodedata
 import glob
@@ -28,6 +28,7 @@ from difflib import SequenceMatcher
 from collections import Counter
 from typing import List, Dict, Any, Tuple, TYPE_CHECKING
 import time
+from bs4 import BeautifulSoup
 import hashlib
 from ..utils.shared_logger import logger, rprint
 from ..utils.ml_table_detector import detect_tables_ml
@@ -43,6 +44,7 @@ from ..bots.librarian import (
     MISC_FOOTER_KEYWORDS,
     PARTY_KEYWORDS,
     LOCATION_ABBREVIATIONS,
+    KNOWN_COUNTY_TO_PRECINCTS_MAP,
     normalize_segment_text
 )
 if TYPE_CHECKING:
@@ -84,7 +86,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                 if isinstance(v, (types.FunctionType, types.ModuleType)) or hasattr(v, "__dict__"):
                     continue
                 try:
-                    json.dumps(v)
+                    orjson.dumps(v, option=orjson.OPT_INDENT_2)
                     result[k] = safe_json(v)
                 except Exception:
                     continue
@@ -340,7 +342,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "diagnostics": None,
         })
 
-    logger.info(f"[TABLE BUILDER] Extraction summary: {json.dumps(safe_json(extraction_logs), indent=2)}")
+    logger.info(f"[TABLE BUILDER] Extraction summary: {orjson.dumps(safe_json(extraction_logs), option=orjson.OPT_INDENT_2)}")
 
     # --- Deduplicate tables by header signature ---
     unique_tables = {}
@@ -661,7 +663,7 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         county = context.get("county", "").lower() if context else ""
         known_districts = set()
         if coordinator and hasattr(coordinator, "library"):
-            county_map = coordinator.library.get("Known_county_to_district_map", {})
+            county_map = KNOWN_COUNTY_TO_PRECINCTS_MAP
             if county and county_map.get(county.title(), []):
                 known_districts = set(d.lower() for d in county_map[county.title()])
 
@@ -1222,7 +1224,6 @@ def robust_html_fallback_extraction(page):
     """
     try:
         html = page.content()
-        from bs4 import BeautifulSoup
         soup = BeautifulSoup(html, "html.parser")
         tables = soup.find_all("table")
         all_tables = []
@@ -2506,8 +2507,8 @@ def log_failed_container(page, container, selector, idx, error_msg):
             "html": html[:2000]  # Truncate for log size
         }
         log_path = get_safe_log_path(f"failed_container_{selector.replace('.', '_')}_{idx}.json")
-        with open(log_path, "w", encoding="utf-8") as f:
-            json.dump(log_entry, f, indent=2)
+        with open(log_path, "wb") as f:
+            f.write(orjson.dumps(log_entry))
         logger.error(f"[TABLE BUILDER] Failed container logged: {log_path}")
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Could not log failed container: {e}")
@@ -2521,8 +2522,8 @@ def suggest_new_row_classes_from_logs(log_dir):
     class_counter = Counter()
     parent_counter = Counter()
     for path in glob.glob(os.path.join(log_dir, "failed_container_*.json")):
-        with open(path, "r", encoding="utf-8") as f:
-            entry = json.load(f)
+        with open(path, "rb") as f:
+            entry = orjson.loads(f.read())
             cls = entry.get("parent_class", "")
             if cls:
                 for c in cls.split():
@@ -2545,8 +2546,8 @@ def load_dom_patterns(log_path=None):
         log_path = get_safe_log_path("dom_pattern_log.jsonl")
     if not os.path.exists(log_path):
         return []
-    with open(log_path, "r", encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+    with open(log_path, "rb") as f:
+        return [orjson.loads(line) for line in f if line.strip()]
 
 def remove_footer_and_summary_rows(data, headers):
     """
@@ -2595,10 +2596,10 @@ def review_learned_table_structures(log_path=None):
         return
 
     entries = []
-    with open(log_path, "r", encoding="utf-8") as f:
+    with open(log_path, "rb") as f:
         for line in f:
             try:
-                entry = json.loads(line)
+                entry = orjson.loads(line)
                 entries.append(entry)
             except Exception:
                 continue
@@ -2630,23 +2631,23 @@ def review_learned_table_structures(log_path=None):
             else:
                 print("Invalid entry number.")
         # Save changes
-        with open(log_path, "w", encoding="utf-8") as f:
+        with open(log_path, "wb") as f:
             for entry in entries:
-                f.write(json.dumps(entry) + "\n")
+                f.write(orjson.dumps(entry) + b"\n")
         print("Changes saved.")
 
 def table_signature(headers):
-    return hashlib.md5(json.dumps(headers, sort_keys=True).encode()).hexdigest()
+    return hashlib.md5(orjson.dumps(headers, sort_keys=True)).hexdigest()
 
 def load_table_structure_cache():
     if os.path.exists(TABLE_STRUCTURE_CACHE_PATH):
-        with open(TABLE_STRUCTURE_CACHE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(TABLE_STRUCTURE_CACHE_PATH, "rb") as f:
+            return orjson.loads(f.read())
     return {}
 
 def save_table_structure_cache(cache):
-    with open(TABLE_STRUCTURE_CACHE_PATH, "w", encoding="utf-8") as f:
-        json.dump(cache, f, indent=2)
+    with open(TABLE_STRUCTURE_CACHE_PATH, "wb") as f:
+        f.write(orjson.dumps(cache))
 
 def cache_table_structure(domain, headers, structure):
     cache = load_table_structure_cache()
@@ -2663,7 +2664,6 @@ def guess_contest_title(table_headers, known_titles):
     """
     Try to match table headers to known contest titles using fuzzy matching.
     """
-    import difflib
     for header in table_headers:
         matches = difflib.get_close_matches(header, known_titles, n=1, cutoff=0.7)
         if matches:
@@ -2697,7 +2697,6 @@ def fuzzy_merge_headers(headers, threshold=0.85):
     """
     Merge similar headers using fuzzy matching.
     """
-    import difflib
     merged = []
     used = set()
     for i, h in enumerate(headers):
@@ -2739,7 +2738,6 @@ def robust_html_fallback(page):
     try:
         html = page.content()
         # Try to parse with BeautifulSoup as a fallback
-        from bs4 import BeautifulSoup
         soup = BeautifulSoup(html, "html.parser")
         tables = soup.find_all("table")
         all_tables = []

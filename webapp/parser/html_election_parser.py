@@ -9,11 +9,10 @@
 # ============================================================
 
 import os
-import json
+import orjson
 import logging
 import re
 import threading
-import time
 import sys
 import psycopg2
 from pathlib import Path
@@ -30,9 +29,7 @@ from sqlalchemy.exc import OperationalError
 
 # --- Local imports (all logic is modularized) ---
 from .Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
-from .Context_Integration.context_organizer import organize_context, ContextOrganizer
-from .bots.librarian import load_context_library
-from .config import BASE_DIR, CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH, PROJECT_ROOT
+from .config import BASE_DIR, CONTEXT_DB_PATH, PROJECT_ROOT
 from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler as get_state_handler
 from .utils.browser_utils import browser_pipeline
@@ -47,62 +44,11 @@ from .bots.librarian import safe_join
 from .utils.user_prompt import prompt_user_input
 import hashlib
 
-# Optional: Bot integration and future AI/ML hooks
-try:
-    from .bots.bot_router import run_bot_task
-except ImportError:
-    run_bot_task = None
-
-# --- Bot Orchestration: Run retrainer/correction bots if needed ---
-def run_preprocessing_bots():
-    if os.getenv("SKIP_BOT_TASKS", "false").lower() == "true":
-        print("[INFO] Skipping bot tasks as requested.")
-        return
-    if not run_bot_task:
-        print("[WARN] Bot router not available; skipping bot tasks.")
-        return
-
-    # Only retrain if model is missing, outdated, or not being saved
-    model_path = os.path.join(BASE_DIR, "parser", "Context_Integration", "Context_Library", "table_structure_model.pkl")
-    retrain_needed = not os.path.exists(model_path) or (time.time() - os.path.getmtime(model_path) > 7 * 86400)
-    retrain_lock = os.path.join(os.path.dirname(model_path), ".retrain_lock")
-    if retrain_needed and not os.path.exists(retrain_lock):
-        try:
-            open(retrain_lock, "w").close()
-            run_bot_task("retrain_table_structure_models")
-        except Exception as e:
-            print(f"[ERROR] Retrainer failed: {e}\nIf on Windows, ensure no file explorer or editor is open on the model directory.")
-        finally:
-            if os.path.exists(retrain_lock):
-                os.remove(retrain_lock)
-    else:
-        print("[BOT] Table structure model is up-to-date or retraining already in progress.")
-
-    # Only run correction bot if new logs exist
-    log_dir = os.getenv("LOG_DIR", os.path.join(BASE_DIR, "..", "..", "log"))
-    last_run_time = time.time() - 3600  # Example: last hour
-    from .bots.bot_router import should_run_correction_bot
-    if should_run_correction_bot(log_dir, last_run_time):
-        try:
-            run_bot_task("manual_correction_bot", args=["--enhanced", "--feedback", "--update-db"])
-        except Exception as e:
-            print(f"[ERROR] Correction bot failed: {e}")
-
-    # Let the bot router suggest additional bots (Auto-GPT style)
-    if hasattr(run_bot_task, "suggest_bots"):
-        for bot_name, args in run_bot_task.suggest_bots():
-            try:
-                run_bot_task(bot_name, args=args)
-            except Exception as e:
-                print(f"[ERROR] Bot {bot_name} failed: {e}")
-# Call this before main logic
-run_preprocessing_bots()
-
 # --- Environment & Path Setup ---
 load_dotenv()
 console = Console()
-INPUT_DIR = os.path.join(BASE_DIR, "input")
-OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+INPUT_DIR = os.path.join(PROJECT_ROOT, "input")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 URL_LIST_FILE = os.path.join(BASE_DIR, "parser", "urls.txt")
 PROCESSED_URLS_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
 
@@ -122,7 +68,7 @@ INCLUDE_TIMESTAMP_IN_FILENAME = os.getenv("TIMESTAMP_IN_FILENAME", "true").lower
 ENABLE_PARALLEL = os.getenv("ENABLE_PARALLEL", "false").lower() == "true"
 ENABLE_AI_ANALYSIS = os.getenv("ENABLE_AI_ANALYSIS", "false").lower() == "true"
 ENABLE_REALTIME_STREAM = os.getenv("ENABLE_REALTIME_STREAM", "false").lower() == "true"
-ENABLE_BOT_TASKS = os.getenv("ENABLE_BOT_TASKS", "false").lower() == "true"
+
 
 context_cache = {}
 
@@ -174,8 +120,8 @@ def mark_url_processed(url, status="success", **metadata):
         # Load existing entries
         if PROCESSED_URLS_FILE.exists() and os.path.getsize(PROCESSED_URLS_FILE) > 0:
             try:
-                with open(PROCESSED_URLS_FILE, 'r', encoding="utf-8") as f:
-                    entries = json.load(f)
+                with open(PROCESSED_URLS_FILE, 'rb') as f:
+                    entries = orjson.loads(f.read())
                     if not isinstance(entries, list):
                         entries = []
             except Exception:
@@ -192,88 +138,8 @@ def mark_url_processed(url, status="success", **metadata):
         if not updated:
             entries.append(entry)
         # Write back as a JSON array
-        with open(PROCESSED_URLS_FILE, 'w', encoding="utf-8") as f:
-            json.dump(entries, f, indent=2, ensure_ascii=False)
-
-def organize_context_with_cache(raw_context, button_features=None, panel_features=None, use_library=True, cache=None):
-    """
-    Main entry point. Optionally uses the persistent context library to improve mapping.
-    Args:
-        raw_context: dict from html_scanner or similar
-        button_features: Optional pre-extracted button features (list of dicts)
-        panel_features: Optional pre-extracted panel features (list of dicts)
-        use_library: Whether to use the persistent context library for reference
-        cache: Optional processed_info or other cache for deduplication/learning
-    Returns:
-        dict with keys:
-            - contests: list of contest dicts (title, year, type, etc.)
-            - buttons: {contest_title: [button_dict, ...], ...}
-            - panels: {contest_title: panel_locator, ...}
-            - tables: {contest_title: [table_locator, ...], ...}
-            - metadata: {state, county, ...}
-    """
-    if use_library:
-        library = load_context_library()
-    else:
-        library = {"contests": [], "buttons": [], "panels": [], "tables": []}
-
-    # Organize context using the utility function
-    organized = organize_context(
-        raw_context=raw_context,
-        button_features=button_features,
-        panel_features=panel_features,
-        use_library=use_library
-    )
-
-    # Optionally append to the context library
-    if use_library and organized:
-        organizer = ContextOrganizer()
-        organizer.append_to_context_library(organized, path=CONTEXT_LIBRARY_PATH)
-
-    # If cache is provided, deduplicate contests/buttons against it
-    if cache:
-        # Deduplicate contests
-        contests = organized.get("contests", [])
-        if cache.get("contests"):
-            existing_titles = {c["title"].lower() for c in cache["contests"]}
-            contests = [c for c in contests if c["title"].lower() not in existing_titles]
-        # Deduplicate buttons
-        buttons = organized.get("buttons", {})
-        if cache.get("buttons"):
-            for title, btns in buttons.items():
-                existing_btns = {b["label"].lower() for b in cache["buttons"].get(title, [])}
-                buttons[title] = [b for b in btns if b["label"].lower() not in existing_btns]
-        # Deduplicate panels
-        panels = organized.get("panels", {})
-        if cache.get("panels"):
-            for title, panel in panels.items():
-                existing_panels = {p["id"].lower() for p in cache["panels"].get(title, [])}
-                panels[title] = [p for p in panel if p["id"].lower() not in existing_panels]
-        # Deduplicate tables
-        tables = organized.get("tables", {})
-        if cache.get("tables"):
-            for title, tbls in tables.items():
-                existing_tbls = {t["id"].lower() for t in cache["tables"].get(title, [])}
-                tables[title] = [t for t in tbls if t["id"].lower() not in existing_tbls]
-        # Reconstruct organized context with deduplicated data
-        organized = {
-            "contests": contests,
-            "buttons": buttons,
-            "panels": panels,
-            "tables": tables,
-            "metadata": organized.get("metadata", {})
-        }
-
-    return organized
-
-def get_urls_by_status(processed, status):
-    """Return a list of URLs with the given status."""
-    return [url for url, meta in processed.items() if meta.get("status") == status]
-
-def get_url_metadata(url):
-    """Return metadata for a given URL."""
-    processed = load_processed_urls()
-    return processed.get(url, {})
+        with open(PROCESSED_URLS_FILE, 'wb') as f:
+            f.write(orjson.dumps(entries, option=orjson.OPT_INDENT_2))
 
 # --- Utility: Prompt user to select URLs to process, showing status ---
 def prompt_url_selection(urls: List[str], processed: Dict[str, Any]) -> List[str]:
@@ -373,7 +239,6 @@ def stream_results(headers, data, contest_title, metadata):
         except Exception as e:
             logger.error(f"[STREAM] Streaming failed: {e}")
 
-# --- Main URL Processing Logic ---
 def process_url(target_url, processed_info):
     from .Context_Integration.context_coordinator import dynamic_state_county_detection, ContextCoordinator
     rejected_downloads = set()
@@ -390,35 +255,36 @@ def process_url(target_url, processed_info):
 
             coordinator = ContextCoordinator()
 
-            # --- Detect page hash and use context cache ---
+            # --- Detect page hash and use context cache (already enriched) ---
             html_context = get_or_scan_context(page, coordinator, rejected_downloads=rejected_downloads)
             html_context["source_url"] = target_url
 
             # --- Robust state/county inference and validation ---
-            state, county = infer_state_county_from_url(target_url)
-            if state and not html_context.get("state"):
-                html_context["state"] = state
-            if county and not html_context.get("county"):
-                html_context["county"] = county
+            # Only fill state/county if missing, prefer dynamic_state_county_detection as final authority
+            if not html_context.get("state") or not html_context.get("county"):
+                state, county = infer_state_county_from_url(target_url)
+                if state and not html_context.get("state"):
+                    html_context["state"] = state
+                if county and not html_context.get("county"):
+                    html_context["county"] = county
 
-            context_library = load_context_library()
-            validated_county, validated_state, handler_path, issues = dynamic_state_county_detection(
+            validated_county, validated_state, issues = dynamic_state_county_detection(
                 html_context,
                 html_context.get("raw_html", ""),
-                context_library
+                debug=True,
             )
-            if validated_state and not html_context.get("state"):
+            # Always update with validated values if present
+            if validated_state:
                 html_context["state"] = validated_state
-            if validated_county and not html_context.get("county"):
+            if validated_county:
                 html_context["county"] = validated_county
             if issues:
                 logger.warning(f"[STATE/COUNTY VALIDATION] {issues}")
 
-            # --- Organize and enrich context with ML/NER ---
-            organized_context = coordinator.organize_and_enrich(html_context)
+            # --- NLP/NER Analysis (optional, for logging/diagnostics) ---
             try:
-                nlp_report = analyze_contest_titles(organized_context.get("contests", []))
-                entity_summary = summarize_context_entities(organized_context.get("contests", []))
+                nlp_report = analyze_contest_titles(html_context.get("contests", []))
+                entity_summary = summarize_context_entities(html_context.get("contests", []))
                 logger.info(f"[NLP] Contest Title Analysis: {nlp_report}")
                 logger.info(f"[NLP] Entity Summary: {entity_summary}")
             except Exception as e:
@@ -488,29 +354,30 @@ def process_url(target_url, processed_info):
             pass
     
 def resolve_and_parse(page, context, url):
+    """
+    Use the full context and URL to resolve the best handler via state_router.
+    Falls back to html_handler if no handler is found.
+    """
     from .Context_Integration.context_coordinator import ContextCoordinator
-    state = context.get("state")
-    county = context.get("county")
-    handler = get_state_handler({"state": state, "county": county})
+    # Use the full context for routing
+    handler_result = get_state_handler(context, url=url)
+    handler = handler_result.get("handler")
+    summary = handler_result.get("summary")
     coordinator = ContextCoordinator()
     coordinator.organize_and_enrich(context)
     if handler and hasattr(handler, 'parse'):
         return handler.parse(page, coordinator, context)
+    # Optionally log the routing summary for diagnostics
+    if summary and summary.get("log"):
+        for entry in summary["log"]:
+            logger.info(f"[Router] {entry}")
+    # Fallback to generic HTML handler
     if hasattr(html_handler, 'parse'):
         return html_handler(page, coordinator, context)
-    return html_handler(page, coordinator, context)                
+    return html_handler(page, coordinator, context)  
+           
 # --- Main Entry Point ---
 def main():
-    # --- Bot integration: run bot tasks if enabled ---
-    if ENABLE_BOT_TASKS and run_bot_task:
-        try:
-            run_bot_task("scan_and_notify", context={})
-        except (OperationalError, psycopg2.OperationalError) as db_err:
-            logger.error(f"[DB ERROR] Could not connect to the database: {db_err}")
-            print("[FATAL] Database connection failed. Exiting pipeline.")
-            sys.exit(1)
-        return
-
     try:
         if process_format_override():
             return

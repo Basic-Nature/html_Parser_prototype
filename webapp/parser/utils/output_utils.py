@@ -1,5 +1,5 @@
 import csv
-import json
+import orjson
 import os
 import collections.abc
 from datetime import datetime
@@ -112,7 +112,7 @@ def update_output_cache(metadata, output_path, cache_file=CACHE_FILE):
         "metadata": metadata,
     }
     with open(cache_file, "a", encoding="utf-8") as f:
-        f.write(json.dumps(cache_entry) + "\n")
+        f.write(orjson.dumps(cache_entry) + b"\n")
 
 def check_existing_output(metadata, cache_file=CACHE_FILE):
     """
@@ -121,7 +121,7 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
     """
     if not os.path.exists(cache_file):
         return None
-    with open(cache_file, "r", encoding="utf-8") as f:
+    with open(cache_file, "rb") as f:
         content = f.read().strip()
         if not content:
             return None
@@ -129,7 +129,7 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
         # Try JSON array first
         try:
             if content.startswith("["):
-                arr = json.loads(content)
+                arr = orjson.loads(content)
                 if isinstance(arr, list):
                     entries = arr
             else:
@@ -141,7 +141,7 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
                 if not line.strip():
                     continue
                 try:
-                    entries.append(json.loads(line))
+                    entries.append(orjson.loads(line))
                 except Exception as e:
                     print(f"[DEBUG] Failed to parse line as JSON: {line!r}")
                     continue
@@ -301,9 +301,9 @@ def finalize_election_output(
     if "environment" in metadata_out and isinstance(metadata_out["environment"], dict):
         metadata_out["environment"].pop("cwd", None)
 
-    with open(json_meta_path, "w", encoding="utf-8") as jf:
+    with open(json_meta_path, "wb") as jf:
         metadata_out = convert_sets_to_lists(metadata_out)
-        json.dump(metadata_out, jf, indent=2)
+        jf.write(orjson.dumps(metadata_out, option=orjson.OPT_INDENT_2))
 
     update_output_cache(metadata_out, filepath)
 
@@ -322,8 +322,8 @@ def finalize_election_output(
                 "metadata": metadata_out,
                 "feedback": feedback
             }
-            with open(feedback_log_path, "a", encoding="utf-8") as fb:
-                fb.write(json.dumps(feedback_entry) + "\n")
+            with open(feedback_log_path, "ab") as fb:
+                fb.write(orjson.dumps(feedback_entry) + b"\n")
             rprint(f"[bold blue][FEEDBACK][/bold blue] Feedback logged to {feedback_log_path}")
 
     return {

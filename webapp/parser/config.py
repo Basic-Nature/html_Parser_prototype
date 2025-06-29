@@ -18,6 +18,9 @@ CONTEXT_LIBRARY_PATH = os.path.join(
 )
 CONTEXT_LIBRARY_DIR = os.path.dirname(CONTEXT_LIBRARY_PATH)
 
+INPUT_DIR = os.path.join(PROJECT_ROOT, "input")
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
+
 # Ensure log and cache directories exist inside Context_Library
 LOG_DIR = os.path.join(CONTEXT_LIBRARY_DIR, "log")
 CACHE_DIR = os.path.join(CONTEXT_LIBRARY_DIR, "cache")

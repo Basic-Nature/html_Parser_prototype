@@ -10,10 +10,10 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     from ...utils.shared_logic import normalize_state_name, normalize_county_name
     from ...utils.shared_logger import logger
     from ...utils.user_prompt import prompt_user_input
-    import json
+    import orjson
     import os
     import importlib
-
+    from ...bots.librarian import KNOWN_COUNTY_TO_PRECINCTS_MAP
     # 1. Organize and enrich context
     html_context = context or {}
     if context:
@@ -132,16 +132,13 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                 ).strip() or (suggested_county or county)
                 user_county = normalize_county_name(user_county)
                 if user_county not in available_counties:
-                    # Check if county is a district mapped in context library
-                    from ...Context_Integration.context_coordinator import ContextCoordinator
-                    coordinator = ContextCoordinator()
-                    context_library = coordinator.library
-                    known_county_to_district = context_library.get("Known_county_to_district_map", {})
+                    # Check if county is a precincts mapped in context library
+                    known_county_to_precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP
                     mapped_county = None
-                    for county_name, districts in known_county_to_district.items():
-                        if user_county in [normalize_county_name(d) for d in districts]:
+                    for county_name, precincts in known_county_to_precincts.items():
+                        if user_county in [normalize_county_name(d) for d in precincts]:
                             mapped_county = normalize_county_name(county_name)
-                            logger.info(f"[HTML Handler] '{user_county}' matched as district of county '{county_name}'. Using '{county_name}'.")
+                            logger.info(f"[HTML Handler] '{user_county}' matched as precincts of county '{county_name}'. Using '{county_name}'.")
                             user_county = mapped_county
                             break
                     if not mapped_county:
@@ -202,21 +199,25 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     log_dir = "log"
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, "html_handler_routing_failures.jsonl")
-    with open(log_path, "a", encoding="utf-8") as f:
-        f.write(json.dumps({
-            "url": getattr(page, "url", None) or html_context.get("source_url", ""),
-            "context": html_context,
-            "attempts": attempts,
-            "routing_trace": routing_trace
-        }, ensure_ascii=False) + "\n")
+    with open(log_path, "ab") as f:
+        f.write(
+            orjson.dumps(
+                {
+                    "url": getattr(page, "url", None) or html_context.get("source_url", ""),
+                    "context": html_context,
+                    "attempts": attempts,
+                    "routing_trace": routing_trace
+                }
+            ) + b"\n"
+        )
 
     # Offer to export context for manual review
     if not non_interactive:
         export = prompt_user_input("Routing failed. Export organized context for debugging? (y/n): ").strip().lower()
         if export == "y":
             export_path = os.path.join(log_dir, "html_handler_failed_context.json")
-            with open(export_path, "w", encoding="utf-8") as ef:
-                json.dump(html_context, ef, ensure_ascii=False, indent=2)
+            with open(export_path, "wb") as ef:
+                ef.write(orjson.dumps(html_context, option=orjson.OPT_INDENT_2))
             logger.info(f"[HTML Handler] Context exported to {export_path}")
 
     logger.error("[HTML Handler] No suitable handler could be found after all attempts. Routing failed.")

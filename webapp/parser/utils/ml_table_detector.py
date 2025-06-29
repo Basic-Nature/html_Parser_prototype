@@ -19,7 +19,7 @@ Exports:
 """
 import os
 import re
-import json
+import orjson
 from typing import List, Dict, Any, Optional, Tuple
 
 try:
@@ -95,7 +95,7 @@ def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
         tables = []
         for block in json_blocks:
             try:
-                obj = json.loads(block)
+                obj = orjson.loads(block)
                 if "headers" in obj and "data" in obj:
                     tables.append(obj)
             except Exception:

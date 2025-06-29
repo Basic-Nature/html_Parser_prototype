@@ -9,7 +9,7 @@ matplotlib.use('Agg')
 #/ comment out to see plots
 import matplotlib.pyplot as plt
 import threading
-import json
+import orjson
 import time
 from pathlib import Path
 from ..utils.shared_logger import rprint
@@ -263,9 +263,9 @@ def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str
         log_path = db_utils._safe_db_path(log_path)
     else:
         log_path = str((Path(CONTEXT_DB_PATH).parent / "integrity_issues.log").resolve())
-    with open(log_path, "a", encoding="utf-8") as f:
+    with open(log_path, "ab") as f:
         for issue_type, contest in issues:
-            f.write(json.dumps({"issue": issue_type, "contest": contest}) + "\n")
+            f.write(orjson.dumps({"issue": issue_type, "contest": contest}) + b"\n")
 
 def detect_statistical_outliers(
     values: List[float],

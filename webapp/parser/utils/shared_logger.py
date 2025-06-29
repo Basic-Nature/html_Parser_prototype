@@ -5,7 +5,7 @@ from rich.logging import RichHandler
 from rich import print as rprint
 from rich.panel import Panel
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
-import json
+import orjson
 
 # --- Logger Setup ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -107,10 +107,10 @@ def safe_read_jsonl(path):
     """Read a JSONL file, handling errors gracefully."""
     entries = []
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "rb") as f:
             for line in f:
                 try:
-                    entries.append(json.loads(line))
+                    entries.append(orjson.loads(line))
                 except Exception as e:
                     logger.warning(f"Corrupt line in {path}: {e}")
     except Exception as e:

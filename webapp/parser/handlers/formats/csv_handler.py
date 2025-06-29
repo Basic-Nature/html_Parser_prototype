@@ -4,7 +4,7 @@
 
 import csv
 import os
-import re
+import orjson
 from dotenv import load_dotenv
 from ...config import BASE_DIR
 from ...state_router import get_handler
@@ -199,9 +199,8 @@ def parse_csv_election_results(csv_path, output_dir=None):
         "row_count": len(wide_data),
         "handler": "csv_handler"
     }
-    with open(output_meta, "w", encoding="utf-8") as jf:
-        import json
-        json.dump(metadata, jf, indent=2)
+    with open(output_meta, "wb") as jf:
+        jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))
 
     rprint(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(wide_data)}[/bold] rows to:\n  [cyan]{output_csv}[/cyan]")
     rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{output_meta}[/cyan]")

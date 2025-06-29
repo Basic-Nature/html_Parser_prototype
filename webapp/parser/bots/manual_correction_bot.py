@@ -80,7 +80,7 @@ def write_audit_log(action, entry, user=None, before=None, after=None):
     with open(AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
         f.write(orjson.dumps(log_entry, ensure_ascii=False) + "\n")
 
-def process_logs_with_cache(log_files, context_library, cache):
+def process_logs_with_cache(log_files, cache):
     for log_file in log_files:
         entries = load_jsonl(log_file)
         for entry in entries:
@@ -104,13 +104,13 @@ def process_and_sync(log_files, context_library, cache, batch_size=100, sync_db=
             batch.append(entry)
             cache[entry_id] = {"status": "accepted", "timestamp": datetime.now().isoformat()}
             if len(batch) >= batch_size:
-                update_context_with_new_entries(context_library, batch)
+                update_context_with_new_entries(context_library, batch, entries)
                 if sync_db:
                     update_database_with_context(context_library)
                 batch.clear()
     # Final flush
     if batch:
-        update_context_with_new_entries(context_library, batch)
+        update_context_with_new_entries(context_library, batch, entries)
         if sync_db:
             update_database_with_context(context_library)
     cache.sync()
@@ -487,7 +487,7 @@ def highlight_anomalies(context_library, field_type):
             print(f"  {label}: {count}")
 
 # --- DB update logic (batch, periodic, error handling) ---
-def update_database_with_context(library, db_path=None, enhanced=True, coordinator=None, batch=False):
+def update_database_with_context(library, db_path=None, coordinator=None, enhanced=True):
     if not db_path:
         db_path = CONTEXT_LIBRARY_DIR / "context_library.json"
     db_path = safe_path(db_path, [CONTEXT_LIBRARY_DIR])

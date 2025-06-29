@@ -1,5 +1,5 @@
 import os
-import json
+import orjson
 import re
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -103,8 +103,8 @@ def append_to_context_library(data, path=None):
         path = CONTEXT_LIBRARY_PATH
     safe_path = _safe_db_path(path)
     library = load_context_library(safe_path)
-    with open(safe_path, "w", encoding="utf-8") as f:
-        json.dump(library, f, indent=2, ensure_ascii=False)
+    with open(safe_path, "wb") as f:
+        f.write(orjson.dumps(library, option=orjson.OPT_INDENT_2))
 
 def normalize_label(label):
     if not label:
@@ -117,9 +117,9 @@ def load_processed_urls() -> Dict[str, Any]:
     cache_path = Path(CACHE_FILE).resolve()
     if not cache_path.exists() or os.path.getsize(cache_path) == 0:
         return {}
-    with cache_path.open('r', encoding="utf-8") as f:
+    with cache_path.open('rb') as f:
         try:
-            entries = json.load(f)
+            entries = orjson.loads(f.read())
             if not isinstance(entries, list):
                 entries = []
         except Exception:
@@ -138,8 +138,8 @@ def load_output_cache(path=None):
     safe_path = Path(_safe_db_path(path)).resolve()
     if not safe_path.exists():
         return []
-    with open(safe_path, "r", encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+    with open(safe_path, "rb") as f:
+        return [orjson.loads(line) for line in f if line.strip()]
 
 # --- Utility: Create all tables (run once at startup or migration) ---
 def create_all_tables():

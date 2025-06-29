@@ -16,7 +16,7 @@ This ensures a single source of truth for table structure and learning.
 
 import os
 import re
-import json
+import orjson
 import unicodedata
 
 from typing import List, Dict
@@ -590,8 +590,8 @@ def log_new_dom_pattern(example_html, selector, context=None, log_path=None):
         "example_html": example_html,
         "context": context or {}
     }
-    with open(log_path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+    with open(log_path, "ab") as f:
+        f.write(orjson.dumps(entry) + b"\n")
 
 def review_dom_patterns(log_path=None):
     """
@@ -603,8 +603,8 @@ def review_dom_patterns(log_path=None):
         print("No learned DOM patterns found.")
         return
 
-    with open(log_path, "r", encoding="utf-8") as f:
-        entries = [json.loads(line) for line in f if line.strip()]
+    with open(log_path, "rb") as f:
+        entries = [orjson.loads(line) for line in f if line.strip()]
 
     for idx, entry in enumerate(entries):
         print(f"\n[{idx}] Selector: {entry.get('selector')}")
@@ -633,9 +633,9 @@ def review_dom_patterns(log_path=None):
             else:
                 print("Invalid entry number.")
         # Save changes
-        with open(log_path, "w", encoding="utf-8") as f:
+        with open(log_path, "wb") as f:
             for entry in entries:
-                f.write(json.dumps(entry) + "\n")
+                f.write(orjson.dumps(entry) + b"\n")
         print("Changes saved.")
 
 def auto_approve_dom_pattern(selector, log_path=None, min_count=2):
@@ -650,9 +650,9 @@ def auto_approve_dom_pattern(selector, log_path=None, min_count=2):
     # Save back
     if log_path is None:
         log_path = get_safe_log_path()
-    with open(log_path, "w", encoding="utf-8") as f:
+    with open(log_path, "wb") as f:
         for p in patterns:
-            f.write(json.dumps(p) + "\n")
+            f.write(orjson.dumps(p) + b"\n")
 
 # --- Structure Detection & Classification ---
 

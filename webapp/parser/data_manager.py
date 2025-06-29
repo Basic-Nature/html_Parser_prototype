@@ -1,5 +1,5 @@
 import importlib
-import json
+import orjson
 import os
 from difflib import get_close_matches
 from .config import BASE_DIR
@@ -12,8 +12,8 @@ URLS_FILE = os.path.join(PARSER_DIR, "urls.txt")
 
 def load_overrides():
     try:
-        with open(HINT_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(HINT_FILE, "rb") as f:
+            return orjson.loads(f.read())
     except FileNotFoundError:
         print("[INFO] No overrides file found. Creating new one...")
         return {}
@@ -22,8 +22,8 @@ def load_overrides():
         return {}
 
 def save_overrides(overrides):
-    with open(HINT_FILE, "w", encoding="utf-8") as f:
-        json.dump(overrides, f, indent=2)
+    with open(HINT_FILE, "wb") as f:
+        f.write(orjson.dumps(overrides))
     print(f"[SAVED] {len(overrides)} entries written to {HINT_FILE}")
 
 def validate_entry(url_fragment, module_path):

@@ -14,9 +14,9 @@ from ..config import CONTEXT_LIBRARY_PATH
 
 # Load user agents and captcha indicators from context library
 if os.path.exists(CONTEXT_LIBRARY_PATH):
-    import json
-    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
-        CONTEXT_LIBRARY = json.load(f)
+    import orjson
+    with open(CONTEXT_LIBRARY_PATH, "rb") as f:
+        CONTEXT_LIBRARY = orjson.loads(f.read())
     USER_AGENTS = CONTEXT_LIBRARY.get("user_agents", [])
     CLOUDFLARE_CAPTCHA_INDICATORS = CONTEXT_LIBRARY.get("cloudflare_captcha_indicators", [])
 else:

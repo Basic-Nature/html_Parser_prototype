@@ -18,13 +18,13 @@ from flask_socketio import emit, SocketIO
 import logging
 import importlib
 from io import StringIO
-import json
+import orjson
 import os
 import subprocess
 from threading import Thread
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
 from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
-from webapp.parser.bots.bot_router import run_pipeline
+from webapp.parser.bots.bot_router import run_pipeline_once
 # Load environment variables from .env
 
 load_dotenv()
@@ -123,9 +123,9 @@ def append_history(data):
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "data": data
     }
-    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(snapshot) + "\n")
-        
+    with open(HISTORY_FILE, "ab") as f:
+        f.write(orjson.dumps(snapshot, option=orjson.OPT_INDENT_2) + b"\n")
+
 def edit_hint():
     frag = request.form.get("fragment", "").strip()
     path = request.form.get("module_path", "").strip()
@@ -160,8 +160,8 @@ def list_urls():
 
 def load_overrides():
     if os.path.exists(HINT_FILE):
-        with open(HINT_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(HINT_FILE, "rb") as f:
+            return orjson.loads(f.read())
     return {}
 
 def postgres_service_status(service_name=None):
@@ -180,8 +180,8 @@ def postgres_service_status(service_name=None):
         return "error"
 
 def save_overrides(data):
-    with open(HINT_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    with open(HINT_FILE, "wb") as f:
+        f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2))
 
 def validate_module_path(path):
     try:
@@ -261,10 +261,10 @@ def history():
     # Read all snapshots from the history file
     snapshots = []
     if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+        with open(HISTORY_FILE, "rb") as f:
             for line in f:
                 try:
-                    snap = json.loads(line)
+                    snap = orjson.loads(line)
                     timestamp = snap.get("timestamp")
                     data = snap.get("data", snap)  # fallback for old entries
                     snapshots.append({"timestamp": timestamp, "data": data})
@@ -281,15 +281,15 @@ def rollback(index):
     if not os.path.exists(HISTORY_FILE):
         flash("No history file found.", "danger")
         return redirect(url_for("history"))
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        lines = f.readlines()
+    with open(HISTORY_FILE, "rb") as f:
+        lines = [line for line in f if line.strip()]
     if index < 0 or index >= len(lines):
         flash("Invalid snapshot index.", "danger")
         return redirect(url_for("history"))
     # Restore the selected snapshot
-    selected = json.loads(lines[index])
+    selected = orjson.loads(lines[index])
     # Truncate history to this point
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+    with open(HISTORY_FILE, "wb") as f:
         f.writelines(lines[:index+1])
     # Save as current overrides
     save_overrides(selected)
@@ -395,14 +395,14 @@ def undo_hints():
     if not os.path.exists(HISTORY_FILE):
         flash("No history to undo.", "warning")
         return redirect(url_for("url_hints"))
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        lines = f.readlines()
+    with open(HISTORY_FILE, "rb") as f:
+        lines = [line for line in f if line.strip()]
     if len(lines) < 2:
         flash("Nothing to undo.", "warning")
         return redirect(url_for("url_hints"))
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+    with open(HISTORY_FILE, "wb") as f:
         f.writelines(lines[:-1])
-    last_good = json.loads(lines[-2])
+    last_good = orjson.loads(lines[-2])
     save_overrides(last_good)
     flash("Undo successful.", "success")
     return redirect(url_for("url_hints"))
@@ -441,7 +441,6 @@ def upload_to_uploads():
     return redirect(request.referrer or url_for("manage_data"))
 
 if __name__ == "__main__":
-    # Only run pipeline in the reloader child process, not the parent
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        run_pipeline()
+        run_pipeline_once()
     socketio.run(app, debug=True)

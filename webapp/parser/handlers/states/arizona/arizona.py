@@ -4,7 +4,7 @@
 # and toggles between 'Vote Type' and 'By County' views.
 # ==============================================================
 import os
-import json
+import orjson
 from tqdm import tqdm
 from ....utils.shared_logger import log_info, log_debug, log_warning, log_error
 from ....utils.shared_logger import rprint
@@ -16,8 +16,8 @@ from ....config import CONTEXT_LIBRARY_PATH
 
 # Load config from context library if available
 if os.path.exists(CONTEXT_LIBRARY_PATH):
-    with open(CONTEXT_LIBRARY_PATH, "r", encoding="utf-8") as f:
-        CONTEXT_LIBRARY = json.load(f)
+    with open(CONTEXT_LIBRARY_PATH, "rb") as f:
+        CONTEXT_LIBRARY = orjson.loads(f.read())
     STATE_CONFIGS = CONTEXT_LIBRARY.get("state_configs", {})
     config = STATE_CONFIGS.get("arizona", {})
 else:

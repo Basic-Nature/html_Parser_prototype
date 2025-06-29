@@ -6,12 +6,10 @@ Advanced spaCy NLP utilities for election data integrity, context validation, an
 
 import spacy
 from collections import Counter
-from typing import List, Tuple, Dict, Any, Set, Optional
+from typing import List, Tuple, Dict, Any, Set
 import re
-import os
-import json
-from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT
-
+from ..config import PROJECT_ROOT
+from ..bots.librarian import KNOWN_STATE_TO_COUNTY_MAP
 
 # Load spaCy model globally for efficiency, auto-download if missing
 try:
@@ -105,23 +103,16 @@ def extract_urls(text: str) -> List[str]:
 
 # --- Election-Specific Integrity & Validation Utilities ---
 
-def load_known_states_counties(context_library_path: Optional[str] = None) -> Tuple[Set[str], Set[str]]:
+def load_known_states_counties() -> Tuple[Set[str], Set[str]]:
     """
-    Loads known states and counties from context_library.json if available.
+    Loads known states and counties from the canonical mapping in librarian.py.
     Returns (states_set, counties_set).
     """
-    if context_library_path is None:
-        context_library_path = os.path.join(
-            os.path.dirname(__file__), "context_library.json"
-        )
-    states, counties = set(), set()
-
-    if os.path.exists(context_library_path):
-        with open(context_library_path, "r", encoding="utf-8") as f:
-            lib = json.load(f)
-        states = set(s.lower() for s in lib.get("known_states", []))
-        counties = set(c.lower() for c in lib.get("known_counties", []))
-    return states, counties
+    states = set(KNOWN_STATE_TO_COUNTY_MAP.keys())
+    counties = set()
+    for county_list in KNOWN_STATE_TO_COUNTY_MAP.values():
+        counties.update(c.lower() for c in county_list)
+    return set(s.lower() for s in states), counties
 
 def normalize_location(name: str) -> str:
     """
@@ -187,12 +178,12 @@ def validate_contest_title(title: str, known_states: Set[str], known_counties: S
         "valid": state_found and county_found and not noisy
     }
 
-def flag_suspicious_contests(contests, context_library_path=None):
+def flag_suspicious_contests(contests):
     """
     Flags contests with suspicious or ambiguous titles/entities.
     Returns a list of flagged contest dicts with reasons.
     """
-    known_states, known_counties = load_known_states_counties(context_library_path)
+    known_states, known_counties = load_known_states_counties()
     flagged = []
     for c in contests:
         title = c.get("title", "")

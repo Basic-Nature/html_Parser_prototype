@@ -3,7 +3,7 @@ from pathlib import Path
 from ..utils.db_utils import create_table_structure, get_session
 from ..utils.models import TableStructure
 from ..config import CACHE_DIR, LOG_DIR, CONTEXT_LIBRARY_DIR
-import json
+import orjson
 
 def table_structure_exists(session, contest_title, headers, context):
     return session.query(TableStructure).filter_by(
@@ -44,9 +44,9 @@ def migrate_table_structures_from_json(json_path):
     print(f"[MIGRATE] Migrating from {json_path} ...")
     count = 0
     with get_session() as session:
-        with open(json_path, "r", encoding="utf-8") as f:
+        with open(json_path, "rb") as f:
             try:
-                data = json.load(f)
+                data = orjson.loads(f.read())
             except Exception as e:
                 print(f"[MIGRATE][WARN] {json_path}: Skipping malformed file: {e}")
                 return

@@ -2,7 +2,7 @@
 # 🗳️ Smart Elections: Universal JSON Election Results Parser
 # ============================================================
 
-import json
+import orjson
 import os
 import csv
 from collections import defaultdict
@@ -45,8 +45,8 @@ def prompt_for_json_file(input_folder):
 
 def parse_json_election_results(json_path, output_dir=None):
     # === Load JSON ===
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    with open(json_path, "rb") as f:
+        data = orjson.loads(f.read())
 
     # === List Available Contests ===
     contests = set()
@@ -158,8 +158,8 @@ def parse_json_election_results(json_path, output_dir=None):
         "row_count": len(rows),
         "handler": "json_handler"
     }
-    with open(output_meta, "w", encoding="utf-8") as jf:
-        json.dump(metadata, jf, indent=2)
+    with open(output_meta, "w") as jf:
+        jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))
 
     print("✅ Completed!")
     print(" - Output CSV:", output_csv)
