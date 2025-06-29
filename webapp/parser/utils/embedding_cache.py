@@ -103,7 +103,9 @@ def save_embeddings_batch(hash_emb_list):
     # Prepare data for bulk upsert
     records = []
     for h, e in hash_emb_list:
-        emb_bytes = np.array(e).astype(np.float32).tobytes()
+        # Defensive: always convert to float32 numpy array
+        arr = np.array(e, dtype=np.float32)
+        emb_bytes = arr.tobytes()
         records.append({"segment_hash": h, "embedding": emb_bytes})
     with _db_lock:
         with get_session() as session:
@@ -115,12 +117,13 @@ def save_embeddings_batch(hash_emb_list):
                 )
                 session.execute(stmt)
                 session.commit()
+                console.log(f"[green][EMBEDDING CACHE] Saved/updated {len(records)} embeddings in batch.[/green]", highlight=False)
             except SQLAlchemyError as e:
                 session.rollback()
                 # Print only the error message in a static line
                 console.print(f"[red][BATCH EMBEDDING ERROR][/red] {str(e)}", highlight=False, end="\r")
                 return
-    # Update in-memory cache
+    # Update in-memory cache (always latest)
     with _batch_cache_lock:
         for h, e in hash_emb_list:
             _batch_cache[h] = np.array(e, dtype=np.float32)
@@ -132,20 +135,32 @@ def load_embeddings_batch(segment_hashes):
     """
     ensure_embedding_cache_table()
     result = {h: None for h in segment_hashes}
+    cache_hits = 0
+    db_hits = 0
     # First, try in-memory cache
     with _batch_cache_lock:
         for h in segment_hashes:
             if h in _batch_cache:
                 result[h] = _batch_cache[h]
+                cache_hits += 1
     # Only query DB for missing
     missing = [h for h in segment_hashes if result[h] is None]
     if missing:
-        with _db_lock:
-            with get_session() as session:
-                stmt = select(EmbeddingCache).where(EmbeddingCache.segment_hash.in_(missing))
-                for obj in session.execute(stmt).scalars():
-                    emb = np.frombuffer(obj.embedding, dtype=np.float32)
-                    result[obj.segment_hash] = emb
-                    with _batch_cache_lock:
-                        _batch_cache[obj.segment_hash] = emb
+        try:
+            with _db_lock:
+                with get_session() as session:
+                    stmt = select(EmbeddingCache).where(EmbeddingCache.segment_hash.in_(missing))
+                    for obj in session.execute(stmt).scalars():
+                        try:
+                            emb = np.frombuffer(obj.embedding, dtype=np.float32)
+                            result[obj.segment_hash] = emb
+                            db_hits += 1
+                            with _batch_cache_lock:
+                                _batch_cache[obj.segment_hash] = emb
+                        except Exception as e:
+                            console.print(f"[red][EMBEDDING CACHE ERROR][/red] Failed to load embedding for hash {obj.segment_hash}: {e}", highlight=False)
+        except SQLAlchemyError as e:
+            console.print(f"[red][EMBEDDING CACHE DB ERROR][/red] {str(e)}", highlight=False)
+    total = len(segment_hashes)
+    console.log(f"[cyan][EMBEDDING CACHE] Batch load: {cache_hits} from cache, {db_hits} from DB, {total - cache_hits - db_hits} missing.[/cyan]", highlight=False)
     return result

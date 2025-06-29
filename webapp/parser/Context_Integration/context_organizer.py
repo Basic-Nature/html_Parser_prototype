@@ -9,7 +9,6 @@ Delegates NLP/semantic logic to the context_coordinator and spacy_utils modules.
 from datetime import datetime, timezone
 import os
 import orjson
-import logging
 from collections import defaultdict
 import types
 import collections.abc
@@ -24,6 +23,7 @@ from ..utils.db_utils import (
     normalize_label,
     get_session,
 )
+from ..utils.model_registry import ModelRegistry
 from ..utils.models import Contest, TableStructure
 from ..utils.shared_logic import scan_environment
 from ..bots.librarian import load_context_library, update_context_library
@@ -31,7 +31,10 @@ from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
 from ..utils.shared_logger import logger, rprint
+from rich.table import Table
 from rich.console import Console
+import matplotlib.pyplot as plt
+from collections import Counter
 
 console = Console()
 
@@ -198,7 +201,6 @@ class ContextOrganizer:
         except Exception as e:
             self.logger.error(f"[CONTEXT ORGANIZER] Failed to load embedding model: {e}")
             self.embedding_model_obj = None
-        self.logger.info(f"[CONTEXT ORGANIZER] plot_anomalies set to: {self.plot_anomalies}")
 
     @staticmethod
     def _default_library():
@@ -239,7 +241,285 @@ class ContextOrganizer:
             "default_noisy_labels": [],
             "download_links": []
         }
+    @staticmethod
+    def print_contest_summary(contests):
+        table = Table(title="Contest Summary by State/County")
+        table.add_column("Title")
+        table.add_column("State")
+        table.add_column("County")
+        table.add_column("Year")
+        for c in contests:
+            table.add_row(
+                str(c.get("title", "")),
+                str(c.get("state", "")),
+                str(c.get("county", "")),
+                str(c.get("year", ""))
+            )
+        console = Console()
+        console.print(table)
 
+    @staticmethod
+    def plot_contest_distribution(contests):
+        state_county = [ (c.get("state", "Unknown"), c.get("county", "Unknown")) for c in contests ]
+        counter = Counter(state_county)
+        labels, values = zip(*counter.items())
+        label_strs = [f"{s}\n{c}" for s,c in labels]
+        plt.figure(figsize=(10,5))
+        plt.bar(label_strs, values)
+        plt.xticks(rotation=90)
+        plt.title("Contest Count by State/County")
+        plt.tight_layout()
+        plt.show()
+    @staticmethod
+    def suggest_and_apply_fixes(contests, context_library, logs=None, min_confidence=0.8, embedding_model=None):
+        """
+        Try to fix missing state/county/year/type using context_library, logs, and ML similarity.
+        Returns: (fixed_contests, fix_log)
+        """
+        from difflib import get_close_matches
+        import numpy as np
+
+        fix_log = []
+        # Build lookup tables from context_library
+        title_to_state = {}
+        title_to_county = {}
+        title_to_year = {}
+        title_to_type = {}
+        for c in context_library.get("contests", []):
+            if not isinstance(c, dict):
+                continue
+            title = c.get("title") or c.get("label")
+            if title:
+                key = title.lower()
+                if c.get("state"):
+                    title_to_state[key] = c["state"]
+                if c.get("county"):
+                    title_to_county[key] = c["county"]
+                if c.get("year"):
+                    title_to_year[key] = c["year"]
+                if c.get("type"):
+                    title_to_type[key] = c["type"]
+
+        # --- ML Embedding Preparation ---
+        # Build embeddings for context_library contests with known state/county
+        lib_titles = []
+        lib_states = []
+        lib_counties = []
+        lib_years = []
+        lib_types = []
+        for c in context_library.get("contests", []):
+            if not isinstance(c, dict):
+                continue
+            title = c.get("title") or c.get("label")
+            if title and (c.get("state") or c.get("county")):
+                lib_titles.append(title)
+                lib_states.append(c.get("state"))
+                lib_counties.append(c.get("county"))
+                lib_years.append(c.get("year"))
+                lib_types.append(c.get("type"))
+        lib_embeddings = None
+        if embedding_model and lib_titles:
+            try:
+                lib_embeddings = embedding_model.encode(lib_titles)
+            except Exception:
+                lib_embeddings = None
+        min_confidence = 0.85
+        # Try to fix each contest
+        for idx, c in enumerate(contests):
+            fixed = False
+            reasons = []
+            title = (c.get("title") or "").lower()
+            # Fix state
+            if not c.get("state"):
+                # 1. Try context_library
+                if title in title_to_state:
+                    c["state"] = title_to_state[title]
+                    reasons.append("filled state from context_library")
+                    fixed = True
+                # 2. Try majority vote from other contests
+                elif contests:
+                    states = [x.get("state") for x in contests if x.get("state")]
+                    if states:
+                        most_common = max(set(states), key=states.count)
+                        c["state"] = most_common
+                        reasons.append("filled state from majority vote")
+                        fixed = True
+                # 3. Try fuzzy match
+                else:
+                    matches = get_close_matches(title, list(title_to_state.keys()), n=1, cutoff=0.8)
+                    if matches:
+                        c["state"] = title_to_state[matches[0]]
+                        reasons.append(f"filled state from fuzzy match: {matches[0]}")
+                        fixed = True
+                # 4. ML similarity
+                if not c.get("state") and embedding_model and lib_embeddings is not None:
+                    try:
+                        query_emb = embedding_model.encode([c.get("title") or ""])[0]
+                        sims = np.dot(lib_embeddings, query_emb) / (
+                            np.linalg.norm(lib_embeddings, axis=1) * np.linalg.norm(query_emb) + 1e-8
+                        )
+                        best_idx = int(np.argmax(sims))
+                        best_score = sims[best_idx]
+                        if best_score > min_confidence and lib_states[best_idx]:
+                            c["state"] = lib_states[best_idx]
+                            reasons.append(
+                                f"filled state from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
+                            )
+                            fixed = True
+                        else:
+                            reasons.append(
+                                f"ML similarity for state below threshold ({best_score:.2f} < {min_confidence})"
+                            )
+                    except Exception as e:
+                        reasons.append(f"ML similarity failed: {e}")
+            # Fix county
+            if not c.get("county"):
+                if title in title_to_county:
+                    c["county"] = title_to_county[title]
+                    reasons.append("filled county from context_library")
+                    fixed = True
+                elif contests:
+                    counties = [x.get("county") for x in contests if x.get("county")]
+                    if counties:
+                        most_common = max(set(counties), key=counties.count)
+                        c["county"] = most_common
+                        reasons.append("filled county from majority vote")
+                        fixed = True
+                else:
+                    matches = get_close_matches(title, list(title_to_county.keys()), n=1, cutoff=0.8)
+                    if matches:
+                        c["county"] = title_to_county[matches[0]]
+                        reasons.append(f"filled county from fuzzy match: {matches[0]}")
+                        fixed = True
+                # ML similarity
+                if not c.get("county") and embedding_model and lib_embeddings is not None:
+                    try:
+                        query_emb = embedding_model.encode([c.get("title") or ""])[0]
+                        sims = np.dot(lib_embeddings, query_emb) / (
+                            np.linalg.norm(lib_embeddings, axis=1) * np.linalg.norm(query_emb) + 1e-8
+                        )
+                        best_idx = int(np.argmax(sims))
+                        best_score = sims[best_idx]
+                        if best_score > min_confidence and lib_counties[best_idx]:
+                            c["county"] = lib_counties[best_idx]
+                            reasons.append(
+                                f"filled county from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
+                            )
+                            fixed = True
+                        else:
+                            reasons.append(
+                                f"ML similarity for county below threshold ({best_score:.2f} < {min_confidence})"
+                            )
+                    except Exception as e:
+                        reasons.append(f"ML similarity failed: {e}")
+            # Fix year
+            if not c.get("year"):
+                if title in title_to_year:
+                    c["year"] = title_to_year[title]
+                    reasons.append("filled year from context_library")
+                    fixed = True
+                elif contests:
+                    years = [x.get("year") for x in contests if x.get("year")]
+                    if years:
+                        most_common = max(set(years), key=years.count)
+                        c["year"] = most_common
+                        reasons.append("filled year from majority vote")
+                        fixed = True
+                else:
+                    matches = get_close_matches(title, list(title_to_year.keys()), n=1, cutoff=0.8)
+                    if matches:
+                        c["year"] = title_to_year[matches[0]]
+                        reasons.append(f"filled year from fuzzy match: {matches[0]}")
+                        fixed = True
+                # ML similarity
+                if not c.get("year") and embedding_model and lib_embeddings is not None:
+                    try:
+                        query_emb = embedding_model.encode([c.get("title") or ""])[0]
+                        sims = np.dot(lib_embeddings, query_emb) / (
+                            np.linalg.norm(lib_embeddings, axis=1) * np.linalg.norm(query_emb) + 1e-8
+                        )
+                        best_idx = int(np.argmax(sims))
+                        best_score = sims[best_idx]
+                        if best_score > min_confidence and lib_years[best_idx]:
+                            c["year"] = lib_years[best_idx]
+                            reasons.append(
+                                f"filled year from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
+                            )
+                            fixed = True
+                        else:
+                            reasons.append(
+                                f"ML similarity for state below threshold ({best_score:.2f} < {min_confidence})"
+                            )
+                    except Exception as e:
+                        reasons.append(f"ML similarity failed: {e}")
+            # Fix type
+            if not c.get("type"):
+                if title in title_to_type:
+                    c["type"] = title_to_type[title]
+                    reasons.append("filled type from context_library")
+                    fixed = True
+                elif contests:
+                    types = [x.get("type") for x in contests if x.get("type")]
+                    if types:
+                        most_common = max(set(types), key=types.count)
+                        c["type"] = most_common
+                        reasons.append("filled type from majority vote")
+                        fixed = True
+                else:
+                    matches = get_close_matches(title, list(title_to_type.keys()), n=1, cutoff=0.8)
+                    if matches:
+                        c["type"] = title_to_type[matches[0]]
+                        reasons.append(f"filled type from fuzzy match: {matches[0]}")
+                        fixed = True
+                # ML similarity
+                if not c.get("type") and embedding_model and lib_embeddings is not None:
+                    try:
+                        query_emb = embedding_model.encode([c.get("title") or ""])[0]
+                        sims = np.dot(lib_embeddings, query_emb) / (
+                            np.linalg.norm(lib_embeddings, axis=1) * np.linalg.norm(query_emb) + 1e-8
+                        )
+                        best_idx = int(np.argmax(sims))
+                        best_score = sims[best_idx]
+                        if best_score > min_confidence and lib_types[best_idx]:
+                            c["type"] = lib_types[best_idx]
+                            reasons.append(
+                                f"filled type from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
+                            )
+                            fixed = True
+                        else:
+                            reasons.append(
+                                f"ML similarity for type below threshold ({best_score:.2f} < {min_confidence})"
+                            )
+                    except Exception as e:
+                        reasons.append(f"ML similarity failed: {e}")
+            if fixed:
+                fix_log.append({"title": c.get("title"), "fixes": reasons})
+        return contests, fix_log
+    @staticmethod
+    def _describe_embedding_model(model):
+        """
+        Return a human-friendly description of the embedding model.
+        Uses ModelRegistry.get_model_name if available, else falls back to class name or str.
+        """
+        try:
+            # Use ModelRegistry utility if available
+            if model is None:
+                return "None"
+            if hasattr(ModelRegistry, "get_model_name"):
+                name = ModelRegistry.get_model_name(model)
+                if name and isinstance(name, str):
+                    return name
+            # Common attribute for SentenceTransformer
+            if hasattr(model, "model_name_or_path"):
+                return str(getattr(model, "model_name_or_path"))
+            # Fallback to class name
+            if hasattr(model, "__class__"):
+                return model.__class__.__name__
+            # Fallback to string representation
+            return str(model)[:80]
+        except Exception as e:
+            return f"Unknown model ({e})"
+    
     def organize_context(
         self,
         raw_context,
@@ -270,8 +550,11 @@ class ContextOrganizer:
         # --- Use class-level embedding_model and plot_anomalies unless overridden ---
         embedding_model = embedding_model if embedding_model is not None else self.embedding_model_obj
         plot_anomalies = plot_anomalies if plot_anomalies is not None else self.plot_anomalies
-        self.logger.info(f"[CONTEXT ORGANIZER] organize_context using embedding_model: {getattr(embedding_model, 'model_name_or_path', str(embedding_model)) if embedding_model is not None else 'None'}")
-        self.logger.info(f"[CONTEXT ORGANIZER] organize_context plot_anomalies: {plot_anomalies}")
+        self.logger.info(
+            "\n[CONTEXT ORGANIZER] Pipeline configuration:\n"
+            f"  • Embedding model: { self._describe_embedding_model(embedding_model) }\n"
+            f"  • Plot anomalies:  { plot_anomalies }\n"
+        )
         log = []
         summary = {"attempts": [], "final": None, "error": None}
 
@@ -345,6 +628,9 @@ class ContextOrganizer:
             if norm_title not in contest_titles:
                 contests.append(c)
                 contest_titles.add(norm_title)
+        if debug:
+            self.print_contest_summary(contests)
+            self.plot_contest_distribution(contests)
         # --- Keyword-based grouping for contests ---
         keyword_sets = {
             "location": LOCATION_KEYWORDS,
@@ -463,7 +749,8 @@ class ContextOrganizer:
                     contests,
                     contamination=contamination,
                     n_estimators=n_estimators,
-                    random_state=random_state
+                    random_state=random_state,
+                    embedding_model=embedding_model
                 )
                 if anomalies:
                     for idx in anomalies:
@@ -475,6 +762,19 @@ class ContextOrganizer:
             except Exception as e:
                 rprint(f"[bold red][ML] Anomaly detection failed:[/bold red] {e}")
 
+        integrity_issues = election_integrity_checks(contests)
+        contests, fix_log = self.suggest_and_apply_fixes(
+            contests,
+            context_library,
+            logs=log,
+            min_confidence=0.8,
+            embedding_model=embedding_model if embedding_model is not None else self.embedding_model_obj
+        )
+        if fix_log:
+            rprint("[bold green]Auto-fixes applied:[/bold green]")
+            for entry in fix_log:
+                rprint(f"  [yellow]{entry['title']}[/yellow]: {', '.join(entry['fixes'])}")
+        # Optionally, re-run integrity checks to see if issues remain
         integrity_issues = election_integrity_checks(contests)
         for issue, contest in integrity_issues:
             if issue == "duplicate":

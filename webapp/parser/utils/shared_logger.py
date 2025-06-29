@@ -19,6 +19,12 @@ level_mapping = {
 }
 logging.addLevelName(5, "TRACE")
 
+# Now configure logging with the correct level from .env
+logging.basicConfig(
+    level=level_mapping.get(LOG_LEVEL, logging.INFO),
+    format='[%(levelname)s] %(message)s'
+)
+
 # Singleton logger instance
 _logger_instance = None
 

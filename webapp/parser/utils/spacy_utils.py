@@ -10,7 +10,8 @@ from typing import List, Tuple, Dict, Any, Set
 import re
 from ..config import PROJECT_ROOT
 from ..bots.librarian import KNOWN_STATE_TO_COUNTY_MAP
-
+import os
+import orjson
 # Load spaCy model globally for efficiency, auto-download if missing
 try:
     nlp = spacy.load("en_core_web_sm")
@@ -178,11 +179,17 @@ def validate_contest_title(title: str, known_states: Set[str], known_counties: S
         "valid": state_found and county_found and not noisy
     }
 
-def flag_suspicious_contests(contests):
+def flag_suspicious_contests(contests, context_library_path=None):
     """
     Flags contests with suspicious or ambiguous titles/entities.
+    Optionally uses a context library if context_library_path is provided.
     Returns a list of flagged contest dicts with reasons.
     """
+    if context_library_path:
+        # Load and use the context library as needed
+        if os.path.exists(context_library_path):
+            with open(context_library_path, "rb") as f:
+                context_library = orjson.loads(f.read())    
     known_states, known_counties = load_known_states_counties()
     flagged = []
     for c in contests:

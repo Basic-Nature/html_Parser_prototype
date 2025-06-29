@@ -47,23 +47,36 @@ def detect_anomalies_with_ml(
     contexts: List[Dict[str, Any]],
     contamination: float = 0.05,
     n_estimators: int = 100,
-    random_state: int = 42
+    random_state: int = 42,
+    embedding_model=None
 ) -> Tuple[List[int], np.ndarray]:
     if not contexts:
         return [], np.array([])
     features = []
     le_state = LabelEncoder()
     le_county = LabelEncoder()
+    le_type = LabelEncoder()
     states = [c.get("state", "unknown") for c in contexts]
     counties = [c.get("county", "unknown") for c in contexts]
+    types = [c.get("type", "unknown") for c in contexts]
     le_state.fit(states)
     le_county.fit(counties)
+    le_type.fit(types)
     for c in contexts:
+        # Optionally add embedding features
+        emb = []
+        if embedding_model and c.get("title"):
+            emb = embedding_model.encode([c["title"]])[0].tolist()
         features.append([
             le_state.transform([c.get("state", "unknown")])[0],
             le_county.transform([c.get("county", "unknown")])[0],
+            le_type.transform([c.get("type", "unknown")])[0],
             int(c.get("year", 0)) if str(c.get("year", "0")).isdigit() else 0,
             len(str(c.get("title", ""))),
+            len(str(c.get("candidate", ""))) if c.get("candidate") else 0,
+            len(str(c.get("party", ""))) if c.get("party") else 0,
+            # ...add more features as needed...
+            *emb
         ])
     X = np.array(features)
     clf = IsolationForest(
@@ -92,6 +105,12 @@ def election_integrity_checks(contests: List[Dict[str, Any]]) -> List[Tuple[str,
             issues.append(("missing_location", c))
         if not c.get("year") or not str(c.get("year")).isdigit():
             issues.append(("missing_year", c))
+        # Advanced: suspicious candidate reuse
+        if isinstance(c.get("candidate"), str) and c.get("candidate").lower() in ["unknown", "n/a"]:
+            issues.append(("suspicious_candidate", c))
+        # Advanced: negative or zero votes
+        if "votes" in c and isinstance(c["votes"], (int, float)) and c["votes"] <= 0:
+            issues.append(("nonpositive_votes", c))
     return issues
 
 def advanced_cross_field_validation(contests: List[Dict[str, Any]]) -> List[Tuple[str, Dict[str, Any]]]:
@@ -179,7 +198,7 @@ def print_entity_summary(entity_summary):
         table.add_row(label, str(count))
     console.print(table)
 
-def print_ml_anomalies(anomaly_indices, contests):
+def print_ml_anomalies(anomaly_indices, contests, X=None, feature_names=None):
     if not anomaly_indices:
         console.print("[bold green]No ML anomalies detected.[/bold green]")
         return
@@ -189,15 +208,24 @@ def print_ml_anomalies(anomaly_indices, contests):
     table.add_column("Year", style="green")
     table.add_column("State", style="yellow")
     table.add_column("County", style="blue")
+    if X is not None and feature_names is not None:
+        for fname in feature_names:
+            table.add_column(f"Δ {fname}", style="red")
     for idx in anomaly_indices:
         c = contests[idx]
-        table.add_row(
+        row = [
             str(idx),
             c.get("title", ""),
             str(c.get("year", "")),
             c.get("state", ""),
             c.get("county", "")
-        )
+        ]
+        if X is not None and feature_names is not None:
+            # Show deviation from median for each feature
+            medians = np.median(X, axis=0)
+            deviations = [f"{X[idx, i] - medians[i]:.2f}" for i in range(X.shape[1])]
+            row.extend(deviations)
+        table.add_row(*row)
     console.print(table)
 
 def print_date_anomalies(date_anomalies):

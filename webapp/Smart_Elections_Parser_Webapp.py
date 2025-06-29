@@ -441,6 +441,5 @@ def upload_to_uploads():
     return redirect(request.referrer or url_for("manage_data"))
 
 if __name__ == "__main__":
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        run_pipeline_once()
-    socketio.run(app, debug=True)
+    run_pipeline_once()
+    socketio.run(app, debug=True, use_reloader=False)

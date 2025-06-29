@@ -184,6 +184,8 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
     Returns a dict with keys: 'handler', 'summary', 'log', 'error' (if any)
     """
     from .Context_Integration.context_coordinator import ContextCoordinator, dynamic_state_county_detection
+    if not HANDLER_MAP["states"] or not HANDLER_MAP["counties_by_state"]:
+        preload_handler_map()
     summary = {"attempts": [], "final": None, "error": None}
     log = []
     # Use preloaded handler map
@@ -209,7 +211,7 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
     enriched = coordinator.organize_and_enrich(context)
     html = context.get("raw_html", "") or (enriched.get("raw_html") if enriched else "")
     # Step 3: Use dynamic_state_county_detection for best guess (context, html)
-    county, state, detection_log = dynamic_state_county_detection(
+    county, state, handler_path, detection_log = dynamic_state_county_detection(
         context, html, debug=True
     )
     for log_entry in detection_log:
@@ -236,6 +238,9 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
             if matches:
                 valid_state = matches[0]
                 summary["attempts"].append(f"Fuzzy matched state '{normalized_state}' to '{valid_state}'")
+    if debug:
+        logger.info(f"[Router] Available states (filesystem): {available_states}")
+        logger.info(f"[Router] Counties for state '{valid_state}': {available_counties_by_state.get(valid_state, [])}")               
     if valid_state and not valid_county and county:
         normalized_county = normalize_county_name(county)
         counties = available_counties_by_state.get(valid_state, [])

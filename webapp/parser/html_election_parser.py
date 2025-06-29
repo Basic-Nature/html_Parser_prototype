@@ -10,7 +10,6 @@
 
 import os
 import orjson
-import logging
 import re
 import threading
 import sys
@@ -58,7 +57,6 @@ PROCESSED_URLS_FILE = Path(PROCESSED_URLS_FILE)
 
 # --- Config Flags ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
-logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format='[%(levelname)s] %(message)s')
 CACHE_PROCESSED_URLS = os.getenv("CACHE_PROCESSED", "true").lower() == "true"
 CACHE_LOCK = threading.Lock()
 CACHE_RESET = os.getenv("CACHE_RESET", "false").lower() == "true"
@@ -78,7 +76,7 @@ def safe_filename(name):
 
 # --- Cache Reset ---
 if CACHE_RESET and PROCESSED_URLS_FILE.exists():
-    logging.debug("Deleting .processed_urls cache for fresh start...")
+    logger.debug("Deleting .processed_urls cache for fresh start...")
     PROCESSED_URLS_FILE.unlink()
 
 # --- Utility: Load URLs from file or prompt user ---
@@ -88,7 +86,7 @@ def load_urls() -> List[str]:
         url = prompt_user_input("URL: ").strip()
         if url:
             URL_LIST_FILE.write_text(url + "\n")
-            logging.info(f"Appended URL to urls.txt: {url}")
+            logger.info(f"Appended URL to urls.txt: {url}")
         return [url] if url else []
     with URL_LIST_FILE.open('r') as f:
         lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
@@ -98,7 +96,7 @@ def load_urls() -> List[str]:
             if url:
                 with URL_LIST_FILE.open('a') as f_append:
                     f_append.write(url + "\n")
-                logging.info(f"Appended URL to urls.txt: {url}")
+                logger.info(f"Appended URL to urls.txt: {url}")
                 return [url]
         return lines
 
@@ -196,9 +194,9 @@ def process_format_override():
     if result and all(result):
         *_, metadata = result
         if "output_file" in metadata:
-            logging.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
+            logger.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
         else:
-            logging.warning("[WARN] No output file path returned from parser.")
+            logger.warning("[WARN] No output file path returned from parser.")
         mark_url_processed("manual_override", status="success")
         return True
     else:
@@ -242,7 +240,7 @@ def stream_results(headers, data, contest_title, metadata):
 def process_url(target_url, processed_info):
     from .Context_Integration.context_coordinator import dynamic_state_county_detection, ContextCoordinator
     rejected_downloads = set()
-    logging.info(f"Navigating to: {target_url}")
+    logger.info(f"Navigating to: {target_url}")
 
     browser = context = page = user_agent = None
     try:
@@ -268,7 +266,7 @@ def process_url(target_url, processed_info):
                 if county and not html_context.get("county"):
                     html_context["county"] = county
 
-            validated_county, validated_state, issues = dynamic_state_county_detection(
+            validated_county, validated_state, handler_path, issues = dynamic_state_county_detection(
                 html_context,
                 html_context.get("raw_html", ""),
                 debug=True,
@@ -278,10 +276,12 @@ def process_url(target_url, processed_info):
                 html_context["state"] = validated_state
             if validated_county:
                 html_context["county"] = validated_county
+            if handler_path:
+                html_context["handler_path"] = handler_path
             if issues:
                 logger.warning(f"[STATE/COUNTY VALIDATION] {issues}")
 
-            # --- NLP/NER Analysis (optional, for logging/diagnostics) ---
+            # --- NLP/NER Analysis (optional, for logger/diagnostics) ---
             try:
                 nlp_report = analyze_contest_titles(html_context.get("contests", []))
                 entity_summary = summarize_context_entities(html_context.get("contests", []))
@@ -293,7 +293,7 @@ def process_url(target_url, processed_info):
             # --- Route to state/county/HTML handler ---
             result = resolve_and_parse(page, html_context, target_url)
             if not isinstance(result, tuple) or len(result) != 4:
-                logging.error("Handler did not return a valid result tuple.")
+                logger.error("Handler did not return a valid result tuple.")
                 mark_url_processed(target_url, status="fail")
                 return
 
@@ -313,7 +313,7 @@ def process_url(target_url, processed_info):
                         output_dir=OUTPUT_DIR
                     )
                 except Exception as e:
-                    logging.error(f"[Batch Mode] Coordinator batch handling failed: {e}", exc_info=True)
+                    logger.error(f"[Batch Mode] Coordinator batch handling failed: {e}", exc_info=True)
                     mark_url_processed(target_url, status="error")
                 return
 
@@ -324,9 +324,9 @@ def process_url(target_url, processed_info):
                 output_file = metadata.get("output_file")
                 if output_file:
                     if os.path.exists(output_file):
-                        logging.info(f"[OUTPUT] CSV written to: {output_file}")
+                        logger.info(f"[OUTPUT] CSV written to: {output_file}")
                     else:
-                        logging.warning(f"[WARN] Output file path returned but file does not exist: {output_file}")
+                        logger.warning(f"[WARN] Output file path returned but file does not exist: {output_file}")
                 else:
                     output_dir = metadata.get("output_dir") or OUTPUT_DIR
                     possible_files = []
@@ -335,16 +335,16 @@ def process_url(target_url, processed_info):
                             if f.endswith(".csv") or f.endswith(".json"):
                                 possible_files.append(os.path.join(output_dir, f))
                     if possible_files:
-                        logging.warning(f"[WARN] No output file path returned from parser, but found files: {possible_files[-3:]}")
+                        logger.warning(f"[WARN] No output file path returned from parser, but found files: {possible_files[-3:]}")
                     else:
-                        logging.warning("[WARN] No output file path returned from parser and no output files found.")
+                        logger.warning("[WARN] No output file path returned from parser and no output files found.")
                 mark_url_processed(target_url, status="success")
             else:
-                logging.warning("Incomplete result structure — skipping CSV write.")
+                logger.warning("Incomplete result structure — skipping CSV write.")
                 mark_url_processed(target_url, status="partial")
 
     except Exception as e:
-        logging.error(f"[ERROR] Exception while processing {target_url}: {e}", exc_info=True)
+        logger.error(f"[ERROR] Exception while processing {target_url}: {e}", exc_info=True)
         mark_url_processed(target_url, status="error")
     finally:
         try:
@@ -386,23 +386,23 @@ def main():
         ensure_output_directory()
 
         urls = load_urls()
-        logging.debug(f"Raw URLs loaded: {urls}")
-        logging.debug(f"Loaded {len(urls)} raw URLs from urls.txt")
+        logger.debug(f"Raw URLs loaded: {urls}")
+        logger.debug(f"Loaded {len(urls)} raw URLs from urls.txt")
 
         max_urls = os.getenv("MAX_URLS_DISPLAYED")
         if max_urls and max_urls.isdigit():
             urls = urls[:int(max_urls)]
 
         if not urls:
-            logging.error("No URLs to process. Exiting.")
+            logger.error("No URLs to process. Exiting.")
             return
 
         processed_info = load_processed_urls()
-        logging.debug(f"{len(urls)} URLs remain after filtering .processed_urls")
+        logger.debug(f"{len(urls)} URLs remain after filtering .processed_urls")
 
         selected_urls = prompt_url_selection(urls, processed_info)
         if not selected_urls:
-            logging.info("No URLs selected. Exiting.")
+            logger.info("No URLs selected. Exiting.")
             return
 
         # --- Multiprocessing for batch mode ---

@@ -430,7 +430,9 @@ def extract_tagged_segments_with_attrs(
                 except Exception as e:
                     logger.error(f"[EMBED] Batch embedding computation failed: {e}")
                     continue
+                # Save to persistent cache
                 save_embeddings_batch(list(zip(missing_hashes, new_embs)))
+                # Update in-memory mapping
                 for h, emb in zip(missing_hashes, new_embs):
                     hash_to_embedding[h] = emb
                 logger.debug(f"[EMBED] Saved {len(chunk)} new embeddings to cache.")

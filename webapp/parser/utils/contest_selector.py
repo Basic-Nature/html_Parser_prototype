@@ -7,7 +7,7 @@ from ..bots.librarian import (
     VALID_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP
     )
 
-from typing import TYPE_CHECKING, List, Dict, Any, Optional
+from typing import TYPE_CHECKING, List, Dict, Any
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
@@ -170,6 +170,12 @@ def select_contest(
 
     # Load precincts mapping
     known_county_to_precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP
+
+    logger.debug(f"[DEBUG] norm_state: {norm_state}, norm_county: {norm_county}, year: {year}")
+    logger.debug(f"[DEBUG] noisy_patterns: {noisy_patterns}")
+    logger.debug(f"[DEBUG] contests before filtering: {contests}")
+    for c in contests:
+        logger.debug(f"[DEBUG] Contest fields: title={c.get('title')}, state={c.get('state')}, county={c.get('county')}, year={c.get('year')}")
 
     def county_matches(contest_county):
         contest_county_norm = normalize_county_name(contest_county)
