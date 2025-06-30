@@ -7,7 +7,7 @@ from rich import print as rprint
 from rich.panel import Panel
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
 import orjson
-
+SUPPRESS_RICH_LOGS = False
 # --- Logger Setup ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 level_mapping = {
@@ -135,6 +135,8 @@ def _rich_log(msg, context=None, default_label=None, default_color=None):
     Advanced rich log rendering: detects [LABEL] or [color] and uses it for the panel.
     If rich markup is present, prints as-is. Otherwise, wraps in a colored panel.
     """
+    if SUPPRESS_RICH_LOGS:
+        return
     if context:
         # Always show context in a panel with color
         label, color, msg_body = extract_label_and_color(msg)

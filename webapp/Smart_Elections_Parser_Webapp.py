@@ -71,6 +71,9 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 # SocketIO event for real-time updates
 
 def run_parser_for_urls(urls, session_id):
+    from webapp.parser.utils import shared_logger
+    shared_logger.SUPPRESS_RICH_LOGS = True  # Suppress Rich output for web parser runs
+
     try:
         cancellation_manager.reset(session_id)
         def emit_to_socketio(line):
