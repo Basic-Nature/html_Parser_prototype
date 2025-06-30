@@ -10,7 +10,7 @@ from ..config import CONTEXT_LIBRARY_PATH
 load_dotenv()
 from .download_utils import download_file
 from ..utils.user_prompt import prompt_user_input
-from .html_scanner import extract_download_links_from_html, load_pattern_kb, append_pattern_kb
+from .html_scanner import load_pattern_kb, append_pattern_kb
 
 
 # --- Load supported formats from .env or context library ---
