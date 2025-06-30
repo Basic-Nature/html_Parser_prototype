@@ -34,6 +34,14 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     # --- 1. Scan HTML for context and contests ---
     state = html_context.get("state", "NY")
     county = html_context.get("county", "Rockland")
+    # --- 2. Scan HTML and organize context before contest selection ---
+    context_result = scan_html_for_context(
+        target_url=getattr(page, "url", None),
+        page=page,
+        coordinator=coordinator,
+        debug=False,
+    )
+    coordinator.organize_and_enrich(context_result)
 
     # --- 3. Contest selection ---
     selected = select_contest(
@@ -145,8 +153,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             context_result = scan_html_for_context(
                 target_url=getattr(page, "url", None),
                 page=page,
+                coordinator=coordinator,
                 debug=False,
-                coordinator=coordinator
             )
 
             # Extract segments for use in extraction_context

@@ -18,6 +18,11 @@ logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
+import itertools
+
+_spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+def get_loading_indicator():
+    return next(_spinner)
 
 # --- In-memory LRU cache for single-segment embedding retrieval ---
 @lru_cache(maxsize=2048)
@@ -25,7 +30,12 @@ def get_embedding_from_memory(segment_hash):
     try:
         emb = load_embedding(segment_hash)
         if emb is None:
-            console.print(f"[yellow][EMBEDDING CACHE] No embedding found for hash: {segment_hash}[/yellow]", highlight=False)
+            indicator = get_loading_indicator()
+            console.print(
+                f"{indicator} [yellow][EMBEDDING CACHE] No embedding found for hash: {segment_hash}[/yellow]",
+                highlight=False,
+                end="\r"
+            )
         return emb
     except DetachedInstanceError as e:
         console.print(f"[red][EMBEDDING CACHE ERROR][/red] DetachedInstanceError for hash {segment_hash}: {str(e)}", highlight=False)
