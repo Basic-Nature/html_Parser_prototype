@@ -4,7 +4,7 @@ import hashlib
 import orjson
 from urllib.parse import urljoin
 from datetime import datetime
-from ..utils.shared_logger import logger
+from ..utils.shared_logger import log_info, log_error
 from ..Context_Integration.context_organizer import ContextOrganizer
 from ..config import INPUT_DIR, OUTPUT_DIR
 
@@ -76,7 +76,7 @@ def download_file(page_url, href, context_info=None, check_hash=False):
 
     # Prevent re-download if already present
     if is_already_downloaded(file_url, save_path, check_hash=check_hash):
-        logger.info(f"[DOWNLOAD] Skipping already downloaded file: {filename}")
+        log_info(f"[DOWNLOAD] Skipping already downloaded file: {filename}")
         return save_path
 
     try:
@@ -85,7 +85,7 @@ def download_file(page_url, href, context_info=None, check_hash=False):
         with open(save_path, "wb") as f:
             f.write(response.content)
         filehash = file_hash(save_path)
-        logger.info(f"[DOWNLOAD] Downloaded: {filename} -> {INPUT_DIR}/")
+        log_info(f"[DOWNLOAD] Downloaded: {filename} -> {INPUT_DIR}/")
         # Update manifest
         entry = {
             "url": file_url,
@@ -101,7 +101,7 @@ def download_file(page_url, href, context_info=None, check_hash=False):
             organizer.append_to_context_library({"downloads": [entry]})
         return save_path
     except Exception as e:
-        logger.error(f"[ERROR] Failed to download {file_url}: {e}")
+        log_error(f"[ERROR] Failed to download {file_url}: {e}")
         entry = {
             "url": file_url,
             "filename": save_path,
@@ -118,7 +118,7 @@ def download_multiple_files(page_url, href_list, confirmed: bool = True, context
     Returns a list of file paths for successfully downloaded files.
     """
     if not confirmed or not href_list:
-        logger.info("[DOWNLOAD] Multiple download skipped by user or empty list.")
+        log_info("[DOWNLOAD] Multiple download skipped by user or empty list.")
         return []
     ensure_input_directory()
     downloaded_files = []
@@ -134,7 +134,7 @@ def download_confirmed_file(file_url: str, page_url: str, confirmed: bool = True
     If not confirmed, return None so the pipeline can skip to HTML handler.
     """
     if not confirmed:
-        logger.info("[DOWNLOAD] Download skipped by user.")
+        log_info("[DOWNLOAD] Download skipped by user.")
         return None
     return download_file(page_url, file_url, context_info=context_info, check_hash=check_hash)
 

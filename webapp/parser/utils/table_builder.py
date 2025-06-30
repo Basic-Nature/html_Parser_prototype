@@ -14,7 +14,7 @@ from ..bots.librarian import (
     PERCENT_KEYWORDS,  
 )
 from typing import List, Dict, Tuple, Any, Optional, TYPE_CHECKING
-from ..utils.shared_logger import rprint, logger
+from ..utils.shared_logger import log_info, log_warning, log_error, log_alert
 from ..config import BASE_DIR, CACHE_DIR
 
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
@@ -116,7 +116,7 @@ def build_dynamic_table(
             merged_headers, merged_data, context=context, coordinator=coordinator
         )
     except Exception as e:
-        logger.warning(f"[TABLE_BUILDER] NLP entity annotation failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+        log_warning(f"[TABLE_BUILDER] NLP entity annotation failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
         annotated_headers, annotated_data = merged_headers, merged_data
         entity_info = {}
     headers, data = harmonize_headers_and_data(annotated_headers, annotated_data)
@@ -127,13 +127,13 @@ def build_dynamic_table(
             wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
             headers, data = harmonize_headers_and_data(wide_headers, wide_data)
         except Exception as e:
-            logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+            log_warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
 
     # --- 5. Optionally load from cache for debugging ---
     if debug:
         cached = _load_table_builder_cache(domain, latest=True)
         if cached:
-            logger.info(f"[TABLE_BUILDER] Loaded cached table for domain '{domain}'.")
+            log_info(f"[TABLE_BUILDER] Loaded cached table for domain '{domain}'.")
             headers, data = cached.get("headers", headers), cached.get("data", data)
             entity_info = cached.get("entity_info", entity_info)
 
@@ -291,7 +291,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
 
     # If ML confidence is low and NLP suggests better header names, auto-apply those suggestions
     if avg_score < 0.7 and any(ent and ent != h for h, ent, label in nlp_suggestions):
-        logger.info("[TABLE BUILDER] ML confidence low and NLP suggests better header names. Auto-applying suggestions.")
+        log_info("[TABLE BUILDER] ML confidence low and NLP suggests better header names. Auto-applying suggestions.")
         alt = new_headers.copy()
         for idx, (h, ent, label) in enumerate(nlp_suggestions):
             if ent and ent != h and idx < len(alt):
@@ -316,43 +316,43 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     while True:
         candidate_headers = structure_candidates[candidate_idx]
         # Show ML/NLP confidence and suggestions
-        rprint(f"\n[bold yellow][Table Builder] Candidate structure {candidate_idx+1}/{len(structure_candidates)} for '{contest_title}':[/bold yellow]")
+        log_warning(f"\n[bold yellow][Table Builder] Candidate structure {candidate_idx+1}/{len(structure_candidates)} for '{contest_title}':[/bold yellow]")
         preview_table = Table(show_header=True, header_style="bold magenta")
         N = min(5, len(data))
-        rprint(f"[bold green]Column content preview (first {N} rows):[/bold green]")
+        log_info(f"[bold green]Column content preview (first {N} rows):[/bold green]")
         for h in candidate_headers:
             preview_table.add_column(h)
             values = [str(row.get(h, "")) for row in data[:N]]
             preview_vals = [v if len(v) < 30 else v[:27] + "..." for v in values]
-            rprint(f"[cyan]{h}[/cyan]: {preview_vals}")
+            log_info(f"[cyan]{h}[/cyan]: {preview_vals}")
         for row in data[:5]:
             preview_table.add_row(*(str(row.get(h, "")) for h in candidate_headers))
-        rprint(preview_table)
-        rprint(f"[cyan]ML average confidence: {avg_score:.2f}[/cyan]")
+        log_alert(preview_table)
+        log_info(f"[cyan]ML average confidence: {avg_score:.2f}[/cyan]")
         if nlp_suggestions:
-            rprint("[cyan]NLP suggestions:[/cyan]")
+            log_info("[cyan]NLP suggestions:[/cyan]")
             for h, ent, label in nlp_suggestions:
                 if ent and ent != h:
-                    rprint(f"  [green]{h}[/green] → [yellow]{ent}[/yellow] ({label})")
+                    log_info(f"  [green]{h}[/green] → [yellow]{ent}[/yellow] ({label})")
         if len(structure_candidates) > 1:
-            rprint(f"[cyan]Use [N]ext/[P]revious to cycle through {len(structure_candidates)} candidates.[/cyan]")
+            log_info(f"[cyan]Use [N]ext/[P]revious to cycle through {len(structure_candidates)} candidates.[/cyan]")
 
         # Auto-accept if ML is very confident
         if avg_score >= auto_accept_threshold:
-            rprint("[green]ML confidence is high. Auto-accepting this structure.[/green]")
+            log_info("[green]ML confidence is high. Auto-accepting this structure.[/green]")
             new_headers = candidate_headers
             break
 
-        rprint("[bold cyan]Options:[/bold cyan]")
-        rprint("  [Y] Accept as correct")
-        rprint("  [N] Reject (log as denied structure)")
-        rprint("  [C] Mark columns as incorrect (remove)")
-        rprint("  [O] Reorder columns")
-        rprint("  [R] Rename columns")
-        rprint("  [A] Add missing columns")
+        log_info("[bold cyan]Options:[/bold cyan]")
+        log_info("  [Y] Accept as correct")
+        log_info("  [N] Reject (log as denied structure)")
+        log_info("  [C] Mark columns as incorrect (remove)")
+        log_info("  [O] Reorder columns")
+        log_info("  [R] Rename columns")
+        log_info("  [A] Add missing columns")
         if len(structure_candidates) > 1:
-            rprint("  [Next] Show next candidate structure")
-            rprint("  [Prev] Show previous candidate structure")
+            log_info("  [Next] Show next candidate structure")
+            log_info("  [Prev] Show previous candidate structure")
         resp = input("Accept, Reject, mark Columns, reorder, Rename, Add, Next, or Prev? [Y/n/c/o/r/a/next/prev]: ").strip().lower()
         if resp in ("", "y", "yes"):
             # Accept and immediately return, breaking the loop
@@ -360,32 +360,32 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
                 coordinator.log_table_structure(domain, new_headers, data)
             new_headers, data = harmonize_headers_and_data(new_headers, data)
             if columns_changed:
-                logger.info(f"[TABLE BUILDER] Columns were changed by user before acceptance.")
+                log_info(f"[TABLE BUILDER] Columns were changed by user before acceptance.")
             return new_headers, data
         elif resp in ("n", "no"):
             denied_structures[sig] = denied_structures.get(sig, 0) + 1
             denied_count = denied_structures[sig]
             with open(denied_structures_path, "wb") as f:
                 f.write(orjson.dumps(denied_structures, option=orjson.OPT_INDENT_2))
-            logger.info(f"[TABLE BUILDER] User declined to log table structure for '{contest_title}'. Denied {denied_count} times.")
+            log_info(f"[TABLE BUILDER] User declined to log table structure for '{contest_title}'. Denied {denied_count} times.")
             if denied_count >= 3:
-                logger.warning(f"[TABLE BUILDER] Structure for '{contest_title}' denied {denied_count} times. Will not auto-apply in future.")
+                log_warning(f"[TABLE BUILDER] Structure for '{contest_title}' denied {denied_count} times. Will not auto-apply in future.")
             retry = input("Would you like to retry correction? [y/N]: ").strip().lower()
             if retry in ("y", "yes"):
                 continue
             else:
                 return headers, data
         elif resp == "c":
-            rprint("Enter column numbers (comma-separated) that are incorrect (starting from 1):")
+            log_info("Enter column numbers (comma-separated) that are incorrect (starting from 1):")
             for idx, h in enumerate(candidate_headers):
-                rprint(f"  {idx+1}: {h}")
+                log_info(f"  {idx+1}: {h}")
             wrong_cols = input("Columns to mark as incorrect: ")
 
             if wrong_cols:
                 wrong_idxs = [int(i)-1 for i in wrong_cols.split(",") if i.strip().isdigit()]
                 for idx in wrong_idxs:
                     if 0 <= idx < len(candidate_headers):
-                        rprint(f"[red]Column '{candidate_headers[idx]}' marked as incorrect.[/red]")
+                        log_error(f"[red]Column '{candidate_headers[idx]}' marked as incorrect.[/red]")
                         col_name = candidate_headers[idx]
                         removed_columns_log.setdefault(contest_title, {})
                         removed_columns_log[contest_title][col_name] = removed_columns_log[contest_title].get(col_name, 0) + 1
@@ -396,9 +396,9 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
             with open(removed_columns_log_path, "wb") as f:
                 f.write(orjson.dumps(removed_columns_log, option=orjson.OPT_INDENT_2))
         elif resp == "o":
-            rprint("Enter new order of columns as space/comma-separated numbers (starting from 1):")
+            log_info("Enter new order of columns as space/comma-separated numbers (starting from 1):")
             for idx, h in enumerate(candidate_headers):
-                rprint(f"  {idx+1}: {h}")
+                log_info(f"  {idx+1}: {h}")
             order = input("New order: ").replace(",", " ").split()
             try:
                 new_order = [candidate_headers[int(i)-1] for i in order if i.strip().isdigit() and 0 < int(i) <= len(candidate_headers)]
@@ -407,13 +407,13 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
                     data = [{h: row.get(h, "") for h in candidate_headers} for row in data]
                     columns_changed = True
                     structure_candidates[candidate_idx] = candidate_headers
-                    rprint(f"[green]Columns reordered.[/green]")
+                    log_info(f"[green]Columns reordered.[/green]")
             except Exception as e:
-                rprint(f"[red]Invalid order: {e}[/red]")
+                log_error(f"[red]Invalid order: {e}[/red]")
         elif resp == "r":
-            rprint("Enter column numbers (comma-separated) to rename (starting from 1):")
+            log_info("Enter column numbers (comma-separated) to rename (starting from 1):")
             for idx, h in enumerate(candidate_headers):
-                rprint(f"  {idx+1}: {h}")
+                log_info(f"  {idx+1}: {h}")
             col_nums = input("Columns to rename: ").strip()
             if col_nums:
                 rename_idxs = [int(i)-1 for i in col_nums.split(",") if i.strip().isdigit() and 0 <= int(i)-1 < len(candidate_headers)]
@@ -421,13 +421,13 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
                     old_name = candidate_headers[idx]
                     new_name = input(f"Rename column '{old_name}' to: ").strip()
                     if new_name:
-                        rprint(f"[yellow]Renamed '{old_name}' to '{new_name}'[/yellow]")
+                        log_warning(f"[yellow]Renamed '{old_name}' to '{new_name}'[/yellow]")
                         candidate_headers[idx] = new_name
                 data = [{h: row.get(h, "") for h in candidate_headers} for row in data]
                 columns_changed = True
                 structure_candidates[candidate_idx] = candidate_headers
         elif resp == "a":
-            rprint("Enter names of columns to add, separated by commas:")
+            log_info("Enter names of columns to add, separated by commas:")
             add_cols = input("Columns to add: ").split(",")
             for col in add_cols:
                 col = col.strip()
@@ -435,7 +435,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
                     candidate_headers.append(col)
                     for row in data:
                         row[col] = ""
-                    rprint(f"[green]Added column '{col}'[/green]")
+                    log_info(f"[green]Added column '{col}'[/green]")
             columns_changed = True
             structure_candidates[candidate_idx] = candidate_headers
             # Ensure added columns are present in all rows
@@ -450,7 +450,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
             candidate_idx = (candidate_idx - 1) % len(structure_candidates)
             continue
         else:
-            rprint("[red]Unknown option. Please try again.[/red]")
+            log_error("[red]Unknown option. Please try again.[/red]")
 
         # Always harmonize after user modification
         candidate_headers, data = harmonize_headers_and_data(candidate_headers, data)
@@ -459,7 +459,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     if should_log and hasattr(coordinator, "log_table_structure"):
         coordinator.log_table_structure(contest_title, new_headers, context={"domain": domain})
         cache_table_structure(domain, new_headers, new_headers)
-        logger.info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest_title}'.")
+        log_info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest_title}'.")
         if hasattr(coordinator, "save_table_structure_to_db"):
             coordinator.save_table_structure_to_db(
                 contest_title=contest_title,
@@ -471,7 +471,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     # Always harmonize before returning
     new_headers, data = harmonize_headers_and_data(new_headers, data)
     if columns_changed:
-        logger.info(f"[TABLE BUILDER] Columns were changed by user in the final structure.")
+        log_info(f"[TABLE BUILDER] Columns were changed by user in the final structure.")
     return new_headers, data
 
 # ===================================================================
@@ -485,12 +485,12 @@ def interactive_batch_operations(headers, data):
     import copy
     history = []
     while True:
-        rprint("\n[bold cyan]Batch Operations: [R]ename, [O]rder, [D]elete, [U]ndo, [Q]uit[/bold cyan]")
+        log_info("\n[bold cyan]Batch Operations: [R]ename, [O]rder, [D]elete, [U]ndo, [Q]uit[/bold cyan]")
         cmd = input("Choose operation: ").strip().lower()
         if cmd == "r":
-            rprint("Enter column numbers (comma-separated) to rename:")
+            log_info("Enter column numbers (comma-separated) to rename:")
             for idx, h in enumerate(headers):
-                rprint(f"  {idx+1}: {h}")
+                log_info(f"  {idx+1}: {h}")
             col_nums = input("Columns to rename: ").strip()
             if col_nums:
                 rename_idxs = [int(i)-1 for i in col_nums.split(",") if i.strip().isdigit() and 0 <= int(i)-1 < len(headers)]
@@ -502,9 +502,9 @@ def interactive_batch_operations(headers, data):
                         headers[idx] = new_name
                 data = [{h: row.get(h, "") for h in headers} for row in data]
         elif cmd == "o":
-            rprint("Enter new order of columns as space/comma-separated numbers (starting from 1):")
+            log_info("Enter new order of columns as space/comma-separated numbers (starting from 1):")
             for idx, h in enumerate(headers):
-                rprint(f"  {idx+1}: {h}")
+                log_info(f"  {idx+1}: {h}")
             order = input("New order: ").replace(",", " ").split()
             try:
                 new_order = [headers[int(i)-1] for i in order if i.strip().isdigit() and 0 < int(i) <= len(headers)]
@@ -513,11 +513,11 @@ def interactive_batch_operations(headers, data):
                     headers = new_order
                     data = [{h: row.get(h, "") for h in headers} for row in data]
             except Exception as e:
-                rprint(f"[red]Invalid order: {e}[/red]")
+                log_error(f"[red]Invalid order: {e}[/red]")
         elif cmd == "d":
-            rprint("Enter column numbers (comma-separated) to delete:")
+            log_info("Enter column numbers (comma-separated) to delete:")
             for idx, h in enumerate(headers):
-                rprint(f"  {idx+1}: {h}")
+                log_info(f"  {idx+1}: {h}")
             del_nums = input("Columns to delete: ").strip()
             if del_nums:
                 del_idxs = [int(i)-1 for i in del_nums.split(",") if i.strip().isdigit() and 0 <= int(i)-1 < len(headers)]
@@ -527,13 +527,13 @@ def interactive_batch_operations(headers, data):
         elif cmd == "u":
             if history:
                 headers, data = history.pop()
-                rprint("[green]Undo successful.[/green]")
+                log_info("[green]Undo successful.[/green]")
             else:
-                rprint("[yellow]Nothing to undo.[/yellow]")
+                log_warning("[yellow]Nothing to undo.[/yellow]")
         elif cmd == "q":
             break
         else:
-            rprint("[red]Unknown option.[/red]")
+            log_error("[red]Unknown option.[/red]")
     return headers, data
 
 def auto_suggest_corrections(headers, data, coordinator):

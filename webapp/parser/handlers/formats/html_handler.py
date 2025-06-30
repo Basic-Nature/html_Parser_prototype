@@ -8,7 +8,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     from ...Context_Integration.context_coordinator import ContextCoordinator
     from ...state_router import get_handler, list_available_handlers, fuzzy_match_handler
     from ...utils.shared_logic import normalize_state_name, normalize_county_name
-    from ...utils.shared_logger import logger
+    from ...utils.shared_logger import log_info, log_debug, log_warning, log_error
     from ...utils.user_prompt import prompt_user_input
     import orjson
     import os
@@ -18,7 +18,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     html_context = context or {}
     if context:
         html_context.update(context)
-    logger.debug(f"[HTML Handler] Initial html_context: {html_context}")
+    log_debug(f"[HTML Handler] Initial html_context: {html_context}")
 
     # 2. Use ContextCoordinator for enrichment, NLP, and validation
     if coordinator is None:
@@ -62,7 +62,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                 })
                 routing_trace.append(f"User specified handler path: {handler_path}")
             except Exception as e:
-                logger.error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
+                log_error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
                 routing_trace.append(f"Failed manual handler import: {handler_path} ({e})")
 
         # --- ML/NLP: Try to infer state/county from context/entities ---
@@ -88,23 +88,23 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
         # --- Handler discovery and fuzzy suggestions ---
         available_states = list_available_handlers(level="state")
         available_counties = list_available_handlers(level="county", state=suggested_state or state)
-        logger.info(f"[HTML Handler] Available states: {available_states}")
-        logger.info(f"[HTML Handler] Available counties for state '{suggested_state or state}': {available_counties}")
+        log_info(f"[HTML Handler] Available states: {available_states}")
+        log_info(f"[HTML Handler] Available counties for state '{suggested_state or state}': {available_counties}")
 
         # Fuzzy match for county if not found
         if county and county not in available_counties:
             matches = fuzzy_match_handler(county, available_counties)
-            logger.warning(f"[HTML Handler] County '{county}' not found. Closest matches: {matches}")
+            log_warning(f"[HTML Handler] County '{county}' not found. Closest matches: {matches}")
             routing_trace.append(f"Fuzzy county matches for '{county}': {matches}")
 
         # --- Context consistency check ---
         if county and (county not in available_counties):
-            logger.warning(f"[HTML Handler] Detected county '{county}' is not in known counties for state '{suggested_state or state}'.")
+            log_warning(f"[HTML Handler] Detected county '{county}' is not in known counties for state '{suggested_state or state}'.")
             routing_trace.append(f"County '{county}' not in known counties for state '{suggested_state or state}'.")
 
         # --- Prompt user for manual override ---
         if not non_interactive:
-            logger.info("[HTML Handler] Prompting user for manual state/county selection.")
+            log_info("[HTML Handler] Prompting user for manual state/county selection.")
             while True:
                 user_state = prompt_user_input(
                     f"Enter state (or leave blank to keep '{suggested_state or state}'): "
@@ -113,7 +113,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                 available_states = list_available_handlers(level="state")
                 if user_state not in available_states:
                     matches = fuzzy_match_handler(user_state, available_states)
-                    logger.warning(f"[HTML Handler] State '{user_state}' not found. Closest matches: {matches}")
+                    log_warning(f"[HTML Handler] State '{user_state}' not found. Closest matches: {matches}")
                     if matches:
                         confirm = prompt_user_input(
                             f"Did you mean '{matches[0]}'? (y/n): "
@@ -123,7 +123,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                         else:
                             continue
                     else:
-                        logger.error(f"[HTML Handler] No valid state handler found for '{user_state}'. Try again.")
+                        log_error(f"[HTML Handler] No valid state handler found for '{user_state}'. Try again.")
                         continue
 
                 available_counties = list_available_handlers(level="county", state=user_state)
@@ -138,12 +138,12 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                     for county_name, precincts in known_county_to_precincts.items():
                         if user_county in [normalize_county_name(d) for d in precincts]:
                             mapped_county = normalize_county_name(county_name)
-                            logger.info(f"[HTML Handler] '{user_county}' matched as precincts of county '{county_name}'. Using '{county_name}'.")
+                            log_info(f"[HTML Handler] '{user_county}' matched as precincts of county '{county_name}'. Using '{county_name}'.")
                             user_county = mapped_county
                             break
                     if not mapped_county:
                         matches = fuzzy_match_handler(user_county, available_counties)
-                        logger.warning(f"[HTML Handler] County '{user_county}' not found. Closest matches: {matches}")
+                        log_warning(f"[HTML Handler] County '{user_county}' not found. Closest matches: {matches}")
                         if matches:
                             confirm = prompt_user_input(
                                 f"Did you mean '{matches[0]}'? (y/n): "
@@ -153,7 +153,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                             else:
                                 continue
                         else:
-                            logger.error(f"[HTML Handler] No valid county handler found for '{user_county}'. Try again.")
+                            log_error(f"[HTML Handler] No valid county handler found for '{user_county}'. Try again.")
                             continue
 
                 # If we get here, both state and county are valid
@@ -185,13 +185,13 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                         })
                         routing_trace.append(f"User specified handler path: {handler_path}")
                     except Exception as e:
-                        logger.error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
+                        log_error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
                         routing_trace.append(f"Failed manual handler import: {handler_path} ({e})")
 
     # 6. If handler found after feedback, route and return
     if handler_found:
-        logger.info(f"[HTML Handler] Routing to state/county handler: {getattr(handler, '__name__', str(handler))}")
-        logger.info(f"[HTML Handler] Routing trace: {routing_trace}")
+        log_info(f"[HTML Handler] Routing to state/county handler: {getattr(handler, '__name__', str(handler))}")
+        log_info(f"[HTML Handler] Routing trace: {routing_trace}")
         # Pass enriched context and coordinator downstream
         return handler.parse(page, coordinator, html_context, non_interactive=non_interactive, **kwargs)
 
@@ -218,12 +218,12 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
             export_path = os.path.join(log_dir, "html_handler_failed_context.json")
             with open(export_path, "wb") as ef:
                 ef.write(orjson.dumps(html_context, option=orjson.OPT_INDENT_2))
-            logger.info(f"[HTML Handler] Context exported to {export_path}")
+            log_info(f"[HTML Handler] Context exported to {export_path}")
 
-    logger.error("[HTML Handler] No suitable handler could be found after all attempts. Routing failed.")
-    logger.info(f"[HTML Handler] Routing trace: {routing_trace}")
-    logger.info(f"[HTML Handler] Entities used for routing: {entities}")
-    logger.info(f"[HTML Handler] Available handlers for state '{html_context.get('state')}': {available_counties}")
+    log_error("[HTML Handler] No suitable handler could be found after all attempts. Routing failed.")
+    log_info(f"[HTML Handler] Routing trace: {routing_trace}")
+    log_info(f"[HTML Handler] Entities used for routing: {entities}")
+    log_info(f"[HTML Handler] Available handlers for state '{html_context.get('state')}': {available_counties}")
 
     return None, None, None, {
         "skipped": True,

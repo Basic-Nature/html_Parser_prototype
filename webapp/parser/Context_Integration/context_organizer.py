@@ -30,7 +30,7 @@ from ..bots.librarian import load_context_library, update_context_library
 from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
-from ..utils.shared_logger import logger, rprint
+from ..utils.shared_logger import log_info, log_warning, log_error
 from rich.table import Table
 from rich.console import Console
 import matplotlib.pyplot as plt
@@ -97,7 +97,7 @@ def save_table_structure_to_db(contest_title, headers, context, ml_confidence=No
                 session.add(obj)
             session.commit()
     except SQLAlchemyError as e:
-        logger.error(f"[DB][TableStructure] Error saving: {e}")
+        log_error(f"[DB][TableStructure] Error saving: {e}")
         raise
 
 def get_table_structure_from_db(contest_title, context=None):
@@ -118,7 +118,7 @@ def get_table_structure_from_db(contest_title, context=None):
             return {"headers": headers, "context": context, "ml_confidence": ml_confidence}
         return None
     except SQLAlchemyError as e:
-        logger.error(f"[DB][TableStructure] Error loading: {e}")
+        log_error(f"[DB][TableStructure] Error loading: {e}")
         return None
 
 def upsert_contest(session, contest_dict):
@@ -155,6 +155,36 @@ def robust_orjson_loads(val):
         return orjson.loads(val.encode("utf-8"))
     else:
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
+
+def repair_dom_segments(segments):
+    """
+    Repairs parent/child relationships in a list of DOM segments.
+    Ensures that for every node, all children point back to the parent.
+    Returns the repaired segments.
+    """
+    # Build index map
+    idx_map = {seg.get("_idx", i): seg for i, seg in enumerate(segments)}
+    # Pass 1: Fix children to be int indices, remove None
+    for seg in segments:
+        seg["children"] = [c if isinstance(c, int) else getattr(c, "_idx", None) for c in seg.get("children", [])]
+        seg["children"] = [c for c in seg["children"] if c is not None]
+    # Pass 2: Fix parent_idx to be int or None
+    for seg in segments:
+        if isinstance(seg.get("parent_idx"), dict):
+            seg["parent_idx"] = seg["parent_idx"].get("_idx")
+        elif not (isinstance(seg.get("parent_idx"), int) or seg.get("parent_idx") is None):
+            seg["parent_idx"] = None
+    # Pass 3: Enforce bidirectional consistency
+    for seg in segments:
+        for child_idx in list(seg["children"]):
+            child = idx_map.get(child_idx)
+            if child is not None and child.get("parent_idx") != seg["_idx"]:
+                # Fix the child's parent_idx
+                child["parent_idx"] = seg["_idx"]
+    # Pass 4: Remove children that do not point back to parent
+    for seg in segments:
+        seg["children"] = [c for c in seg["children"] if idx_map.get(c, {}).get("parent_idx") == seg["_idx"]]
+    return segments
 
 class ContextOrganizer:
     def __init__(
@@ -194,17 +224,17 @@ class ContextOrganizer:
             from ..utils.model_registry import ModelRegistry
             if isinstance(self.embedding_model, str):
                 self.embedding_model_obj = ModelRegistry.get_sentence_transformer(self.embedding_model)
-                self.logger.info(f"[CONTEXT ORGANIZER] Loaded embedding model: {self.embedding_model}")
+                self.log_info(f"[CONTEXT ORGANIZER] Loaded embedding model: {self.embedding_model}")
             elif hasattr(self.embedding_model, "encode"):
                 # Looks like a SentenceTransformer or compatible model
                 self.embedding_model_obj = self.embedding_model
-                self.logger.info(f"[CONTEXT ORGANIZER] Using provided embedding model object.")
+                self.log_info(f"[CONTEXT ORGANIZER] Using provided embedding model object.")
             else:
                 # If it's a method, class, or something else, warn and set to None
-                self.logger.warning(f"[CONTEXT ORGANIZER] Provided embedding_model is not a recognized model instance or string. Type: {type(self.embedding_model)}. Setting to None.")
+                self.log_warning(f"[CONTEXT ORGANIZER] Provided embedding_model is not a recognized model instance or string. Type: {type(self.embedding_model)}. Setting to None.")
                 self.embedding_model_obj = None
         except Exception as e:
-            self.logger.error(f"[CONTEXT ORGANIZER] Failed to load embedding model: {e}")
+            self.log_error(f"[CONTEXT ORGANIZER] Failed to load embedding model: {e}")
             self.embedding_model_obj = None
 
     @staticmethod
@@ -559,7 +589,7 @@ class ContextOrganizer:
         # --- Use class-level embedding_model and plot_anomalies unless overridden ---
         embedding_model = embedding_model if embedding_model is not None else self.embedding_model_obj
         plot_anomalies = plot_anomalies if plot_anomalies is not None else self.plot_anomalies
-        self.logger.info(
+        self.log_info(
             "\n[CONTEXT ORGANIZER] Pipeline configuration:\n"
             f"  • Embedding model: { self._describe_embedding_model(embedding_model) }\n"
             f"  • Plot anomalies:  { plot_anomalies }\n"
@@ -609,7 +639,7 @@ class ContextOrganizer:
                 seg["parent_idx"] += 1
             seg["children"] = [c + 1 if isinstance(c, int) else c for c in seg.get("children", [])]
         tagged_segments = [virtual_root] + tagged_segments
-
+        tagged_segments = repair_dom_segments(tagged_segments)
         dom_tree = self.build_dom_tree(tagged_segments)
         dom_tree["source_url"] = url_value
         dom_parts = self.expose_dom_parts(dom_tree)
@@ -765,11 +795,11 @@ class ContextOrganizer:
                     for idx in anomalies:
                         contest = contests[idx]
                         title = contest.get('title', str(contest))
-                        rprint(f"[bold magenta][ML][/bold magenta] Context anomaly detected: [bold yellow]{title}[/bold yellow]\n  [dim]Context:[/dim] {contest}")
+                        log_info(f"[bold magenta][ML][/bold magenta] Context anomaly detected: [bold yellow]{title}[/bold yellow]\n  [dim]Context:[/dim] {contest}")
                 if plot_clusters_flag:
                     plot_clusters_flag =print_ml_anomalies(anomalies, contests)
             except Exception as e:
-                rprint(f"[bold red][ML] Anomaly detection failed:[/bold red] {e}")
+                log_error(f"[bold red][ML] Anomaly detection failed:[/bold red] {e}")
 
         integrity_issues = election_integrity_checks(contests)
         contests, fix_log = self.suggest_and_apply_fixes(
@@ -780,21 +810,21 @@ class ContextOrganizer:
             embedding_model=embedding_model if embedding_model is not None else self.embedding_model_obj
         )
         if fix_log:
-            rprint("[bold green]Auto-fixes applied:[/bold green]")
+            log_info("[bold green]Auto-fixes applied:[/bold green]")
             for entry in fix_log:
-                rprint(f"  [yellow]{entry['title']}[/yellow]: {', '.join(entry['fixes'])}")
+                log_warning(f"  [yellow]{entry['title']}[/yellow]: {', '.join(entry['fixes'])}")
         # Optionally, re-run integrity checks to see if issues remain
         integrity_issues = election_integrity_checks(contests)
         for issue, contest in integrity_issues:
             if issue == "duplicate":
-                rprint(f"[bold yellow][INTEGRITY][/bold yellow] Duplicate contest detected.\n  [dim]Context:[/dim] {contest}")
+                log_warning(f"[bold yellow][INTEGRITY][/bold yellow] Duplicate contest detected.\n  [dim]Context:[/dim] {contest}")
             elif issue == "missing_location":
-                rprint(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing location info.\n  [dim]Context:[/dim] {contest}")
+                log_warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing location info.\n  [dim]Context:[/dim] {contest}")
             elif issue == "missing_year":
-                rprint(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing year.\n  [dim]Context:[/dim] {contest}")
+                log_warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing year.\n  [dim]Context:[/dim] {contest}")
 
         if len(contests) > 50:
-            rprint(f"[bold red][CONTEXT ORGANIZER][/bold red] High contest count detected — possible congestion.\n  [dim]Context:[/dim] contest_count={len(contests)}")
+            log_error(f"[bold red][CONTEXT ORGANIZER][/bold red] High contest count detected — possible congestion.\n  [dim]Context:[/dim] contest_count={len(contests)}")
 
         # --- Advanced relationship extraction: party/candidate/district/state/county mappings ---
         party_to_candidates = defaultdict(set)
@@ -902,11 +932,11 @@ class ContextOrganizer:
         else:
             metadata["year"] = "Unknown"
         self.append_to_context_library(organized, path=self.context_library_path)
-        self.logger.info(
+        self.log_info(
             f"[CONTEXT ORGANIZER] Organized context for {len(contests)} contests. "
             f"Anomalies: {len(anomalies)}  Integrity issues: {len(integrity_issues)}"
         )
-        rprint(
+        log_info(
             f"[bold green][CONTEXT ORGANIZER][/bold green] Organized context for [bold]{len(contests)}[/bold] contests.\n"
             f"  [magenta]Anomalies:[/magenta] {len(anomalies)}  [yellow]Integrity issues:[/yellow] {len(integrity_issues)}"
         )
@@ -918,7 +948,7 @@ class ContextOrganizer:
                     upsert_contest(session, c)
                 session.commit()
         except SQLAlchemyError as e:
-            self.logger.error(f"[DB][Contest] Error upserting contests: {e}")
+            self.log_error(f"[DB][Contest] Error upserting contests: {e}")
 
         missing_location = any(
             not c.get("state") or not c.get("county")
@@ -934,7 +964,7 @@ class ContextOrganizer:
             for log_entry in detection_log:
                 log.append(f"[Dynamic Detection] {log_entry}")
                 if debug:
-                    self.logger.info(f"[ContextOrganizer][Dynamic Detection] {log_entry}")
+                    self.log_info(f"[ContextOrganizer][Dynamic Detection] {log_entry}")
             if state:
                 raw_context["state"] = state
             if county:
@@ -983,7 +1013,7 @@ class ContextOrganizer:
         for node in nodes:
             for child_idx in node["children"]:
                 if child_idx >= len(nodes) or nodes[child_idx].get("parent_idx") != node["_idx"]:
-                    self.logger.warning(f"Inconsistent parent/child: node {node['_idx']} child {child_idx}")
+                    self.log_warning(f"Inconsistent parent/child: node {node['_idx']} child {child_idx}")
 
         roots = [node for node in nodes if node["parent_idx"] is None]
         dom_tree = {
@@ -1130,9 +1160,9 @@ class ContextOrganizer:
             library = merge_dicts(library, remove_functions(organized))
             library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             update_context_library(path, lambda lib: lib.update(_to_json_safe(library)))
-            self.logger.info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
+            self.log_info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
         except Exception as e:
-            self.logger.error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")
+            self.log_error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")
 
     def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
         """
@@ -1140,9 +1170,9 @@ class ContextOrganizer:
         """
         try:
             save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
-            self.logger.info(f"[CONTEXT ORGANIZER] Saved table structure for contest: {contest_title}")
+            self.log_info(f"[CONTEXT ORGANIZER] Saved table structure for contest: {contest_title}")
         except Exception as e:
-            self.logger.error(f"[CONTEXT ORGANIZER] Failed to save table structure: {e}")
+            self.log_error(f"[CONTEXT ORGANIZER] Failed to save table structure: {e}")
 
     def get_table_structure_from_db(self, contest_title, context=None):
         """
@@ -1151,12 +1181,12 @@ class ContextOrganizer:
         try:
             result = get_table_structure_from_db(contest_title, context)
             if result:
-                self.logger.info(f"[CONTEXT ORGANIZER] Loaded table structure for contest: {contest_title}")
+                self.log_info(f"[CONTEXT ORGANIZER] Loaded table structure for contest: {contest_title}")
             else:
-                self.logger.warning(f"[CONTEXT ORGANIZER] No table structure found for contest: {contest_title}")
+                self.log_warning(f"[CONTEXT ORGANIZER] No table structure found for contest: {contest_title}")
             return result
         except Exception as e:
-            self.logger.error(f"[CONTEXT ORGANIZER] Failed to load table structure: {e}")
+            self.log_error(f"[CONTEXT ORGANIZER] Failed to load table structure: {e}")
             return None
 
 # --- Backward-compatible function for legacy imports ---

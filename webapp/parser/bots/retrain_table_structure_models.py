@@ -29,7 +29,7 @@ from sqlalchemy import select, inspect
 from ..utils.db_utils import get_session, create_engine
 from ..utils.models import TableStructure, Entity
 from ..utils.models import Base
-from ..utils.shared_logger import logger
+from ..utils.shared_logger import log_warning
 
 
 ELECTION_ENTITY_LABELS = [
@@ -339,12 +339,12 @@ def validate_training_data(train_data, nlp, logger=None):
             tags = offsets_to_biluo_tags(nlp.make_doc(text), annots["entities"])
             if "-" in tags:
                 if logger:
-                    logger.warning(f"Skipping misaligned entity in: {text}")
+                    log_warning(f"Skipping misaligned entity in: {text}")
                 continue
             valid_data.append((text, annots))
         except Exception as e:
             if logger:
-                logger.warning(f"Error validating entity alignment: {e}")
+                log_warning(f"Error validating entity alignment: {e}")
     return valid_data
 
 def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model_save_path="fine_tuned_spacy_ner"):
@@ -425,15 +425,13 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
             if "-" in tags:
                 misaligned_count += 1
                 misaligned_examples.append({"text": text, "entities": annots["entities"]})
-                if logger:
-                    logger.warning(f"Skipping misaligned entity in: {text}")
+                log_warning(f"Skipping misaligned entity in: {text}")
                 continue
             valid_data.append((text, annots))
         except Exception as e:
             misaligned_count += 1
             misaligned_examples.append({"text": text, "entities": annots["entities"], "error": str(e)})
-            if logger:
-                logger.warning(f"Error validating entity alignment: {e}")
+            log_warning(f"Error validating entity alignment: {e}")
     if misaligned_examples:
         # Save misaligned examples for review
         misaligned_path = os.path.join(LOG_DIR, "spacy_ner_misaligned.jsonl")

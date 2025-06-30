@@ -8,7 +8,7 @@
 import os
 import importlib
 from typing import Optional, Dict, Any, List, Tuple
-from .utils.shared_logger import logger
+from .utils.shared_logger import log_info, log_warning, log_debug
 from .config import BASE_DIR
 from .bots.librarian import STATE_MODULE_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
 import difflib
@@ -32,7 +32,7 @@ def list_available_states() -> list:
     """List all available state handler modules (normalized names)."""
     base_path = STATE_HANDLER_BASE_PATH
     if not os.path.isdir(base_path):
-        logger.warning("[Router] handlers/states directory not found.")
+        log_warning("[Router] handlers/states directory not found.")
         return []
     return sorted([
         normalize_state_name(d)
@@ -47,7 +47,7 @@ def list_available_counties(state_key: str) -> list:
     state_key = normalize_state_name(state_key)
     base_path = os.path.join(STATE_HANDLER_BASE_PATH, state_key, "county")
     if not os.path.isdir(base_path):
-        logger.warning(f"[Router] counties directory not found for state: {state_key}")
+        log_warning(f"[Router] counties directory not found for state: {state_key}")
         return []
     counties = []
     for fname in os.listdir(base_path):
@@ -69,7 +69,7 @@ def import_handler(module_path: str):
         LOADED_HANDLERS[module_path] = module
         return module
     except Exception as e:
-        logger.debug(f"[Router] Could not import {module_path}: {e}")
+        log_debug(f"[Router] Could not import {module_path}: {e}")
         return None
 
 def preload_handler_map():
@@ -82,14 +82,14 @@ def preload_handler_map():
     HANDLER_MAP["states"] = [normalize_state_name(s) for s in states]
     HANDLER_MAP["counties_by_state"] = counties_by_state
     HANDLER_MAP["last_loaded"] = time.time()
-    logger.info(f"[Router] Handler map preloaded: {len(states)} states, {sum(len(c) for c in counties_by_state.values())} counties.")
+    log_info(f"[Router] Handler map preloaded: {len(states)} states, {sum(len(c) for c in counties_by_state.values())} counties.")
 
 def reload_handler_map():
     """
     Reload the handler map cache.
     """
     preload_handler_map()
-    logger.info("[Router] Handler map reloaded.")
+    log_info("[Router] Handler map reloaded.")
 
 def scan_url_for_state_county(url: str, available_states: List[str], available_counties_by_state: Dict[str, List[str]]) -> Tuple[Optional[str], Optional[str], List[str]]:
     """
@@ -139,7 +139,7 @@ def fuzzy_match_handler(query: str, choices: list, n=3, cutoff=None, debug=False
     cutoff = cutoff if cutoff is not None else FUZZY_MATCH_THRESHOLD
     matches = difflib.get_close_matches(query, choices, n=n, cutoff=cutoff)
     if debug and matches:
-        logger.info(f"[Router][Fuzzy] Query '{query}' matches: {matches} (cutoff={cutoff})")
+        log_info(f"[Router][Fuzzy] Query '{query}' matches: {matches} (cutoff={cutoff})")
     return matches
 
 def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, debug=False):
@@ -154,7 +154,7 @@ def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, 
     counties_by_state = HANDLER_MAP["counties_by_state"] if HANDLER_MAP["counties_by_state"] else {normalize_state_name(s): list_available_counties(s) for s in states}
     norm_state = normalize_state_name(state) if state else None
     if debug:
-        logger.info(f"[list_available_handlers] level={level}, state={state}, fuzzy={fuzzy}, refresh={refresh}")
+        log_info(f"[list_available_handlers] level={level}, state={state}, fuzzy={fuzzy}, refresh={refresh}")
     for s in states:
         counties = counties_by_state.get(s, [])
         handlers[s] = sorted(set(counties))
@@ -167,13 +167,13 @@ def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, 
             if matches:
                 counties = handlers.get(matches[0], [])
                 if debug:
-                    logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
+                    log_info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
         return sorted(set(counties))
     if fuzzy and state:
         matches = difflib.get_close_matches(norm_state, handlers.keys(), n=3, cutoff=FUZZY_MATCH_THRESHOLD)
         if matches:
             if debug:
-                logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
+                log_info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
             return {matches[0]: handlers[matches[0]]}
     return handlers
 
@@ -196,16 +196,16 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
     }
     librarian_states = [normalize_state_name(s) for s in STATE_MODULE_MAP.keys()] if STATE_MODULE_MAP else []
     if debug:
-        logger.info(f"[Router] Available states (filesystem): {available_states}")
-        logger.info(f"[Router] Available states (context library): {librarian_states}")
+        log_info(f"[Router] Available states (filesystem): {available_states}")
+        log_info(f"[Router] Available states (context library): {librarian_states}")
         for s in available_states:
-            logger.info(f"[Router] Counties for state '{s}': {available_counties_by_state[s]}")
+            log_info(f"[Router] Counties for state '{s}': {available_counties_by_state[s]}")
     # Step 1: Scan URL for clues first
     url_state, url_county, url_log = scan_url_for_state_county(url or context.get('url', ''), available_states, available_counties_by_state)
     for entry in url_log:
         log.append(entry)
         if debug:
-            logger.info(entry)
+            log_info(entry)
     # Step 2: Enrich context using the coordinator (NLP, ML, etc.)
     coordinator = ContextCoordinator(use_library=True, enable_ml=False, alert_monitor=False)
     enriched = coordinator.organize_and_enrich(context)
@@ -217,7 +217,7 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
     for log_entry in detection_log:
         log.append(f"[Context Detection] {log_entry}")
         if debug:
-            logger.info(f"[Router] [Context Detection] {log_entry}")
+            log_info(f"[Router] [Context Detection] {log_entry}")
     # Step 4: Decide on state/county using priority: URL > context > context library > filesystem
     valid_state = None
     valid_county = None
@@ -239,8 +239,8 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
                 valid_state = matches[0]
                 summary["attempts"].append(f"Fuzzy matched state '{normalized_state}' to '{valid_state}'")
     if debug:
-        logger.info(f"[Router] Available states (filesystem): {available_states}")
-        logger.info(f"[Router] Counties for state '{valid_state}': {available_counties_by_state.get(valid_state, [])}")               
+        log_info(f"[Router] Available states (filesystem): {available_states}")
+        log_info(f"[Router] Counties for state '{valid_state}': {available_counties_by_state.get(valid_state, [])}")               
     if valid_state and not valid_county and county:
         normalized_county = normalize_county_name(county)
         counties = available_counties_by_state.get(valid_state, [])

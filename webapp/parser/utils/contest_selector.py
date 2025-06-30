@@ -1,5 +1,5 @@
 import re
-from ..utils.shared_logger import rprint, logger
+from ..utils.shared_logger import log_info, log_debug, log_warning
 from ..utils.shared_logic import normalize_state_name, normalize_county_name
 from ..utils.user_prompt import prompt_user_input, PromptCancelled
 from collections import defaultdict
@@ -80,19 +80,19 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
             if ml_verify_contest(c, coordinator, context, threshold=threshold):
                 verified.append(c)
         if verified:
-            logger.info(f"[CONTEST SELECTOR] Feedback loop {loop+1}: {len(verified)} contests passed ML/NER verification.")
+            log_info(f"[CONTEST SELECTOR] Feedback loop {loop+1}: {len(verified)} contests passed ML/NER verification.")
             return verified
-        logger.warning(f"[CONTEST SELECTOR] Feedback loop {loop+1}: No contests passed ML/NER verification. Retrying...")
+        log_warning(f"[CONTEST SELECTOR] Feedback loop {loop+1}: No contests passed ML/NER verification. Retrying...")
     # If still ambiguous, prompt user for clarification
-    rprint("[yellow]Unable to confidently identify valid contests after feedback loop. Please clarify selection.[/yellow]")
+    log_warning("[yellow]Unable to confidently identify valid contests after feedback loop. Please clarify selection.[/yellow]")
     grouped = defaultdict(list)
     for idx, c in enumerate(contests):
         grouped[(c.get('year', ''), c.get('type', ''))].append((idx, c))
 
     for (year, ctype), items in sorted(grouped.items()):
-        rprint(f"[bold cyan]Year: {year or 'Unknown'}, Type: {ctype or 'Unknown'}[/bold cyan]")
+        log_info(f"[bold cyan]Year: {year or 'Unknown'}, Type: {ctype or 'Unknown'}[/bold cyan]")
         for idx, c in items:
-            rprint(f"  [{idx}] {c.get('title', '')}")
+            log_info(f"  [{idx}] {c.get('title', '')}")
     try:
         choice = prompt_user_input(
             "[PROMPT] Enter contest indices (comma-separated), 'all', 'skip', or leave blank to skip: ",
@@ -105,10 +105,10 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
             header="CONTEST FEEDBACK",
         ).strip().lower()
     except PromptCancelled:
-        rprint("[yellow]Contest selection cancelled by user.[/yellow]")
+        log_warning("[yellow]Contest selection cancelled by user.[/yellow]")
         return []
     if not choice or choice == "skip":
-        rprint("[yellow]No contest selected. Skipping.[/yellow]")
+        log_warning("[yellow]No contest selected. Skipping.[/yellow]")
         return []
     if choice == "all":
         return contests
@@ -121,9 +121,9 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
                 indices.append(idx)
     selected = [contests[i] for i in indices]
     # Log user feedback for ML improvement
-    logger.debug(f"norm_state: {context.get('state')}, norm_county: {context.get('county')}, year: {context.get('year')}")
+    log_debug(f"norm_state: {context.get('state')}, norm_county: {context.get('county')}, year: {context.get('year')}")
     for c in selected:
-        logger.debug(f"Contest: {c.get('title', '')}, state: {c.get('state', '')}, county: {c.get('county', '')}, year: {c.get('year', '')}")
+        log_debug(f"Contest: {c.get('title', '')}, state: {c.get('state', '')}, county: {c.get('county', '')}, year: {c.get('year', '')}")
         coordinator.submit_user_feedback("contest", "contest_title", c.get("title", ""), context)
     return selected
 
@@ -167,15 +167,15 @@ def select_contest(
     noisy_patterns = selector_data["noisy_patterns"]
     norm_state = normalize_state_name(state)
     norm_county = normalize_county_name(county)
-
+    log_debug(f"[DEBUG] norm_state: {norm_state}, norm_county: {norm_county}, year: {year}")
+    log_debug(f"[DEBUG] noisy_patterns: {noisy_patterns}")
+    log_debug(f"[DEBUG] contests before filtering: {contests}")
     # Load precincts mapping
     known_county_to_precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP
 
-    logger.debug(f"[DEBUG] norm_state: {norm_state}, norm_county: {norm_county}, year: {year}")
-    logger.debug(f"[DEBUG] noisy_patterns: {noisy_patterns}")
-    logger.debug(f"[DEBUG] contests before filtering: {contests}")
+
     for c in contests:
-        logger.debug(f"[DEBUG] Contest fields: title={c.get('title')}, state={c.get('state')}, county={c.get('county')}, year={c.get('year')}")
+        log_debug(f"[DEBUG] Contest fields: title={c.get('title')}, state={c.get('state')}, county={c.get('county')}, year={c.get('year')}")
 
     def county_matches(contest_county):
         contest_county_norm = normalize_county_name(contest_county)
@@ -197,10 +197,10 @@ def select_contest(
         and (not year or str(c.get("year", "")) == str(year))
         and not any(pat.lower() in c.get("title", "").lower() for pat in noisy_patterns)
     ]
-    logger.debug(f"[DEBUG] Filtered contests: {filtered_contests}")
-    logger.debug(f"[DEBUG] Number of filtered contests: {len(filtered_contests)}")
+    log_debug(f"[DEBUG] Filtered contests: {filtered_contests}")
+    log_debug(f"[DEBUG] Number of filtered contests: {len(filtered_contests)}")
     if not filtered_contests:
-        rprint("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
+        log_warning("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
         return None
 
     # Deduplicate by normalized race name, year, and type
@@ -215,14 +215,14 @@ def select_contest(
     filtered_contests = unique_contests
 
     if not filtered_contests:
-        rprint("[yellow]No valid contests detected after deduplication. Skipping.[/yellow]")
+        log_warning("[yellow]No valid contests detected after deduplication. Skipping.[/yellow]")
         return None
 
     # --- Feedback loop: ML/NER verification of contests ---
     context = {"state": norm_state, "county": norm_county, "year": year}
     verified_contests = feedback_loop_verify_contests(filtered_contests, coordinator, context)
     if not verified_contests:
-        rprint("[yellow]No contests passed ML/NER verification. Skipping.[/yellow]")
+        log_warning("[yellow]No contests passed ML/NER verification. Skipping.[/yellow]")
         return None
 
     # Group by (year, type)
@@ -240,16 +240,16 @@ def select_contest(
             label = f"{state or 'Unknown State'} {county or ''} {year_val or 'Unknown'} {etype or 'Unknown'}"
         else:
             label = f"{year_val or 'Unknown'} {etype or 'Unknown'}"
-        rprint(f"[bold cyan]{label.strip()}[/bold cyan]")
+        log_info(f"[bold cyan]{label.strip()}[/bold cyan]")
         for c in contests_in_group:
-            rprint(f"  [{idx}] {c.get('title', '')}")
+            log_info(f"  [{idx}] {c.get('title', '')}")
             contest_indices.append(c)
             idx += 1
-    logger.debug(f"[DEBUG] Number of contests displayed: {idx}")
+    log_debug(f"[DEBUG] Number of contests displayed: {idx}")
 
     # Auto-select if only one contest
     if len(verified_contests) == 1:
-        rprint(f"[green]Only one contest found. Auto-selecting: {verified_contests[0]['title']}[/green]")
+        log_info(f"[green]Only one contest found. Auto-selecting: {verified_contests[0]['title']}[/green]")
         if log_func:
             log_func(f"[CONTEST] Auto-selected: {verified_contests[0]['title']}")
         return [verified_contests[0]]
@@ -272,13 +272,13 @@ def select_contest(
             log_func=log_func
         ).strip().lower()
     except PromptCancelled:
-        rprint("[yellow]Contest selection cancelled by user.[/yellow]")
+        log_warning("[yellow]Contest selection cancelled by user.[/yellow]")
         if log_func:
             log_func("[CONTEST] User cancelled contest selection.")
         return None
 
     if not choice:
-        rprint("[yellow]No contest selected. Skipping.[/yellow]")
+        log_warning("[yellow]No contest selected. Skipping.[/yellow]")
         if log_func:
             log_func("[CONTEST] No contest selected.")
         return None
@@ -297,14 +297,14 @@ def select_contest(
             if 0 <= idx < len(contest_indices):
                 indices.append(idx)
     if not indices:
-        rprint("[yellow]No valid contest indices selected. Skipping.[/yellow]")
+        log_warning("[yellow]No valid contest indices selected. Skipping.[/yellow]")
         if log_func:
             log_func("[CONTEST] No valid contest indices selected.")
         return None
 
     if len(verified_contests) == 1:
         contest = ensure_contest_title(verified_contests[0])
-        rprint(f"[green]Only one contest found. Auto-selecting: {contest['title']}[/green]")
+        log_info(f"[green]Only one contest found. Auto-selecting: {contest['title']}[/green]")
         if log_func:
             log_func(f"[CONTEST] Auto-selected: {contest['title']}")
         return [contest]
@@ -344,4 +344,4 @@ if __name__ == "__main__":
     coordinator = ContextCoordinator()
     coordinator.organize_and_enrich(sample_context)
     selected = select_contest(coordinator, state="Florida", year=2024)
-    rprint(f"[bold green]Selected contests:[/bold green] {selected}")
+    log_info(f"[bold green]Selected contests:[/bold green] {selected}")

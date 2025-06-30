@@ -10,7 +10,7 @@ Optimized for robust, singleton-style loading, device selection, path validation
 
 import threading
 import os
-import logging
+from ..utils.shared_logger import log_info, log_error
 import sys
 
 from ..config import MODEL_DIR, PROJECT_ROOT
@@ -27,9 +27,6 @@ try:
 except ImportError:
     spacy = None
 
-logger = logging.getLogger("model_registry")
-if not logger.hasHandlers():
-    logging.basicConfig(level=logging.INFO)
 _lock = threading.Lock()
 
 class ModelRegistry:
@@ -53,9 +50,9 @@ class ModelRegistry:
     @classmethod
     def _get_device(cls):
         if torch is not None and torch.cuda.is_available():
-            logger.info("Using CUDA for model loading.")
+            log_info("Using CUDA for model loading.")
             return "cuda"
-        logger.info("Using CPU for model loading.")
+        log_info("Using CPU for model loading.")
         return "cpu"
 
     @classmethod
@@ -72,7 +69,7 @@ class ModelRegistry:
             base_name = model_name or "all-MiniLM-L6-v2"
             # Validate model_name: must be a string and not a model object or repr
             if not isinstance(base_name, str) or base_name.strip() == "" or base_name.startswith("SentenceTransformer("):
-                logger.error(f"Invalid model_name for SentenceTransformer: {base_name!r}. Using default 'all-MiniLM-L6-v2'.")
+                log_error(f"Invalid model_name for SentenceTransformer: {base_name!r}. Using default 'all-MiniLM-L6-v2'.")
                 base_name = "all-MiniLM-L6-v2"
             key = f"sentence_transformer:{base_name}:{use_finetuned}"
             if key in cls._models:
@@ -82,26 +79,26 @@ class ModelRegistry:
                 finetuned_path = cls._model_paths["sentence_transformer"]
                 config_path = os.path.join(finetuned_path, "config.json")
                 if os.path.exists(config_path):
-                    logger.info(f"Loading fine-tuned SentenceTransformer from {finetuned_path}")
+                    log_info(f"Loading fine-tuned SentenceTransformer from {finetuned_path}")
                     try:
                         model = SentenceTransformer(finetuned_path, device=device or cls._get_device())
                         cls._models[key] = model
                         cls._loaded_info[key] = finetuned_path
                         return model
                     except Exception as e:
-                        logger.error(f"Failed to load fine-tuned SentenceTransformer: {e}")
+                        log_error(f"Failed to load fine-tuned SentenceTransformer: {e}")
                         # Do not retry with the same key if it failed
                         cls._models[key] = None
                         return None
             # Fallback to base model
-            logger.info(f"Loading base SentenceTransformer: {base_name}")
+            log_info(f"Loading base SentenceTransformer: {base_name}")
             try:
                 model = SentenceTransformer(base_name, device=device or cls._get_device())
                 cls._models[key] = model
                 cls._loaded_info[key] = base_name
                 return model
             except Exception as e:
-                logger.error(f"Failed to load base SentenceTransformer: {e}")
+                log_error(f"Failed to load base SentenceTransformer: {e}")
                 # Do not retry with the same key if it failed
                 cls._models[key] = None
                 return None
@@ -123,18 +120,18 @@ class ModelRegistry:
                 finetuned_path = cls._model_paths["spacy_ner"]
                 meta_path = os.path.join(finetuned_path, "meta.json")
                 if os.path.exists(meta_path):
-                    logger.info(f"Loading fine-tuned spaCy model from {finetuned_path}")
+                    log_info(f"Loading fine-tuned spaCy model from {finetuned_path}")
                     try:
                         nlp = spacy.load(finetuned_path)
                         cls._nlp_models[key] = nlp
                         cls._loaded_info[key] = finetuned_path
                         return nlp
                     except Exception as e:
-                        logger.error(f"Failed to load fine-tuned spaCy model: {e}")
+                        log_error(f"Failed to load fine-tuned spaCy model: {e}")
             # Fallback to base model
             base_name = model_name or "en_core_web_sm"
             try:
-                logger.info(f"Loading base spaCy model: {base_name}")
+                log_info(f"Loading base spaCy model: {base_name}")
                 nlp = spacy.load(base_name)
                 cls._nlp_models[key] = nlp
                 cls._loaded_info[key] = base_name
@@ -142,14 +139,14 @@ class ModelRegistry:
             except OSError:
                 # Auto-download if missing
                 import subprocess
-                logger.info(f"Downloading spaCy model: {base_name}")
+                log_info(f"Downloading spaCy model: {base_name}")
                 subprocess.run([sys.executable, "-m", "spacy", "download", base_name], check=True, cwd=PROJECT_ROOT)
                 nlp = spacy.load(base_name)
                 cls._nlp_models[key] = nlp
                 cls._loaded_info[key] = base_name
                 return nlp
             except Exception as e:
-                logger.error(f"Failed to load base spaCy model: {e}")
+                log_error(f"Failed to load base spaCy model: {e}")
                 raise
 
     @classmethod
@@ -162,12 +159,12 @@ class ModelRegistry:
         """
         with _lock:
             if key not in cls._custom_models:
-                logger.info(f"Loading custom model: {key}")
+                log_info(f"Loading custom model: {key}")
                 try:
                     cls._custom_models[key] = loader_func(*args, **kwargs)
                     cls._loaded_info[key] = str(loader_func)
                 except Exception as e:
-                    logger.error(f"Failed to load custom model {key}: {e}")
+                    log_error(f"Failed to load custom model {key}: {e}")
                     raise
             return cls._custom_models[key]
 
@@ -191,7 +188,7 @@ class ModelRegistry:
                     del cls._custom_models[model_type]
                 if model_type in cls._loaded_info:
                     del cls._loaded_info[model_type]
-            logger.info(f"Reloaded model(s) of type: {model_type}")
+            log_info(f"Reloaded model(s) of type: {model_type}")
 
     @classmethod
     def clear_cache(cls):
@@ -201,7 +198,7 @@ class ModelRegistry:
             cls._nlp_models.clear()
             cls._custom_models.clear()
             cls._loaded_info.clear()
-            logger.info("Model registry cache cleared.")
+            log_info("Model registry cache cleared.")
 
     @classmethod
     def set_model_path(cls, model_type, path):

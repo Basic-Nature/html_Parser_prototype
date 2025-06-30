@@ -20,7 +20,7 @@ import orjson
 import unicodedata
 
 from typing import List, Dict
-from ..utils.shared_logger import logger, rprint
+from ..utils.shared_logger import log_info, log_error, log_warning
 from ..config import BASE_DIR
 from typing import TYPE_CHECKING
 from ..utils.table_core import (
@@ -60,11 +60,11 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
         soup = BeautifulSoup(table_html, "html.parser")
         table = soup.find("table")
         if not table:
-            logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No <table> found in provided table_html.")
+            log_warning("[DYNAMIC_TABLE_EXTRACTOR] No <table> found in provided table_html.")
             return [], []
         rows = table.find_all("tr")
         if not rows:
-            logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No <tr> rows found in table_html.")
+            log_warning("[DYNAMIC_TABLE_EXTRACTOR] No <tr> rows found in table_html.")
             return [], []
         headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
         data = []
@@ -78,7 +78,7 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
                 headers = ["Precinct"] + headers
             for row in data:
                 row["Precinct"] = precinct
-        logger.info(f"[DYNAMIC_TABLE_EXTRACTOR] Extracted {len(data)} rows from HTML table.")
+        log_info(f"[DYNAMIC_TABLE_EXTRACTOR] Extracted {len(data)} rows from HTML table.")
         return headers, data
     candidates = find_tabular_candidates(page, context=context)
     enriched_candidates = []
@@ -89,7 +89,7 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
     enriched_candidates.sort(key=lambda c: c['score'], reverse=True)
     best = enriched_candidates[0] if enriched_candidates else None
     if best:
-        logger.info(f"[DYNAMIC_TABLE_EXTRACTOR] Best candidate source: {best.get('source')}, score: {best.get('score'):.2f}")
+        log_info(f"[DYNAMIC_TABLE_EXTRACTOR] Best candidate source: {best.get('source')}, score: {best.get('score'):.2f}")
         # --- PATCH: Attach context to each row if Precinct/panel_heading is present ---
         precinct = context.get("panel_heading") or context.get("Precinct")
         if precinct and "Precinct" not in best['headers']:
@@ -97,7 +97,7 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
             for row in best['rows']:
                 row["Precinct"] = precinct
         return best['headers'], best['rows']
-    logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No suitable table candidates found.")
+    log_warning("[DYNAMIC_TABLE_EXTRACTOR] No suitable table candidates found.")
     return [], []
 
 # --- Candidate Generation & Scoring ---
@@ -131,7 +131,7 @@ def find_tabular_candidates(page, context=None):
                 candidate["context"] = context.copy()
             candidates.append(candidate)
     except Exception as e:
-        logger.warning(f"[DYNAMIC_TABLE_EXTRACTOR] DOM extraction failed: {e}")
+        log_warning(f"[DYNAMIC_TABLE_EXTRACTOR] DOM extraction failed: {e}")
     # 3. Pattern-based extraction (if any patterns are approved)
     try:
         pattern_rows = extract_with_patterns(page, context=context)
@@ -164,7 +164,7 @@ def find_tabular_candidates(page, context=None):
                         candidate["context"] = context.copy()
                     candidates.append(candidate)
     except Exception as e:
-        logger.warning(f"[DYNAMIC_TABLE_EXTRACTOR] Pattern extraction failed: {e}")
+        log_warning(f"[DYNAMIC_TABLE_EXTRACTOR] Pattern extraction failed: {e}")
     return candidates
 
 def analyze_candidate_nlp(candidate, coordinator):
@@ -752,14 +752,14 @@ def is_candidate_major_row(headers, data, coordinator, context):
     if not headers or not data:
         headers, data = robust_table_extraction(context.get("page"), context)
         if not headers or not data:
-            logger.error("[TABLE BUILDER] No data could be extracted from the page.")
+            log_error("[TABLE BUILDER] No data could be extracted from the page.")
             return [], []
     candidate_major_headers = {"Candidate", "Election Day", "Early Voting", "Absentee Mail", "Total Votes"}
     if set(headers) == candidate_major_headers:
         structure_info = {"type": "candidate-major", "candidate_col": 0, "ballot_type_cols": [1, 2, 3]}
     else:
         structure_info = detect_table_structure(headers, data, coordinator)
-    logger.info(f"[TABLE BUILDER] Detected table structure: {structure_info}")        
+    log_info(f"[TABLE BUILDER] Detected table structure: {structure_info}")        
     first_col = normalize_text(headers[0])
     return first_col in CANDIDATE_KEYWORDS and len(data) > 1
 
@@ -781,7 +781,7 @@ def is_precinct_major(headers, coordinator):
 def is_flat_candidate_table(headers):
     # Only candidate and total columns (no locations)
     if not headers:
-        rprint("[red][ERROR] No headers extracted from table. Skipping this table.[/red]")
+        log_error("[red][ERROR] No headers extracted from table. Skipping this table.[/red]")
         return False
     first_col = normalize_text(headers[0])
     return (

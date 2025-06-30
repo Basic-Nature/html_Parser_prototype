@@ -28,7 +28,7 @@ import importlib
 from fastapi import FastAPI
 import uvicorn
 # --- Unified logger import ---
-from ..utils.shared_logger import logger
+from ..utils.shared_logger import log_info, log_warning, log_error
 from ..bots.librarian import (
     update_context_library,
     SCHEMA_VERSION,
@@ -200,9 +200,9 @@ def llm_suggest_action(entry, context=None, api_key=None, model="gpt-4-turbo", p
             )
             return response.content[0].text
         else:
-            logger.error(f"Unknown LLM provider: {provider}")
+            log_error(f"Unknown LLM provider: {provider}")
     except Exception as e:
-        logger.error(f"LLM suggestion failed ({provider}): {e}")
+        log_error(f"LLM suggestion failed ({provider}): {e}")
     return None
 
 def ml_score_entry(entry, coordinator=None):
@@ -216,7 +216,7 @@ def ml_score_entry(entry, coordinator=None):
         try:
             score = coordinator.score_entry(entry)
         except Exception as e:
-            logger.warning(f"Coordinator ML scoring failed: {e}")
+            log_warning(f"Coordinator ML scoring failed: {e}")
     if nlp and text:
         doc = nlp(str(text))
         if doc.ents:
@@ -236,7 +236,7 @@ def ml_suggest_field(entry, coordinator=None):
         try:
             return coordinator.suggest_field(entry)
         except Exception as e:
-            logger.warning(f"Coordinator field suggestion failed: {e}")
+            log_warning(f"Coordinator field suggestion failed: {e}")
     if nlp and text:
         doc = nlp(str(text))
         if doc.ents:
@@ -261,7 +261,7 @@ def find_log_files(log_dir=LOG_DIR, cache_dir=None, suffixes=(".jsonl", ".json")
 def load_jsonl(path):
     path = safe_path(path, [LOG_DIR, CONTEXT_LIBRARY_DIR])
     if not path.exists():
-        logger.warning(f"Log file not found: {path}")
+        log_warning(f"Log file not found: {path}")
         return []
     with open(path, "r", encoding="utf-8") as f:
         return [orjson.loads(line) for line in f if line.strip()]
@@ -384,7 +384,7 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
 def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, coordinator=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None, fast_mode=False):
     context_library_path = safe_path(context_library_path, [CONTEXT_LIBRARY_DIR])
     if not new_entries:
-        logger.info(f"No new entries to review for {field_type}.")
+        log_info(f"No new entries to review for {field_type}.")
         return 0, 0, 0
     print(f"\n[FEEDBACK] Review new context library entries for {field_type}:")
     context_library = load_context_library(context_library_path)
@@ -472,7 +472,7 @@ def highlight_anomalies(context_library, field_type):
     try:
         from ..Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
     except ImportError:
-        logger.warning("Could not import integrity_check for anomaly highlighting.")
+        log_warning("Could not import integrity_check for anomaly highlighting.")
         return
     if field_type == "contests" and "contests" in context_library:
         contests = context_library["contests"]
@@ -496,9 +496,9 @@ def update_database_with_context(library, db_path=None, coordinator=None, enhanc
             coordinator.update_db_with_context(library, db_path)
         else:
             atomic_write_json(library, db_path)
-        logger.info(f"Database updated at {db_path}")
+        log_info(f"Database updated at {db_path}")
     except Exception as e:
-        logger.error(f"Failed to update DB: {e}")
+        log_error(f"Failed to update DB: {e}")
 
 # --- CLI/REST API hooks (REST stub) ---
 def run_rest_api():
@@ -539,7 +539,7 @@ def ensure_context_library(path):
     """
     path = safe_path(path, [CONTEXT_LIBRARY_DIR])
     if not path.exists():
-        logger.info(f"Context library not found at {path}, initializing with default structure.")
+        log_info(f"Context library not found at {path}, initializing with default structure.")
         struct = DEFAULT_STRUCTURE.copy()
         struct["schema_version"] = SCHEMA_VERSION
         update_context_library(struct, path)
@@ -550,7 +550,7 @@ def ensure_context_library(path):
         context_lib["schema_version"] = SCHEMA_VERSION
         update_context_library(context_lib, path)
     if context_lib.get("schema_version") != SCHEMA_VERSION:
-        logger.warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
+        log_warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
     return context_lib
 
 def validate_training_data(train_data, nlp):
@@ -563,11 +563,11 @@ def validate_training_data(train_data, nlp):
         try:
             tags = offsets_to_biluo_tags(nlp.make_doc(text), annots["entities"])
             if "-" in tags:
-                logger.warning(f"Skipping misaligned entity in: {text}")
+                log_warning(f"Skipping misaligned entity in: {text}")
                 continue
             valid_data.append((text, annots))
         except Exception as e:
-            logger.warning(f"Error validating entity alignment: {e}")
+            log_warning(f"Error validating entity alignment: {e}")
     return valid_data
 
 def summarize_misaligned_entities(log_path=None, top_n=10):
@@ -675,13 +675,13 @@ def main():
     fields = args.fields
     log_files = find_log_files(log_dir, cache_dir)
     # print(f"[DEBUG] All discovered log files: {[str(f) for f in log_files]}")
-    logger.info(f"Discovered {len(log_files)} log files in {log_dir}")
+    log_info(f"Discovered {len(log_files)} log files in {log_dir}")
 
     batch_entries = []
     for log_file in log_files:
         for field in fields:
             if field in log_file.name:
-                logger.info(f"Processing {log_file} for field {field}")
+                log_info(f"Processing {log_file} for field {field}")
                 entries = load_jsonl_incremental(log_file, cache)
                 unique_entries, _ = deduplicate_entries(entries)
                 # ...review logic (auto/batch/interactive/feedback loop)...
@@ -713,14 +713,14 @@ def main():
             coordinator_mod = importlib.import_module("webapp.parser.Context_Integration.context_coordinator")
             coordinator = getattr(coordinator_mod, "ContextCoordinator", None)
         except Exception as e:
-            logger.warning(f"Could not import context_coordinator: {e}")
+            log_warning(f"Could not import context_coordinator: {e}")
             coordinator = None
 
         try:
             organizer_mod = importlib.import_module("webapp.parser.Context_Integration.context_organizer")
             context_organizer = getattr(organizer_mod, "ContextOrganizer", None)
         except Exception as e:
-            logger.warning(f"Could not import context_organizer: {e}")
+            log_warning(f"Could not import context_organizer: {e}")
             context_organizer = None
 
     total_accepted, total_edited, total_removed = 0, 0, 0
@@ -730,7 +730,7 @@ def main():
         # Infer field type from filename
         for field in fields:
             if field in log_file.name:
-                logger.info(f"Processing {log_file} for field {field}")
+                log_info(f"Processing {log_file} for field {field}")
                 # Deduplicate and skip existing
                 field_entries, dup_count, skipped_existing, n_new = aggregate_successful_field_entries(
                     log_file, context_library, field, fast_mode=args.fast
@@ -752,7 +752,7 @@ def main():
                 if args.auto or args.fast:
                     # Auto-accept all new entries
                     update_context_with_new_entries(context_path, field, field_entries)
-                    logger.info(f"Auto-accepted new entries for {field}.")
+                    log_info(f"Auto-accepted new entries for {field}.")
                     total_accepted += sum(len(v) for v in field_entries.values())
                     context_library_changed = True
                 else:
@@ -797,16 +797,16 @@ def main():
                 # Clean up log file after processing
                 try:
                     os.remove(log_file)
-                    logger.info(f"Deleted processed log file: {log_file}")
+                    log_info(f"Deleted processed log file: {log_file}")
                 except Exception as e:
-                    logger.warning(f"Could not delete log file {log_file}: {e}")
+                    log_warning(f"Could not delete log file {log_file}: {e}")
                 break
 
     # Write context library only if changed
     if context_library_changed:
         context_library = load_context_library(context_path)
         update_context_library(context_library, context_path)
-        logger.info(f"Context library updated at {context_path}")
+        log_info(f"Context library updated at {context_path}")
 
     print("\n[SUMMARY] Manual Correction Bot Run Complete.")
     print(f"Log files processed: {processed_logs}")

@@ -8,7 +8,7 @@ import re
 
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, SpinnerColumn
 
-from ..utils.shared_logger import rprint, logger
+from ..utils.shared_logger import log_info, log_warning, log_error
 from ..utils.user_prompt import prompt_user_input
 from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
 from typing import TYPE_CHECKING
@@ -127,7 +127,7 @@ def infer_state_county_from_url(url: str):
     if state:
         state_norm = normalize_state_name(state)
         if state_norm not in county_map:
-            logger.warning(f"State '{state_norm}' not found in county map")
+            log_warning(f"State '{state_norm}' not found in county map")
         counties = county_map.get(state_norm, [])
         counties_norm = [normalize_county_name(c) for c in counties]
         # Try to match "-county" or "_county" in URL
@@ -193,7 +193,7 @@ def show_progress_bar(task_desc, total, update_iter):
             yield n
 
 def coordinator_feedback(domain, scrolls, step, incomplete=False):
-    logger.info(f"[COORDINATOR] Scroll pattern for {domain}: {scrolls} scrolls, step {step}, incomplete={incomplete}")
+    log_info(f"[COORDINATOR] Scroll pattern for {domain}: {scrolls} scrolls, step {step}, incomplete={incomplete}")
 
 def normalize_text(text):
     return re.sub(r"\s+", " ", text.strip().lower())
@@ -282,24 +282,24 @@ def autoscroll_until_stable(
             scroll_attempts += 1
             progress.update(task, advance=1)
             if wait_for_selector and page.query_selector(wait_for_selector):
-                logger and logger.info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
+                logger and log_info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
                 break
             elapsed = (time.time() - start_time) * 1000
             if elapsed > max_total_time * 0.8 and scroll_attempts % 10 == 0:
                 console.print("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
                 resp = prompt_user_input("Continue scrolling? (y/N): ").strip().lower()
                 if resp != "y":
-                    logger and logger.warning("[SCROLL] User aborted scrolling.")
+                    logger and log_warning("[SCROLL] User aborted scrolling.")
                     break
         progress.update(task, completed=max_scrolls)
 
     if stable >= max_stable_frames:
-        logger and logger.info("[SCROLL] Completed scrolling until page height/content stabilized.")
+        logger and log_info("[SCROLL] Completed scrolling until page height/content stabilized.")
         if coordinator_feedback:
             coordinator_feedback(domain, scroll_attempts, step)
         return True
     else:
-        logger and logger.warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
+        logger and log_warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
         if coordinator_feedback:
             coordinator_feedback(domain, scroll_attempts, step, incomplete=True)
         return False

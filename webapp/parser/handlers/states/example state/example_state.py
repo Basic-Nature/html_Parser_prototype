@@ -2,8 +2,7 @@ import importlib
 from playwright.sync_api import Page
 from typing import Optional, Tuple, Any, List, Dict
 
-from ....utils.shared_logger import logger
-from ....utils.shared_logger import rprint
+from ....utils.shared_logger import log_info, log_warning, log_error, log_error, log_debug
 from ....utils.output_utils import finalize_election_output
 from ....utils.contest_selector import select_contest
 from ....utils.table_builder import build_dynamic_table
@@ -35,16 +34,16 @@ def parse(
         module_path = f"webapp.parser.handlers.states.example.county.{county}"
         try:
             county_module = importlib.import_module(module_path)
-            logger.info(f"[Example Handler] Routing to county parser: {module_path}")
+            log_info(f"[Example Handler] Routing to county parser: {module_path}")
             return county_module.parse(page, coordinator=coordinator, html_context=html_context, non_interactive=non_interactive)
         except ModuleNotFoundError:
-            logger.warning(f"[Example Handler] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
+            log_warning(f"[Example Handler] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
         except Exception as e:
-            logger.error(f"[Example Handler] Error in county parser: {e}")
+            log_error(f"[Example Handler] Error in county parser: {e}")
             return None, None, None, {"error": str(e)}
 
     # --- 2. Otherwise, handle all counties within this page ---
-    logger.info("[Example Handler] No county-specific handler found. Attempting state-level parsing.")
+    log_info("[Example Handler] No county-specific handler found. Attempting state-level parsing.")
 
     # Scan for context and contests
     context = scan_html_for_context(page)
@@ -70,7 +69,7 @@ def parse(
         non_interactive=non_interactive
     )
     if not selected:
-        rprint("[red]No contest selected. Skipping.[/red]")
+        log_error("[red]No contest selected. Skipping.[/red]")
         return None, None, None, {"skipped": True}
 
     # If multiple contests, process each (aggregate or return first)
@@ -93,7 +92,7 @@ def parse_single_contest_dynamic(page, html_context, state, county, coordinator)
     Parses a single contest (race) from the page using dynamic, context/NLP-driven extraction.
     """
     contest_title = html_context.get("selected_race")
-    rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
+    log_info(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
 
     # --- Use context/NLP to guide extraction ---
     entities = coordinator.extract_entities(contest_title)
@@ -136,18 +135,18 @@ def parse_single_contest_dynamic(page, html_context, state, county, coordinator)
             data_rows = [dict(zip(headers, row)) for row in ballot_items]
     else:
         # Fallback: try table-based extraction as a last resort
-        rprint(f"[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+        log_warning(f"[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
         
         headers, data_rows = robust_table_extraction(page, html_context)
         if not headers or not data_rows:
-            rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+            log_error(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
             return None, None, contest_title, {"skipped": True}
 
     # --- Build dynamic table ---
     headers, data = build_dynamic_table(headers, data_rows, coordinator, html_context)
 
     if not data:
-        rprint("[red][ERROR] No contest data was parsed.[/red]")
+        log_error("[red][ERROR] No contest data was parsed.[/red]")
         return None, None, contest_title, {"skipped": True}
 
     # --- Assemble headers and finalize output ---

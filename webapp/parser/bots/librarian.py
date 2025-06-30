@@ -15,7 +15,7 @@ import time
 import threading
 import shutil
 import tempfile
-from ..utils.shared_logger import logger
+from ..utils.shared_logger import log_info
 
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
@@ -676,7 +676,7 @@ def update_context_library_field(key, value, path=CONTEXT_LIBRARY_PATH):
     lib[key] = value
     save_context_library(lib, path)
     # Optionally log the change
-    logger.info(f"Updated context_library field '{key}': {old_value} -> {value}")
+    log_info(f"Updated context_library field '{key}': {old_value} -> {value}")
 
 def update_domain_selector_cache(domain, selector, label, success=True):
     lib = load_context_library()

@@ -3,7 +3,7 @@ import orjson
 import os
 import collections.abc
 from datetime import datetime
-from ..utils.shared_logger import rprint, logger
+from ..utils.shared_logger import log_info, log_warning, log_error
 from ..utils.table_builder import build_dynamic_table, harmonize_headers_and_data
 from ..config import CONTEXT_DB_PATH, BASE_DIR, LOG_DIR
 from ..utils.user_prompt import prompt_yes_no
@@ -66,10 +66,10 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
             break
 
     if not year or not str(year).isdigit() or len(str(year)) != 4:
-        rprint("[yellow][OUTPUT] Year could not be verified. Using 'Unknown'.[/yellow]")
+        log_warning("[yellow][OUTPUT] Year could not be verified. Using 'Unknown'.[/yellow]")
         year = "Unknown"
     if not race:
-        rprint("[yellow][OUTPUT] Race could not be verified. Using 'unknown_race'.[/yellow]")
+        log_warning("[yellow][OUTPUT] Race could not be verified. Using 'unknown_race'.[/yellow]")
         race = "unknown_race"
 
     race_safe = safe_filename(race)
@@ -203,7 +203,7 @@ def finalize_election_output(
     if context is None:
         context = {}
 
-    logger.info(f"[OUTPUT_UTILS] finalize_election_output called with contest_title: '{contest_title}'")
+    log_info(f"[OUTPUT_UTILS] finalize_election_output called with contest_title: '{contest_title}'")
 
     meta = {
         "race": contest_title or "Unknown",
@@ -307,8 +307,8 @@ def finalize_election_output(
 
     update_output_cache(metadata_out, filepath)
 
-    rprint(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
-    rprint(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
+    log_info(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
+    log_info(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
 
     if enable_user_feedback or os.environ.get("ENABLE_USER_FEEDBACK", "false").lower() == "true":
         feedback_log_path = safe_join(LOG_DIR, "user_feedback_log.jsonl")
@@ -324,7 +324,7 @@ def finalize_election_output(
             }
             with open(feedback_log_path, "ab") as fb:
                 fb.write(orjson.dumps(feedback_entry) + b"\n")
-            rprint(f"[bold blue][FEEDBACK][/bold blue] Feedback logged to {feedback_log_path}")
+            log_info(f"[bold blue][FEEDBACK][/bold blue] Feedback logged to {feedback_log_path}")
 
     return {
         "csv_path": filepath,

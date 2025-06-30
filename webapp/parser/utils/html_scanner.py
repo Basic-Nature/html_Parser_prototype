@@ -4,18 +4,15 @@ import os
 import re
 import time
 from typing import Dict, Any, List, Optional
-from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR
-from ..utils.download_utils import download_file
-from ..utils.format_router import route_format_handler 
+from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR 
 from ..utils.shared_logic import infer_state_county_from_url 
-from ..utils.shared_logger import logger
+from ..utils.shared_logger import log_info, log_debug, log_warning, log_error
 from ..bots.librarian import update_context_library
 from rich import print as rprint
 from rich.console import Console
 from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
 from ..utils.model_registry import ModelRegistry
-from ..utils.user_prompt import PromptCancelled
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, DISTRICT_REGEX, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
     extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns,
@@ -62,7 +59,7 @@ def _get_label_cache_path():
         # Fallback: use a short temp directory
         import tempfile
         short_path = os.path.join(tempfile.gettempdir(), _LABEL_CACHE_FILENAME)
-        logger.warning(f"[CACHE] Path too long for Windows, using temp path: {short_path}")
+        log_warning(f"[CACHE] Path too long for Windows, using temp path: {short_path}")
         return short_path
     return path
 
@@ -240,7 +237,7 @@ def extract_tagged_segments_with_attrs(
         if pattern_kb:
             for entry in pattern_kb:
                 if not isinstance(entry, dict):
-                    logger.warning(f"Non-dict entry in cache: {entry!r}")
+                    log_warning(f"Non-dict entry in cache: {entry!r}")
                     continue
                 if entry.get("segment_hash", []) == key:
                     return entry
@@ -315,7 +312,7 @@ def extract_tagged_segments_with_attrs(
     # Load ML model and pattern KB/context only once
     model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
     if model is None:
-        logger.error("[ERROR] SentenceTransformer model could not be loaded. Check model path and files.")
+        log_error("[ERROR] SentenceTransformer model could not be loaded. Check model path and files.")
         raise RuntimeError("SentenceTransformer model could not be loaded. Aborting segment extraction.")
     if pattern_kb is None:
         pattern_kb = load_pattern_kb()
@@ -402,7 +399,7 @@ def extract_tagged_segments_with_attrs(
             seg_hashes.append(seg_hash_val)
             seg_htmls.append(seg_html)
         total_segments = len(seg_hashes)
-        logger.info(f"[EMBED] Total segments: {total_segments}")
+        log_info(f"[EMBED] Total segments: {total_segments}")
         from ..utils.embedding_cache import load_embeddings_batch, save_embeddings_batch
         hash_to_embedding = {}
         cache_hits = 0
@@ -415,31 +412,31 @@ def extract_tagged_segments_with_attrs(
             hits = sum(1 for v in chunk_result.values() if v is not None)
             cache_hits += hits
             cache_misses += len(chunk_hashes) - hits
-            logger.debug(f"[EMBED] Batch {i//CHUNK_SIZE+1}: {hits} hits, {len(chunk_hashes)-hits} misses")
-        logger.info(f"[EMBED] Total cache hits: {cache_hits}, misses: {cache_misses}")
+            log_debug(f"[EMBED] Batch {i//CHUNK_SIZE+1}: {hits} hits, {len(chunk_hashes)-hits} misses")
+        log_info(f"[EMBED] Total cache hits: {cache_hits}, misses: {cache_misses}")
         # Identify missing hashes
         missing = [(h, html) for h, html in zip(seg_hashes, seg_htmls) if hash_to_embedding.get(h) is None]
         # Chunked batch computation and saving
         if missing:
-            logger.info(f"[EMBED] Computing {len(missing)} missing embeddings in chunks of {CHUNK_SIZE}")
+            log_info(f"[EMBED] Computing {len(missing)} missing embeddings in chunks of {CHUNK_SIZE}")
             for i in range(0, len(missing), CHUNK_SIZE):
                 chunk = missing[i:i+CHUNK_SIZE]
                 missing_hashes, missing_htmls = zip(*chunk)
                 try:
                     new_embs = model.encode(list(missing_htmls), convert_to_numpy=True, show_progress_bar=False)
                 except Exception as e:
-                    logger.error(f"[EMBED] Batch embedding computation failed: {e}")
+                    log_error(f"[EMBED] Batch embedding computation failed: {e}")
                     continue
                 # Save to persistent cache
                 save_embeddings_batch(list(zip(missing_hashes, new_embs)))
                 # Update in-memory mapping
                 for h, emb in zip(missing_hashes, new_embs):
                     hash_to_embedding[h] = emb
-                logger.debug(f"[EMBED] Saved {len(chunk)} new embeddings to cache.")
+                log_debug(f"[EMBED] Saved {len(chunk)} new embeddings to cache.")
         # Assign embeddings to segments
         for seg, h in zip(segments, seg_hashes):
             seg["_embedding"] = hash_to_embedding[h]
-        logger.info(f"[EMBED] Embedding assignment complete for {len(segments)} segments.")
+        log_info(f"[EMBED] Embedding assignment complete for {len(segments)} segments.")
         # Second pass: assign context_heading and panel_ancestor_heading
         for seg in segments:
             emb = seg.get("_embedding")
@@ -468,121 +465,12 @@ def extract_tagged_segments_with_attrs(
                 panel_node = segments[seg["panel_ancestor_idx"]]
                 seg["panel_ancestor_heading"] = panel_node.get("context_heading", [])
 
-        logger.info(f"[PERF] DOM extraction (selectolax+ML+batch) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
+        log_info(f"[PERF] DOM extraction (selectolax+ML+batch) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
         return segments
 
     except Exception as e:
-        logger.error(f"[FALLBACK] selectolax failed: {e}", extra={"traceback": traceback.format_exc(), "html_snippet": html[:200]})
+        log_error(f"[FALLBACK] selectolax failed: {e}", extra={"traceback": traceback.format_exc(), "html_snippet": html[:200]})
         if not fallback_on_error:
-            raise
-        # Fallback: BeautifulSoup, but still add ML labels
-        try:
-            soup = BeautifulSoup(html, "html.parser")
-            def walk_bs4(node, parent_idx=None, heading_idx=None, start_search=0):
-                if not isinstance(node, Tag):
-                    return start_search
-                tag = node.name.lower()
-                if tag not in HTML_TAGS:
-                    log_unknown_tag(tag)
-                    for child in node.children:
-                        start_search = walk_bs4(child, parent_idx, heading_idx, start_search)
-                    return start_search
-                tag_html = str(node)
-                start, end = html.find(tag_html, start_search), -1
-                if start != -1:
-                    end = start + len(tag_html)
-                attrs = extract_attrs_bs4(node)
-                for k in attrs:
-                    log_unknown_attr(k)
-                classes = attrs.get("class", "").split() if "class" in attrs else []
-                id_ = attrs.get("id", "")
-                is_button = tag == "button" or (tag == "input" and attrs.get("type", "").lower() in ["button", "submit"])
-                is_clickable = is_button or tag == "a" or "onclick" in attrs or "btn" in classes or "button" in classes
-
-                this_heading_idx = heading_idx
-                if tag in heading_tags:
-                    this_heading_idx = len(segments)
-
-                seg = {
-                    "tag": tag,
-                    "attrs": attrs,
-                    "classes": classes,
-                    "id": id_,
-                    "html": tag_html,
-                    "is_button": is_button,
-                    "is_clickable": is_clickable,
-                    "parent_idx": parent_idx,
-                    "children": [],
-                    "start": start,
-                    "end": end,
-                    "_idx": len(segments),
-                    "context_heading_idx": this_heading_idx,
-                    "context_heading": None
-                }
-                seg["segment_hash"] = segment_identity_hash(seg)
-                segments.append(seg)
-                return seg["_idx"]
-
-            root = soup.find("html") or soup.find("body") or soup
-            walk_bs4(root)
-
-            # Batch embedding for all segments (BeautifulSoup fallback, with diagnostics and chunking)
-            seg_hashes = []
-            seg_htmls = []
-            for seg in segments:
-                seg_html = seg.get("html", "")
-                seg_hash_val = segment_hash(seg_html)
-                seg_hashes.append(seg_hash_val)
-                seg_htmls.append(seg_html)
-            total_segments = len(seg_hashes)
-            logger.info(f"[EMBED] (BS4) Total segments: {total_segments}")
-            hash_to_embedding = {}
-            cache_hits = 0
-            cache_misses = 0
-            for i in range(0, total_segments, CHUNK_SIZE):
-                chunk_hashes = seg_hashes[i:i+CHUNK_SIZE]
-                chunk_result = load_embeddings_batch(chunk_hashes)
-                hash_to_embedding.update(chunk_result)
-                hits = sum(1 for v in chunk_result.values() if v is not None)
-                cache_hits += hits
-                cache_misses += len(chunk_hashes) - hits
-                logger.debug(f"[EMBED] (BS4) Batch {i//CHUNK_SIZE+1}: {hits} hits, {len(chunk_hashes)-hits} misses")
-            logger.info(f"[EMBED] (BS4) Total cache hits: {cache_hits}, misses: {cache_misses}")
-            missing = [(h, html) for h, html in zip(seg_hashes, seg_htmls) if hash_to_embedding.get(h) is None]
-            if missing:
-                logger.info(f"[EMBED] (BS4) Computing {len(missing)} missing embeddings in chunks of {CHUNK_SIZE}")
-                for i in range(0, len(missing), CHUNK_SIZE):
-                    chunk = missing[i:i+CHUNK_SIZE]
-                    missing_hashes, missing_htmls = zip(*chunk)
-                    try:
-                        new_embs = model.encode(list(missing_htmls), convert_to_numpy=True, show_progress_bar=False)
-                    except Exception as e:
-                        logger.error(f"[EMBED] (BS4) Batch embedding computation failed: {e}")
-                        continue
-                    save_embeddings_batch(list(zip(missing_hashes, new_embs)))
-                    for h, emb in zip(missing_hashes, new_embs):
-                        hash_to_embedding[h] = emb
-                    logger.debug(f"[EMBED] (BS4) Saved {len(chunk)} new embeddings to cache.")
-            for seg, h in zip(segments, seg_hashes):
-                seg["_embedding"] = hash_to_embedding[h]
-            logger.info(f"[EMBED] (BS4) Embedding assignment complete for {len(segments)} segments.")
-            for seg in segments:
-                emb = seg.get("_embedding")
-                label_segment(seg, emb=emb)                
-                if seg["tag"] in panel_tags or seg["tag"] == "table":
-                    parent_idx = seg["parent_idx"]
-                    heading_html = None
-                    while parent_idx is not None:
-                        parent = segments[parent_idx]
-                        if parent["tag"] in heading_tags:
-                            heading_html = parent["html"]
-                            break
-                        parent_idx = parent["parent_idx"]
-                    seg["context_heading"] = heading_html
-            logger.info(f"[PERF] DOM extraction (BeautifulSoup fallback+ML+batch) took {time.time() - start_time:.2f} seconds, {len(segments)} segments.")
-            return segments
-        except Exception as bs4e:
-            logger.error(f"[ERROR] BeautifulSoup fallback also failed: {bs4e}", extra={"traceback": traceback.format_exc(), "html_snippet": html[:200]})
             raise
 
 def canonicalize_segment(html):
@@ -1323,7 +1211,6 @@ def scan_html_for_context(
     page,
     debug=False,
     context_cache=None,
-    rejected_downloads: Optional[set] = None,
     model_name: Optional[str] = None,
     use_finetuned: bool = True,
     non_interactive=False,
@@ -1342,26 +1229,13 @@ def scan_html_for_context(
     Returns:
         context_result: Dict with scan results, segments, metadata, and errors if any.
     """
-    
-    context_library = None
-    if os.path.exists(CONTEXT_LIBRARY_PATH):
-        with open(CONTEXT_LIBRARY_PATH, "rb") as f:
-            CONTEXT_LIBRARY = robust_orjson_loads(f.read())
-            context_library = CONTEXT_LIBRARY
-        supported_formats = CONTEXT_LIBRARY.get("supported_formats", {})
-        supported_links = [link for link in CONTEXT_LIBRARY.get("download_links", []) if link["format"] in supported_formats]
-    else:
-        supported_formats = {}
-        supported_links = []    
-    if rejected_downloads is None:
-        rejected_downloads = set()
     page_hash = get_page_hash(page)
     # Ensure context_cache is initialized
     if context_cache is None:
         context_cache = load_context_cache_from_disk()
     # Try to load full context_result from disk cache if available
     if page_hash in context_cache:
-        logger.info(f"[SCAN] Using cached context for {target_url}")
+        log_info(f"[SCAN] Using cached context for {target_url}")
         rprint("[bold green][CACHE] Entire context loaded from cache. Skipping scan.[/bold green]")
         return context_cache[page_hash]
 
@@ -1370,7 +1244,6 @@ def scan_html_for_context(
         "raw_html": "",
         "tagged_segments": [],
         "tagged_segments_with_attrs": [],
-        "available_formats": list(supported_formats) if isinstance(supported_formats, list) else list(supported_formats.keys()),
         "metadata": {},
         "selector_log": [],
         "error": None,
@@ -1381,7 +1254,7 @@ def scan_html_for_context(
     try:
         page_url = target_url or page.url
         SCAN_WAIT_SECONDS = 3
-        logger.info(f"[SCAN] Waiting {SCAN_WAIT_SECONDS} seconds to scan page content...")
+        log_info(f"[SCAN] Waiting {SCAN_WAIT_SECONDS} seconds to scan page content...")
         time.sleep(SCAN_WAIT_SECONDS)
         html = page.content()
         context_result["raw_html"] = html
@@ -1390,64 +1263,15 @@ def scan_html_for_context(
             context_result["state"] = state
         if county:
             context_result["county"] = county
-        # --- 3. Download link extraction and merging ---
-        dynamic_links = extract_download_links_from_html(html)
-        all_links = { (l["href"], l["format"]): l for l in (supported_links + dynamic_links) }
-        supported_links = list(all_links.values())
-        context_result["metadata"]["download_links"] = supported_links
-
-        # --- 4. Downloadable file prompt logic (with ML-driven format clustering) ---
-        format_kb = load_pattern_kb()
-        for link in supported_links:
-            fmt = link["format"]
-            append_pattern_kb({
-                "pattern_id": f"format_{fmt}_{os.path.basename(link['href'])}",
-                "label": "download_format",
-                "format": fmt,
-                "href": link["href"],
-                "source_url": page.url,
-                "timestamp": time.time(),
-                "embedding": [],
-            })
-
-        new_links = [link for link in supported_links if link["href"] not in rejected_downloads]
-        if new_links:
-            available_files = [f"{os.path.basename(link['href'])} ({link['format']})" for link in new_links]
-            rprint(f"[cyan]Downloadable file(s) found: {', '.join(available_files)}.[/cyan]")
-            rprint("[magenta]Would you like to download one now? (y/n) (type 'cancel' to abort)[/magenta]")
-            user_input = prompt_user_input("> ")
-            if user_input and user_input.strip().lower().startswith("y"):
-                if len(new_links) > 1:
-                    rprint("[bold cyan]Which format do you want to download?[/bold cyan] " + ", ".join(available_files))
-                    chosen_fmt = prompt_user_input("> ").strip().lower()
-                    chosen_link = next((l for l in new_links if l["format"].lower() == chosen_fmt.lower()), None)
-                else:
-                    chosen_link = new_links[0]
-                if chosen_link:
-                    from ..html_election_parser import mark_url_processed
-                    local_file = download_file(page.url, chosen_link["href"])
-                    if local_file:
-                        fmt = chosen_link["format"]
-                        format_handler = route_format_handler(fmt)
-                        if format_handler and hasattr(format_handler, "parse"):
-                            result = format_handler.parse(None, {"manual_file": local_file, "source_url": target_url})
-                            if result and all(result):
-                                *_, metadata = result
-                                mark_url_processed(target_url, status="success", **metadata)
-                            else:
-                                mark_url_processed(target_url, status="fail")
-                            return context_result
-                if not chosen_link:
-                    rprint(f"[red]No download link found for format: {chosen_fmt}[/red]")
-            else:
-                for link in new_links:
-                    rejected_downloads.add(link["href"])
-                context_result["metadata"]["download_links"] = [
-                    {"format": link["format"], "url": link["href"]} for link in supported_links
-                ]
 
         # --- 5. HTML tag extraction for context organization (with ML) ---
         pattern_kb = load_pattern_kb()
+        # Load context_library if available, else set to empty dict
+        try:
+            from ..bots.librarian import load_context_library
+            context_library = load_context_library(CONTEXT_LIBRARY_PATH)
+        except Exception:
+            context_library = {}
         segments_with_attrs = extract_tagged_segments_with_attrs(
             html,
             context_cache=context_cache,
@@ -1542,11 +1366,6 @@ def scan_html_for_context(
             rprint("\n[orange][DEBUG] Extracted HTML segments with ML labels:[/orange]")
             for seg in segments_with_attrs:
                 rprint(f"{seg['tag']} {seg['attrs']} [label={seg['ml_label']}, conf={seg['ml_confidence']:.2f}] {seg['html'][:80]}{'...' if len(seg['html']) > 80 else ''}")
-            if supported_links:
-                rprint("\n[orange][DEBUG] Detected download links:[/orange]")
-                for link in supported_links:
-                    file_name = os.path.basename(link["href"])
-                    rprint(f"[green]  - {file_name} ({link['format']})[/green]")
             if segments_needing_review:
                 rprint(f"\n[red][DEBUG] {len(segments_needing_review)} segments flagged for review.[/red]")
         if context_library is not None:
@@ -1573,17 +1392,11 @@ def scan_html_for_context(
                 })
             )
    
-    except PromptCancelled:
-        rprint("[yellow][SCAN CANCELLED] HTML parsing was cancelled by the user.[/yellow]")
-        logger.info("[SCAN CANCELLED] HTML parsing was cancelled by the user.")
-        context_result["error"] = "HTML parsing was cancelled by the user."
     except Exception as e:
         tb = traceback.format_exc()
         rprint(f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}")
-        logger.error(f"[SCAN ERROR] HTML parsing failed: {e}", extra={"traceback": tb, "url": getattr(page, 'url', None)})
+        log_error(f"[SCAN ERROR] HTML parsing failed: {e}", extra={"traceback": tb, "url": getattr(page, 'url', None)})
         context_result["error"] = f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}"
-
-    logger.debug(f"Available formats detected: {context_result['available_formats']}")
     if context_cache is not None:
         context_cache[page_hash] = context_result
         save_context_cache_to_disk(context_cache)
@@ -1611,7 +1424,7 @@ def load_context_cache_from_disk(filename="context_cache.json"):
                 _context_cache = {k: v for k, v in raw_cache.items() if isinstance(v, dict)}
                 return _context_cache
         except Exception as e:
-            logger.error(f"[ERROR] Failed to load {filename}: {e}")
+            log_error(f"[ERROR] Failed to load {filename}: {e}")
             return {}
     _context_cache = {}
     return {}

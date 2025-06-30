@@ -21,7 +21,7 @@ from multiprocessing import Pool
 
 from dotenv import load_dotenv
 from rich.console import Console
-from .utils.shared_logger import rprint, logger
+from .utils.shared_logger import log_info, log_debug, log_warning, log_error
 from playwright.sync_api import sync_playwright, Page
 from sqlalchemy.exc import OperationalError
 
@@ -30,11 +30,11 @@ from sqlalchemy.exc import OperationalError
 from .Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
 from .config import BASE_DIR, CONTEXT_DB_PATH, PROJECT_ROOT
 from .handlers.formats.html_handler import parse as html_handler
-from .state_router import get_handler as get_state_handler
+from .state_router import get_handler
 from .utils.browser_utils import browser_pipeline
 from .utils.db_utils import load_processed_urls
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
-from .utils.format_router import route_format_handler
+from .utils.format_router import prompt_and_handle_download
 
 
 from .utils.html_scanner import scan_html_for_context
@@ -50,6 +50,7 @@ INPUT_DIR = os.path.join(PROJECT_ROOT, "input")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 URL_LIST_FILE = os.path.join(BASE_DIR, "parser", "urls.txt")
 PROCESSED_URLS_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
+
 
 # Convert to Path objects for .exists() and .write_text()
 URL_LIST_FILE = Path(URL_LIST_FILE)
@@ -76,7 +77,7 @@ def safe_filename(name):
 
 # --- Cache Reset ---
 if CACHE_RESET and PROCESSED_URLS_FILE.exists():
-    logger.debug("Deleting .processed_urls cache for fresh start...")
+    log_debug("Deleting .processed_urls cache for fresh start...")
     PROCESSED_URLS_FILE.unlink()
 
 # --- Utility: Load URLs from file or prompt user ---
@@ -86,7 +87,7 @@ def load_urls() -> List[str]:
         url = prompt_user_input("URL: ").strip()
         if url:
             URL_LIST_FILE.write_text(url + "\n")
-            logger.info(f"Appended URL to urls.txt: {url}")
+            log_info(f"Appended URL to urls.txt: {url}")
         return [url] if url else []
     with URL_LIST_FILE.open('r') as f:
         lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
@@ -96,7 +97,7 @@ def load_urls() -> List[str]:
             if url:
                 with URL_LIST_FILE.open('a') as f_append:
                     f_append.write(url + "\n")
-                logger.info(f"Appended URL to urls.txt: {url}")
+                log_info(f"Appended URL to urls.txt: {url}")
                 return [url]
         return lines
 
@@ -159,9 +160,9 @@ def prompt_url_selection(urls: List[str], processed: Dict[str, Any]) -> List[str
     indices = [int(i) - 1 for i in user_input.split(',') if i.strip().isdigit()]
     return [urls[i] for i in indices if 0 <= i < len(urls)]
 
-
 # --- Manual Format Override (for direct file parsing) ---
 def process_format_override():
+    from .utils.format_router import route_format_handler
     force_parse = os.getenv("FORCE_PARSE_INPUT_FILE", "false").lower() == "true"
     force_format = os.getenv("FORCE_PARSE_FORMAT", "").strip().lower()
     if not force_parse or not force_format:
@@ -169,11 +170,11 @@ def process_format_override():
     input_folder = INPUT_DIR
     files = [f for f in os.listdir(input_folder) if f.endswith(f".{force_format}")]
     if not files:
-        rprint(f"[red][ERROR] No .{force_format} files found in 'input' folder.[/red]")
+        log_error(f"[red][ERROR] No .{force_format} files found in 'input' folder.[/red]")
         return None
-    rprint(f"[yellow]Manual override enabled for format:[/yellow] [bold]{force_format}[/bold]")
+    log_warning(f"[yellow]Manual override enabled for format:[/yellow] [bold]{force_format}[/bold]")
     for i, f in enumerate(files):
-        rprint(f"  [bold cyan][{i}][/bold cyan] {f}")
+        log_info(f"  [bold cyan][{i}][/bold cyan] {f}")
     try:
         selection = prompt_user_input("[PROMPT] Select a file index to parse: ").strip()
         index = int(selection)
@@ -181,11 +182,11 @@ def process_format_override():
             raise ValueError("Invalid file index")
         target_file = safe_filename(files[index])
     except (IndexError, ValueError, EOFError, KeyboardInterrupt):
-        rprint("[red]Invalid selection. Aborting manual parse.[/red]")
+        log_error("[red]Invalid selection. Aborting manual parse.[/red]")
         return None
     handler = route_format_handler(force_format)
     if not handler:
-        rprint(f"[red][ERROR] No format handler found for '{force_format}'[/red]")
+        log_error(f"[red][ERROR] No format handler found for '{force_format}'[/red]")
         return None
     full_path = safe_join(input_folder, target_file)
     html_context = {"manual_file": full_path}
@@ -194,13 +195,13 @@ def process_format_override():
     if result and all(result):
         *_, metadata = result
         if "output_file" in metadata:
-            logger.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
+            log_info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
         else:
-            logger.warning("[WARN] No output file path returned from parser.")
+            log_warning("[WARN] No output file path returned from parser.")
         mark_url_processed("manual_override", status="success")
         return True
     else:
-        rprint("[red][ERROR] Manual parsing failed or returned no data.[/red]")
+        log_error("[red][ERROR] Manual parsing failed or returned no data.[/red]")
         return None
 
 # --- AI/ML Anomaly Detection Stub ---
@@ -216,12 +217,12 @@ def ai_analyze_results(headers, data, contest_title, metadata):
             # anomalies = analyze_results(headers, data, contest_title, metadata)
             anomalies = []  # Placeholder
             if anomalies:
-                rprint(f"[bold red][AI ALERT][/bold red] Potential anomalies detected: {anomalies}")
-                logger.warning(f"[AI] Anomalies detected: {anomalies}")
+                log_error(f"[bold red][AI ALERT][/bold red] Potential anomalies detected: {anomalies}")
+                log_warning(f"[AI] Anomalies detected: {anomalies}")
             else:
-                logger.info("[AI] No anomalies detected.")
+                log_info("[AI] No anomalies detected.")
         except Exception as e:
-            logger.error(f"[AI] Analysis failed: {e}")
+            log_error(f"[AI] Analysis failed: {e}")
 
 # --- Real-time Streaming Stub ---
 def stream_results(headers, data, contest_title, metadata):
@@ -233,30 +234,58 @@ def stream_results(headers, data, contest_title, metadata):
         try:
             # from .streaming_tools import stream_to_network
             # stream_to_network(headers, data, contest_title, metadata)
-            logger.info("[STREAM] Results streamed in real-time (stub).")
+            log_info("[STREAM] Results streamed in real-time (stub).")
         except Exception as e:
-            logger.error(f"[STREAM] Streaming failed: {e}")
+            log_error(f"[STREAM] Streaming failed: {e}")
+
+def resolve_and_parse(page, context, url):
+    """
+    Use the full context and URL to resolve the best handler via state_router.
+    Falls back to html_handler if no handler is found.
+    """
+    from .Context_Integration.context_coordinator import ContextCoordinator
+    # Use the full context for routing
+    handler_result = get_handler(context, url=url)
+    handler = handler_result.get("handler")
+    summary = handler_result.get("summary")
+    coordinator = ContextCoordinator()
+    coordinator.organize_and_enrich(context)
+    if handler and hasattr(handler, 'parse'):
+        return handler.parse(page, coordinator, context)
+    # Optionally log the routing summary for diagnostics
+    if summary and summary.get("log"):
+        for entry in summary["log"]:
+            log_info(f"[Router] {entry}")
+    # Fallback to generic HTML handler
+    if hasattr(html_handler, 'parse'):
+        return html_handler(page, coordinator, context)
+    return html_handler(page, coordinator, context)  
 
 def process_url(target_url, processed_info):
-    from .Context_Integration.context_coordinator import dynamic_state_county_detection, ContextCoordinator
+    from .Context_Integration.context_coordinator import ContextCoordinator
     rejected_downloads = set()
-    logger.info(f"Navigating to: {target_url}")
+    log_info(f"Navigating to: {target_url}")
 
     browser = context = page = user_agent = None
     try:
         with sync_playwright() as p:
             browser, context, page, user_agent = browser_pipeline(
-                p, target_url, cache_exit_callback=mark_url_processed
+                p, target_url, cache_exit_callback=mark_url_processed, non_interactive=False
             )
             if not page:
                 return
+            # --- 1. Prompt for downloadable format and handle if chosen ---
+            result, handled = prompt_and_handle_download(page, target_url, rejected_downloads, non_interactive=False)
+            if handled:
+                # Already handled by format handler, mark as processed and return
+                mark_url_processed(target_url, status="success")
+                return
 
             coordinator = ContextCoordinator()
-
             # --- Detect page hash and use context cache (already enriched) ---
-            html_context = get_or_scan_context(page, coordinator, rejected_downloads=rejected_downloads)
+            html_context = scan_html_for_context(target_url, page, non_interactive=False)
+            html_context = coordinator.organize_and_enrich(html_context)
             html_context["source_url"] = target_url
-
             # --- Robust state/county inference and validation ---
             # Only fill state/county if missing, prefer dynamic_state_county_detection as final authority
             if not html_context.get("state") or not html_context.get("county"):
@@ -266,34 +295,19 @@ def process_url(target_url, processed_info):
                 if county and not html_context.get("county"):
                     html_context["county"] = county
 
-            validated_county, validated_state, handler_path, issues = dynamic_state_county_detection(
-                html_context,
-                html_context.get("raw_html", ""),
-                debug=True,
-            )
-            # Always update with validated values if present
-            if validated_state:
-                html_context["state"] = validated_state
-            if validated_county:
-                html_context["county"] = validated_county
-            if handler_path:
-                html_context["handler_path"] = handler_path
-            if issues:
-                logger.warning(f"[STATE/COUNTY VALIDATION] {issues}")
-
             # --- NLP/NER Analysis (optional, for logger/diagnostics) ---
             try:
                 nlp_report = analyze_contest_titles(html_context.get("contests", []))
                 entity_summary = summarize_context_entities(html_context.get("contests", []))
-                logger.info(f"[NLP] Contest Title Analysis: {nlp_report}")
-                logger.info(f"[NLP] Entity Summary: {entity_summary}")
+                log_info(f"[NLP] Contest Title Analysis: {nlp_report}")
+                log_info(f"[NLP] Entity Summary: {entity_summary}")
             except Exception as e:
-                logger.warning(f"[NLP] Context coordinator analysis failed: {e}")
+                log_warning(f"[NLP] Context coordinator analysis failed: {e}")
 
             # --- Route to state/county/HTML handler ---
             result = resolve_and_parse(page, html_context, target_url)
             if not isinstance(result, tuple) or len(result) != 4:
-                logger.error("Handler did not return a valid result tuple.")
+                log_error("Handler did not return a valid result tuple.")
                 mark_url_processed(target_url, status="fail")
                 return
 
@@ -313,7 +327,7 @@ def process_url(target_url, processed_info):
                         output_dir=OUTPUT_DIR
                     )
                 except Exception as e:
-                    logger.error(f"[Batch Mode] Coordinator batch handling failed: {e}", exc_info=True)
+                    log_error(f"[Batch Mode] Coordinator batch handling failed: {e}", exc_info=True)
                     mark_url_processed(target_url, status="error")
                 return
 
@@ -324,9 +338,9 @@ def process_url(target_url, processed_info):
                 output_file = metadata.get("output_file")
                 if output_file:
                     if os.path.exists(output_file):
-                        logger.info(f"[OUTPUT] CSV written to: {output_file}")
+                        log_info(f"[OUTPUT] CSV written to: {output_file}")
                     else:
-                        logger.warning(f"[WARN] Output file path returned but file does not exist: {output_file}")
+                        log_warning(f"[WARN] Output file path returned but file does not exist: {output_file}")
                 else:
                     output_dir = metadata.get("output_dir") or OUTPUT_DIR
                     possible_files = []
@@ -335,46 +349,23 @@ def process_url(target_url, processed_info):
                             if f.endswith(".csv") or f.endswith(".json"):
                                 possible_files.append(os.path.join(output_dir, f))
                     if possible_files:
-                        logger.warning(f"[WARN] No output file path returned from parser, but found files: {possible_files[-3:]}")
+                        log_warning(f"[WARN] No output file path returned from parser, but found files: {possible_files[-3:]}")
                     else:
-                        logger.warning("[WARN] No output file path returned from parser and no output files found.")
+                        log_warning("[WARN] No output file path returned from parser and no output files found.")
                 mark_url_processed(target_url, status="success")
             else:
-                logger.warning("Incomplete result structure — skipping CSV write.")
+                log_warning("Incomplete result structure — skipping CSV write.")
                 mark_url_processed(target_url, status="partial")
 
     except Exception as e:
-        logger.error(f"[ERROR] Exception while processing {target_url}: {e}", exc_info=True)
+        log_error(f"[ERROR] Exception while processing {target_url}: {e}", exc_info=True)
         mark_url_processed(target_url, status="error")
     finally:
         try:
             if browser:
                 browser.close()
         except Exception:
-            pass
-    
-def resolve_and_parse(page, context, url):
-    """
-    Use the full context and URL to resolve the best handler via state_router.
-    Falls back to html_handler if no handler is found.
-    """
-    from .Context_Integration.context_coordinator import ContextCoordinator
-    # Use the full context for routing
-    handler_result = get_state_handler(context, url=url)
-    handler = handler_result.get("handler")
-    summary = handler_result.get("summary")
-    coordinator = ContextCoordinator()
-    coordinator.organize_and_enrich(context)
-    if handler and hasattr(handler, 'parse'):
-        return handler.parse(page, coordinator, context)
-    # Optionally log the routing summary for diagnostics
-    if summary and summary.get("log"):
-        for entry in summary["log"]:
-            logger.info(f"[Router] {entry}")
-    # Fallback to generic HTML handler
-    if hasattr(html_handler, 'parse'):
-        return html_handler(page, coordinator, context)
-    return html_handler(page, coordinator, context)  
+            pass    
            
 # --- Main Entry Point ---
 def main():
@@ -386,23 +377,23 @@ def main():
         ensure_output_directory()
 
         urls = load_urls()
-        logger.debug(f"Raw URLs loaded: {urls}")
-        logger.debug(f"Loaded {len(urls)} raw URLs from urls.txt")
+        log_debug(f"Raw URLs loaded: {urls}")
+        log_debug(f"Loaded {len(urls)} raw URLs from urls.txt")
 
         max_urls = os.getenv("MAX_URLS_DISPLAYED")
         if max_urls and max_urls.isdigit():
             urls = urls[:int(max_urls)]
 
         if not urls:
-            logger.error("No URLs to process. Exiting.")
+            log_error("No URLs to process. Exiting.")
             return
 
         processed_info = load_processed_urls()
-        logger.debug(f"{len(urls)} URLs remain after filtering .processed_urls")
+        log_debug(f"{len(urls)} URLs remain after filtering .processed_urls")
 
         selected_urls = prompt_url_selection(urls, processed_info)
         if not selected_urls:
-            logger.info("No URLs selected. Exiting.")
+            log_info("No URLs selected. Exiting.")
             return
 
         # --- Multiprocessing for batch mode ---
@@ -429,23 +420,9 @@ def main():
         print(f"  Errors: {summary['error']}")
         print(f"  Flagged for review: {summary['flagged']}")
     except (OperationalError, psycopg2.OperationalError) as db_err:
-        logger.error(f"[DB ERROR] Could not connect to the database: {db_err}")
+        log_error(f"[DB ERROR] Could not connect to the database: {db_err}")
         print("[FATAL] Database connection failed. Exiting pipeline.")
         sys.exit(1)          
-
-def get_or_scan_context(page, coordinator, rejected_downloads=None):
-    if rejected_downloads is None:
-        rejected_downloads = set()
-    page_hash = get_page_hash(page)
-    if page_hash in context_cache:
-        html_context = context_cache[page_hash]
-        logger.info(f"[CONTEXT] Using cached context for hash {page_hash}")
-    else:
-        html_context = scan_html_for_context(page.url, page, rejected_downloads=rejected_downloads)
-        html_context = coordinator.organize_and_enrich(html_context)
-        context_cache[page_hash] = html_context
-        logger.info(f"[CONTEXT] Scanned and cached context for hash {page_hash}")
-    return html_context
 
 if __name__ == "__main__":
     main()
