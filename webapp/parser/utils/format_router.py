@@ -1,6 +1,7 @@
 import os
 import time
 import orjson
+import re
 from dotenv import load_dotenv
 from ..handlers.formats import json_handler, pdf_handler, csv_handler
 from ..utils.shared_logger import log_info, log_debug, log_warning, log_error
@@ -84,6 +85,27 @@ def route_format_handler(format_str: str):
         log_warning(f"[Router] Failed to load handler for format {format_str}: {e}")
         return None
 
+def extract_download_links_from_html(html, exts=None):
+    """
+    Extract download links from raw HTML using regex for common file extensions.
+    Returns a list of dicts: {"href": ..., "format": ..., "source": "html"}
+    """
+    if exts is None:
+        exts = [".json", ".csv", ".pdf"]
+    # Regex for hrefs ending with supported extensions
+    pattern = re.compile(r'href=[\'"]([^\'"]+\.(?:' + '|'.join(ext[1:] for ext in exts) + r'))[\'"]', re.IGNORECASE)
+    matches = pattern.findall(html)
+    links = []
+    for href in matches:
+        for ext in exts:
+            if href.lower().endswith(ext):
+                links.append({
+                    "href": href,
+                    "format": ext.strip("."),
+                    "source": "html"
+                })
+    return links
+
 def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_interactive=False):
     """
     Extracts download links (from context library, DOM, and HTML), prompts user for format,
@@ -119,7 +141,7 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
         log_warning(f"[format_router] DOM scan failed: {e}")
 
     # 3. Extract links dynamically from HTML (regex or pattern-based)
-    dynamic_links = extract_download_links_from_html(html)
+    dynamic_links = extract_download_links_from_html(html, exts=[".json", ".csv", ".pdf"])
 
     # 4. Merge and deduplicate all links by (href, format)
     all_links = {}
@@ -155,7 +177,7 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
 
     # 8. Prompt user for format
     available_files = [f"{os.path.basename(link['href'])} ({link['format']})" for link in new_links]
-    (f"[cyan]Downloadable file(s) found: {', '.join(available_files)}.[/cyan]")
+    log_info(f"[cyan]Downloadable file(s) found: {', '.join(available_files)}.[/cyan]")
     confirmed = [(link["format"], link["href"]) for link in new_links]
     fmt, file_url = prompt_user_for_format(confirmed)
     if not fmt or not file_url:
@@ -172,7 +194,6 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
 
     format_handler = route_format_handler(fmt)
     if format_handler and hasattr(format_handler, "parse"):
-        result = format_handler.parse(None, {"manual_file": local_file, "source_url": target_url})
         result = format_handler.parse(None, {"manual_file": local_file, "source_url": target_url})
         return result, True
 

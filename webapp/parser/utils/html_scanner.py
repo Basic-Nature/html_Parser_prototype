@@ -12,14 +12,14 @@ from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR
 from ..utils.shared_logic import infer_state_county_from_url
 from ..utils.shared_logger import log_info, log_debug, log_warning, log_error
 from ..bots.librarian import (
-    HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, DISTRICT_REGEX, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES,
-    extend_panel_tags, extend_heading_tags, extend_html_tags, extend_custom_attr_patterns, update_context_library, load_context_library,
+    HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, 
+    CANDIDATE_KEYWORDS, BALLOT_TYPES, update_context_library, load_context_library,
     log_unknown_tag, log_unknown_attr, get_canonical_segment_label, cache_segment_label, get_cached_segment_label, ROOT_CONTAINER_TAGS,
     ALWAYS_IGNORE_TAGS, ALWAYS_IGNORE_CLASSES, ALWAYS_IGNORE_IDS, ICON_CLASSES, ICON_TAGS, BUTTON_CLASSES,
     HEADING_CLASSES, PANEL_CLASSES, TIMESTAMP_CLASSES, STRUCTURAL_TAGS, TIMESTAMP_ID_PATTERNS, TIMESTAMP_ATTRS
 )
 from ..utils.embedding_cache import (
-    save_embedding, load_embedding, get_embedding_from_memory, load_embeddings_batch, save_embeddings_batch
+    save_embedding, get_embedding_from_memory, load_embeddings_batch, save_embeddings_batch
 )
 from ..utils.user_prompt import prompt_user_input
 from selectolax.parser import HTMLParser
