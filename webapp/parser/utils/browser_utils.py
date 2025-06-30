@@ -79,7 +79,7 @@ def launch_selenium_stealth(target_url, user_agent):
     log_info("[BROWSER] SeleniumBase launched in stealth mode.")
     return driver
 
-def browser_pipeline(playwright, target_url, cache_exit_callback=None):
+def browser_pipeline(playwright, target_url, cache_exit_callback=None, non_interactive=False):
     """
     Main browser utility for html_election_parser.
     Returns (browser, context, page, user_agent) or None if session should exit.

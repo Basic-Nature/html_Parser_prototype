@@ -196,11 +196,9 @@ class ContextOrganizer:
         random_state=42,
         embedding_model="all-MiniLM-L6-v2",
         plot_anomalies=True,
-        logger=None,
         debug=False,
         fuzzy_cutoff=0.6
     ):
-        from ..utils.shared_logger import logger as shared_logger
         self.use_library = use_library
         self.enable_ml = enable_ml
         self.contamination = contamination
@@ -208,7 +206,6 @@ class ContextOrganizer:
         self.random_state = random_state
         self.embedding_model = embedding_model  # can be string or model object
         self.plot_anomalies = plot_anomalies
-        self.logger = logger or shared_logger
         self.db_path = CONTEXT_DB_PATH
         self.context_library_path = CONTEXT_LIBRARY_PATH
         self.library = load_context_library() if use_library else self._default_library()
@@ -224,17 +221,17 @@ class ContextOrganizer:
             from ..utils.model_registry import ModelRegistry
             if isinstance(self.embedding_model, str):
                 self.embedding_model_obj = ModelRegistry.get_sentence_transformer(self.embedding_model)
-                self.log_info(f"[CONTEXT ORGANIZER] Loaded embedding model: {self.embedding_model}")
+                log_info(f"[CONTEXT ORGANIZER] Loaded embedding model: {self.embedding_model}")
             elif hasattr(self.embedding_model, "encode"):
                 # Looks like a SentenceTransformer or compatible model
                 self.embedding_model_obj = self.embedding_model
-                self.log_info(f"[CONTEXT ORGANIZER] Using provided embedding model object.")
+                log_info(f"[CONTEXT ORGANIZER] Using provided embedding model object.")
             else:
                 # If it's a method, class, or something else, warn and set to None
-                self.log_warning(f"[CONTEXT ORGANIZER] Provided embedding_model is not a recognized model instance or string. Type: {type(self.embedding_model)}. Setting to None.")
+                log_warning(f"[CONTEXT ORGANIZER] Provided embedding_model is not a recognized model instance or string. Type: {type(self.embedding_model)}. Setting to None.")
                 self.embedding_model_obj = None
         except Exception as e:
-            self.log_error(f"[CONTEXT ORGANIZER] Failed to load embedding model: {e}")
+            log_error(f"[CONTEXT ORGANIZER] Failed to load embedding model: {e}")
             self.embedding_model_obj = None
 
     @staticmethod
@@ -589,7 +586,7 @@ class ContextOrganizer:
         # --- Use class-level embedding_model and plot_anomalies unless overridden ---
         embedding_model = embedding_model if embedding_model is not None else self.embedding_model_obj
         plot_anomalies = plot_anomalies if plot_anomalies is not None else self.plot_anomalies
-        self.log_info(
+        log_info(
             "\n[CONTEXT ORGANIZER] Pipeline configuration:\n"
             f"  • Embedding model: { self._describe_embedding_model(embedding_model) }\n"
             f"  • Plot anomalies:  { plot_anomalies }\n"
@@ -932,7 +929,7 @@ class ContextOrganizer:
         else:
             metadata["year"] = "Unknown"
         self.append_to_context_library(organized, path=self.context_library_path)
-        self.log_info(
+        log_info(
             f"[CONTEXT ORGANIZER] Organized context for {len(contests)} contests. "
             f"Anomalies: {len(anomalies)}  Integrity issues: {len(integrity_issues)}"
         )
@@ -948,7 +945,7 @@ class ContextOrganizer:
                     upsert_contest(session, c)
                 session.commit()
         except SQLAlchemyError as e:
-            self.log_error(f"[DB][Contest] Error upserting contests: {e}")
+            log_error(f"[DB][Contest] Error upserting contests: {e}")
 
         missing_location = any(
             not c.get("state") or not c.get("county")
@@ -964,7 +961,7 @@ class ContextOrganizer:
             for log_entry in detection_log:
                 log.append(f"[Dynamic Detection] {log_entry}")
                 if debug:
-                    self.log_info(f"[ContextOrganizer][Dynamic Detection] {log_entry}")
+                    log_info(f"[ContextOrganizer][Dynamic Detection] {log_entry}")
             if state:
                 raw_context["state"] = state
             if county:
@@ -1013,7 +1010,7 @@ class ContextOrganizer:
         for node in nodes:
             for child_idx in node["children"]:
                 if child_idx >= len(nodes) or nodes[child_idx].get("parent_idx") != node["_idx"]:
-                    self.log_warning(f"Inconsistent parent/child: node {node['_idx']} child {child_idx}")
+                    log_warning(f"Inconsistent parent/child: node {node['_idx']} child {child_idx}")
 
         roots = [node for node in nodes if node["parent_idx"] is None]
         dom_tree = {
@@ -1160,9 +1157,9 @@ class ContextOrganizer:
             library = merge_dicts(library, remove_functions(organized))
             library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             update_context_library(path, lambda lib: lib.update(_to_json_safe(library)))
-            self.log_info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
+            log_info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
         except Exception as e:
-            self.log_error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")
+            log_error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")
 
     def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
         """
@@ -1170,9 +1167,9 @@ class ContextOrganizer:
         """
         try:
             save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
-            self.log_info(f"[CONTEXT ORGANIZER] Saved table structure for contest: {contest_title}")
+            log_info(f"[CONTEXT ORGANIZER] Saved table structure for contest: {contest_title}")
         except Exception as e:
-            self.log_error(f"[CONTEXT ORGANIZER] Failed to save table structure: {e}")
+            log_error(f"[CONTEXT ORGANIZER] Failed to save table structure: {e}")
 
     def get_table_structure_from_db(self, contest_title, context=None):
         """
@@ -1181,12 +1178,12 @@ class ContextOrganizer:
         try:
             result = get_table_structure_from_db(contest_title, context)
             if result:
-                self.log_info(f"[CONTEXT ORGANIZER] Loaded table structure for contest: {contest_title}")
+                log_info(f"[CONTEXT ORGANIZER] Loaded table structure for contest: {contest_title}")
             else:
-                self.log_warning(f"[CONTEXT ORGANIZER] No table structure found for contest: {contest_title}")
+                log_warning(f"[CONTEXT ORGANIZER] No table structure found for contest: {contest_title}")
             return result
         except Exception as e:
-            self.log_error(f"[CONTEXT ORGANIZER] Failed to load table structure: {e}")
+            log_error(f"[CONTEXT ORGANIZER] Failed to load table structure: {e}")
             return None
 
 # --- Backward-compatible function for legacy imports ---
