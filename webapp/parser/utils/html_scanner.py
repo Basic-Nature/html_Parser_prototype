@@ -671,7 +671,7 @@ def extract_tagged_segments_with_attrs(
         def walk(node, parent_idx=None, heading_idx=None, panel_idx=None):
             tag = node.tag
             if not tag or tag.lower() not in HTML_TAGS:
-                log_unknown_tag(tag)
+                log_unknown_tag(tag, context_library)
                 for child in node.iter(include_text=True):
                     walk(child, parent_idx, heading_idx, panel_idx)
                 return
@@ -712,7 +712,7 @@ def extract_tagged_segments_with_attrs(
             for k in attrs:
                 if any(pat.match(k) for pat in custom_attr_patterns):
                     seg["has_custom_attr"] = True
-                log_unknown_attr(k)
+                log_unknown_attr(k, context_library)
             if hasattr(node, "start") and hasattr(node, "end") and node.start is not None and node.end is not None:
                 html_bytes = html.encode("utf-8")
                 try:

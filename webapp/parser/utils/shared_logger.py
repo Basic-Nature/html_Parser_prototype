@@ -51,13 +51,21 @@ def contains_rich_markup(msg):
     return bool(re.search(r"\[[a-zA-Z0-9_]+\]", msg))
 def extract_label_and_color(msg):
     """
-    Detects a leading [LABEL] or [color] and returns (label, color, msg_without_label).
-    Supports [INFO], [ERROR], [WARNING], [DEBUG], [CRITICAL], [red], [green], etc.
+    Detects a leading [LABEL], [color], or [style color] and returns (label, color, msg_without_label).
+    Supports [INFO], [ERROR], [WARNING], [DEBUG], [CRITICAL], [red], [green], [bold green], etc.
     """
-    match = re.match(r"^\[([A-Z]+|[a-z]+)\]\s*(.*)", msg)
+    # Match [label], [color], or [style color]
+    match = re.match(r"^\[([a-zA-Z0-9_ ]+)\]\s*(.*)", msg)
     if match:
         label = match.group(1)
         rest = match.group(2)
+        # If label contains a space, treat the last word as the color
+        if " " in label:
+            *style_parts, color = label.split()
+            style = " ".join(style_parts)
+        else:
+            style = None
+            color = label
         # Map common log labels to colors
         color_map = {
             "INFO": "green",
@@ -76,8 +84,10 @@ def extract_label_and_color(msg):
             "cyan": "cyan",
             "bold": "white",
         }
-        color = color_map.get(label, None)
-        return label, color, rest
+        # Use the color if it's a known color, otherwise use as-is
+        panel_color = color_map.get(color.upper(), color)
+        panel_label = label
+        return panel_label, panel_color, rest
     return None, None, msg
 
 def log_trace(msg, context=None, *args, **kwargs):
