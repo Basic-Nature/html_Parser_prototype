@@ -265,8 +265,8 @@ def parse_pdf_election_results(pdf_path, output_dir=None):
                 "headers": headers,
                 "row_count": len(wide_data)
             })
-            with open(output_meta, "wb") as jf:
-                jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))
+            with open(output_meta, "w") as jf:
+                jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             log_info(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(wide_data)}[/bold] rows to:\n  [cyan]{output_csv}[/cyan]")
             log_info(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{output_meta}[/cyan]")
@@ -294,8 +294,8 @@ def parse_pdf_election_results(pdf_path, output_dir=None):
                 "headers": ["raw_line"],
                 "row_count": len(fallback_rows)
             })
-            with open(output_meta, "wb") as jf:
-                jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))
+            with open(output_meta, "w") as jf:
+                jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
             log_warning(f"[bold yellow][OUTPUT][/bold yellow] Wrote fallback rows to:\n  [cyan]{output_csv}[/cyan]")
             return ["raw_line"], fallback_rows, safe_title, metadata
 
@@ -315,8 +315,8 @@ def parse_pdf_election_results(pdf_path, output_dir=None):
         "headers": ["text"],
         "row_count": 1
     })
-    with open(output_meta, "wb") as jf:
-        jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))
+    with open(output_meta, "w") as jf:
+        jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
     log_warning(f"[bold yellow][OUTPUT][/bold yellow] Wrote plain text to:\n  [cyan]{output_csv}[/cyan]")
     return ["text"], [{"text": all_text}], safe_title, metadata
 

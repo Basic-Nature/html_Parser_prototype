@@ -159,7 +159,7 @@ def parse_json_election_results(json_path, output_dir=None):
         "handler": "json_handler"
     }
     with open(output_meta, "w") as jf:
-        jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2))
+        jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
     print("✅ Completed!")
     print(" - Output CSV:", output_csv)
