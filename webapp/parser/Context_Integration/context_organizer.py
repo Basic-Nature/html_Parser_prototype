@@ -54,7 +54,10 @@ ensure_db_schema()
 
 processed_urls = load_processed_urls()
 output_cache = load_output_cache()
-
+import itertools
+_spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+def get_loading_indicator():
+    return next(_spinner)
 def _to_json_safe(obj):
     if isinstance(obj, np.ndarray):
         return obj.tolist()
@@ -1010,8 +1013,12 @@ class ContextOrganizer:
         for node in nodes:
             for child_idx in node["children"]:
                 if child_idx >= len(nodes) or nodes[child_idx].get("parent_idx") != node["_idx"]:
-                    log_warning(f"Inconsistent parent/child: node {node['_idx']} child {child_idx}")
-
+                    indicator = get_loading_indicator()
+                    console.print(
+                        f"{indicator} Inconsistent parent/child: node {node['_idx']} child {child_idx}",
+                        highlight=False,
+                        end="\r"
+                    )
         roots = [node for node in nodes if node["parent_idx"] is None]
         dom_tree = {
             "roots": [node["_idx"] for node in roots],
