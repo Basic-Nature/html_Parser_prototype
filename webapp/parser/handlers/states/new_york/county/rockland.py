@@ -7,7 +7,8 @@ from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import rprint
 from .....utils.shared_logic import autoscroll_until_stable
 from .....utils.user_prompt import prompt_user_for_button, confirm_button_callback
-from .....utils.html_scanner import extract_tagged_segments_with_attrs, extract_panel_table_hierarchy
+from .....utils.html_scanner import scan_html_for_context
+
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .....Context_Integration.context_coordinator import ContextCoordinator
@@ -140,20 +141,34 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             with open("rockland_debug.html", "w", encoding="utf-8") as f:
                 f.write(html)
 
-            pattern_kb = coordinator.get_pattern_kb() if hasattr(coordinator, "get_pattern_kb") else None
-            segments = extract_tagged_segments_with_attrs(
-                html,
-                ml_model_name="all-MiniLM-L6-v2",
-                pattern_kb=pattern_kb,
-                ml_threshold=0.85
+            # Use the context coordinator and scan_html_for_context to extract everything
+            context_result = scan_html_for_context(
+                target_url=getattr(page, "url", None),
+                page=page,
+                debug=False,
+                coordinator=coordinator
             )
 
-            panels = extract_panel_table_hierarchy(
-                segments,
-                ml_model_name="all-MiniLM-L6-v2",
-                min_panel_score=0.65
-            )
+            # Extract segments for use in extraction_context
+            segments = context_result.get("tagged_segments_with_attrs", [])
 
+            # Panels are now in context_result["panels"] if your pipeline supports it,
+            # or you may need to organize them from tagged_segments_with_attrs
+            panels = context_result.get("panels", [])
+
+            # If not present, you can fallback to grouping segments by panel label:
+            if not panels and "tagged_segments_with_attrs" in context_result:
+                # Example: group segments by panel label
+                from collections import defaultdict
+                panels_by_heading = defaultdict(list)
+                for seg in context_result["tagged_segments_with_attrs"]:
+                    if seg.get("ml_label") == "panel":
+                        panels_by_heading[seg.get("panel_heading", "Unknown")].append(seg)
+                panels = [{"panel_heading": k, "tables": v} for k, v in panels_by_heading.items()]
+
+            rprint(f"[DEBUG] Found {len(panels)} panels after context/NLP pipeline.")
+            if not panels:
+                rprint("[yellow][DEBUG] No panels found, falling back to direct table scan.[/yellow]")
             rprint(f"[DEBUG] Found {len(panels)} panels after extract_panel_table_hierarchy.")
             if not panels:
                 rprint("[yellow][DEBUG] No panels found, falling back to direct table scan.[/yellow]")

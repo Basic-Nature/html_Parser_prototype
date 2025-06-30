@@ -8,7 +8,8 @@
 import os
 import importlib
 from typing import Optional, Dict, Any, List, Tuple
-from .utils.shared_logger import log_info, log_warning, log_debug
+from .utils.shared_logger import log_info, log_warning, log_debug, log_error
+import traceback
 from .config import BASE_DIR
 from .bots.librarian import STATE_MODULE_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
 import difflib
@@ -57,20 +58,83 @@ def list_available_counties(state_key: str) -> list:
             counties.append(normalize_county_name(fname))
     return sorted(counties)
 
-def import_handler(module_path: str):
+def import_handler(module_or_file_path: str):
     """
-    Dynamically import a handler module by its dotted path.
-    Returns the module if found, else None.
+    Import a handler module by either dotted module path (preferred)
+    or filesystem path (ending in .py). Returns the module if found, else None.
+    Logs detailed errors and gives usage hints.
     """
     try:
-        if module_path in LOADED_HANDLERS:
-            return LOADED_HANDLERS[module_path]
-        module = importlib.import_module(module_path)
-        LOADED_HANDLERS[module_path] = module
-        return module
+        # If already loaded, return cached
+        if module_or_file_path in LOADED_HANDLERS:
+            return LOADED_HANDLERS[module_or_file_path]
+
+        # Detect if it's a filesystem path (endswith .py or contains os.sep)
+        is_file_path = module_or_file_path.endswith('.py') or os.sep in module_or_file_path
+
+        if is_file_path:
+            # Convert file path to module path
+            abs_path = os.path.abspath(module_or_file_path)
+            if not os.path.exists(abs_path):
+                log_error(f"[HTML Handler] Handler file does not exist: {abs_path}")
+                log_info("[HTML Handler] Example of valid file path: webapp\\parser\\handlers\\states\\new_york\\county\\rockland.py")
+                return None
+            # Remove BASE_DIR and .py, convert to dotted path
+            rel_path = os.path.relpath(abs_path, BASE_DIR)
+            module_path = rel_path.replace(os.sep, ".").replace("/", ".")
+            if module_path.endswith(".py"):
+                module_path = module_path[:-3]
+            log_info(f"[HTML Handler] Converted file path to module path: {module_path}")
+        else:
+            module_path = module_or_file_path
+
+        try:
+            module = importlib.import_module(module_path)
+            LOADED_HANDLERS[module_or_file_path] = module
+            return module
+        except Exception as e:
+            log_error(f"[HTML Handler] Failed to import handler from path '{module_or_file_path}': {e}")
+            log_debug(f"[HTML Handler] Traceback:\n{traceback.format_exc()}")
+            log_info("[HTML Handler] Example of valid module path: webapp.parser.handlers.states.new_york.county.rockland")
+            log_info("[HTML Handler] Example of valid file path: webapp\\parser\\handlers\\states\\new_york\\county\\rockland.py")
+            return None
     except Exception as e:
-        log_debug(f"[Router] Could not import {module_path}: {e}")
+        log_error(f"[HTML Handler] Unexpected error importing handler: {e}\n{traceback.format_exc()}")
         return None
+
+def prompt_for_handler_fallback(available_states, available_counties_by_state, last_error=None, max_attempts=3):
+    """
+    Prompt the user for manual state/county selection with robust fallback.
+    Shows last error, allows cancel, and limits attempts.
+    """
+    attempts = 0
+    state = None
+    county = None
+    while attempts < max_attempts:
+        if last_error:
+            print(f"\n[ERROR] Last import failed: {last_error}\n")
+        print("Available states:", ", ".join(available_states))
+        state = input("Enter state (or leave blank to cancel): ").strip().lower()
+        if state == "cancel" or not state:
+            print("Aborted by user.")
+            return None, None
+        if state not in available_states:
+            print(f"State '{state}' not found. Try again.")
+            attempts += 1
+            continue
+        counties = available_counties_by_state.get(state, [])
+        print("Available counties:", ", ".join(counties))
+        county = input("Enter county (or leave blank to skip county): ").strip().lower()
+        if county == "cancel":
+            print("Aborted by user.")
+            return None, None
+        if county and county not in counties:
+            print(f"County '{county}' not found for state '{state}'. Try again.")
+            attempts += 1
+            continue
+        return state, county if county else None
+    print("Too many failed attempts. Exiting fallback.")
+    return None, None
 
 def preload_handler_map():
     """
@@ -357,5 +421,17 @@ def cli():
             print(f"Handler module: {getattr(result['handler'], '__name__', str(result['handler']))}")
         else:
             print("No suitable handler found.")
-    else:
-        parser.print_help()
+            # --- Add fallback prompt here ---
+            available_states = list_available_states()
+            available_counties_by_state = {s: list_available_counties(s) for s in available_states}
+            import_error_message = result["summary"]["error"]["message"] if result["summary"].get("error") else "Unknown error"
+            state, county = prompt_for_handler_fallback(available_states, available_counties_by_state, last_error=import_error_message)
+            if not state:
+                print("No handler selected. Exiting.")
+                return
+            handler_path = f"webapp.parser.handlers.states.{state}.county.{county}" if county else f"webapp.parser.handlers.states.{state}"
+            handler = import_handler(handler_path)
+            if handler and hasattr(handler, "parse"):
+                print(f"Handler module: {getattr(handler, '__name__', str(handler))}")
+            else:
+                print("Still could not import a suitable handler.")
