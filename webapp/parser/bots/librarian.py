@@ -724,8 +724,9 @@ def _get_log_path(filename: str) -> str:
     os.makedirs(LOG_DIR, exist_ok=True)
     return os.path.join(LOG_DIR, filename)
 
-def log_unknown_tag(tag: str):
-    if tag not in HTML_TAGS:
+def log_unknown_tag(tag: str, context_library):
+    known_tags = set(context_library.get("panel_tags", []) + context_library.get("heading_tags", []) + context_library.get("html_tags", []))
+    if tag not in known_tags:
         UNKNOWN_TAGS_LOG.add(tag)
         try:
             log_path = _get_log_path("unknown_tags_log.jsonl")
@@ -734,8 +735,17 @@ def log_unknown_tag(tag: str):
         except Exception:
             pass
 
-def log_unknown_attr(attr: str):
-    if not any(pat.match(attr) for pat in CUSTOM_ATTR_PATTERNS):
+def log_unknown_attr(attr: str, context_library):
+    # Get patterns from context_library or fallback to static set
+    pattern_strings = context_library.get("custom_attr_patterns", []) if context_library else []
+    patterns = [re.compile(p) for p in pattern_strings] if pattern_strings else CUSTOM_ATTR_PATTERNS
+
+    # Always allow common dynamic attributes
+    if attr.startswith("data-") or attr.startswith("aria-") or attr == "role":
+        return
+
+    # Only log if it doesn't match any known pattern
+    if not any(pat.match(attr) for pat in patterns):
         UNKNOWN_ATTRS_LOG.add(attr)
         try:
             log_path = _get_log_path("unknown_attrs_log.jsonl")
