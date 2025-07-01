@@ -676,3 +676,6 @@ def self_heal_loop(bot_name, args=None, max_retries=3, cooldown=2):
         time.sleep(cooldown)
     print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
     return 2
+ 
+if __name__ == "__main__":
+    run_pipeline_once()

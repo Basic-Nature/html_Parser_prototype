@@ -23,10 +23,10 @@ import os
 import subprocess
 from threading import Thread
 from webapp.parser.utils import shared_logger
-from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
+from webapp.parser.web_pipeline import cancellation_manager, process_single_url, cancel_processing
 from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
-from webapp.parser.bots.bot_router import run_pipeline_once
-from webapp.parser.web_pipeline import cancel_processing
+from webapp.parser.utils.user_prompt import get_prompt_session, clear_prompt_session
+from webapp.parser.utils import user_prompt as prompt_manager
 # Load environment variables from .env
 
 load_dotenv()
@@ -74,43 +74,23 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 
 def run_parser_for_urls(urls, session_id):
     shared_logger.set_log_mode("webapp")
-    shared_logger.SUPPRESS_RICH_LOGS = True  # Suppress Rich output for web parser runs
+    shared_logger.SUPPRESS_RICH_LOGS = True
     def emit_to_socketio(line):
         socketio.emit('parser_output', line, room=session_id)
     shared_logger.set_socketio_emit_func(emit_to_socketio)
-    try:
-        cancellation_manager.reset(session_id)
-        process_urls_for_web(urls, emit_to_socketio, session_id)
-    except Exception as e:
-        # Try to notify the UI if possible
-        try:
-            socketio.emit('parser_output', f"[ERROR] Parser crashed: {e}\n", room=session_id)
-        except Exception:
-            pass  # If socketio is already dead, just ignore
-        print(f"[ERROR] run_parser_for_urls crashed: {e}")
-        
-def process_user_prompt(data, session_id):
-    global URL_LIST
-    user_input = data.strip().lower()
-    if not URL_LIST:
-        return "No URLs loaded. Click 'Run Parser' first.\n"
-    if user_input in ("", "cancel"):
-        return "Cancelled.\n"
-    if user_input == "all":
-        selected = URL_LIST
-    else:
-        try:
-            indices = [int(x.strip()) for x in user_input.split(",") if x.strip()]
-            selected = [URL_LIST[i-1] for i in indices if 1 <= i <= len(URL_LIST)]
-        except Exception:
-            return "Invalid input. Please enter indices like '1,2' or 'all'.\n"
-    if not selected:
-        return "No valid URLs selected.\n"
+    prompt_manager.set_prompt_mode("webapp")
+    prompt_manager.set_socketio_emit_func(lambda msg: socketio.emit('parser_output', msg, room=session_id))
 
-    # Start the parser in a background thread and stream output
-    thread = Thread(target=run_parser_for_urls, args=(selected, session_id))
+    def webapp_prompt_func(message):
+        return prompt_manager.prompt_user(message, session_id=session_id, timeout=300)
+
+    from webapp.parser.html_election_parser import main as parser_main
+    # Call the real CLI pipeline, but with webapp prompt/output
+    thread = Thread(target=parser_main, kwargs={
+        "prompt_func": webapp_prompt_func,
+        "output_func": emit_to_socketio
+    })
     thread.start()
-    return f"Started parsing {len(selected)} URL(s)...\n"
 
 # --- Utility functions for Data management ---
 def add_url():
@@ -384,6 +364,15 @@ def manage_data():
         output_files=output_files
     )
 
+@socketio.on('parser_prompt_response')
+def handle_parser_prompt_response(data):
+    session_id = session.get('sid') if 'sid' in session else request.sid
+    response = data.get('response')
+    prompt_session = get_prompt_session(session_id)
+    prompt_session.set_response(response)
+    # Optionally clear after use
+    clear_prompt_session(session_id)
+
 @app.route("/output-files")
 def output_files():
     files = os.listdir(OUTPUT_FOLDER)
@@ -398,7 +387,7 @@ def handle_cancel_parser():
 def handle_parser_prompt(data):
     print(f"Received prompt: {data}")
     session_id = session.get('sid') if 'sid' in session else request.sid
-    output = process_user_prompt(data, session_id)
+    output = run_parser_for_urls(data, session_id)
     emit('parser_output', output, room=session_id)
 
 @app.route("/run-parser")
@@ -414,17 +403,10 @@ def handle_data_framework(data):
 
 @socketio.on('run_parser')
 def handle_run_parser():
-    global URL_LIST
     session_id = session.get('sid') if 'sid' in session else request.sid
-    URL_LIST = get_url_list()
-    if not URL_LIST:
-        socketio.emit('parser_output', "No URLs found.\n", room=session_id)
-        return
-    url_lines = ["URLs loaded:"]
-    for idx, url in enumerate(URL_LIST, 1):
-        url_lines.append(f"  [{idx}] {url}")
-    url_lines.append("\nEnter indices (comma-separated), 'all', or leave empty to cancel:")
-    socketio.emit('parser_output', "\n".join(url_lines), room=session_id)
+    # Just start the pipeline (it will prompt for selection, etc.)
+    thread = Thread(target=run_parser_for_urls, args=(None, session_id))
+    thread.start()
     
 @app.route("/undo-hints", methods=["POST"])
 def undo_hints():
@@ -477,4 +459,4 @@ def upload_to_uploads():
     return redirect(request.referrer or url_for("manage_data"))
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True, use_reloader=True)
+    socketio.run(app, debug=True) # to stop loop (..., use_reloader=True)

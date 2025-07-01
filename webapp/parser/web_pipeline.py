@@ -1,4 +1,4 @@
-from .html_election_parser import process_url
+from .html_election_parser import main
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
@@ -42,7 +42,7 @@ def process_single_url(url, output_callback, idx, total, cancel_flag):
     output_callback(f"\n[Parsing {idx}/{total}] {url}\n")
     try:
         # Call process_url and capture output (you may need to adapt this to your needs)
-        process_url(url, {})  # You may want to capture output or log here
+        main()  # You may want to capture output or log here
         output_callback(f"[DONE] Finished: {url}\n")
     except Exception as e:
         output_callback(f"[ERROR] Exception while processing {url}: {e}\n")

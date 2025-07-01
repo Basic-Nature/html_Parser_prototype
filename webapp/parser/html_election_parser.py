@@ -81,10 +81,10 @@ if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     PROCESSED_URLS_FILE.unlink()
 
 # --- Utility: Load URLs from file or prompt user ---
-def load_urls() -> List[str]:
+def load_urls(prompt_func=prompt_user_input) -> List[str]:
     if not URL_LIST_FILE.exists():
         console.print("[bold red]\nNo urls.txt found. Please input a URL to append:")
-        url = prompt_user_input("URL: ").strip()
+        url = prompt_func("URL: ").strip()
         if url:
             URL_LIST_FILE.write_text(url + "\n")
             log_info(f"Appended URL to urls.txt: {url}")
@@ -93,7 +93,7 @@ def load_urls() -> List[str]:
         lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
         if not lines:
             console.print("[bold red]\nurls.txt has no usable URLs. Please input a URL to append:")
-            url = prompt_user_input("URL: ").strip()
+            url = prompt_func("URL: ").strip()
             if url:
                 with URL_LIST_FILE.open('a') as f_append:
                     f_append.write(url + "\n")
@@ -141,8 +141,8 @@ def mark_url_processed(url, status="success", **metadata):
             f.write(orjson.dumps(entries, option=orjson.OPT_INDENT_2))
 
 # --- Utility: Prompt user to select URLs to process, showing status ---
-def prompt_url_selection(urls: List[str], processed: Dict[str, Any]) -> List[str]:
-    console.print("\n[bold #eb4f43]URLs loaded:[/bold #eb4f43]")
+def prompt_url_selection(urls: List[str], processed: Dict[str, Any], prompt_func=prompt_user_input) -> List[str]:
+    log_info("\n[bold #eb4f43]URLs loaded:[/bold #eb4f43]")
     for i, url in enumerate(urls):
         status = processed.get(url, {}).get("status", "unprocessed")
         status_color = {
@@ -151,8 +151,8 @@ def prompt_url_selection(urls: List[str], processed: Dict[str, Any]) -> List[str
             "partial": "yellow",
             "error": "red"
         }.get(status, "white")
-        console.print(f"  [{i+1}] {url} [bold {status_color}]({status})[/bold {status_color}]")
-    user_input = prompt_user_input("\n[INPUT] Enter indices (comma-separated), 'all', or leave empty to cancel: ").strip().lower()
+        log_info(f"  [{i+1}] {url} [bold {status_color}]({status})[/bold {status_color}]")
+    user_input = prompt_func("\n[INPUT] Enter indices (comma-separated), 'all', or leave empty to cancel: ").strip().lower()
     if not user_input:
         return []
     if user_input == 'all':
@@ -370,7 +370,7 @@ def process_url(target_url, processed_info, cancel_flag=None):
             pass    
            
 # --- Main Entry Point ---
-def main():
+def main(prompt_func=prompt_user_input, output_func=print):
     try:
         if process_format_override():
             return
@@ -378,7 +378,7 @@ def main():
         ensure_input_directory()
         ensure_output_directory()
 
-        urls = load_urls()
+        urls = load_urls(prompt_func=prompt_func)
         log_debug(f"Raw URLs loaded: {urls}")
         log_debug(f"Loaded {len(urls)} raw URLs from urls.txt")
 
@@ -393,7 +393,7 @@ def main():
         processed_info = load_processed_urls()
         log_debug(f"{len(urls)} URLs remain after filtering .processed_urls")
 
-        selected_urls = prompt_url_selection(urls, processed_info)
+        selected_urls = prompt_url_selection(urls, processed_info, prompt_func=prompt_func)
         if not selected_urls:
             log_info("No URLs selected. Exiting.")
             return
@@ -414,17 +414,17 @@ def main():
             if processed.get(url, {}).get("flagged_for_review"):
                 summary["flagged"] += 1
 
-        print("\n[SUMMARY]")
-        print(f"  URLs processed: {len(selected_urls)}")
-        print(f"  Success: {summary['success']}")
-        print(f"  Failures: {summary['fail']}")
-        print(f"  Partial: {summary['partial']}")
-        print(f"  Errors: {summary['error']}")
-        print(f"  Flagged for review: {summary['flagged']}")
+        output_func("\n[SUMMARY]")
+        output_func(f"  URLs processed: {len(selected_urls)}")
+        output_func(f"  Success: {summary['success']}")
+        output_func(f"  Failures: {summary['fail']}")
+        output_func(f"  Partial: {summary['partial']}")
+        output_func(f"  Errors: {summary['error']}")
+        output_func(f"  Flagged for review: {summary['flagged']}")
     except (OperationalError, psycopg2.OperationalError) as db_err:
         log_error(f"[DB ERROR] Could not connect to the database: {db_err}")
-        print("[FATAL] Database connection failed. Exiting pipeline.")
-        sys.exit(1)          
+        output_func("[FATAL] Database connection failed. Exiting pipeline.")
+        sys.exit(1)         
 
 if __name__ == "__main__":
     main()
