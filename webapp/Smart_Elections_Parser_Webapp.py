@@ -79,10 +79,9 @@ def run_parser_for_urls(urls, session_id):
     shared_logger.SUPPRESS_RICH_LOGS = True  # Suppress Rich output for web parser runs
     def emit_to_socketio(line):
         socketio.emit('parser_output', line, room=session_id)
+    shared_logger.set_socketio_emit_func(emit_to_socketio)
     try:
         cancellation_manager.reset(session_id)
-        def emit_to_socketio(line):
-            socketio.emit('parser_output', line, room=session_id)
         process_urls_for_web(urls, emit_to_socketio, session_id)
     except Exception as e:
         # Try to notify the UI if possible

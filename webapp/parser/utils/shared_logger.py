@@ -131,34 +131,52 @@ def log_alert(msg, context=None, alert_type="info"):
         "critical": "magenta"
     }.get(alert_type, "cyan")
     label = alert_type.upper()
+    panel_msg = None
     if context:
-        rprint(Panel(f"[bold]{label} ALERT:[/bold] {msg}\n[dim]{context}[/dim]", style=style))
-    elif contains_rich_markup(msg):
-        rprint(msg)
+        panel_msg = f"[bold]{label} ALERT:[/bold] {msg}\n[dim]{context}[/dim]"
     else:
-        rprint(Panel(f"[bold]{label} ALERT:[/bold] {msg}", style=style))
+        panel_msg = f"[bold]{label} ALERT:[/bold] {msg}"
+    if LOG_MODE == "webapp" and SOCKETIO_EMIT_FUNC:
+        SOCKETIO_EMIT_FUNC(panel_msg)
+    else:
+        rprint(Panel(panel_msg, style=style))
+        
 
 def _rich_log(msg, context=None, default_label=None, default_color=None):
+    """
+    Unified log rendering for CLI and webapp.
+    - In CLI: uses rich panels and colors.
+    - In webapp: emits plain text (with context) to SocketIO.
+    """
     if SUPPRESS_RICH_LOGS:
         return
-    output_msg = None
+
+    # Compose the message and context
     if context:
         label, color, msg_body = extract_label_and_color(msg)
-        panel_label = label or default_label
+        panel_label = label or default_label or "LOG"
         panel_color = color or default_color or "white"
-        output_msg = f"[{panel_label}] {msg_body}\n{context}"
+        text_msg = f"[{panel_label}] {msg_body}\n{context}"
     elif contains_rich_markup(msg):
-        output_msg = msg
+        # Already has rich markup, just use as-is
+        text_msg = msg
+        panel_color = default_color or "white"
     else:
         label = default_label or "LOG"
-        color = default_color or "white"
-        output_msg = f"[{label}] {msg}"
+        panel_color = default_color or "white"
+        text_msg = f"[{label}] {msg}"
 
-    # Only emit to SocketIO if in webapp mode and emit func is set
+    # Output logic
     if LOG_MODE == "webapp" and SOCKETIO_EMIT_FUNC:
-        SOCKETIO_EMIT_FUNC(output_msg)
+        # For webapp, strip rich markup for clean browser output
+        plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
+        SOCKETIO_EMIT_FUNC(plain_msg.strip())
     else:
-        rprint(output_msg)     
+        # For CLI, use rich panel if context or label/color is present
+        if context or (default_label or default_color):
+            rprint(Panel(text_msg, style=panel_color))
+        else:
+            rprint(text_msg)   
 
 # --- Progress Bar Helper ---
 def get_progress_bar(description="Processing", total=100):
