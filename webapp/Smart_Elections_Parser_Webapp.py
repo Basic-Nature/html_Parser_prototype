@@ -22,9 +22,11 @@ import orjson
 import os
 import subprocess
 from threading import Thread
+from webapp.parser.utils import shared_logger
 from webapp.parser.web_pipeline import cancellation_manager, process_urls_for_web
 from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
 from webapp.parser.bots.bot_router import run_pipeline_once
+from webapp.parser.web_pipeline import cancel_processing
 # Load environment variables from .env
 
 load_dotenv()
@@ -70,10 +72,13 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 
 # SocketIO event for real-time updates
 
-def run_parser_for_urls(urls, session_id):
-    from webapp.parser.utils import shared_logger
-    shared_logger.SUPPRESS_RICH_LOGS = True  # Suppress Rich output for web parser runs
 
+
+def run_parser_for_urls(urls, session_id):
+    shared_logger.set_log_mode("webapp")
+    shared_logger.SUPPRESS_RICH_LOGS = True  # Suppress Rich output for web parser runs
+    def emit_to_socketio(line):
+        socketio.emit('parser_output', line, room=session_id)
     try:
         cancellation_manager.reset(session_id)
         def emit_to_socketio(line):
@@ -226,6 +231,8 @@ def delete_hint_route(frag):
 
 @socketio.on('disconnect')
 def handle_disconnect():
+    session_id = session.get('sid') or request.sid
+    cancel_processing(session_id)
     print("Client disconnected")
     emit('parser_output', "Disconnected from server.\n")
 @app.route("/edit-hint", methods=["POST"])
@@ -358,7 +365,6 @@ def output_files():
 @socketio.on('cancel_parser')
 def handle_cancel_parser():
     session_id = session.get('sid') or request.sid
-    from webapp.parser.web_pipeline import cancel_processing
     cancel_processing(session_id)
 
 @socketio.on('parser_prompt')
@@ -446,3 +452,4 @@ def upload_to_uploads():
 if __name__ == "__main__":
     run_pipeline_once()
     socketio.run(app, debug=True, use_reloader=False)
+    shared_logger.set_log_mode("cli")

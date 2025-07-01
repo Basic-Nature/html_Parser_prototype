@@ -8,6 +8,12 @@ from rich.panel import Panel
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
 import orjson
 SUPPRESS_RICH_LOGS = False
+SOCKETIO_EMIT_FUNC = None
+LOG_MODE = "cli"  # or "webapp"
+def set_log_mode(mode):
+    global LOG_MODE
+    LOG_MODE = mode
+
 # --- Logger Setup ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 level_mapping = {
@@ -44,7 +50,9 @@ def get_shared_logger(name="smart_elections"):
     return logger
 
 logger = get_shared_logger()
-
+def set_socketio_emit_func(emit_func):
+    global SOCKETIO_EMIT_FUNC
+    SOCKETIO_EMIT_FUNC = emit_func
 # --- Rich Logging Helpers ---
 def contains_rich_markup(msg):
     # Detects [red], [bold], [INFO], [ERROR], etc. at the start or inside the message
@@ -131,25 +139,26 @@ def log_alert(msg, context=None, alert_type="info"):
         rprint(Panel(f"[bold]{label} ALERT:[/bold] {msg}", style=style))
 
 def _rich_log(msg, context=None, default_label=None, default_color=None):
-    """
-    Advanced rich log rendering: detects [LABEL] or [color] and uses it for the panel.
-    If rich markup is present, prints as-is. Otherwise, wraps in a colored panel.
-    """
     if SUPPRESS_RICH_LOGS:
         return
+    output_msg = None
     if context:
-        # Always show context in a panel with color
         label, color, msg_body = extract_label_and_color(msg)
         panel_label = label or default_label
         panel_color = color or default_color or "white"
-        rprint(Panel(f"[bold {panel_color}]{panel_label}:[/bold {panel_color}] {msg_body}\n[dim]{context}[/dim]", style=panel_color))
+        output_msg = f"[{panel_label}] {msg_body}\n{context}"
     elif contains_rich_markup(msg):
-        rprint(msg)
+        output_msg = msg
     else:
-        # No markup, no context: use default label/color
         label = default_label or "LOG"
         color = default_color or "white"
-        rprint(Panel(f"[bold {color}]{label}:[/bold {color}] {msg}", style=color))       
+        output_msg = f"[{label}] {msg}"
+
+    # Only emit to SocketIO if in webapp mode and emit func is set
+    if LOG_MODE == "webapp" and SOCKETIO_EMIT_FUNC:
+        SOCKETIO_EMIT_FUNC(output_msg)
+    else:
+        rprint(output_msg)     
 
 # --- Progress Bar Helper ---
 def get_progress_bar(description="Processing", total=100):

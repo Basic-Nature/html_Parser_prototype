@@ -50,6 +50,7 @@ uploads/
 .processed_urls
 fine_tuned_table_headers_tmp/
 fine_tuned_spacy_ner_tmp/
+.lock
 
 # ----------------------------
 # Browser Drivers and Cache

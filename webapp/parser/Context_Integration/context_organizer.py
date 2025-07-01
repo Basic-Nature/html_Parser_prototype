@@ -138,7 +138,7 @@ def upsert_contest(session, contest_dict):
         )
     ).scalar_one_or_none()
     if obj:
-        obj.metadata = orjson.dumps(contest_dict)
+        obj.metadata = orjson.dumps(convert_sets_to_lists(contest_dict))
     else:
         obj = Contest(
             title=contest_dict.get("title"),
@@ -146,7 +146,7 @@ def upsert_contest(session, contest_dict):
             type=contest_dict.get("type"),
             state=contest_dict.get("state"),
             county=contest_dict.get("county"),
-            metadata=orjson.dumps(contest_dict)
+            metadata=orjson.dumps(convert_sets_to_lists(contest_dict))
         )
         session.add(obj)
 
@@ -188,6 +188,18 @@ def repair_dom_segments(segments):
     for seg in segments:
         seg["children"] = [c for c in seg["children"] if idx_map.get(c, {}).get("parent_idx") == seg["_idx"]]
     return segments
+def contest_hash(c):
+    return hash((c.get("title"), c.get("year"), c.get("county"), c.get("type")))
+
+def convert_sets_to_lists(obj):
+    if isinstance(obj, dict):
+        return {k: convert_sets_to_lists(v) for k, v in obj.items()}
+    elif isinstance(obj, set):
+        return list(obj)
+    elif isinstance(obj, list):
+        return [convert_sets_to_lists(v) for v in obj]
+    else:
+        return obj
 
 class ContextOrganizer:
     def __init__(
@@ -315,6 +327,8 @@ class ContextOrganizer:
         import numpy as np
 
         fix_log = []
+        for c in contests:
+            c.setdefault("_fixed_fields", set())
         # Build lookup tables from context_library
         title_to_state = {}
         title_to_county = {}
@@ -360,12 +374,16 @@ class ContextOrganizer:
                 lib_embeddings = None
         min_confidence = 0.85
         # Try to fix each contest
+        fixed_hashes = set()
         for idx, c in enumerate(contests):
+            c_hash = contest_hash(c)
+            if c_hash in fixed_hashes:
+                continue
             fixed = False
             reasons = []
             title = (c.get("title") or "").lower()
             # Fix state
-            if not c.get("state"):
+            if not c.get("state") and "state" not in c["_fixed_fields"]:
                 # 1. Try context_library
                 if title in title_to_state:
                     c["state"] = title_to_state[title]
@@ -407,8 +425,11 @@ class ContextOrganizer:
                             )
                     except Exception as e:
                         reasons.append(f"ML similarity failed: {e}")
+                if c.get("state"):
+                    c["_fixed_fields"].add("state")
+                    fixed = True
             # Fix county
-            if not c.get("county"):
+            if not c.get("county") and "county" not in c["_fixed_fields"]:
                 if title in title_to_county:
                     c["county"] = title_to_county[title]
                     reasons.append("filled county from context_library")
@@ -447,8 +468,11 @@ class ContextOrganizer:
                             )
                     except Exception as e:
                         reasons.append(f"ML similarity failed: {e}")
+                if c.get("county"):
+                    c["_fixed_fields"].add("county")
+                    fixed = True
             # Fix year
-            if not c.get("year"):
+            if not c.get("year") and "year" not in c["_fixed_fields"]:
                 if title in title_to_year:
                     c["year"] = title_to_year[title]
                     reasons.append("filled year from context_library")
@@ -487,8 +511,11 @@ class ContextOrganizer:
                             )
                     except Exception as e:
                         reasons.append(f"ML similarity failed: {e}")
+                if c.get("year"):
+                    c["_fixed_fields"].add("year")
+                    fixed = True
             # Fix type
-            if not c.get("type"):
+            if not c.get("type") and "type" not in c["_fixed_fields"]:
                 if title in title_to_type:
                     c["type"] = title_to_type[title]
                     reasons.append("filled type from context_library")
@@ -527,9 +554,15 @@ class ContextOrganizer:
                             )
                     except Exception as e:
                         reasons.append(f"ML similarity failed: {e}")
-            if fixed:
+                if c.get("type"):
+                    c["_fixed_fields"].add("type")
+                    fixed = True
+            if fixed and reasons:
                 fix_log.append({"title": c.get("title"), "fixes": reasons})
+                fixed_hashes.add(c_hash)
         return contests, fix_log
+    
+    
     @staticmethod
     def _describe_embedding_model(model):
         """
@@ -1161,7 +1194,7 @@ class ContextOrganizer:
                     library = orjson.loads(f.read())
             else:
                 library = {}
-            library = merge_dicts(library, remove_functions(organized))
+            library = merge_dicts(library, remove_functions(convert_sets_to_lists(organized)))
             library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             update_context_library(path, lambda lib: lib.update(_to_json_safe(library)))
             log_info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")

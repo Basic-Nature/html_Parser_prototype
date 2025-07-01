@@ -66,6 +66,11 @@ def prompt_user_input(
         if allow_cancel:
             prompt += " (type 'cancel' to abort)"
         prompt += " "
+        try:
+            response = input_with_timeout(prompt, timeout) if timeout else input(prompt)
+        except EOFError:
+            print("\n[Prompt] No input available (EOF). Exiting prompt.")
+            return default
         response = input_with_timeout(prompt, timeout) if timeout else input(prompt)
         if response is None:
             if timeout:

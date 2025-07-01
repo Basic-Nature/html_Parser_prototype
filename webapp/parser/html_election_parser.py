@@ -261,7 +261,7 @@ def resolve_and_parse(page, context, url):
         return html_handler(page, coordinator, context)
     return html_handler(page, coordinator, context)  
 
-def process_url(target_url, processed_info):
+def process_url(target_url, processed_info, cancel_flag=None):
     from .Context_Integration.context_coordinator import ContextCoordinator
     rejected_downloads = set()
     log_info(f"Navigating to: {target_url}")
@@ -272,6 +272,8 @@ def process_url(target_url, processed_info):
             browser, context, page, user_agent = browser_pipeline(
                 p, target_url, cache_exit_callback=mark_url_processed, non_interactive=False
             )
+            if cancel_flag and cancel_flag.is_set():
+                return
             if not page:
                 return
             # --- 1. Prompt for downloadable format and handle if chosen ---
