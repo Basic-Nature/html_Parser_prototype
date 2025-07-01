@@ -72,8 +72,6 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 
 # SocketIO event for real-time updates
 
-
-
 def run_parser_for_urls(urls, session_id):
     shared_logger.set_log_mode("webapp")
     shared_logger.SUPPRESS_RICH_LOGS = True  # Suppress Rich output for web parser runs
@@ -240,6 +238,36 @@ def handle_disconnect():
 def data_framework():
     # You can add logic here or just return a placeholder
     return render_template("data_framework.html")
+
+@app.route("/delete/input/<filename>", methods=["POST"])
+def delete_input_file(filename):
+    file_path = os.path.join(INPUT_FOLDER, filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        flash(f"Deleted '{filename}' from input folder.", "success")
+    else:
+        flash(f"File '{filename}' not found in input folder.", "danger")
+    return redirect(request.referrer or url_for("manage_data"))
+
+@app.route("/delete/output/<filename>", methods=["POST"])
+def delete_output_file(filename):
+    file_path = os.path.join(OUTPUT_FOLDER, filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        flash(f"Deleted '{filename}' from output folder.", "success")
+    else:
+        flash(f"File '{filename}' not found in output folder.", "danger")
+    return redirect(request.referrer or url_for("manage_data"))
+
+@app.route("/delete/uploads/<filename>", methods=["POST"])
+def delete_upload_file(filename):
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        flash(f"Deleted '{filename}' from uploads folder.", "success")
+    else:
+        flash(f"File '{filename}' not found in uploads folder.", "danger")
+    return redirect(request.referrer or url_for("manage_data"))
 
 @app.route("/download/input/<filename>")
 def download_input_file(filename):
@@ -449,6 +477,4 @@ def upload_to_uploads():
     return redirect(request.referrer or url_for("manage_data"))
 
 if __name__ == "__main__":
-    run_pipeline_once()
-    socketio.run(app, debug=True, use_reloader=False)
-    shared_logger.set_log_mode("cli")
+    socketio.run(app, debug=True, use_reloader=True)
