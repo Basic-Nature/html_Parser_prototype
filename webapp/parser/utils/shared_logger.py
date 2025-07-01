@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import time
 from pathlib import Path
 from rich.logging import RichHandler
 from rich import print as rprint
@@ -10,9 +11,18 @@ import orjson
 SUPPRESS_RICH_LOGS = False
 SOCKETIO_EMIT_FUNC = None
 LOG_MODE = "cli"  # or "webapp"
+LOG_FORMAT = "plain"  # or "json"
+
+# To use: shared_logger.set_log_mode("cli") or shared_logger.set_log_mode("webapp")
+# To use: shared_logger.set_log_format("json") or shared_logger.set_log_format("plain")
+# Call in functions or at the start of your script to set the mode and format
 def set_log_mode(mode):
     global LOG_MODE
     LOG_MODE = mode
+
+def set_log_format(fmt):
+    global LOG_FORMAT
+    LOG_FORMAT = fmt
 
 # --- Logger Setup ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -146,7 +156,7 @@ def _rich_log(msg, context=None, default_label=None, default_color=None):
     """
     Unified log rendering for CLI and webapp.
     - In CLI: uses rich panels and colors.
-    - In webapp: emits plain text (with context) to SocketIO.
+    - In webapp: emits plain text or structured JSON to SocketIO.
     """
     if SUPPRESS_RICH_LOGS:
         return
@@ -158,19 +168,29 @@ def _rich_log(msg, context=None, default_label=None, default_color=None):
         panel_color = color or default_color or "white"
         text_msg = f"[{panel_label}] {msg_body}\n{context}"
     elif contains_rich_markup(msg):
-        # Already has rich markup, just use as-is
         text_msg = msg
         panel_color = default_color or "white"
+        panel_label = default_label or "LOG"
     else:
-        label = default_label or "LOG"
+        panel_label = default_label or "LOG"
         panel_color = default_color or "white"
-        text_msg = f"[{label}] {msg}"
+        text_msg = f"[{panel_label}] {msg}"
 
     # Output logic
     if LOG_MODE == "webapp" and SOCKETIO_EMIT_FUNC:
-        # For webapp, strip rich markup for clean browser output
-        plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
-        SOCKETIO_EMIT_FUNC(plain_msg.strip())
+        if LOG_FORMAT == "json":
+            log_obj = {
+                "timestamp": time.time(),
+                "level": panel_label,
+                "color": panel_color,
+                "message": re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg).strip(),
+                "context": context,
+            }
+            SOCKETIO_EMIT_FUNC(orjson.dumps(log_obj).decode("utf-8"))
+        else:
+            # For webapp, strip rich markup for clean browser output
+            plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
+            SOCKETIO_EMIT_FUNC(plain_msg.strip())
     else:
         # For CLI, use rich panel if context or label/color is present
         if context or (default_label or default_color):
