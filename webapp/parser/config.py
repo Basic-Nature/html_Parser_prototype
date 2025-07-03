@@ -18,6 +18,8 @@ CONTEXT_LIBRARY_PATH = os.path.join(
 )
 CONTEXT_LIBRARY_DIR = os.path.dirname(CONTEXT_LIBRARY_PATH)
 
+CONTEXT_CACHE_PATH = os.path.abspath(os.path.join(PROJECT_ROOT, "cache", "context_cache.json"))
+
 INPUT_DIR = os.path.join(PROJECT_ROOT, "input")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 

@@ -8,7 +8,7 @@ import traceback
 import numpy as np
 from typing import Dict, Any, List, Optional
 import concurrent.futures
-from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR
+from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH
 from ..utils.shared_logic import infer_state_county_from_url
 from ..utils.shared_logger import log_info, log_debug, log_warning, log_error
 from ..bots.librarian import (
@@ -28,6 +28,16 @@ from difflib import get_close_matches
 
 ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 console = None  # Only import rich.console.Console if needed for interactive output
+
+def convert_ndarrays(obj):
+    if isinstance(obj, dict):
+        return {k: convert_ndarrays(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_ndarrays(v) for v in obj]
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
 
 # --- Caching and threading ---
 _LABEL_CACHE_FILENAME = "segment_label_cache.json"
@@ -92,8 +102,17 @@ def get_cached_segment_label(seg_hash):
 def safe_cache_path(filename: str) -> str:
     filename = _sanitize_log_filename(filename)
     cache_folder = CACHE_DIR
-    os.makedirs(cache_folder, exist_ok=True)
+    # Defensive: fallback to temp if path too long
     full_path = os.path.join(cache_folder, filename)
+    if os.name == "nt" and len(os.path.abspath(full_path)) >= 240:
+        import tempfile
+        temp_path = os.path.join(tempfile.gettempdir(), filename)
+        log_warning(f"[CACHE] Path too long for Windows, using temp path: {temp_path}")
+        # Ensure temp dir exists
+        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        return temp_path
+    # Ensure cache dir exists
+    os.makedirs(cache_folder, exist_ok=True)
     if not os.path.abspath(full_path).startswith(os.path.abspath(cache_folder)):
         raise ValueError("Unsafe cache path detected!")
     return full_path
@@ -825,10 +844,11 @@ def load_context_cache_from_disk(filename="context_cache.json"):
     _context_cache = {}
     return {}
 
-def save_context_cache_to_disk(context_cache, filename="context_cache.json"):
-    path = safe_cache_path(filename)
+def save_context_cache_to_disk(context_cache, path=CONTEXT_CACHE_PATH):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    context_cache = convert_ndarrays(context_cache)  # <-- Add this line
     with open(path, "wb") as f:
-        f.write(orjson.dumps(_to_json_safe(context_cache), option=orjson.OPT_INDENT_2))
+        f.write(orjson.dumps(context_cache))
 
 def clean_cache_inplace(cache):
     if isinstance(cache, dict):
@@ -870,6 +890,7 @@ def load_pattern_kb():
 def append_pattern_kb(entry):
     if not isinstance(entry, dict):
         raise ValueError("Only dict entries can be written to dom_pattern_kb.jsonl")
+    entry = convert_ndarrays(entry)
     if "embedding" in entry and isinstance(entry["embedding"], np.ndarray):
         entry["embedding"] = entry["embedding"].tolist()
     path = safe_log_path("dom_pattern_kb.jsonl")
@@ -879,6 +900,7 @@ def append_pattern_kb(entry):
 def append_feedback_log(entry):
     if not isinstance(entry, dict):
         raise ValueError("Only dict entries can be written to segment_feedback_log.jsonl")
+    entry = convert_ndarrays(entry)
     if "embedding" in entry and isinstance(entry["embedding"], np.ndarray):
         entry["embedding"] = entry["embedding"].tolist()
     path = safe_log_path("segment_feedback_log.jsonl")

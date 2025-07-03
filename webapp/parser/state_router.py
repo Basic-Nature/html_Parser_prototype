@@ -241,7 +241,7 @@ def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, 
             return {matches[0]: handlers[matches[0]]}
     return handlers
 
-def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool = False, fuzzy_cutoff: float = None) -> Any:
+def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool = False, fuzzy_cutoff: float = None, non_interactive=False) -> Any:
     """
     Dynamically resolves and returns the best handler module for the given context.
     Uses context_coordinator's dynamic_state_county_detection as the primary source.

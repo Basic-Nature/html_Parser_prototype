@@ -73,7 +73,7 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 # SocketIO event for real-time updates
 
 def run_parser_for_urls(urls, session_id):
-    shared_logger.set_log_mode("webapp")
+    
     shared_logger.SUPPRESS_RICH_LOGS = True
     def emit_to_socketio(line):
         socketio.emit('parser_output', line, room=session_id)
@@ -403,6 +403,7 @@ def handle_data_framework(data):
 
 @socketio.on('run_parser')
 def handle_run_parser():
+    shared_logger.set_log_mode("webapp")
     session_id = session.get('sid') if 'sid' in session else request.sid
     # Just start the pipeline (it will prompt for selection, etc.)
     thread = Thread(target=run_parser_for_urls, args=(None, session_id))
