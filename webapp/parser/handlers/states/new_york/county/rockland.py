@@ -39,7 +39,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         debug=False,
     )
     coordinator.organize_and_enrich(context_result)
-# --- 2. Extract state/county/year for contest selection ---
+# --- 2. Extract state/county/year for contest selections ---
     state = context_result.get("state")
     county = context_result.get("county")
     year = context_result.get("year")
