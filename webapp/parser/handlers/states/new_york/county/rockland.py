@@ -31,10 +31,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
 
     rprint("[bold cyan][Rockland Handler] Parsing Rockland County Enhanced Voting page...[/bold cyan]")
 
-    # --- 1. Scan HTML for context and contests ---
-    state = html_context.get("state", "NY")
-    county = html_context.get("county", "Rockland")
-    # --- 2. Scan HTML and organize context before contest selection ---
+    # --- 1. Scan HTML and organize context before contest selection ---
     context_result = scan_html_for_context(
         target_url=getattr(page, "url", None),
         page=page,
@@ -42,13 +39,16 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         debug=False,
     )
     coordinator.organize_and_enrich(context_result)
-
+# --- 2. Extract state/county/year for contest selection ---
+    state = context_result.get("state")
+    county = context_result.get("county")
+    year = context_result.get("year")
     # --- 3. Contest selection ---
     selected = select_contest(
         coordinator,
         state=state,
         county=county,
-        year=html_context.get("year"),
+        year=year,
         non_interactive=False
     )
     if not selected:

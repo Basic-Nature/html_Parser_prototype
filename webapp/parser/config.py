@@ -18,7 +18,7 @@ CONTEXT_LIBRARY_PATH = os.path.join(
 )
 CONTEXT_LIBRARY_DIR = os.path.dirname(CONTEXT_LIBRARY_PATH)
 
-CONTEXT_CACHE_PATH = os.path.abspath(os.path.join(PROJECT_ROOT, "cache", "context_cache.json"))
+
 
 INPUT_DIR = os.path.join(PROJECT_ROOT, "input")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
@@ -29,6 +29,7 @@ CACHE_DIR = os.path.join(CONTEXT_LIBRARY_DIR, "cache")
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
 MODEL_DIR = os.path.dirname(BASE_DIR)
+CONTEXT_CACHE_PATH = os.path.abspath(os.path.join(CACHE_DIR, "context_cache.json"))
 # Usage: for subprocesses, set cwd=PROJECT_ROOT and ensure PROJECT_ROOT is in PYTHONPATH
 
 # Build the PostgreSQL URL from .env variables
