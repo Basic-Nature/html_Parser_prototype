@@ -51,7 +51,7 @@ uploads/
 fine_tuned_table_headers_tmp/
 fine_tuned_spacy_ner_tmp/
 .lock
-
+cache/context_cache.json
 # ----------------------------
 # Browser Drivers and Cache
 # ----------------------------
