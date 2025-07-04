@@ -617,6 +617,8 @@ class ContextOrganizer:
         from ..bots.librarian import (
             LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, CONTEST_KEYWORDS, PERCENT_KEYWORDS, TOTAL_KEYWORDS, MISC_FOOTER_KEYWORDS
         )
+        print("DEBUG: raw_context keys:", list(raw_context.keys()))
+        print("DEBUG: raw_context['contests']:", raw_context.get("contests"))
         debug = self.debug if debug is None else debug
         fuzzy_cutoff = self.fuzzy_cutoff if fuzzy_cutoff is None else fuzzy_cutoff
         # --- Use class-level embedding_model and plot_anomalies unless overridden ---

@@ -25,6 +25,8 @@ from ..bots.librarian import (
     load_context_library, 
     update_context_library,
     STATE_ABBR,
+    PARTY_KEYWORDS,
+    LOCATION_KEYWORDS,
     STATE_MODULE_MAP,
     KNOWN_STATE_TO_COUNTY_MAP,
     KNOWN_COUNTY_TO_PRECINCTS_MAP
@@ -313,7 +315,6 @@ def dynamic_state_county_detection(context, html, debug=False):
 
     # --- 4. Try to extract county from HTML using NLP entities ---
     if not county and html:
-        from ..utils.spacy_utils import extract_entities
         entities = extract_entities(html)
         gpe_entities = [normalize_county_name(ent) for ent, label in entities if label in ("GPE", "LOC")]
         for ent in gpe_entities:
@@ -375,7 +376,6 @@ def dynamic_state_county_detection(context, html, debug=False):
 
     # --- 8. Try to extract state from HTML using NLP entities ---
     if not state and html:
-        from ..utils.spacy_utils import extract_entities
         entities = extract_entities(html)
         gpe_entities = [normalize_state_name(ent) for ent, label in entities if label in ("GPE", "LOC")]
         for ent in gpe_entities:
@@ -451,25 +451,6 @@ def dynamic_state_county_detection(context, html, debug=False):
             print("[dynamic_state_county_detection]", log)
     return normalized_county, normalized_state, handler_path, detection_log
 
-# --- Alert Monitoring (run in production) ---
-def start_alert_monitoring(background=True):
-    """
-    Start real-time alert monitoring, optionally in a background thread.
-    """
-    def run_monitor():
-        try:
-            monitor_db_for_alerts()
-        except Exception as e:
-            logging.error(f"[ALERT MONITOR] Exception: {e}", exc_info=True)
-
-    if background:
-        t = threading.Thread(target=run_monitor, daemon=True)
-        t.start()
-        logging.info("[ALERT MONITOR] Started in background thread.")
-        return t
-    else:
-        run_monitor()
-
 # --- Core Coordinator Class ---
 
 class ContextCoordinator:
@@ -482,16 +463,82 @@ class ContextCoordinator:
         self.enable_ml = enable_ml
         self.alert_monitor = alert_monitor
         self.organized = None
-        self.last_raw_context = None 
+        self.last_raw_context = None
         self.clicked_button_selectors = set()
         self.accepted_buttons_cache = {}
         self._semantic_model = None
+        self.learning_mode = False  # Default to False for clarity
+        self.alert_monitor_thread = None
+
         if enable_ml:
             from ..utils.model_registry import ModelRegistry
             self._semantic_model = ModelRegistry.get_sentence_transformer("all-MiniLM-L6-v2")
+
         if alert_monitor:
             self.start_alert_monitoring()
+            
+    def __del__(self):
+        """
+        Ensure alert monitoring thread is cleaned up on destruction.
+        """
+        try:
+            if self.alert_monitor_thread and self.alert_monitor_thread.is_alive():
+                logging.info("[ALERT MONITOR] Stopping alert monitoring thread.")
+                self.alert_monitor_thread.join(timeout=1)
+                if self.alert_monitor_thread.is_alive():
+                    logging.warning("[ALERT MONITOR] Thread did not stop cleanly.")
+                else:
+                    logging.info("[ALERT MONITOR] Thread stopped successfully.")
+            else:
+                logging.info("[ALERT MONITOR] No active thread to stop.")
+        except Exception as e:
+            logging.error(f"[ALERT MONITOR] Exception during cleanup: {e}", exc_info=True)
+        finally:
+            self.alert_monitor_thread = None
+            
+    def start_alert_monitoring(self, background=True):
+        """
+        Start real-time alert monitoring, optionally in a background thread.
+        """
+        def run_monitor():
+            try:
+                monitor_db_for_alerts()
+            except Exception as e:
+                logging.error(f"[ALERT MONITOR] Exception: {e}", exc_info=True)
 
+        if background:
+            if self.alert_monitor_thread and self.alert_monitor_thread.is_alive():
+                logging.info("[ALERT MONITOR] Already running.")
+                return self.alert_monitor_thread
+            t = threading.Thread(target=run_monitor, daemon=True)
+            t.start()
+            self.alert_monitor_thread = t
+            logging.info("[ALERT MONITOR] Started in background thread.")
+            return t
+        else:
+            run_monitor()
+            return None
+    def _log_jsonl(self, log_path, log_entry):
+        """Centralized JSONL logging utility."""
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+
+    def _extract_with_strategies(self, text, strategies):
+        """
+        Try a list of (method, function) strategies on text, returning the first successful result.
+        Each function should return (value, score, method, result) or None.
+        """
+        for method, func in strategies:
+            result = func(text)
+            if result and result[0]:
+                return result + (method,)
+        return (None, 0.0, "fail", "none")
+
+    def _safe_get(self, dct, key, default=None):
+        """Safely get a key from a dict, returning default if not a dict or key missing."""
+        return dct.get(key, default) if isinstance(dct, dict) else default
+            
     def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
         from .context_organizer import save_table_structure_to_db
         return save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
@@ -624,78 +671,7 @@ class ContextCoordinator:
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
-
-    def extract_entities(self, text):
-        """
-        Extract entities from text using spaCy or your preferred NER model.
-        Returns a list of (entity_text, entity_label) tuples.
-        """
-        # Example using spaCy (make sure spacy and a model are installed)
-        import spacy
-        nlp = getattr(self, "_spacy_nlp", None)
-        if nlp is None:
-            nlp = spacy.load("en_core_web_sm")
-            self._spacy_nlp = nlp
-        doc = nlp(text)
-        return [(ent.text, ent.label_) for ent in doc.ents]
     
-    def extract_precinct(self, contest):
-        """
-        Extract the precinct from a contest using regex, spaCy NER, and fuzzy matching.
-        Log the extraction attempt and result.
-        """
-        if not isinstance(contest, dict):
-            return None
-        title = contest.get("title", "")
-
-        extracted_value = None
-        score = 0.0
-        method = "regex"
-        result = "fail"
-        user_feedback = None
-
-        # 1. Regex for "precinct N"
-        match = re.search(r"precinct\s+(\d+)", title, re.IGNORECASE)
-        if match:
-            extracted_value = match.group(1)
-            score = 0.95
-            method = "regex"
-            result = "pass"
-        else:
-            # 2. spaCy NER for ORDINAL or CARDINAL
-            entities = extract_entities(title)
-            for ent, label in entities:
-                if label in {"ORDINAL", "CARDINAL"} and ent.isdigit():
-                    extracted_value = ent
-                    score = 0.85
-                    method = "spacy_ner"
-                    result = "pass"
-                    break
-            # 3. Fuzzy match for "precinct" context
-            if not extracted_value:
-                tokens = title.split()
-                for i, token in enumerate(tokens):
-                    if fuzz.ratio(token.lower(), "precinct") > 80 and i + 1 < len(tokens):
-                        next_token = tokens[i + 1]
-                        if next_token.isdigit():
-                            extracted_value = next_token
-                            score = 0.75
-                            method = "fuzzy"
-                            result = "pass"
-                            break
-        self.log_field_selection(
-            field_type="precinct",
-            field_name="precinct",
-            extracted_value=extracted_value,
-            method=method,
-            score=score,
-            result=result,
-            context=contest,
-            user_feedback=user_feedback,
-            log_path="field_selection_log.jsonl"
-        )
-        return extracted_value
-
     def extract_contest_title(self, contest):
         """
         Extract the contest title using ML/NLP/manual methods.
@@ -729,7 +705,7 @@ class ContextCoordinator:
         """
         if not isinstance(contest, dict):
             return []
-        # Example: Use entities if available
+        # Use entities if available
         candidates = []
         entities = contest.get("entities", [])
         for ent, label in entities:
@@ -756,445 +732,398 @@ class ContextCoordinator:
 
     def extract_party(self, contest):
         """
-        Extract party from contest using regex, spaCy NER, and fuzzy matching.
+        Extract party using regex, spaCy NER, and fuzzy matching with PARTY_KEYWORDS.
         Log the extraction attempt and result.
         """
         if not isinstance(contest, dict):
             return None
         title = contest.get("title", "")
-        extracted_value = None
-        score = 0.0
-        method = "regex"
-        result = "fail"
-        user_feedback = None
 
-        # 1. Regex for common parties
-        match = re.search(r"(Democrat|Republican|Green|Libertarian|Independent)", title, re.IGNORECASE)
-        if match:
-            extracted_value = match.group(1)
-            score = 0.9
-            method = "regex"
-            result = "pass"
-        else:
-            # 2. spaCy NER for ORG or NORP
-            entities = extract_entities(title)
-            known_parties = ["Democrat", "Republican", "Green", "Libertarian", "Independent"]
+        party_pattern = "|".join([re.escape(k) for k in PARTY_KEYWORDS])
+
+        def regex_party(text):
+            match = re.search(rf"({party_pattern})", text, re.IGNORECASE)
+            if match:
+                return (match.group(1), 0.9, "regex", "pass")
+            return None
+
+        def nlp_party(text):
+            entities = extract_entities(text)
+            known_parties = PARTY_KEYWORDS
             for ent, label in entities:
                 if label in {"ORG", "NORP"}:
-                    best_match, best_score = process.extractOne(ent, known_parties)
-                    if best_score > 80:
-                        extracted_value = best_match
-                        score = best_score / 100.0
-                        method = "spacy_ner_fuzzy"
-                        result = "pass"
-                        break
-            # 3. Fuzzy match directly in title
-            if not extracted_value:
-                best_match, best_score = process.extractOne(title, known_parties)
-                if best_score > 80:
-                    extracted_value = best_match
-                    score = best_score / 100.0
-                    method = "fuzzy"
-                    result = "pass"
+                    best = process.extractOne(ent, known_parties)
+                    if best and best[1] > 80:
+                        return (best[0], best[1] / 100.0, "spacy_ner_fuzzy", "pass")
+            return None
+
+        def fuzzy_party(text):
+            known_parties = PARTY_KEYWORDS
+            best = process.extractOne(text, known_parties)
+            if best and best[1] > 80:
+                return (best[0], best[1] / 100.0, "fuzzy", "pass")
+            return None
+
+        value, score, method, result, used_method = self._extract_with_strategies(
+            title,
+            [("regex", regex_party), ("nlp", nlp_party), ("fuzzy", fuzzy_party)]
+        )
 
         self.log_field_selection(
             field_type="party",
             field_name="party",
-            extracted_value=extracted_value,
-            method=method,
+            extracted_value=value,
+            method=used_method,
             score=score,
             result=result,
             context=contest,
-            user_feedback=user_feedback,
+            user_feedback=None,
             log_path="field_selection_log.jsonl"
         )
-        return extracted_value
+        return value
     
     def extract_panel(self, contest_title):
         """
         Extract the panel for a given contest title using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
-        panel = None
-        method = "direct_lookup"
-        score = 0.0
-        result = "fail"
-        user_feedback = None
+        panel_keywords = self.library.get("panel_tags", ["panel", "section", "container", "box", "area"])
+        panel_pattern = "|".join([re.escape(k) for k in panel_keywords])
 
-        # 1. Regex for common panel words
-        if contest_title:
-            match = re.search(r"(panel|section|container|box|area)", contest_title, re.IGNORECASE)
+        def regex_panel(text):
+            match = re.search(rf"({panel_pattern})", text, re.IGNORECASE)
             if match:
-                panel = match.group(1)
-                method = "regex"
-                score = 0.9
-                result = "pass"
+                return (match.group(1), 0.9, "regex", "pass")
+            return None
 
-        # 2. spaCy NER for ORG/NORP
-        if not panel and contest_title:
-            entities = extract_entities(contest_title)
+        def nlp_panel(text):
+            entities = extract_entities(text)
             for ent, label in entities:
                 if label in {"ORG", "NORP"}:
-                    panel = ent
-                    method = "spacy_ner"
-                    score = 0.85
-                    result = "pass"
-                    break
+                    return (ent, 0.85, "spacy_ner", "pass")
+            return None
 
-        # 3. Fallback to direct lookup
-        if not panel:
-            panel = self.get_panel(contest_title)
+        def direct_lookup(text):
+            panel = self.get_panel(text)
             if panel:
-                method = "direct_lookup"
-                score = 1.0
-                result = "pass"
+                return (panel, 1.0, "direct_lookup", "pass")
+            return None
+
+        value, score, method, result, used_method = self._extract_with_strategies(
+            contest_title or "",
+            [("regex", regex_panel), ("nlp", nlp_panel), ("direct_lookup", direct_lookup)]
+        )
 
         self.log_field_selection(
             field_type="panel",
             field_name="panel",
-            extracted_value=panel,
-            method=method,
+            extracted_value=value,
+            method=used_method,
             score=score,
             result=result,
             context={"contest_title": contest_title},
-            user_feedback=user_feedback,
+            user_feedback=None,
             log_path="field_selection_log.jsonl"
         )
-        return panel
+        return value
 
     def extract_tables(self, contest_title):
         """
         Extract tables for a given contest title using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
-        tables = []
-        method = "direct_lookup"
-        score = 0.0
-        result = "fail"
-        user_feedback = None
+        table_keywords = self.library.get("table_tags", ["table", "results", "summary", "sheet", "spreadsheet", "grid"])
+        table_pattern = "|".join([re.escape(k) for k in table_keywords])
 
-        # 1. Regex for table-like words
-        if contest_title:
-            match = re.search(r"(table|results|summary|sheet|spreadsheet|grid)", contest_title, re.IGNORECASE)
+        def regex_table(text):
+            match = re.search(rf"({table_pattern})", text, re.IGNORECASE)
             if match:
-                tables.append(match.group(1))
-                method = "regex"
-                score = 0.9
-                result = "pass"
+                return ([match.group(1)], 0.9, "regex", "pass")
+            return None
 
-        # 2. spaCy NER for ORG/NORP
-        if not tables and contest_title:
-            entities = extract_entities(contest_title)
+        def nlp_table(text):
+            entities = extract_entities(text)
             for ent, label in entities:
                 if label in {"ORG", "NORP"}:
-                    tables.append(ent)
-                    method = "spacy_ner"
-                    score = 0.85
-                    result = "pass"
-                    break
+                    return ([ent], 0.85, "spacy_ner", "pass")
+            return None
 
-        # 3. Fallback to direct lookup
-        if not tables:
-            tables = self.get_tables(contest_title)
+        def direct_lookup(text):
+            tables = self.get_tables(text)
             if tables:
-                method = "direct_lookup"
-                score = 1.0
-                result = "pass"
+                return (tables, 1.0, "direct_lookup", "pass")
+            return None
+
+        value, score, method, result, used_method = self._extract_with_strategies(
+            contest_title or "",
+            [("regex", regex_table), ("nlp", nlp_table), ("direct_lookup", direct_lookup)]
+        )
 
         self.log_field_selection(
             field_type="tables",
             field_name="tables",
-            extracted_value=tables,
-            method=method,
+            extracted_value=value,
+            method=used_method,
             score=score,
             result=result,
             context={"contest_title": contest_title},
-            user_feedback=user_feedback,
+            user_feedback=None,
             log_path="field_selection_log.jsonl"
         )
-        return tables
+        return value
 
     def extract_precincts(self, state=None, county=None):
         """
         Extract known precincts for a state/county using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
-        precincts = []
-        method = "direct_lookup"
-        score = 0.0
-        result = "fail"
-        user_feedback = None
+        location_pattern = "|".join([re.escape(k) for k in LOCATION_KEYWORDS])
 
-        # 1. Regex for precinct-like words
-        if state:
-            match = re.search(r"(district|ward|precinct|zone|division)", state, re.IGNORECASE)
+        def regex_precinct(text):
+            match = re.search(rf"({location_pattern})", text, re.IGNORECASE)
             if match:
-                precincts.append(match.group(1))
-                method = "regex"
-                score = 0.9
-                result = "pass"
-        if county and not precincts:
-            match = re.search(r"(district|ward|precinct|zone|division)", county, re.IGNORECASE)
-            if match:
-                precincts.append(match.group(1))
-                method = "regex"
-                score = 0.9
-                result = "pass"
+                return ([match.group(1)], 0.9, "regex", "pass")
+            return None
 
-        # 2. spaCy NER for ORG/NORP
-        if not precincts and state:
-            entities = extract_entities(state)
+        def nlp_precinct(text):
+            entities = extract_entities(text)
             for ent, label in entities:
                 if label in {"ORG", "NORP"}:
-                    precincts.append(ent)
-                    method = "spacy_ner"
-                    score = 0.85
-                    result = "pass"
-                    break
-        if not precincts and county:
-            entities = extract_entities(county)
-            for ent, label in entities:
-                if label in {"ORG", "NORP"}:
-                    precincts.append(ent)
-                    method = "spacy_ner"
-                    score = 0.85
-                    result = "pass"
-                    break
+                    return ([ent], 0.85, "spacy_ner", "pass")
+            return None
 
-        # 3. Fallback to direct lookup
-        if not precincts:
+        def direct_lookup(_):
             precincts = self.get_precincts(state=state, county=county)
             if precincts:
-                method = "direct_lookup"
-                score = 1.0
-                result = "pass"
+                return (precincts, 1.0, "direct_lookup", "pass")
+            return None
+
+        value, score, method, result, used_method = self._extract_with_strategies(
+            state or county or "",
+            [("regex", regex_precinct), ("nlp", nlp_precinct), ("direct_lookup", direct_lookup)]
+        )
 
         self.log_field_selection(
             field_type="precincts",
             field_name="precincts",
-            extracted_value=precincts,
-            method=method,
+            extracted_value=value,
+            method=used_method,
             score=score,
             result=result,
             context={"state": state, "county": county},
-            user_feedback=user_feedback,
+            user_feedback=None,
             log_path="field_selection_log.jsonl"
         )
-        return precincts
+        return value
 
     def extract_states(self):
         """
         Extract all known states using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
-        states = []
-        method = "direct_lookup"
-        score = 0.0
-        result = "fail"
-        user_feedback = None
-
-        # 1. Regex for state-like words
+        state_keywords = self.library.get("state_tags", ["state", "province", "territory", "region"])
+        state_pattern = "|".join([re.escape(k) for k in state_keywords])
         known_states = self.library.get("known_states", [])
-        for s in known_states:
-            match = re.search(r"(state|province|territory|region)", s, re.IGNORECASE)
+
+        def regex_state(text):
+            match = re.search(rf"({state_pattern})", text, re.IGNORECASE)
             if match:
-                states.append(s)
-        if states:
-            method = "regex"
-            score = 0.9
-            result = "pass"
+                return (text, 0.9, "regex", "pass")
+            return None
 
-        # 2. spaCy NER for ORG/NORP
-        if not states:
-            for s in known_states:
-                entities = extract_entities(s)
-                for ent, label in entities:
-                    if label in {"ORG", "NORP"}:
-                        states.append(ent)
-                        method = "spacy_ner"
-                        score = 0.85
-                        result = "pass"
-                        break
-                if states:
-                    break
+        def nlp_state(text):
+            entities = extract_entities(text)
+            for ent, label in entities:
+                if label in {"ORG", "NORP"}:
+                    return (ent, 0.85, "spacy_ner", "pass")
+            return None
 
-        # 3. Fallback to direct lookup
-        if not states:
+        def direct_lookup(_):
             states = self.get_states()
             if states:
-                method = "direct_lookup"
-                score = 1.0
-                result = "pass"
+                return (states, 1.0, "direct_lookup", "pass")
+            return None
+
+        # Try all known states
+        found_states = []
+        for s in known_states:
+            value, score, method, result, used_method = self._extract_with_strategies(
+                s,
+                [("regex", regex_state), ("nlp", nlp_state)]
+            )
+            if value:
+                found_states.append(value)
+        if not found_states:
+            value, score, method, result, used_method = self._extract_with_strategies(
+                "", [("direct_lookup", direct_lookup)]
+            )
+            found_states = value if value else []
+        else:
+            score = 0.9
+            method = "regex"
+            result = "pass"
+            used_method = "regex"
 
         self.log_field_selection(
             field_type="states",
             field_name="states",
-            extracted_value=states,
-            method=method,
+            extracted_value=found_states,
+            method=used_method,
             score=score,
             result=result,
             context={},
-            user_feedback=user_feedback,
+            user_feedback=None,
             log_path="field_selection_log.jsonl"
         )
-        return states
+        return found_states
 
     def extract_election_types(self):
         """
         Extract all known election types using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
-        election_types = []
-        method = "direct_lookup"
-        score = 0.0
-        result = "fail"
-        user_feedback = None
-
-        # 1. Regex for election type words
         known_types = self.library.get("election", [])
-        for t in known_types:
-            match = re.search(r"(primary|general|special|runoff|municipal|presidential|senate|mayoral|school board)", t, re.IGNORECASE)
+        location_pattern = "|".join([re.escape(k) for k in LOCATION_KEYWORDS])
+        election_type_pattern = r"(primary|general|special|runoff|municipal|presidential|senate|mayoral|school board|" + location_pattern + ")"
+
+        def regex_election_type(text):
+            match = re.search(election_type_pattern, text, re.IGNORECASE)
             if match:
-                election_types.append(match.group(1))
-        if election_types:
-            method = "regex"
+                return (match.group(1), 0.9, "regex", "pass")
+            return None
+
+        def nlp_election_type(text):
+            entities = extract_entities(text)
+            for ent, label in entities:
+                if label in {"ORG", "NORP"}:
+                    return (ent, 0.85, "spacy_ner", "pass")
+            return None
+
+        def direct_lookup(_):
+            types = self.get_election_types()
+            if types:
+                return (types, 1.0, "direct_lookup", "pass")
+            return None
+
+        found_types = []
+        for t in known_types:
+            value, score, method, result, used_method = self._extract_with_strategies(
+                t,
+                [("regex", regex_election_type), ("nlp", nlp_election_type)]
+            )
+            if value:
+                found_types.append(value)
+        if not found_types:
+            value, score, method, result, used_method = self._extract_with_strategies(
+                "", [("direct_lookup", direct_lookup)]
+            )
+            found_types = value if value else []
+        else:
             score = 0.9
+            method = "regex"
             result = "pass"
-
-        # 2. spaCy NER for ORG/NORP
-        if not election_types:
-            for t in known_types:
-                entities = extract_entities(t)
-                for ent, label in entities:
-                    if label in {"ORG", "NORP"}:
-                        election_types.append(ent)
-                        method = "spacy_ner"
-                        score = 0.85
-                        result = "pass"
-                        break
-                if election_types:
-                    break
-
-        # 3. Fallback to direct lookup
-        if not election_types:
-            election_types = self.get_election_types()
-            if election_types:
-                method = "direct_lookup"
-                score = 1.0
-                result = "pass"
+            used_method = "regex"
 
         self.log_field_selection(
             field_type="election_types",
             field_name="election_types",
-            extracted_value=election_types,
-            method=method,
+            extracted_value=found_types,
+            method=used_method,
             score=score,
             result=result,
             context={},
-            user_feedback=user_feedback,
+            user_feedback=None,
             log_path="field_selection_log.jsonl"
         )
-        return election_types
+        return found_types
 
     def extract_years(self):
         """
         Extract all years found in contests using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
-        years = []
-        method = "direct_lookup"
-        score = 0.0
-        result = "fail"
-        user_feedback = None
-
-        # 1. Regex for 4-digit years
         contests = self.get_contests()
-        for c in contests:
-            if not isinstance(c, dict):
-                continue
-            match = re.search(r"\b(19|20)\d{2}\b", str(c.get("title", "")))
+
+        def regex_year(text):
+            match = re.search(r"\b(19|20)\d{2}\b", text)
             if match:
-                years.append(match.group(0))
-        if years:
-            method = "regex"
-            score = 0.9
-            result = "pass"
+                return (match.group(0), 0.9, "regex", "pass")
+            return None
 
-        # 2. spaCy NER for DATE
-        if not years:
-            for c in contests:
-                if not isinstance(c, dict):
-                    continue
-                entities = extract_entities(c.get("title", ""))
-                for ent, label in entities:
-                    if label == "DATE" and re.match(r"\b(19|20)\d{2}\b", ent):
-                        years.append(ent)
-                        method = "spacy_ner"
-                        score = 0.85
-                        result = "pass"
-                        break
-                if years:
-                    break
+        def nlp_year(text):
+            entities = extract_entities(text)
+            for ent, label in entities:
+                if label == "DATE" and re.match(r"\b(19|20)\d{2}\b", ent):
+                    return (ent, 0.85, "spacy_ner", "pass")
+            return None
 
-        # 3. Fallback to direct lookup
-        if not years:
+        def direct_lookup(_):
             years = self.get_years()
             if years:
-                method = "direct_lookup"
-                score = 1.0
-                result = "pass"
+                return (years, 1.0, "direct_lookup", "pass")
+            return None
+
+        found_years = []
+        for c in contests:
+            title = str(c.get("title", ""))
+            value, score, method, result, used_method = self._extract_with_strategies(
+                title,
+                [("regex", regex_year), ("nlp", nlp_year)]
+            )
+            if value:
+                found_years.append(value)
+        if not found_years:
+            value, score, method, result, used_method = self._extract_with_strategies(
+                "", [("direct_lookup", direct_lookup)]
+            )
+            found_years = value if value else []
+        else:
+            score = 0.9
+            method = "regex"
+            result = "pass"
+            used_method = "regex"
 
         self.log_field_selection(
             field_type="years",
             field_name="years",
-            extracted_value=years,
-            method=method,
+            extracted_value=found_years,
+            method=used_method,
             score=score,
             result=result,
             context={},
-            user_feedback=user_feedback,
+            user_feedback=None,
             log_path="field_selection_log.jsonl"
         )
-        return years
+        return found_years
 
     def extract_buttons(self, contest_title=None, keyword=None, url=None):
         """
         Extract button labels using regex, spaCy NER (ORG/NORP), and direct lookup.
         Log the extraction attempt and result.
         """
-        candidates = []
-        method = "direct_lookup"
-        score = 0.0
-        result = "fail"
-        user_feedback = None
+        button_keywords = self.library.get("button_tags", [
+            "Show Results", "Vote", "Submit", "Summary", "Next", "Continue", "Back",
+            "Download", "Print", "Details", "Results", "Ballot", "Cast Vote"
+        ])
+        button_pattern = "|".join([re.escape(k) for k in button_keywords])
 
-        # 1. Regex for button-like words
         sources = [contest_title or "", keyword or "", url or ""]
-        for src in sources:
-            match = re.search(r"(Show Results|Vote|Submit|Summary|Next|Continue|Back|Download|Print|Details|Results|Ballot|Cast Vote)", src, re.IGNORECASE)
+
+        def regex_button(text):
+            match = re.search(rf"({button_pattern})", text, re.IGNORECASE)
             if match:
-                candidates.append(match.group(1))
-        if candidates:
-            method = "regex"
-            score = 0.9
-            result = "pass"
+                return (match.group(1), 0.9, "regex", "pass")
+            return None
 
-        # 2. spaCy NER for ORG/NORP
-        if not candidates:
-            for src in sources:
-                entities = extract_entities(src)
-                for ent, label in entities:
-                    if label in {"ORG", "NORP"}:
-                        candidates.append(ent)
-                        method = "spacy_ner"
-                        score = 0.85
-                        result = "pass"
-                        break
-                if candidates:
-                    break
+        def nlp_button(text):
+            entities = extract_entities(text)
+            for ent, label in entities:
+                if label in {"ORG", "NORP"}:
+                    return (ent, 0.85, "spacy_ner", "pass")
+            return None
 
-        # 3. Fallback to get_buttons accessor
-        if not candidates:
+        def direct_lookup(_):
+            candidates = []
             buttons = self.get_buttons(contest_title=contest_title, keyword=keyword, url=url)
             for btn in buttons:
                 if not isinstance(btn, dict):
@@ -1203,25 +1132,44 @@ class ContextCoordinator:
                 if label:
                     candidates.append(label)
             if candidates:
-                method = "direct_lookup"
-                score = 1.0
-                result = "pass"
+                return (list(dict.fromkeys(candidates)), 1.0, "direct_lookup", "pass")
+            return None
+
+        found_buttons = []
+        for src in sources:
+            value, score, method, result, used_method = self._extract_with_strategies(
+                src,
+                [("regex", regex_button), ("nlp", nlp_button)]
+            )
+            if value:
+                found_buttons.append(value)
+        if not found_buttons:
+            value, score, method, result, used_method = self._extract_with_strategies(
+                "", [("direct_lookup", direct_lookup)]
+            )
+            found_buttons = value if value else []
+        else:
+            score = 0.9
+            method = "regex"
+            result = "pass"
+            used_method = "regex"
 
         # Deduplicate
-        candidates = list(dict.fromkeys(candidates))
+        if isinstance(found_buttons, list):
+            found_buttons = list(dict.fromkeys(found_buttons))
 
         self.log_field_selection(
             field_type="buttons",
             field_name="buttons",
-            extracted_value=candidates,
-            method=method,
+            extracted_value=found_buttons,
+            method=used_method,
             score=score,
             result=result,
             context={"contest_title": contest_title, "keyword": keyword, "url": url},
-            user_feedback=user_feedback,
+            user_feedback=None,
             log_path="field_selection_log.jsonl"
         )
-        return candidates
+        return found_buttons
 
     def score_header(self, title, context=None):
         # Simple fallback: just call score_entry or return a default score
@@ -1234,7 +1182,7 @@ class ContextCoordinator:
         """   
         if not isinstance(self.organized, dict):
             return []
-        contests = self.organized.get("contests", [])
+        contests = self._safe_get(self.organized, "contests", [])
         if not filters:
             return contests
         def match(c):
@@ -1842,12 +1790,6 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
 
-    def start_alert_monitoring(self):
-        """
-        Start real-time alert monitoring in a background thread.
-        """
-        monitor_db_for_alerts()
-
     # --- Reporting ---
 
     def report_summary(self):
@@ -2033,7 +1975,5 @@ if __name__ == "__main__":
     parser.add_argument("--no-background", action="store_true", help="Run alert monitoring in foreground")
     args = parser.parse_args()
 
-    if args.monitor:
-        start_alert_monitoring(background=not args.no_background)
     if not args.sample and not args.monitor:
         parser.print_help()

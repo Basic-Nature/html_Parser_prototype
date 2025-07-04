@@ -216,7 +216,11 @@ def orchestrate_url(target_url, processed_info, cancel_flag=None):
             # 2. Infer state/county from URL and build minimal context
             state, county = infer_state_county_from_url(target_url)
             context = {"state": state, "county": county, "url": target_url}
-
+            from .state_router import preload_handler_map
+            if state:
+                preload_handler_map(restrict_to_states=[state])
+            else:
+                preload_handler_map()
             # 3. Route to handler using context (no DOM scan here)
             handler_result = get_handler(context, url=target_url)
             handler = handler_result.get("handler")

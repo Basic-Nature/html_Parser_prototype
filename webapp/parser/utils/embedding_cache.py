@@ -106,14 +106,17 @@ def save_embeddings_batch(hash_emb_list):
     """
     Save a batch of (segment_hash, embedding) tuples using PostgreSQL upsert (ON CONFLICT DO UPDATE).
     This prevents unique constraint errors and ensures robust batch saving.
+    Deduplicates by segment_hash to avoid ON CONFLICT cardinality errors.
     """
     if not hash_emb_list:
         return
     ensure_embedding_cache_table()
-    # Prepare data for bulk upsert
-    records = []
+    # Deduplicate by segment_hash (keep last occurrence)
+    deduped = {}
     for h, e in hash_emb_list:
-        # Defensive: always convert to float32 numpy array
+        deduped[h] = e
+    records = []
+    for h, e in deduped.items():
         arr = np.array(e, dtype=np.float32)
         emb_bytes = arr.tobytes()
         records.append({"segment_hash": h, "embedding": emb_bytes})
@@ -151,7 +154,7 @@ def save_embeddings_batch(hash_emb_list):
                 return
     # Update in-memory cache (always latest)
     with _batch_cache_lock:
-        for h, e in hash_emb_list:
+        for h, e in deduped.items():
             _batch_cache[h] = np.array(e, dtype=np.float32)
 
 def load_embeddings_batch(segment_hashes):

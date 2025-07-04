@@ -9,14 +9,15 @@ import numpy as np
 from typing import Dict, Any, List, Optional
 import concurrent.futures
 from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH
-from ..utils.shared_logic import infer_state_county_from_url
 from ..utils.shared_logger import log_info, log_debug, log_warning, log_error
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, 
     CANDIDATE_KEYWORDS, BALLOT_TYPES, update_context_library, load_context_library,
     log_unknown_tag, log_unknown_attr, get_canonical_segment_label, cache_segment_label, get_cached_segment_label, ROOT_CONTAINER_TAGS,
     ALWAYS_IGNORE_TAGS, ALWAYS_IGNORE_CLASSES, ALWAYS_IGNORE_IDS, ICON_CLASSES, ICON_TAGS, BUTTON_CLASSES,
-    HEADING_CLASSES, PANEL_CLASSES, TIMESTAMP_CLASSES, STRUCTURAL_TAGS, TIMESTAMP_ID_PATTERNS, TIMESTAMP_ATTRS
+    HEADING_CLASSES, PANEL_CLASSES, TIMESTAMP_CLASSES, STRUCTURAL_TAGS, TIMESTAMP_ID_PATTERNS, TIMESTAMP_ATTRS,
+    CONTEST_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, LOCATION_KEYWORDS, PARTY_KEYWORDS,
+    TOTAL_KEYWORDS, PERCENT_KEYWORDS, MISC_FOOTER_KEYWORDS
 )
 from ..utils.embedding_cache import (
     save_embedding, get_embedding_from_memory, load_embeddings_batch, save_embeddings_batch
@@ -326,7 +327,47 @@ def auto_label_segment(
     attrs = segment.get("attrs", {})
     html = segment.get("html", "").lower()
     id_ = segment.get("id", "").lower()
-    text = segment.get("text", "").strip().lower() if segment.get("text", []) else ""
+    text = segment.get("text", "").strip().lower() if segment.get("text", []) else _extract_clean_text(html).lower()
+    # --- Use librarian keywords for robust labeling ---
+    # Contest title detection
+    if _keyword_in_text(text, CONTEST_KEYWORDS) or _keyword_in_text(html, CONTEST_KEYWORDS):
+        return "contest_title"
+    # Candidate panel detection
+    if _keyword_in_text(text, CANDIDATE_KEYWORDS) or _keyword_in_text(html, CANDIDATE_KEYWORDS):
+        return "candidate_panel"
+    # Party label detection
+    if _keyword_in_text(text, PARTY_KEYWORDS) or _keyword_in_text(html, PARTY_KEYWORDS):
+        return "party_label"
+    # Location panel detection
+    if _keyword_in_text(text, LOCATION_KEYWORDS) or _keyword_in_text(html, LOCATION_KEYWORDS):
+        return "location_panel"
+    # Ballot type detection
+    if _keyword_in_text(text, BALLOT_TYPES) or _keyword_in_text(html, BALLOT_TYPES):
+        return "ballot_type"
+    # Table detection (results table)
+    if tag == "table" or _keyword_in_text(text, TOTAL_KEYWORDS | PERCENT_KEYWORDS | MISC_FOOTER_KEYWORDS):
+        return "results_table"
+    # Heading detection
+    if tag in HEADING_TAGS or HEADING_CLASSES & set(classes):
+        return "heading"
+    # Panel detection
+    if tag in PANEL_TAGS or PANEL_CLASSES & set(classes):
+        return "panel"
+    # Timestamp detection
+    if (
+        tag in {"span", "time", "div", "p", "small", "label"}
+        and (
+            any(cls in TIMESTAMP_CLASSES for cls in classes)
+            or any(re.search(pat, id_) for pat in TIMESTAMP_ID_PATTERNS if id_)
+            or any(attr in attrs for attr in TIMESTAMP_ATTRS)
+            or any(re.search(pat, " ".join(attrs.keys())) for pat in TIMESTAMP_ID_PATTERNS)
+            or re.search(r"\bago\b|\bupdated\b|\blast\b|\bposted\b|\bas of\b|\breported\b", html)
+            or re.search(r"\b\d{1,2}:\d{2}\s*(am|pm)?\b", html)
+            or re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", html)
+            or re.search(r"\b\d{4}-\d{2}-\d{2}\b", html)
+        )
+    ):
+        return "results_timestamp"
     if tag in ROOT_CONTAINER_TAGS:
         return "ignore"
     if tag == "div" and ("container" in classes or "main" in classes) and not html.strip():
@@ -404,6 +445,48 @@ def auto_label_segment(
         return canonical
     return "unknown", "heuristic"
 
+def _extract_clean_text(html):
+    """Extracts clean text from HTML using selectolax, fallback to raw HTML if parsing fails."""
+    try:
+        tree = HTMLParser(html)
+        text = tree.body.text(strip=True) if tree.body else tree.text(strip=True)
+        return text.strip() if text else html
+    except Exception:
+        return html
+
+def _label_in(label, target):
+    """Robustly checks if label is or contains the target label."""
+    if isinstance(label, str):
+        return label == target
+    if isinstance(label, list):
+        return target in label
+    return False
+
+def _extract_segments_by_label(segments, label_name, extra_fields=None):
+    """Extracts and cleans segments by label, returns list of dicts with clean text and extra fields."""
+    results = []
+    for seg in segments:
+        label = seg.get("ml_label")
+        if _label_in(label, label_name):
+            entry = {
+                "text": _extract_clean_text(seg.get("html", "")),
+                "raw_html": seg.get("html", ""),
+                "segment_hash": seg.get("segment_hash"),
+            }
+            if extra_fields:
+                for field in extra_fields:
+                    entry[field] = seg.get(field)
+            results.append(entry)
+    return results
+
+def _keyword_in_text(text, keywords):
+    """Check if any keyword is present in the text (case-insensitive, word-boundary)."""
+    text = text.lower()
+    for kw in keywords:
+        if re.search(rf'\b{re.escape(kw.lower())}\b', text):
+            return True
+    return False
+
 def scan_html_for_context(
     target_url,
     page,
@@ -424,7 +507,6 @@ def scan_html_for_context(
         context_cache = load_context_cache_from_disk()
     # --- FAST-PATH: If all segment hashes are in cache with high confidence, skip full scan ---
     html = page.content()
-    from selectolax.parser import HTMLParser
     def extract_all_segment_html(html):
         try:
             tree = HTMLParser(html)
@@ -493,16 +575,90 @@ def scan_html_for_context(
         )
         context_result["tagged_segments_with_attrs"] = segments_with_attrs
         context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
-        contests = []
-        for seg in segments_with_attrs:
-            if seg.get("ml_label") == "contest_title":
-                contests.append({
-                    "title": seg.get("html", ""),
-                    "state": context_result.get("state"),
-                    "county": context_result.get("county"),
-                    # Add more fields as needed
-                })
-        context_result["contests"] = contests
+
+        # --- Robust extraction for all key segment types ---
+        context_result["contests"] = [
+            {
+                "title": seg["text"],
+                "state": context_result.get("state"),
+                "county": context_result.get("county"),
+                "segment_hash": seg["segment_hash"],
+            }
+            for seg in _extract_segments_by_label(segments_with_attrs, "contest_title")
+        ]
+        context_result["panels"] = [
+            {
+                "panel_text": seg["text"],
+                "panel_html": seg["raw_html"],
+                "segment_hash": seg["segment_hash"],
+            }
+            for seg in _extract_segments_by_label(segments_with_attrs, "panel")
+        ]
+        context_result["tables"] = [
+            {
+                "table_html": seg["raw_html"],
+                "table_text": seg["text"],
+                "segment_hash": seg["segment_hash"],
+            }
+            for seg in _extract_segments_by_label(segments_with_attrs, "results_table")
+        ]
+        context_result["candidate_panels"] = [
+            {
+                "candidate_panel_text": seg["text"],
+                "candidate_panel_html": seg["raw_html"],
+                "segment_hash": seg["segment_hash"],
+            }
+            for seg in _extract_segments_by_label(segments_with_attrs, "candidate_panel")
+        ]
+        context_result["location_panels"] = [
+            {
+                "location_panel_text": seg["text"],
+                "location_panel_html": seg["raw_html"],
+                "segment_hash": seg["segment_hash"],
+            }
+            for seg in _extract_segments_by_label(segments_with_attrs, "location_panel")
+        ]
+        context_result["headings"] = [
+            {
+                "heading_text": seg["text"],
+                "heading_html": seg["raw_html"],
+                "segment_hash": seg["segment_hash"],
+            }
+            for seg in _extract_segments_by_label(segments_with_attrs, "heading")
+        ]
+        context_result["ballot_types"] = [
+            {
+                "ballot_type_text": seg["text"],
+                "ballot_type_html": seg["raw_html"],
+                "segment_hash": seg["segment_hash"],
+            }
+            for seg in _extract_segments_by_label(segments_with_attrs, "ballot_type")
+        ]
+        context_result["results_timestamps"] = [
+            {
+                "timestamp_text": seg["text"],
+                "timestamp_html": seg["raw_html"],
+                "segment_hash": seg["segment_hash"],
+            }
+            for seg in _extract_segments_by_label(segments_with_attrs, "results_timestamp")
+        ]
+        context_result["party_labels"] = [
+            {
+                "party_label_text": seg["text"],
+                "party_label_html": seg["raw_html"],
+                "segment_hash": seg["segment_hash"],
+            }
+            for seg in _extract_segments_by_label(segments_with_attrs, "party_label")
+        ]
+        context_result["vote_methods"] = [
+            {
+                "vote_method_text": seg["text"],
+                "vote_method_html": seg["raw_html"],
+                "segment_hash": seg["segment_hash"],
+            }
+            for seg in _extract_segments_by_label(segments_with_attrs, "vote_method")
+        ]
+
         # --- 3. ML-driven DOM pattern clustering and tagging ---
         pattern_matches = []
         segments_needing_review = []

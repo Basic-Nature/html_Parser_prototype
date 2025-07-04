@@ -38,17 +38,21 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         coordinator=coordinator,
         debug=False,
     )
+    print("DEBUG: context_result:", context_result)
     coordinator.organize_and_enrich(context_result)
 # --- 2. Extract state/county/year for contest selections ---
     state = context_result.get("state")
     county = context_result.get("county")
     year = context_result.get("year")
+    contests = context_result.get("contests")
+    print("DEBUG: contests extracted:", context_result.get("contests"))
     # --- 3. Contest selection ---
     context_for_selector = {
         "state": state,
         "county": county,
         "year": year,
-        **{k: v for k, v in html_context.items() if k not in ("state", "county", "year")}
+        "contests": contests,
+        **{k: v for k, v in html_context.items() if k not in ("state", "county", "year", "contests")}
     }
     selected = select_contest(
         coordinator,

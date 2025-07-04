@@ -41,14 +41,16 @@ def list_available_states() -> list:
         if os.path.isdir(os.path.join(base_path, d))
     ])
 
-def list_available_counties(state_key: str) -> list:
+def list_available_counties(state_key: str, suppress_warning: bool = False) -> list:
     """
     List all available county handler modules for a given state (normalized names, no .py).
+    If suppress_warning is True, do not log warnings if the counties directory is missing.
     """
     state_key = normalize_state_name(state_key)
     base_path = os.path.join(STATE_HANDLER_BASE_PATH, state_key, "county")
     if not os.path.isdir(base_path):
-        log_warning(f"[Router] counties directory not found for state: {state_key}")
+        if not suppress_warning:
+            log_warning(f"[Router] counties directory not found for state: {state_key}")
         return []
     counties = []
     for fname in os.listdir(base_path):
@@ -136,13 +138,19 @@ def prompt_for_handler_fallback(available_states, available_counties_by_state, l
     print("Too many failed attempts. Exiting fallback.")
     return None, None
 
-def preload_handler_map():
+def preload_handler_map(restrict_to_states=None):
     """
     Scan and cache all available state/county handlers.
-    Populates HANDLER_MAP with normalized state and county names.
+    If restrict_to_states is provided, only scan those states.
     """
-    states = list_available_states()
-    counties_by_state = {normalize_state_name(s): list_available_counties(s) for s in states}
+    if restrict_to_states:
+        states = [normalize_state_name(s) for s in restrict_to_states]
+    else:
+        states = list_available_states()
+    counties_by_state = {
+        normalize_state_name(s): list_available_counties(s, suppress_warning=True)
+        for s in states
+    }
     HANDLER_MAP["states"] = [normalize_state_name(s) for s in states]
     HANDLER_MAP["counties_by_state"] = counties_by_state
     HANDLER_MAP["last_loaded"] = time.time()
