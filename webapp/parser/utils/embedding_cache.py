@@ -127,11 +127,27 @@ def save_embeddings_batch(hash_emb_list):
                 )
                 session.execute(stmt)
                 session.commit()
-                console.log(f"[green][EMBEDDING CACHE] Saved/updated {len(records)} embeddings in batch.[/green]", highlight=False)
+                # Condensed log: show count and a few hashes
+                hashes = [r["segment_hash"] for r in records]
+                preview = ", ".join(str(h) for h in hashes[:3])
+                if len(hashes) > 3:
+                    preview += ", ..."
+                console.log(
+                    f"[green][EMBEDDING CACHE] Saved/updated {len(records)} embeddings in batch: [{preview}][/green]",
+                    highlight=False,
+                    end="\r"
+                )
             except SQLAlchemyError as e:
                 session.rollback()
-                # Print only the error message in a static line
-                console.print(f"[red][BATCH EMBEDDING ERROR][/red] {str(e)}", highlight=False, end="\r")
+                # Condensed error log: show only error type and first line, truncate if too long
+                err_line = str(e).splitlines()[0]
+                if len(err_line) > 120:
+                    err_line = err_line[:117] + "..."
+                console.print(
+                    f"[red][BATCH EMBEDDING ERROR][/red] {type(e).__name__}: {err_line} (batch size: {len(records)})",
+                    highlight=False,
+                    end="\r"
+                )
                 return
     # Update in-memory cache (always latest)
     with _batch_cache_lock:

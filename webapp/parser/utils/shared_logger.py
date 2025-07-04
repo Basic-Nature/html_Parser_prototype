@@ -191,12 +191,12 @@ def _rich_log(msg, context=None, default_label=None, default_color=None):
             # For webapp, strip rich markup for clean browser output
             plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
             SOCKETIO_EMIT_FUNC(plain_msg.strip())
-    else:
+    elif LOG_MODE == "cli":
         # For CLI, use rich panel if context or label/color is present
         if context or (default_label or default_color):
             rprint(Panel(text_msg, style=panel_color))
         else:
-            rprint(text_msg)   
+            rprint(text_msg)  
 
 # --- Progress Bar Helper ---
 def get_progress_bar(description="Processing", total=100):

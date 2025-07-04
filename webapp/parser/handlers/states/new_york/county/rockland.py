@@ -44,12 +44,19 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     county = context_result.get("county")
     year = context_result.get("year")
     # --- 3. Contest selection ---
+    context_for_selector = {
+        "state": state,
+        "county": county,
+        "year": year,
+        **{k: v for k, v in html_context.items() if k not in ("state", "county", "year")}
+    }
     selected = select_contest(
         coordinator,
         state=state,
         county=county,
         year=year,
-        non_interactive=False
+        non_interactive=non_interactive,
+        context=context_for_selector
     )
     if not selected:
         rprint("[red]No contest selected. Skipping.[/red]")

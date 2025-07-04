@@ -155,41 +155,45 @@ def select_contest(
     prompt_message="[PROMPT] Enter contest indices (comma-separated), 'all', or leave blank to skip: ",
     allow_multiple=True,
     non_interactive=False,
-    log_func=None
+    log_func=None,
+    context=None
 ):
     """
     Prompts the user to select contests from the organized context, filtering out noisy/generic labels.
     Uses ML/NER/regex feedback loop to verify correct year/type/title.
     Returns a list of selected contest dicts or None if skipped/cancelled.
     """
-    selector_data = coordinator.get_for_selector()
-    contests = selector_data["contests"]
-    noisy_patterns = selector_data["noisy_patterns"]
+    # Normalize state/county for filtering
     norm_state = normalize_state_name(state)
     norm_county = normalize_county_name(county)
+
+    # Use provided context or build one for ML/NER
+    if context is None:
+        context = {"state": norm_state, "county": norm_county, "year": year}
+
+    selector_data = coordinator.get_for_selector()
+    contests = selector_data.get("contests", [])
+    noisy_patterns = selector_data.get("noisy_patterns", [])
+    known_county_to_precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP
+
     log_debug(f"[DEBUG] norm_state: {norm_state}, norm_county: {norm_county}, year: {year}")
     log_debug(f"[DEBUG] noisy_patterns: {noisy_patterns}")
     log_debug(f"[DEBUG] contests before filtering: {contests}")
-    # Load precincts mapping
-    known_county_to_precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP
 
-
-    for c in contests:
-        log_debug(f"[DEBUG] Contest fields: title={c.get('title')}, state={c.get('state')}, county={c.get('county')}, year={c.get('year')}")
-
+    # Helper for county matching
     def county_matches(contest_county):
         contest_county_norm = normalize_county_name(contest_county)
         if not norm_county:
             return True
         if contest_county_norm == norm_county:
             return True
-        # Check if contest county is a precincts of the selected county
         for parent_county, precincts in known_county_to_precincts.items():
             if normalize_county_name(parent_county) == norm_county:
                 if contest_county_norm in [normalize_county_name(d) for d in precincts]:
                     return True
         return False
 
+    # Filter contests
     filtered_contests = [
         c for c in contests
         if (not norm_state or normalize_state_name(c.get("state", "")) == norm_state)
@@ -219,14 +223,13 @@ def select_contest(
         return None
 
     # --- Feedback loop: ML/NER verification of contests ---
-    context = {"state": norm_state, "county": norm_county, "year": year}
     verified_contests = feedback_loop_verify_contests(filtered_contests, coordinator, context)
     if not verified_contests:
         log_warning("[yellow]No contests passed ML/NER verification. Skipping.[/yellow]")
         return None
 
-    # Group by (year, type)
-    
+    # Group by (year, type) for display
+    from collections import defaultdict
     grouped = defaultdict(list)
     for c in verified_contests:
         grouped[(c.get("year"), c.get("type"))].append(c)
@@ -235,7 +238,6 @@ def select_contest(
     idx = 0
     contest_indices = []
     for (year_val, etype), contests_in_group in sorted(grouped.items()):
-        # If multiple years, show state/county as heading
         if len(grouped) > 1:
             label = f"{state or 'Unknown State'} {county or ''} {year_val or 'Unknown'} {etype or 'Unknown'}"
         else:
@@ -249,16 +251,19 @@ def select_contest(
 
     # Auto-select if only one contest
     if len(verified_contests) == 1:
-        log_info(f"[green]Only one contest found. Auto-selecting: {verified_contests[0]['title']}[/green]")
+        contest = ensure_contest_title(verified_contests[0])
+        log_info(f"[green]Only one contest found. Auto-selecting: {contest['title']}[/green]")
         if log_func:
-            log_func(f"[CONTEST] Auto-selected: {verified_contests[0]['title']}")
-        return [verified_contests[0]]
+            log_func(f"[CONTEST] Auto-selected: {contest['title']}")
+        return [contest]
 
+    # Non-interactive mode: select all
     if non_interactive:
         if log_func:
             log_func(f"[CONTEST] Non-interactive mode: selecting all contests.")
-        return verified_contests
+        return [ensure_contest_title(c) for c in verified_contests]
 
+    # Interactive prompt
     try:
         choice = prompt_user_input(
             prompt_message,
@@ -286,7 +291,7 @@ def select_contest(
     if choice == "all":
         if log_func:
             log_func("[CONTEST] User selected all contests.")
-        return verified_contests
+        return [ensure_contest_title(c) for c in verified_contests]
 
     # Parse comma-separated indices
     indices = []
@@ -302,21 +307,7 @@ def select_contest(
             log_func("[CONTEST] No valid contest indices selected.")
         return None
 
-    if len(verified_contests) == 1:
-        contest = ensure_contest_title(verified_contests[0])
-        log_info(f"[green]Only one contest found. Auto-selecting: {contest['title']}[/green]")
-        if log_func:
-            log_func(f"[CONTEST] Auto-selected: {contest['title']}")
-        return [contest]
-
-    if non_interactive:
-        if log_func:
-            log_func(f"[CONTEST] Non-interactive mode: selecting all contests.")
-        return [ensure_contest_title(c) for c in verified_contests]
-
-    # ...after parsing indices...
-    selected = [contest_indices[i] for i in indices]
-    selected = [ensure_contest_title(c) for c in selected]
+    selected = [ensure_contest_title(contest_indices[i]) for i in indices]
     if log_func:
         log_func(f"[CONTEST] User selected contests: {[c.get('title', '') for c in selected]}")
     return selected
