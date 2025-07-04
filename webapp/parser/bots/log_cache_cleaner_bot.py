@@ -36,10 +36,10 @@ from ..utils.db_utils import get_engine
 from .context_migration import migrate_all
 from ..config import LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
 
-DEFAULT_MAX_SIZE_MB = 250
+DEFAULT_MAX_SIZE_MB = 250 # Default max size for files before cleaning 250MB, 500MB, 1024MB, 2048MB
 MISALIGNED_KEYWORDS = ["misaligned", "pattern-excluding"]
 ALLOWED_EXTS = (".json", ".jsonl", ".html")
-
+EMPTY_WATCH_FILE = os.path.join(CONTEXT_LIBRARY_DIR, "empty_entries_watch.jsonl")
 
 def is_jsonl_file(fname):
     return fname.endswith(".jsonl")
@@ -58,31 +58,47 @@ def safe_path(path, allowed_roots):
             return path
     raise ValueError(f"Unsafe path detected: {path}")
 
-def clean_jsonl(path):
+def log_empty_entry(file_path, entry_type, key_or_index, entry):
+    """Append info about an empty entry to the watch file for traceability."""
+    record = {
+        "file": file_path,
+        "type": entry_type,
+        "key_or_index": key_or_index,
+        "entry": entry,
+    }
+    with open(EMPTY_WATCH_FILE, "ab") as f:
+        f.write(orjson.dumps(record) + b"\n")
+
+def clean_jsonl(path, required_fields=None, backup=True):
     """
-    Robust cleaner for .jsonl files:
+    Enhanced cleaner for .jsonl files:
     - Deduplicates entries (by full serialization)
     - Skips malformed, null, empty, and non-dict lines (counts each)
     - Logs up to 5 examples of each problem type for diagnostics
     - Flags entries with misaligned keywords
-    - Optionally sorts entries (by a key if desired)
+    - Optionally checks for required fields and logs/removes entries missing them
+    - Optionally backs up the original file before cleaning
     - Handles empty files gracefully
     - Returns detailed stats and errors
     """
+    import shutil
     malformed_count = 0
     null_count = 0
     empty_count = 0
     nondict_count = 0
+    missing_required_count = 0
     malformed_examples = []
     null_examples = []
     empty_examples = []
     nondict_examples = []
+    missing_required_examples = []
     try:
         if os.path.getsize(path) == 0:
-            # Overwrite with empty file
             with open(path, "wb") as f:
                 pass
             return 0, 0, 0, None
+        if backup:
+            shutil.copy2(path, path + ".bak")
         with open(path, "rb") as f:
             lines = [line for line in f if line.strip()]
         entries = []
@@ -111,19 +127,21 @@ def clean_jsonl(path):
                 if len(nondict_examples) < 5:
                     nondict_examples.append(str(entry)[:100])
                 continue
+            # Check for required fields
+            if required_fields and not all(field in entry for field in required_fields):
+                missing_required_count += 1
+                if len(missing_required_examples) < 5:
+                    missing_required_examples.append(str(entry)[:100])
+                continue
             key = orjson.dumps(entry)
             if key not in seen:
                 seen.add(key)
                 entries.append(entry)
-            # Flag misaligned entries
             if any(kw in str(entry).lower() for kw in MISALIGNED_KEYWORDS):
                 misaligned.append(entry)
-        # Optionally sort entries by a field, e.g. timestamp
-        # entries.sort(key=lambda e: e.get("timestamp", ""), reverse=False)
         with open(path, "wb") as f:
             for entry in entries:
                 f.write(orjson.dumps(entry) + b"\n")
-        # Compose error/warning string if any problems found
         error_parts = []
         if malformed_count:
             error_parts.append(f"Malformed: {malformed_count} (examples: {malformed_examples})")
@@ -133,6 +151,8 @@ def clean_jsonl(path):
             error_parts.append(f"Empty: {empty_count} (examples: {empty_examples})")
         if nondict_count:
             error_parts.append(f"Non-dict: {nondict_count} (examples: {nondict_examples})")
+        if missing_required_count:
+            error_parts.append(f"Missing required fields: {missing_required_count} (examples: {missing_required_examples})")
         error_str = "; ".join(error_parts) if error_parts else None
         return (
             len(lines),
@@ -143,34 +163,40 @@ def clean_jsonl(path):
     except Exception as e:
         return None, None, None, str(e)
 
-def clean_json(path):
+def clean_json(path, required_fields=None, backup=True):
     """
-    Advanced cleaner for .json files:
+    Enhanced cleaner for .json files:
     - Handles empty files (overwrites with {})
     - Deduplicates dict keys or list entries
     - Skips malformed entries in lists
     - Removes null/empty dict/empty list entries
     - Handles malformed JSON gracefully
+    - Optionally checks for required fields and logs/removes entries missing them
+    - Optionally backs up the original file before cleaning
     - Optionally sorts dict keys
-    - Optionally truncates if file is too large (not implemented here)
+    - Handles files that are a mix of lists and dicts
     """
+    import shutil
     malformed_count = 0
     null_count = 0
     empty_count = 0
+    missing_required_count = 0
+    empty_keys = []
     try:
-        # Handle empty file gracefully
         if os.path.getsize(path) == 0:
             with open(path, "wb") as f:
                 f.write(orjson.dumps({}))
             return 0, 0, 0, None
+        if backup:
+            shutil.copy2(path, path + ".bak")
         with open(path, "rb") as f:
             try:
                 data = orjson.loads(f.read())
             except Exception as e:
-                # Overwrite with empty dict if totally malformed
                 with open(path, "wb") as wf:
                     wf.write(orjson.dumps({}))
                 return 0, 0, 0, f"Malformed JSON, reset to empty: {e}"
+        # Handle dict
         if isinstance(data, dict):
             before = len(data)
             seen = set()
@@ -181,20 +207,33 @@ def clean_json(path):
                     continue
                 if isinstance(v, (dict, list)) and not v:
                     empty_count += 1
+                    empty_keys.append(k)
+                    log_empty_entry(path, "dict", k, v)  # <-- log empty dict/list value
+                    continue
+                if required_fields and not all(field in v for field in required_fields if isinstance(v, dict)):
+                    missing_required_count += 1
                     continue
                 if k not in seen:
                     seen.add(k)
                     deduped[k] = v
             after = len(deduped)
-            # Optionally sort keys
-            # deduped = dict(sorted(deduped.items()))
             with open(path, "wb") as f:
                 f.write(orjson.dumps(deduped, option=orjson.OPT_INDENT_2))
-            return before, after, 0, None if null_count == 0 and empty_count == 0 else f"Null: {null_count}, Empty: {empty_count}"
+            if empty_keys:
+                print(f"[CLEAN][INFO] Removed empty entries for keys: {empty_keys} in {path}")
+            if missing_required_count > 0 or malformed_count > 0:
+                return before, after, 0, f"Malformed: {malformed_count}, Missing required: {missing_required_count}"
+            else:
+                # Just log info if only null/empty were removed
+                if null_count > 0 or empty_count > 0:
+                    print(f"[CLEAN][INFO] Removed {null_count} null and {empty_count} empty entries from {path}")
+                return before, after, 0, None
+        # Handle list
         elif isinstance(data, list):
             before = len(data)
             seen = set()
             deduped = []
+            empty_indices = []
             for idx, entry in enumerate(data, 1):
                 try:
                     if entry is None:
@@ -202,6 +241,11 @@ def clean_json(path):
                         continue
                     if isinstance(entry, (dict, list)) and not entry:
                         empty_count += 1
+                        empty_indices.append(idx-1)
+                        log_empty_entry(path, "list", idx-1, entry)  # <-- log empty list/dict entry
+                        continue
+                    if required_fields and not all(field in entry for field in required_fields if isinstance(entry, dict)):
+                        missing_required_count += 1
                         continue
                     key = orjson.dumps(entry)
                     if key not in seen:
@@ -213,14 +257,20 @@ def clean_json(path):
             after = len(deduped)
             with open(path, "wb") as f:
                 f.write(orjson.dumps(deduped, option=orjson.OPT_INDENT_2))
-            return before, after, 0, None if malformed_count == 0 and null_count == 0 and empty_count == 0 else f"Malformed: {malformed_count}, Null: {null_count}, Empty: {empty_count}"
+            if empty_indices:
+                print(f"[CLEAN][INFO] Removed empty entries at indices: {empty_indices} in {path}")
+            if missing_required_count > 0 or malformed_count > 0:
+                return before, after, 0, f"Malformed: {malformed_count}, Missing required: {missing_required_count}"
+            else:
+                # Just log info if only null/empty were removed
+                if null_count > 0 or empty_count > 0:
+                    print(f"[CLEAN][INFO] Removed {null_count} null and {empty_count} empty entries from {path}")
+                return before, after, 0, None
         else:
-            # Unknown structure, reset to empty dict
             with open(path, "wb") as f:
                 f.write(orjson.dumps({}))
             return 0, 0, 0, "Unknown JSON structure, reset to empty"
     except Exception as e:
-        # If the error is due to empty file, handle gracefully
         if "zero-length" in str(e) or "empty document" in str(e):
             with open(path, "wb") as f:
                 f.write(orjson.dumps({}))
@@ -410,6 +460,7 @@ def run_log_cache_cleaner(log_dir=LOG_DIR, context_lib_dir=CONTEXT_LIBRARY_DIR, 
         run_db_maintenance()
     migrate_all()
     print("[CLEAN] Context/log migration to PostgreSQL complete.")
+    return errors
 
 def schedule_log_cache_cleaner(interval_min=60, db_maintenance=False, **kwargs):
     def loop():

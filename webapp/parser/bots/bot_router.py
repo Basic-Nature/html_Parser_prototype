@@ -182,10 +182,39 @@ def run_pipeline():
         if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not os.environ.get("FLASK_DEBUG"):
             print("[INFO] Skipping bot tasks as requested (SKIP_BOT_TASKS=true).")
         return
+    
+    # 0. Ensure DB tables exist before cleaning/migration
+    print("[BOT ROUTER] Ensuring database tables exist...")
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "webapp.parser.utils.models"],
+            check=True,
+            cwd=PROJECT_ROOT,
+            env=os.environ.copy()
+        )
+        print("[BOT ROUTER] Database tables checked/created.")
+    except Exception as e:
+        print(f"[BOT ROUTER][ERROR] Could not create/check tables: {e}")
+        return
+    
+    # 1. Clean logs/context and migrate to PostgreSQL
     results = {}
     print("[BOT ROUTER] Step 1: Cleaning logs/context and migrating to PostgreSQL...")
     try:
-        run_log_cache_cleaner()
+        cleaning_errors = run_log_cache_cleaner()
+        if cleaning_errors:
+            critical_files = [
+                "context_library.json",
+                # add more critical files if needed
+            ]
+            print("[BOT ROUTER][ERROR] Cleaning phase had errors:")
+            for fname, err in cleaning_errors:
+                if any(cf in fname for cf in critical_files):
+                    print(f"[BOT ROUTER][CRITICAL] Critical file failed to clean: {fname}")
+                    results["log_cache_cleaner_bot"] = "fail"
+                    print_bot_summary(results)
+                    return
+                print(f"  {fname}: {err}")
         migrate_all()
         results["log_cache_cleaner_bot"] = "success"
         results["context_migration"] = "success"

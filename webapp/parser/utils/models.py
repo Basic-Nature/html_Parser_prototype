@@ -90,12 +90,21 @@ class Alert(Base):
     message = Column(Text, nullable=False)
     context = Column(JSON)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
+def main():
+    from .db_utils import get_engine
+    from sqlalchemy import inspect
+    try:
+        engine = get_engine()
+        print("[MODELS] Creating all tables in the configured database...")
+        Base.metadata.create_all(engine)
+        # List created tables for confirmation
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        print(f"[MODELS] Tables present after creation: {tables}")
+        print("[MODELS] All tables created successfully.")
+    except Exception as e:
+        print(f"[MODELS][ERROR] Failed to create tables: {e}")
 
 # Add more models as needed for your project (e.g., users, logs, etc.)
 if __name__ == "__main__":
-    # Import POSTGRES_URL from config
-    from ..config import POSTGRES_URL
-    engine = create_engine(POSTGRES_URL)
-    print(f"Creating all tables in: {POSTGRES_URL}")
-    Base.metadata.create_all(engine)
-    print("All tables created.")
+    main()
