@@ -407,12 +407,12 @@ def auto_label_segment(
 def scan_html_for_context(
     target_url,
     page,
+    coordinator=None,
     debug=False,
     context_cache=None,
     model_name: Optional[str] = None,
     use_finetuned: bool = True,
-    non_interactive=False,
-    coordinator=None
+    non_interactive=False,    
 ) -> Dict[str, Any]:
     """
     Main pipeline entry: Efficient, dynamic, and feedback-driven HTML scanner.
@@ -458,15 +458,6 @@ def scan_html_for_context(
     }
 
     try:
-        page_url = target_url or page.url
-        html = page.content()
-        context_result["raw_html"] = html
-        state, county = infer_state_county_from_url(page_url)
-        if state:
-            context_result["state"] = state
-        if county:
-            context_result["county"] = county
-
         # --- 1. Get context library, pattern KB, and ML model from coordinator if available ---
         if coordinator:
             context_library = getattr(coordinator, "library", None)
