@@ -577,11 +577,15 @@ def scan_html_for_context(
         context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
 
         # --- Robust extraction for all key segment types ---
+        state = context_result.get("state")
+        county = context_result.get("county")
+        year = context_result.get("year")
         context_result["contests"] = [
             {
                 "title": seg["text"],
-                "state": context_result.get("state"),
-                "county": context_result.get("county"),
+                "state": state,
+                "county": county,
+                "year": year,
                 "segment_hash": seg["segment_hash"],
             }
             for seg in _extract_segments_by_label(segments_with_attrs, "contest_title")

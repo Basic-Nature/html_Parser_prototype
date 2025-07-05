@@ -38,20 +38,24 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         coordinator=coordinator,
         debug=False,
     )
+    state = context_result.get("state") or "NY"
+    county = context_result.get("county") or "Rockland"
+    year = context_result.get("year")
+    for contest in context_result.get("contests", []):
+        if contest.get("state") is None:
+            contest["state"] = state
+        if contest.get("county") is None:
+            contest["county"] = county
+        if contest.get("year") is None and year is not None:
+            contest["year"] = year
     print("DEBUG: context_result:", context_result)
     coordinator.organize_and_enrich(context_result)
-# --- 2. Extract state/county/year for contest selections ---
-    state = context_result.get("state")
-    county = context_result.get("county")
-    year = context_result.get("year")
-    contests = context_result.get("contests")
-    print("DEBUG: contests extracted:", context_result.get("contests"))
     # --- 3. Contest selection ---
     context_for_selector = {
         "state": state,
         "county": county,
         "year": year,
-        "contests": contests,
+        "contests": context_result.get("contests", []),
         **{k: v for k, v in html_context.items() if k not in ("state", "county", "year", "contests")}
     }
     selected = select_contest(
@@ -155,7 +159,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             autoscroll_until_stable(page)
             page.wait_for_timeout(3000)
 
-             # --- 9. Extract ballot items using DOM scan and context/NLP ---
+            # --- 9. Extract ballot items using DOM scan and context/NLP ---
             html = page.content()
             with open("rockland_debug.html", "w", encoding="utf-8") as f:
                 f.write(html)
@@ -168,16 +172,11 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 debug=False,
             )
 
-            # Extract segments for use in extraction_context
             segments = context_result.get("tagged_segments_with_attrs", [])
-
-            # Panels are now in context_result["panels"] if your pipeline supports it,
-            # or you may need to organize them from tagged_segments_with_attrs
             panels = context_result.get("panels", [])
 
-            # If not present, you can fallback to grouping segments by panel label:
+            # Fallback: group segments by panel label if panels missing
             if not panels and "tagged_segments_with_attrs" in context_result:
-                # Example: group segments by panel label
                 from collections import defaultdict
                 panels_by_heading = defaultdict(list)
                 for seg in context_result["tagged_segments_with_attrs"]:
@@ -188,11 +187,10 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             rprint(f"[DEBUG] Found {len(panels)} panels after context/NLP pipeline.")
             if not panels:
                 rprint("[yellow][DEBUG] No panels found, falling back to direct table scan.[/yellow]")
-            rprint(f"[DEBUG] Found {len(panels)} panels after extract_panel_table_hierarchy.")
-            if not panels:
-                rprint("[yellow][DEBUG] No panels found, falling back to direct table scan.[/yellow]")
                 tables = page.locator("table")
                 contest_title = html_context.get("selected_race") or html_context.get("contest_title") or "Unknown Contest"
+                all_panel_rows = []
+                all_panel_headers = set()
                 for i in range(tables.count()):
                     table_html = tables.nth(i).evaluate("el => el.outerHTML")
                     extraction_context = {
@@ -208,80 +206,68 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                         contest_title, None, None, coordinator, extraction_context
                     )
                     if headers and data:
-                        all_results.append((headers, data, contest_title, entity_info))
-
-            # --- Consolidated panel/table debug output ---
-            for i, panel in enumerate(panels):
-                heading = panel.get('panel_heading')
-                tables = panel.get('tables', [])
-                ml_conf = panel.get('ml_confidence')
-                rprint(f"[DEBUG] Panel {i}: heading={heading}, tables={len(tables)}, ml_confidence={ml_conf if ml_conf is not None else 'N/A'}")
-                for t in tables:
-                    idx = t.get('table_idx', 'N/A')
-                    ml_score = t.get('ml_panel_score', 0)
-                    rprint(f"    Table idx={idx} ml_panel_score={ml_score:.2f}")
-
-            all_results = []
-            contest_title = html_context.get("selected_race") or html_context.get("contest_title") or "Unknown Contest"
-            state = html_context.get("state", "NY")
-            county = html_context.get("county", "Rockland")
-
-            all_panel_rows = []
-            all_panel_headers = set()
-
-            for panel in panels:
-                precinct = panel.get("panel_heading") or panel.get("Precinct") or panel.get("district")
-                for table in panel["tables"]:
-                    table_html = table.get("table_html")
-                    if not table_html:
-                        continue
-                    extraction_context = {
-                        "district": precinct,
-                        "panel_heading": precinct,
-                        "Precinct": precinct,
+                        all_panel_rows.extend(data)
+                        all_panel_headers.update(headers)
+            else:
+                all_panel_rows = []
+                all_panel_headers = set()
+                for panel in panels:
+                    panel_fields = {
+                        "panel_heading": panel.get("panel_heading"),
+                        "Precinct": panel.get("Precinct"),
+                        "district": panel.get("district"),
                         "panel_tag": panel.get("panel_tag"),
-                        "coordinator": coordinator,
-                        "page": page,
-                        "html_context": html_context,
-                        "table_html": table_html,
-                        "segments": segments,
-                        "panels": panels,
                         "fully_reported": panel.get("fully_reported", ""),
                         "ml_confidence": panel.get("ml_confidence"),
                         "association_log": panel.get("association_log"),
                         "panel_ml_label": panel.get("panel_tag"),
                     }
-                    headers, data, entity_info = build_dynamic_table(
-                        contest_title, None, None, coordinator, extraction_context
-                    )
-                    # Ensure every row has the precinct
-                    if "Precinct" not in headers and precinct:
-                        headers = ["Precinct"] + headers
+                    for table in panel.get("tables", []):
+                        table_fields = {
+                            "table_idx": table.get("table_idx"),
+                            "table_html": table.get("table_html"),
+                            "ml_panel_score": table.get("ml_panel_score"),
+                        }
+                        table_html = table.get("table_html")
+                        if not table_html:
+                            continue
+                        extraction_context = {
+                            **panel_fields,
+                            **table_fields,
+                            "coordinator": coordinator,
+                            "page": page,
+                            "html_context": html_context,
+                            "segments": segments,
+                            "panels": panels,
+                        }
+                        # Propagate contest and location fields
+                        for field in ("selected_race", "state", "county", "year", "election_type"):
+                            if field in html_context:
+                                extraction_context[field if field != "selected_race" else "contest_title"] = html_context[field]
+                        headers, data, entity_info = build_dynamic_table(
+                            extraction_context.get("contest_title", "Unknown Contest"),
+                            None,
+                            None,
+                            coordinator,
+                            extraction_context
+                        )
                         for row in data:
-                            row["Precinct"] = precinct
-                    for row in data:
-                        if "Precinct" not in row and precinct:
-                            row["Precinct"] = precinct
-                    all_panel_rows.extend(data)
-                    all_panel_headers.update(headers)
-            all_panel_headers = list(all_panel_headers)
-            all_panel_headers, all_panel_rows = harmonize_headers_and_data(all_panel_headers, all_panel_rows)
+                            for k, v in extraction_context.items():
+                                if k not in row and v is not None and k not in ("coordinator", "page", "html_context", "segments", "panels"):
+                                    row[k] = v
+                        precinct = extraction_context.get("Precinct") or extraction_context.get("panel_heading") or extraction_context.get("district")
+                        if "Precinct" not in headers and precinct:
+                            headers = ["Precinct"] + headers
+                            for row in data:
+                                row["Precinct"] = precinct
+                        for row in data:
+                            if "Precinct" not in row and precinct:
+                                row["Precinct"] = precinct
+                        all_panel_rows.extend(data)
+                        all_panel_headers.update(headers)
 
-            # --- Pivot and merge all data before feedback/confirmation ---
-            from .....utils.table_core import pivot_to_wide_format
-            # Use canonical logic for entity_info if available
-            entity_info = {"people": [], "ballot_types": []}
-            if all_panel_rows:
-                # Try to extract canonical candidates and ballot types from rows
-                for row in all_panel_rows:
-                    if "Candidate" in row and row["Candidate"] not in entity_info["people"]:
-                        entity_info["people"].append(row["Candidate"])
-                    for k in row.keys():
-                        if k not in ("Precinct", "Candidate") and k not in entity_info["ballot_types"]:
-                            entity_info["ballot_types"].append(k)
-            merged_headers, merged_data = pivot_to_wide_format(
-                all_panel_headers, all_panel_rows, entity_info, coordinator, html_context
-            )
+            all_panel_headers = list(all_panel_headers)
+            merged_headers, merged_data = harmonize_headers_and_data(all_panel_headers, all_panel_rows)
 
             # --- 10. Assemble headers and finalize output ---
             if not merged_data:
@@ -289,8 +275,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 return None, None, contest_title, {"skipped": True}
 
             metadata = {
-                "state": state,
-                "county": county,
+                "state": html_context.get("state", "NY"),
+                "county": html_context.get("county", "Rockland"),
                 "race": contest_title,
                 "source": getattr(page, "url", "Unknown"),
                 "handler": "rockland",
@@ -300,7 +286,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             if "election_type" in html_context:
                 metadata["election_type"] = html_context["election_type"]
 
-            result = finalize_election_output(merged_headers, merged_data, coordinator, contest_title, state, county, context=metadata)
+            result = finalize_election_output(merged_headers, merged_data, coordinator, contest_title, metadata["state"], metadata["county"], context=metadata)
             if isinstance(result, dict):
                 metadata.update(result)
             return merged_headers, merged_data, contest_title, metadata
