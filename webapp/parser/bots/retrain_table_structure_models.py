@@ -136,6 +136,7 @@ def safe_model_save(model, model_save_path, retries=3):
 
     for attempt in range(1, retries+1):
         try:
+            gc.collect()
             model.save(model_save_path)
             print(f"[INFO] Model saved successfully on attempt {attempt}.")
             return
@@ -146,6 +147,7 @@ def safe_model_save(model, model_save_path, retries=3):
     # Try saving to a temp dir and moving
     tmp_path = model_save_path + "_tmp"
     try:
+        gc.collect()
         model.save(tmp_path)
         shutil.rmtree(model_save_path, ignore_errors=True)
         shutil.move(tmp_path, model_save_path)
@@ -532,6 +534,12 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
     Loads the existing model for further training if present, otherwise starts from base.
     Always saves to the same folder (no timestamp).
     """
+    try:
+        del model
+    except NameError:
+        pass
+    gc.collect()
+    
     train_examples = []
     for struct in confirmed_structures:
         contest_title = struct.get("contest_title", "")
@@ -543,17 +551,33 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
         return
 
     base_dir = MODEL_DIR if 'MODEL_DIR' in globals() else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../model"))
-    model_save_path = model_save_path or os.path.join(base_dir, "fine_tuned_table_headers")
+    # Always save to a new directory with a timestamp to avoid file lock issues
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_save_path = model_save_path or os.path.join(base_dir, f"fine_tuned_table_headers_{timestamp}")
     os.makedirs(model_save_path, exist_ok=True)
 
-    # Robust model loading: check for model files
-    model = None
-    model_files = ["config.json", "pytorch_model.bin", "model.safetensors", "tf_model.h5", "model.ckpt.index", "flax_model.msgpack"]
-    model_files_exist = any(os.path.exists(os.path.join(model_save_path, f)) for f in model_files)
-    if model_files_exist:
-        print(f"Attempting to load existing model from {model_save_path} for further fine-tuning...")
+    # --- Delete oldest fine-tuned directory if more than 2 exist ---
+    fine_tuned_dirs = sorted(
+        [d for d in os.listdir(base_dir) if d.startswith("fine_tuned_table_headers_") and os.path.isdir(os.path.join(base_dir, d))]
+    )
+    if len(fine_tuned_dirs) > 1:
+        oldest = fine_tuned_dirs[0]
+        oldest_path = os.path.join(base_dir, oldest)
         try:
-            model = ModelRegistry.get_sentence_transformer(model_name=model_save_path, use_finetuned=False)
+            shutil.rmtree(oldest_path)
+            print(f"[CLEANUP] Deleted oldest fine-tuned model directory: {oldest_path}")
+        except Exception as e:
+            print(f"[WARN] Could not delete old model directory {oldest_path}: {e}")
+
+    # Robust model loading: check for model files in the base directory (not the new save dir)
+    model = None
+    prev_model_dir = os.path.join(base_dir, "fine_tuned_table_headers")
+    model_files = ["config.json", "pytorch_model.bin", "model.safetensors", "tf_model.h5", "model.ckpt.index", "flax_model.msgpack"]
+    model_files_exist = any(os.path.exists(os.path.join(prev_model_dir, f)) for f in model_files)
+    if model_files_exist:
+        print(f"Attempting to load existing model from {prev_model_dir} for further fine-tuning...")
+        try:
+            model = ModelRegistry.get_sentence_transformer(model_name=prev_model_dir, use_finetuned=False)
         except Exception as e:
             print(f"[WARN] Failed to load existing model: {e}")
             model = None
@@ -589,8 +613,19 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
     try:
         safe_model_save(model, model_save_path)
         print(f"Fine-tuned model saved to: {model_save_path}")
+        # Optionally, update a symlink or copy to the canonical directory for downstream use
+        canonical_dir = os.path.join(base_dir, "fine_tuned_table_headers")
+        try:
+            # Remove old canonical dir if it exists
+            if os.path.exists(canonical_dir):
+                shutil.rmtree(canonical_dir, ignore_errors=True)
+            shutil.copytree(model_save_path, canonical_dir)
+            print(f"[INFO] Copied new model to canonical directory: {canonical_dir}")
+        except Exception as e:
+            print(f"[WARN] Could not update canonical model directory: {e}")
     except Exception as e:
         print(f"[ERROR] Model save failed: {e}")
+        
 def segment_hash(segment):
     """Generate a stable hash for a DOM segment based on tag, attrs, and first 200 chars of HTML."""
     tag = segment.get("tag", "")
