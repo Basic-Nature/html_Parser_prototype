@@ -29,6 +29,8 @@ from fastapi import FastAPI
 import uvicorn
 # --- Unified logger import ---
 from ..utils.shared_logger import log_info, log_warning, log_error
+from us.states import lookup as us_state_lookup
+import re
 from ..bots.librarian import (
     update_context_library,
     SCHEMA_VERSION,
@@ -468,7 +470,121 @@ def update_context_with_new_entries(context_path, field_type, field_entries):
     atomic_write_json(library, context_path)
 
 # --- Integrity check integration ---
-def highlight_anomalies(context_library, field_type):
+def extract_year(text):
+    # Use spaCy NER for DATE entities, fallback to regex for 4-digit years
+    if nlp and text:
+        doc = nlp(str(text))
+        for ent in doc.ents:
+            if ent.label_ == "DATE":
+                # Try to extract a year from the DATE entity
+                year_match = re.search(r"(19|20)\d{2}", ent.text)
+                if year_match:
+                    return int(year_match.group())
+        # Fallback: regex anywhere in text
+    match = re.search(r"(19|20)\d{2}", text)
+    return int(match.group()) if match else None
+
+def extract_state(text):
+    # Use spaCy NER for GPE/LOC, fallback to regex for state abbreviations
+    if nlp and text:
+        doc = nlp(str(text))
+        for ent in doc.ents:
+            if ent.label_ in {"GPE", "LOC"}:
+                # Try to match US state abbreviations or full names
+                abbrev_match = re.match(r"^[A-Z]{2}$", ent.text.strip())
+                if abbrev_match:
+                    return ent.text.strip()
+                # Try to map full state names to abbreviations
+                try:
+                    state_obj = us_state_lookup(ent.text.strip())
+                    if state_obj:
+                        return state_obj.abbr
+                except Exception:
+                    pass
+    # Fallback: regex for state abbreviation
+    match = re.search(r"\b([A-Z]{2})\b", text)
+    return match.group(1) if match else None
+
+def extract_county(text):
+    # Use spaCy NER for GPE/LOC, fallback to regex for "X County"
+    if nlp and text:
+        doc = nlp(str(text))
+        for ent in doc.ents:
+            if ent.label_ in {"GPE", "LOC"} and "county" in ent.text.lower():
+                # Extract just the county name
+                county_match = re.match(r"([A-Za-z ]+) County", ent.text, re.IGNORECASE)
+                if county_match:
+                    return county_match.group(1).strip()
+    match = re.search(r"([A-Za-z ]+) County", text)
+    return match.group(1).strip() if match else None
+
+def extract_type(text):
+    # Use spaCy NER for EVENT or ORG, fallback to keyword search
+    if nlp and text:
+        doc = nlp(str(text))
+        for ent in doc.ents:
+            if ent.label_ == "EVENT":
+                # Look for election types in the event
+                for t in ["General", "Primary", "Special"]:
+                    if t.lower() in ent.text.lower():
+                        return t
+            if ent.label_ == "ORG":
+                for t in ["General", "Primary", "Special"]:
+                    if t.lower() in ent.text.lower():
+                        return t
+    # Fallback: keyword search
+    for t in ["General", "Primary", "Special"]:
+        if t.lower() in text.lower():
+            return t
+    return None
+
+def autofix_contest_fields(contest):
+    changed = False
+    title = contest.get("title", "")
+    raw = contest.get("raw", {})
+    # Try to fill year
+    if not contest.get("year"):
+        year = (
+            extract_year(title)
+            or extract_year(raw.get("title", ""))
+            or raw.get("year")
+        )
+        if year:
+            contest["year"] = year
+            changed = True
+    # Try to fill state
+    if not contest.get("state"):
+        state = (
+            extract_state(title)
+            or extract_state(raw.get("title", ""))
+            or raw.get("state")
+        )
+        if state:
+            contest["state"] = state
+            changed = True
+    # Try to fill county
+    if not contest.get("county"):
+        county = (
+            extract_county(title)
+            or extract_county(raw.get("title", ""))
+            or raw.get("county")
+        )
+        if county:
+            contest["county"] = county
+            changed = True
+    # Try to fill type
+    if not contest.get("type"):
+        ctype = (
+            extract_type(title)
+            or extract_type(raw.get("title", ""))
+            or raw.get("type")
+        )
+        if ctype:
+            contest["type"] = ctype
+            changed = True
+    return changed
+
+def highlight_anomalies(context_library, field_type, context_path=None, autofix=True):
     try:
         from ..Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
     except ImportError:
@@ -477,14 +593,25 @@ def highlight_anomalies(context_library, field_type):
     if field_type == "contests" and "contests" in context_library:
         contests = context_library["contests"]
         results = analyze_contest_titles(contests)
+        fixed_count = 0
         if results.get("integrity_issues"):
             print("[INTEGRITY] Issues detected:", results["integrity_issues"])
+            if autofix:
+                for issue in results["integrity_issues"]:
+                    # Each issue should have a 'context' with the contest dict
+                    contest = issue.get("context")
+                    if contest and autofix_contest_fields(contest):
+                        fixed_count += 1
         if results.get("flagged_suspicious"):
             print("[INTEGRITY] Suspicious entries:", results["flagged_suspicious"])
         entity_summary = summarize_context_entities(contests)
         print("\n[ENTITY SUMMARY]:")
         for label, count in entity_summary.items():
             print(f"  {label}: {count}")
+        # Save fixes if any
+        if autofix and fixed_count and context_path:
+            update_context_library(context_library, context_path)
+            print(f"[INTEGRITY] Auto-fixed {fixed_count} contests with missing fields and updated context library.")
 
 # --- DB update logic (batch, periodic, error handling) ---
 def update_database_with_context(library, db_path=None, coordinator=None, enhanced=True):
@@ -789,7 +916,7 @@ def main():
                 # Optionally run integrity check
                 if args.integrity:
                     context_library = load_context_library(context_path)
-                    highlight_anomalies(context_library, field)
+                    highlight_anomalies(context_library, field, context_path, autofix=True)
                 # Optionally update DB
                 if args.update_db:
                     context_library = load_context_library(context_path)

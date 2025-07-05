@@ -1195,6 +1195,8 @@ class ContextOrganizer:
             organized_clean = clean_for_json(remove_functions(organized))
             library = merge_dicts(library, organized_clean)
             library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            # Ensure all sets are converted before saving
+            library = clean_for_json(library)
             update_context_library(path, lambda lib: lib.update(organized_clean))
             log_info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
         except Exception as e:

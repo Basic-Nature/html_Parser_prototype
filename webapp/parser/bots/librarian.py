@@ -579,6 +579,7 @@ def update_context_library(path, update_fn):
     Safely update the context library at `path` by applying `update_fn(library)`.
     If a dict is passed instead of a function, it will update the library with that dict.
     """
+    from ..Context_Integration.context_organizer import clean_for_json  # Import here to avoid circular import at module level
     with _CONTEXT_LOCK:
         lib = load_context_library(path)
         # Accept either a function or a dict
@@ -586,6 +587,7 @@ def update_context_library(path, update_fn):
             lib.update(update_fn)
         else:
             update_fn(lib)
+        lib = clean_for_json(lib)  # <-- Ensure all sets are converted before saving
         save_context_library(lib, path)
 
 def file_hash(path):

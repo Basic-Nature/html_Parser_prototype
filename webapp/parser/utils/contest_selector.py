@@ -11,6 +11,38 @@ from typing import TYPE_CHECKING, List, Dict, Any
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
+def extract_year_from_title(title):
+    import re
+    if not title:
+        return None
+    # Find all years
+    years = [int(y) for y in re.findall(r"(19|20)\d{2}", title)]
+    if not years:
+        return None
+    # Lowercase title for type search
+    title_lower = title.lower()
+    # Find all valid types and their positions
+    type_positions = []
+    for t in VALID_TYPES:
+        for m in re.finditer(re.escape(t), title_lower):
+            type_positions.append((m.start(), t))
+    # If no types, return the most recent year
+    if not type_positions:
+        return max(years)
+    # Find year closest to a type
+    best_year = None
+    min_distance = float("inf")
+    for y in years:
+        for pos, t in type_positions:
+            # Find position of year in string
+            y_match = re.search(str(y), title)
+            if y_match:
+                dist = abs(y_match.start() - pos)
+                if dist < min_distance:
+                    min_distance = dist
+                    best_year = y
+    return best_year if best_year else max(years)
+
 def normalize_race_name(name):
     import re
     return re.sub(r"\W+", "", name.strip().lower()) if name else ""
@@ -163,19 +195,46 @@ def select_contest(
     Uses ML/NER/regex feedback loop to verify correct year/type/title.
     Returns a list of selected contest dicts or None if skipped/cancelled.
     """
-    # Normalize state/county for filtering
     norm_state = normalize_state_name(state)
     norm_county = normalize_county_name(county)
-
-    # Use provided context or build one for ML/NER
-    if context is None:
-        context = {"state": norm_state, "county": norm_county, "year": year}
-
     selector_data = coordinator.get_for_selector()
     contests = selector_data.get("contests", [])
     noisy_patterns = selector_data.get("noisy_patterns", [])
     known_county_to_precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP
 
+    # --- Fill in missing year/type from title using ML/NER ---
+    for c in contests:
+        # Fill year
+        if not c.get("year"):
+            year_from_title = extract_year_from_title(c.get("title", ""))
+            if year_from_title:
+                c["year"] = year_from_title
+        # Fill type
+        if not c.get("type"):
+            title = c.get("title", "").lower()
+            found_type = None
+            for t in VALID_TYPES:
+                if t in title:
+                    found_type = t
+                    break
+            if not found_type:
+                # Try ML/NER
+                ents = coordinator.extract_entities(c.get("title", ""))
+                for ent, label in ents:
+                    if label == "EVENT" and ent.lower() in VALID_TYPES:
+                        found_type = ent.lower()
+                        break
+            if found_type:
+                c["type"] = found_type.capitalize()
+
+    context = {
+        "state": norm_state,
+        "county": norm_county,
+        "year": year,
+        "contests": contests,
+        "url": getattr(coordinator, "last_url", None) if hasattr(coordinator, "last_url") else None
+    }
+    log_debug(f"DEBUG: selector_data['contests']: {selector_data.get('contests', None)}")
     log_debug(f"[DEBUG] norm_state: {norm_state}, norm_county: {norm_county}, year: {year}")
     log_debug(f"[DEBUG] noisy_patterns: {noisy_patterns}")
     log_debug(f"[DEBUG] contests before filtering: {contests}")
@@ -193,21 +252,32 @@ def select_contest(
                     return True
         return False
 
-    # Filter contests
-    filtered_contests = [
-        c for c in contests
-        if (not norm_state or normalize_state_name(c.get("state", "")) == norm_state)
-        and county_matches(c.get("county", ""))
-        and (not year or str(c.get("year", "")) == str(year))
-        and not any(pat.lower() in c.get("title", "").lower() for pat in noisy_patterns)
-    ]
+    # --- Filter contests ---
+    filtered_contests = []
+    for c in contests:
+        skip_reason = None
+        if norm_state and normalize_state_name(c.get("state", "")) != norm_state:
+            skip_reason = "state mismatch"
+        elif not county_matches(c.get("county", "")):
+            skip_reason = "county mismatch"
+        elif year and str(c.get("year", "")) != str(year):
+            skip_reason = "year mismatch"
+        elif any(pat.lower() in c.get("title", "").lower() for pat in noisy_patterns):
+            skip_reason = "noisy pattern"
+        elif not c.get("title") or c.get("title", "").strip().lower() in ["", "results", "summary"]:
+            skip_reason = "empty/generic title"
+        if skip_reason:
+            log_debug(f"Skipping contest '{c.get('title', '')}': {skip_reason}")
+            continue
+        filtered_contests.append(c)
+
     log_debug(f"[DEBUG] Filtered contests: {filtered_contests}")
     log_debug(f"[DEBUG] Number of filtered contests: {len(filtered_contests)}")
     if not filtered_contests:
         log_warning("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
         return None
 
-    # Deduplicate by normalized race name, year, and type
+    # --- Deduplicate by normalized title, year, and type ---
     unique_contests = []
     seen = set()
     for c in filtered_contests:
@@ -222,14 +292,19 @@ def select_contest(
         log_warning("[yellow]No valid contests detected after deduplication. Skipping.[/yellow]")
         return None
 
-    # --- Feedback loop: ML/NER verification of contests ---
-    verified_contests = feedback_loop_verify_contests(filtered_contests, coordinator, context)
+    # --- ML/NER verification ---
+    verified_contests = []
+    for c in filtered_contests:
+        if ml_verify_contest(c, coordinator, context, threshold=0.75):
+            verified_contests.append(c)
     if not verified_contests:
-        log_warning("[yellow]No contests passed ML/NER verification. Skipping.[/yellow]")
-        return None
+        # Try feedback loop for user clarification
+        verified_contests = feedback_loop_verify_contests(filtered_contests, coordinator, context)
+        if not verified_contests:
+            log_warning("[yellow]No contests passed ML/NER verification. Skipping.[/yellow]")
+            return None
 
-    # Group by (year, type) for display
-    from collections import defaultdict
+    # --- Group by (year, type) for display ---
     grouped = defaultdict(list)
     for c in verified_contests:
         grouped[(c.get("year"), c.get("type"))].append(c)
@@ -249,7 +324,7 @@ def select_contest(
             idx += 1
     log_debug(f"[DEBUG] Number of contests displayed: {idx}")
 
-    # Auto-select if only one contest
+    # --- Auto-select if only one contest ---
     if len(verified_contests) == 1:
         contest = ensure_contest_title(verified_contests[0])
         log_info(f"[green]Only one contest found. Auto-selecting: {contest['title']}[/green]")
@@ -257,13 +332,13 @@ def select_contest(
             log_func(f"[CONTEST] Auto-selected: {contest['title']}")
         return [contest]
 
-    # Non-interactive mode: select all
+    # --- Non-interactive mode: select all ---
     if non_interactive:
         if log_func:
             log_func(f"[CONTEST] Non-interactive mode: selecting all contests.")
         return [ensure_contest_title(c) for c in verified_contests]
 
-    # Interactive prompt
+    # --- Interactive prompt ---
     try:
         choice = prompt_user_input(
             prompt_message,
@@ -293,7 +368,7 @@ def select_contest(
             log_func("[CONTEST] User selected all contests.")
         return [ensure_contest_title(c) for c in verified_contests]
 
-    # Parse comma-separated indices
+    # --- Parse comma-separated indices ---
     indices = []
     for part in choice.split(","):
         part = part.strip()
