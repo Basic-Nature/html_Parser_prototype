@@ -5,6 +5,8 @@ from ..utils.models import TableStructure
 from ..config import CACHE_DIR, LOG_DIR, CONTEXT_LIBRARY_DIR
 import orjson
 
+MIGRATION_STATE_FILE = Path(CONTEXT_LIBRARY_DIR) / ".migration_state.json"
+
 def table_structure_exists(session, contest_title, headers, context):
     return session.query(TableStructure).filter_by(
         contest_title=contest_title,
@@ -73,24 +75,38 @@ def migrate_table_structures_from_json(json_path):
                     count += 1
     print(f"[MIGRATE] Inserted {count} new table structures from {json_path}")
 
+def load_migration_state():
+    if MIGRATION_STATE_FILE.exists():
+        with open(MIGRATION_STATE_FILE, "rb") as f:
+            return orjson.loads(f.read())
+    return {}
+
+def save_migration_state(state):
+    with open(MIGRATION_STATE_FILE, "wb") as f:
+        f.write(orjson.dumps(state))
+
 def migrate_all():
     # Only .jsonl in LOG_DIR, only .json in CACHE_DIR, both in CONTEXT_LIBRARY_DIR
+    state = load_migration_state()
     files_to_migrate = []
     # LOG_DIR: only .jsonl
-    files_to_migrate += list(Path(LOG_DIR).glob("*.jsonl"))
-    # CACHE_DIR: only .json
-    files_to_migrate += list(Path(CACHE_DIR).glob("*.json"))
-    # CONTEXT_LIBRARY_DIR: both .jsonl and .json
-    files_to_migrate += list(Path(CONTEXT_LIBRARY_DIR).glob("*.jsonl"))
-    files_to_migrate += list(Path(CONTEXT_LIBRARY_DIR).glob("*.json"))
+    patterns = ["*table_structure*.jsonl", "*table_structure*.json"]
+    
+    for pattern in patterns:
+        files_to_migrate += list(Path(LOG_DIR).glob(pattern))
+        files_to_migrate += list(Path(CONTEXT_LIBRARY_DIR).glob(pattern))
+        files_to_migrate += list(Path(CACHE_DIR).glob(pattern))
 
     for file_path in files_to_migrate:
+        mtime = file_path.stat().st_mtime
+        if str(file_path) in state and state[str(file_path)] == mtime:
+            continue  # Skip unchanged
         if file_path.suffix == ".jsonl":
             migrate_table_structures_from_jsonl(file_path)
         elif file_path.suffix == ".json":
             migrate_table_structures_from_json(file_path)
-        else:
-            print(f"[MIGRATE] Skipped {file_path} (unsupported extension)")
+        state[str(file_path)] = mtime
+    save_migration_state(state)
 
 if __name__ == "__main__":
     migrate_all()

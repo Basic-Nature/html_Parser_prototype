@@ -36,7 +36,7 @@ from ..utils.db_utils import get_engine
 from .context_migration import migrate_all
 from ..config import LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
 
-DEFAULT_MAX_SIZE_MB = 250 # Default max size for files before cleaning 250MB, 500MB, 1024MB, 2048MB
+DEFAULT_MAX_SIZE_MB = 1024 # Default max size for files before cleaning 250MB, 500MB, 1024MB, 2048MB
 MISALIGNED_KEYWORDS = ["misaligned", "pattern-excluding"]
 ALLOWED_EXTS = (".json", ".jsonl", ".html")
 EMPTY_WATCH_FILE = os.path.join(CONTEXT_LIBRARY_DIR, "empty_entries_watch.jsonl")
@@ -338,7 +338,7 @@ def human_size(num_bytes):
         num_bytes /= 1024.0
     return f"{num_bytes:.1f}TB"
 
-def clean_dir(target_dir, allowed_roots, max_size_bytes):
+def clean_dir(target_dir, allowed_roots, max_size_bytes, full_sweep=False):
     cleaned_files = 0
     total_before = 0
     total_after = 0
@@ -357,8 +357,8 @@ def clean_dir(target_dir, allowed_roots, max_size_bytes):
             continue
         size = os.path.getsize(fname)
         needs_clean = size > max_size_bytes
-        # Always clean if too big, else only clean if user wants full sweep
-        if needs_clean or True:
+        # Only clean if too big, or if full_sweep is True
+        if needs_clean or full_sweep:
             if is_jsonl_file(fname):
                 before, after, misaligned, err = clean_jsonl(fname)
             elif is_json_file(fname):
@@ -381,6 +381,7 @@ def clean_dir(target_dir, allowed_roots, max_size_bytes):
             new_size = os.path.getsize(fname)
             if new_size > max_size_bytes:
                 flagged_large.append((fname, human_size(new_size)))
+            pass
     return cleaned_files, total_before, total_after, flagged_large, misaligned_summary, errors
 
 def run_db_maintenance(engine=None, session=None):
@@ -428,15 +429,15 @@ def run_db_maintenance(engine=None, session=None):
         summary["errors"].append(("__connection__", str(e)))
     return summary
 
-def run_log_cache_cleaner(log_dir=LOG_DIR, context_lib_dir=CONTEXT_LIBRARY_DIR, cache_dir=CACHE_DIR, max_size_mb=DEFAULT_MAX_SIZE_MB, db_maintenance=False):
+def run_log_cache_cleaner(log_dir=LOG_DIR, context_lib_dir=CONTEXT_LIBRARY_DIR, cache_dir=CACHE_DIR, max_size_mb=DEFAULT_MAX_SIZE_MB, db_maintenance=False, full_sweep=False):
     max_size_bytes = int(max_size_mb * 1024 * 1024)
     allowed_roots = [log_dir, context_lib_dir, cache_dir]
     print(f"[CLEAN] Cleaning log dir: {log_dir}")
-    cleaned1, before1, after1, flagged1, misaligned1, errors1 = clean_dir(log_dir, allowed_roots, max_size_bytes)
+    cleaned1, before1, after1, flagged1, misaligned1, errors1 = clean_dir(log_dir, allowed_roots, max_size_bytes, full_sweep=full_sweep)
     print(f"[CLEAN] Cleaning context library dir: {context_lib_dir}")
-    cleaned2, before2, after2, flagged2, misaligned2, errors2 = clean_dir(context_lib_dir, allowed_roots, max_size_bytes)
+    cleaned2, before2, after2, flagged2, misaligned2, errors2 = clean_dir(context_lib_dir, allowed_roots, max_size_bytes, full_sweep=full_sweep)
     print(f"[CLEAN] Cleaning cache dir: {cache_dir}")
-    cleaned3, before3, after3, flagged3, misaligned3, errors3 = clean_dir(cache_dir, allowed_roots, max_size_bytes)
+    cleaned3, before3, after3, flagged3, misaligned3, errors3 = clean_dir(cache_dir, allowed_roots, max_size_bytes, full_sweep=full_sweep)
     cleaned_files = cleaned1 + cleaned2 + cleaned3
     total_before = before1 + before2 + before3
     total_after = after1 + after2 + after3
@@ -481,6 +482,7 @@ def main():
     parser.add_argument("--daemon", action="store_true", help="Run as a background daemon (periodic cleaning)")
     parser.add_argument("--interval-min", type=int, default=60, help="Interval in minutes for daemon mode")
     parser.add_argument("--db-maintenance", action="store_true", help="Perform PostgreSQL VACUUM/ANALYZE maintenance after cleaning")
+    parser.add_argument("--full-sweep", action="store_true", help="Clean all files, not just those exceeding size threshold")
     args = parser.parse_args()
     if args.daemon:
         schedule_log_cache_cleaner(
@@ -489,7 +491,8 @@ def main():
             context_lib_dir=args.context_lib_dir,
             cache_dir=args.cache_dir,
             max_size_mb=args.max_size_mb,
-            db_maintenance=args.db_maintenance
+            db_maintenance=args.db_maintenance,
+            full_sweep=args.full_sweep
         )
         try:
             while True:
@@ -502,7 +505,8 @@ def main():
             context_lib_dir=args.context_lib_dir,
             cache_dir=args.cache_dir,
             max_size_mb=args.max_size_mb,
-            db_maintenance=args.db_maintenance
+            db_maintenance=args.db_maintenance,
+            full_sweep=args.full_sweep
         )
 
 if __name__ == "__main__":

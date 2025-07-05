@@ -9,12 +9,13 @@ from datetime import datetime
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
 from ..utils.models import TableStructure
-from ..config import PROJECT_ROOT, BASE_DIR, POSTGRES_URL, LOG_DIR
+from ..config import CACHE_DIR, PROJECT_ROOT, BASE_DIR, POSTGRES_URL, LOG_DIR
 import smtplib
 from email.message import EmailMessage
 import requests
 from requests.auth import HTTPBasicAuth
 from ..bots.log_cache_cleaner_bot import run_log_cache_cleaner
+from ..bots.manual_correction_bot import find_log_files, load_jsonl
 from ..bots.context_migration import migrate_all
 from ..bots.scan_misaligned_ner import scan_misaligned
 from ..Context_Integration import context_organizer, context_coordinator, Integrity_check
@@ -151,6 +152,14 @@ def print_bot_summary(results):
     print("---------------------------|--------")
     for bot, status in results.items():
         print(f"{bot:<27}| {status}")
+
+def has_new_entries(log_dir, cache_dir):
+    log_files = find_log_files(log_dir, cache_dir)
+    for log_file in log_files:
+        entries = load_jsonl(log_file)
+        if entries:
+            return True
+    return False
 
 def run_pipeline_once():
     lockfile = os.path.join(PROJECT_ROOT, "pipeline.lock")
@@ -326,6 +335,17 @@ def run_pipeline():
             correction_args.extend(["--cooldown", os.getenv("COOLDOWN")])
     if os.getenv("DB_PATH"):
         correction_args.extend(["--db-path", os.getenv("DB_PATH")])
+
+    # Ran before manual_correction_bot to detect new entries
+    if has_new_entries(LOG_DIR, CACHE_DIR):
+        correction_success = run_subprocess_module(
+            "webapp.parser.bots.manual_correction_bot",
+            args=correction_args
+        )
+        results["manual_correction_bot"] = "success" if correction_success else "fail"
+    else:
+        print("[BOT ROUTER] No new entries for manual correction. Skipping manual_correction_bot.")
+        results["manual_correction_bot"] = "skipped"
 
     # 5. Run manual correction bot for misalignments or general cleanup
     correction_success = None

@@ -349,8 +349,9 @@ LOCATION_ABBREVIATIONS = {
 }
 VALID_TYPES = {"general", "primary", "presidential preference", "special", "runoff", "municipal", "local"}
 CONTEST_KEYWORDS = {
-        "president", "senate", "congress", "governor", "mayor", "school board", "proposition", "referendum",
-        "assembly", "council", "trustee", "justice", "clerk", "judge", "district", "proposal", "village", "town"
+        "president", "senate", "senator", "congress", "representative", "governor", "mayor", "school board", "proposition", "referendum",
+        "assembly", "council", "trustee", "justice", "clerk", "judge", "district", "proposal", "village", "town",
+        "trustee", "amendment", 
     }
 ALWAYS_IGNORE_TAGS = {
         "script", "style", "svg", "path", "defs", "g", "canvas", "noscript", "meta", "link", "base", "title"

@@ -26,6 +26,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     - Autoscrolls as needed (only once, after all toggles)
     - Extracts tables and outputs results
     """
+    from .....Context_Integration.context_organizer import clean_for_json
     if html_context is None:
         html_context = {}
 
@@ -48,8 +49,10 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             contest["county"] = county
         if contest.get("year") is None and year is not None:
             contest["year"] = year
-    print("DEBUG: context_result:", context_result)
+    context_result = clean_for_json(context_result)
     coordinator.organize_and_enrich(context_result)
+    selector_data = coordinator.get_for_selector()
+    print("DEBUG: selector_data['contests']:", selector_data.get("contests", []))
     # --- 3. Contest selection ---
     context_for_selector = {
         "state": state,

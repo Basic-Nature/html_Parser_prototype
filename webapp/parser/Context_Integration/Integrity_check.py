@@ -287,13 +287,14 @@ def monitor_db_for_alerts(db_path: str = None, poll_interval: int = 10):
 # --- Utility: Audit Logging (unchanged) ---
 
 def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str = None):
+    from ..Context_Integration.context_organizer import clean_for_json
     if log_path:
         log_path = db_utils._safe_db_path(log_path)
     else:
         log_path = str((Path(CONTEXT_DB_PATH).parent / "integrity_issues.log").resolve())
     with open(log_path, "ab") as f:
         for issue_type, contest in issues:
-            f.write(orjson.dumps({"issue": issue_type, "contest": contest}) + b"\n")
+            f.write(orjson.dumps({"issue": issue_type, "contest": clean_for_json(contest)}) + b"\n")
 
 def detect_statistical_outliers(
     values: List[float],

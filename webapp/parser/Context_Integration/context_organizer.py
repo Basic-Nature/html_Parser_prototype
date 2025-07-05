@@ -58,14 +58,20 @@ import itertools
 _spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
 def get_loading_indicator():
     return next(_spinner)
-def _to_json_safe(obj):
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
+
+def clean_for_json(obj):
+    """Recursively convert sets and np.ndarray to lists, remove '_fixed_fields', and handle dicts/lists."""
+    import numpy as np
     if isinstance(obj, dict):
-        return {k: _to_json_safe(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_to_json_safe(v) for v in obj]
-    return obj
+        return {k: clean_for_json(v) for k, v in obj.items() if k != "_fixed_fields"}
+    elif isinstance(obj, list):
+        return [clean_for_json(i) for i in obj]
+    elif isinstance(obj, set):
+        return [clean_for_json(i) for i in obj]
+    elif isinstance(obj, np.ndarray):
+        return clean_for_json(obj.tolist())
+    else:
+        return obj
 
 def remove_functions(obj):
     if isinstance(obj, dict):
@@ -85,15 +91,15 @@ def save_table_structure_to_db(contest_title, headers, context, ml_confidence=No
                 select(TableStructure).where(TableStructure.contest_title == contest_title)
             ).scalar_one_or_none()
             if obj:
-                obj.headers = orjson.dumps(headers)
-                obj.context = orjson.dumps(context)
+                obj.headers = orjson.dumps(clean_for_json(headers))
+                obj.context = orjson.dumps(clean_for_json(context))
                 obj.ml_confidence = ml_confidence
                 obj.confirmed_by_user = confirmed_by_user
             else:
                 obj = TableStructure(
                     contest_title=contest_title,
-                    headers=orjson.dumps(headers),
-                    context=orjson.dumps(context),
+                    headers=orjson.dumps(clean_for_json(headers)),
+                    context=orjson.dumps(clean_for_json(context)),
                     ml_confidence=ml_confidence,
                     confirmed_by_user=confirmed_by_user
                 )
@@ -138,7 +144,7 @@ def upsert_contest(session, contest_dict):
         )
     ).scalar_one_or_none()
     if obj:
-        obj.metadata = orjson.dumps(convert_sets_to_lists(contest_dict))
+        obj.metadata = orjson.dumps(clean_for_json(contest_dict))
     else:
         obj = Contest(
             title=contest_dict.get("title"),
@@ -146,7 +152,7 @@ def upsert_contest(session, contest_dict):
             type=contest_dict.get("type"),
             state=contest_dict.get("state"),
             county=contest_dict.get("county"),
-            metadata=orjson.dumps(convert_sets_to_lists(contest_dict))
+            metadata=orjson.dumps(clean_for_json(contest_dict))
         )
         session.add(obj)
 
@@ -190,16 +196,6 @@ def repair_dom_segments(segments):
     return segments
 def contest_hash(c):
     return hash((c.get("title"), c.get("year"), c.get("county"), c.get("type")))
-
-def convert_sets_to_lists(obj):
-    if isinstance(obj, dict):
-        return {k: convert_sets_to_lists(v) for k, v in obj.items()}
-    elif isinstance(obj, set):
-        return list(obj)
-    elif isinstance(obj, list):
-        return [convert_sets_to_lists(v) for v in obj]
-    else:
-        return obj
 
 class ContextOrganizer:
     def __init__(
@@ -1196,9 +1192,10 @@ class ContextOrganizer:
                     library = orjson.loads(f.read())
             else:
                 library = {}
-            library = merge_dicts(library, remove_functions(convert_sets_to_lists(organized)))
+            organized_clean = clean_for_json(remove_functions(organized))
+            library = merge_dicts(library, organized_clean)
             library["last_updated"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            update_context_library(path, lambda lib: lib.update(_to_json_safe(library)))
+            update_context_library(path, lambda lib: lib.update(organized_clean))
             log_info(f"[CONTEXT ORGANIZER] Appended/merged context to library at {path}")
         except Exception as e:
             log_error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")

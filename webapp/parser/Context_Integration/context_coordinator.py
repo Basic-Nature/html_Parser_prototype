@@ -36,7 +36,6 @@ import subprocess
 from rich.console import Console
 from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR
 import threading
-
 console = Console()
 
 from ..utils.spacy_utils import (
@@ -49,19 +48,8 @@ from .Integrity_check import (
     advanced_cross_field_validation,
     print_integrity_summary
 )
-from .context_organizer import ContextOrganizer
+from .context_organizer import ContextOrganizer, clean_for_json
 import inspect
-
-def safe_for_json(obj):
-    """Recursively remove non-serializable items from dicts/lists."""
-    if isinstance(obj, dict):
-        return {k: safe_for_json(v) for k, v in obj.items() if not isinstance(v, types.FunctionType)}
-    elif isinstance(obj, list):
-        return [safe_for_json(i) for i in obj if not isinstance(i, types.FunctionType)]
-    elif isinstance(obj, types.FunctionType):
-        return None
-    else:
-        return obj
 
 def _sanitize_log_filename(name):
     # Only allow alphanumeric, underscore, and dash
@@ -522,7 +510,7 @@ class ContextCoordinator:
         """Centralized JSONL logging utility."""
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _extract_with_strategies(self, text, strategies):
         """
@@ -670,7 +658,7 @@ class ContextCoordinator:
         }
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
     
     def extract_contest_title(self, contest):
         """
@@ -1184,7 +1172,7 @@ class ContextCoordinator:
             return []
         contests = self._safe_get(self.organized, "contests", [])
         if not filters:
-            return contests
+            return clean_for_json(contests)
         def match(c):
             for k, v in filters.items():
                 if not isinstance(c, dict):
@@ -1192,7 +1180,7 @@ class ContextCoordinator:
                 if str(c.get(k, "")).lower() != str(v).lower():
                     return False
             return True
-        return [c for c in contests if match(c)]
+        return clean_for_json([c for c in contests if match(c)])
 
     def get_buttons(self, contest_title=None, keyword=None, url=None):
         """
@@ -1219,19 +1207,19 @@ class ContextCoordinator:
                             "selector": entry.get("selector"),
                             # Optionally add more fields if you log them
                         }
-                        return [button]
+                        return clean_for_json([button])
                     if keyword and keyword.lower() in (entry.get("button_label") or "").lower() and entry.get("result", "").startswith("pass"):
                         button = {
                             "label": entry.get("button_label"),
                             "selector": entry.get("selector"),
                         }
-                        return [button]
+                        return clean_for_json([button])
                     if url and url in (entry.get("selector") or "") and entry.get("result", "").startswith("pass"):
                         button = {
                             "label": entry.get("button_label"),
                             "selector": entry.get("selector"),
                         }
-                        return [button]
+                        return clean_for_json([button])
 
         # 2. Fallback to existing logic
         if not self.organized:
@@ -1243,7 +1231,7 @@ class ContextCoordinator:
         if contest_title and isinstance(contest_title, str):
             results = buttons_dict.get(contest_title, [])
             if results:
-                return results
+                return clean_for_json(results)
 
         # By keyword in label or selector
         if keyword:
@@ -1255,7 +1243,7 @@ class ContextCoordinator:
                     if keyword in btn.get("label", "").lower() or keyword in btn.get("selector", "").lower():
                         results.append(btn)
             if results:
-                return results
+                return clean_for_json(results)
 
         # By URL (if you want to associate buttons with URLs)
         if url:
@@ -1266,13 +1254,13 @@ class ContextCoordinator:
                     if url in btn.get("selector", ""):
                         results.append(btn)
             if results:
-                return results
+                return clean_for_json(results)
 
         # Fallback: return all buttons
         all_buttons = []
         for btns in buttons_dict.values():
             all_buttons.extend(btns)
-        return all_buttons
+        return clean_for_json(all_buttons)
 
     def matches_html_label_pattern(label, patterns):
         """Check if label matches any HTML-specific regex pattern."""
@@ -1293,7 +1281,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "pattern_attempts_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def get_best_button_advanced(
         self,
@@ -1486,7 +1474,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "button_learning_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _get_confirmed_button_from_log(self, contest_title, keywords, context):
         """
@@ -1528,7 +1516,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "button_selection_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     # --- Table structure learning/lookup ---
     def get_table_structure(self, contest_title, context=None, learning_mode=True):
@@ -1547,7 +1535,7 @@ class ContextCoordinator:
                     if not isinstance(entry, dict):
                         continue
                     if entry.get("contest_title") == contest_title and entry.get("result") == "learning_confirmed":
-                        return entry.get("headers")
+                        return clean_for_json(entry.get("headers"), [])
         # 2. Fallback: return None (caller should trigger extraction and confirmation)
         return None
 
@@ -1564,7 +1552,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "table_structure_learning_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     # --- CLI for reviewing/editing corrections and feedback ---
     def review_and_edit_corrections(self, field_type="buttons"):
@@ -1596,7 +1584,7 @@ class ContextCoordinator:
         panels = self.organized.get("panels", {})
         if not isinstance(panels, dict):
             return None
-        return panels.get(contest_title)
+        return clean_for_json(panels.get(contest_title))
 
     def get_tables(self, contest_title):
         """
@@ -1607,7 +1595,7 @@ class ContextCoordinator:
         tables = self.organized.get("tables", {})
         if not isinstance(tables, dict):
             return []
-        return tables.get(contest_title, [])
+        return clean_for_json(tables.get(contest_title, []))
 
     def get_candidates(self, contest_title=None):
         """
@@ -1631,7 +1619,7 @@ class ContextCoordinator:
                 for h in headers:
                     if isinstance(h, str) and "candidate" in h.lower():
                         candidates.add(h)
-        return list(candidates)
+        return clean_for_json(list(candidates))
 
     def get_precincts(self, state=None, county=None):
         """
@@ -1642,14 +1630,14 @@ class ContextCoordinator:
         if county:
             precincts_map = KNOWN_COUNTY_TO_PRECINCTS_MAP
             if isinstance(precincts_map, dict):
-                return precincts_map.get(county, [])
+                return clean_for_json(precincts_map.get(county, []))
             return []
         if state:
             state_map = KNOWN_STATE_TO_COUNTY_MAP
             if isinstance(state_map, dict):
-                return state_map.get(state, [])
+                return clean_for_json(state_map.get(state, []))
             return []
-        return self.library.get("known_precincts", [])
+        return clean_for_json(self.library.get("known_precincts", []))
 
     def get_states(self):
         """
@@ -1657,7 +1645,7 @@ class ContextCoordinator:
         """
         if not isinstance(self.library, dict):
             return []
-        return self.library.get("known_states", [])
+        return clean_for_json(self.library.get("known_states", []))
 
     def get_election_types(self):
         """
@@ -1665,15 +1653,15 @@ class ContextCoordinator:
         """       
         if not isinstance(self.library, dict):
             return []
-        return self.library.get("election", [])
+        return clean_for_json(self.library.get("election", []))
 
     def get_years(self):
         """
         Return all years found in contests.
         """      
         contests = self.get_contests()
-        return sorted({c.get("year") for c in contests if isinstance(c, dict) and c.get("year")})
-    
+        return clean_for_json(sorted({c.get("year") for c in contests if isinstance(c, dict) and c.get("year")}))
+
     # --- Integrity & Anomaly Checks ---
 
     def _log_get_contests_access(self, filters):
@@ -1685,7 +1673,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_contests_access_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _log_get_buttons_access(self, contest_title, keyword, url):
         log_entry = {
@@ -1699,7 +1687,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_buttons_access_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _log_get_best_button_access(self, contest_title, keywords, class_hint, url):
         log_entry = {
@@ -1713,7 +1701,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_best_button_access_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _log_get_panel_access(self, contest_title):
         log_entry = {
@@ -1724,7 +1712,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_panel_access_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _log_get_tables_access(self, contest_title):
         log_entry = {
@@ -1735,7 +1723,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_tables_access_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _log_get_candidates_access(self, contest_title):
         log_entry = {
@@ -1746,7 +1734,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_candidates_access_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _log_get_precincts_access(self, state, county):
         log_entry = {
@@ -1758,7 +1746,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_precincts_access_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _log_get_states_access(self):
         log_entry = {
@@ -1768,7 +1756,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_states_access_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _log_get_election_types_access(self):
         log_entry = {
@@ -1778,7 +1766,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_election_types_access_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     def _log_get_years_access(self):
         log_entry = {
@@ -1788,7 +1776,7 @@ class ContextCoordinator:
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_years_access_log.jsonl")
         with open(log_path, "ab") as f:
-            f.write(orjson.dumps(safe_for_json(log_entry)) + b"\n")
+            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     # --- Reporting ---
 
@@ -1828,11 +1816,11 @@ class ContextCoordinator:
             noisy_patterns = []
         else:
             noisy_patterns = self.library.get("default_noisy_label_patterns", [])
-        return {
+        return clean_for_json({
             "contests": self.get_contests(),
             "buttons": self.get_buttons(),
             "noisy_patterns": noisy_patterns
-        }
+        })
 
     def get_for_table_builder(self):
         """
@@ -1844,10 +1832,10 @@ class ContextCoordinator:
         else:
             precinct_headers = self.library.get("precinct_header_tags", [])
             table_tags = self.library.get("table_tags", [])
-        return {
+        return clean_for_json({
             "precinct_headers": precinct_headers,
             "table_tags": table_tags
-        }
+        })
 
     def get_for_html_handler(self):
         """
@@ -1865,19 +1853,19 @@ class ContextCoordinator:
                 all_selectors = []
             else:
                 all_selectors = selectors.get("all_selectors", [])
-        return {
+        return clean_for_json({
             "panel_tags": panel_tags,
             "contest_panel_tags": contest_panel_tags,
             "all_selectors": all_selectors
-        }
+        })
 
     def get_for_state_router(self):
         """
         Return state_module_map for state_router.
         """       
         if not isinstance(self.library, dict):
-            return {}
-        return self.library.get("state_module_map", {})
+            return clean_for_json({})
+        return clean_for_json(self.library.get("state_module_map", {}))
 
     def correct_and_update_contest(self, contest_id, correction_data):
         """
