@@ -137,6 +137,7 @@ def get_table_structure_from_db(contest_title, context=None):
 def upsert_contest(session, contest_dict):
     """
     Upsert a contest using SQLAlchemy ORM. Updates if exists, else inserts.
+    Ensures the object is attached to the current session before updating.
     """
     obj = session.execute(
         select(Contest).where(
@@ -150,6 +151,8 @@ def upsert_contest(session, contest_dict):
         )
     ).scalar_one_or_none()
     if obj:
+        # Ensure obj is attached to the current session
+        obj = session.merge(obj)
         obj.metadata = orjson.dumps(clean_for_json(contest_dict))
     else:
         obj = Contest(
