@@ -15,7 +15,11 @@ def resolve_jsonl_path(jsonl_path):
         p = LOG_DIR / p
     return str(p)
 
-def scan_misaligned(jsonl_path=None, verbose=False):
+def scan_misaligned(jsonl_path=None, verbose=False, output_misaligned=True):
+    """
+    Scan a spaCy NER JSONL file for misaligned examples.
+    Optionally writes misaligned examples to spacy_ner_misaligned.jsonl for correction.
+    """
     nlp = spacy.blank("en")
     misaligned = []
     total = 0
@@ -35,16 +39,24 @@ def scan_misaligned(jsonl_path=None, verbose=False):
             try:
                 tags = offsets_to_biluo_tags(nlp.make_doc(text), entities)
                 if "-" in tags:
-                    misaligned.append((text, entities))
+                    misaligned.append({"text": text, "entities": entities})
                     if verbose:
                         print(f"MISALIGNED: {text} {entities}")
             except Exception as e:
-                misaligned.append((text, entities))
+                misaligned.append({"text": text, "entities": entities, "error": str(e)})
                 if verbose:
                     print(f"ERROR: {text} {entities} ({e})")
     print(f"\n[SUMMARY] {len(misaligned)} misaligned out of {total} examples.")
-    if misaligned:
-        print("Run the manual_correction_bot to review and clean these examples.")
+    if misaligned and output_misaligned:
+        misaligned_path = os.path.join(LOG_DIR, "spacy_ner_misaligned.jsonl")
+        with open(misaligned_path, "wb") as f:
+            for entry in misaligned:
+                f.write(orjson.dumps(entry, option=orjson.OPT_APPEND_NEWLINE))
+        print(f"[INFO] Misaligned examples written to {misaligned_path}")
+        print("Run the manual_correction_bot to review and clean these examples before retraining.")
+        print("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
+    elif not misaligned:
+        print("[INFO] All NER training examples are aligned and ready for retraining.")
     return 0 if not misaligned else 2
 
 def self_heal_loop(jsonl_path, verbose, max_retries=3, cooldown=2):
@@ -56,7 +68,11 @@ def self_heal_loop(jsonl_path, verbose, max_retries=3, cooldown=2):
             print("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
             return 0
         print("[SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
-        subprocess.run([sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"], check=True, cwd=PROJECT_ROOT)
+        # Always use the special field for misaligned NER
+        subprocess.run([
+            sys.executable, "-m", "webapp.parser.bots.manual_correction_bot",
+            "--fields", "spacy_ner_misaligned", "--enhanced"
+        ], check=True, cwd=PROJECT_ROOT)
         print(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
         time.sleep(cooldown)
     print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
@@ -64,7 +80,13 @@ def self_heal_loop(jsonl_path, verbose, max_retries=3, cooldown=2):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Scan spaCy NER training data for misaligned examples.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Scan spaCy NER training data for misaligned examples. "
+            "Misaligned examples are written to spacy_ner_misaligned.jsonl for correction. "
+            "After correction, retrain_table_structure_models will use only aligned data."
+        )
+    )
     parser.add_argument("--jsonl", type=str, default=None, help="Path to NER training data JSONL (default: LOG_DIR/spacy_ner_train_data.jsonl)")
     parser.add_argument("--verbose", action="store_true", help="Print all misaligned examples")
     parser.add_argument("--auto-correct", action="store_true", help="Automatically run manual_correction_bot if misaligned examples are found")
@@ -81,5 +103,8 @@ if __name__ == "__main__":
         exit_code = scan_misaligned(jsonl_path, args.verbose)
         if args.auto_correct and exit_code == 2:
             print("\n[INFO] Launching manual_correction_bot for review...")
-            subprocess.run([sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"], check=True, cwd=PROJECT_ROOT)
+            subprocess.run([
+                sys.executable, "-m", "webapp.parser.bots.manual_correction_bot",
+                "--fields", "spacy_ner_misaligned", "--enhanced"
+            ], check=True, cwd=PROJECT_ROOT)
     sys.exit(exit_code)

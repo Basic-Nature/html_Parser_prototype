@@ -55,7 +55,7 @@ def update_contest_in_db(contest: dict, session: Optional[Session] = None):
         if db_obj:
             db_obj.title = contest.get("title")
             db_obj.year = contest.get("year")
-            db_obj.type = contest.get("type")
+            db_obj.type_ = contest.get("type")
             db_obj.state = contest.get("state")
             db_obj.county = contest.get("county")
             db_obj.metadata = contest
@@ -87,7 +87,7 @@ def fetch_contests_by_filter(filters: Optional[dict] = None, limit: int = 100, s
                 "id": row.id,
                 "title": row.title,
                 "year": row.year,
-                "type": row.type,
+                "type_": row.type,
                 "state": row.state,
                 "county": row.county,
                 **(row.metadata or {})

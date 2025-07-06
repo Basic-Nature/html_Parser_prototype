@@ -343,7 +343,7 @@ def auto_label_segment(
         return "location_panel"
     # Ballot type detection
     if _keyword_in_text(text, BALLOT_TYPES) or _keyword_in_text(html, BALLOT_TYPES):
-        return "ballot_type"
+        return "ballot_types"
     # Table detection (results table)
     if tag == "table" or _keyword_in_text(text, TOTAL_KEYWORDS | PERCENT_KEYWORDS | MISC_FOOTER_KEYWORDS):
         return "results_table"
@@ -417,7 +417,7 @@ def auto_label_segment(
             if text in known_contests or html in known_contests:
                 return "contest_title"
     if any(bt in html for bt in BALLOT_TYPES):
-        return "ballot_type"
+        return "ballot_types"
     if segment.get("is_clickable", []):
         return "clickable"
     if (
@@ -509,7 +509,7 @@ def extract_year_and_type(text):
     """
     Extracts the most likely year and election type from anywhere in the string.
     Picks the last year and the most frequent or last type found.
-    Returns (year, election_type, cleaned_text)
+    Returns (year, election_types, cleaned_text)
     """
     # Find all years (4 digits, 2020-2099)
     years = re.findall(r'(20\d{2})', text)
@@ -711,22 +711,21 @@ def scan_html_for_context(
             text = seg["text"]
             # Split long blocks into possible contests
             for possible in split_possible_contests(text):
-                seg_year, seg_type, cleaned_title = extract_year_and_type(possible)
+                seg_year, seg_type_, cleaned_title = extract_year_and_type(possible)
                 # Only treat as contest if it contains a contest keyword or a valid type
-                if any(kw in possible.lower() for kw in CONTEST_KEYWORDS) or seg_type:
+                if any(kw in possible.lower() for kw in CONTEST_KEYWORDS) or seg_type_:
                     raw_contests.append({
                         "title": cleaned_title,
                         "state": state,
                         "county": county,
                         "year": seg_year or year,
-                        "type": seg_type,
+                        "type_": seg_type_,
                         "segment_hash": seg["segment_hash"],
                     })
         contests = diagnostics_and_filter(
             raw_contests, "contest",
             required_fields=["title"],
             max_title_len=500,
-            min_len=0
         )
         context_result["contests"] = contests
 
@@ -743,7 +742,6 @@ def scan_html_for_context(
             raw_panels, "panel",
             required_fields=["panel_text"],
             max_title_len=1000,
-            min_len=0
         )
         context_result["panels"] = panels
 
@@ -752,19 +750,19 @@ def scan_html_for_context(
         for seg in _extract_segments_by_label(segments_with_attrs, "results_table"):
             text = seg["text"]
             # Optionally extract year/type if present in table captions or headings
-            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            seg_year, seg_type_, cleaned_text = extract_year_and_type(text)
             raw_tables.append({
                 "table_text": cleaned_text,
                 "table_html": seg["raw_html"],
                 "year": seg_year,
-                "type": seg_type,
+                "type_": seg_type_,
                 "segment_hash": seg["segment_hash"],
             })
         tables = diagnostics_and_filter(
             raw_tables, "table",
             required_fields=["table_text"],
             max_title_len=10000,
-            min_len=0
+
         )
         context_result["tables"] = tables
 
@@ -772,19 +770,19 @@ def scan_html_for_context(
         raw_candidate_panels = []
         for seg in _extract_segments_by_label(segments_with_attrs, "candidate_panel"):
             text = seg["text"]
-            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            seg_year, seg_type_, cleaned_text = extract_year_and_type(text)
             raw_candidate_panels.append({
                 "candidate_panel_text": cleaned_text,
                 "candidate_panel_html": seg["raw_html"],
                 "year": seg_year,
-                "type": seg_type,
+                "type_": seg_type_,
                 "segment_hash": seg["segment_hash"],
             })
         candidate_panels = diagnostics_and_filter(
             raw_candidate_panels, "candidate_panel",
             required_fields=["candidate_panel_text"],
             max_title_len=1000,
-            min_len=0
+
         )
         context_result["candidate_panels"] = candidate_panels
 
@@ -792,19 +790,19 @@ def scan_html_for_context(
         raw_location_panels = []
         for seg in _extract_segments_by_label(segments_with_attrs, "location_panel"):
             text = seg["text"]
-            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            seg_year, seg_type_, cleaned_text = extract_year_and_type(text)
             raw_location_panels.append({
                 "location_panel_text": cleaned_text,
                 "location_panel_html": seg["raw_html"],
                 "year": seg_year,
-                "type": seg_type,
+                "type_": seg_type_,
                 "segment_hash": seg["segment_hash"],
             })
         location_panels = diagnostics_and_filter(
             raw_location_panels, "location_panel",
             required_fields=["location_panel_text"],
             max_title_len=1000,
-            min_len=0
+
         )
         context_result["location_panels"] = location_panels
 
@@ -817,7 +815,7 @@ def scan_html_for_context(
                     "heading_text": text,
                     "heading_html": seg["raw_html"],
                     "segment_hash": seg["segment_hash"],
-                    "heading_type": "last_webpage_update"
+                    "heading_type_": "last_webpage_update"
                 })
                 ts_match = re.search(r'(\w+day,?\s+\w+\s+\d{1,2},\s+20\d{2}.*\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?)', text)
                 if ts_match:
@@ -827,34 +825,34 @@ def scan_html_for_context(
                     "heading_text": text,
                     "heading_html": seg["raw_html"],
                     "segment_hash": seg["segment_hash"],
-                    "heading_type": "content"
+                    "heading_type_": "content"
                 })
 
         headings = diagnostics_and_filter(
             raw_headings, "heading",
             required_fields=["heading_text"],
             max_title_len=500,
-            min_len=0
+
         )
         context_result["headings"] = headings
 
         # Ballot Types
         raw_ballot_types = []
-        for seg in _extract_segments_by_label(segments_with_attrs, "ballot_type"):
+        for seg in _extract_segments_by_label(segments_with_attrs, "ballot_types"):
             text = seg["text"]
-            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            seg_year, seg_type_, cleaned_text = extract_year_and_type(text)
             raw_ballot_types.append({
-                "ballot_type_text": cleaned_text,
-                "ballot_type_html": seg["raw_html"],
+                "ballot_types_text": cleaned_text,
+                "ballot_types_html": seg["raw_html"],
                 "year": seg_year,
-                "type": seg_type,
+                "type_": seg_type_,
                 "segment_hash": seg["segment_hash"],
             })
         ballot_types = diagnostics_and_filter(
-            raw_ballot_types, "ballot_type",
-            required_fields=["ballot_type_text"],
+            raw_ballot_types, "ballot_types",
+            required_fields=["ballot_types_text"],
             max_title_len=200,
-            min_len=0
+
         )
         context_result["ballot_types"] = ballot_types
 
@@ -875,7 +873,7 @@ def scan_html_for_context(
             raw_results_timestamps, "results_timestamp",
             required_fields=["timestamp_text"],
             max_title_len=200,
-            min_len=0
+
         )
         context_result["results_timestamps"] = results_timestamps
 
@@ -892,7 +890,7 @@ def scan_html_for_context(
             raw_party_labels, "party_label",
             required_fields=["party_label_text"],
             max_title_len=200,
-            min_len=0
+
         )
         context_result["party_labels"] = party_labels
 
@@ -909,7 +907,7 @@ def scan_html_for_context(
             raw_vote_methods, "vote_method",
             required_fields=["vote_method_text"],
             max_title_len=200,
-            min_len=0
+
         )
         context_result["vote_methods"] = vote_methods
 
@@ -1099,7 +1097,7 @@ def extract_tagged_segments_with_attrs(
                 attrs.update({k: v for k, v in node.attributes.items() if k.startswith("data-")})
             classes = attrs.get("class", "").split() if "class" in attrs else []
             id_ = attrs.get("id", "")
-            is_button = tag == "button" or (tag == "input" and attrs.get("type", "").lower() in ["button", "submit"])
+            is_button = tag == "button" or (tag == "input" and attrs.get("type_", "").lower() in ["button", "submit"])
             is_clickable = is_button or tag == "a" or "onclick" in attrs or "btn" in classes or "button" in classes
 
             this_heading_idx = heading_idx
@@ -1234,12 +1232,12 @@ def get_page_hash(page):
     content = page.content()
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
-def load_context_cache_from_disk(filename="context_cache.json"):
+def load_context_cache_from_disk(filename=None):
     global _context_cache
-    if _context_cache is not None:
-        _context_cache = {k: v for k, v in _context_cache.items() if isinstance(v, dict)}
-        return _context_cache
+    if filename is None:
+        filename = os.path.basename(CONTEXT_CACHE_PATH)
     path = safe_cache_path(filename)
+    print(f"[DEBUG] Loading context cache from: {path}")
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
@@ -1253,8 +1251,9 @@ def load_context_cache_from_disk(filename="context_cache.json"):
     return {}
 
 def save_context_cache_to_disk(context_cache, path=CONTEXT_CACHE_PATH):
+    print(f"[DEBUG] Saving context cache to: {path}")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    context_cache = convert_ndarrays(context_cache)  # <-- Add this line
+    context_cache = convert_ndarrays(context_cache)
     with open(path, "wb") as f:
         f.write(orjson.dumps(context_cache))
 
@@ -1348,7 +1347,7 @@ def prompt_for_segment_label(segment, context_library=None):
         html_preview = f"[No HTML] tag={segment.get('tag', [])} attrs={segment.get('attrs', [])}"
     log_warning(f"\n[bold yellow]Segment needs review:[/bold yellow]\n{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
     log_info(
-        "[cyan]What is the semantic role of this segment? (e.g., results_table, ballot_toggle, heading, panel, candidate_panel, location_panel, ballot_type, results_timestamp, download_link, clickable, footer, legend, contest_title, party_label, vote_method, reporting_status, summary, error_message, warning, info_box, navigation, pagination, tab, modal, tooltip, ignore, unknown, etc.)[/cyan]"
+        "[cyan]What is the semantic role of this segment? (e.g., results_table, ballot_toggle, heading, panel, candidate_panel, location_panel, ballot_types, results_timestamp, download_link, clickable, footer, legend, contest_title, party_label, vote_method, reporting_status, summary, error_message, warning, info_box, navigation, pagination, tab, modal, tooltip, ignore, unknown, etc.)[/cyan]"
     )
     label = prompt_user_input("> ").strip()
     cache_segment_label(seg_hash, label)

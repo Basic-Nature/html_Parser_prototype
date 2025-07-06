@@ -141,8 +141,8 @@ def parse(page, html_context=None):
             "race": contest_title or "Unknown"
         }
 
-        from ....Context_Integration.context_organizer import organize_context
-        organized = organize_context(metadata)
+        from ....Context_Integration.context_organizer import ContextOrganizer
+        organized = ContextOrganizer.organize_context(metadata)
         metadata = organized.get("metadata", metadata)
         result = finalize_election_output(headers, data, contest_title, metadata)
         contest_title = result.get("contest_title", contest_title)

@@ -1,56 +1,69 @@
 import orjson
 from pathlib import Path
-from ..utils.db_utils import create_table_structure, get_session
+from typing import Any, Dict, List
+from ..utils.db_utils import get_session
 from ..utils.models import TableStructure
 from ..config import CACHE_DIR, LOG_DIR, CONTEXT_LIBRARY_DIR
-import orjson
+
+import logging
 
 MIGRATION_STATE_FILE = Path(CONTEXT_LIBRARY_DIR) / ".migration_state.json"
+logger = logging.getLogger("context_migration")
+logging.basicConfig(level=logging.INFO)
 
-def table_structure_exists(session, contest_title, headers, context):
+def table_structure_exists(session, contest_title: str, headers: str, context: str) -> bool:
     return session.query(TableStructure).filter_by(
         contest_title=contest_title,
         headers=headers,
         context=context
     ).first() is not None
-    
-def migrate_table_structures_from_jsonl(jsonl_path):
-    print(f"[MIGRATE] Migrating from {jsonl_path} ...")
+
+def create_table_structure(session, contest_title: str, headers: str, context: str, confirmed_by_user: bool = True):
+    """
+    Insert a new TableStructure row if not exists.
+    """
+    ts = TableStructure(
+        contest_title=contest_title,
+        headers=headers,
+        context=context,
+        confirmed_by_user=confirmed_by_user
+    )
+    session.add(ts)
+    logger.info(f"[MIGRATE] Added TableStructure: {contest_title}")
+
+def migrate_table_structures_from_jsonl(jsonl_path: Path):
+    logger.info(f"[MIGRATE] Migrating from {jsonl_path} ...")
     count = 0
     with get_session() as session:
-        with open(jsonl_path, "r", encoding="utf-8") as f:
+        with open(jsonl_path, "rb") as f:
             for idx, line in enumerate(f, 1):
                 try:
                     entry = orjson.loads(line)
                 except Exception as e:
-                    print(f"[MIGRATE][WARN] {jsonl_path} line {idx}: Skipping malformed line: {e}")
+                    logger.warning(f"{jsonl_path} line {idx}: Skipping malformed line: {e}")
                     continue
                 if not isinstance(entry, dict):
-                    print(f"[MIGRATE][WARN] {jsonl_path} line {idx}: Skipping non-dict entry: {entry}")
+                    logger.warning(f"{jsonl_path} line {idx}: Skipping non-dict entry: {entry}")
                     continue
                 if entry.get("result") == "learning_confirmed" or entry.get("confirmed_by_user", False):
                     contest_title = entry.get("contest_title", "")
                     headers = orjson.dumps(entry.get("headers", [])).decode()
                     context = orjson.dumps(entry.get("context", {})).decode()
                     if not table_structure_exists(session, contest_title, headers, context):
-                        create_table_structure(
-                            contest_title=contest_title,
-                            headers=headers,
-                            context=context,
-                            confirmed_by_user=True
-                        )
+                        create_table_structure(session, contest_title, headers, context, True)
                         count += 1
-    print(f"[MIGRATE] Inserted {count} new table structures from {jsonl_path}")
+        session.commit()
+    logger.info(f"[MIGRATE] Inserted {count} new table structures from {jsonl_path}")
 
-def migrate_table_structures_from_json(json_path):
-    print(f"[MIGRATE] Migrating from {json_path} ...")
+def migrate_table_structures_from_json(json_path: Path):
+    logger.info(f"[MIGRATE] Migrating from {json_path} ...")
     count = 0
     with get_session() as session:
         with open(json_path, "rb") as f:
             try:
                 data = orjson.loads(f.read())
             except Exception as e:
-                print(f"[MIGRATE][WARN] {json_path}: Skipping malformed file: {e}")
+                logger.warning(f"{json_path}: Skipping malformed file: {e}")
                 return
             if isinstance(data, list):
                 entries = data
@@ -60,38 +73,42 @@ def migrate_table_structures_from_json(json_path):
                 entries = []
             for idx, entry in enumerate(entries, 1):
                 if not isinstance(entry, dict):
-                    print(f"[MIGRATE][WARN] {json_path} entry {idx}: Skipping non-dict entry: {entry}")
+                    logger.warning(f"{json_path} entry {idx}: Skipping non-dict entry: {entry}")
                     continue
                 contest_title = entry.get("contest_title", "")
                 headers = orjson.dumps(entry.get("headers", [])).decode()
                 context = orjson.dumps(entry.get("context", {})).decode()
                 if not table_structure_exists(session, contest_title, headers, context):
                     create_table_structure(
-                        contest_title=contest_title,
-                        headers=headers,
-                        context=context,
+                        session,
+                        contest_title,
+                        headers,
+                        context,
                         confirmed_by_user=entry.get("confirmed_by_user", True)
                     )
                     count += 1
-    print(f"[MIGRATE] Inserted {count} new table structures from {json_path}")
+        session.commit()
+    logger.info(f"[MIGRATE] Inserted {count} new table structures from {json_path}")
 
-def load_migration_state():
+def load_migration_state() -> Dict[str, Any]:
     if MIGRATION_STATE_FILE.exists():
         with open(MIGRATION_STATE_FILE, "rb") as f:
             return orjson.loads(f.read())
     return {}
 
-def save_migration_state(state):
+def save_migration_state(state: Dict[str, Any]):
     with open(MIGRATION_STATE_FILE, "wb") as f:
         f.write(orjson.dumps(state))
 
 def migrate_all():
-    # Only .jsonl in LOG_DIR, only .json in CACHE_DIR, both in CONTEXT_LIBRARY_DIR
+    """
+    Migrate all table structure files from LOG_DIR, CACHE_DIR, CONTEXT_LIBRARY_DIR.
+    Only migrates changed files (by mtime).
+    """
     state = load_migration_state()
-    files_to_migrate = []
-    # LOG_DIR: only .jsonl
+    files_to_migrate: List[Path] = []
     patterns = ["*table_structure*.jsonl", "*table_structure*.json"]
-    
+
     for pattern in patterns:
         files_to_migrate += list(Path(LOG_DIR).glob(pattern))
         files_to_migrate += list(Path(CONTEXT_LIBRARY_DIR).glob(pattern))
@@ -101,13 +118,16 @@ def migrate_all():
         mtime = file_path.stat().st_mtime
         if str(file_path) in state and state[str(file_path)] == mtime:
             continue  # Skip unchanged
-        if file_path.suffix == ".jsonl":
-            migrate_table_structures_from_jsonl(file_path)
-        elif file_path.suffix == ".json":
-            migrate_table_structures_from_json(file_path)
-        state[str(file_path)] = mtime
+        try:
+            if file_path.suffix == ".jsonl":
+                migrate_table_structures_from_jsonl(file_path)
+            elif file_path.suffix == ".json":
+                migrate_table_structures_from_json(file_path)
+            state[str(file_path)] = mtime
+        except Exception as e:
+            logger.error(f"[MIGRATE] Failed to migrate {file_path}: {e}")
     save_migration_state(state)
 
 if __name__ == "__main__":
     migrate_all()
-    print("[MIGRATE] Migration complete.")
+    logger.info("[MIGRATE] Migration complete.")

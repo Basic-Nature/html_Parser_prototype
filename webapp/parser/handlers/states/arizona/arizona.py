@@ -7,8 +7,7 @@ import os
 import orjson
 from tqdm import tqdm
 from ....utils.shared_logger import log_info, log_debug, log_warning, log_error
-from ....utils.shared_logger import rprint
-from ....Context_Integration.context_organizer import organize_context
+from ....Context_Integration.context_organizer import ContextOrganizer
 from ....utils.output_utils import finalize_election_output
 from ....config import CONTEXT_LIBRARY_PATH
 # Load config from context library if available
@@ -176,7 +175,7 @@ def parse(page, html_context=None):
         metadata.update(county_totals)
 
     # Enrich metadata and finalize output
-    organized = organize_context(metadata)
+    organized = ContextOrganizer.organize_context(metadata)
     metadata = organized.get("metadata", metadata)
     result = finalize_election_output(headers_out, precinct_data, contest_title, metadata)
     contest_title = result.get("contest_title", contest_title)

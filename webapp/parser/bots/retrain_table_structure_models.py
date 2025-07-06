@@ -8,33 +8,90 @@ import time
 import shutil
 import gc
 import sys
+import random
+import logging
+from typing import List, Dict, Any, Optional, Set, Tuple
 from ..utils.model_registry import ModelRegistry
 from collections import Counter
 from sentence_transformers import InputExample, losses
 from torch.utils.data import DataLoader
 from ..bots.librarian import load_context_library
-from ..utils.db_utils import _safe_db_path
+from ..utils.db_utils import _safe_db_path, get_session, create_engine
 from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, POSTGRES_URL, LOG_DIR
-
+import numpy as np
 import spacy
 from spacy.training import Example, offsets_to_biluo_tags
 from spacy.lookups import Lookups
 import glob
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
-import argparse
-import gc
-from sqlalchemy.orm import Session
+import tqdm
+import torch
 from sqlalchemy import select, inspect
-from ..utils.db_utils import get_session, create_engine
-from ..utils.models import TableStructure, Entity
-from ..utils.models import Base
+from ..utils.models import TableStructure, Base
 from ..utils.shared_logger import log_warning
 
+# --- Logging Setup ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("retrain_table_structure_models")
+
+# --- Advanced Entity Models (see models.py for full implementation) ---
+# See previous answer for SQLAlchemy models: Party, State, County, District, Office, Candidate, Contest, Result, etc.
+
+# --- Utility: get_or_create for advanced schema ---
+def get_or_create(session, model, defaults=None, **kwargs):
+    instance = session.query(model).filter_by(**kwargs).first()
+    if instance:
+        return instance
+    else:
+        params = dict((k, v) for k, v in kwargs.items())
+        params.update(defaults or {})
+        instance = model(**params)
+        session.add(instance)
+        session.commit()
+        return instance
+
+# --- Entity Extraction and Normalization ---
+def normalize_entity(value: str) -> str:
+    if not value or not isinstance(value, str):
+        return ""
+    return value.strip().title()
+
+def normalize_entity_list(entity_list: List[str]) -> List[str]:
+    return sorted(set(normalize_entity(e) for e in entity_list if e and isinstance(e, str)))
+
+# --- Advanced DB Update Function ---
+def update_advanced_entities(parsed_data: List[Dict[str, Any]], db_path: str):
+    """
+    parsed_data: list of dicts with keys: candidate, party, contest, office, votes, percent, etc.
+    """
+    from ..utils.models import Party, State, County, District, Office, Candidate, Contest, Result
+    with get_session() as session:
+        for row in parsed_data:
+            try:
+                party = get_or_create(session, Party, name=normalize_entity(row.get("party", "")))
+                state = get_or_create(session, State, name=normalize_entity(row.get("state", "")))
+                county = get_or_create(session, County, name=normalize_entity(row.get("county", "")), state=state)
+                office = get_or_create(session, Office, name=normalize_entity(row.get("office", "")))
+                district = get_or_create(session, District, name=normalize_entity(row.get("district", "")), state=state)
+                candidate = get_or_create(session, Candidate, name=normalize_entity(row.get("candidate", "")), party=party, district=district, office=office)
+                contest = get_or_create(session, Contest, title=normalize_entity(row.get("contest", "")), year=row.get("year"), state=state, county=county, district=district, office=office)
+                result = get_or_create(
+                    session, Result,
+                    candidate=candidate, contest=contest,
+                    votes=row.get("votes"), percent=row.get("percent"),
+                    is_winner=row.get("is_winner", False), is_incumbent=row.get("is_incumbent", False),
+                    vote_method=row.get("vote_method")
+                )
+                logger.info(f"Upserted result for candidate {candidate.name} in contest {contest.title}")
+            except Exception as e:
+                logger.error(f"Failed to upsert entity row: {row} ({e})")
+        session.commit()
+    logger.info("Advanced entity DB update complete.")
 
 ELECTION_ENTITY_LABELS = [
     "CONTEST", "CANDIDATE", "PARTY", "COUNTY", "STATE", "DISTRICT", "VOTE_METHOD",
-    "BALLOT_TYPE", "PRECINCT", "TOTAL", "PERCENT", "YEAR", "ELECTION_TYPE", "OFFICE", "MISC",
+    "BALLOT_TYPE", "PRECINCT", "TOTAL", "PERCENT", "YEAR", "ELECTION_TYPES", "OFFICE", "MISC",
     "BALLOT_MEASURE", "LOCATION", "DATE", "INCUMBENT", "WINNER", "LOSER", "WRITE_IN", "UNOPPOSED", "PROPOSITION", 
     "AMENDMENT", "DISTRICT_TYPE", "JURISDICTION", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "AFFIDAVIT", "OTHER"   
 ]
@@ -49,7 +106,7 @@ ENTITY_PATTERNS = [
     (r"\bpercent\b|\b% precincts reporting\b|\b% reporting\b|\bpercent reporting\b", "PERCENT"),
     (r"\bcounty\b", "COUNTY"),
     (r"\bstate\b", "STATE"),
-    (r"\bgeneral|primary|special\b", "ELECTION_TYPE"),
+    (r"\bgeneral|primary|special\b", "ELECTION_TYPES"),
     (r"\b(overvote|undervote|scattering|write-in|blank|spoiled)\b", "MISC"),
     (r"\b(proposition|amendment|measure|referendum|initiative)\b", "BALLOT_MEASURE"),
     (r"\b(city|town|village|borough|municipality|community|district)\b", "LOCATION"),
@@ -65,7 +122,7 @@ ENTITY_PATTERNS = [
     (r"\belection official\b", "ELECTION_OFFICIAL"),
     (r"\b(results|outcome|tally|count)\b", "RESULTS"),
     (r"\b(vote count|vote total|vote tally)\b", "VOTE_COUNT"),
-    (r"\b(?:election|vote|poll|referendum|plebiscite)\b", "ELECTION_TYPE"),  
+    (r"\b(?:election|vote|poll|referendum|plebiscite)\b", "ELECTION_TYPES"),  
     (r"\b(?:candidate|nominee|aspirant|hopeful)\b", "CANDIDATE"),
     (r"\b(?:election official|poll worker|election judge|inspector)\b", "ELECTION_OFFICIAL"),
     
@@ -238,7 +295,7 @@ def auto_label_header(header: str, context: dict = None):
             start, end = match.span()
             labels.append((start, end, label))
     if context:
-        for label_type, values in [
+        for label_type_, values in [
             ("COUNTY", context.get("known_counties", [])),
             ("LOCATION", context.get("known_cities", [])),
             ("STATE", context.get("known_states", [])),
@@ -249,7 +306,7 @@ def auto_label_header(header: str, context: dict = None):
             for val in values:
                 for match in re.finditer(re.escape(val), header, re.IGNORECASE):
                     start, end = match.span()
-                    labels.append((start, end, label_type))
+                    labels.append((start, end, label_type_))
     labels = sorted(set(labels), key=lambda x: (x[0], x[1]))
     return labels
 
@@ -275,14 +332,15 @@ def update_db_with_new_entities(new_entities, db_path):
     """
     Update the Entity table in PostgreSQL with new entities using SQLAlchemy.
     """
+    from ..utils.models import Entity
     with get_session() as session:
-        for entity_type, values in new_entities.items():
+        for entity_type_, values in new_entities.items():
             for value in values:
                 exists = session.execute(
-                    select(Entity).where(Entity.entity_type == entity_type, Entity.value == value)
+                    select(Entity).where(Entity.entity_type_ == entity_type_, Entity.value == value)
                 ).scalar_one_or_none()
                 if not exists:
-                    session.add(Entity(entity_type=entity_type, value=value))
+                    session.add(Entity(entity_type_=entity_type_, value=value))
         session.commit()
     print(f"Updated DB with new entities: {{ { {k: len(v) for k,v in new_entities.items()} } }}")
 
@@ -304,7 +362,7 @@ def load_spacy_ner_examples(jsonl_path):
 
 # Label priority for deduplication: higher in the list = higher priority
 LABEL_PRIORITY = [
-    "CANDIDATE", "PARTY", "VOTE_METHOD", "PRECINCT", "DISTRICT", "COUNTY", "STATE", "TOTAL", "ELECTION_TYPE", "OFFICE", "WRITE_IN", "MISC", "BALLOT_MEASURE", "LOCATION", "DATE", "INCUMBENT", "WINNER", "LOSER", "UNOPPOSED", "PROPOSITION", "AMENDMENT", "DISTRICT_TYPE", "JURISDICTION", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "AFFIDAVIT", "OTHER"
+    "CANDIDATE", "PARTY", "VOTE_METHOD", "PRECINCT", "DISTRICT", "COUNTY", "STATE", "TOTAL", "ELECTION_TYPES", "OFFICE", "WRITE_IN", "MISC", "BALLOT_MEASURE", "LOCATION", "DATE", "INCUMBENT", "WINNER", "LOSER", "UNOPPOSED", "PROPOSITION", "AMENDMENT", "DISTRICT_TYPE", "JURISDICTION", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "AFFIDAVIT", "OTHER"
 ]
 
 def remove_overlapping_entities(entities):
@@ -349,20 +407,34 @@ def validate_training_data(train_data, nlp, logger=None):
                 log_warning(f"Error validating entity alignment: {e}")
     return valid_data
 
-def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model_save_path="fine_tuned_spacy_ner"):
+def retrain_spacy_ner_advanced(
+    confirmed_structures, 
+    context_library=None, 
+    model_save_path="fine_tuned_spacy_ner",
+    max_epochs=None,
+    patience=3,
+    min_delta=0.01,
+    batch_size=32
+):
     import importlib
+
     nlp = spacy.blank("en")
+    # Try to use GPU if available
+    if spacy.prefer_gpu():
+        print("[INFO] spaCy using GPU for training.")
+    else:
+        print("[INFO] spaCy using CPU for training.")
+
     # --- Robust lexeme normalization loading ---
     try:
         lookups_mod = importlib.util.find_spec("spacy.lookups")
         if lookups_mod and hasattr(Lookups(), "add_table"):
             lookups = Lookups()
-            # Only attempt to load lexeme_norm if the function exists
             if hasattr(spacy.lookups, "load_lookups_data"):
                 lookups.add_table("lexeme_norm", spacy.lookups.load_lookups_data("en", tables=["lexeme_norm"]).get_table("lexeme_norm"))
                 nlp.vocab.lookups = lookups
     except Exception as e:
-        print("[spaCy] Could not load lexeme normalization table. You may ignore this for English. To suppress, install spacy-lookups-data and load the table if needed. Error:", e)
+        print("[spaCy] Could not load lexeme normalization table. You may ignore this for English. Error:", e)
 
     if "ner" not in nlp.pipe_names:
         ner = nlp.add_pipe("ner")
@@ -371,6 +443,7 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     for label in ELECTION_ENTITY_LABELS:
         ner.add_label(label)
 
+    # --- Data Preparation ---
     known_context = context_library or {}
     train_data = []
     all_candidates = set()
@@ -427,15 +500,12 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
             if "-" in tags:
                 misaligned_count += 1
                 misaligned_examples.append({"text": text, "entities": annots["entities"]})
-                log_warning(f"Skipping misaligned entity in: {text}")
                 continue
             valid_data.append((text, annots))
         except Exception as e:
             misaligned_count += 1
             misaligned_examples.append({"text": text, "entities": annots["entities"], "error": str(e)})
-            log_warning(f"Error validating entity alignment: {e}")
     if misaligned_examples:
-        # Save misaligned examples for review
         misaligned_path = os.path.join(LOG_DIR, "spacy_ner_misaligned.jsonl")
         with open(misaligned_path, "wb") as f:
             for ex in misaligned_examples:
@@ -446,7 +516,7 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     entity_frequency_analysis(train_data)
     print(f"[NER] Used {len(train_data)} valid examples, skipped {misaligned_count} misaligned.")
 
-    # Convert to spaCy Example objects
+    # --- Training ---
     examples = []
     for text, annots in train_data:
         doc = nlp.make_doc(text)
@@ -456,37 +526,101 @@ def retrain_spacy_ner_advanced(confirmed_structures, context_library=None, model
     if not examples:
         print("No NER training examples found. Skipping spaCy NER retraining.")
         return
+
     optimizer = nlp.begin_training()
-    for i in range(10):
+    optimizer.learn_rate = 0.001
+
+    # --- Dynamic Early Stopping and Adaptive min_delta ---
+    epochs = max_epochs or int(os.getenv("SPACY_NER_EPOCHS", 10))
+    patience = int(os.getenv("SPACY_NER_PATIENCE", 3))
+    min_delta = float(os.getenv("SPACY_NER_MIN_DELTA", 0.01))
+    batch_size = int(os.getenv("SPACY_NER_BATCH_SIZE", 32))
+    no_improve = 0
+    best_loss = float("inf")
+    best_model_path = model_save_path + "_best"
+    best_epoch = 0
+    loss_history = []
+
+    print(f"[INFO] Starting spaCy NER training for up to {epochs} epochs, batch size {batch_size}...")
+    for i in range(epochs):
         losses = {}
-        nlp.update(examples, drop=0.2, losses=losses)
-        if "ner" in losses:
-            print(f"spaCy NER retraining epoch {i+1}, loss: {losses['ner']}")
+        random.shuffle(examples)
+        for batch in tqdm.tqdm([examples[j:j+batch_size] for j in range(0, len(examples), batch_size)], desc=f"spaCy NER epoch {i+1}"):
+            nlp.update(batch, sgd=optimizer, drop=0.2, losses=losses)
+        epoch_loss = losses.get("ner", 0)
+        loss_history.append(epoch_loss)
+        print(f"spaCy NER retraining epoch {i+1}, loss: {epoch_loss:.4f}")
+
+        # --- Dynamic min_delta: scale with loss magnitude ---
+        if i == 0 and min_delta < 1:
+            # If user left min_delta at default, auto-scale for large loss
+            min_delta = max(0.01, epoch_loss * 0.01)
+            print(f"[AUTO] Adjusted min_delta to {min_delta:.2f} based on initial loss.")
+
+        # --- Loss smoothing: use moving average over last 3 epochs ---
+        if len(loss_history) > 3:
+            smoothed_loss = np.mean(loss_history[-3:])
         else:
-            print(f"spaCy NER retraining epoch {i+1}, loss: N/A")
+            smoothed_loss = epoch_loss
+
+        # --- Save best model ---
+        if smoothed_loss < best_loss - min_delta:
+            best_loss = smoothed_loss
+            no_improve = 0
+            best_epoch = i + 1
+            nlp.to_disk(best_model_path)
+            print(f"[INFO] New best model saved at epoch {i+1} with smoothed loss {smoothed_loss:.2f}")
+        else:
+            no_improve += 1
+
+        # --- Dynamic patience: extend if still improving fast ---
+        if no_improve >= patience:
+            print(f"[INFO] Early stopping at epoch {i+1} (no improvement for {patience} epochs).")
+            break
+        if i > 2 and smoothed_loss < 0.5 * loss_history[0] and patience < 8:
+            patience += 1
+            print(f"[AUTO] Increased patience to {patience} due to rapid improvement.")
+
+    # Restore best model
+    if os.path.exists(best_model_path):
+        print(f"[INFO] Restoring best model from epoch {best_epoch} with loss {best_loss:.2f}")
+        nlp = spacy.load(best_model_path)
+        shutil.rmtree(best_model_path, ignore_errors=True)
     nlp.to_disk(model_save_path)
     print(f"Fine-tuned spaCy NER model saved to: {model_save_path}")
 
+    # --- Training summary and suggestions ---
+    print(f"[SUMMARY] Best loss: {best_loss:.2f} at epoch {best_epoch}")
+    if best_epoch < epochs:
+        print(f"[SUGGESTION] Consider lowering min_delta or increasing patience if you want longer training.")
+    elif best_epoch == epochs:
+        print(f"[SUGGESTION] Model improved until the last epoch. Consider increasing epochs for further improvement.")
+    print(f"[SUGGESTION] Next run: patience={patience}, min_delta={min_delta:.2f}, epochs={epochs}")
+    def normalize_entity_list(entity_list):
+        return sorted(set(e.strip().title() for e in entity_list if e and isinstance(e, str)))
     # Update DB with new entities
     new_entities = {
-        "CANDIDATE": list(all_candidates),
-        "PARTY": list(all_parties),
-        "COUNTY": list(all_counties),
-        "STATE": list(all_states),
-        "DISTRICT": list(all_districts),
-        "LOCATION": list(all_locations),
-        "VOTE_METHOD": list(context_library.get("known_vote_methods", [])),
-        "BALLOT_MEASURE": list(context_library.get("known_ballot_measures", [])),
-        "ELECTION_TYPE": list(context_library.get("known_election_types", [])),
-        "YEAR": list(context_library.get("known_years", [])),
-        "MISC": list(context_library.get("known_misc", [])),
-        "OFFICE": list(context_library.get("known_offices", [])),
-        "ELECTION_OFFICIAL": list(context_library.get("known_election_officials", [])),
-        "RESULTS": list(context_library.get("known_results", [])),
-        "VOTE_COUNT": list(context_library.get("known_vote_counts", [])),        
+        "CANDIDATE": normalize_entity_list(all_candidates),
+        "PARTY": normalize_entity_list(all_parties),
+        "COUNTY": normalize_entity_list(all_counties),
+        "STATE": normalize_entity_list(all_states),
+        "DISTRICT": normalize_entity_list(all_districts),
+        "LOCATION": normalize_entity_list(all_locations),
+        "VOTE_METHOD": normalize_entity_list(context_library.get("known_vote_methods", [])),
+        "BALLOT_MEASURE": normalize_entity_list(context_library.get("known_ballot_measures", [])),
+        "ELECTION_TYPES": normalize_entity_list(context_library.get("known_election_types", [])),
+        "YEAR": normalize_entity_list(context_library.get("known_years", [])),
+        "OFFICE": normalize_entity_list(context_library.get("known_offices", [])),
+        "ELECTION_OFFICIAL": normalize_entity_list(context_library.get("known_election_officials", [])),
+        "RESULTS": normalize_entity_list(context_library.get("known_results", [])),
+        "VOTE_COUNT": normalize_entity_list(context_library.get("known_vote_counts", [])),
+        "TOTAL": normalize_entity_list(context_library.get("known_totals", [])),
+        "PERCENT": normalize_entity_list(context_library.get("known_percents", [])),
+        "MISC": normalize_entity_list(context_library.get("known_misc", [])),
     }
     update_db_with_new_entities(new_entities, _safe_db_path(CONTEXT_DB_PATH))
-    
+    print(f"[DB] Updated with entities: {{ { {k: len(v) for k, v in new_entities.items()} } }}")
+
 def get_all_confirmed_structures():
     """
     Retrieve all confirmed table structures from PostgreSQL using SQLAlchemy.
@@ -528,7 +662,7 @@ def run_manual_correction_bot():
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Manual correction bot failed: {e.stderr}")
 
-def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
+def retrain_sentence_transformer(confirmed_structures, model_save_path=None, epochs=1, batch_size=8):
     """
     Fine-tunes the SentenceTransformer model on confirmed structures.
     Loads the existing model for further training if present, otherwise starts from base.
@@ -551,12 +685,11 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
         return
 
     base_dir = MODEL_DIR if 'MODEL_DIR' in globals() else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../model"))
-    # Always save to a new directory with a timestamp to avoid file lock issues
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     model_save_path = model_save_path or os.path.join(base_dir, f"fine_tuned_table_headers_{timestamp}")
     os.makedirs(model_save_path, exist_ok=True)
 
-    # --- Delete oldest fine-tuned directory if more than 2 exist ---
+    # Clean up old models
     fine_tuned_dirs = sorted(
         [d for d in os.listdir(base_dir) if d.startswith("fine_tuned_table_headers_") and os.path.isdir(os.path.join(base_dir, d))]
     )
@@ -569,7 +702,7 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
         except Exception as e:
             print(f"[WARN] Could not delete old model directory {oldest_path}: {e}")
 
-    # Robust model loading: check for model files in the base directory (not the new save dir)
+    # Model loading
     model = None
     prev_model_dir = os.path.join(base_dir, "fine_tuned_table_headers")
     model_files = ["config.json", "pytorch_model.bin", "model.safetensors", "tf_model.h5", "model.ckpt.index", "flax_model.msgpack"]
@@ -588,6 +721,7 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
         except Exception as e:
             print(f"[ERROR] Could not load base SentenceTransformer: {e}")
             return
+
     # Defensive: clean up incomplete/corrupt model directory before saving
     for f in model_files:
         fpath = os.path.join(model_save_path, f)
@@ -597,13 +731,14 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
                 os.remove(fpath)
             except Exception:
                 pass
-    train_dataloader = DataLoader(train_examples, shuffle=True, batch_size=8)
+
+    train_dataloader = DataLoader(train_examples, shuffle=True, batch_size=batch_size)
     train_loss = losses.CosineSimilarityLoss(model)
-    print(f"Retraining SentenceTransformer on {len(train_examples)} pairs...")
+    print(f"Retraining SentenceTransformer on {len(train_examples)} pairs for {epochs} epoch(s)...")
     try:
         model.fit(
             train_objectives=[(train_dataloader, train_loss)],
-            epochs=1,
+            epochs=epochs,
             warmup_steps=10,
             show_progress_bar=True
         )
@@ -613,10 +748,8 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None):
     try:
         safe_model_save(model, model_save_path)
         print(f"Fine-tuned model saved to: {model_save_path}")
-        # Optionally, update a symlink or copy to the canonical directory for downstream use
         canonical_dir = os.path.join(base_dir, "fine_tuned_table_headers")
         try:
-            # Remove old canonical dir if it exists
             if os.path.exists(canonical_dir):
                 shutil.rmtree(canonical_dir, ignore_errors=True)
             shutil.copytree(model_save_path, canonical_dir)
@@ -637,8 +770,6 @@ def segment_hash(segment):
 def load_cached_segment_hashes(context_library):
     """Return a set of all segment_hashes in the context library."""
     return {seg.get("segment_hash") for seg in context_library.get("cached_segments", [])}
-
-
 
 def scan_in_memory_ner_examples(train_data, verbose=False):
     """Scan a list of (text, annots) NER examples for misalignments using spaCy's offsets_to_biluo_tags."""
@@ -673,7 +804,6 @@ def ensure_table_structures_exists():
     else:
         print("[INFO] 'table_structures' table exists.")
 
-
 def main():
     ensure_table_structures_exists()
     if os.getenv("REVIEW_WITH_MANUAL_BOT", "false").lower() == "true":
@@ -684,13 +814,12 @@ def main():
     clean_misaligned_ner_jsonl(ner_train_jsonl)
 
     confirmed_structures = get_all_confirmed_structures()
-    print(f"Found {len(confirmed_structures)} confirmed table structures.")
+    logger.info(f"Found {len(confirmed_structures)} confirmed table structures.")
 
-    # Log user feedback/corrections for ML ---
+    # Log user feedback/corrections for ML
     feedback_log_path = os.path.join(LOG_DIR, "structure_feedback_log.jsonl")
     os.makedirs(os.path.dirname(feedback_log_path), exist_ok=True)
     for struct in confirmed_structures:
-        # Assume struct contains both original and corrected structure info if available
         old_structure_info = struct.get("original_structure", {})
         structure_info = struct.get("corrected_structure", {})
         headers = struct.get("headers", [])
@@ -709,7 +838,7 @@ def main():
         seg_hash = segment_hash(struct)
         if seg_hash not in cached_hashes:
             deduped_train_data.append(struct)
-    print(f"Deduplicated to {len(deduped_train_data)} unique structures for training.")
+    logger.info(f"Deduplicated to {len(deduped_train_data)} unique structures for training.")
 
     # Build NER training data (auto-label, dedupe, etc.)
     train_data = []
@@ -719,13 +848,11 @@ def main():
     all_states = set()
     all_districts = set()
     all_locations = set()
-    
-    # --- Load extra examples from JSONL file ---
     extra_examples = load_spacy_ner_examples(
         os.path.join(LOG_DIR, "spacy_ner_train_data.jsonl")
     )
     if extra_examples:
-        print(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
+        logger.info(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
     train_data.extend(extra_examples)
 
     for struct in deduped_train_data:
@@ -741,52 +868,58 @@ def main():
         context_candidates = extract_candidates_from_context(context)
         context["known_candidates"] = list(set(context.get("known_candidates", []) + context_candidates))
         all_candidates.update(context["known_candidates"])
-        all_parties.update([p for p in re.findall(r"\\b(?:Democratic|Republican|Libertarian|Green|Independent|Conservative|Working Families|Write-in|Other)\\b", " ".join(headers), re.IGNORECASE)])
+        all_parties.update([p for p in re.findall(r"\b(?:Democratic|Republican|Libertarian|Green|Independent|Conservative|Working Families|Write-in|Other)\b", " ".join(headers), re.IGNORECASE)])
         all_counties.update(context.get("known_counties", []))
         all_states.update(context.get("known_states", []))
         all_districts.update(context.get("known_districts", []))
         all_locations.update(context.get("known_cities", []))
-        
         for header in headers:
-            # Skip problematic headers that cause repeated misalignments
             if is_misaligned_text(header):
                 continue
             entities = auto_label_header(header, context)
             if entities:
-                # Remove overlapping entities before adding to train_data
                 entities = remove_overlapping_entities(entities)
                 train_data.append((header, {"entities": entities}))
 
     # Scan in-memory NER examples for misalignments before retraining
-    print("[INFO] Scanning in-memory NER training data for misalignments before retraining...")
+    logger.info("[INFO] Scanning in-memory NER training data for misalignments before retraining...")
     misaligned = scan_in_memory_ner_examples(train_data, verbose=True)
     if misaligned:
-        print(f"[ERROR] {len(misaligned)} misaligned NER examples found in final training data. Running diagnostics and launching manual_correction_bot. Aborting retraining.")
-        # Save misaligned examples for review
+        logger.error(f"{len(misaligned)} misaligned NER examples found in final training data. Running diagnostics and launching manual_correction_bot. Aborting retraining.")
         misaligned_path = os.path.join(LOG_DIR, "spacy_ner_misaligned.jsonl")
         with open(misaligned_path, "wb") as f:
             for text, entities in misaligned:
                 f.write(orjson.dumps({"text": text, "entities": entities}, option=orjson.OPT_APPEND_NEWLINE))
-        # Run scan_misaligned_ner as a module for diagnostics (use --jsonl, not --input)
         try:
             subprocess.run([
                 sys.executable, "-m", "webapp.parser.bots.scan_misaligned_ner", "--jsonl", misaligned_path
             ], check=True, cwd=PROJECT_ROOT, env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT)})
         except Exception as e:
-            print(f"[WARN] scan_misaligned_ner diagnostics failed: {e}")
-        # Launch manual correction bot robustly as a module
+            logger.warning(f"scan_misaligned_ner diagnostics failed: {e}")
         run_manual_correction_bot()
-        print("[INFO] Please correct misalignments and rerun retraining.")
+        logger.info("Please correct misalignments and rerun retraining.")
         sys.exit(2)
 
     # Use deduped_train_data for retraining
-    retrain_sentence_transformer(deduped_train_data)
-    retrain_spacy_ner_advanced(deduped_train_data, context_library)
+    retrain_sentence_transformer(
+        deduped_train_data,
+        epochs=int(os.getenv("SBERT_EPOCHS", 1)),
+        batch_size=int(os.getenv("SBERT_BATCH_SIZE", 8))
+    )
+    retrain_spacy_ner_advanced(
+        deduped_train_data,
+        context_library,
+        max_epochs=int(os.getenv("SPACY_NER_EPOCHS", 10)),
+        patience=int(os.getenv("SPACY_NER_PATIENCE", 3)),
+        min_delta=float(os.getenv("SPACY_NER_MIN_DELTA", 0.01)),
+        batch_size=int(os.getenv("SPACY_NER_BATCH_SIZE", 32))
+    )
     cluster_container_patterns()
-    print("\n[SUMMARY] Table Structure Model Retraining Complete.")
-    print("If you see repeated model save failures, close any file explorers or editors viewing the model directory.")
-    print("If you see spaCy lexeme normalization warnings, you can ignore them for English. To suppress, install spacy-lookups-data and load the table if needed.")
-    print("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
+    logger.info("\n[SUMMARY] Table Structure Model Retraining Complete.")
+    logger.info("If you see repeated model save failures, close any file explorers or editors viewing the model directory.")
+    logger.info("If you see spaCy lexeme normalization warnings, you can ignore them for English. To suppress, install spacy-lookups-data and load the table if needed.")
+    logger.info("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
     gc.collect()
+
 if __name__ == "__main__":
     main()

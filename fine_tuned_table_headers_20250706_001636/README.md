@@ -9,29 +9,29 @@ tags:
 widget:
 - source_sentence: Unknown Contest
   sentences:
-  - REP Daniel W. SullivanRepublican - Election Day
-  - CON Daniel W. SullivanConservative - Election Day
-  - Write-in - Absentee
-- source_sentence: ''
-  sentences:
-  - REP Daniel W. SullivanRepublican - Absentee Mail
-  - DEM Chrissy KnappDemocratic - Election Day
-  - WOR Chrissy Knapp (Working Families) - Absentee
-- source_sentence: Unknown Contest
-  sentences:
-  - Precinct
   - Totals - Election Day
-  - Chrissy Knapp (Democratic) - Early Voting
+  - Chrissy Knapp (Democratic) - Mail
+  - Daniel W. Sullivan (Conservative) - Mail
+- source_sentence: Orangetown Town Council
+  sentences:
+  - WOR Chrissy KnappWorking Families - Early Voting
+  - Chrissy Knapp (Democratic) - Total
+  - Chrissy Knapp (Working Families) - Election Day
 - source_sentence: Unknown Contest
   sentences:
-  - '%reported'
-  - Write-in - Early Voting
-  - Votes (Other) - Early Voting
+  - Totals - Absentee Mail
+  - DEM Chrissy KnappDemocratic - Absentee Mail
+  - DEM Chrissy Knapp (Democratic) - Absentee
 - source_sentence: ''
   sentences:
-  - Total Votes (Other) - Absentee
-  - Chrissy Knapp (Working Families) - Early Voting
-  - CON Daniel W. SullivanConservative - Early Voting
+  - Write-in - Early Voting
+  - Write-in - Total
+  - Candidate (Other) - Election Day
+- source_sentence: ''
+  sentences:
+  - WOR Chrissy Knapp (Working Families) - Early Voting
+  - Chrissy Knapp (Working Families) - Mail
+  - WOR Chrissy Knapp (Working Families) - Mail
 pipeline_tag: sentence-similarity
 library_name: sentence-transformers
 ---
@@ -87,8 +87,8 @@ model = SentenceTransformer("sentence_transformers_model_id")
 # Run inference
 sentences = [
     '',
-    'Total Votes (Other) - Absentee',
-    'Chrissy Knapp (Working Families) - Early Voting',
+    'WOR Chrissy Knapp (Working Families) - Early Voting',
+    'Chrissy Knapp (Working Families) - Mail',
 ]
 embeddings = model.encode(sentences)
 print(embeddings.shape)
@@ -150,11 +150,11 @@ You can finetune this model on your own dataset.
   | type    | string                                                                          | string                                                                           | float                                                         |
   | details | <ul><li>min: 2 tokens</li><li>mean: 3.81 tokens</li><li>max: 9 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 10.3 tokens</li><li>max: 16 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
 * Samples:
-  | sentence_0    | sentence_1                                       | label            |
-  |:--------------|:-------------------------------------------------|:-----------------|
-  | <code></code> | <code>Write-in - Total</code>                    | <code>1.0</code> |
-  | <code></code> | <code>Grand Total</code>                         | <code>1.0</code> |
-  | <code></code> | <code>Early Voting (Other) - Election Day</code> | <code>1.0</code> |
+  | sentence_0                   | sentence_1                                                   | label            |
+  |:-----------------------------|:-------------------------------------------------------------|:-----------------|
+  | <code></code>                | <code>Percent Reported (Other) - Absentee</code>             | <code>1.0</code> |
+  | <code></code>                | <code>Chrissy Knapp (Working Families) - Election Day</code> | <code>1.0</code> |
+  | <code>Unknown Contest</code> | <code>Grand Total</code>                                     | <code>1.0</code> |
 * Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
   ```json
   {

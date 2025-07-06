@@ -395,7 +395,7 @@ CANONICAL_SEGMENT_LABELS = {
     "total votes": "total_votes",
     "precincts reporting": "reporting_status",
     "candidate": "candidate_panel",
-    "ballot type": "ballot_type",
+    "ballot type": "ballot_types",
     "download": "download_link",
     # Add more as needed
 }
@@ -420,7 +420,7 @@ STRUCTURAL_TAGS = {"br", "hr", "wbr", "col", "colgroup", "thead", "tbody", "tfoo
 
 VIEW_BY_PHRASES = [
     "district", "precinct", "county", "state", "region", "ward", "township", "municipality", "city", "town",
-    "village", "area", "location", "polling place", "ballot type", "contest", "candidate", "party", "office",
+    "village", "area", "location", "polling place", "ballot types", "ballot type", "contest", "candidate", "party", "office",
     "race", "proposal", "referendum", "amendment", "proposition", "measure", "question", "issue", "result",
     "summary", "detail", "breakdown", "group", "section", "table", "chart", "graph", "map", "visualization",
     "export", "download", "print", "share", "email", "sms", "text", "notification", "alert", "update", "change",

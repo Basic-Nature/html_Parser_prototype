@@ -86,7 +86,7 @@ def merge_and_rank_candidates(
     context_str = " ".join([
         str(context.get("contest_title", "")),
         str(context.get("year", "")),
-        str(context.get("election_type", "")),
+        str(context.get("election_types", "")),
         str(context.get("county", "")),
         str(context.get("state", "")),
     ]).strip()
@@ -1305,7 +1305,7 @@ class ContextCoordinator:
         context.update({
             "contest_title": contest_title,
             "year": context.get("year", ""),
-            "election_type": context.get("election_type", ""),
+            "election_types": context.get("election_types", ""),
             "county": context.get("county", ""),
             "state": context.get("state", "")
         })

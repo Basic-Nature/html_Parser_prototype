@@ -12,10 +12,8 @@ import orjson
 from collections import defaultdict
 import types
 import collections.abc
-from sklearn.preprocessing import LabelEncoder
-import numpy as np
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+
+from sqlalchemy import select, and_
 from sqlalchemy.exc import SQLAlchemyError
 from ..utils.db_utils import (
     load_processed_urls,
@@ -30,6 +28,7 @@ from ..bots.librarian import load_context_library, update_context_library
 from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
+from ..utils.html_scanner import load_context_cache_from_disk, save_context_cache_to_disk
 from ..utils.shared_logger import log_info, log_warning, log_error
 from rich.table import Table
 from rich.console import Console
@@ -38,12 +37,13 @@ from collections import Counter
 
 console = Console()
 
-from ..config import BASE_DIR, CONTEXT_LIBRARY_PATH, CONTEXT_DB_PATH
+from ..config import (
+    BASE_DIR, CONTEXT_LIBRARY_PATH, CONTEXT_DB_PATH, 
+    CACHE_DIR, INPUT_DIR, OUTPUT_DIR
+)
 
-PROCESSED_URLS_CACHE = os.path.join(BASE_DIR, ".processed_urls")
-OUTPUT_CACHE = os.path.join(BASE_DIR, ".output_cache.jsonl")
-INPUT_DIR = os.path.join(BASE_DIR, "input")
-OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+PROCESSED_URLS_CACHE = os.path.join(CACHE_DIR, "processed_urls.json")
+OUTPUT_CACHE = os.path.join(CACHE_DIR, "output_cache.jsonl")
 
 # --- DB Schema Setup (now handled by Alembic migrations) ---
 def ensure_db_schema():
@@ -140,11 +140,13 @@ def upsert_contest(session, contest_dict):
     """
     obj = session.execute(
         select(Contest).where(
-            Contest.title == contest_dict.get("title"),
-            Contest.year == contest_dict.get("year"),
-            Contest.type == contest_dict.get("type"),
-            Contest.state == contest_dict.get("state"),
-            Contest.county == contest_dict.get("county")
+            and_(
+                Contest.title == contest_dict.get("title"),
+                Contest.year == contest_dict.get("year"),
+                Contest.type_ == contest_dict.get("type_"),
+                Contest.state == contest_dict.get("state"),
+                Contest.county == contest_dict.get("county")
+            )
         )
     ).scalar_one_or_none()
     if obj:
@@ -153,7 +155,7 @@ def upsert_contest(session, contest_dict):
         obj = Contest(
             title=contest_dict.get("title"),
             year=contest_dict.get("year"),
-            type=contest_dict.get("type"),
+            type_=contest_dict.get("type_"),
             state=contest_dict.get("state"),
             county=contest_dict.get("county"),
             metadata=orjson.dumps(clean_for_json(contest_dict))
@@ -199,7 +201,7 @@ def repair_dom_segments(segments):
         seg["children"] = [c for c in seg["children"] if idx_map.get(c, {}).get("parent_idx") == seg["_idx"]]
     return segments
 def contest_hash(c):
-    return hash((c.get("title"), c.get("year"), c.get("county"), c.get("type")))
+    return hash((c.get("title"), c.get("year"), c.get("county"), c.get("type_")))
 
 class ContextOrganizer:
     def __init__(
@@ -229,6 +231,7 @@ class ContextOrganizer:
         self.output_cache = load_output_cache()
         self.debug = debug
         self.fuzzy_cutoff = fuzzy_cutoff
+        self._context_cache = load_context_cache_from_disk()
         ensure_db_schema()
         # --- Embedding model validation/loading ---
         self.embedding_model_obj = None
@@ -320,7 +323,7 @@ class ContextOrganizer:
     @staticmethod
     def suggest_and_apply_fixes(contests, context_library, logs=None, min_confidence=0.8, embedding_model=None):
         """
-        Try to fix missing state/county/year/type using context_library, logs, and ML similarity.
+        Try to fix missing state/county/year/type_ using context_library, logs, and ML similarity.
         Returns: (fixed_contests, fix_log)
         Ensures _fixed_fields is always a set internally, but converts to list before serialization.
         """
@@ -337,7 +340,7 @@ class ContextOrganizer:
         title_to_state = {}
         title_to_county = {}
         title_to_year = {}
-        title_to_type = {}
+        title_to_type_ = {}
         for c in context_library.get("contests", []):
             if not isinstance(c, dict):
                 continue
@@ -350,8 +353,8 @@ class ContextOrganizer:
                     title_to_county[key] = c["county"]
                 if c.get("year"):
                     title_to_year[key] = c["year"]
-                if c.get("type"):
-                    title_to_type[key] = c["type"]
+                if c.get("type_"):
+                    title_to_type_[key] = c["type_"]
 
         # --- ML Embedding Preparation ---
         lib_titles, lib_states, lib_counties, lib_years, lib_types = [], [], [], [], []
@@ -364,7 +367,7 @@ class ContextOrganizer:
                 lib_states.append(c.get("state"))
                 lib_counties.append(c.get("county"))
                 lib_years.append(c.get("year"))
-                lib_types.append(c.get("type"))
+                lib_types.append(c.get("type_"))
         lib_embeddings = None
         if embedding_model and lib_titles:
             try:
@@ -515,26 +518,26 @@ class ContextOrganizer:
                     c["_fixed_fields"].add("year")
                     fixed = True
             # Fix type
-            if not c.get("type") and "type" not in c["_fixed_fields"]:
-                if title in title_to_type:
-                    c["type"] = title_to_type[title]
+            if not c.get("type_") and "type_" not in c["_fixed_fields"]:
+                if title in title_to_type_:
+                    c["type_"] = title_to_type_[title]
                     reasons.append("filled type from context_library")
                     fixed = True
                 elif contests:
-                    types = [x.get("type") for x in contests if x.get("type")]
+                    types = [x.get("type_") for x in contests if x.get("type_")]
                     if types:
                         most_common = max(set(types), key=types.count)
-                        c["type"] = most_common
+                        c["type_"] = most_common
                         reasons.append("filled type from majority vote")
                         fixed = True
                 else:
-                    matches = get_close_matches(title, list(title_to_type.keys()), n=1, cutoff=0.8)
+                    matches = get_close_matches(title, list(title_to_type_.keys()), n=1, cutoff=0.8)
                     if matches:
-                        c["type"] = title_to_type[matches[0]]
+                        c["type_"] = title_to_type_[matches[0]]
                         reasons.append(f"filled type from fuzzy match: {matches[0]}")
                         fixed = True
                 # ML similarity
-                if not c.get("type") and embedding_model and lib_embeddings is not None:
+                if not c.get("type_") and embedding_model and lib_embeddings is not None:
                     try:
                         query_emb = embedding_model.encode([c.get("title") or ""])[0]
                         sims = np.dot(lib_embeddings, query_emb) / (
@@ -543,7 +546,7 @@ class ContextOrganizer:
                         best_idx = int(np.argmax(sims))
                         best_score = sims[best_idx]
                         if best_score > min_confidence and lib_types[best_idx]:
-                            c["type"] = lib_types[best_idx]
+                            c["type_"] = lib_types[best_idx]
                             reasons.append(
                                 f"filled type from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
                             )
@@ -554,8 +557,8 @@ class ContextOrganizer:
                             )
                     except Exception as e:
                         reasons.append(f"ML similarity failed: {e}")
-                if c.get("type"):
-                    c["_fixed_fields"].add("type")
+                if c.get("type_"):
+                    c["_fixed_fields"].add("type_")
                     fixed = True
             if fixed and reasons:
                 fix_log.append({"title": c.get("title"), "fixes": reasons})
@@ -697,7 +700,7 @@ class ContextOrganizer:
                 contests.append({
                     "title": title,
                     "year": c.get("year"),
-                    "type": c.get("type"),
+                    "type_": c.get("type_"),
                     "state": c.get("state", raw_context.get("state")),
                     "county": c.get("county", raw_context.get("county")),
                     "raw": c
@@ -732,7 +735,30 @@ class ContextOrganizer:
         contests = filtered_contests
         if not contests:
             log_warning("[CONTEST] No contests with required fields for downstream output.")
+        years = [c.get("year") for c in contests if c.get("year")]
+        types = [c.get("type_") for c in contests if c.get("type_")]
+        unique_years = set(y for y in years if y)
+        unique_types = set(t for t in types if t)
 
+        for c in contests:
+            if not c.get("year") and unique_years:
+                if len(unique_years) == 1:
+                    c["year"] = list(unique_years)[0]
+                elif "title" in c:
+                    from ..utils.html_scanner import extract_year_and_type
+                    y, t, _ = extract_year_and_type(c["title"])
+                    if y:
+                        c["year"] = y
+                    if t and not c.get("type_"):
+                        c["type_"] = t
+            if not c.get("type_") and unique_types:
+                if len(unique_types) == 1:
+                    c["type_"] = list(unique_types)[0]
+                elif "title" in c:
+                    from ..utils.html_scanner import extract_year_and_type
+                    y, t, _ = extract_year_and_type(c["title"])
+                    if t:
+                        c["type_"] = t
         # --- Panels: relaxed filtering, only require panel_text ---
         panels = {}
         # Build a lookup for context_library panels if available
@@ -840,7 +866,7 @@ class ContextOrganizer:
             "location": LOCATION_KEYWORDS,
             "candidate": CANDIDATE_KEYWORDS,
             "party": PARTY_KEYWORDS,
-            "ballot_type": set(BALLOT_TYPES),
+            "ballot_type_": set(BALLOT_TYPES),
             "contest": CONTEST_KEYWORDS,
             "percent": PERCENT_KEYWORDS,
             "total": TOTAL_KEYWORDS,
@@ -869,7 +895,7 @@ class ContextOrganizer:
             "state": raw_context.get("state"),
             "county": raw_context.get("county"),
             "source_url": raw_context.get("url"),
-            "election_type": raw_context.get("election_type"),
+            "election_types": raw_context.get("election_types"),
             "scrape_time": raw_context.get("scrape_time"),
             "year": None,
             "race": raw_context.get("race"),
@@ -1010,7 +1036,7 @@ class ContextOrganizer:
         valid_years = [
             c.get("year")
             for c in contests
-            if c.get("year") and c.get("type") and str(c.get("year")).isdigit()
+            if c.get("year") and c.get("type_") and str(c.get("year")).isdigit()
         ]
         if valid_years:
             metadata["year"] = valid_years[0]
@@ -1063,6 +1089,7 @@ class ContextOrganizer:
             "log": log,
             "error": None,
         }
+        save_context_cache_to_disk(self._context_cache)
         self.organized = organized
         return result
 
@@ -1280,7 +1307,3 @@ class ContextOrganizer:
         except Exception as e:
             log_error(f"[CONTEXT ORGANIZER] Failed to load table structure: {e}")
             return None
-
-# --- Backward-compatible function for legacy imports ---
-def organize_context(*args, **kwargs):
-    return ContextOrganizer().organize_context(*args, **kwargs)

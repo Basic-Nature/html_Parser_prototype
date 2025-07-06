@@ -60,7 +60,7 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     """
     title = contest.get("title", "")
     year = contest.get("year", "")
-    ctype = contest.get("type", "")
+    ctype = contest.get("type_", "")
     year_score = 0.0
     if year and re.match(r"^(19|20)\d{2}$", str(year)):
         year_score = 1.0
@@ -97,7 +97,7 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     score = 0.45 * year_score + 0.35 * type_score + 0.1 * title_score + 0.1 * ml_score
 
     if score < threshold:
-        print(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type: {ctype}")
+        print(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type_: {ctype}")
         print(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, total={score:.2f}")
     return score >= threshold
 
@@ -119,7 +119,7 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
     log_warning("[yellow]Unable to confidently identify valid contests after feedback loop. Please clarify selection.[/yellow]")
     grouped = defaultdict(list)
     for idx, c in enumerate(contests):
-        grouped[(c.get('year', ''), c.get('type', ''))].append((idx, c))
+        grouped[(c.get('year', ''), c.get('type_', ''))].append((idx, c))
 
     for (year, ctype), items in sorted(grouped.items()):
         log_info(f"[bold cyan]Year: {year or 'Unknown'}, Type: {ctype or 'Unknown'}[/bold cyan]")
@@ -210,22 +210,22 @@ def select_contest(
             if year_from_title:
                 c["year"] = year_from_title
         # Fill type
-        if not c.get("type"):
+        if not c.get("type_"):
             title = c.get("title", "").lower()
-            found_type = None
+            found_type_ = None
             for t in VALID_TYPES:
                 if t in title:
-                    found_type = t
+                    found_type_ = t
                     break
-            if not found_type:
+            if not found_type_:
                 # Try ML/NER
                 ents = coordinator.extract_entities(c.get("title", ""))
                 for ent, label in ents:
                     if label == "EVENT" and ent.lower() in VALID_TYPES:
-                        found_type = ent.lower()
+                        found_type_ = ent.lower()
                         break
-            if found_type:
-                c["type"] = found_type.capitalize()
+            if found_type_:
+                c["type_"] = found_type_.capitalize()
 
     context = {
         "state": norm_state,
@@ -282,7 +282,7 @@ def select_contest(
     seen = set()
     for c in filtered_contests:
         norm_title = normalize_contest_title(c.get("title", ""))
-        key = (c.get("year"), c.get("type"), norm_title)
+        key = (c.get("year"), c.get("type_"), norm_title)
         if key not in seen:
             unique_contests.append(c)
             seen.add(key)
@@ -307,7 +307,7 @@ def select_contest(
     # --- Group by (year, type) for display ---
     grouped = defaultdict(list)
     for c in verified_contests:
-        grouped[(c.get("year"), c.get("type"))].append(c)
+        grouped[(c.get("year"), c.get("type_"))].append(c)
 
     # --- Dynamic titling for selection prompt ---
     idx = 0

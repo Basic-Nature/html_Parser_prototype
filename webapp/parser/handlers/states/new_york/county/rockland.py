@@ -244,7 +244,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                             "panels": panels,
                         }
                         # Propagate contest and location fields
-                        for field in ("selected_race", "state", "county", "year", "election_type"):
+                        for field in ("selected_race", "state", "county", "year", "election_types"):
                             if field in html_context:
                                 extraction_context[field if field != "selected_race" else "contest_title"] = html_context[field]
                         headers, data, entity_info = build_dynamic_table(
@@ -286,8 +286,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             }
             if "year" in html_context:
                 metadata["year"] = html_context["year"]
-            if "election_type" in html_context:
-                metadata["election_type"] = html_context["election_type"]
+            if "election_types" in html_context:
+                metadata["election_types"] = html_context["election_types"]
 
             result = finalize_election_output(merged_headers, merged_data, coordinator, contest_title, metadata["state"], metadata["county"], context=metadata)
             if isinstance(result, dict):

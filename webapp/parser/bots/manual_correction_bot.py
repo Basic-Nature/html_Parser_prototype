@@ -279,6 +279,50 @@ def file_hash(path):
             h.update(chunk)
     return h.hexdigest()
 
+def check_and_fix_json_files(directories=None, suffixes=(".json", ".jsonl"), auto_delete=True, verbose=True):
+    """
+    Scan directories for JSON/JSONL files, check for corruption, and delete or report corrupted files.
+    Args:
+        directories: list of Path or str, directories to scan (default: [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR])
+        suffixes: tuple of file suffixes to check
+        auto_delete: if True, delete corrupted files; else, just report
+        verbose: print actions taken
+    Returns:
+        List of corrupted files found (and deleted if auto_delete)
+    """
+    if directories is None:
+        directories = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]
+    corrupted = []
+    for directory in directories:
+        directory = Path(directory)
+        if not directory.exists():
+            continue
+        for suf in suffixes:
+            for file in directory.rglob(f"*{suf}"):
+                try:
+                    if suf == ".jsonl":
+                        with open(file, "r", encoding="utf-8") as f:
+                            for line in f:
+                                if line.strip():
+                                    orjson.loads(line)
+                    else:
+                        with open(file, "rb") as f:
+                            orjson.loads(f.read())
+                except Exception as e:
+                    corrupted.append(str(file))
+                    if verbose:
+                        print(f"[CORRUPT] {file}: {e}")
+                    if auto_delete:
+                        try:
+                            file.unlink()
+                            if verbose:
+                                print(f"[DELETED] {file}")
+                        except Exception as del_e:
+                            print(f"[ERROR] Could not delete {file}: {del_e}")
+    if verbose:
+        print(f"[SUMMARY] Corrupted files found: {corrupted}")
+    return corrupted
+
 def find_log_files(log_dir=LOG_DIR, cache_dir=CACHE_DIR, suffixes=(".jsonl", ".json")):
     """
     Recursively find all log files with given suffixes in log_dir and cache_dir.
@@ -317,7 +361,7 @@ def save_jsonl(path, entries):
     shutil.move(tmp_path, path)
 
 # --- Deduplication utilities ---
-def deduplicate_entries(entries, key_fields=("extracted_value", "field_type", "context_key")):
+def deduplicate_entries(entries, key_fields=("extracted_value", "field_type_", "context_key")):
     """
     Deduplicate a list of dict entries by key fields (tuple of field names).
     Returns a list of unique entries and a count of duplicates skipped.
@@ -337,12 +381,12 @@ def entry_key(entry):
     """
     return (
         entry.get("extracted_value"),
-        entry.get("field_type"),
+        entry.get("field_type_"),
         entry.get("context_key", "default")
     )
 
 # --- Enhanced aggregate with deduplication and context check ---
-def aggregate_successful_field_entries(log_file: Path, context_library=None, field_type=None, success_results=None, fast_mode=False):
+def aggregate_successful_field_entries(log_file: Path, context_library=None, field_type_=None, success_results=None, fast_mode=False):
     if success_results is None:
         success_results = SUCCESS_RESULTS
     field_entries = defaultdict(list)
@@ -351,12 +395,12 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
     unique_entries, dup_count = deduplicate_entries(entries)
     # If context_library and field_type provided, skip already-existing entries
     skipped_existing = 0
-    if context_library and field_type in context_library:
+    if context_library and field_type_ in context_library:
         existing_set = set()
-        for e in context_library[field_type]:
+        for e in context_library[field_type_]:
             key = (
                 e.get("extracted_value"),
-                e.get("field_type"),
+                e.get("field_type_"),
                 e.get("context_key", "default")
             )
             existing_set.add(key)
@@ -364,7 +408,7 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
         for entry in unique_entries:
             key = (
                 entry.get("extracted_value"),
-                entry.get("field_type"),
+                entry.get("field_type_"),
                 entry.get("context_key", "default")
             )
             if key not in existing_set:
@@ -383,12 +427,12 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
     return field_entries, dup_count, skipped_existing, len(unique_entries)
 
 # --- Feedback loop (interactive and LLM/ML-powered) ---
-def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, coordinator=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None, fast_mode=False):
+def feedback_loop(new_entries, field_type_, context_library_path, enhanced=True, coordinator=None, context_organizer=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None, fast_mode=False):
     context_library_path = safe_path(context_library_path, [CONTEXT_LIBRARY_DIR])
     if not new_entries:
-        log_info(f"No new entries to review for {field_type}.")
+        log_info(f"No new entries to review for {field_type_}.")
         return 0, 0, 0
-    print(f"\n[FEEDBACK] Review new context library entries for {field_type}:")
+    print(f"\n[FEEDBACK] Review new context library entries for {field_type_}:")
     context_library = load_context_library(context_library_path)
     changed = False
     accepted, edited, removed = 0, 0, 0
@@ -403,8 +447,8 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
         for idx, val in enumerate(values):
             # Fast mode: auto-accept if exact duplicate in context library
             is_duplicate = False
-            if fast_mode and field_type in context_library:
-                for existing in context_library[field_type]:
+            if fast_mode and field_type_ in context_library:
+                for existing in context_library[field_type_]:
                     if entry_key(existing) == entry_key(val):
                         is_duplicate = True
                         break
@@ -441,7 +485,7 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
         values = [v for v in values if v]
         new_entries[context_key] = values
     # Save accepted/edited entries
-    update_context_with_new_entries(context_library_path, field_type, new_entries)
+    update_context_with_new_entries(context_library_path, field_type_, new_entries)
     print(f"[SUMMARY] Accepted: {accepted}, Edited: {edited}, Removed: {removed}")
     return accepted, edited, removed
 
@@ -453,17 +497,17 @@ def trim_log_file(path: Path):
     save_jsonl(path, deduped)
 
 # --- Context library update logic (atomic, validated, backup) ---
-def update_context_with_new_entries(context_path, field_type, field_entries):
+def update_context_with_new_entries(context_path, field_type_, field_entries):
     context_path = safe_path(context_path, [CONTEXT_LIBRARY_DIR])
     def updater(library):
-        if field_type not in library or not isinstance(library[field_type], dict):
-            library[field_type] = {}
+        if field_type_ not in library or not isinstance(library[field_type_], dict):
+            library[field_type_] = {}
         for context_key, entries in field_entries.items():
-            if context_key not in library[field_type]:
-                library[field_type][context_key] = []
+            if context_key not in library[field_type_]:
+                library[field_type_][context_key] = []
             for entry in entries:
-                if entry not in library[field_type][context_key]:
-                    library[field_type][context_key].append(entry)
+                if entry not in library[field_type_][context_key]:
+                    library[field_type_][context_key].append(entry)
     library = load_context_library(context_path)
     updater(library)
     # TODO: Add JSON schema validation here if desired
@@ -573,24 +617,24 @@ def autofix_contest_fields(contest):
             contest["county"] = county
             changed = True
     # Try to fill type
-    if not contest.get("type"):
+    if not contest.get("type_"):
         ctype = (
             extract_type(title)
             or extract_type(raw.get("title", ""))
-            or raw.get("type")
+            or raw.get("type_")
         )
         if ctype:
-            contest["type"] = ctype
+            contest["type_"] = ctype
             changed = True
     return changed
 
-def highlight_anomalies(context_library, field_type, context_path=None, autofix=True):
+def highlight_anomalies(context_library, field_type_, context_path=None, autofix=True):
     try:
         from ..Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
     except ImportError:
         log_warning("Could not import integrity_check for anomaly highlighting.")
         return
-    if field_type == "contests" and "contests" in context_library:
+    if field_type_ == "contests" and "contests" in context_library:
         contests = context_library["contests"]
         results = analyze_contest_titles(contests)
         fixed_count = 0
@@ -658,6 +702,22 @@ def import_correction_session(import_file, dest_path):
     shutil.copy2(import_file, dest_path)
     print(f"[INFO] Imported correction session from {import_file} to {dest_path}")
 
+def field_matches_log(field, log_name):
+    """
+    Robustly match a field name to a log file name.
+    Handles singular/plural, underscores, and partial matches.
+    """
+    # Normalize: lowercase, singular/plural, underscores
+    field_base = field.rstrip('s').lower()
+    patterns = [
+        rf"\b{re.escape(field_base)}s?\b",  # match singular or plural as a word
+        rf"{re.escape(field_base)}(_|\b)",  # match as prefix with underscore or word boundary
+    ]
+    for pat in patterns:
+        if re.search(pat, log_name.lower()):
+            return True
+    return False
+
 # --- Example: Context Library Initialization and Version Check ---
 def ensure_context_library(path):
     """
@@ -724,7 +784,11 @@ def summarize_misaligned_entities(log_path=None, top_n=10):
 
 # --- Main CLI logic ---
 def main():
-    parser = argparse.ArgumentParser(description="Deep ML/LLM-enhanced batch review and correction bot for all context fields.")
+    parser = argparse.ArgumentParser(
+        description="Deep ML/LLM-enhanced batch review and correction bot for all context fields.\n"
+                    "Log files are matched to fields by checking if the field name is a substring of the log file name. "
+                    "If no files match, you may need to adjust your log file naming or field list."
+    )
     parser.add_argument("--context", type=str, default=str(CONTEXT_LIBRARY_PATH), help="Path to context_library.json")
     parser.add_argument("--log-dir", type=str, default=str(LOG_DIR), help="Directory containing *_selection_log.jsonl files")
     parser.add_argument("--fields", type=str, nargs="*", default=ALL_FIELDS, help="Fields to process (default: all)")
@@ -749,6 +813,8 @@ def main():
     parser.add_argument("--self-heal", action="store_true", help="Loop: scan -> correct -> rescan until clean or max retries")
     parser.add_argument("--max-retries", type=int, default=3, help="Max self-heal attempts")
     parser.add_argument("--cooldown", type=int, default=2, help="Seconds to wait between self-heal attempts")
+    parser.add_argument("--dry-run", action="store_true", help="Preview what would be processed/accepted/removed, but make no changes.")
+    parser.add_argument("--fix-corrupt-json", action="store_true", help="Scan and fix (delete) corrupted JSON/JSONL files in log/cache/library dirs")
     args = parser.parse_args()
 
     if args.rest_api:
@@ -801,8 +867,32 @@ def main():
     cache_dir = safe_path(CACHE_DIR, [CACHE_DIR]) if CACHE_DIR else None
     fields = args.fields
     log_files = find_log_files(log_dir, cache_dir)
-    # print(f"[DEBUG] All discovered log files: {[str(f) for f in log_files]}")
     log_info(f"Discovered {len(log_files)} log files in {log_dir}")
+    print(f"[DEBUG] Discovered log files: {[str(f) for f in log_files]}")
+    print(f"[DEBUG] Fields to process: {fields}")
+    if args.fix_corrupt_json:
+        check_and_fix_json_files()
+        return
+    # --- Improved log file matching ---
+    matched_files = []
+    file_field_map = []
+    for log_file in log_files:
+        matched = False
+        for field in fields:
+            if field_matches_log(field, log_file.name):
+                matched_files.append(log_file)
+                file_field_map.append((log_file, field))
+                matched = True
+        if not matched:
+            continue
+    if not file_field_map:
+        log_warning("No log files matched any of the specified fields. Check your log file naming or field list.")
+        # Optionally, fallback to process all log files if user wants
+        if args.dry_run:
+            print("[DRY-RUN] Would process all discovered log files (no field match fallback).")
+        else:
+            print("[WARNING] No log files matched fields. Nothing to process.")
+        return
 
     batch_entries = []
     for log_file in log_files:
@@ -850,87 +940,89 @@ def main():
             log_warning(f"Could not import context_organizer: {e}")
             context_organizer = None
 
+    # --- Refactored single processing loop ---
     total_accepted, total_edited, total_removed = 0, 0, 0
     total_duplicates, total_existing_skipped, total_new = 0, 0, 0
     processed_logs = 0
-    for log_file in log_files:
-        # Infer field type from filename
-        for field in fields:
-            if field in log_file.name:
-                log_info(f"Processing {log_file} for field {field}")
-                # Deduplicate and skip existing
-                field_entries, dup_count, skipped_existing, n_new = aggregate_successful_field_entries(
-                    log_file, context_library, field, fast_mode=args.fast
-                )
-                total_duplicates += dup_count
-                total_existing_skipped += skipped_existing
-                total_new += n_new
-                processed_logs += 1
-                # Print summary before review
-                print(f"\n[SUMMARY] {log_file.name} | Field: {field}")
-                print(f"  Unique new entries: {n_new}")
-                print(f"  Duplicates skipped: {dup_count}")
-                print(f"  Already in context library: {skipped_existing}")
-                # Preview top 3 entries
-                preview = []
-                for v in field_entries.values():
-                    preview.extend(v)
-                print(f"  Preview: {preview[:3]}")
-                if args.auto or args.fast:
-                    # Auto-accept all new entries
-                    update_context_with_new_entries(context_path, field, field_entries)
-                    log_info(f"Auto-accepted new entries for {field}.")
-                    total_accepted += sum(len(v) for v in field_entries.values())
-                    context_library_changed = True
+    for log_file, field in file_field_map:
+        log_info(f"Processing {log_file} for field {field}")
+        try:
+            # Deduplicate and skip existing
+            field_entries, dup_count, skipped_existing, n_new = aggregate_successful_field_entries(
+                log_file, context_library, field, fast_mode=args.fast
+            )
+            total_duplicates += dup_count
+            total_existing_skipped += skipped_existing
+            total_new += n_new
+            processed_logs += 1
+            # Print summary before review
+            print(f"\n[SUMMARY] {log_file.name} | Field: {field}")
+            print(f"  Unique new entries: {n_new}")
+            print(f"  Duplicates skipped: {dup_count}")
+            print(f"  Already in context library: {skipped_existing}")
+            # Preview top 3 entries
+            preview = []
+            for v in field_entries.values():
+                preview.extend(v)
+            print(f"  Preview: {preview[:3]}")
+            if args.dry_run:
+                print(f"[DRY-RUN] Would process {n_new} new entries for field {field} from {log_file}")
+                continue
+            if args.auto or args.fast:
+                update_context_with_new_entries(context_path, field, field_entries)
+                log_info(f"Auto-accepted new entries for {field}.")
+                total_accepted += sum(len(v) for v in field_entries.values())
+                context_library_changed = True
+            else:
+                # Feedback loop returns accepted, edited, removed counts
+                if args.batch:
+                    for context_key, values in field_entries.items():
+                        print(f"\nBatch review for context: {context_key}")
+                        print(f"  Entries: {values}")
+                        action = input("Accept all (a), Remove all (r), Skip (s)? [a]: ").strip().lower() or "a"
+                        if action == "a":
+                            update_context_with_new_entries(context_path, field, {context_key: values})
+                            total_accepted += len(values)
+                            context_library_changed = True
+                        elif action == "r":
+                            total_removed += len(values)
+                        else:
+                            continue
                 else:
-                    # Feedback loop returns accepted, edited, removed counts
-                    # Batch review support
-                    if args.batch:
-                        for context_key, values in field_entries.items():
-                            print(f"\nBatch review for context: {context_key}")
-                            print(f"  Entries: {values}")
-                            action = input("Accept all (a), Remove all (r), Skip (s)? [a]: ").strip().lower() or "a"
-                            if action == "a":
-                                update_context_with_new_entries(context_path, field, {context_key: values})
-                                total_accepted += len(values)
-                                context_library_changed = True
-                            elif action == "r":
-                                total_removed += len(values)
-                            else:
-                                continue
-                    else:
-                        feedback_loop(
-                            field_entries, field, context_path,
-                            enhanced=args.enhanced,
-                            coordinator=coordinator,
-                            context_organizer=context_organizer,
-                            llm_api_key=args.llm_api_key,
-                            llm_provider=args.llm_provider,
-                            llm_model=args.llm_model,
-                            llm_system_prompt=args.llm_system_prompt,
-                            llm_extra_instructions=args.llm_extra_instructions
-                        )
-                        # Assume all accepted for summary (could be improved to track edits/removes)
-                        total_accepted += sum(len(v) for v in field_entries.values())
-                        context_library_changed = True
-                # Optionally run integrity check
-                if args.integrity:
-                    context_library = load_context_library(context_path)
-                    highlight_anomalies(context_library, field, context_path, autofix=True)
-                # Optionally update DB
-                if args.update_db:
-                    context_library = load_context_library(context_path)
-                    update_database_with_context(context_library, db_path=args.db_path, enhanced=args.enhanced, coordinator=coordinator)
-                # Clean up log file after processing
-                try:
-                    os.remove(log_file)
-                    log_info(f"Deleted processed log file: {log_file}")
-                except Exception as e:
-                    log_warning(f"Could not delete log file {log_file}: {e}")
-                break
+                    accepted, edited, removed = feedback_loop(
+                        field_entries, field, context_path,
+                        enhanced=args.enhanced,
+                        coordinator=coordinator,
+                        context_organizer=context_organizer,
+                        llm_api_key=args.llm_api_key,
+                        llm_provider=args.llm_provider,
+                        llm_model=args.llm_model,
+                        llm_system_prompt=args.llm_system_prompt,
+                        llm_extra_instructions=args.llm_extra_instructions
+                    )
+                    total_accepted += accepted
+                    total_edited += edited
+                    total_removed += removed
+                    context_library_changed = True
+            # Optionally run integrity check
+            if args.integrity:
+                context_library = load_context_library(context_path)
+                highlight_anomalies(context_library, field, context_path, autofix=True)
+            # Optionally update DB
+            if args.update_db:
+                context_library = load_context_library(context_path)
+                update_database_with_context(context_library, db_path=args.db_path, enhanced=args.enhanced, coordinator=coordinator)
+            # Clean up log file after processing
+            try:
+                os.remove(log_file)
+                log_info(f"Deleted processed log file: {log_file}")
+            except Exception as e:
+                log_warning(f"Could not delete log file {log_file}: {e}")
+        except Exception as e:
+            log_error(f"Failed to process {log_file} for field {field}: {e}")
 
     # Write context library only if changed
-    if context_library_changed:
+    if context_library_changed and not args.dry_run:
         context_library = load_context_library(context_path)
         update_context_library(context_library, context_path)
         log_info(f"Context library updated at {context_path}")
@@ -941,6 +1033,8 @@ def main():
     print(f"Total duplicates skipped: {total_duplicates}")
     print(f"Total already in context library: {total_existing_skipped}")
     print(f"Total accepted: {total_accepted}, Total edited: {total_edited}, Total removed: {total_removed}")
+    if processed_logs == 0 or total_new == 0:
+        print("[WARNING] No entries were processed. Check your log file naming, field configuration, or use --dry-run for debugging.")
     print("If you see repeated model save failures, close any file explorers or editors viewing the model directory.")
     print("If you see spaCy lexeme normalization warnings, you can ignore them for English. To suppress, install spacy-lookups-data and load the table if needed.")
     print("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")

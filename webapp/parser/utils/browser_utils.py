@@ -31,8 +31,8 @@ def get_random_user_agent():
 
 def launch_minimized_playwright_browser(playwright, target_url, wait_seconds=7):
     user_agent = get_random_user_agent()
-    browser_type = playwright.chromium
-    browser = browser_type.launch(headless=False, args=["--window-position=0,1000", "--window-size=1280,800"])
+    browser_type_ = playwright.chromium
+    browser = browser_type_.launch(headless=False, args=["--window-position=0,1000", "--window-size=1280,800"])
     context = browser.new_context(user_agent=user_agent, viewport={"width": 1280, "height": 800}, locale="en-US")
     page = context.new_page()
     page.goto(target_url, timeout=60000)
@@ -50,8 +50,8 @@ def detect_cloudflare_captcha(page):
     return False
 
 def relaunch_maximized_for_captcha(playwright, target_url, user_agent, timeout=300):
-    browser_type = playwright.chromium
-    browser = browser_type.launch(headless=False, args=["--start-maximized"])
+    browser_type_ = playwright.chromium
+    browser = browser_type_.launch(headless=False, args=["--start-maximized"])
     context = browser.new_context(user_agent=user_agent, viewport={"width": 1920, "height": 1080}, locale="en-US")
     page = context.new_page()
     page.goto(target_url, timeout=60000)

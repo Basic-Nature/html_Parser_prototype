@@ -40,7 +40,7 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
     county = metadata.get("county", "") or (coordinator.get_districts()[0] if coordinator and coordinator.get_districts() else "")
     year = metadata.get("year", "")
     race = metadata.get("race", "")
-    election_type = metadata.get("election_type", "")
+    election_types = metadata.get("election_types", "")
 
     def safe_filename(s):
         return "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
@@ -83,8 +83,8 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
         parts.append(str(year))
     else:
         parts.append("Unknown")
-    if election_type:
-        parts.append(safe_filename(election_type).lower())
+    if election_types:
+        parts.append(safe_filename(election_types).lower())
     if race:
         safe_race = "".join([c if c.isalnum() or c in " _-" else "_" for c in str(race)])
         parts.append(safe_race.replace(" ", "_"))
@@ -215,7 +215,7 @@ def finalize_election_output(
     if match:
         meta["year"] = match.group(0)
 
-    organized = organize_context(meta)
+    organized = ContextOrganizer.organize_context(meta)
     enriched_meta = organized.get("metadata", meta)
 
     # Defensive: ensure required fields
@@ -237,14 +237,14 @@ def finalize_election_output(
     year = enriched_meta.get("year", "")
     state = enriched_meta.get("state", "")
     county = enriched_meta.get("county", "")
-    election_type = enriched_meta.get("election_type", "")
+    election_types = enriched_meta.get("election_types", "")
     race = enriched_meta.get("race", "")
 
     parts = [
         safe_filename(state).lower() if state else "",
         safe_filename(county).lower() if county else "",
         str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "Unknown",
-        safe_filename(election_type).lower() if election_type else "",
+        safe_filename(election_types).lower() if election_types else "",
         safe_filename(race).replace(" ", "_") if race else "unknown_race",
         "parsed"
     ]
@@ -261,7 +261,7 @@ def finalize_election_output(
         str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "",
         safe_filename(state).lower() if state else "",
         safe_filename(county).lower() if county else "",
-        safe_filename(election_type).lower() if election_type else "",
+        safe_filename(election_types).lower() if election_types else "",
         safe_title,
         "results",
         timestamp

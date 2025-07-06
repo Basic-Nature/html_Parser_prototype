@@ -9,6 +9,17 @@ from rich.panel import Panel
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
 import orjson
 
+def summarize_logs(log_path=None, max_lines=1000):
+    """
+    Return the last max_lines of the log file as a string.
+    """
+    log_path = log_path or "pipeline.log"
+    if not os.path.exists(log_path):
+        return ""
+    with open(log_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    return "".join(lines[-max_lines:])
+
 SUPPRESS_RICH_LOGS = False
 SOCKETIO_EMIT_FUNC = None
 LOG_MODE = "cli"  # or "webapp"
@@ -186,7 +197,7 @@ def log_critical(msg, context=None, *args, **kwargs):
         return
     _rich_log(msg, context, default_label="CRITICAL", default_color="magenta")
 
-def log_alert(msg, context=None, alert_type="info"):
+def log_alert(msg, context=None, alert_type_="info"):
     if SUPPRESS_RICH_LOGS:
         return
     style = {
@@ -194,8 +205,8 @@ def log_alert(msg, context=None, alert_type="info"):
         "warning": "yellow",
         "error": "red",
         "critical": "magenta"
-    }.get(alert_type, "cyan")
-    label = alert_type.upper()
+    }.get(alert_type_, "cyan")
+    label = alert_type_.upper()
     panel_msg = None
     if context:
         panel_msg = f"[bold]{label} ALERT:[/bold] {msg}\n[dim]{context}[/dim]"
