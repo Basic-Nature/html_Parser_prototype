@@ -17,7 +17,7 @@ from ..bots.librarian import (
     ALWAYS_IGNORE_TAGS, ALWAYS_IGNORE_CLASSES, ALWAYS_IGNORE_IDS, ICON_CLASSES, ICON_TAGS, BUTTON_CLASSES,
     HEADING_CLASSES, PANEL_CLASSES, TIMESTAMP_CLASSES, STRUCTURAL_TAGS, TIMESTAMP_ID_PATTERNS, TIMESTAMP_ATTRS,
     CONTEST_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, LOCATION_KEYWORDS, PARTY_KEYWORDS,
-    TOTAL_KEYWORDS, PERCENT_KEYWORDS, MISC_FOOTER_KEYWORDS
+    TOTAL_KEYWORDS, PERCENT_KEYWORDS, MISC_FOOTER_KEYWORDS, VALID_TYPES, UPDATE_PANEL_KEYWORDS, VIEW_BY_PHRASES,
 )
 from ..utils.embedding_cache import (
     save_embedding, get_embedding_from_memory, load_embeddings_batch, save_embeddings_batch
@@ -446,13 +446,19 @@ def auto_label_segment(
     return "unknown", "heuristic"
 
 def _extract_clean_text(html):
-    """Extracts clean text from HTML using selectolax, fallback to raw HTML if parsing fails."""
+    """Extracts clean text from HTML using selectolax, fallback to raw HTML if parsing fails.
+    Returns '' if the result is only whitespace or just tags."""
     try:
         tree = HTMLParser(html)
         text = tree.body.text(strip=True) if tree.body else tree.text(strip=True)
-        return text.strip() if text else html
+        if not text or not text.strip():
+            return ""
+        # If text is just a tag (e.g., "<br>") or only HTML entities
+        if re.fullmatch(r"<[^>]+>", text.strip()) or text.strip() in {"&nbsp;", "&#160;"}:
+            return ""
+        return text.strip()
     except Exception:
-        return html
+        return ""
 
 def _label_in(label, target):
     """Robustly checks if label is or contains the target label."""
@@ -463,13 +469,26 @@ def _label_in(label, target):
     return False
 
 def _extract_segments_by_label(segments, label_name, extra_fields=None):
-    """Extracts and cleans segments by label, returns list of dicts with clean text and extra fields."""
+    """
+    Extracts and cleans segments by label, returns list of dicts with clean text and extra fields.
+    Skips segments with empty, whitespace-only, or trivial text (e.g., only tags or &nbsp;).
+    """
     results = []
     for seg in segments:
         label = seg.get("ml_label")
         if _label_in(label, label_name):
+            text = _extract_clean_text(seg.get("html", ""))
+            # Skip if text is empty, whitespace, or just HTML tags/entities
+            if not text or not text.strip():
+                continue
+            # Skip if text is just &nbsp; or similar
+            if text.strip() in {"&nbsp;", "&#160;"}:
+                continue
+            # Skip if text is just a tag (e.g., "<br>")
+            if re.fullmatch(r"<[^>]+>", text.strip()):
+                continue
             entry = {
-                "text": _extract_clean_text(seg.get("html", "")),
+                "text": text,
                 "raw_html": seg.get("html", ""),
                 "segment_hash": seg.get("segment_hash"),
             }
@@ -486,6 +505,81 @@ def _keyword_in_text(text, keywords):
         if re.search(rf'\b{re.escape(kw.lower())}\b', text):
             return True
     return False
+def extract_year_and_type(text):
+    """
+    Extracts the most likely year and election type from anywhere in the string.
+    Picks the last year and the most frequent or last type found.
+    Returns (year, election_type, cleaned_text)
+    """
+    # Find all years (4 digits, 2020-2099)
+    years = re.findall(r'(20\d{2})', text)
+    year = years[-1] if years else None
+
+    # Find all types (case-insensitive, from VALID_TYPES)
+    type_matches = []
+    for t in VALID_TYPES:
+        for m in re.finditer(rf'\b{re.escape(t)}\b', text, re.IGNORECASE):
+            type_matches.append((m.start(), t))
+    # Pick the last type found, or the most frequent if multiple
+    type_found = None
+    if type_matches:
+        # Option 1: last found
+        type_found = sorted(type_matches, key=lambda x: x[0])[-1][1]
+        # Option 2: most frequent (uncomment if this is preferred)
+        # from collections import Counter
+        # type_found = Counter([t for _, t in type_matches]).most_common(1)[0][0]
+
+    # Remove all years/types from text for cleaner title
+    cleaned = text
+    if years:
+        for y in years:
+            cleaned = re.sub(rf'\b{y}\b', '', cleaned)
+    if type_matches:
+        for _, t in type_matches:
+            cleaned = re.sub(rf'\b{re.escape(t)}\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.strip(" -:|,")
+    return year, type_found, cleaned
+
+def is_update_panel(text):
+    """
+    Detects if a panel/heading is a last-updated, status, or reporting info panel.
+    Uses robust keyword and phrase matching.
+    """
+    t = text.lower()
+    # Direct keyword match
+    if any(kw in t for kw in UPDATE_PANEL_KEYWORDS):
+        return True
+    # Dynamic "view by ..." phrase match
+    if any(f"view by {phrase}" in t for phrase in VIEW_BY_PHRASES):
+        return True
+    # Common "as of" or "updated" patterns
+    if "as of" in t or "updated" in t:
+        return True
+    return False
+
+def split_possible_contests(text):
+    """
+    Split a long contest block into individual contest-like lines.
+    Uses contest keywords, newlines, and vote/candidate patterns.
+    """
+    # Split on double newlines, or lines starting with known contest/office keywords
+    lines = re.split(r'\n{2,}|(?:\r?\n)+', text)
+    blocks = []
+    buffer = []
+    for line in lines:
+        line = line.strip()
+        # Heuristic: start a new block if line contains a contest keyword and is not a status/update line
+        if any(kw in line.lower() for kw in CONTEST_KEYWORDS) and not is_update_panel(line):
+            if buffer:
+                blocks.append(" ".join(buffer))
+                buffer = []
+            buffer.append(line)
+        else:
+            buffer.append(line)
+    if buffer:
+        blocks.append(" ".join(buffer))
+    # Remove blocks that are just status/update lines
+    return [b for b in blocks if not is_update_panel(b) and len(b) > 20]
 
 def scan_html_for_context(
     target_url,
@@ -556,7 +650,6 @@ def scan_html_for_context(
         else:
             try:
                 context_library = load_context_library(CONTEXT_LIBRARY_PATH)
-
             except Exception:
                 context_library = {}
             pattern_kb = load_pattern_kb()
@@ -576,21 +669,69 @@ def scan_html_for_context(
         context_result["tagged_segments_with_attrs"] = segments_with_attrs
         context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
 
+        # --- Helper for diagnostics and filtering ---
+        def diagnostics_and_filter(data, name, required_fields=None, max_title_len=500):
+            # Diagnostics
+            if data:
+                avg_len = sum(len(str(d.get("title", d.get("text", "")))) for d in data) / len(data)
+                log_info(f"[{name.upper()}] Extracted {len(data)} items, avg title/text length: {avg_len:.1f}")
+            else:
+                log_warning(f"[{name.upper()}] No valid items extracted after validation.")
+            # Filtering
+            filtered = []
+            filtered_out = []
+            for d in data:
+                print(f"[DEBUG][{name.upper()}] candidate: {d}")
+                title = d.get("title", d.get("text", ""))
+                # Only filter out if title is None or empty after stripping
+                if title is None or (isinstance(title, str) and len(title.strip()) == 0) or len(title) > max_title_len:
+                    filtered_out.append((d, "missing or invalid title/text"))
+                    continue
+                if required_fields:
+                    if not any(d.get(f) for f in required_fields):
+                        filtered_out.append((d, f"missing required fields: {required_fields}"))
+                        continue
+                filtered.append(d)
+            if filtered_out:
+                log_warning(f"[{name.upper()}] Filtered out {len(filtered_out)} items due to missing/invalid fields.")
+                for d, reason in filtered_out[:5]:
+                    log_warning(f"  [Filtered] {reason}: {str(d)[:100]}...")
+            if not filtered:
+                log_warning(f"[{name.upper()}] No items with required fields for downstream output.")
+            return filtered
+
         # --- Robust extraction for all key segment types ---
         state = context_result.get("state")
         county = context_result.get("county")
         year = context_result.get("year")
-        context_result["contests"] = [
-            {
-                "title": seg["text"],
-                "state": state,
-                "county": county,
-                "year": year,
-                "segment_hash": seg["segment_hash"],
-            }
-            for seg in _extract_segments_by_label(segments_with_attrs, "contest_title")
-        ]
-        context_result["panels"] = [
+
+        # Contests
+        raw_contests = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "contest_title"):
+            text = seg["text"]
+            # Split long blocks into possible contests
+            for possible in split_possible_contests(text):
+                seg_year, seg_type, cleaned_title = extract_year_and_type(possible)
+                # Only treat as contest if it contains a contest keyword or a valid type
+                if any(kw in possible.lower() for kw in CONTEST_KEYWORDS) or seg_type:
+                    raw_contests.append({
+                        "title": cleaned_title,
+                        "state": state,
+                        "county": county,
+                        "year": seg_year or year,
+                        "type": seg_type,
+                        "segment_hash": seg["segment_hash"],
+                    })
+        contests = diagnostics_and_filter(
+            raw_contests, "contest",
+            required_fields=["title"],
+            max_title_len=500,
+            min_len=0
+        )
+        context_result["contests"] = contests
+
+        # Panels
+        raw_panels = [
             {
                 "panel_text": seg["text"],
                 "panel_html": seg["raw_html"],
@@ -598,70 +739,179 @@ def scan_html_for_context(
             }
             for seg in _extract_segments_by_label(segments_with_attrs, "panel")
         ]
-        context_result["tables"] = [
-            {
+        panels = diagnostics_and_filter(
+            raw_panels, "panel",
+            required_fields=["panel_text"],
+            max_title_len=1000,
+            min_len=0
+        )
+        context_result["panels"] = panels
+
+        # Tables
+        raw_tables = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "results_table"):
+            text = seg["text"]
+            # Optionally extract year/type if present in table captions or headings
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            raw_tables.append({
+                "table_text": cleaned_text,
                 "table_html": seg["raw_html"],
-                "table_text": seg["text"],
+                "year": seg_year,
+                "type": seg_type,
                 "segment_hash": seg["segment_hash"],
-            }
-            for seg in _extract_segments_by_label(segments_with_attrs, "results_table")
-        ]
-        context_result["candidate_panels"] = [
-            {
-                "candidate_panel_text": seg["text"],
+            })
+        tables = diagnostics_and_filter(
+            raw_tables, "table",
+            required_fields=["table_text"],
+            max_title_len=10000,
+            min_len=0
+        )
+        context_result["tables"] = tables
+
+        # Candidate Panels
+        raw_candidate_panels = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "candidate_panel"):
+            text = seg["text"]
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            raw_candidate_panels.append({
+                "candidate_panel_text": cleaned_text,
                 "candidate_panel_html": seg["raw_html"],
+                "year": seg_year,
+                "type": seg_type,
                 "segment_hash": seg["segment_hash"],
-            }
-            for seg in _extract_segments_by_label(segments_with_attrs, "candidate_panel")
-        ]
-        context_result["location_panels"] = [
-            {
-                "location_panel_text": seg["text"],
+            })
+        candidate_panels = diagnostics_and_filter(
+            raw_candidate_panels, "candidate_panel",
+            required_fields=["candidate_panel_text"],
+            max_title_len=1000,
+            min_len=0
+        )
+        context_result["candidate_panels"] = candidate_panels
+
+        # Location Panels
+        raw_location_panels = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "location_panel"):
+            text = seg["text"]
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            raw_location_panels.append({
+                "location_panel_text": cleaned_text,
                 "location_panel_html": seg["raw_html"],
+                "year": seg_year,
+                "type": seg_type,
                 "segment_hash": seg["segment_hash"],
-            }
-            for seg in _extract_segments_by_label(segments_with_attrs, "location_panel")
-        ]
-        context_result["headings"] = [
-            {
-                "heading_text": seg["text"],
-                "heading_html": seg["raw_html"],
-                "segment_hash": seg["segment_hash"],
-            }
-            for seg in _extract_segments_by_label(segments_with_attrs, "heading")
-        ]
-        context_result["ballot_types"] = [
-            {
-                "ballot_type_text": seg["text"],
+            })
+        location_panels = diagnostics_and_filter(
+            raw_location_panels, "location_panel",
+            required_fields=["location_panel_text"],
+            max_title_len=1000,
+            min_len=0
+        )
+        context_result["location_panels"] = location_panels
+
+        # Headings (with update/timestamp detection)
+        raw_headings = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "heading"):
+            text = seg["text"]
+            if is_update_panel(text):
+                raw_headings.append({
+                    "heading_text": text,
+                    "heading_html": seg["raw_html"],
+                    "segment_hash": seg["segment_hash"],
+                    "heading_type": "last_webpage_update"
+                })
+                ts_match = re.search(r'(\w+day,?\s+\w+\s+\d{1,2},\s+20\d{2}.*\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?)', text)
+                if ts_match:
+                    context_result["metadata"]["last_webpage_update"] = ts_match.group(1)
+            else:
+                raw_headings.append({
+                    "heading_text": text,
+                    "heading_html": seg["raw_html"],
+                    "segment_hash": seg["segment_hash"],
+                    "heading_type": "content"
+                })
+
+        headings = diagnostics_and_filter(
+            raw_headings, "heading",
+            required_fields=["heading_text"],
+            max_title_len=500,
+            min_len=0
+        )
+        context_result["headings"] = headings
+
+        # Ballot Types
+        raw_ballot_types = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "ballot_type"):
+            text = seg["text"]
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            raw_ballot_types.append({
+                "ballot_type_text": cleaned_text,
                 "ballot_type_html": seg["raw_html"],
+                "year": seg_year,
+                "type": seg_type,
                 "segment_hash": seg["segment_hash"],
-            }
-            for seg in _extract_segments_by_label(segments_with_attrs, "ballot_type")
-        ]
-        context_result["results_timestamps"] = [
-            {
-                "timestamp_text": seg["text"],
+            })
+        ballot_types = diagnostics_and_filter(
+            raw_ballot_types, "ballot_type",
+            required_fields=["ballot_type_text"],
+            max_title_len=200,
+            min_len=0
+        )
+        context_result["ballot_types"] = ballot_types
+
+        # Results Timestamps
+        raw_results_timestamps = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "results_timestamp"):
+            text = seg["text"]
+            # Try to extract timestamp string for metadata
+            ts_match = re.search(r'(\w+day,?\s+\w+\s+\d{1,2},\s+20\d{2}.*\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?)', text)
+            if ts_match:
+                context_result["metadata"]["results_last_updated"] = ts_match.group(1)
+            raw_results_timestamps.append({
+                "timestamp_text": text,
                 "timestamp_html": seg["raw_html"],
                 "segment_hash": seg["segment_hash"],
-            }
-            for seg in _extract_segments_by_label(segments_with_attrs, "results_timestamp")
-        ]
-        context_result["party_labels"] = [
-            {
-                "party_label_text": seg["text"],
+            })
+        results_timestamps = diagnostics_and_filter(
+            raw_results_timestamps, "results_timestamp",
+            required_fields=["timestamp_text"],
+            max_title_len=200,
+            min_len=0
+        )
+        context_result["results_timestamps"] = results_timestamps
+
+        # Party Labels
+        raw_party_labels = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "party_label"):
+            text = seg["text"]
+            raw_party_labels.append({
+                "party_label_text": text,
                 "party_label_html": seg["raw_html"],
                 "segment_hash": seg["segment_hash"],
-            }
-            for seg in _extract_segments_by_label(segments_with_attrs, "party_label")
-        ]
-        context_result["vote_methods"] = [
-            {
-                "vote_method_text": seg["text"],
+            })
+        party_labels = diagnostics_and_filter(
+            raw_party_labels, "party_label",
+            required_fields=["party_label_text"],
+            max_title_len=200,
+            min_len=0
+        )
+        context_result["party_labels"] = party_labels
+
+        # Vote Methods
+        raw_vote_methods = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "vote_method"):
+            text = seg["text"]
+            raw_vote_methods.append({
+                "vote_method_text": text,
                 "vote_method_html": seg["raw_html"],
                 "segment_hash": seg["segment_hash"],
-            }
-            for seg in _extract_segments_by_label(segments_with_attrs, "vote_method")
-        ]
+            })
+        vote_methods = diagnostics_and_filter(
+            raw_vote_methods, "vote_method",
+            required_fields=["vote_method_text"],
+            max_title_len=200,
+            min_len=0
+        )
+        context_result["vote_methods"] = vote_methods
 
         # --- 3. ML-driven DOM pattern clustering and tagging ---
         pattern_matches = []
@@ -778,7 +1028,6 @@ def scan_html_for_context(
                         "ml_confidence": seg["ml_confidence"],
                         "pattern_id": seg["pattern_id"],
                     }
-
                     for seg in segments_with_attrs
                     if seg.get("segment_hash", []) and seg["segment_hash"] not in known_hashes
                 ])
@@ -895,6 +1144,14 @@ def extract_tagged_segments_with_attrs(
                 except Exception:
                     seg["html"] = ""
             seg["segment_hash"] = segment_identity_hash(seg)
+            # --- Filter out trivial segments here ---
+            clean_text = _extract_clean_text(seg["html"])
+            if not clean_text or not clean_text.strip():
+                return None
+            if clean_text.strip() in {"&nbsp;", "&#160;"}:
+                return None
+            if re.fullmatch(r"<[^>]+>", clean_text.strip()):
+                return None            
             segments.append(seg)
             this_idx = seg["_idx"]
             for child in node.iter(include_text=True):
@@ -1101,14 +1358,49 @@ def segment_hash(html):
     canon = canonicalize_segment(html)
     return hashlib.sha256(canon.encode('utf-8')).hexdigest()
 
-def canonicalize_segment(html):
+def canonicalize_segment(html: str) -> str:
+    """
+    Canonicalize HTML for stable hashing:
+    - Lowercase, strip whitespace
+    - Remove volatile attributes (id, class, ng*, data-*, aria-*, style, tabindex, etc.)
+    - Remove empty tags and comments
+    - Normalize whitespace and attribute order
+    - Remove script/style content
+    """
     html = html.strip().lower()
-    if html == '<br>' or html == '<br/>':
+    if html in ('<br>', '<br/>'):
         return '<br>'
-    html = re.sub(r'\s_ngcontent-[^=]+="[^"]*"', '', html)
-    html = re.sub(r'\sclass="[^"]*"', '', html)
-    html = re.sub(r'\sid="[^"]*"', '', html)
-    html = re.sub(r'\sdata-[^=]+="[^"]*"', '', html)
-    html = re.sub(r'\sng-\w+="[^"]*"', '', html)
+
+    # Remove HTML comments
+    html = re.sub(r'<!--.*?-->', '', html, flags=re.DOTALL)
+
+    # Remove script/style blocks
+    html = re.sub(r'<script.*?>.*?</script>', '', html, flags=re.DOTALL)
+    html = re.sub(r'<style.*?>.*?</style>', '', html, flags=re.DOTALL)
+
+    # Remove volatile attributes (id, class, ng*, data-*, aria-*, style, tabindex, etc.)
+    html = re.sub(r'\s(id|class|style|tabindex|title|role|aria-[\w-]+|data-[\w-]+|_ngcontent-[^=]+|_nghost-[^=]+|ng-\w+)="[^"]*"', '', html)
+    html = re.sub(r"\s(id|class|style|tabindex|title|role|aria-[\w-]+|data-[\w-]+|_ngcontent-[^=]+|_nghost-[^=]+|ng-\w+)='[^']*'", '', html)
+
+    # Remove empty tags (e.g., <span></span>)
+    html = re.sub(r'<(\w+)[^>]*>\s*</\1>', '', html)
+
+    # Remove extra whitespace between tags and in attributes
     html = re.sub(r'\s+', ' ', html)
+    html = re.sub(r'>\s+<', '><', html)
+
+    # Remove leading/trailing whitespace again
+    html = html.strip()
+
+    # Optionally: sort attributes within tags for stability
+    def sort_attrs(match):
+        tag = match.group(1)
+        attrs = match.group(2)
+        # Split attributes, sort, and rejoin
+        attrs_list = re.findall(r'(\S+="[^"]*"|\S+=\'[^\']*\')', attrs)
+        attrs_sorted = ' '.join(sorted(attrs_list))
+        return f"<{tag} {attrs_sorted}>"
+
+    html = re.sub(r'<(\w+)\s+([^>]+)>', sort_attrs, html)
+
     return html

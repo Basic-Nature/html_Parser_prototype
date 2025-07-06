@@ -46,8 +46,14 @@ def parse(
     log_info("[Example Handler] No county-specific handler found. Attempting state-level parsing.")
 
     # Scan for context and contests
-    context = scan_html_for_context(page)
-    html_context.update(context)
+    context_result = scan_html_for_context(
+        target_url=getattr(page, "url", None),
+        page=page,
+        coordinator=coordinator,
+        debug=False,
+        non_interactive=non_interactive
+    )
+    html_context.update(context_result)
     state = html_context.get("state", "Example")
     county = html_context.get("county", None)
 

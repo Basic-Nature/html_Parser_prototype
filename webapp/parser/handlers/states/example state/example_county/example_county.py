@@ -29,8 +29,13 @@ def parse(
     rprint("[bold cyan][Example County Handler] Parsing county results page...[/bold cyan]")
 
     # 1. Scan HTML for context and update html_context
-    context = scan_html_for_context(page)
-    html_context.update(context)
+    context_result = scan_html_for_context(
+        target_url=getattr(page, "url", None),
+        page=page,
+        coordinator=coordinator,
+        debug=False,
+        non_interactive=non_interactive)
+    html_context.update(context_result)
     state = html_context.get("state", "EX")
     county = html_context.get("county", "Example County")
 

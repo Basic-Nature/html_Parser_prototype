@@ -418,6 +418,32 @@ TIMESTAMP_ATTRS = [
 
 STRUCTURAL_TAGS = {"br", "hr", "wbr", "col", "colgroup", "thead", "tbody", "tfoot", "tr", "th", "td"}
 
+VIEW_BY_PHRASES = [
+    "district", "precinct", "county", "state", "region", "ward", "township", "municipality", "city", "town",
+    "village", "area", "location", "polling place", "ballot type", "contest", "candidate", "party", "office",
+    "race", "proposal", "referendum", "amendment", "proposition", "measure", "question", "issue", "result",
+    "summary", "detail", "breakdown", "group", "section", "table", "chart", "graph", "map", "visualization",
+    "export", "download", "print", "share", "email", "sms", "text", "notification", "alert", "update", "change",
+    "revision", "correction", "fix", "patch", "release", "version", "build", "deployment", "environment",
+    "platform", "device", "browser", "os", "system", "hardware", "software", "application", "program", "tool",
+    "utility", "service", "resource", "asset", "inventory", "catalog", "directory", "index", "list", "menu",
+    "navigation", "breadcrumb", "path", "route", "link", "reference", "citation", "annotation", "note", "comment",
+    "feedback", "suggestion", "recommendation", "tip", "hint", "help", "support", "faq", "guide", "tutorial",
+    "documentation", "manual", "instruction", "example", "sample", "template", "snippet", "code", "script",
+    "macro", "function", "method", "procedure", "routine", "operation", "process", "workflow", "pipeline", "job",
+    "task", "activity", "event", "trigger", "schedule", "calendar", "timeline", "history", "log", "record",
+    "entry", "transaction", "audit", "report"
+]
+
+UPDATE_PANEL_KEYWORDS = [
+    "last updated", "auto-refresh", "updated in real time", "posted", "as of", "timestamp", "date:", "time:",
+    "reporting status", "election districts reporting", "fully reported", "incoming ballots", "download reports",
+    "export", "media export", "powered by", "results last updated", "percent reporting", "no results yet",
+    "ballots counted", "ballots remaining", "ballots cast", "precincts reporting", "precincts counted",
+    "precincts remaining", "vote method", "followed results", "search"
+] + list(PERCENT_KEYWORDS) + list(TOTAL_KEYWORDS)
+
+
 def atomic_write_json(obj, path):
     path = Path(path)
     backup_path = path.with_suffix(path.suffix + ".bak")
@@ -829,14 +855,14 @@ if __name__ == "__main__":
         sys.exit(self_heal_context_library(args.max_retries, args.cooldown))
 # --- Export all sets for use in other modules ---
 __all__ = [
-    "KNOWN_STATE_TO_COUNTY_MAP", "STATE_ABBR", "STATE_MODULE_MAP", "HTML_TAGS", "PANEL_TAGS", "HEADING_TAGS", "CUSTOM_ATTR_PATTERNS", "DISTRICT_REGEX",
+    "_CANONICAL_STATE_ABBR", "KNOWN_STATE_TO_COUNTY_MAP", "STATE_ABBR", "STATE_MODULE_MAP", "HTML_TAGS", "PANEL_TAGS", "HEADING_TAGS", "CUSTOM_ATTR_PATTERNS", "DISTRICT_REGEX",
     "BALLOT_TYPES", "BALLOT_TYPE_SORT_ORDER", "LOCATION_KEYWORDS", "PERCENT_KEYWORDS", "TOTAL_KEYWORDS",
     "MISC_FOOTER_KEYWORDS", "CANDIDATE_KEYWORDS", "PARTY_KEYWORDS", "LOCATION_ABBREVIATIONS", "VALID_TYPES", "CONTEST_KEYWORDS",
     "extend_panel_tags", "extend_heading_tags", "extend_html_tags", "extend_custom_attr_patterns",
     "extend_location_keywords", "extend_candidate_keywords", "extend_ballot_types",
-    "log_unknown_tag", "log_unknown_attr", "integrate_llm_feedback","CANONICAL_SEGMENT_LABELS", 
+    "log_unknown_tag", "log_unknown_attr", "integrate_llm_feedback", "CANONICAL_SEGMENT_LABELS", 
     "normalize_segment_text", "get_canonical_segment_label", "cache_segment_label", "get_cached_segment_label",
     "ROOT_CONTAINER_TAGS", "ALWAYS_IGNORE_TAGS", "ALWAYS_IGNORE_CLASSES", "ALWAYS_IGNORE_IDS", "ICON_CLASSES", "ICON_TAGS", "BUTTON_CLASSES",
     "HEADING_CLASSES", "PANEL_CLASSES", "TIMESTAMP_CLASSES", "STRUCTURAL_TAGS", "TIMESTAMP_ID_PATTERNS", "TIMESTAMP_ATTRS",
-    "STRUCTURAL_TAGS"
+    "STRUCTURAL_TAGS", "VIEW_BY_PHRASES", "UPDATE_PANEL_KEYWORDS", "KNOWN_COUNTY_TO_PRECINCTS_MAP",
 ]
