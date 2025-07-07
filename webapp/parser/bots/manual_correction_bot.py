@@ -125,10 +125,42 @@ PATTERN_KB_FILE = LOG_DIR / "dom_pattern_kb.jsonl"
 DOWNLOAD_LINKS_LOG = LOG_DIR / "download_links_log.jsonl"
 ANOMALY_LOG = LOG_DIR / "anomaly_log.jsonl"
 EXPORT_DIR = LOG_DIR / "correction_exports"
-ALL_FIELDS = [
+MAIN_FIELDS = [
     "buttons", "panels", "tables", "contests", "districts", "states", "election_types", "years", "party", "candidate"
 ]
+AUX_FIELDS = [
+    # Feedback and error logs
+    "segment_feedback", "structure_feedback", "html_handler_routing_failures",
+    # NER/ML logs
+    "spacy_ner_misaligned", "spacy_ner_train_data",
+    # Unknowns
+    "unknown_attrs", "unknown_tags",
+    # Cache/auxiliary logs
+    "context_cache", "removed_columns", "segment_label_cache",
+    # Other possible logs
+    "download_links", "anomaly", "dom_pattern_kb"
+]
+ALL_FIELDS = MAIN_FIELDS + AUX_FIELDS
 SUCCESS_RESULTS = {"pass", "fuzzy_pass", "manual_correction", "user_corrected"}
+
+def discover_field_types_from_logs(log_files, max_lines=100):
+    """Scan log files and return a set of all field_type values found."""
+    field_types = set()
+    for log_file in log_files:
+        try:
+            with open(log_file, "rb") as f:
+                for i, line in enumerate(f):
+                    if i >= max_lines:
+                        break
+                    try:
+                        entry = orjson.loads(line)
+                        if isinstance(entry, dict) and "field_type" in entry:
+                            field_types.add(entry["field_type"])
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+    return sorted(field_types)
 
 # --- Utility: Atomic JSON write with backup ---
 def atomic_write_json(obj, path):
@@ -1015,34 +1047,43 @@ def main():
     context_library_changed = False
     log_dir = safe_path(LOG_DIR, [LOG_DIR]) if LOG_DIR else None
     cache_dir = safe_path(CACHE_DIR, [CACHE_DIR]) if CACHE_DIR else None
-    fields = args.fields
     log_files = find_log_files(log_dir, cache_dir)
     log_info(f"Discovered {len(log_files)} log files in {log_dir}")
     print(f"[DEBUG] Discovered log files: {[str(f) for f in log_files]}")
+    discovered_fields = discover_field_types_from_logs(log_files)
+    print(f"[DEBUG] Discovered field types in logs: {discovered_fields}")
+    # Use discovered fields if --fields is not set or empty
+    fields = args.fields if args.fields else discovered_fields or ALL_FIELDS
     print(f"[DEBUG] Fields to process: {fields}")
     if args.fix_corrupt_json:
         check_and_fix_json_files()
         return
     # --- Improved log file matching ---
-    matched_files = []
     file_field_map = []
     for log_file in log_files:
-        matched = False
+        entries = load_jsonl(log_file)
+        found_any = False
         for field in fields:
-            if field_matches_log(field, log_file.name):
-                matched_files.append(log_file)
+            # Check if any entry in the file matches the field_type
+            if any(isinstance(entry, dict) and entry.get("field_type") == field for entry in entries):
                 file_field_map.append((log_file, field))
-                matched = True
-        if not matched:
-            continue
+                found_any = True
+        if not found_any:
+            # Still add the file for all fields, fallback to process and filter inside
+            for field in fields:
+                file_field_map.append((log_file, field))
+
+    # Print which files will be attempted for which fields
+    print("[DEBUG] File/field processing plan:")
+    for log_file, field in file_field_map:
+        print(f"  Will process {log_file.name} for field '{field}'")
+
     if not file_field_map:
-        log_warning("No log files matched any of the specified fields. Check your log file naming or field list.")
-        # Optionally, fallback to process all log files if user wants
-        if args.dry_run:
-            print("[DRY-RUN] Would process all discovered log files (no field match fallback).")
-        else:
-            print("[WARNING] No log files matched fields. Nothing to process.")
-        return
+        log_warning("No log files matched any of the specified fields by content. Will attempt to process all log files and filter entries by field_type.")
+        # Fallback: process all log files for all fields
+        for log_file in log_files:
+            for field in fields:
+                file_field_map.append((log_file, field))
 
     batch_entries = []
     for log_file in log_files:
