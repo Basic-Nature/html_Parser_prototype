@@ -28,7 +28,7 @@ import importlib
 from fastapi import FastAPI
 import uvicorn
 # --- Unified logger import ---
-from ..utils.shared_logger import log_info, log_warning, log_error
+from ..utils.shared_logger import log_info, log_warning, log_error, log_debug
 from us.states import lookup as us_state_lookup
 import re
 from ..bots.librarian import (
@@ -390,7 +390,7 @@ def check_and_fix_json_files(
                                         valid_lines.append(line)
                                     except Exception:
                                         if verbose:
-                                            print(f"[CORRUPT-LINE] {file}: {line[:80]}...")
+                                            log_warning(f"[CORRUPT-LINE] {file}: {line[:80]}...")
                         with open(file, "rb") as f:
                             all_lines = f.readlines()
                         if try_fix and len(valid_lines) < len(all_lines):
@@ -400,7 +400,7 @@ def check_and_fix_json_files(
                                     out.write(line)
                             shutil.move(fixed_path, file)
                             if verbose:
-                                print(f"[FIXED] Salvaged {len(valid_lines)}/{len(all_lines)} lines in {file}")
+                                log_warning(f"[FIXED] Salvaged {len(valid_lines)}/{len(all_lines)} lines in {file}")
                             continue  # File is now fixed, skip deletion
                         elif len(valid_lines) == len(all_lines):
                             continue  # All lines valid
@@ -427,7 +427,7 @@ def check_and_fix_json_files(
                                     out.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
                                 shutil.move(fixed_path, file)
                                 if verbose:
-                                    print(f"[FIXED] Tolerant parse (json5) succeeded for {file}")
+                                    log_info(f"[FIXED] Tolerant parse (json5) succeeded for {file}")
                                 continue
                             except Exception:
                                 pass
@@ -446,7 +446,7 @@ def check_and_fix_json_files(
                                             out.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
                                         shutil.move(fixed_path, file)
                                         if verbose:
-                                            print(f"[FIXED] Truncated and recovered {file}")
+                                            log_info(f"[FIXED] Truncated and recovered {file}")
                                         continue
                                     except Exception:
                                         pass
@@ -463,14 +463,14 @@ def check_and_fix_json_files(
                                         valid_objs.append(orjson.loads(item))
                                     except Exception:
                                         if verbose:
-                                            print(f"[CORRUPT-OBJ] {file}: {item[:80]}...")
+                                            log_warning(f"[CORRUPT-OBJ] {file}: {item[:80]}...")
                                 if valid_objs:
                                     fixed_path = file.with_suffix(file.suffix + ".fixed")
                                     with open(fixed_path, "wb") as out:
                                         out.write(orjson.dumps(valid_objs, option=orjson.OPT_INDENT_2))
                                     shutil.move(fixed_path, file)
                                     if verbose:
-                                        print(f"[FIXED] Salvaged {len(valid_objs)} objects in {file}")
+                                        log_info(f"[FIXED] Salvaged {len(valid_objs)} objects in {file}")
                                     continue
                             except Exception:
                                 pass
@@ -478,7 +478,7 @@ def check_and_fix_json_files(
                 except Exception as e:
                     corrupted.append(str(file))
                     if verbose:
-                        print(f"[CORRUPT] {file}: {e}")
+                        log_warning(f"[CORRUPT] {file}: {e}")
                     if auto_delete:
                         try:
                             if quarantine:
@@ -486,15 +486,15 @@ def check_and_fix_json_files(
                                 quarantine_dir.mkdir(exist_ok=True)
                                 file.rename(quarantine_dir / file.name)
                                 if verbose:
-                                    print(f"[QUARANTINED] {file} -> {quarantine_dir / file.name}")
+                                    log_warning(f"[QUARANTINED] {file} -> {quarantine_dir / file.name}")
                             else:
                                 file.unlink()
                                 if verbose:
-                                    print(f"[DELETED] {file}")
+                                    log_warning(f"[DELETED] {file}")
                         except Exception as del_e:
-                            print(f"[ERROR] Could not remove {file}: {del_e}")
+                            log_error(f"[ERROR] Could not remove {file}: {del_e}")
     if verbose:
-        print(f"[SUMMARY] Corrupted files found: {corrupted}")
+        log_info(f"[SUMMARY] Corrupted files found: {corrupted}")
     return corrupted
 
 def find_log_files(log_dir=LOG_DIR, cache_dir=CACHE_DIR, suffixes=(".jsonl", ".json")):
@@ -606,22 +606,22 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
     if not new_entries:
         log_info(f"No new entries to review for {field_type}.")
         return 0, 0, 0
-    print(f"\n[FEEDBACK] Review new context library entries for {field_type}:")
+    log_info(f"\n[FEEDBACK] Review new context library entries for {field_type}:")
     context_library = load_context_library(context_library_path)
-    print("DEBUG: Loaded context library:", type(context_library))
+    log_debug("DEBUG: Loaded context library:", type(context_library))
     if not isinstance(context_library, dict):
-        print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+        log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
         raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
     changed = False
     accepted, edited, removed = 0, 0, 0
     # Summary preview
     total_new = sum(len(v) for v in new_entries.values())
     preview = Counter(entry.get("extracted_value") for vals in new_entries.values() for entry in vals)
-    print(f"[SUMMARY] {total_new} new entries to review. Top values:")
+    log_info(f"[SUMMARY] {total_new} new entries to review. Top values:")
     for val, count in preview.most_common(5):
-        print(f"  {val!r}: {count} times")
+        log_info(f"  {val!r}: {count} times")
     for context_key, values in new_entries.items():
-        print(f"\nContext: {context_key}")
+        log_info(f"\nContext: {context_key}")
         for idx, val in enumerate(values):
             # Fast mode: auto-accept if exact duplicate in context library
             is_duplicate = False
@@ -633,17 +633,17 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
             if is_duplicate:
                 accepted += 1
                 continue
-            print(f"  [{idx}] {val}")
+            log_info(f"  [{idx}] {val}")
             if enhanced:
                 ml_score = ml_score_entry(val, coordinator)
                 ml_field = ml_suggest_field(val, coordinator)
-                print(f"    [ML] Score: {ml_score:.2f} | ML Field: {ml_field}")
+                log_info(f"    [ML] Score: {ml_score:.2f} | ML Field: {ml_field}")
                 if llm_api_key:
                     llm_suggestion = llm_suggest_action(
                         val, context=context_library, api_key=llm_api_key, model=llm_model, provider=llm_provider,
                         system_prompt=llm_system_prompt, extra_instructions=llm_extra_instructions
                     )
-                    print(f"    [LLM] Suggestion: {llm_suggestion}")
+                    log_info(f"    [LLM] Suggestion: {llm_suggestion}")
             action = "a" if fast_mode else (input("Accept (a), Edit (e), Remove (r), Skip (s)? [a]: ").strip().lower() or "a")
             if action == "a":
                 accepted += 1
@@ -653,7 +653,7 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
                     values[idx] = orjson.loads(new_val)
                     edited += 1
                 except Exception as e:
-                    print(f"Invalid JSON, skipping edit: {e}")
+                    log_warning(f"Invalid JSON, skipping edit: {e}")
             elif action == "r":
                 values[idx] = None
                 removed += 1
@@ -664,7 +664,7 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
         new_entries[context_key] = values
     # Save accepted/edited entries
     update_context_with_new_entries(context_library_path, field_type, new_entries)
-    print(f"[SUMMARY] Accepted: {accepted}, Edited: {edited}, Removed: {removed}")
+    log_info(f"[SUMMARY] Accepted: {accepted}, Edited: {edited}, Removed: {removed}")
     return accepted, edited, removed
 
 # --- Log file cleanup ---
@@ -817,7 +817,7 @@ def highlight_anomalies(context_library, field_type, context_path=None, autofix=
         results = analyze_contest_titles(contests)
         fixed_count = 0
         if results.get("integrity_issues"):
-            print("[INTEGRITY] Issues detected:", results["integrity_issues"])
+            log_info("[INTEGRITY] Issues detected:", results["integrity_issues"])
             if autofix:
                 for issue in results["integrity_issues"]:
                     # Each issue should have a 'context' with the contest dict
@@ -825,15 +825,15 @@ def highlight_anomalies(context_library, field_type, context_path=None, autofix=
                     if contest and autofix_contest_fields(contest):
                         fixed_count += 1
         if results.get("flagged_suspicious"):
-            print("[INTEGRITY] Suspicious entries:", results["flagged_suspicious"])
+            log_info("[INTEGRITY] Suspicious entries:", results["flagged_suspicious"])
         entity_summary = summarize_context_entities(contests)
-        print("\n[ENTITY SUMMARY]:")
+        log_info("\n[ENTITY SUMMARY]:")
         for label, count in entity_summary.items():
-            print(f"  {label}: {count}")
+            log_info(f"  {label}: {count}")
         # Save fixes if any
         if autofix and fixed_count and context_path:
             update_context_library(context_path, context_library)
-            print(f"[INTEGRITY] Auto-fixed {fixed_count} contests with missing fields and updated context library.")
+            log_info(f"[INTEGRITY] Auto-fixed {fixed_count} contests with missing fields and updated context library.")
 
 # --- DB update logic (batch, periodic, error handling) ---
 def update_database_with_context(library, db_path=None, coordinator=None, enhanced=True):
@@ -859,7 +859,7 @@ def run_rest_api():
         # Add more endpoints as needed
         uvicorn.run(app, host="127.0.0.1", port=8000)
     except ImportError:
-        print("FastAPI/uvicorn not installed.")
+        log_warning("FastAPI/uvicorn not installed.")
 
 # --- Export/Import correction sessions ---
 def export_correction_session(log_paths, export_dir=EXPORT_DIR):
@@ -872,13 +872,13 @@ def export_correction_session(log_paths, export_dir=EXPORT_DIR):
         dest = export_dir / f"{Path(path).stem}_{timestamp}.jsonl"
         shutil.copy2(path, dest)
         export_files.append(str(dest))
-    print(f"[INFO] Exported correction session logs to: {export_files}")
+    log_info(f"[INFO] Exported correction session logs to: {export_files}")
 
 def import_correction_session(import_file, dest_path):
     import_file = safe_path(import_file, [LOG_DIR, CONTEXT_LIBRARY_DIR])
     dest_path = safe_path(dest_path, [LOG_DIR, CONTEXT_LIBRARY_DIR])
     shutil.copy2(import_file, dest_path)
-    print(f"[INFO] Imported correction session from {import_file} to {dest_path}")
+    log_info(f"[INFO] Imported correction session from {import_file} to {dest_path}")
 
 def field_matches_log(field, log_name):
     """
@@ -910,9 +910,9 @@ def ensure_context_library(path):
         update_context_library(path, struct)
         return struct
     context_lib = load_context_library(path)
-    print("DEBUG: Loaded context library:", type(context_lib))
+    log_debug("DEBUG: Loaded context library:", type(context_lib))
     if not isinstance(context_lib, dict):
-        print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+        log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
         raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
     # Always set schema_version if missing
     if "schema_version" not in context_lib:
@@ -945,7 +945,7 @@ def summarize_misaligned_entities(log_path=None, top_n=10):
     if log_path is None:
         log_path = Path(LOG_DIR) / "spacy_ner_misaligned.jsonl"
     if not log_path.exists():
-        print("[MISALIGNED] No misaligned NER examples found.")
+        log_warning("[MISALIGNED] No misaligned NER examples found.")
         return
     counter = Counter()
     with open(log_path, "rb") as f:
@@ -957,12 +957,12 @@ def summarize_misaligned_entities(log_path=None, top_n=10):
             except Exception:
                 continue
     if not counter:
-        print("[MISALIGNED] No misaligned NER examples found.")
+        log_warning("[MISALIGNED] No misaligned NER examples found.")
         return
-    print(f"\n[MISALIGNED] Top {top_n} most frequent misaligned NER texts:")
+    log_warning(f"\n[MISALIGNED] Top {top_n} most frequent misaligned NER texts:")
     for text, count in counter.most_common(top_n):
-        print(f"  {repr(text)}: {count} times")
-    print("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data.")
+        log_warning(f"  {repr(text)}: {count} times")
+    log_warning("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data.")
 
 # --- Main CLI logic ---
 def main():
@@ -1007,33 +1007,33 @@ def main():
         cache = load_cache()
         cache.clear()
         close_cache(cache)
-        print("Cache flushed.")
+        log_info("Cache flushed.")
         return
 
     cache = load_cache(expire_days=args.cache_expire_days)
 
     if args.export_audit_log:
         shutil.copy2(AUDIT_LOG_PATH, args.export_audit_log)
-        print(f"Audit log exported to {args.export_audit_log}")
+        log_info(f"Audit log exported to {args.export_audit_log}")
         return
 
     if args.self_heal:
         scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
         for attempt in range(1, args.max_retries + 1):
-            print(f"\n[SELF-HEAL] Attempt {attempt}...")
+            log_info(f"\n[SELF-HEAL] Attempt {attempt}...")
             scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
             scan_result = subprocess.run(scan_cmd, check=True, cwd=PROJECT_ROOT)
             if scan_result.returncode == 0:
-                print("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
+                log_info("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
                 break
-            print("[SELF-HEAL] Misalignments found. Running manual correction...")
+            log_info("[SELF-HEAL] Misalignments found. Running manual correction...")
             # Run the normal correction logic (call main() recursively, but without --self-heal)
             args.self_heal = False
             main()
-            print(f"[SELF-HEAL] Sleeping {args.cooldown}s before rescanning...")
+            log_info(f"[SELF-HEAL] Sleeping {args.cooldown}s before rescanning...")
             time.sleep(args.cooldown)
         else:
-            print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+            log_info("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
         return
 
     context_path = safe_path(args.context, [CONTEXT_LIBRARY_DIR])
@@ -1049,12 +1049,12 @@ def main():
     cache_dir = safe_path(CACHE_DIR, [CACHE_DIR]) if CACHE_DIR else None
     log_files = find_log_files(log_dir, cache_dir)
     log_info(f"Discovered {len(log_files)} log files in {log_dir}")
-    print(f"[DEBUG] Discovered log files: {[str(f) for f in log_files]}")
+    log_debug(f"[DEBUG] Discovered log files: {[str(f) for f in log_files]}")
     discovered_fields = discover_field_types_from_logs(log_files)
-    print(f"[DEBUG] Discovered field types in logs: {discovered_fields}")
+    log_debug(f"[DEBUG] Discovered field types in logs: {discovered_fields}")
     # Use discovered fields if --fields is not set or empty
     fields = args.fields if args.fields else discovered_fields or ALL_FIELDS
-    print(f"[DEBUG] Fields to process: {fields}")
+    log_debug(f"[DEBUG] Fields to process: {fields}")
     if args.fix_corrupt_json:
         check_and_fix_json_files()
         return
@@ -1073,10 +1073,10 @@ def main():
             for field in fields:
                 file_field_map.append((log_file, field))
 
-    # Print which files will be attempted for which fields
-    print("[DEBUG] File/field processing plan:")
+    # log_debug which files will be attempted for which fields
+    log_debug("[DEBUG] File/field processing plan:")
     for log_file, field in file_field_map:
-        print(f"  Will process {log_file.name} for field '{field}'")
+        log_info(f"  Will process {log_file.name} for field '{field}'")
 
     if not file_field_map:
         log_warning("No log files matched any of the specified fields by content. Will attempt to process all log files and filter entries by field_type.")
@@ -1109,9 +1109,9 @@ def main():
                 # Periodic DB sync
                 if args.sync_db and len(batch_entries) >= BATCH_SIZE:
                     context_library = load_context_library(context_path)
-                    print("DEBUG: Loaded context library:", type(context_library))
+                    log_debug("DEBUG: Loaded context library:", type(context_library))
                     if not isinstance(context_library, dict):
-                        print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                        log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
                         raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
                     update_database_with_context(context_library)
                     batch_entries.clear()
@@ -1150,18 +1150,18 @@ def main():
             total_existing_skipped += skipped_existing
             total_new += n_new
             processed_logs += 1
-            # Print summary before review
-            print(f"\n[SUMMARY] {log_file.name} | Field: {field}")
-            print(f"  Unique new entries: {n_new}")
-            print(f"  Duplicates skipped: {dup_count}")
-            print(f"  Already in context library: {skipped_existing}")
+            # log_info summary before review
+            log_info(f"\n[SUMMARY] {log_file.name} | Field: {field}")
+            log_info(f"  Unique new entries: {n_new}")
+            log_info(f"  Duplicates skipped: {dup_count}")
+            log_info(f"  Already in context library: {skipped_existing}")
             # Preview top 3 entries
             preview = []
             for v in field_entries.values():
                 preview.extend(v)
-            print(f"  Preview: {preview[:3]}")
+            log_info(f"  Preview: {preview[:3]}")
             if args.dry_run:
-                print(f"[DRY-RUN] Would process {n_new} new entries for field {field} from {log_file}")
+                log_info(f"[DRY-RUN] Would process {n_new} new entries for field {field} from {log_file}")
                 continue
             if args.auto or args.fast:
                 update_context_with_new_entries(context_path, field, field_entries)
@@ -1172,8 +1172,8 @@ def main():
                 # Feedback loop returns accepted, edited, removed counts
                 if args.batch:
                     for context_key, values in field_entries.items():
-                        print(f"\nBatch review for context: {context_key}")
-                        print(f"  Entries: {values}")
+                        log_info(f"\nBatch review for context: {context_key}")
+                        log_info(f"  Entries: {values}")
                         action = input("Accept all (a), Remove all (r), Skip (s)? [a]: ").strip().lower() or "a"
                         if action == "a":
                             update_context_with_new_entries(context_path, field, {context_key: values})
@@ -1202,17 +1202,17 @@ def main():
             # Optionally run integrity check
             if args.integrity:
                 context_library = load_context_library(context_path)
-                print("DEBUG: Loaded context library:", type(context_library))
+                log_debug("DEBUG: Loaded context library:", type(context_library))
                 if not isinstance(context_library, dict):
-                    print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                    log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
                     raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
                 highlight_anomalies(context_library, field, context_path, autofix=True)
             # Optionally update DB
             if args.update_db:
                 context_library = load_context_library(context_path)
-                print("DEBUG: Loaded context library:", type(context_library))
+                log_debug("DEBUG: Loaded context library:", type(context_library))
                 if not isinstance(context_library, dict):
-                    print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                    log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
                     raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
                 update_database_with_context(context_library, db_path=args.db_path, enhanced=args.enhanced, coordinator=coordinator)
             # Clean up log file after processing
@@ -1227,24 +1227,21 @@ def main():
     # Write context library only if changed
     if context_library_changed and not args.dry_run:
         context_library = load_context_library(context_path)
-        print("DEBUG: Loaded context library:", type(context_library))
+        log_debug("DEBUG: Loaded context library:", type(context_library))
         if not isinstance(context_library, dict):
-            print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+            log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
             raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
         update_context_library(context_path, context_library)
         log_info(f"Context library updated at {context_path}")
 
-    print("\n[SUMMARY] Manual Correction Bot Run Complete.")
-    print(f"Log files processed: {processed_logs}")
-    print(f"Total unique new entries: {total_new}")
-    print(f"Total duplicates skipped: {total_duplicates}")
-    print(f"Total already in context library: {total_existing_skipped}")
-    print(f"Total accepted: {total_accepted}, Total edited: {total_edited}, Total removed: {total_removed}")
+    log_info("\n[SUMMARY] Manual Correction Bot Run Complete.")
+    log_info(f"Log files processed: {processed_logs}")
+    log_info(f"Total unique new entries: {total_new}")
+    log_info(f"Total duplicates skipped: {total_duplicates}")
+    log_info(f"Total already in context library: {total_existing_skipped}")
+    log_info(f"Total accepted: {total_accepted}, Total edited: {total_edited}, Total removed: {total_removed}")
     if processed_logs == 0 or total_new == 0:
-        print("[WARNING] No entries were processed. Check your log file naming, field configuration, or use --dry-run for debugging.")
-    print("If you see repeated model save failures, close any file explorers or editors viewing the model directory.")
-    print("If you see spaCy lexeme normalization warnings, you can ignore them for English. To suppress, install spacy-lookups-data and load the table if needed.")
-    print("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
+        log_warning("[WARNING] No entries were processed. Check your log file naming, field configuration, or use --dry-run for debugging.")
 
 if __name__ == "__main__":
     main()
