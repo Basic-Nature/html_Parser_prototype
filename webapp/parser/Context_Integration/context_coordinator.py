@@ -22,9 +22,6 @@ from ..utils.shared_logic import (
     normalize_state_name, normalize_county_name
 )
 from ..bots.librarian import ( 
-    load_context_library, 
-    update_context_library,
-    STATE_ABBR,
     PARTY_KEYWORDS,
     LOCATION_KEYWORDS,
     STATE_MODULE_MAP,

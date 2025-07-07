@@ -387,27 +387,3 @@ def select_contest(
         log_func(f"[CONTEST] User selected contests: {[c.get('title', '') for c in selected]}")
     return selected
 
-# Example usage (for testing/demo):
-if __name__ == "__main__":
-    from ..Context_Integration.context_coordinator import ContextCoordinator
-
-    # Simulate loading and organizing a sample context
-    sample_context = {
-        "contests": [
-            {"title": "2024 Presidential Election - New York", "year": 2024, "type": "Presidential", "state": "New York"},
-            {"title": "2022 Senate Race - California", "year": 2022, "type": "Senate", "state": "California"},
-            {"title": "2024 Mayoral Election - Houston, TX", "year": 2024, "type": "Mayoral", "state": "Texas"},
-            {"title": "2023 School Board - Miami", "year": 2023, "type": "School Board", "state": "Florida"},
-            {"title": "2024 General Election - Miami", "year": 2024, "type": "General", "state": "Florida"},
-            {"title": "2022 Special Election - Miami", "year": 2022, "type": "Special", "state": "Florida"},
-        ],
-        "buttons": [
-            {"label": "Show Results", "is_clickable": True, "is_visible": True},
-            {"label": "Vote Method", "is_clickable": True, "is_visible": True},
-            {"label": "Summary", "is_clickable": True, "is_visible": True}
-        ]
-    }
-    coordinator = ContextCoordinator()
-    coordinator.organize_and_enrich(sample_context)
-    selected = select_contest(coordinator, state="Florida", year=2024)
-    log_info(f"[bold green]Selected contests:[/bold green] {selected}")

@@ -227,6 +227,10 @@ class ContextOrganizer:
         self.db_path = CONTEXT_DB_PATH
         self.context_library_path = CONTEXT_LIBRARY_PATH
         self.library = load_context_library() if use_library else self._default_library()
+        print("DEBUG: type(self.library) =", type(self.library))
+        if not isinstance(self.library, dict):
+            print("ERROR: self.library is not a dict! It is:", type(self.library))
+            raise ValueError("Loaded context library is not a dict!")
         self.organized = None
         self.processed_urls = load_processed_urls()
         self.output_cache = load_output_cache()

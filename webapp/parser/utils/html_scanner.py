@@ -650,6 +650,10 @@ def scan_html_for_context(
         else:
             try:
                 context_library = load_context_library(CONTEXT_LIBRARY_PATH)
+                print("DEBUG: Loaded context library:", type(context_library))
+                if not isinstance(context_library, dict):
+                    print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                    raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
             except Exception:
                 context_library = {}
             pattern_kb = load_pattern_kb()

@@ -224,6 +224,10 @@ class BotPipeline:
                 self.results['manual_correction'] = 'skipped'
             self.retrain_models()
             self.context = load_context_library()
+            print("DEBUG: Loaded context library:", type(self.context))
+            if not isinstance(self.context, dict):
+                print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
             self.context_postprocess()
             self.run_orchestration_plugins()
             self.self_improve()

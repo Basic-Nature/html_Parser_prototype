@@ -499,20 +499,20 @@ CONTEST_PANEL_TAGS: set = {
 
 SELECTORS: dict = {
     "button": {
-        "type": "button",
+        "type_": "button",
         "role": "button",
         "aria-pressed": "false"
     },
     "link": {
-        "type": "link",
+        "type_": "link",
         "role": "link"
     },
     "checkbox": {
-        "type": "checkbox",
+        "type_": "checkbox",
         "role": "checkbox"
     },
     "radio": {
-        "type": "radio",
+        "type_": "radio",
         "role": "radio"
     }
 }
@@ -668,7 +668,7 @@ def robust_orjson_loads(val):
     else:
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
-def load_context_library(path=CONTEXT_LIBRARY_PATH):
+def load_context_library(path=CONTEXT_LIBRARY_PATH) -> dict:
     """
     Loads the context library robustly:
     - If missing, creates with default structure.

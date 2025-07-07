@@ -832,6 +832,10 @@ def main():
                 "sample_row": data[0] if data else {},
             }, option=orjson.OPT_APPEND_NEWLINE))
     context_library = load_context_library()
+    print("DEBUG: Loaded context library:", type(context_library))
+    if not isinstance(context_library, dict):
+        print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+        raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
     cached_hashes = load_cached_segment_hashes(context_library)
     deduped_train_data = []
     for struct in confirmed_structures:

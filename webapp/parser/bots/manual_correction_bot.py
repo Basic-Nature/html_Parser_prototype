@@ -576,6 +576,10 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
         return 0, 0, 0
     print(f"\n[FEEDBACK] Review new context library entries for {field_type}:")
     context_library = load_context_library(context_library_path)
+    print("DEBUG: Loaded context library:", type(context_library))
+    if not isinstance(context_library, dict):
+        print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+        raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
     changed = False
     accepted, edited, removed = 0, 0, 0
     # Summary preview
@@ -874,6 +878,10 @@ def ensure_context_library(path):
         update_context_library(path, struct)
         return struct
     context_lib = load_context_library(path)
+    print("DEBUG: Loaded context library:", type(context_lib))
+    if not isinstance(context_lib, dict):
+        print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+        raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
     # Always set schema_version if missing
     if "schema_version" not in context_lib:
         context_lib["schema_version"] = SCHEMA_VERSION
@@ -1060,6 +1068,10 @@ def main():
                 # Periodic DB sync
                 if args.sync_db and len(batch_entries) >= BATCH_SIZE:
                     context_library = load_context_library(context_path)
+                    print("DEBUG: Loaded context library:", type(context_library))
+                    if not isinstance(context_library, dict):
+                        print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                        raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
                     update_database_with_context(context_library)
                     batch_entries.clear()
                 break
@@ -1149,10 +1161,18 @@ def main():
             # Optionally run integrity check
             if args.integrity:
                 context_library = load_context_library(context_path)
+                print("DEBUG: Loaded context library:", type(context_library))
+                if not isinstance(context_library, dict):
+                    print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                    raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
                 highlight_anomalies(context_library, field, context_path, autofix=True)
             # Optionally update DB
             if args.update_db:
                 context_library = load_context_library(context_path)
+                print("DEBUG: Loaded context library:", type(context_library))
+                if not isinstance(context_library, dict):
+                    print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                    raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
                 update_database_with_context(context_library, db_path=args.db_path, enhanced=args.enhanced, coordinator=coordinator)
             # Clean up log file after processing
             try:
@@ -1166,6 +1186,10 @@ def main():
     # Write context library only if changed
     if context_library_changed and not args.dry_run:
         context_library = load_context_library(context_path)
+        print("DEBUG: Loaded context library:", type(context_library))
+        if not isinstance(context_library, dict):
+            print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+            raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
         update_context_library(context_path, context_library)
         log_info(f"Context library updated at {context_path}")
 

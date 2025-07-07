@@ -10,8 +10,6 @@ from contextlib import contextmanager
 from .models import Contest, TableStructure, BatchMetadata, StagingElectionResult, WarehouseElectionResult, Base
 from ..config import POSTGRES_URL, CONTEXT_LIBRARY_PATH
 
-from ..bots.librarian import load_context_library
-
 # Set up SQLAlchemy engine and session
 engine = create_engine(POSTGRES_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -97,14 +95,6 @@ def fetch_contests_by_filter(filters: Optional[dict] = None, limit: int = 100, s
     finally:
         if close_session:
             session.close()
-
-def append_to_context_library(data, path=None):
-    if path is None:
-        path = CONTEXT_LIBRARY_PATH
-    safe_path = _safe_db_path(path)
-    library = load_context_library(safe_path)
-    with open(safe_path, "wb") as f:
-        f.write(orjson.dumps(library, option=orjson.OPT_INDENT_2))
 
 def normalize_label(label):
     if not label:
