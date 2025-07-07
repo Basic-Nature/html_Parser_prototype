@@ -58,7 +58,7 @@ if CACHE_RESET and PROCESSED_URLS_FILE.exists():
 
 def load_urls(prompt_func=prompt_user_input) -> List[str]:
     if not URL_LIST_FILE.exists():
-        console.print("[bold red]\nNo urls.txt found. Please input a URL to append:")
+        console.log_error("[bold red]\nNo urls.txt found. Please input a URL to append:")
         url = prompt_func("URL: ").strip()
         if url:
             URL_LIST_FILE.write_text(url + "\n")
@@ -67,7 +67,7 @@ def load_urls(prompt_func=prompt_user_input) -> List[str]:
     with URL_LIST_FILE.open('r') as f:
         lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
         if not lines:
-            console.print("[bold red]\nurls.txt has no usable URLs. Please input a URL to append:")
+            console.log_error("[bold red]\nurls.txt has no usable URLs. Please input a URL to append:")
             url = prompt_func("URL: ").strip()
             if url:
                 with URL_LIST_FILE.open('a') as f_append:
@@ -303,7 +303,7 @@ def orchestrate_url(target_url, processed_info, cancel_flag=None):
         except Exception:
             pass
 
-def main(prompt_func=prompt_user_input, output_func=print):
+def main(prompt_func=prompt_user_input, output_func=log_info):
     try:
         if process_format_override():
             return

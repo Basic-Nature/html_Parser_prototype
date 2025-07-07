@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 import uuid
 from datetime import datetime, timezone
-
+from .shared_logger import log_info, log_error
 # Use the engine/session from db_utils for all DB operations
 try:
     from .db_utils import get_engine, SessionLocal
@@ -230,19 +230,19 @@ def main():
     Create all tables in the configured database.
     """
     if get_engine is None:
-        print("[MODELS][ERROR] get_engine not available. Cannot create tables.")
+        log_error("[MODELS][ERROR] get_engine not available. Cannot create tables.")
         return
     from sqlalchemy import inspect
     try:
         engine = get_engine()
-        print("[MODELS] Creating all tables in the configured database...")
+        log_info("[MODELS] Creating all tables in the configured database...")
         Base.metadata.create_all(engine)
         inspector = inspect(engine)
         tables = inspector.get_table_names()
-        print(f"[MODELS] Tables present after creation: {tables}")
-        print("[MODELS] All tables created successfully.")
+        log_info(f"[MODELS] Tables present after creation: {tables}")
+        log_info("[MODELS] All tables created successfully.")
     except Exception as e:
-        print(f"[MODELS][ERROR] Failed to create tables: {e}")
+        log_error(f"[MODELS][ERROR] Failed to create tables: {e}")
 
 if __name__ == "__main__":
     main()

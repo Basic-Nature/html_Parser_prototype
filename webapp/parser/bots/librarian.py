@@ -15,7 +15,7 @@ import time
 import threading
 import shutil
 import tempfile
-from ..utils.shared_logger import log_info
+from ..utils.shared_logger import log_info, log_error, log_debug, log_warning
 
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
@@ -655,7 +655,7 @@ def extend_ballot_types(new_types: List[str]):
 def safe_join(base, *paths):
     final_path = os.path.abspath(os.path.join(base, *paths))
     if not final_path.startswith(os.path.abspath(base)):
-        print(f"DEBUG: Attempted to join {paths} to base {base} -> {final_path}")
+        log_debug(f"DEBUG: Attempted to join {paths} to base {base} -> {final_path}")
         raise ValueError("Attempted Path Traversal Detected!")
     return final_path
 
@@ -1002,18 +1002,18 @@ def self_heal_context_library(max_retries=3, cooldown=2):
     """Self-heal: scan for misaligned NER, run correction bot, reload context library, repeat until clean or max_retries."""
     scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
     for attempt in range(1, max_retries + 1):
-        print(f"\n[LIBRARIAN SELF-HEAL] Attempt {attempt}...")
+        log_info(f"\n[LIBRARIAN SELF-HEAL] Attempt {attempt}...")
         scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
         scan_result = subprocess.run(scan_cmd, check=True, cwd=PROJECT_ROOT)
         if scan_result.returncode == 0:
-            print("[LIBRARIAN SELF-HEAL] Data is clean. Exiting self-heal mode.")
+            log_info("[LIBRARIAN SELF-HEAL] Data is clean. Exiting self-heal mode.")
             return 0
-        print("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
+        log_warning("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
         bot_cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--enhanced"]
         subprocess.run(bot_cmd, check=True, cwd=PROJECT_ROOT)
-        print(f"[LIBRARIAN SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+        log_warning(f"[LIBRARIAN SELF-HEAL] Sleeping {cooldown}s before rescanning...")
         time.sleep(cooldown)
-    print("[LIBRARIAN SELF-HEAL] Max retries reached. Some misalignments may remain.")
+    log_info("[LIBRARIAN SELF-HEAL] Max retries reached. Some misalignments may remain.")
     return 2
 
 if __name__ == "__main__":

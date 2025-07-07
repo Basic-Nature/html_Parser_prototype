@@ -97,8 +97,8 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     score = 0.45 * year_score + 0.35 * type_score + 0.1 * title_score + 0.1 * ml_score
 
     if score < threshold:
-        print(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type_: {ctype}")
-        print(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, total={score:.2f}")
+        log_debug(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type_: {ctype}")
+        log_info(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, total={score:.2f}")
     return score >= threshold
 
 def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "ContextCoordinator", context: dict, max_loops: int = 3, threshold: float = 0.85) -> List[Dict[str, Any]]:

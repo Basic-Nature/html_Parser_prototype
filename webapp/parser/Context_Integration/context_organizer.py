@@ -29,7 +29,7 @@ from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
 from ..utils.html_scanner import load_context_cache_from_disk, save_context_cache_to_disk
-from ..utils.shared_logger import log_info, log_warning, log_error
+from ..utils.shared_logger import log_info, log_warning, log_error, log_debug
 from rich.table import Table
 from rich.console import Console
 import matplotlib.pyplot as plt
@@ -227,9 +227,9 @@ class ContextOrganizer:
         self.db_path = CONTEXT_DB_PATH
         self.context_library_path = CONTEXT_LIBRARY_PATH
         self.library = load_context_library() if use_library else self._default_library()
-        print("DEBUG: type(self.library) =", type(self.library))
+        log_debug("DEBUG: type(self.library) =", type(self.library))
         if not isinstance(self.library, dict):
-            print("ERROR: self.library is not a dict! It is:", type(self.library))
+            log_error("ERROR: self.library is not a dict! It is:", type(self.library))
             raise ValueError("Loaded context library is not a dict!")
         self.organized = None
         self.processed_urls = load_processed_urls()
@@ -310,7 +310,7 @@ class ContextOrganizer:
                 str(c.get("year", ""))
             )
         console = Console()
-        console.print(table)
+        console.log_info(table)
 
     @staticmethod
     def plot_contest_distribution(contests):
@@ -576,30 +576,27 @@ class ContextOrganizer:
         
     
     @staticmethod
+    @staticmethod
     def _describe_embedding_model(model) -> str:
         """
         Return a human-friendly description of the embedding model.
         Uses ModelRegistry.get_model_name if available, else falls back to class name or str.
         """
         try:
-            # If model is a method or not an instance, return its type
             if model is None:
                 return "None"
-            # Avoid passing a method or class to get_model_name
             if callable(model) and not hasattr(model, "model_name_or_path"):
                 return f"{type(model).__name__} (not loaded)"
             # Use ModelRegistry utility if available
+            from ..utils.model_registry import ModelRegistry  # <-- add this import here if needed
             if hasattr(ModelRegistry, "get_model_name"):
                 name = ModelRegistry.get_model_name(model)
                 if name and isinstance(name, str):
                     return name
-            # Common attribute for SentenceTransformer
             if hasattr(model, "model_name_or_path"):
                 return str(getattr(model, "model_name_or_path"))
-            # Fallback to class name
             if hasattr(model, "__class__"):
                 return model.__class__.__name__
-            # Fallback to string representation
             return str(model)[:80]
         except Exception as e:
             return f"Unknown model ({e})"
@@ -629,8 +626,8 @@ class ContextOrganizer:
         from ..bots.librarian import (
             LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, CONTEST_KEYWORDS, PERCENT_KEYWORDS, TOTAL_KEYWORDS, MISC_FOOTER_KEYWORDS
         )
-        print("DEBUG: raw_context keys:", list(raw_context.keys()))
-        print("DEBUG: raw_context['contests']:", raw_context.get("contests"))
+        log_debug("DEBUG: raw_context keys:", list(raw_context.keys()))
+        log_debug("DEBUG: raw_context['contests']:", raw_context.get("contests"))
         debug = self.debug if debug is None else debug
         fuzzy_cutoff = self.fuzzy_cutoff if fuzzy_cutoff is None else fuzzy_cutoff
         embedding_model = embedding_model if embedding_model is not None else self.embedding_model_obj
@@ -1130,7 +1127,7 @@ class ContextOrganizer:
             for child_idx in node["children"]:
                 if child_idx >= len(nodes) or nodes[child_idx].get("parent_idx") != node["_idx"]:
                     indicator = get_loading_indicator()
-                    console.print(
+                    console.log_info(
                         f"{indicator} Inconsistent parent/child: node {node['_idx']} child {child_idx}",
                         highlight=False,
                         end="\r"

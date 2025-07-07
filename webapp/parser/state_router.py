@@ -114,28 +114,28 @@ def prompt_for_handler_fallback(available_states, available_counties_by_state, l
     county = None
     while attempts < max_attempts:
         if last_error:
-            print(f"\n[ERROR] Last import failed: {last_error}\n")
-        print("Available states:", ", ".join(available_states))
+            log_error(f"\n[ERROR] Last import failed: {last_error}\n")
+        log_info("Available states:", ", ".join(available_states))
         state = input("Enter state (or leave blank to cancel): ").strip().lower()
         if state == "cancel" or not state:
-            print("Aborted by user.")
+            log_warning("Aborted by user.")
             return None, None
         if state not in available_states:
-            print(f"State '{state}' not found. Try again.")
+            log_info(f"State '{state}' not found. Try again.")
             attempts += 1
             continue
         counties = available_counties_by_state.get(state, [])
-        print("Available counties:", ", ".join(counties))
+        log_info("Available counties:", ", ".join(counties))
         county = input("Enter county (or leave blank to skip county): ").strip().lower()
         if county == "cancel":
-            print("Aborted by user.")
+            log_warning("Aborted by user.")
             return None, None
         if county and county not in counties:
-            print(f"County '{county}' not found for state '{state}'. Try again.")
+            log_info(f"County '{county}' not found for state '{state}'. Try again.")
             attempts += 1
             continue
         return state, county if county else None
-    print("Too many failed attempts. Exiting fallback.")
+    log_warning("Too many failed attempts. Exiting fallback.")
     return None, None
 
 def preload_handler_map(restrict_to_states=None):
@@ -396,18 +396,18 @@ def cli():
     if args.reload or args.refresh:
         reload_handler_map()
     if args.list_states:
-        print("Available states:")
+        log_info("Available states:")
         for state in list_available_handlers(level="state", fuzzy=args.fuzzy, refresh=args.refresh, debug=args.debug):
-            print(f" - {state}")
+            log_info(f" - {state}")
     elif args.list_counties:
         state = args.list_counties
         counties = list_available_handlers(level="county", state=state, fuzzy=args.fuzzy, refresh=args.refresh, debug=args.debug)
         if counties:
-            print(f"Available counties for {state}:")
+            log_info(f"Available counties for {state}:")
             for county in counties:
-                print(f" - {county}")
+                log_info(f" - {county}")
         else:
-            print(f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
+            log_warning(f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
     elif args.test_route:
         # Try to load as JSON context, else treat as URL
         test_input = args.test_route
@@ -418,28 +418,28 @@ def cli():
                 try:
                     context = orjson.loads(f.read())
                 except Exception as e:
-                    print(f"Failed to load context from file: {e}")
+                    log_warning(f"Failed to load context from file: {e}")
                     return
         else:
             url = test_input
         result = get_handler(context or {}, url=url, debug=args.debug, fuzzy_cutoff=args.fuzzy_cutoff)
-        print("Routing result:")
-        print(orjson.dumps(result["summary"], option=orjson.OPT_INDENT_2))
+        log_info("Routing result:")
+        log_info(orjson.dumps(result["summary"], option=orjson.OPT_INDENT_2))
         if result["handler"]:
-            print(f"Handler module: {getattr(result['handler'], '__name__', str(result['handler']))}")
+            log_info(f"Handler module: {getattr(result['handler'], '__name__', str(result['handler']))}")
         else:
-            print("No suitable handler found.")
+            log_warning("No suitable handler found.")
             # --- Add fallback prompt here ---
             available_states = list_available_states()
             available_counties_by_state = {s: list_available_counties(s) for s in available_states}
             import_error_message = result["summary"]["error"]["message"] if result["summary"].get("error") else "Unknown error"
             state, county = prompt_for_handler_fallback(available_states, available_counties_by_state, last_error=import_error_message)
             if not state:
-                print("No handler selected. Exiting.")
+                log_warning("No handler selected. Exiting.")
                 return
             handler_path = f"webapp.parser.handlers.states.{state}.county.{county}" if county else f"webapp.parser.handlers.states.{state}"
             handler = import_handler(handler_path)
             if handler and hasattr(handler, "parse"):
-                print(f"Handler module: {getattr(handler, '__name__', str(handler))}")
+                log_info(f"Handler module: {getattr(handler, '__name__', str(handler))}")
             else:
-                print("Still could not import a suitable handler.")
+                log_warning("Still could not import a suitable handler.")

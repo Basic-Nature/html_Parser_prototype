@@ -286,7 +286,7 @@ def autoscroll_until_stable(
                 break
             elapsed = (time.time() - start_time) * 1000
             if elapsed > max_total_time * 0.8 and scroll_attempts % 10 == 0:
-                console.print("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
+                console.log_warning("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
                 resp = prompt_user_input("Continue scrolling? (y/N): ").strip().lower()
                 if resp != "y":
                     logger and log_warning("[SCROLL] User aborted scrolling.")

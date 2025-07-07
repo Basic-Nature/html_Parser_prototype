@@ -53,7 +53,7 @@ def parse(page, html_context=None):
                 race_links = page.query_selector_all("ul.dropdown-menu li a")
                 for i, link in enumerate(race_links):
                     label = link.inner_text().strip()
-                    print(f"[{i}] {label}")
+                    log_info(f"[{i}] {label}")
                 choice = input("Select an election to load by index: ").strip()
                 race_links[int(choice)].click()
                 page.wait_for_timeout(3000)

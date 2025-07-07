@@ -30,7 +30,7 @@ import threading
 from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-
+from ..utils.shared_logger import log_info, log_error, log_warning
 # --- SQLAlchemy imports for DB maintenance ---
 from ..utils.db_utils import get_engine
 from .context_migration import migrate_all
@@ -232,13 +232,13 @@ def clean_json(path, required_fields=None, backup=True):
             with open(path, "wb") as f:
                 f.write(orjson.dumps(deduped, option=orjson.OPT_INDENT_2))
             if empty_keys:
-                print(f"[CLEAN][INFO] Removed empty entries for keys: {empty_keys} in {path}")
+                log_info(f"[CLEAN][INFO] Removed empty entries for keys: {empty_keys} in {path}")
             if missing_required_count > 0 or malformed_count > 0:
                 return before, after, 0, f"Malformed: {malformed_count}, Missing required: {missing_required_count}"
             else:
                 # Just log info if only null/empty were removed
                 if null_count > 0 or empty_count > 0:
-                    print(f"[CLEAN][INFO] Removed {null_count} null and {empty_count} empty entries from {path}")
+                    log_info(f"[CLEAN][INFO] Removed {null_count} null and {empty_count} empty entries from {path}")
                 return before, after, 0, None
         # Handle list
         elif isinstance(data, list):
@@ -270,13 +270,13 @@ def clean_json(path, required_fields=None, backup=True):
             with open(path, "wb") as f:
                 f.write(orjson.dumps(deduped, option=orjson.OPT_INDENT_2))
             if empty_indices:
-                print(f"[CLEAN][INFO] Removed empty entries at indices: {empty_indices} in {path}")
+                log_info(f"[CLEAN][INFO] Removed empty entries at indices: {empty_indices} in {path}")
             if missing_required_count > 0 or malformed_count > 0:
                 return before, after, 0, f"Malformed: {malformed_count}, Missing required: {missing_required_count}"
             else:
                 # Just log info if only null/empty were removed
                 if null_count > 0 or empty_count > 0:
-                    print(f"[CLEAN][INFO] Removed {null_count} null and {empty_count} empty entries from {path}")
+                    log_info(f"[CLEAN][INFO] Removed {null_count} null and {empty_count} empty entries from {path}")
                 return before, after, 0, None
         else:
             with open(path, "wb") as f:
@@ -419,10 +419,10 @@ def clean_dir(target_dir, allowed_roots, max_size_bytes, full_sweep=False):
             else:
                 continue
             if err:
-                print(f"[CLEAN][ERROR] Failed to clean {fname}: {err}")
+                log_error(f"[CLEAN][ERROR] Failed to clean {fname}: {err}")
                 errors.append((fname, err))
                 continue
-            print(f"[CLEAN] Cleaned {fname}. Original: {before}, After: {after}{' | MISALIGNED: '+str(misaligned) if misaligned else ''}")
+            log_info(f"[CLEAN] Cleaned {fname}. Original: {before}, After: {after}{' | MISALIGNED: '+str(misaligned) if misaligned else ''}")
             cleaned_files += 1
             total_before += before or 0
             total_after += after or 0
@@ -443,7 +443,7 @@ def run_db_maintenance(engine=None, session=None):
     - Optionally supports ANALYZE only if VACUUM is not allowed.
     - Returns a summary of actions and errors.
     """
-    print("[DB] Starting PostgreSQL VACUUM/ANALYZE maintenance...")
+    log_info("[DB] Starting PostgreSQL VACUUM/ANALYZE maintenance...")
     summary = {"vacuumed": [], "skipped": [], "errors": []}
     try:
         if engine is None:
@@ -454,40 +454,40 @@ def run_db_maintenance(engine=None, session=None):
                 text("SELECT tablename FROM pg_tables WHERE schemaname = 'public';")
             ).fetchall()
             if not tables:
-                print("[DB][WARNING] No user tables found in schema 'public'.")
+                log_warning("[DB][WARNING] No user tables found in schema 'public'.")
                 return summary
             for (table,) in tables:
                 if table.startswith("pg_") or table.startswith("sql_"):
                     summary["skipped"].append(table)
                     continue
-                print(f"[DB] VACUUM (ANALYZE) {table} ...")
+                log_info(f"[DB] VACUUM (ANALYZE) {table} ...")
                 try:
                     conn.execute(text(f"VACUUM (ANALYZE) {table};"))
                     summary["vacuumed"].append(table)
                 except SQLAlchemyError as e:
-                    print(f"[DB][ERROR] Could not vacuum {table}: {e}")
+                    log_error(f"[DB][ERROR] Could not vacuum {table}: {e}")
                     # Try ANALYZE only if VACUUM fails
                     try:
                         conn.execute(text(f"ANALYZE {table};"))
-                        print(f"[DB][INFO] ANALYZE succeeded for {table} after VACUUM failed.")
+                        log_info(f"[DB][INFO] ANALYZE succeeded for {table} after VACUUM failed.")
                         summary["vacuumed"].append(f"{table} (ANALYZE only)")
                     except Exception as e2:
-                        print(f"[DB][ERROR] Could not analyze {table}: {e2}")
+                        log_error(f"[DB][ERROR] Could not analyze {table}: {e2}")
                         summary["errors"].append((table, str(e2)))
-            print(f"[DB] VACUUM/ANALYZE complete. Tables vacuumed: {len(summary['vacuumed'])}, skipped: {len(summary['skipped'])}, errors: {len(summary['errors'])}")
+            log_info(f"[DB] VACUUM/ANALYZE complete. Tables vacuumed: {len(summary['vacuumed'])}, skipped: {len(summary['skipped'])}, errors: {len(summary['errors'])}")
     except Exception as e:
-        print(f"[DB][ERROR] Maintenance failed: {e}")
+        log_error(f"[DB][ERROR] Maintenance failed: {e}")
         summary["errors"].append(("__connection__", str(e)))
     return summary
 
 def run_log_cache_cleaner(log_dir=LOG_DIR, context_lib_dir=CONTEXT_LIBRARY_DIR, cache_dir=CACHE_DIR, max_size_mb=DEFAULT_MAX_SIZE_MB, db_maintenance=False, full_sweep=False):
     max_size_bytes = int(max_size_mb * 1024 * 1024)
     allowed_roots = [log_dir, context_lib_dir, cache_dir]
-    print(f"[CLEAN] Cleaning log dir: {log_dir}")
+    log_info(f"[CLEAN] Cleaning log dir: {log_dir}")
     cleaned1, before1, after1, flagged1, misaligned1, errors1 = clean_dir(log_dir, allowed_roots, max_size_bytes, full_sweep=full_sweep)
-    print(f"[CLEAN] Cleaning context library dir: {context_lib_dir}")
+    log_info(f"[CLEAN] Cleaning context library dir: {context_lib_dir}")
     cleaned2, before2, after2, flagged2, misaligned2, errors2 = clean_dir(context_lib_dir, allowed_roots, max_size_bytes, full_sweep=full_sweep)
-    print(f"[CLEAN] Cleaning cache dir: {cache_dir}")
+    log_info(f"[CLEAN] Cleaning cache dir: {cache_dir}")
     cleaned3, before3, after3, flagged3, misaligned3, errors3 = clean_dir(cache_dir, allowed_roots, max_size_bytes, full_sweep=full_sweep)
     cleaned_files = cleaned1 + cleaned2 + cleaned3
     total_before = before1 + before2 + before3
@@ -495,23 +495,23 @@ def run_log_cache_cleaner(log_dir=LOG_DIR, context_lib_dir=CONTEXT_LIBRARY_DIR, 
     flagged_large = flagged1 + flagged2 + flagged3
     misaligned_summary = misaligned1 + misaligned2 + misaligned3
     errors = errors1 + errors2 + errors3
-    print(f"[CLEAN] Finished cleaning {cleaned_files} files. Total entries: {total_before} -> {total_after}")
+    log_info(f"[CLEAN] Finished cleaning {cleaned_files} files. Total entries: {total_before} -> {total_after}")
     if flagged_large:
-        print("[CLEAN][WARNING] The following files are still too large after cleaning:")
+        log_warning("[CLEAN][WARNING] The following files are still too large after cleaning:")
         for fname, sz in flagged_large:
-            print(f"  {fname}: {sz}")
+            log_info(f"  {fname}: {sz}")
     if misaligned_summary:
-        print("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data:")
+        log_warning("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data:")
         for fname, count in misaligned_summary:
-            print(f"  {fname}: {count} entries flagged as misaligned")
+            log_info(f"  {fname}: {count} entries flagged as misaligned")
     if errors:
-        print("[CLEAN][ERROR] Some files could not be cleaned:")
+        log_error("[CLEAN][ERROR] Some files could not be cleaned:")
         for fname, err in errors:
-            print(f"  {fname}: {err}")
+            log_info(f"  {fname}: {err}")
     if db_maintenance:
         run_db_maintenance()
     migrate_all()
-    print("[CLEAN] Context/log migration to PostgreSQL complete.")
+    log_info("[CLEAN] Context/log migration to PostgreSQL complete.")
     return errors
 
 def schedule_log_cache_cleaner(interval_min=60, db_maintenance=False, **kwargs):
@@ -521,7 +521,7 @@ def schedule_log_cache_cleaner(interval_min=60, db_maintenance=False, **kwargs):
             time.sleep(interval_min * 60)
     t = threading.Thread(target=loop, daemon=True)
     t.start()
-    print(f"[CLEAN] Log cleaner scheduled every {interval_min} minutes.")
+    log_info(f"[CLEAN] Log cleaner scheduled every {interval_min} minutes.")
     return t
 
 def main():
@@ -549,7 +549,7 @@ def main():
             while True:
                 time.sleep(3600)
         except KeyboardInterrupt:
-            print("[CLEAN] Daemon stopped.")
+            log_info("[CLEAN] Daemon stopped.")
     else:
         run_log_cache_cleaner(
             log_dir=args.log_dir,

@@ -81,7 +81,7 @@ def write_audit_log(action, entry, user=None, before=None, after=None):
         "entry": entry,
     }
     with open(AUDIT_LOG_PATH, "ab") as f:
-        f.write(orjson.dumps(log_entry, ensure_ascii=False) + b"\n")
+        f.write(orjson.dumps(log_entry) + b"\n")
 
 def process_logs_with_cache(log_files, cache):
     for log_file in log_files:
@@ -531,7 +531,7 @@ def save_jsonl(path, entries):
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     with open(tmp_path, "w", encoding="utf-8") as f:
         for entry in entries:
-            f.write(orjson.dumps(entry, ensure_ascii=False) + "\n")
+            f.write(orjson.dumps(entry) + b"\n")
     shutil.move(tmp_path, path)
 
 # --- Deduplication utilities ---

@@ -650,9 +650,9 @@ def scan_html_for_context(
         else:
             try:
                 context_library = load_context_library(CONTEXT_LIBRARY_PATH)
-                print("DEBUG: Loaded context library:", type(context_library))
+                log_debug("DEBUG: Loaded context library:", type(context_library))
                 if not isinstance(context_library, dict):
-                    print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                    log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
                     raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
             except Exception:
                 context_library = {}
@@ -685,7 +685,7 @@ def scan_html_for_context(
             filtered = []
             filtered_out = []
             for d in data:
-                print(f"[DEBUG][{name.upper()}] candidate: {d}")
+                log_debug(f"[DEBUG][{name.upper()}] candidate: {d}")
                 title = d.get("title", d.get("text", ""))
                 # Only filter out if title is None or empty after stripping
                 if title is None or (isinstance(title, str) and len(title.strip()) == 0) or len(title) > max_title_len:
@@ -1241,7 +1241,7 @@ def load_context_cache_from_disk(filename=None):
     if filename is None:
         filename = os.path.basename(CONTEXT_CACHE_PATH)
     path = safe_cache_path(filename)
-    print(f"[DEBUG] Loading context cache from: {path}")
+    log_debug(f"[DEBUG] Loading context cache from: {path}")
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
@@ -1255,7 +1255,7 @@ def load_context_cache_from_disk(filename=None):
     return {}
 
 def save_context_cache_to_disk(context_cache, path=CONTEXT_CACHE_PATH):
-    print(f"[DEBUG] Saving context cache to: {path}")
+    log_debug(f"[DEBUG] Saving context cache to: {path}")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     context_cache = convert_ndarrays(context_cache)
     with open(path, "wb") as f:

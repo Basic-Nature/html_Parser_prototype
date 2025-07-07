@@ -21,7 +21,7 @@ import os
 import re
 import orjson
 from typing import List, Dict, Any, Optional, Tuple
-
+from .shared_logger import log_error
 try:
     import torch
     import numpy as np
@@ -102,7 +102,7 @@ def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
                 continue
         return tables
     except Exception as e:
-        print(f"[LLM TABLE DETECTION] Error ({llm_provider}): {e}")
+        log_error(f"[LLM TABLE DETECTION] Error ({llm_provider}): {e}")
         return []
 
 def detect_tables_ml(html: str, options: Optional[dict] = None) -> List[Dict[str, Any]]:

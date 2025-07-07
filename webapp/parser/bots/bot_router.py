@@ -6,7 +6,7 @@ import orjson
 import errno
 from datetime import datetime
 from sqlalchemy import inspect
-from ..utils.shared_logger import log_info, log_error, summarize_logs
+from ..utils.shared_logger import log_info, log_error, summarize_logs, log_debug, log_warning
 from ..bots.log_cache_cleaner_bot import run_log_cache_cleaner
 from ..bots.context_migration import migrate_all
 from ..bots.scan_misaligned_ner import scan_misaligned
@@ -170,11 +170,11 @@ class BotPipeline:
                 f.write("locked")
             return True
         except FileExistsError:
-            print("[INFO] Pipeline already running or ran.")
+            log_info("[INFO] Pipeline already running or ran.")
             return False
         except OSError as e:
             if e.errno == errno.EEXIST:
-                print("[INFO] Pipeline already running or ran.")
+                log_info("[INFO] Pipeline already running or ran.")
                 return False
             else:
                 raise
@@ -187,16 +187,16 @@ class BotPipeline:
 
     def self_heal_loop(self, max_retries=3, cooldown=2):
         for attempt in range(1, max_retries + 1):
-            print(f"\n[SELF-HEAL] Attempt {attempt}...")
+            log_info(f"\n[SELF-HEAL] Attempt {attempt}...")
             exit_code = self.scan_misaligned()
             if exit_code == 0:
-                print("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
+                log_info("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
                 return 0
-            print(f"[SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
+            log_warning(f"[SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
             self.manual_correction(args=self.build_correction_args())
-            print(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+            log_warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
             time.sleep(cooldown)
-        print("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+        log_warning("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
         return 2
 
     def run(self):
@@ -224,9 +224,9 @@ class BotPipeline:
                 self.results['manual_correction'] = 'skipped'
             self.retrain_models()
             self.context = load_context_library()
-            print("DEBUG: Loaded context library:", type(self.context))
+            log_debug("DEBUG: Loaded context library:", type(self.context))
             if not isinstance(self.context, dict):
-                print("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
                 raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
             self.context_postprocess()
             self.run_orchestration_plugins()
@@ -321,13 +321,13 @@ class BotPipeline:
             self.llm_suggestions.append(suggestion)
 
     def print_summary(self):
-        print("\n[PIPELINE] Run Summary:")
+        log_info("\n[PIPELINE] Run Summary:")
         for k, v in self.results.items():
-            print(f"  {k:<20}: {v}")
+            log_info(f"  {k:<20}: {v}")
         if self.llm_suggestions:
-            print("\n[PIPELINE] LLM/AI Suggestions:")
+            log_info("\n[PIPELINE] LLM/AI Suggestions:")
             for s in self.llm_suggestions:
-                print(f"  - {s}")
+                log_info(f"  - {s}")
 
 if __name__ == "__main__":
     pipeline = BotPipeline()

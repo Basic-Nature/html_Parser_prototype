@@ -3,7 +3,7 @@ import os
 
 
 from dotenv import load_dotenv
-
+from .utils.shared_logger import log_info
 load_dotenv()
 import psycopg2
 from psycopg2 import sql, OperationalError
@@ -77,14 +77,10 @@ def ensure_postgres_db():
         with conn.cursor() as cur:
             cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(POSTGRES_DB)))
         conn.close()
-        print(f"[INFO] Database '{POSTGRES_DB}' created.")
+        log_info(f"[INFO] Database '{POSTGRES_DB}' created.")
     except Exception as e:
         raise RuntimeError(f"Failed to create database '{POSTGRES_DB}': {e}")
 
 # Ensure DB exists before anything else uses POSTGRES_URL
 ensure_postgres_db()
 
-if __name__ == "__main__":
-    print("PROJECT_ROOT:", PROJECT_ROOT)
-    print("BASE_DIR:", BASE_DIR)
-    print("POSTGRES_URL:", POSTGRES_URL)

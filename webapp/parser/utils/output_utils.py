@@ -3,7 +3,7 @@ import orjson
 import os
 import collections.abc
 from datetime import datetime
-from ..utils.shared_logger import log_info, log_warning, log_error
+from ..utils.shared_logger import log_info, log_warning, log_debug
 from ..utils.table_builder import build_dynamic_table, harmonize_headers_and_data
 from ..config import CONTEXT_DB_PATH, BASE_DIR, LOG_DIR
 from ..utils.user_prompt import prompt_yes_no
@@ -143,7 +143,7 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
                 try:
                     entries.append(orjson.loads(line))
                 except Exception as e:
-                    print(f"[DEBUG] Failed to parse line as JSON: {line!r}")
+                    log_debug(f"[DEBUG] Failed to parse line as JSON: {line!r}")
                     continue
         for entry in entries:
             meta = entry.get("metadata", {})

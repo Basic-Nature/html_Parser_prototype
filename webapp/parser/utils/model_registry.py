@@ -228,22 +228,22 @@ if __name__ == "__main__":
     # SentenceTransformer example
     try:
         st_model = ModelRegistry.get_sentence_transformer()
-        print("Loaded SentenceTransformer:", st_model)
+        log_info("Loaded SentenceTransformer:", st_model)
     except Exception as e:
-        print("SentenceTransformer error:", e)
+        log_error("SentenceTransformer error:", e)
 
     # spaCy example
     try:
         nlp = ModelRegistry.get_spacy_model()
-        print("Loaded spaCy model:", nlp)
+        log_info("Loaded spaCy model:", nlp)
     except Exception as e:
-        print("spaCy error:", e)
+        log_error("spaCy error:", e)
 
     # Custom model example
     def dummy_loader():
         return {"model": "dummy"}
     dummy = ModelRegistry.get_custom_model("dummy", dummy_loader)
-    print("Loaded custom model:", dummy)
+    log_info("Loaded custom model:", dummy)
 
     # Print loaded models info
-    print("Loaded models info:", ModelRegistry.get_loaded_models_info())
+    log_info("Loaded models info:", ModelRegistry.get_loaded_models_info())

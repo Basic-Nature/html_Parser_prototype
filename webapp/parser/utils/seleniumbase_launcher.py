@@ -1,6 +1,7 @@
 from seleniumbase import Driver
 import time
 import os
+from webapp.parser.utils.shared_logger import log_info
 
 def launch_browser(user_agent=None, headless=True, proxy=None):
     """
@@ -38,8 +39,8 @@ def relaunch_browser_fullscreen_if_needed(_, url, timeout=300, user_agent=None, 
         driver.maximize_window()
     except Exception:
         pass
-    print(f"[SeleniumBase] Please solve the CAPTCHA manually in the browser window.")
-    print(f"[SeleniumBase] Waiting up to {timeout} seconds...")
+    log_info(f"[SeleniumBase] Please solve the CAPTCHA manually in the browser window.")
+    log_info(f"[SeleniumBase] Waiting up to {timeout} seconds...")
     start = time.time()
     while time.time() - start < timeout:
         # Simple check: look for common Cloudflare challenge indicators in page source
@@ -53,7 +54,7 @@ def relaunch_browser_fullscreen_if_needed(_, url, timeout=300, user_agent=None, 
             "challenge-platform",
             "just a moment..."
         ]):
-            print("[SeleniumBase] CAPTCHA appears to be cleared.")
+            log_info("[SeleniumBase] CAPTCHA appears to be cleared.")
             break
         time.sleep(5)
     return driver

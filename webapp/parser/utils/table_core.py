@@ -1284,10 +1284,10 @@ def feedback_correction_loop(headers, data, extraction_context=None):
     """
     try:
         if extraction_context and extraction_context.get("interactive", []):
-            print("\n[FEEDBACK] Review extracted headers and data:")
-            print("Headers:", headers)
+            log_info("\n[FEEDBACK] Review extracted headers and data:")
+            log_info("Headers:", headers)
             for i, row in enumerate(data[:5]):
-                print(f"Row {i+1}:", row)
+                log_info(f"Row {i+1}:", row)
             resp = input("Are the headers and data correct? (y/n): ").strip().lower()
             if resp == "n":
                 new_headers = input("Enter corrected headers as comma-separated values: ").strip().split(",")
@@ -1407,7 +1407,7 @@ def harmonize_headers_and_data(headers: list, data: list, context: dict = None) 
     # 8. Log unique locations and warn if only one unique value
     unique_locations = set(row.get(location_col, "") for row in harmonized if location_col and location_col in row)
     log_info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
-    print(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
+    log_info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
     if location_col and len(unique_locations) <= 1:
         log_warning(f"[HARMONIZE] WARNING: Only one unique value found in location column '{location_col}'. Extraction may be incorrect.")
 
@@ -2534,8 +2534,8 @@ def suggest_new_row_classes_from_logs(log_dir):
     # Suggest top classes/IDs as new selectors
     suggested_classes = [c for c, _ in class_counter.most_common(10)]
     suggested_ids = [pid for pid, _ in parent_counter.most_common(5)]
-    print("Suggested new row classes:", suggested_classes)
-    print("Suggested new row IDs:", suggested_ids)
+    log_info("Suggested new row classes:", suggested_classes)
+    log_info("Suggested new row IDs:", suggested_ids)
     return suggested_classes, suggested_ids
 
 def load_dom_patterns(log_path=None):
@@ -2592,7 +2592,7 @@ def review_learned_table_structures(log_path=None):
     if log_path is None:
         log_path = get_safe_log_path("table_structure_learning_log.jsonl")
     if not os.path.exists(log_path):
-        print("No learned table structures found.")
+        log_info("No learned table structures found.")
         return
 
     entries = []
@@ -2605,11 +2605,11 @@ def review_learned_table_structures(log_path=None):
                 continue
 
     for idx, entry in enumerate(entries):
-        print(f"\n[{idx}] Contest: {entry.get('contest_title', [])}")
-        print(f"    Headers: {entry.get('headers', [])}")
-        print(f"    Context: {entry.get('context', [])}")
-        print(f"    Result: {entry.get('result', [])}")
-        print("-" * 40)
+        log_info(f"\n[{idx}] Contest: {entry.get('contest_title', [])}")
+        log_info(f"    Headers: {entry.get('headers', [])}")
+        log_info(f"    Context: {entry.get('context', [])}")
+        log_info(f"    Result: {entry.get('result', [])}")
+        log_info("-" * 40)
 
     while True:
         cmd = input("\nEnter entry number to delete/edit, or 'q' to quit: ").strip()
@@ -2621,20 +2621,20 @@ def review_learned_table_structures(log_path=None):
                 action = input("Delete (d) or Edit (e) this entry? [d/e]: ").strip().lower()
                 if action == "d":
                     entries.pop(idx)
-                    print("Entry deleted.")
+                    log_info("Entry deleted.")
                 elif action == "e":
                     new_headers = input("Enter new headers as comma-separated values: ").strip().split(",")
                     entries[idx]["headers"] = [h.strip() for h in new_headers]
-                    print("Headers updated.")
+                    log_info("Headers updated.")
                 else:
-                    print("Unknown action.")
+                    log_info("Unknown action.")
             else:
-                print("Invalid entry number.")
+                log_warning("Invalid entry number.")
         # Save changes
         with open(log_path, "wb") as f:
             for entry in entries:
                 f.write(orjson.dumps(entry) + b"\n")
-        print("Changes saved.")
+        log_info("Changes saved.")
 
 def table_signature(headers):
     return hashlib.md5(orjson.dumps(headers, sort_keys=True)).hexdigest()

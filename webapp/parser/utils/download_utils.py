@@ -141,9 +141,9 @@ def download_confirmed_file(file_url: str, page_url: str, confirmed: bool = True
 def summarize_downloads():
     """Print a summary of all downloads from the manifest."""
     manifest = load_download_manifest()
-    print("\n[DOWNLOAD SUMMARY]")
+    log_info("\n[DOWNLOAD SUMMARY]")
     for entry in manifest.values():
-        print(f"  {entry.get('filename')} | {entry.get('url')} | {entry.get('status')} | {entry.get('timestamp')}")
+        log_info(f"  {entry.get('filename')} | {entry.get('url')} | {entry.get('status')} | {entry.get('timestamp')}")
 
 def get_downloaded_files_by_status(status="success"):
     """Return a list of filenames for downloads with the given status."""

@@ -15,7 +15,7 @@ import orjson
 from datetime import datetime, timezone
 import types
 from fuzzywuzzy import fuzz, process
-from ..utils.shared_logger import rprint, logging
+from ..utils.shared_logger import log_info, log_error, log_debug, log_warning
 import difflib
 from ..utils.shared_logic import (
     scan_buttons_with_progress, keyphrase_match,
@@ -443,7 +443,7 @@ def dynamic_state_county_detection(context, html, debug=False):
 
     if debug:
         for log in detection_log:
-            print("[dynamic_state_county_detection]", log)
+            log_info("[dynamic_state_county_detection]", log)
     return normalized_county, normalized_state, handler_path, detection_log
 
 # --- Core Coordinator Class ---
@@ -477,16 +477,16 @@ class ContextCoordinator:
         """
         try:
             if self.alert_monitor_thread and self.alert_monitor_thread.is_alive():
-                logging.info("[ALERT MONITOR] Stopping alert monitoring thread.")
+                log_info("[ALERT MONITOR] Stopping alert monitoring thread.")
                 self.alert_monitor_thread.join(timeout=1)
                 if self.alert_monitor_thread.is_alive():
-                    logging.warning("[ALERT MONITOR] Thread did not stop cleanly.")
+                    log_warning("[ALERT MONITOR] Thread did not stop cleanly.")
                 else:
-                    logging.info("[ALERT MONITOR] Thread stopped successfully.")
+                    log_info("[ALERT MONITOR] Thread stopped successfully.")
             else:
-                logging.info("[ALERT MONITOR] No active thread to stop.")
+                log_info("[ALERT MONITOR] No active thread to stop.")
         except Exception as e:
-            logging.error(f"[ALERT MONITOR] Exception during cleanup: {e}", exc_info=True)
+            log_error(f"[ALERT MONITOR] Exception during cleanup: {e}", exc_info=True)
         finally:
             self.alert_monitor_thread = None
             
@@ -498,16 +498,16 @@ class ContextCoordinator:
             try:
                 monitor_db_for_alerts()
             except Exception as e:
-                logging.error(f"[ALERT MONITOR] Exception: {e}", exc_info=True)
+                log_error(f"[ALERT MONITOR] Exception: {e}", exc_info=True)
 
         if background:
             if self.alert_monitor_thread and self.alert_monitor_thread.is_alive():
-                logging.info("[ALERT MONITOR] Already running.")
+                log_info("[ALERT MONITOR] Already running.")
                 return self.alert_monitor_thread
             t = threading.Thread(target=run_monitor, daemon=True)
             t.start()
             self.alert_monitor_thread = t
-            logging.info("[ALERT MONITOR] Started in background thread.")
+            log_info("[ALERT MONITOR] Started in background thread.")
             return t
         else:
             run_monitor()
@@ -1342,16 +1342,16 @@ class ContextCoordinator:
                     and learned_btn.get("is_visible")
                     and learned_btn.get("is_clickable")
                 ):
-                    rprint(f"[green][LEARNING] Auto-applying learned button: {learned_btn.get('label')}[/green]")
+                    log_info(f"[green][LEARNING] Auto-applying learned button: {learned_btn.get('label')}[/green]")
                     try:
                         learned_btn["element_handle"].click()
                         page.wait_for_timeout(1500)
                         self.clicked_button_selectors.add(learned_btn.get("selector"))
                         return learned_btn, 0
                     except Exception:
-                        rprint("[red][ERROR] Failed to click learned button element.[/red]")
+                        log_error("[red][ERROR] Failed to click learned button element.[/red]")
                 else:
-                    rprint("[red][ERROR] No element_handle found for the learned button candidate.[/red]")
+                    log_error("[red][ERROR] No element_handle found for the learned button candidate.[/red]")
 
         # --- 2. Gather candidates from memory/log ---
         memory_candidates = []
@@ -1421,10 +1421,10 @@ class ContextCoordinator:
                         if confirm_button_callback:
                             confirmed = confirm_button_callback(cand)
                         if confirmed:
-                            rprint(f"[bold green][Coordinator] Confirmed button: '{cand.get('label')}' (score={cand.get('combined_score', 0):.2f})[/bold green]")
+                            log_info(f"[bold green][Coordinator] Confirmed button: '{cand.get('label')}' (score={cand.get('combined_score', 0):.2f})[/bold green]")
                             self._log_button_memory(cand, contest_title, f"confirmed_pass_{cand.get('combined_score', 0):.2f}")
                             if not isinstance(cand, dict):
-                                rprint(f"[red][ERROR] Candidate is not a dict: {cand}[/red]")
+                                log_error(f"[red][ERROR] Candidate is not a dict: {cand}[/red]")
                                 continue
                             if learning_mode:
                                 self._log_confirmed_button_for_learning(cand, contest_title, context)
@@ -1437,7 +1437,7 @@ class ContextCoordinator:
                             return cand, idx
                         else:
                             excluded_labels.add(cand.get("label"))
-                            rprint(f"[yellow][Coordinator] Button '{cand.get('label')}' rejected, retrying...[/yellow]")
+                            log_warning(f"[yellow][Coordinator] Button '{cand.get('label')}' rejected, retrying...[/yellow]")
                             found = True
                             break
                 if found:
@@ -1457,7 +1457,7 @@ class ContextCoordinator:
                     self._log_confirmed_button_for_learning(chosen_btn, contest_title, context)
                 return chosen_btn, chosen_idx
 
-        rprint(f"[red][ERROR] No suitable button could be clicked for '{context.get('toggle_name', '')}'.[/red]")
+        log_error(f"[red][ERROR] No suitable button could be clicked for '{context.get('toggle_name', '')}'.[/red]")
         return None, None
 
     def _log_confirmed_button_for_learning(self, button, contest_title, context):
@@ -1784,7 +1784,7 @@ class ContextCoordinator:
         Print a summary of contests, entities, locations, and integrity issues.
         """  
         contests = self.get_contests()
-        rprint(f"[bold cyan][COORDINATOR] {len(contests)} contests loaded[/bold cyan]")
+        log_info(f"[bold cyan][COORDINATOR] {len(contests)} contests loaded[/bold cyan]")
         all_entities = set()
         all_labels = set()
         for c in contests:
@@ -1793,17 +1793,17 @@ class ContextCoordinator:
             for ent, label in c.get("entities", []):
                 all_entities.add(ent)
                 all_labels.add(label)
-        rprint(f"Unique entity labels: {sorted(all_labels)}")
-        rprint(f"Unique entities: {sorted(all_entities)}")
+        log_info(f"Unique entity labels: {sorted(all_labels)}")
+        log_info(f"Unique entities: {sorted(all_entities)}")
         # Show states and years
-        rprint(f"States: {sorted({c.get('state') for c in contests if c.get('state')})}")
-        rprint(f"Years: {sorted({c.get('year') for c in contests if c.get('year')})}")
+        log_info(f"States: {sorted({c.get('state') for c in contests if c.get('state')})}")
+        log_info(f"Years: {sorted({c.get('year') for c in contests if c.get('year')})}")
         # Integrity issues
         issues = self.validate_and_check_integrity()
         if issues["integrity_issues"]:
-            rprint(f"[yellow]Integrity issues:[/yellow] {issues['integrity_issues']}")
+            log_warning(f"[yellow]Integrity issues:[/yellow] {issues['integrity_issues']}")
         if issues["anomalies"]:
-            rprint(f"[red]Anomalies detected:[/red] {issues['anomalies']}")
+            log_error(f"[red]Anomalies detected:[/red] {issues['anomalies']}")
      
     # --- Dynamic Data for Downstream Consumers ---
 

@@ -593,17 +593,17 @@ def review_dom_patterns(log_path=None):
     if log_path is None:
         log_path = get_safe_log_path()
     if not os.path.exists(log_path):
-        print("No learned DOM patterns found.")
+        log_warning("No learned DOM patterns found.")
         return
 
     with open(log_path, "rb") as f:
         entries = [orjson.loads(line) for line in f if line.strip()]
 
     for idx, entry in enumerate(entries):
-        print(f"\n[{idx}] Selector: {entry.get('selector')}")
-        print(f"    Example HTML: {entry.get('example_html')[:200]}...")
-        print(f"    Context: {entry.get('context')}")
-        print("-" * 40)
+        log_info(f"\n[{idx}] Selector: {entry.get('selector')}")
+        log_info(f"    Example HTML: {entry.get('example_html')[:200]}...")
+        log_info(f"    Context: {entry.get('context')}")
+        log_info("-" * 40)
 
     while True:
         cmd = input("\nEnter entry number to approve/delete, or 'q' to quit: ")
@@ -617,19 +617,19 @@ def review_dom_patterns(log_path=None):
                 action = input("Approve (a) or Delete (d) this entry? [a/d]: ").strip().lower()
                 if action == "d":
                     entries.pop(idx)
-                    print("Entry deleted.")
+                    log_warning("Entry deleted.")
                 elif action == "a":
                     entries[idx]["approved"] = True
-                    print("Entry approved.")
+                    log_info("Entry approved.")
                 else:
-                    print("Unknown action.")
+                    log_warning("Unknown action.")
             else:
-                print("Invalid entry number.")
+                log_warning("Invalid entry number.")
         # Save changes
         with open(log_path, "wb") as f:
             for entry in entries:
                 f.write(orjson.dumps(entry) + b"\n")
-        print("Changes saved.")
+        log_info("Changes saved.")
 
 def auto_approve_dom_pattern(selector, log_path=None, min_count=2):
     """

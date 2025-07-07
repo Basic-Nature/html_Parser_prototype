@@ -27,6 +27,7 @@ from webapp.parser.web_pipeline import cancellation_manager, process_single_url,
 from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
 from webapp.parser.utils.user_prompt import get_prompt_session, clear_prompt_session
 from webapp.parser.utils import user_prompt as prompt_manager
+from webapp.parser.utils.shared_logger import log_info, log_error
 # Load environment variables from .env
 
 load_dotenv()
@@ -98,7 +99,7 @@ def add_url():
     if url:
         with open(URLS_FILE, "a", encoding="utf-8") as f:
             f.write(url + "\n")
-        print(f"[ADDED] {url}")
+        log_info(f"[ADDED] {url}")
         
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -134,13 +135,13 @@ def get_url_list():
 
 def list_urls():
     if not os.path.exists(URLS_FILE):
-        print("[INFO] No urls.txt found.")
+        log_info("[INFO] No urls.txt found.")
         return []
     with open(URLS_FILE, "r", encoding="utf-8") as f:
         urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
-    print("\n[URLS.TXT ENTRIES]")
+    log_info("\n[URLS.TXT ENTRIES]")
     for i, url in enumerate(urls, 1):
-        print(f"{i}. {url}")
+        log_info(f"{i}. {url}")
     return urls
 
 def load_overrides():
@@ -161,7 +162,7 @@ def postgres_service_status(service_name=None):
         else:
             return "unknown"
     except Exception as e:
-        print(f"[ERROR] Could not check service status: {e}")
+        log_error(f"[ERROR] Could not check service status: {e}")
         return "error"
 
 def save_overrides(data):
@@ -191,7 +192,7 @@ def index():
 
 @socketio.on('connect')
 def handle_connect():
-    print("Client connected")
+    log_info("Client connected")
     emit('parser_output', "Connected to server.\n")
 
 @app.route("/delete-hint/<frag>", methods=["POST"])
@@ -210,7 +211,7 @@ def delete_hint_route(frag):
 def handle_disconnect():
     session_id = session.get('sid') or request.sid
     cancel_processing(session_id)
-    print("Client disconnected")
+    log_info("Client disconnected")
     emit('parser_output', "Disconnected from server.\n")
 @app.route("/edit-hint", methods=["POST"])
 
@@ -385,7 +386,7 @@ def handle_cancel_parser():
 
 @socketio.on('parser_prompt')
 def handle_parser_prompt(data):
-    print(f"Received prompt: {data}")
+    log_info(f"Received prompt: {data}")
     session_id = session.get('sid') if 'sid' in session else request.sid
     output = run_parser_for_urls(data, session_id)
     emit('parser_output', output, room=session_id)
@@ -396,7 +397,7 @@ def run_parser_page():
 
 @socketio.on('data_framework')
 def handle_data_framework(data):
-    print(f"Received data_framework event: {data}")
+    log_info(f"Received data_framework event: {data}")
     session_id = session.get('sid') if 'sid' in session else request.sid
     output = postgres_service_status(POSTGRES_SERVICE_NAME)
     emit('parser_output', output, room=session_id)
