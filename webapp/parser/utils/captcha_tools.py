@@ -51,7 +51,7 @@ def bring_to_front(page_or_driver):
     """
     Attempts to bring the browser window to the foreground.
     """
-    os_type_ = platform.system()
+    os_type = platform.system()
     try:
         # Playwright Page
         if hasattr(page_or_driver, "bring_to_front"):
@@ -60,13 +60,13 @@ def bring_to_front(page_or_driver):
         elif hasattr(page_or_driver, "maximize_window"):
             page_or_driver.maximize_window()
         # OS-level foreground
-        if os_type_ == "Windows":
+        if os_type == "Windows":
             import ctypes
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 9)  # SW_RESTORE
             ctypes.windll.user32.SetForegroundWindow(ctypes.windll.kernel32.GetConsoleWindow())
-        elif os_type_ == "Darwin":  # macOS
+        elif os_type == "Darwin":  # macOS
             os.system("osascript -e 'tell application \"System Events\" to set frontmost of the first process whose unix id is (do shell script \"echo $PPID\") to true'")
-        elif os_type_ == "Linux":
+        elif os_type == "Linux":
             os.system("xdotool windowactivate $(xdotool search --onlyvisible --name 'Chromium' | head -1) 2>/dev/null")
     except Exception as e:
         log_warning(f"[CAPTCHA] Foreground window fallback failed: {e}")

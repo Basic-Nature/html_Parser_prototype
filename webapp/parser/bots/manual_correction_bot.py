@@ -40,7 +40,8 @@ from ..bots.librarian import (
 # --- Config ---
 # --- Directory and file constants ---
 from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
-
+from webapp.parser.Context_Integration.context_coordinator import ContextCoordinator
+coordinator = ContextCoordinator()
 # Ensure these are Path objects
 LOG_DIR = Path(LOG_DIR)
 CONTEXT_LIBRARY_PATH = Path(CONTEXT_LIBRARY_PATH)
@@ -79,8 +80,8 @@ def write_audit_log(action, entry, user=None, before=None, after=None):
         "after": after,
         "entry": entry,
     }
-    with open(AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(orjson.dumps(log_entry, ensure_ascii=False) + "\n")
+    with open(AUDIT_LOG_PATH, "ab") as f:
+        f.write(orjson.dumps(log_entry, ensure_ascii=False) + b"\n")
 
 def process_logs_with_cache(log_files, cache):
     for log_file in log_files:
@@ -131,15 +132,48 @@ SUCCESS_RESULTS = {"pass", "fuzzy_pass", "manual_correction", "user_corrected"}
 
 # --- Utility: Atomic JSON write with backup ---
 def atomic_write_json(obj, path):
+    """
+    Atomically write JSON to path, keeping only the latest .bak and .tmp.
+    - Writes to .tmp first, then moves to final path.
+    - If path exists, creates a .bak (removing any old .bak).
+    - Cleans up any stray .tmp before/after.
+    """
+    import os
     path = Path(path)
     backup_path = path.with_suffix(path.suffix + ".bak")
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with NamedTemporaryFile("wb", delete=False, dir=path.parent) as tf:
+
+    # Remove any old .tmp file before starting
+    if tmp_path.exists():
+        try:
+            tmp_path.unlink()
+        except Exception:
+            pass
+
+    # Remove any old .bak file before creating new backup
+    if backup_path.exists():
+        try:
+            backup_path.unlink()
+        except Exception:
+            pass
+
+    # Write to .tmp path
+    with open(tmp_path, "wb") as tf:
         tf.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
-        temp_name = tf.name
+
+    # If the main file exists, back it up
     if path.exists():
         shutil.copy2(path, backup_path)
-    shutil.move(temp_name, path)
+
+    # Atomically move .tmp to final path
+    shutil.move(str(tmp_path), str(path))
+
+    # Clean up any stray .tmp (should not exist, but just in case)
+    if tmp_path.exists():
+        try:
+            tmp_path.unlink()
+        except Exception:
+            pass
 
 # --- Path security utility ---
 def safe_path(path, allowed_roots):
@@ -260,13 +294,21 @@ def find_log_files(log_dir=LOG_DIR, cache_dir=None, suffixes=(".jsonl", ".json")
     return files
 
 # --- JSONL utilities ---
+
 def load_jsonl(path):
     path = safe_path(path, [LOG_DIR, CONTEXT_LIBRARY_DIR])
     if not path.exists():
         log_warning(f"Log file not found: {path}")
         return []
-    with open(path, "r", encoding="utf-8") as f:
-        return [orjson.loads(line) for line in f if line.strip()]
+    entries = []
+    with open(path, "rb") as f:
+        for i, line in enumerate(f, 1):
+            if line.strip():
+                try:
+                    entries.append(orjson.loads(line))
+                except Exception as e:
+                    log_warning(f"[CORRUPT] {path} line {i}: {e}")
+    return entries
 
 # --- Log file hash/timestamp and offset tracking ---
 def file_hash(path):
@@ -279,17 +321,22 @@ def file_hash(path):
             h.update(chunk)
     return h.hexdigest()
 
-def check_and_fix_json_files(directories=None, suffixes=(".json", ".jsonl"), auto_delete=True, verbose=True):
+def check_and_fix_json_files(
+    directories=None, suffixes=(".json", ".jsonl"), auto_delete=True, verbose=True, quarantine=True, try_fix=True
+):
     """
-    Scan directories for JSON/JSONL files, check for corruption, and delete or report corrupted files.
-    Args:
-        directories: list of Path or str, directories to scan (default: [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR])
-        suffixes: tuple of file suffixes to check
-        auto_delete: if True, delete corrupted files; else, just report
-        verbose: print actions taken
-    Returns:
-        List of corrupted files found (and deleted if auto_delete)
+    Scan directories for JSON/JSONL files, try to fix corruption, and delete/quarantine if unrecoverable.
+    Returns list of corrupted files (fixed or deleted/quarantined).
     """
+    import re
+
+    # Try to import tolerant JSON parser
+    try:
+        import json5
+        has_json5 = True
+    except ImportError:
+        has_json5 = False
+
     if directories is None:
         directories = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]
     corrupted = []
@@ -301,24 +348,119 @@ def check_and_fix_json_files(directories=None, suffixes=(".json", ".jsonl"), aut
             for file in directory.rglob(f"*{suf}"):
                 try:
                     if suf == ".jsonl":
-                        with open(file, "r", encoding="utf-8") as f:
+                        # Try to load all lines, salvage valid ones if needed
+                        valid_lines = []
+                        with open(file, "rb") as f:
                             for line in f:
                                 if line.strip():
-                                    orjson.loads(line)
-                    else:
+                                    try:
+                                        orjson.loads(line)
+                                        valid_lines.append(line)
+                                    except Exception:
+                                        if verbose:
+                                            print(f"[CORRUPT-LINE] {file}: {line[:80]}...")
                         with open(file, "rb") as f:
-                            orjson.loads(f.read())
+                            all_lines = f.readlines()
+                        if try_fix and len(valid_lines) < len(all_lines):
+                            fixed_path = file.with_suffix(file.suffix + ".fixed")
+                            with open(fixed_path, "wb") as out:
+                                for line in valid_lines:
+                                    out.write(line)
+                            shutil.move(fixed_path, file)
+                            if verbose:
+                                print(f"[FIXED] Salvaged {len(valid_lines)}/{len(all_lines)} lines in {file}")
+                            continue  # File is now fixed, skip deletion
+                        elif len(valid_lines) == len(all_lines):
+                            continue  # All lines valid
+                        else:
+                            raise Exception("Unrecoverable .jsonl corruption")
+                    else:
+                        # Try to load as JSON, if fails, try tolerant parsing or salvage array elements
+                        with open(file, "rb") as f:
+                            content = f.read()
+                        try:
+                            orjson.loads(content)
+                            continue  # Valid
+                        except Exception:
+                            pass
+                        # Try tolerant parser (json5)
+                        if try_fix and has_json5:
+                            try:
+                                with open(file, "r", encoding="utf-8") as f:
+                                    text = f.read()
+                                obj = json5.loads(text)
+                                # If json5 can parse, rewrite as strict JSON
+                                fixed_path = file.with_suffix(file.suffix + ".fixed")
+                                with open(fixed_path, "wb") as out:
+                                    out.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
+                                shutil.move(fixed_path, file)
+                                if verbose:
+                                    print(f"[FIXED] Tolerant parse (json5) succeeded for {file}")
+                                continue
+                            except Exception:
+                                pass
+                        # Try to salvage up to the last valid closing bracket
+                        if try_fix:
+                            try:
+                                text = content.decode("utf-8", errors="ignore")
+                                # Find last closing bracket for array or object
+                                last_brace = max(text.rfind("}"), text.rfind("]"))
+                                if last_brace != -1:
+                                    truncated = text[:last_brace+1]
+                                    try:
+                                        obj = orjson.loads(truncated.encode("utf-8"))
+                                        fixed_path = file.with_suffix(file.suffix + ".fixed")
+                                        with open(fixed_path, "wb") as out:
+                                            out.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
+                                        shutil.move(fixed_path, file)
+                                        if verbose:
+                                            print(f"[FIXED] Truncated and recovered {file}")
+                                        continue
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                pass
+                        # Try to salvage array elements (if file is a JSON array)
+                        if try_fix:
+                            try:
+                                text = content.decode("utf-8", errors="ignore")
+                                items = re.findall(r"\{.*?\}", text, re.DOTALL)
+                                valid_objs = []
+                                for item in items:
+                                    try:
+                                        valid_objs.append(orjson.loads(item))
+                                    except Exception:
+                                        if verbose:
+                                            print(f"[CORRUPT-OBJ] {file}: {item[:80]}...")
+                                if valid_objs:
+                                    fixed_path = file.with_suffix(file.suffix + ".fixed")
+                                    with open(fixed_path, "wb") as out:
+                                        out.write(orjson.dumps(valid_objs, option=orjson.OPT_INDENT_2))
+                                    shutil.move(fixed_path, file)
+                                    if verbose:
+                                        print(f"[FIXED] Salvaged {len(valid_objs)} objects in {file}")
+                                    continue
+                            except Exception:
+                                pass
+                        raise Exception("Unrecoverable .json corruption")
                 except Exception as e:
                     corrupted.append(str(file))
                     if verbose:
                         print(f"[CORRUPT] {file}: {e}")
                     if auto_delete:
                         try:
-                            file.unlink()
-                            if verbose:
-                                print(f"[DELETED] {file}")
+                            if quarantine:
+                                quarantine_dir = file.parent / "corrupt"
+                                quarantine_dir.mkdir(exist_ok=True)
+                                file.rename(quarantine_dir / file.name)
+                                if verbose:
+                                    print(f"[QUARANTINED] {file} -> {quarantine_dir / file.name}")
+                            else:
+                                file.unlink()
+                                if verbose:
+                                    print(f"[DELETED] {file}")
                         except Exception as del_e:
-                            print(f"[ERROR] Could not delete {file}: {del_e}")
+                            print(f"[ERROR] Could not remove {file}: {del_e}")
     if verbose:
         print(f"[SUMMARY] Corrupted files found: {corrupted}")
     return corrupted
@@ -361,7 +503,7 @@ def save_jsonl(path, entries):
     shutil.move(tmp_path, path)
 
 # --- Deduplication utilities ---
-def deduplicate_entries(entries, key_fields=("extracted_value", "field_type_", "context_key")):
+def deduplicate_entries(entries, key_fields=("extracted_value", "field_type", "context_key")):
     """
     Deduplicate a list of dict entries by key fields (tuple of field names).
     Returns a list of unique entries and a count of duplicates skipped.
@@ -381,12 +523,12 @@ def entry_key(entry):
     """
     return (
         entry.get("extracted_value"),
-        entry.get("field_type_"),
+        entry.get("field_type"),
         entry.get("context_key", "default")
     )
 
 # --- Enhanced aggregate with deduplication and context check ---
-def aggregate_successful_field_entries(log_file: Path, context_library=None, field_type_=None, success_results=None, fast_mode=False):
+def aggregate_successful_field_entries(log_file: Path, context_library=None, field_type=None, success_results=None, fast_mode=False):
     if success_results is None:
         success_results = SUCCESS_RESULTS
     field_entries = defaultdict(list)
@@ -395,12 +537,12 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
     unique_entries, dup_count = deduplicate_entries(entries)
     # If context_library and field_type provided, skip already-existing entries
     skipped_existing = 0
-    if context_library and field_type_ in context_library:
+    if context_library and field_type in context_library:
         existing_set = set()
-        for e in context_library[field_type_]:
+        for e in context_library[field_type]:
             key = (
                 e.get("extracted_value"),
-                e.get("field_type_"),
+                e.get("field_type"),
                 e.get("context_key", "default")
             )
             existing_set.add(key)
@@ -408,7 +550,7 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
         for entry in unique_entries:
             key = (
                 entry.get("extracted_value"),
-                entry.get("field_type_"),
+                entry.get("field_type"),
                 entry.get("context_key", "default")
             )
             if key not in existing_set:
@@ -427,12 +569,12 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
     return field_entries, dup_count, skipped_existing, len(unique_entries)
 
 # --- Feedback loop (interactive and LLM/ML-powered) ---
-def feedback_loop(new_entries, field_type_, context_library_path, enhanced=True, coordinator=None, context_organizer=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None, fast_mode=False):
+def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, coordinator=None, context_organizer=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None, fast_mode=False):
     context_library_path = safe_path(context_library_path, [CONTEXT_LIBRARY_DIR])
     if not new_entries:
-        log_info(f"No new entries to review for {field_type_}.")
+        log_info(f"No new entries to review for {field_type}.")
         return 0, 0, 0
-    print(f"\n[FEEDBACK] Review new context library entries for {field_type_}:")
+    print(f"\n[FEEDBACK] Review new context library entries for {field_type}:")
     context_library = load_context_library(context_library_path)
     changed = False
     accepted, edited, removed = 0, 0, 0
@@ -447,8 +589,8 @@ def feedback_loop(new_entries, field_type_, context_library_path, enhanced=True,
         for idx, val in enumerate(values):
             # Fast mode: auto-accept if exact duplicate in context library
             is_duplicate = False
-            if fast_mode and field_type_ in context_library:
-                for existing in context_library[field_type_]:
+            if fast_mode and field_type in context_library:
+                for existing in context_library[field_type]:
                     if entry_key(existing) == entry_key(val):
                         is_duplicate = True
                         break
@@ -485,7 +627,7 @@ def feedback_loop(new_entries, field_type_, context_library_path, enhanced=True,
         values = [v for v in values if v]
         new_entries[context_key] = values
     # Save accepted/edited entries
-    update_context_with_new_entries(context_library_path, field_type_, new_entries)
+    update_context_with_new_entries(context_library_path, field_type, new_entries)
     print(f"[SUMMARY] Accepted: {accepted}, Edited: {edited}, Removed: {removed}")
     return accepted, edited, removed
 
@@ -497,17 +639,17 @@ def trim_log_file(path: Path):
     save_jsonl(path, deduped)
 
 # --- Context library update logic (atomic, validated, backup) ---
-def update_context_with_new_entries(context_path, field_type_, field_entries):
+def update_context_with_new_entries(context_path, field_type, field_entries):
     context_path = safe_path(context_path, [CONTEXT_LIBRARY_DIR])
     def updater(library):
-        if field_type_ not in library or not isinstance(library[field_type_], dict):
-            library[field_type_] = {}
+        if field_type not in library or not isinstance(library[field_type], dict):
+            library[field_type] = {}
         for context_key, entries in field_entries.items():
-            if context_key not in library[field_type_]:
-                library[field_type_][context_key] = []
+            if context_key not in library[field_type]:
+                library[field_type][context_key] = []
             for entry in entries:
-                if entry not in library[field_type_][context_key]:
-                    library[field_type_][context_key].append(entry)
+                if entry not in library[field_type][context_key]:
+                    library[field_type][context_key].append(entry)
     library = load_context_library(context_path)
     updater(library)
     # TODO: Add JSON schema validation here if desired
@@ -628,13 +770,13 @@ def autofix_contest_fields(contest):
             changed = True
     return changed
 
-def highlight_anomalies(context_library, field_type_, context_path=None, autofix=True):
+def highlight_anomalies(context_library, field_type, context_path=None, autofix=True):
     try:
         from ..Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
     except ImportError:
         log_warning("Could not import integrity_check for anomaly highlighting.")
         return
-    if field_type_ == "contests" and "contests" in context_library:
+    if field_type == "contests" and "contests" in context_library:
         contests = context_library["contests"]
         results = analyze_contest_titles(contests)
         fixed_count = 0
@@ -654,7 +796,7 @@ def highlight_anomalies(context_library, field_type_, context_path=None, autofix
             print(f"  {label}: {count}")
         # Save fixes if any
         if autofix and fixed_count and context_path:
-            update_context_library(context_library, context_path)
+            update_context_library(context_path, context_library)
             print(f"[INTEGRITY] Auto-fixed {fixed_count} contests with missing fields and updated context library.")
 
 # --- DB update logic (batch, periodic, error handling) ---
@@ -729,13 +871,13 @@ def ensure_context_library(path):
         log_info(f"Context library not found at {path}, initializing with default structure.")
         struct = DEFAULT_STRUCTURE.copy()
         struct["schema_version"] = SCHEMA_VERSION
-        update_context_library(struct, path)
+        update_context_library(path, struct)
         return struct
     context_lib = load_context_library(path)
     # Always set schema_version if missing
     if "schema_version" not in context_lib:
         context_lib["schema_version"] = SCHEMA_VERSION
-        update_context_library(context_lib, path)
+        update_context_library(path, context_lib)
     if context_lib.get("schema_version") != SCHEMA_VERSION:
         log_warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
     return context_lib
@@ -1024,7 +1166,7 @@ def main():
     # Write context library only if changed
     if context_library_changed and not args.dry_run:
         context_library = load_context_library(context_path)
-        update_context_library(context_library, context_path)
+        update_context_library(context_path, context_library)
         log_info(f"Context library updated at {context_path}")
 
     print("\n[SUMMARY] Manual Correction Bot Run Complete.")

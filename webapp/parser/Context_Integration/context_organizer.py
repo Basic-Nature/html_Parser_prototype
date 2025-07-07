@@ -56,12 +56,10 @@ processed_urls = load_processed_urls()
 output_cache = load_output_cache()
 import itertools
 _spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-def get_loading_indicator():
+def get_loading_indicator() -> str:
     return next(_spinner)
 
-def clean_for_json(obj):
-    """Recursively convert sets and np.ndarray to lists, remove '_fixed_fields', and handle dicts/lists."""
-def clean_for_json(obj):
+def clean_for_json(obj) -> dict:
     import numpy as np
     if isinstance(obj, dict):
         return {k: clean_for_json(v) for k, v in obj.items() if k != "_fixed_fields"}
@@ -77,7 +75,7 @@ def clean_for_json(obj):
         # Fallback: convert to string
         return str(obj)
 
-def remove_functions(obj):
+def remove_functions(obj) -> dict:
     if isinstance(obj, dict):
         return {k: remove_functions(v) for k, v in obj.items() if not isinstance(v, types.FunctionType)}
     elif isinstance(obj, list):
@@ -113,7 +111,7 @@ def save_table_structure_to_db(contest_title, headers, context, ml_confidence=No
         log_error(f"[DB][TableStructure] Error saving: {e}")
         raise
 
-def get_table_structure_from_db(contest_title, context=None):
+def get_table_structure_from_db(contest_title, context=None) -> dict:
     """
     Retrieve the best-matching table structure for a contest_title using SQLAlchemy ORM.
     """
@@ -165,7 +163,7 @@ def upsert_contest(session, contest_dict):
         )
         session.add(obj)
 
-def robust_orjson_loads(val):
+def robust_orjson_loads(val) -> dict:
     """Load JSON robustly from either bytes or str."""
     if isinstance(val, bytes):
         return orjson.loads(val)
@@ -174,7 +172,7 @@ def robust_orjson_loads(val):
     else:
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
-def repair_dom_segments(segments):
+def repair_dom_segments(segments) -> list:
     """
     Repairs parent/child relationships in a list of DOM segments.
     Ensures that for every node, all children point back to the parent.
@@ -203,7 +201,7 @@ def repair_dom_segments(segments):
     for seg in segments:
         seg["children"] = [c for c in seg["children"] if idx_map.get(c, {}).get("parent_idx") == seg["_idx"]]
     return segments
-def contest_hash(c):
+def contest_hash(c) -> int:
     return hash((c.get("title"), c.get("year"), c.get("county"), c.get("type_")))
 
 class ContextOrganizer:
@@ -256,7 +254,7 @@ class ContextOrganizer:
             self.embedding_model_obj = None
 
     @staticmethod
-    def _default_library():
+    def _default_library() -> dict:
         return {
             "contests": [],
             "buttons": [],
@@ -279,7 +277,6 @@ class ContextOrganizer:
             "anomaly_log": [],
             "user_feedback": [],
             "download_link_patterns": [],
-            "panel_tags": [],
             "table_tags": [],
             "section_keywords": [],
             "output_file_patterns": [],
@@ -324,7 +321,7 @@ class ContextOrganizer:
         plt.tight_layout()
         plt.show()
     @staticmethod
-    def suggest_and_apply_fixes(contests, context_library, logs=None, min_confidence=0.8, embedding_model=None):
+    def suggest_and_apply_fixes(contests, context_library, logs=None, min_confidence=0.8, embedding_model=None) -> tuple:
         """
         Try to fix missing state/county/year/type_ using context_library, logs, and ML similarity.
         Returns: (fixed_contests, fix_log)
@@ -575,7 +572,7 @@ class ContextOrganizer:
         
     
     @staticmethod
-    def _describe_embedding_model(model):
+    def _describe_embedding_model(model) -> str:
         """
         Return a human-friendly description of the embedding model.
         Uses ModelRegistry.get_model_name if available, else falls back to class name or str.
@@ -619,7 +616,7 @@ class ContextOrganizer:
         plot_clusters_flag=True,
         debug=None,
         fuzzy_cutoff=None
-    ):
+    ) -> dict:
         """
         Organizes the context for a parsed HTML page, including DOM structure, contests, panels, buttons, tables, and ML features.
         Now includes dynamic state/county detection, verbose logging, and returns a detailed result object.
@@ -869,13 +866,13 @@ class ContextOrganizer:
             "location": LOCATION_KEYWORDS,
             "candidate": CANDIDATE_KEYWORDS,
             "party": PARTY_KEYWORDS,
-            "ballot_type_": set(BALLOT_TYPES),
+            "ballot_types": set(BALLOT_TYPES),
             "contest": CONTEST_KEYWORDS,
             "percent": PERCENT_KEYWORDS,
             "total": TOTAL_KEYWORDS,
             "footer": MISC_FOOTER_KEYWORDS
         }
-        def group_by_keywords(items, label_field="label"):
+        def group_by_keywords(items, label_field="label") -> dict:
             groups = {k: [] for k in keyword_sets}
             for item in items:
                 if not isinstance(item, dict):
@@ -1096,7 +1093,7 @@ class ContextOrganizer:
         self.organized = organized
         return result
 
-    def build_dom_tree(self, segments):
+    def build_dom_tree(self, segments) -> dict:
         """
         Build a DOM tree from a list of segments that already include parent/child relationships and indices.
         Each node contains: tag, attrs, classes, id, html, children, parent_idx, start, end, _idx.
@@ -1141,7 +1138,7 @@ class ContextOrganizer:
         }
         return dom_tree
 
-    def get_panels_and_tables(self, dom_tree):
+    def get_panels_and_tables(self, dom_tree) -> list:
         """
         Returns a list of (panel_heading, [tables]) for each panel/section in the DOM.
         """
@@ -1162,7 +1159,7 @@ class ContextOrganizer:
                     panels.append((heading, tables))
         return panels
 
-    def extract_html_by_idx(self, nodes, idx, full_html):
+    def extract_html_by_idx(self, nodes, idx, full_html) -> str:
         """
         Extract the exact HTML for a node using its start/end indices.
         """
@@ -1171,7 +1168,7 @@ class ContextOrganizer:
             return full_html[node["start"]:node["end"]]
         return node.get("html", "")
 
-    def extract_subtree_html(self, nodes, idx, full_html):
+    def extract_subtree_html(self, nodes, idx, full_html) -> str:
         """
         Recursively extract the HTML for a node and all its descendants.
         """
@@ -1191,7 +1188,7 @@ class ContextOrganizer:
             return full_html[min(starts):max(ends)]
         return node.get("html", "")
 
-    def group_nodes_by_label(self, nodes, label_field="ml_label"):
+    def group_nodes_by_label(self, nodes, label_field="ml_label") -> dict:
         """
         Group nodes by a given label field (e.g., ml_label or semantic_tags).
         Returns a dict: label -> list of nodes.
@@ -1207,7 +1204,7 @@ class ContextOrganizer:
                 groups[label].append(node)
         return dict(groups)
 
-    def expose_dom_parts(self, dom_tree):
+    def expose_dom_parts(self, dom_tree) -> dict:
         """
         Expose organized DOM parts for downstream use.
         Returns dicts for head, body, wrappers, tables, buttons, etc.
@@ -1240,7 +1237,7 @@ class ContextOrganizer:
         - deduplicate: If True, removes duplicates from merged lists based on dict content or value.
         """
 
-        def merge_dicts(a, b):
+        def merge_dicts(a, b) -> dict:
             """Recursively merge dict b into dict a."""
             for k, v in b.items():
                 if k in a:
@@ -1296,7 +1293,7 @@ class ContextOrganizer:
         except Exception as e:
             log_error(f"[CONTEXT ORGANIZER] Failed to save table structure: {e}")
 
-    def get_table_structure_from_db(self, contest_title, context=None):
+    def get_table_structure_from_db(self, contest_title, context=None) -> dict:
         """
         Retrieve a table structure for a contest from the database.
         """

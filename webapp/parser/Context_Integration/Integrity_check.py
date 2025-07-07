@@ -55,13 +55,13 @@ def detect_anomalies_with_ml(
     features = []
     le_state = LabelEncoder()
     le_county = LabelEncoder()
-    le_type_ = LabelEncoder()
+    le_type = LabelEncoder()
     states = [c.get("state", "unknown") for c in contexts]
     counties = [c.get("county", "unknown") for c in contexts]
-    types = [c.get("type", "unknown") for c in contexts]
+    types = [c.get("type_", "unknown") for c in contexts]
     le_state.fit(states)
     le_county.fit(counties)
-    le_type_.fit(types)
+    le_type.fit(types)
     for c in contexts:
         # Optionally add embedding features
         emb = []
@@ -70,7 +70,7 @@ def detect_anomalies_with_ml(
         features.append([
             le_state.transform([c.get("state", "unknown")])[0],
             le_county.transform([c.get("county", "unknown")])[0],
-            le_type_.transform([c.get("type", "unknown")])[0],
+            le_type.transform([c.get("type_", "unknown")])[0],
             int(c.get("year", 0)) if str(c.get("year", "0")).isdigit() else 0,
             len(str(c.get("title", ""))),
             len(str(c.get("candidate", ""))) if c.get("candidate") else 0,
@@ -116,7 +116,7 @@ def election_integrity_checks(contests: List[Dict[str, Any]]) -> List[Tuple[str,
 def advanced_cross_field_validation(contests: List[Dict[str, Any]]) -> List[Tuple[str, Dict[str, Any]]]:
     issues = []
     for c in contests:
-        if c.get("type") == "Presidential" and c.get("state") not in ("us", "USA", "United States"):
+        if c.get("type_") == "Presidential" and c.get("state") not in ("us", "USA", "United States"):
             issues.append(("presidential_state_mismatch", c))
         if "votes" in c and isinstance(c["votes"], (int, float)) and c["votes"] < 0:
             issues.append(("negative_votes", c))
@@ -180,9 +180,9 @@ def print_issues_table(issues, title="Issues"):
     table.add_column("Year", style="green")
     table.add_column("State", style="yellow")
     table.add_column("County", style="blue")
-    for issue_type_, contest in issues:
+    for issue_type, contest in issues:
         table.add_row(
-            issue_type_,
+            issue_type,
             contest.get("title", ""),
             str(contest.get("year", "")),
             contest.get("state", ""),
@@ -293,8 +293,8 @@ def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str
     else:
         log_path = str((Path(CONTEXT_DB_PATH).parent / "integrity_issues.log").resolve())
     with open(log_path, "ab") as f:
-        for issue_type_, contest in issues:
-            f.write(orjson.dumps({"issue": issue_type_, "contest": clean_for_json(contest)}) + b"\n")
+        for issue_type, contest in issues:
+            f.write(orjson.dumps({"issue": issue_type, "contest": clean_for_json(contest)}) + b"\n")
 
 def detect_statistical_outliers(
     values: List[float],

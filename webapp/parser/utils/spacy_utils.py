@@ -55,12 +55,12 @@ def filter_entities_by_type(text: str, types: List[str]) -> List[str]:
     doc = nlp(text)
     return [ent.text for ent in doc.ents if ent.label_ in types]
 
-def entity_frequency(texts: List[str], entity_types: List[str] = None, top_n: int = 10) -> Dict[str, int]:
+def entity_frequency(texts: List[str], entity_type: List[str] = None, top_n: int = 10) -> Dict[str, int]:
     counter = Counter()
     for text in texts:
         doc = nlp(text)
         for ent in doc.ents:
-            if entity_types is None or ent.label_ in entity_types:
+            if entity_type is None or ent.label_ in entity_type:
                 counter[ent.text] += 1
     return dict(counter.most_common(top_n))
 

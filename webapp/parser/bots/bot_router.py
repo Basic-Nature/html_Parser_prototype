@@ -10,7 +10,7 @@ from ..utils.shared_logger import log_info, log_error, summarize_logs
 from ..bots.log_cache_cleaner_bot import run_log_cache_cleaner
 from ..bots.context_migration import migrate_all
 from ..bots.scan_misaligned_ner import scan_misaligned
-from ..bots.manual_correction_bot import find_log_files, load_jsonl
+from ..bots.manual_correction_bot import find_log_files, load_jsonl, check_and_fix_json_files
 from ..bots.librarian import load_context_library
 from ..utils.models import TableStructure, Base
 from ..utils.db_utils import get_engine
@@ -209,6 +209,8 @@ class BotPipeline:
                 return
             if not self.clean_and_migrate():
                 return
+            # Clean up corrupted JSON/JSONL files before processing
+            check_and_fix_json_files()
             misaligned = self.scan_misaligned()
             correction_args = self.build_correction_args()
             # Only run correction if new entries exist

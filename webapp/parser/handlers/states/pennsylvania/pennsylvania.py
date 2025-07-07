@@ -20,13 +20,13 @@ def apply_navigation_steps(page, config):
     steps = config.get("nav_actions", [])
     for step in steps:
         try:
-            if step["type"] == "click":
+            if step["type_"] == "click":
                 el = page.query_selector(step["selector"])
                 if el:
                     log_info(f"[NAV] Clicking {step['selector']}")
                     el.click()
                     page.wait_for_timeout(step.get("delay", 1000))
-            elif step["type"] == "wait":
+            elif step["type_"] == "wait":
                 log_info(f"[NAV] Waiting {step['seconds']}s")
                 page.wait_for_timeout(step["seconds"] * 1000)
         except Exception as e:

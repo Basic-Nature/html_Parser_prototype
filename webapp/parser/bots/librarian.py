@@ -185,7 +185,7 @@ STATE_MODULE_MAP: Dict[str, str] = {
     for state in KNOWN_STATE_TO_COUNTY_MAP.keys()
 }
 
-_CANONICAL_STATE_ABBR = {
+_CANONICAL_STATE_ABBR: Dict[str, List[str]] = {
     "alabama": ["al", "ala"],
     "alaska": ["ak"],
     "arizona": ["az", "ariz"],
@@ -239,7 +239,7 @@ _CANONICAL_STATE_ABBR = {
     "wyoming": ["wy", "wyo"],
 }
 
-STATE_ABBR = {
+STATE_ABBR: Dict[str, str] = {
     abbr: state
     for state, abbrs in _CANONICAL_STATE_ABBR.items()
     for abbr in abbrs + [state]
@@ -289,29 +289,52 @@ HTML_TAGS: Set[str] = set([
     "b", "i", "center", "ul", "li", "br", "p", "hr", "img", "a", "span", "div", "button", "input", "form", "table"
 ])
 PANEL_TAGS: Set[str] = set([
-    "section", "fieldset", "panel", "div", "p-panel", "app-ballot-item-wrapper", "article"
+    "section", "fieldset", "panel", "div", "p-panel", "app-ballot-item-wrapper", "article", "main",
+    "aside"
+    
 ])
+
+TABLE_TAGS: Set[str] = set([
+    "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
+    "table", "results", "summary", "sheet", "spreadsheet", "grid"
+])
+
+STATE_TAGS: Set[str] = set([
+    "state", "province", "territory", "region"
+])
+
+BUTTON_TAGS: Set[str] = set([
+    "button", "input", "select", "textarea", "Show Results", "Vote", "Submit", "Summary", "Next", "Continue", "Back",
+    "Download", "Print", "Details", "Results", "Ballot", "Cast Vote", "Vote Now", "Vote Here", "Submit Vote", "Confirm Vote",
+])
+
 HEADING_TAGS: Set[str] = set([
     "h1", "h2", "h3", "h4", "h5", "h6", "span", "b", "strong"
 ])
+
+EXTRA_HEADING_TAGS: Set[str] = set([
+    "title", "legend", "caption", "summary", "label", "header", "footer", "nav", "article", "section", "aside",
+    "div", "p", "hgroup", "dt", "dd", "th", "td", "li", "ul", "ol", "dl", "blockquote", ".ng-star-inserted", ".section-title", ".panel-header", ".fw-bold"
+])
+
 CUSTOM_ATTR_PATTERNS: List[re.Pattern] = [
     re.compile(r"^data-"),
     re.compile(r"^aria-"),
     re.compile(r"^role$"),
 ]
 
-DISTRICT_REGEX = re.compile(
+DISTRICT_REGEX: re.Pattern = re.compile(
     r"\b([A-Z][a-z]+(?: [A-Z][a-z]+)*\s*\d{1,3}|District\s*\d{1,3}|Ward\s*\d{1,3}|Precinct\s*\d{1,3}|ED\s*\d{1,3})\b"
 )
 
 # --- Table/Entity Keywords (from table_core, dynamic_table_extractor, etc.) ---
-BALLOT_TYPES = [
+BALLOT_TYPES: List[str] = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Provisional", "Affidavit", "Other", "Void"
 ]
-BALLOT_TYPE_SORT_ORDER = [
+BALLOT_TYPES_SORT_ORDER: List[str] = [
     "Election Day", "Early Voting", "Absentee", "Mail", "Absentee Mail"
 ]
-LOCATION_KEYWORDS = {
+LOCATION_KEYWORDS: Set[str] = {
     "precinct", "ward", "district", "location", "area", "city", "municipal", "town",
     "borough", "village", "county", "division", "subdistrict", "polling place", "ed", "municipality",
     "section", "region", "zone", "subdivision", "community", "neighborhood", "block", "site",
@@ -320,51 +343,120 @@ LOCATION_KEYWORDS = {
     "council district", "precinct number", "precinct name", "district number", "district name",
     "polling location", "poll site", "polling station", "precinct id", "district id"
 }
-PERCENT_KEYWORDS = {
+PERCENT_KEYWORDS: Set[str] = {
     "% precincts reporting", "% reported", "percent reported", "fully reported", "precincts reporting"
 }
-TOTAL_KEYWORDS = {"total", "sum", "votes", "overall", "all", "Percent Reported", "Reporting Status"}
-MISC_FOOTER_KEYWORDS = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
-CANDIDATE_KEYWORDS = {
+TOTAL_KEYWORDS: Set[str] = {"total", "sum", "votes", "overall", "all", "Percent Reported", "Reporting Status"}
+MISC_FOOTER_KEYWORDS: Set[str] = {"undervote", "overvote", "scattering", "write-in", "blank", "void", "spoiled"}
+CANDIDATE_KEYWORDS: Set[str] = {
     "candidate", "candidates", "name", "nominee", "person", "individual", "contestant",
     "office", "incumbent", "challenger", "write-in", "write in", "writein", "option", "choice",
     "party", "affiliation", "designation", "slate", "ticket", "representative", "member", "appointee"
 }
-PARTY_KEYWORDS = {
+PARTY_KEYWORDS: Set[str] = {
     "democratic", "republican", "working families", "conservative", "green", "libertarian",
     "independent", "write-in", "write in", "writein", "other", "constitution", "socialist",
     "progressive", "labor", "peace and freedom", "american independent", "no party", "nonpartisan",
     "unaffiliated", "unknown", "blank", "void", "spoiled", "scattering", "undeclared", "unaffiliated",
-    "party", "affiliation", "designation"
+    "party", "affiliation", "designation", "Democratic", "DEM", "dem", "Republican", "REP", "rep", 
+    "Working Families", "WOR", "wor", "Conservative", "CON", "con", "Green", "GRN", "grn", 
+    "Libertarian", "LIB", "lib", "Independent", "IND", "ind", "Larouche", "Write-In", "Other" 
 }
-LOCATION_ABBREVIATIONS = {
-    "ed", "ward", "wd", "dist", "district", "pct", "prec", "precinct", "muni", "mun", "area", "city", "cty",
-    "munic", "borough", "boro", "vill", "vlg", "village", "cnty", "county", "div", "division", "subdist", "subdistrict",
-    "pollpl", "poll pl", "polling place", "pl", "section", "sec", "region", "reg", "zone", "zn", "subdivision", "sd",
-    "comm", "community", "neigh", "neighborhood", "blk", "block", "site", "station", "stn", "locale", "sector", "unit",
-    "ad", "assembly district", "sd", "senate district", "cd", "congressional district", "jd", "judicial district",
-    "sup dist", "supervisorial district", "council dist", "council district", "precinct no", "precinct num", "precinct number",
-    "precinct name", "district no", "district num", "district number", "district name", "poll loc", "poll location",
-    "poll site", "polling station", "precinct id", "district id"
+LOCATION_ABBREVIATIONS: Dict[str, List[str]] = {
+    "ed": ["election district"],
+    "ward": ["ward"],
+    "wd": ["ward"],
+    "dist": ["district"],
+    "district": ["district"],
+    "pct": ["precinct"],
+    "prec": ["precinct"],
+    "precinct": ["precinct"],
+    "muni": ["municipality"],
+    "mun": ["municipality"],
+    "area": ["area"],
+    "city": ["city"],
+    "cty": ["county"],
+    "munic": ["municipality"],
+    "borough": ["borough"],
+    "boro": ["borough"],
+    "vill": ["village"],
+    "vlg": ["village"],
+    "village": ["village"],
+    "cnty": ["county"],
+    "county": ["county"],
+    "div": ["division"],
+    "division": ["division"],
+    "subdist": ["subdistrict"],
+    "subdistrict": ["subdistrict"],
+    "pollpl": ["polling place"],
+    "poll pl": ["polling place"],
+    "polling place": ["polling place"],
+    "pl": ["place"],
+    "section": ["section"],
+    "sec": ["section"],
+    "region": ["region"],
+    "reg": ["region"],
+    "zone": ["zone"],
+    "zn": ["zone"],
+    "subdivision": ["subdivision"],
+    "sd": ["subdivision"],
+    "comm": ["community"],
+    "community": ["community"],
+    "neigh": ["neighborhood"],
+    "neighborhood": ["neighborhood"],
+    "blk": ["block"],
+    "block": ["block"],
+    "site": ["site"],
+    "station": ["station"],
+    "stn": ["station"],
+    "locale": ["locale"],
+    "sector": ["sector"],
+    "unit": ["unit"],
+    "ad": ["assembly district"],
+    "assembly district": ["assembly district"],
+    "sd": ["senate district"],
+    "senate district": ["senate district"],
+    "cd": ["congressional district"],
+    "congressional district": ["congressional district"],
+    "jd": ["judicial district"],
+    "judicial district": ["judicial district"],
+    "sup dist": ["supervisorial district"],
+    "supervisorial district": ["supervisorial district"],
+    "council dist": ["council district"],
+    "council district": ["council district"],
+    "precinct no": ["precinct number"],
+    "precinct num": ["precinct number"],
+    "precinct number": ["precinct number"],
+    "precinct name": ["precinct name"],
+    "district no": ["district number"],
+    "district num": ["district number"],
+    "district number": ["district number"],
+    "district name": ["district name"],
+    "poll loc": ["poll location"],
+    "poll location": ["poll location"],
+    "poll site": ["polling station"],
+    "polling station": ["polling station"],
+    "precinct id": ["precinct id"],
+    "district id": ["district id"]
 }
-VALID_TYPES = {"general", "primary", "presidential preference", "special", "runoff", "municipal", "local"}
-CONTEST_KEYWORDS = {
+ELECTION_TYPES: set = {"general", "primary", "presidential preference", "special", "runoff", "municipal", "local"}
+CONTEST_KEYWORDS: set = {
         "president", "senate", "senator", "congress", "representative", "governor", "mayor", "school board", "proposition", "referendum",
         "assembly", "council", "trustee", "justice", "clerk", "judge", "district", "proposal", "village", "town",
         "trustee", "amendment", 
     }
-ALWAYS_IGNORE_TAGS = {
+ALWAYS_IGNORE_TAGS: set = {
         "script", "style", "svg", "path", "defs", "g", "canvas", "noscript", "meta", "link", "base", "title"
     }
-ALWAYS_IGNORE_CLASSES = {
+ALWAYS_IGNORE_CLASSES: set = {
         "visually-hidden", "sr-only", "skip-link", "screen-reader", "aria-hidden", "d-none", "hidden", "offscreen"
     }
-ALWAYS_IGNORE_IDS = {
+ALWAYS_IGNORE_IDS: set = {
         "skip-link", "hidden", "aria-hidden"
     }
-ROOT_CONTAINER_TAGS = {"body", "html", "app-root"}
+ROOT_CONTAINER_TAGS: set = {"body", "html", "app-root"}
 
-ICON_CLASSES = {
+ICON_CLASSES: set = {
         "pi", "bi", "fa", "fas", "far", "fal", "fad", "fab", "glyphicon", "icon", "material-icons",
         "mdi", "octicon", "feather", "ion", "ionicon", "anticon", "euiicon", "p-button-icon", "p-icon",
         "fa-solid", "fa-regular", "fa-light", "fa-duotone", "fa-brands", "fa-stack", "fa-stack-1x", "fa-stack-2x",
@@ -384,10 +476,49 @@ ICON_CLASSES = {
         "icon-bg-center", "icon-bg-middle", "icon-bg-end", "icon-bg-start", "icon-bg-first", "icon-bg-last", "icon-bg-prev",
         "icon-bg-next"
     }
-ICON_TAGS = {"i", "svg", "path", "g", "span"}
+ICON_TAGS: set = {"i", "svg", "path", "g", "span"}
+
+NOISY_LABEL_PATTERNS: list = [
+    r"(?i)\b(show results|vote|submit|summary|next|continue|back|download|print|details|results|ballot|cast vote)\b",
+    r"(?i)\b(vote now|vote here|submit vote|confirm vote)\b"
+]
+
+PRECINCT_HEADER_PATTERNS: list = [
+    r"(?i)\b(precincts reporting|precincts counted|precincts remaining|precincts total|precincts)\b",
+    r"(?i)\b(precinct reporting|precinct count|precinct remaining|precinct total|precinct)\b",
+    r"(?i)\b(precincts reporting status|precincts reporting details |precincts reporting information)\b",
+]
+
+CONTEST_PANEL_TAGS: set = {
+    "contest", "contest-panel", "contest-item", "contest-wrapper", "contest-container",
+    "contest-box", "contest-card", "contest-section", "contest-row", "contest-column",
+    "contest-header", "contest-title", "contest-name", "contest-info", "contest-details",
+    "contest-description", "contest-summary", "contest-results", "contest-votes", "contest-candidates",
+    "contest-parties", "contest-positions", "contest-offices", "contest-measures"
+}
+
+SELECTORS: dict = {
+    "button": {
+        "type": "button",
+        "role": "button",
+        "aria-pressed": "false"
+    },
+    "link": {
+        "type": "link",
+        "role": "link"
+    },
+    "checkbox": {
+        "type": "checkbox",
+        "role": "checkbox"
+    },
+    "radio": {
+        "type": "radio",
+        "role": "radio"
+    }
+}
 
 # --- Canonical Segment Labeling & Normalization ---
-CANONICAL_SEGMENT_LABELS = {
+CANONICAL_SEGMENT_LABELS: dict = {
     # Add common canonical mappings here
     "election results": "results_table",
     "results by precinct": "location_panel",
@@ -395,30 +526,30 @@ CANONICAL_SEGMENT_LABELS = {
     "total votes": "total_votes",
     "precincts reporting": "reporting_status",
     "candidate": "candidate_panel",
-    "ballot type": "ballot_types",
+    "ballot types": "ballot_types",
     "download": "download_link",
     # Add more as needed
 }
 
-BUTTON_CLASSES = {"btn", "button", "toggle", "switch", "p-button", "mat-button", "v-btn", "ant-btn", "el-button"}
+BUTTON_CLASSES: set = {"btn", "button", "toggle", "switch", "p-button", "mat-button", "v-btn", "ant-btn", "el-button"}
 
-HEADING_CLASSES = {"heading", "header", "title", "h1", "h2", "h3", "h4", "h5", "h6", "section-title", "panel-title"}
+HEADING_CLASSES: set = {"heading", "header", "title", "h1", "h2", "h3", "h4", "h5", "h6", "section-title", "panel-title"}
 
-PANEL_CLASSES = {"panel", "card", "container", "box", "section-panel", "mat-card", "el-card", "ant-card", "v-card"}
+PANEL_CLASSES: set = {"panel", "card", "container", "box", "section-panel", "mat-card", "el-card", "ant-card", "v-card"}
 
-TIMESTAMP_CLASSES = {
+TIMESTAMP_CLASSES: set = {
         "time-ago", "timestamp", "last-updated", "results-timestamp", "update-time", "posted", "modified", "date", "datetime"
     }
-TIMESTAMP_ID_PATTERNS = [
+TIMESTAMP_ID_PATTERNS: list = [
         r"timestamp", r"time[-_]?ago", r"last[-_]?updated", r"update[-_]?time", r"posted", r"modified", r"date", r"datetime"
     ]
-TIMESTAMP_ATTRS = [
+TIMESTAMP_ATTRS: list = [
         "timeago", "datetime", "data-timestamp", "data-updated", "data-date", "data-time", "data-last-updated"
     ]
 
-STRUCTURAL_TAGS = {"br", "hr", "wbr", "col", "colgroup", "thead", "tbody", "tfoot", "tr", "th", "td"}
+STRUCTURAL_TAGS: set = {"br", "hr", "wbr", "col", "colgroup", "thead", "tbody", "tfoot", "tr", "th", "td"}
 
-VIEW_BY_PHRASES = [
+VIEW_BY_PHRASES: list = [
     "district", "precinct", "county", "state", "region", "ward", "township", "municipality", "city", "town",
     "village", "area", "location", "polling place", "ballot types", "ballot type", "contest", "candidate", "party", "office",
     "race", "proposal", "referendum", "amendment", "proposition", "measure", "question", "issue", "result",
@@ -435,7 +566,7 @@ VIEW_BY_PHRASES = [
     "entry", "transaction", "audit", "report"
 ]
 
-UPDATE_PANEL_KEYWORDS = [
+UPDATE_PANEL_KEYWORDS: list = [
     "last updated", "auto-refresh", "updated in real time", "posted", "as of", "timestamp", "date:", "time:",
     "reporting status", "election districts reporting", "fully reported", "incoming ballots", "download reports",
     "export", "media export", "powered by", "results last updated", "percent reporting", "no results yet",
@@ -445,15 +576,48 @@ UPDATE_PANEL_KEYWORDS = [
 
 
 def atomic_write_json(obj, path):
+    """
+    Atomically write JSON to path, keeping only the latest .bak and .tmp.
+    - Writes to .tmp first, then moves to final path.
+    - If path exists, creates a .bak (removing any old .bak).
+    - Cleans up any stray .tmp before/after.
+    """
+    import os
     path = Path(path)
     backup_path = path.with_suffix(path.suffix + ".bak")
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with NamedTemporaryFile("wb", delete=False, dir=path.parent) as tf:
+
+    # Remove any old .tmp file before starting
+    if tmp_path.exists():
+        try:
+            tmp_path.unlink()
+        except Exception:
+            pass
+
+    # Remove any old .bak file before creating new backup
+    if backup_path.exists():
+        try:
+            backup_path.unlink()
+        except Exception:
+            pass
+
+    # Write to .tmp path
+    with open(tmp_path, "wb") as tf:
         tf.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
-        temp_name = tf.name
+
+    # If the main file exists, back it up
     if path.exists():
         shutil.copy2(path, backup_path)
-    shutil.move(temp_name, path)
+
+    # Atomically move .tmp to final path
+    shutil.move(str(tmp_path), str(path))
+
+    # Clean up any stray .tmp (should not exist, but just in case)
+    if tmp_path.exists():
+        try:
+            tmp_path.unlink()
+        except Exception:
+            pass
 
 # --- Extend/Modify Functions ---
 def extend_panel_tags(new_tags: List[str]):
@@ -635,11 +799,11 @@ def backup_context_library(path=CONTEXT_LIBRARY_PATH, max_backups=5):
     if not os.path.exists(path):
         return
 
-    # Check if last backup is identical; if so, skip backup
     dir_ = os.path.dirname(path)
     base = os.path.basename(path)
+    # Only match timestamped .bak files
     backups = sorted(
-        [f for f in os.listdir(dir_) if f.startswith(base) and f.endswith(".bak")],
+        [f for f in os.listdir(dir_) if f.startswith(base + ".") and f.endswith(".bak")],
         reverse=True
     )
     current_hash = file_hash(path)
@@ -652,14 +816,22 @@ def backup_context_library(path=CONTEXT_LIBRARY_PATH, max_backups=5):
         except Exception:
             pass
 
+    # Remove any non-timestamped .bak (legacy or accidental)
+    legacy_bak = os.path.join(dir_, base + ".bak")
+    if os.path.exists(legacy_bak):
+        try:
+            os.remove(legacy_bak)
+        except Exception:
+            pass
+
     # Make new backup
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     backup_path = f"{path}.{timestamp}.bak"
     shutil.copy2(path, backup_path)
 
-    # Prune old backups
+    # Prune old backups (keep only the most recent max_backups)
     backups = sorted(
-        [f for f in os.listdir(dir_) if f.startswith(base) and f.endswith(".bak")],
+        [f for f in os.listdir(dir_) if f.startswith(base + ".") and f.endswith(".bak")],
         reverse=True
     )
     for old in backups[max_backups:]:
@@ -855,9 +1027,10 @@ if __name__ == "__main__":
         sys.exit(self_heal_context_library(args.max_retries, args.cooldown))
 # --- Export all sets for use in other modules ---
 __all__ = [
-    "_CANONICAL_STATE_ABBR", "KNOWN_STATE_TO_COUNTY_MAP", "STATE_ABBR", "STATE_MODULE_MAP", "HTML_TAGS", "PANEL_TAGS", "HEADING_TAGS", "CUSTOM_ATTR_PATTERNS", "DISTRICT_REGEX",
-    "BALLOT_TYPES", "BALLOT_TYPE_SORT_ORDER", "LOCATION_KEYWORDS", "PERCENT_KEYWORDS", "TOTAL_KEYWORDS",
-    "MISC_FOOTER_KEYWORDS", "CANDIDATE_KEYWORDS", "PARTY_KEYWORDS", "LOCATION_ABBREVIATIONS", "VALID_TYPES", "CONTEST_KEYWORDS",
+    "_CANONICAL_STATE_ABBR", "KNOWN_STATE_TO_COUNTY_MAP", "STATE_ABBR", "STATE_MODULE_MAP", "HTML_TAGS", "PANEL_TAGS",
+     "TABLE_TAGS", "STATE_TAGS", "HEADING_TAGS", "EXTRA_HEADING_TAGS","CUSTOM_ATTR_PATTERNS", "DISTRICT_REGEX",
+    "BALLOT_TYPES", "BALLOT_TYPES_SORT_ORDER", "LOCATION_KEYWORDS", "PERCENT_KEYWORDS", "TOTAL_KEYWORDS",
+    "MISC_FOOTER_KEYWORDS", "CANDIDATE_KEYWORDS", "PARTY_KEYWORDS", "LOCATION_ABBREVIATIONS", "ELECTION_TYPES", "CONTEST_KEYWORDS",
     "extend_panel_tags", "extend_heading_tags", "extend_html_tags", "extend_custom_attr_patterns",
     "extend_location_keywords", "extend_candidate_keywords", "extend_ballot_types",
     "log_unknown_tag", "log_unknown_attr", "integrate_llm_feedback", "CANONICAL_SEGMENT_LABELS", 
@@ -865,4 +1038,5 @@ __all__ = [
     "ROOT_CONTAINER_TAGS", "ALWAYS_IGNORE_TAGS", "ALWAYS_IGNORE_CLASSES", "ALWAYS_IGNORE_IDS", "ICON_CLASSES", "ICON_TAGS", "BUTTON_CLASSES",
     "HEADING_CLASSES", "PANEL_CLASSES", "TIMESTAMP_CLASSES", "STRUCTURAL_TAGS", "TIMESTAMP_ID_PATTERNS", "TIMESTAMP_ATTRS",
     "STRUCTURAL_TAGS", "VIEW_BY_PHRASES", "UPDATE_PANEL_KEYWORDS", "KNOWN_COUNTY_TO_PRECINCTS_MAP",
+    "NOISY_LABEL_PATTERNS", "PRECINCT_HEADER_PATTERNS", "SELECTORS", "CONTEST_PANEL_TAGS",
 ]

@@ -91,9 +91,9 @@ def update_advanced_entities(parsed_data: List[Dict[str, Any]], db_path: str):
 
 ELECTION_ENTITY_LABELS = [
     "CONTEST", "CANDIDATE", "PARTY", "COUNTY", "STATE", "DISTRICT", "VOTE_METHOD",
-    "BALLOT_TYPE", "PRECINCT", "TOTAL", "PERCENT", "YEAR", "ELECTION_TYPES", "OFFICE", "MISC",
+    "BALLOT_TYPES", "PRECINCT", "TOTAL", "PERCENT", "YEAR", "ELECTION_TYPES", "OFFICE", "MISC",
     "BALLOT_MEASURE", "LOCATION", "DATE", "INCUMBENT", "WINNER", "LOSER", "WRITE_IN", "UNOPPOSED", "PROPOSITION", 
-    "AMENDMENT", "DISTRICT_TYPE", "JURISDICTION", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "AFFIDAVIT", "OTHER"   
+    "AMENDMENT", "DISTRICT_TYPES", "JURISDICTION", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "AFFIDAVIT", "OTHER"   
 ]
 
 ENTITY_PATTERNS = [
@@ -295,7 +295,7 @@ def auto_label_header(header: str, context: dict = None):
             start, end = match.span()
             labels.append((start, end, label))
     if context:
-        for label_type_, values in [
+        for label_type, values in [
             ("COUNTY", context.get("known_counties", [])),
             ("LOCATION", context.get("known_cities", [])),
             ("STATE", context.get("known_states", [])),
@@ -306,7 +306,7 @@ def auto_label_header(header: str, context: dict = None):
             for val in values:
                 for match in re.finditer(re.escape(val), header, re.IGNORECASE):
                     start, end = match.span()
-                    labels.append((start, end, label_type_))
+                    labels.append((start, end, label_type))
     labels = sorted(set(labels), key=lambda x: (x[0], x[1]))
     return labels
 
@@ -334,13 +334,13 @@ def update_db_with_new_entities(new_entities, db_path):
     """
     from ..utils.models import Entity
     with get_session() as session:
-        for entity_type_, values in new_entities.items():
+        for entity_type, values in new_entities.items():
             for value in values:
                 exists = session.execute(
-                    select(Entity).where(Entity.entity_type_ == entity_type_, Entity.value == value)
+                    select(Entity).where(Entity.entity_type == entity_type, Entity.value == value)
                 ).scalar_one_or_none()
                 if not exists:
-                    session.add(Entity(entity_type_=entity_type_, value=value))
+                    session.add(Entity(entity_type=entity_type, value=value))
         session.commit()
     print(f"Updated DB with new entities: {{ { {k: len(v) for k,v in new_entities.items()} } }}")
 
@@ -362,7 +362,7 @@ def load_spacy_ner_examples(jsonl_path):
 
 # Label priority for deduplication: higher in the list = higher priority
 LABEL_PRIORITY = [
-    "CANDIDATE", "PARTY", "VOTE_METHOD", "PRECINCT", "DISTRICT", "COUNTY", "STATE", "TOTAL", "ELECTION_TYPES", "OFFICE", "WRITE_IN", "MISC", "BALLOT_MEASURE", "LOCATION", "DATE", "INCUMBENT", "WINNER", "LOSER", "UNOPPOSED", "PROPOSITION", "AMENDMENT", "DISTRICT_TYPE", "JURISDICTION", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "AFFIDAVIT", "OTHER"
+    "CANDIDATE", "PARTY", "VOTE_METHOD", "PRECINCT", "DISTRICT", "COUNTY", "STATE", "TOTAL", "ELECTION_TYPES", "OFFICE", "WRITE_IN", "MISC", "BALLOT_MEASURE", "LOCATION", "DATE", "INCUMBENT", "WINNER", "LOSER", "UNOPPOSED", "PROPOSITION", "AMENDMENT", "DISTRICT_TYPES", "JURISDICTION", "ELECTION_OFFICIAL", "RESULTS", "VOTE_COUNT", "AFFIDAVIT", "OTHER"
 ]
 
 def remove_overlapping_entities(entities):

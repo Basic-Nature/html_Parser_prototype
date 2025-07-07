@@ -197,7 +197,7 @@ def log_critical(msg, context=None, *args, **kwargs):
         return
     _rich_log(msg, context, default_label="CRITICAL", default_color="magenta")
 
-def log_alert(msg, context=None, alert_type_="info"):
+def log_alert(msg, context=None, alert_type="info"):
     if SUPPRESS_RICH_LOGS:
         return
     style = {
@@ -205,8 +205,8 @@ def log_alert(msg, context=None, alert_type_="info"):
         "warning": "yellow",
         "error": "red",
         "critical": "magenta"
-    }.get(alert_type_, "cyan")
-    label = alert_type_.upper()
+    }.get(alert_type, "cyan")
+    label = alert_type.upper()
     panel_msg = None
     if context:
         panel_msg = f"[bold]{label} ALERT:[/bold] {msg}\n[dim]{context}[/dim]"

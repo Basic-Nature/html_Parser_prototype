@@ -61,8 +61,8 @@ def safe_path(path, allowed_roots):
 def log_empty_entry(file_path, entry_type, key_or_index, entry):
     """Append info about an empty entry to the watch file for traceability."""
     record = {
-        "file": file_path,
-        "type": entry_type,
+        "file_path": file_path,
+        "entry_type": entry_type,
         "key_or_index": key_or_index,
         "entry": entry,
     }
@@ -77,7 +77,7 @@ def clean_jsonl(path, required_fields=None, backup=True):
     - Logs up to 5 examples of each problem type for diagnostics
     - Flags entries with misaligned keywords
     - Optionally checks for required fields and logs/removes entries missing them
-    - Optionally backs up the original file before cleaning
+    - Optionally backs up the original file before cleaning (only one .bak kept)
     - Handles empty files gracefully
     - Returns detailed stats and errors
     """
@@ -98,7 +98,13 @@ def clean_jsonl(path, required_fields=None, backup=True):
                 pass
             return 0, 0, 0, None
         if backup:
-            shutil.copy2(path, path + ".bak")
+            bak_path = path + ".bak"
+            if os.path.exists(bak_path):
+                try:
+                    os.remove(bak_path)
+                except Exception:
+                    pass
+            shutil.copy2(path, bak_path)
         with open(path, "rb") as f:
             lines = [line for line in f if line.strip()]
         entries = []
@@ -172,7 +178,7 @@ def clean_json(path, required_fields=None, backup=True):
     - Removes null/empty dict/empty list entries
     - Handles malformed JSON gracefully
     - Optionally checks for required fields and logs/removes entries missing them
-    - Optionally backs up the original file before cleaning
+    - Optionally backs up the original file before cleaning (only one .bak kept)
     - Optionally sorts dict keys
     - Handles files that are a mix of lists and dicts
     """
@@ -188,7 +194,13 @@ def clean_json(path, required_fields=None, backup=True):
                 f.write(orjson.dumps({}))
             return 0, 0, 0, None
         if backup:
-            shutil.copy2(path, path + ".bak")
+            bak_path = path + ".bak"
+            if os.path.exists(bak_path):
+                try:
+                    os.remove(bak_path)
+                except Exception:
+                    pass
+            shutil.copy2(path, bak_path)
         with open(path, "rb") as f:
             try:
                 data = orjson.loads(f.read())
@@ -277,7 +289,7 @@ def clean_json(path, required_fields=None, backup=True):
             return 0, 0, 0, None
         return None, None, None, str(e)
     
-def clean_html(path):
+def clean_html(path, backup=True):
     """
     Robust cleaner for .html files:
     - Removes duplicate lines
@@ -286,25 +298,56 @@ def clean_html(path):
     - Removes lines that are only whitespace or HTML comments
     - Optionally strips HTML tags (commented out, can be enabled)
     - Handles encoding errors
+    - Optionally backs up the original file before cleaning (only one .bak kept)
+    - Logs up to 5 examples of each problem type for diagnostics
     - Returns detailed stats and errors
     """
+    import shutil
+    malformed_count = 0
+    empty_count = 0
+    comment_count = 0
+    malformed_examples = []
+    empty_examples = []
+    comment_examples = []
     try:
         if os.path.getsize(path) == 0:
-            # Overwrite with a minimal HTML skeleton if desired, or just empty
             with open(path, "w", encoding="utf-8") as f:
                 f.write("")
             return 0, 0, 0, None
-
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            lines = [line.strip() for line in f if line.strip()]
+        if backup:
+            bak_path = path + ".bak"
+            if os.path.exists(bak_path):
+                try:
+                    os.remove(bak_path)
+                except Exception:
+                    pass
+            shutil.copy2(path, bak_path)
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+        except Exception as e:
+            malformed_count += 1
+            if len(malformed_examples) < 5:
+                malformed_examples.append(str(e))
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("")
+            return 0, 0, 0, f"Malformed HTML, reset to empty: {e}"
 
         seen = set()
         deduped = []
-        comment_count = 0
         for line in lines:
+            orig_line = line
+            line = line.strip()
+            if not line:
+                empty_count += 1
+                if len(empty_examples) < 5:
+                    empty_examples.append(orig_line[:100])
+                continue
             # Remove HTML comments
             if line.startswith("<!--") and line.endswith("-->"):
                 comment_count += 1
+                if len(comment_examples) < 5:
+                    comment_examples.append(line[:100])
                 continue
             # Optionally, strip HTML tags (uncomment if needed)
             # import re
@@ -322,9 +365,17 @@ def clean_html(path):
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n".join(deduped))
 
-        return len(lines), len(deduped), comment_count, None
+        error_parts = []
+        if malformed_count:
+            error_parts.append(f"Malformed: {malformed_count} (examples: {malformed_examples})")
+        if empty_count:
+            error_parts.append(f"Empty: {empty_count} (examples: {empty_examples})")
+        if comment_count:
+            error_parts.append(f"Comments: {comment_count} (examples: {comment_examples})")
+        error_str = "; ".join(error_parts) if error_parts else None
+
+        return len(lines), len(deduped), comment_count, error_str
     except Exception as e:
-        # If the error is due to empty file, handle gracefully
         if "zero-length" in str(e) or "empty document" in str(e):
             with open(path, "w", encoding="utf-8") as f:
                 f.write("")

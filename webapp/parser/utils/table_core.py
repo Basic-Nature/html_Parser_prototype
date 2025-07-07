@@ -38,7 +38,7 @@ from ..bots.librarian import (
     LOCATION_KEYWORDS,
     PERCENT_KEYWORDS,
     BALLOT_TYPES,
-    BALLOT_TYPE_SORT_ORDER,
+    BALLOT_TYPES_SORT_ORDER,
     CANDIDATE_KEYWORDS,
     TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS,
@@ -508,9 +508,9 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
             all_panel_rows.extend(data)
             all_entity_previews.append(entity_preview)
         candidate_cols = [h for h in all_panel_headers if any(k in h.lower() for k in CANDIDATE_KEYWORDS)]
-        ballot_type_cols = [h for h in all_panel_headers if any(bt in h.lower() for bt in BALLOT_TYPES)]
-        final_headers = ["Precinct"] + sorted(set(candidate_cols + ballot_type_cols)) + [
-            h for h in all_panel_headers if h not in candidate_cols + ballot_type_cols + ["Precinct"]
+        ballot_types_cols = [h for h in all_panel_headers if any(bt in h.lower() for bt in BALLOT_TYPES)]
+        final_headers = ["Precinct"] + sorted(set(candidate_cols + ballot_types_cols)) + [
+            h for h in all_panel_headers if h not in candidate_cols + ballot_types_cols + ["Precinct"]
         ]
         all_panel_headers = list(all_headers)
         all_panel_headers, all_panel_rows = harmonize_headers_and_data(final_headers, all_panel_rows)
@@ -744,7 +744,7 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         entity_preview["percent_column"] = percent_col
 
         # --- Scan data for entity types ---
-        ballot_type_keywords = set(bt.lower() for bt in BALLOT_TYPES)
+        ballot_types_keywords = set(bt.lower() for bt in BALLOT_TYPES)
         number_pattern = re.compile(r"^-?\d{1,3}(?:,\d{3})*(?:\.\d+)?%?$")
         for row in data:
             for h, v in row.items():
@@ -754,7 +754,7 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
                 if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS):
                     entity_preview["candidates"].add(v)
                 # Ballot type detection (robust)
-                if any(bk in h.lower() for bk in ballot_type_keywords):
+                if any(bk in h.lower() for bk in ballot_types_keywords):
                     entity_preview["ballot_types"].add(h)
                 # Number detection (improved)
                 if number_pattern.match(v.replace(",", "")):
@@ -1376,7 +1376,7 @@ def harmonize_headers_and_data(headers: list, data: list, context: dict = None) 
 
     # 5. Identify candidate and ballot type columns
     candidate_col = next((h for h in ordered_headers if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS)), None)
-    ballot_type_cols = [h for h in ordered_headers if any(bt.lower() in h.lower() for bt in BALLOT_TYPES)]
+    ballot_types_cols = [h for h in ordered_headers if any(bt.lower() in h.lower() for bt in BALLOT_TYPES)]
 
     # 6. Deduplicate rows using composite key (location, candidate, ballot types)
     harmonized = []
@@ -1391,7 +1391,7 @@ def harmonize_headers_and_data(headers: list, data: list, context: dict = None) 
             key = (
                 full_row.get(location_col, ""),
                 full_row.get(candidate_col, ""),
-                *(full_row.get(bt, "") for bt in ballot_type_cols)
+                *(full_row.get(bt, "") for bt in ballot_types_cols)
             )
             if key in seen_keys:
                 continue
@@ -1413,12 +1413,12 @@ def harmonize_headers_and_data(headers: list, data: list, context: dict = None) 
 
     # 9. Reorder columns: Precinct, candidates, ballot types, then others
     candidate_cols = [h for h in keep if any(k in h.lower() for k in CANDIDATE_KEYWORDS)]
-    ballot_type_cols = [h for h in keep if any(bt in h.lower() for bt in BALLOT_TYPES)]
+    ballot_types_cols = [h for h in keep if any(bt in h.lower() for bt in BALLOT_TYPES)]
     ordered_final = []
     if "Precinct" in keep:
         ordered_final.append("Precinct")
-    ordered_final += sorted(set(candidate_cols + ballot_type_cols))
-    ordered_final += [h for h in keep if h not in candidate_cols + ballot_type_cols + ["Precinct"]]
+    ordered_final += sorted(set(candidate_cols + ballot_types_cols))
+    ordered_final += [h for h in keep if h not in candidate_cols + ballot_types_cols + ["Precinct"]]
     # Remove duplicates while preserving order
     seen_final = set()
     ordered_final = [h for h in ordered_final if not (h in seen_final or seen_final.add(h))]
@@ -1778,11 +1778,11 @@ def progressive_table_verification(headers, data, coordinator, context):
         log_info(f"[TABLE BUILDER][progressive_table_verification] Detected location column: {location_header}")
 
     # 2. Detect ballot type columns
-    ballot_type_headers = [h for h in headers if any(bt.lower() in h.lower() for bt in BALLOT_TYPES)]
-    if not ballot_type_headers:
+    ballot_types_headers = [h for h in headers if any(bt.lower() in h.lower() for bt in BALLOT_TYPES)]
+    if not ballot_types_headers:
         log_warning("[TABLE BUILDER][progressive_table_verification] No ballot type columns detected.")
     else:
-        log_info(f"[TABLE BUILDER][progressive_table_verification] Detected ballot type columns: {ballot_type_headers}")
+        log_info(f"[TABLE BUILDER][progressive_table_verification] Detected ballot type columns: {ballot_types_headers}")
 
     # 3. Detect candidate columns (using NER)
     candidate_headers = []
@@ -1805,17 +1805,17 @@ def progressive_table_verification(headers, data, coordinator, context):
     # 5. Verify row structure
     for i, row in enumerate(data[:5]):
         loc_val = row.get(location_header, "")
-        ballot_vals = [row.get(h, "") for h in ballot_type_headers]
+        ballot_vals = [row.get(h, "") for h in ballot_types_headers]
         candidate_vals = [row.get(h, "") for h in candidate_headers]
         log_info(f"[TABLE BUILDER][progressive_table_verification] Row {i}: location={loc_val}, ballot_types={ballot_vals}, candidates={candidate_vals}")
 
     # 6. Structure info summary
     structure_info = {
         "location_header": location_header,
-        "ballot_type_headers": ballot_type_headers,
+        "ballot_types_headers": ballot_types_headers,
         "candidate_headers": candidate_headers,
         "total_header": total_header,
-        "verified": all([location_header, ballot_type_headers, candidate_headers, total_header])
+        "verified": all([location_header, ballot_types_headers, candidate_headers, total_header])
     }
     log_info(f"[TABLE BUILDER][progressive_table_verification] Structure summary: {structure_info}")
 
@@ -1877,13 +1877,13 @@ def force_fully_wide_format(headers, data, coordinator: "ContextCoordinator" = N
     party_col = next((h for h in headers if "party" in h.lower()), None)
 
     # 3. Find ballot type columns (known types, not location/candidate/party)
-    ballot_type_cols = [
+    ballot_types_cols = [
         h for h in headers
         if h not in (location_col, candidate_col, party_col) and any(bt.lower() in h.lower() for bt in BALLOT_TYPES)
     ]
     # If no ballot type columns, use all except location/candidate/party/total/specials
-    if not ballot_type_cols:
-        ballot_type_cols = [
+    if not ballot_types_cols:
+        ballot_types_cols = [
             h for h in headers
             if h not in (location_col, candidate_col, party_col)
             and "total" not in h.lower()
@@ -1900,7 +1900,7 @@ def force_fully_wide_format(headers, data, coordinator: "ContextCoordinator" = N
     unique_locations = sorted(set(locations))
     candidates = sorted(set(row.get(candidate_col, "") for row in data if candidate_col))
     parties = sorted(set(row.get(party_col, "") for row in data if party_col))
-    ballot_types = sorted(set(ballot_type_cols))
+    ballot_types = sorted(set(ballot_types_cols))
 
     # 6. Build wide headers
     wide_headers = [location_col]
@@ -1980,30 +1980,30 @@ def detect_table_structure(
     if headers and headers[0].lower() == "candidate" and all(
         any(bt in h.lower() for bt in ["election day", "early voting", "absentee", "mail", "total"]) for h in headers[1:]
     ):
-        return {"type": "already-wide", "candidate_col": 0, "ballot_type_cols": list(range(1, len(headers)))}
+        return {"type_": "already-wide", "candidate_col": 0, "ballot_types_cols": list(range(1, len(headers)))}
 
     # Use entity_info and header heuristics
     candidate_cols = []
     location_cols = []
-    ballot_type_cols = []
+    ballot_types_cols = []
     for idx, h in enumerate(headers):
         if entity_info.get("people", []) and any(p in h for p in entity_info["people"]):
             candidate_cols.append(idx)
         if entity_info.get("locations", []) and any(l in h for l in entity_info["locations"]):
             location_cols.append(idx)
         if entity_info.get("ballot_types", []) and any(bt in h for bt in entity_info["ballot_types"]):
-            ballot_type_cols.append(idx)
+            ballot_types_cols.append(idx)
         # Fallback: heuristics
         if is_location_header(h):
             location_cols.append(idx)
         if any(bt.lower() in h.lower() for bt in BALLOT_TYPES):
-            ballot_type_cols.append(idx)
+            ballot_types_cols.append(idx)
     # Heuristic: if first col is candidate, columns are ballot types
-    if candidate_cols and set(ballot_type_cols) == set(range(1, len(headers))):
-        return {"type": "candidate-major", "candidate_col": candidate_cols[0], "ballot_type_cols": ballot_type_cols}
+    if candidate_cols and set(ballot_types_cols) == set(range(1, len(headers))):
+        return {"type_": "candidate-major", "candidate_col": candidate_cols[0], "ballot_types_cols": ballot_types_cols}
     if location_cols and set(candidate_cols) == set(range(1, len(headers))):
-        return {"type": "precinct-major", "location_col": location_cols[0], "candidate_cols": candidate_cols}
-    return {"type": "ambiguous", "candidate_cols": candidate_cols, "location_cols": location_cols, "ballot_type_cols": ballot_type_cols}
+        return {"type_": "precinct-major", "location_col": location_cols[0], "candidate_cols": candidate_cols}
+    return {"type_": "ambiguous", "candidate_cols": candidate_cols, "location_cols": location_cols, "ballot_types_cols": ballot_types_cols}
 
 def handle_candidate_major(headers, data, coordinator, context):
     """
@@ -2020,10 +2020,10 @@ def handle_candidate_major(headers, data, coordinator, context):
     structure_info = detect_table_structure(headers, data, coordinator)
     candidate_col = structure_info.get("candidate_col", 0)
     party_col = structure_info.get("party_col", None)
-    ballot_type_cols = structure_info.get("ballot_type_cols", list(range(1, len(headers))))
+    ballot_types_cols = structure_info.get("ballot_types_cols", list(range(1, len(headers))))
     
     # Get ballot type names
-    ballot_types = [headers[idx] for idx in ballot_type_cols]
+    ballot_types = [headers[idx] for idx in ballot_types_cols]
 
     # Special columns
     percent_cols = [h for h in headers if any(kw in h.lower() for kw in PERCENT_KEYWORDS)]
@@ -2138,16 +2138,16 @@ def pivot_to_wide_format(
             candidates.add(cand.strip())
         for h in row.keys():
             norm_h = normalize_segment_text(h)
-            if norm_h in [normalize_segment_text(bt) for bt in BALLOT_TYPE_SORT_ORDER] or h in BALLOT_TYPE_SORT_ORDER:
+            if norm_h in [normalize_segment_text(bt) for bt in BALLOT_TYPES_SORT_ORDER] or h in BALLOT_TYPES_SORT_ORDER:
                 ballot_types.add(h)
     # Fallback: scan headers if not found in data
     if not ballot_types:
         for h in headers:
             norm_h = normalize_segment_text(h)
-            if norm_h in [normalize_segment_text(bt) for bt in BALLOT_TYPE_SORT_ORDER] or h in BALLOT_TYPE_SORT_ORDER:
+            if norm_h in [normalize_segment_text(bt) for bt in BALLOT_TYPES_SORT_ORDER] or h in BALLOT_TYPES_SORT_ORDER:
                 ballot_types.add(h)
     # Use canonical sort order for ballot types
-    ballot_types_sorted = [bt for bt in BALLOT_TYPE_SORT_ORDER if bt in ballot_types]
+    ballot_types_sorted = [bt for bt in BALLOT_TYPES_SORT_ORDER if bt in ballot_types]
     for bt in sorted(ballot_types):
         if bt not in ballot_types_sorted:
             ballot_types_sorted.append(bt)
@@ -2210,7 +2210,7 @@ def pivot_precinct_major_to_wide(
         percent_header = "Percent Reported"
 
     # Parse headers
-    candidate_party_ballot = {}  # (candidate, party) -> {ballot_type: header}
+    candidate_party_ballot = {}  # (candidate, party) -> {ballot_types: header}
     ballot_types_set = set()
     misc_columns = []
     candidate_party_set = set()
@@ -2218,28 +2218,28 @@ def pivot_precinct_major_to_wide(
     for h in headers:
         m = re.match(r"(.+?)\s*\((.+?)\)\s*-\s*(.+)", h)
         if m:
-            candidate, party, ballot_type = m.groups()
+            candidate, party, ballot_types = m.groups()
             candidate = candidate.strip()
             party = party.strip()
-            ballot_type = ballot_type.strip()
+            ballot_types = ballot_types.strip()
             candidate_party_set.add((candidate, party))
-            ballot_types_set.add(ballot_type)
-            candidate_party_ballot.setdefault((candidate, party), {})[ballot_type] = h
+            ballot_types_set.add(ballot_types)
+            candidate_party_ballot.setdefault((candidate, party), {})[ballot_types] = h
         else:
             # Try: Candidate - BallotType
             m = re.match(r"(.+?)\s*-\s*(.+)", h)
             if m:
-                candidate, ballot_type = m.groups()
+                candidate, ballot_types = m.groups()
                 candidate = candidate.strip()
                 party = ""
-                ballot_type = ballot_type.strip()
+                ballot_types = ballot_types.strip()
                 candidate_party_set.add((candidate, party))
-                ballot_types_set.add(ballot_type)
-                candidate_party_ballot.setdefault((candidate, party), {})[ballot_type] = h
+                ballot_types_set.add(ballot_types)
+                candidate_party_ballot.setdefault((candidate, party), {})[ballot_types] = h
             else:
                 # Try: BallotType only (miscellaneous totals)
-                ballot_type = h.strip()
-                ballot_types_set.add(ballot_type)
+                ballot_types = h.strip()
+                ballot_types_set.add(ballot_types)
                 misc_columns.append(h)
 
     # Remove location and percent headers from ballot_types/misc
@@ -2257,7 +2257,7 @@ def pivot_precinct_major_to_wide(
 
     # Sort ballot types: Election Day, Early Voting, Absentee, ...rest alphabetically
     ballot_types = []
-    for bt in BALLOT_TYPE_SORT_ORDER:
+    for bt in BALLOT_TYPES_SORT_ORDER:
         if bt in ballot_types_set:
             ballot_types.append(bt)
     for bt in sorted(ballot_types_set):

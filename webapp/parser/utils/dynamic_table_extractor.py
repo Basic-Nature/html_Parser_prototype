@@ -18,7 +18,13 @@ import os
 import re
 import orjson
 import unicodedata
-
+from ..bots.librarian import (
+    CANDIDATE_KEYWORDS,
+    HEADING_TAGS,
+    BALLOT_TYPES,
+    EXTRA_HEADING_TAGS,
+    PARTY_KEYWORDS
+)
 from typing import List, Dict
 from ..utils.shared_logger import log_info, log_error, log_warning
 from ..config import BASE_DIR
@@ -41,10 +47,6 @@ from ..utils.table_core import (
 
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
-
-# --- Constants and Paths ---
-CANDIDATE_KEYWORDS = {"candidate", "candidates", "name", "nominee"}
-BALLOT_TYPE_KEYWORDS = {"election day", "early voting", "absentee", "mail", "provisional", "affidavit", "other", "void"}
 
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
 
@@ -344,33 +346,24 @@ def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoor
     """
     Returns a dict: {party: {candidate: [ballot_types]}}
     """
-    known_parties = [
-        "Democratic", "DEM", "dem", 
-        "Republican", "REP", "rep", 
-        "Working Families", "WOR", "wor",
-        "Conservative", "CON", "con", 
-        "Green", "GRN", "grn", 
-        "Libertarian", "LIB", "lib", 
-        "Independent", "IND", "ind",
-        "Larouche", "Write-In", "Other"                     
-    ]
-    ballot_types = BALLOT_TYPE_KEYWORDS
+    known_parties = PARTY_KEYWORDS
+    ballot_types = BALLOT_TYPES
 
     candidate_party_map = {}
     for h in headers:
         m = re.match(r"(.+?)\s*\((.+?)\)\s*-\s*(.+)", h)
         if m:
-            candidate, party, ballot_type = m.groups()
+            candidate, party, ballot_types = m.groups()
         else:
             m = re.match(r"(.+?)\s*-\s*(.+)", h)
             if m:
-                candidate, ballot_type = m.groups()
+                candidate, ballot_types = m.groups()
                 party = ""
             else:
-                candidate, party, ballot_type = h, "", ""
+                candidate, party, ballot_types = h, "", ""
         candidate = candidate.strip()
         party = party.strip()
-        ballot_type = ballot_type.strip()
+        ballot_types = ballot_types.strip()
         if party:
             best_party, score = max(((p, coordinator.fuzzy_score(party, p)) for p in known_parties), key=lambda x: x[1])
             if score > 80:
@@ -387,8 +380,8 @@ def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoor
             candidate_party_map[party] = {}
         if candidate not in candidate_party_map[party]:
             candidate_party_map[party][candidate] = []
-        if ballot_type and ballot_type not in candidate_party_map[party][candidate]:
-            candidate_party_map[party][candidate].append(ballot_type)
+        if ballot_types and ballot_types not in candidate_party_map[party][candidate]:
+            candidate_party_map[party][candidate].append(ballot_types)
     return candidate_party_map
 
 def entity_linking(header, known_entities):
@@ -411,7 +404,7 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
     Returns a list of (heading, table_locator) tuples.
     """
     if heading_tags is None:
-        heading_tags = ("h1", "h2", "h3", "h4", "h5", "h6")
+        heading_tags = HEADING_TAGS + EXTRA_HEADING_TAGS
 
     results = []
 
@@ -690,9 +683,9 @@ def find_tables_with_section_headings(page, heading_tags=None, extra_heading_sel
     - max_depth: how many parent levels to walk up
     """
     if heading_tags is None:
-        heading_tags = ("h1", "h2", "h3", "h4", "h5", "h6", "span", "strong", "b")
+        heading_tags = HEADING_TAGS
     if extra_heading_selectors is None:
-        extra_heading_selectors = [".ng-star-inserted", ".section-title", ".panel-header", ".fw-bold"]
+        extra_heading_selectors = EXTRA_HEADING_TAGS
 
     results = []
     tables = page.locator("table")
@@ -756,7 +749,7 @@ def is_candidate_major_row(headers, data, coordinator, context):
             return [], []
     candidate_major_headers = {"Candidate", "Election Day", "Early Voting", "Absentee Mail", "Total Votes"}
     if set(headers) == candidate_major_headers:
-        structure_info = {"type": "candidate-major", "candidate_col": 0, "ballot_type_cols": [1, 2, 3]}
+        structure_info = {"type_": "candidate-major", "candidate_col": 0, "ballot_types_cols": [1, 2, 3]}
     else:
         structure_info = detect_table_structure(headers, data, coordinator)
     log_info(f"[TABLE BUILDER] Detected table structure: {structure_info}")        

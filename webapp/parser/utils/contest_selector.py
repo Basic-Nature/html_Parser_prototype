@@ -4,7 +4,7 @@ from ..utils.shared_logic import normalize_state_name, normalize_county_name
 from ..utils.user_prompt import prompt_user_input, PromptCancelled
 from collections import defaultdict
 from ..bots.librarian import (
-    VALID_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP
+    ELECTION_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP
     )
 
 from typing import TYPE_CHECKING, List, Dict, Any
@@ -23,7 +23,7 @@ def extract_year_from_title(title):
     title_lower = title.lower()
     # Find all valid types and their positions
     type_positions = []
-    for t in VALID_TYPES:
+    for t in ELECTION_TYPES:
         for m in re.finditer(re.escape(t), title_lower):
             type_positions.append((m.start(), t))
     # If no types, return the most recent year
@@ -79,7 +79,7 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     if ctype:
         if any(t in ctype_norm for t in known_types):
             type_score = 1.0
-        elif any(v in ctype_norm for v in VALID_TYPES):
+        elif any(v in ctype_norm for v in ELECTION_TYPES):
             type_score = 1.0
         else:
             # Partial match (e.g., "general" in "general election")
@@ -213,7 +213,7 @@ def select_contest(
         if not c.get("type_"):
             title = c.get("title", "").lower()
             found_type_ = None
-            for t in VALID_TYPES:
+            for t in ELECTION_TYPES:
                 if t in title:
                     found_type_ = t
                     break
@@ -221,7 +221,7 @@ def select_contest(
                 # Try ML/NER
                 ents = coordinator.extract_entities(c.get("title", ""))
                 for ent, label in ents:
-                    if label == "EVENT" and ent.lower() in VALID_TYPES:
+                    if label == "EVENT" and ent.lower() in ELECTION_TYPES:
                         found_type_ = ent.lower()
                         break
             if found_type_:

@@ -29,7 +29,16 @@ from ..bots.librarian import (
     LOCATION_KEYWORDS,
     STATE_MODULE_MAP,
     KNOWN_STATE_TO_COUNTY_MAP,
-    KNOWN_COUNTY_TO_PRECINCTS_MAP
+    KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    ELECTION_TYPES,
+    TABLE_TAGS,
+    PANEL_TAGS,
+    STATE_TAGS,
+    BUTTON_TAGS,
+    NOISY_LABEL_PATTERNS,
+    PRECINCT_HEADER_PATTERNS,
+    SELECTORS,
+    CONTEST_PANEL_TAGS   
 )
 from sklearn.preprocessing import LabelEncoder
 import subprocess
@@ -50,12 +59,13 @@ from .Integrity_check import (
 )
 from .context_organizer import ContextOrganizer, clean_for_json
 import inspect
+from typing import Optional, Any, List, Dict, Union
 
-def _sanitize_log_filename(name):
+def _sanitize_log_filename(name: str) -> str:
     # Only allow alphanumeric, underscore, and dash
     return re.sub(r'[^a-zA-Z0-9_\-]', '_', name) 
 
-def get_semantic_score(model, text1, text2):
+def get_semantic_score(model, text1, text2) -> float:
     """
     Compute semantic similarity between two strings using SentenceTransformer.
     """
@@ -447,7 +457,6 @@ class ContextCoordinator:
     Use this class to access contests, buttons, panels, tables, candidates, precincts, etc.
     """
     def __init__(self, use_library=True, enable_ml=True, alert_monitor=True):
-        self.library = load_context_library() if use_library else {}
         self.enable_ml = enable_ml
         self.alert_monitor = alert_monitor
         self.organized = None
@@ -523,7 +532,7 @@ class ContextCoordinator:
                 return result + (method,)
         return (None, 0.0, "fail", "none")
 
-    def _safe_get(self, dct, key, default=None):
+    def _safe_get(self, dct, key, default=None) -> Optional[Any]:
         """Safely get a key from a dict, returning default if not a dict or key missing."""
         return dct.get(key, default) if isinstance(dct, dict) else default
             
@@ -775,7 +784,7 @@ class ContextCoordinator:
         Extract the panel for a given contest title using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
-        panel_keywords = self.library.get("panel_tags", ["panel", "section", "container", "box", "area"])
+        panel_keywords = list(PANEL_TAGS)
         panel_pattern = "|".join([re.escape(k) for k in panel_keywords])
 
         def regex_panel(text):
@@ -820,7 +829,7 @@ class ContextCoordinator:
         Extract tables for a given contest title using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
-        table_keywords = self.library.get("table_tags", ["table", "results", "summary", "sheet", "spreadsheet", "grid"])
+        table_keywords = list(TABLE_TAGS)
         table_pattern = "|".join([re.escape(k) for k in table_keywords])
 
         def regex_table(text):
@@ -909,9 +918,9 @@ class ContextCoordinator:
         Extract all known states using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
-        state_keywords = self.library.get("state_tags", ["state", "province", "territory", "region"])
+        state_keywords = list(STATE_TAGS)
         state_pattern = "|".join([re.escape(k) for k in state_keywords])
-        known_states = self.library.get("known_states", [])
+        known_states = list(STATE_MODULE_MAP.keys())
 
         def regex_state(text):
             match = re.search(rf"({state_pattern})", text, re.IGNORECASE)
@@ -970,7 +979,7 @@ class ContextCoordinator:
         Extract all known election types using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
-        known_types = self.library.get("election", [])
+        known_types = list(ELECTION_TYPES)
         location_pattern = "|".join([re.escape(k) for k in LOCATION_KEYWORDS])
         election_type_pattern = r"(primary|general|special|runoff|municipal|presidential|senate|mayoral|school board|" + location_pattern + ")"
 
@@ -1089,10 +1098,7 @@ class ContextCoordinator:
         Extract button labels using regex, spaCy NER (ORG/NORP), and direct lookup.
         Log the extraction attempt and result.
         """
-        button_keywords = self.library.get("button_tags", [
-            "Show Results", "Vote", "Submit", "Summary", "Next", "Continue", "Back",
-            "Download", "Print", "Details", "Results", "Ballot", "Cast Vote"
-        ])
+        button_keywords = list(BUTTON_TAGS)
         button_pattern = "|".join([re.escape(k) for k in button_keywords])
 
         sources = [contest_title or "", keyword or "", url or ""]
@@ -1166,7 +1172,7 @@ class ContextCoordinator:
     # --- Data Accessors ---
     def get_contests(self, filters=None):
         """
-        Return contests, optionally filtered by state, county, year, type, etc.
+        Return contests, optionally filtered by state, county, year, type_, etc.
         """   
         if not isinstance(self.organized, dict):
             return []
@@ -1182,7 +1188,7 @@ class ContextCoordinator:
             return True
         return clean_for_json([c for c in contests if match(c)])
 
-    def get_buttons(self, contest_title=None, keyword=None, url=None):
+    def get_buttons(self, contest_title=None, keyword=None, url=None) -> List[Dict[str, Any]]:
         """
         Return all buttons, or those for a specific contest, or matching a keyword/URL.
         First, check the button selection log for a successful match.
@@ -1574,8 +1580,8 @@ class ContextCoordinator:
         Disable learning mode.
         """
         self.learning_mode = False
-            
-    def get_panel(self, contest_title):
+
+    def get_panel(self, contest_title) -> dict:
         """
         Retrieve the panel for a given contest title.
         """
@@ -1586,7 +1592,7 @@ class ContextCoordinator:
             return None
         return clean_for_json(panels.get(contest_title))
 
-    def get_tables(self, contest_title):
+    def get_tables(self, contest_title) -> list[dict]:
         """
         Retrieve tables for a given contest title.
         """
@@ -1597,7 +1603,7 @@ class ContextCoordinator:
             return []
         return clean_for_json(tables.get(contest_title, []))
 
-    def get_candidates(self, contest_title=None):
+    def get_candidates(self, contest_title=None) -> list[str]:
         """
         Extract candidate names from contest entities or table headers.
         """
@@ -1621,12 +1627,11 @@ class ContextCoordinator:
                         candidates.add(h)
         return clean_for_json(list(candidates))
 
-    def get_precincts(self, state=None, county=None):
+    def get_precincts(self, state: str = None, county: str = None) -> list[str]:
         """
-        Return known precincts for a state/county from the library.
+        Return known precincts for a state/county from the static mapping in librarian.py.
+        Returns an empty list if neither is provided.
         """       
-        if not isinstance(self.library, dict):
-            return []
         if county:
             precincts_map = KNOWN_COUNTY_TO_PRECINCTS_MAP
             if isinstance(precincts_map, dict):
@@ -1637,25 +1642,22 @@ class ContextCoordinator:
             if isinstance(state_map, dict):
                 return clean_for_json(state_map.get(state, []))
             return []
-        return clean_for_json(self.library.get("known_precincts", []))
+        return []
 
-    def get_states(self):
+    def get_states(self) -> list[str]:
         """
-        Return all known states from the library.
+        Return all known states from the static mapping in librarian.py.
         """
-        if not isinstance(self.library, dict):
-            return []
-        return clean_for_json(self.library.get("known_states", []))
+        return list(STATE_MODULE_MAP.keys())
 
-    def get_election_types(self):
+    def get_election_types(self) -> list[str]:
         """
-        Return all known election types from the library.
-        """       
-        if not isinstance(self.library, dict):
-            return []
-        return clean_for_json(self.library.get("election", []))
+        Return all known election types from the static mapping in librarian.py.
+        """
+        return list(ELECTION_TYPES)
 
-    def get_years(self):
+
+    def get_years(self) -> list[int]:
         """
         Return all years found in contests.
         """      
@@ -1808,97 +1810,64 @@ class ContextCoordinator:
      
     # --- Dynamic Data for Downstream Consumers ---
 
-    def get_for_selector(self):
+    def get_for_selector(self) -> dict:
         """
         Return contests, buttons, and patterns for contest_selector.
         """      
-        if not isinstance(self.library, dict):
-            noisy_patterns = []
-        else:
-            noisy_patterns = self.library.get("default_noisy_label_patterns", [])
+        noisy_patterns = list(NOISY_LABEL_PATTERNS)
         return clean_for_json({
             "contests": self.get_contests(),
             "buttons": self.get_buttons(),
             "noisy_patterns": noisy_patterns
         })
 
-    def get_for_table_builder(self):
+    def get_for_table_builder(self) -> dict:
         """
         Return precinct headers and table tags for table_builder.
         """        
-        if not isinstance(self.library, dict):
-            precinct_headers = []
-            table_tags = []
-        else:
-            precinct_headers = self.library.get("precinct_header_tags", [])
-            table_tags = self.library.get("table_tags", [])
+        precinct_headers = list(PRECINCT_HEADER_PATTERNS)
+        table_tags = list(TABLE_TAGS)
         return clean_for_json({
             "precinct_headers": precinct_headers,
             "table_tags": table_tags
         })
 
-    def get_for_html_handler(self):
+    def get_for_html_handler(self) -> dict:
         """
         Return panel tags, contest panel tags, and selectors for html_handler.
-        """       
-        if not isinstance(self.library, dict):
-            panel_tags = []
-            contest_panel_tags = []
-            all_selectors = []
-        else:
-            panel_tags = self.library.get("panel_tags", [])
-            contest_panel_tags = self.library.get("contest_panel_tags", [])
-            selectors = self.library.get("selectors", {})
-            if not isinstance(selectors, dict):
-                all_selectors = []
-            else:
-                all_selectors = selectors.get("all_selectors", [])
+        """
+        panel_tags = list(PANEL_TAGS)
+        contest_panel_tags = list(CONTEST_PANEL_TAGS)
+        selectors = list(SELECTORS)
+
+        all_selectors = selectors.get("all_selectors", [])
         return clean_for_json({
             "panel_tags": panel_tags,
             "contest_panel_tags": contest_panel_tags,
             "all_selectors": all_selectors
         })
 
-    def get_for_state_router(self):
+    def get_for_state_router(self) -> list[str]:
         """
         Return state_module_map for state_router.
         """       
-        if not isinstance(self.library, dict):
-            return clean_for_json({})
-        return clean_for_json(self.library.get("state_module_map", {}))
+        return list(STATE_MODULE_MAP)
 
     def correct_and_update_contest(self, contest_id, correction_data):
         """
-        Update a contest in the DB and context library, then re-organize context.
+        Update a contest in the DB and then re-organize context.
         """
         from ..utils.db_utils import update_contest_in_db
 
         # 1. Update DB
         update_contest_in_db({"id": contest_id, **correction_data})
 
-        # 2. Update context library if needed
-        if not isinstance(self.library, dict):
-            return
-        for key, value in correction_data.items():
-            if key == "county":
-                known_counties = self.library.get("known_counties", [])
-                if value not in known_counties:
-                    self.library.setdefault("known_counties", []).append(value)
-            if key == "state":
-                known_states = self.library.get("known_states", [])
-                if value not in known_states:
-                    self.library.setdefault("known_states", []).append(value)
-            # Add similar logic for other fields as needed
-
-        # 3. Save updated context library (if you persist it)
-        update_context_library(CONTEXT_LIBRARY_PATH, lambda lib: lib.update(self.library))
-
-        # 4. Re-organize context
+        # 2. Re-organize context
         self.organized = None
         # Optionally, re-run organize_and_enrich if you want to refresh immediately:
         self.organize_and_enrich(self.last_raw_context)
 
-        # 5. Log correction
+        # 3. Log correction
         self.log_field_selection(
             field_type="contest",
             field_name="correction",

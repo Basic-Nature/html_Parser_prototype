@@ -13,11 +13,11 @@ from ..utils.shared_logger import log_info, log_debug, log_warning, log_error
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, 
     CANDIDATE_KEYWORDS, BALLOT_TYPES, update_context_library, load_context_library,
-    log_unknown_tag, log_unknown_attr, get_canonical_segment_label, cache_segment_label, get_cached_segment_label, ROOT_CONTAINER_TAGS,
+    log_unknown_tag, log_unknown_attr, get_canonical_segment_label, cache_segment_label, get_cached_segment_label, 
     ALWAYS_IGNORE_TAGS, ALWAYS_IGNORE_CLASSES, ALWAYS_IGNORE_IDS, ICON_CLASSES, ICON_TAGS, BUTTON_CLASSES,
     HEADING_CLASSES, PANEL_CLASSES, TIMESTAMP_CLASSES, STRUCTURAL_TAGS, TIMESTAMP_ID_PATTERNS, TIMESTAMP_ATTRS,
-    CONTEST_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, LOCATION_KEYWORDS, PARTY_KEYWORDS,
-    TOTAL_KEYWORDS, PERCENT_KEYWORDS, MISC_FOOTER_KEYWORDS, VALID_TYPES, UPDATE_PANEL_KEYWORDS, VIEW_BY_PHRASES,
+    CONTEST_KEYWORDS, PARTY_KEYWORDS, MISC_FOOTER_KEYWORDS, ELECTION_TYPES, UPDATE_PANEL_KEYWORDS, VIEW_BY_PHRASES,
+    TOTAL_KEYWORDS, PERCENT_KEYWORDS, ROOT_CONTAINER_TAGS,
 )
 from ..utils.embedding_cache import (
     save_embedding, get_embedding_from_memory, load_embeddings_batch, save_embeddings_batch
@@ -515,9 +515,9 @@ def extract_year_and_type(text):
     years = re.findall(r'(20\d{2})', text)
     year = years[-1] if years else None
 
-    # Find all types (case-insensitive, from VALID_TYPES)
+    # Find all types (case-insensitive, from ELECTION_TYPE)
     type_matches = []
-    for t in VALID_TYPES:
+    for t in ELECTION_TYPES:
         for m in re.finditer(rf'\b{re.escape(t)}\b', text, re.IGNORECASE):
             type_matches.append((m.start(), t))
     # Pick the last type found, or the most frequent if multiple
@@ -711,15 +711,15 @@ def scan_html_for_context(
             text = seg["text"]
             # Split long blocks into possible contests
             for possible in split_possible_contests(text):
-                seg_year, seg_type_, cleaned_title = extract_year_and_type(possible)
+                seg_year, seg_type, cleaned_title = extract_year_and_type(possible)
                 # Only treat as contest if it contains a contest keyword or a valid type
-                if any(kw in possible.lower() for kw in CONTEST_KEYWORDS) or seg_type_:
+                if any(kw in possible.lower() for kw in CONTEST_KEYWORDS) or seg_type:
                     raw_contests.append({
                         "title": cleaned_title,
                         "state": state,
                         "county": county,
                         "year": seg_year or year,
-                        "type_": seg_type_,
+                        "type_": seg_type,
                         "segment_hash": seg["segment_hash"],
                     })
         contests = diagnostics_and_filter(
@@ -750,12 +750,12 @@ def scan_html_for_context(
         for seg in _extract_segments_by_label(segments_with_attrs, "results_table"):
             text = seg["text"]
             # Optionally extract year/type if present in table captions or headings
-            seg_year, seg_type_, cleaned_text = extract_year_and_type(text)
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
             raw_tables.append({
                 "table_text": cleaned_text,
                 "table_html": seg["raw_html"],
                 "year": seg_year,
-                "type_": seg_type_,
+                "type_": seg_type,
                 "segment_hash": seg["segment_hash"],
             })
         tables = diagnostics_and_filter(
@@ -770,12 +770,12 @@ def scan_html_for_context(
         raw_candidate_panels = []
         for seg in _extract_segments_by_label(segments_with_attrs, "candidate_panel"):
             text = seg["text"]
-            seg_year, seg_type_, cleaned_text = extract_year_and_type(text)
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
             raw_candidate_panels.append({
                 "candidate_panel_text": cleaned_text,
                 "candidate_panel_html": seg["raw_html"],
                 "year": seg_year,
-                "type_": seg_type_,
+                "type_": seg_type,
                 "segment_hash": seg["segment_hash"],
             })
         candidate_panels = diagnostics_and_filter(
@@ -790,12 +790,12 @@ def scan_html_for_context(
         raw_location_panels = []
         for seg in _extract_segments_by_label(segments_with_attrs, "location_panel"):
             text = seg["text"]
-            seg_year, seg_type_, cleaned_text = extract_year_and_type(text)
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
             raw_location_panels.append({
                 "location_panel_text": cleaned_text,
                 "location_panel_html": seg["raw_html"],
                 "year": seg_year,
-                "type_": seg_type_,
+                "type_": seg_type,
                 "segment_hash": seg["segment_hash"],
             })
         location_panels = diagnostics_and_filter(
@@ -815,7 +815,7 @@ def scan_html_for_context(
                     "heading_text": text,
                     "heading_html": seg["raw_html"],
                     "segment_hash": seg["segment_hash"],
-                    "heading_type_": "last_webpage_update"
+                    "heading_type": "last_webpage_update"
                 })
                 ts_match = re.search(r'(\w+day,?\s+\w+\s+\d{1,2},\s+20\d{2}.*\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?)', text)
                 if ts_match:
@@ -825,7 +825,7 @@ def scan_html_for_context(
                     "heading_text": text,
                     "heading_html": seg["raw_html"],
                     "segment_hash": seg["segment_hash"],
-                    "heading_type_": "content"
+                    "heading_type": "content"
                 })
 
         headings = diagnostics_and_filter(
@@ -840,12 +840,12 @@ def scan_html_for_context(
         raw_ballot_types = []
         for seg in _extract_segments_by_label(segments_with_attrs, "ballot_types"):
             text = seg["text"]
-            seg_year, seg_type_, cleaned_text = extract_year_and_type(text)
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
             raw_ballot_types.append({
                 "ballot_types_text": cleaned_text,
                 "ballot_types_html": seg["raw_html"],
                 "year": seg_year,
-                "type_": seg_type_,
+                "type_": seg_type,
                 "segment_hash": seg["segment_hash"],
             })
         ballot_types = diagnostics_and_filter(
@@ -1075,12 +1075,12 @@ def extract_tagged_segments_with_attrs(
         context_library = {}
     if context_cache is None:
         context_cache = load_context_cache_from_disk()
-    panel_tags = set(context_library.get("panel_tags", [])) if context_library and context_library.get("panel_tags") else PANEL_TAGS
-    heading_tags = set(context_library.get("heading_tags", [])) if context_library and context_library.get("heading_tags") else HEADING_TAGS
-    custom_attr_patterns = [re.compile(p) for p in context_library.get("custom_attr_patterns", [])] if context_library and context_library.get("custom_attr_patterns") else CUSTOM_ATTR_PATTERNS
-    location_keywords = set(context_library.get("location_keywords", [])) if context_library and context_library.get("location_keywords") else LOCATION_KEYWORDS
-    candidate_keywords = set(context_library.get("candidate_keywords", [])) if context_library and context_library.get("candidate_keywords") else CANDIDATE_KEYWORDS
-    ballot_types = set(context_library.get("ballot_types", [])) if context_library and context_library.get("ballot_types") else BALLOT_TYPES
+    panel_tags = PANEL_TAGS
+    heading_tags = HEADING_TAGS
+    custom_attr_patterns = CUSTOM_ATTR_PATTERNS
+    location_keywords = LOCATION_KEYWORDS
+    candidate_keywords = CANDIDATE_KEYWORDS
+    ballot_types = BALLOT_TYPES
     segments: List[Dict[str, Any]] = []
 
     try:

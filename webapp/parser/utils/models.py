@@ -29,7 +29,7 @@ Base = declarative_base()
 class Entity(Base):
     __tablename__ = "entities"
     id = Column(Integer, primary_key=True)
-    entity_type_ = Column(String, nullable=False)
+    entity_type = Column(String, nullable=False)
     value = Column(String, nullable=False)
 
 class Party(Base):
