@@ -106,7 +106,7 @@ class Candidate(Base):
     office_id = Column(Integer, ForeignKey("offices.id"))
     office = relationship("Office", back_populates="candidates")
     results = relationship("Result", back_populates="candidate")
-    metadata = Column(JSON, default=dict)
+    metastats = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 
@@ -129,7 +129,7 @@ class Contest(Base):
     office_id = Column(Integer, ForeignKey("offices.id"))
     office = relationship("Office", back_populates="contests")
     results = relationship("Result", back_populates="contest")
-    metadata = Column(JSON, default=dict)
+    metastats = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     __table_args__ = (
@@ -152,7 +152,7 @@ class Result(Base):
     is_winner = Column(Boolean)
     is_incumbent = Column(Boolean)
     vote_method = Column(String)
-    metadata = Column(JSON, default=dict)
+    metastats = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 # --- OPTIONAL/GENERIC MODELS ---
@@ -165,7 +165,7 @@ class Entity(Base):
     id = Column(Integer, primary_key=True)
     entity_type = Column(String, nullable=False)
     value = Column(String, nullable=False)
-    metadata = Column(JSON, default=dict)
+    metastats = Column(JSON, default=dict)
 
 class MiscEntity(Base):
     """
@@ -175,7 +175,7 @@ class MiscEntity(Base):
     id = Column(Integer, primary_key=True)
     value = Column(String, nullable=False)
     type_ = Column(String, nullable=False)
-    metadata = Column(JSON, default=dict)
+    metastats = Column(JSON, default=dict)
 
 # --- ML, LOGGING, AND SUPPORT MODELS ---
 
@@ -205,7 +205,7 @@ class BatchMetadata(Base):
     started_at = Column(DateTime, default=datetime.now(timezone.utc))
     completed_at = Column(DateTime)
     status = Column(Enum(StatusEnum), default=StatusEnum.PENDING)
-    metadata = Column(JSON, default=dict)
+    metastats = Column(JSON, default=dict)
 
     def __repr__(self):
         return f"<BatchMetadata(batch_id={self.batch_id}, source={self.source}, status={self.status})>"
@@ -223,7 +223,7 @@ class StagingElectionResult(Base):
     raw_html = Column(Text)
     parsed_at = Column(DateTime, default=datetime.now(timezone.utc))
     status = Column(Enum(StatusEnum), default=StatusEnum.PENDING)
-    metadata = Column(JSON, default=dict)
+    metastats = Column(JSON, default=dict)
 
     def __repr__(self):
         return f"<StagingElectionResult(id={self.id}, batch_id={self.batch_id}, state={self.state})>"
@@ -244,7 +244,7 @@ class WarehouseElectionResult(Base):
     precinct = Column(String)
     election_date = Column(DateTime)
     processed_at = Column(DateTime, default=datetime.now(timezone.utc))
-    metadata = Column(JSON, default=dict)
+    metastats = Column(JSON, default=dict)
 
     def __repr__(self):
         return f"<WarehouseElectionResult(id={self.id}, contest_title={self.contest_title}, candidate={self.candidate})>"
