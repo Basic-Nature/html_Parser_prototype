@@ -4,9 +4,7 @@ import threading
 import itertools
 import atexit
 import numpy as np
-from rich.console import Console
 from functools import lru_cache
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy import select, inspect
@@ -14,7 +12,8 @@ from sqlalchemy.dialects.postgresql import insert
 from ..utils.db_utils import get_session, engine
 from ..utils.models import EmbeddingCache
 from ..config import LOG_DIR, CACHE_DIR
-from ..utils.shared_logger import log_info, log_error
+from ..utils.shared_logger import RichConsoleProxy
+
 try:
     import joblib
     JOBLIB_AVAILABLE = True
@@ -22,7 +21,7 @@ except ImportError:
     import pickle
     JOBLIB_AVAILABLE = False
 
-console = Console()
+console = RichConsoleProxy()
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
@@ -46,35 +45,35 @@ if JOBLIB_AVAILABLE:
         if os.path.exists(DISK_CACHE_PATH):
             try:
                 cache = joblib.load(DISK_CACHE_PATH)
-                console.log_info(f"[cyan][EMBEDDING CACHE] Loaded disk cache with {len(cache)} embeddings.[/cyan]")
+                console.print(f"[cyan][EMBEDDING CACHE] Loaded disk cache with {len(cache)} embeddings.[/cyan]")
                 return cache
             except Exception as e:
-                console.log_error(f"[red][EMBEDDING CACHE] Failed to load disk cache: {e}[/red]")
+                console.print(f"[red][EMBEDDING CACHE] Failed to load disk cache: {e}[/red]")
         return {}
     def save_disk_cache():
         try:
             joblib.dump(_disk_cache, DISK_CACHE_PATH)
-            console.log_info(f"[cyan][EMBEDDING CACHE] Saved disk cache with {len(_disk_cache)} embeddings.[/cyan]")
+            console.print(f"[cyan][EMBEDDING CACHE] Saved disk cache with {len(_disk_cache)} embeddings.[/cyan]")
         except Exception as e:
-            console.log_error(f"[red][EMBEDDING CACHE] Failed to save disk cache: {e}[/red]")
+            console.print(f"[red][EMBEDDING CACHE] Failed to save disk cache: {e}[/red]")
 else:
     def load_disk_cache():
         if os.path.exists(DISK_CACHE_PATH):
             try:
                 with open(DISK_CACHE_PATH, "rb") as f:
                     cache = pickle.load(f)
-                console.log_info(f"[cyan][EMBEDDING CACHE] Loaded disk cache with {len(cache)} embeddings.[/cyan]")
+                console.print(f"[cyan][EMBEDDING CACHE] Loaded disk cache with {len(cache)} embeddings.[/cyan]")
                 return cache
             except Exception as e:
-                console.log_error(f"[red][EMBEDDING CACHE] Failed to load disk cache: {e}[/red]")
+                console.print(f"[red][EMBEDDING CACHE] Failed to load disk cache: {e}[/red]")
         return {}
     def save_disk_cache():
         try:
             with open(DISK_CACHE_PATH, "wb") as f:
                 pickle.dump(_disk_cache, f)
-            console.log_info(f"[cyan][EMBEDDING CACHE] Saved disk cache with {len(_disk_cache)} embeddings.[/cyan]")
+            console.print(f"[cyan][EMBEDDING CACHE] Saved disk cache with {len(_disk_cache)} embeddings.[/cyan]")
         except Exception as e:
-            console.log_error(f"[red][EMBEDDING CACHE] Failed to save disk cache: {e}[/red]")
+            console.print(f"[red][EMBEDDING CACHE] Failed to save disk cache: {e}[/red]")
 
 _disk_cache = load_disk_cache()
 atexit.register(save_disk_cache)
@@ -83,12 +82,12 @@ def ensure_embedding_cache_table():
     inspector = inspect(engine)
     table_name = EmbeddingCache.__tablename__
     if not inspector.has_table(table_name):
-        console.log_warning(f"[yellow][EMBEDDING CACHE] Table '{table_name}' does not exist. Creating...[/yellow]", highlight=False)
+        console.print(f"[yellow][EMBEDDING CACHE] Table '{table_name}' does not exist. Creating...[/yellow]", highlight=False)
         try:
             EmbeddingCache.metadata.create_all(engine, tables=[EmbeddingCache.__table__])
-            console.log_info(f"[green][EMBEDDING CACHE] Table '{table_name}' created.[/green]", highlight=False)
+            console.print(f"[green][EMBEDDING CACHE] Table '{table_name}' created.[/green]", highlight=False)
         except Exception as e:
-            console.log_error(f"[red][EMBEDDING CACHE ERROR] Failed to create table '{table_name}': {e}[/red]", highlight=False)
+            console.print(f"[red][EMBEDDING CACHE ERROR] Failed to create table '{table_name}': {e}[/red]", highlight=False)
             raise
 
 def compute_embedding_for_hash(segment_hash):
@@ -121,7 +120,7 @@ def save_embedding(segment_hash, embedding):
                 session.commit()
             except SQLAlchemyError as e:
                 session.rollback()
-                console.log_error(f"[red][EMBEDDING ERROR][/red] {str(e)}", highlight=False)
+                console.print(f"[red][EMBEDDING ERROR][/red] {str(e)}", highlight=False)
                 return
     # Update in-memory and disk cache
     with _batch_cache_lock:
@@ -160,17 +159,17 @@ def get_embedding_from_memory(segment_hash):
         emb = load_embedding(segment_hash)
         if emb is None:
             indicator = get_loading_indicator()
-            console.log_warning(
+            console.print(
                 f"{indicator} [yellow][EMBEDDING CACHE] No embedding found for hash: {segment_hash}[/yellow]",
                 highlight=False,
                 end="\r"
             )
         return emb
     except DetachedInstanceError as e:
-        console.log_error(f"[red][EMBEDDING CACHE ERROR][/red] DetachedInstanceError for hash {segment_hash}: {str(e)}", highlight=False)
+        console.print(f"[red][EMBEDDING CACHE ERROR][/red] DetachedInstanceError for hash {segment_hash}: {str(e)}", highlight=False)
         return None
     except Exception as e:
-        console.log_error(f"[red][EMBEDDING CACHE ERROR][/red] Unexpected error for hash {segment_hash}: {str(e)}", highlight=False)
+        console.print(f"[red][EMBEDDING CACHE ERROR][/red] Unexpected error for hash {segment_hash}: {str(e)}", highlight=False)
         return None
 
 def save_embeddings_batch(hash_emb_list):
@@ -215,7 +214,7 @@ def save_embeddings_batch(hash_emb_list):
                 err_line = str(e).splitlines()[0]
                 if len(err_line) > 120:
                     err_line = err_line[:117] + "..."
-                console.log_error(
+                console.print(
                     f"[red][BATCH EMBEDDING ERROR][/red] {type(e).__name__}: {err_line} (batch size: {len(records)})",
                     highlight=False,
                     end="\r"
@@ -266,9 +265,9 @@ def load_embeddings_batch(segment_hashes):
                                 _batch_cache[obj.segment_hash] = emb
                             _disk_cache[obj.segment_hash] = emb
                         except Exception as e:
-                            console.log_error(f"[red][EMBEDDING CACHE ERROR][/red] Failed to load embedding for hash {obj.segment_hash}: {e}", highlight=False)
+                            console.print(f"[red][EMBEDDING CACHE ERROR][/red] Failed to load embedding for hash {obj.segment_hash}: {e}", highlight=False)
         except SQLAlchemyError as e:
-            console.log_error(f"[red][EMBEDDING CACHE DB ERROR][/red] {str(e)}", highlight=False)
+            console.print(f"[red][EMBEDDING CACHE DB ERROR][/red] {str(e)}", highlight=False)
     # Log missing hashes
     still_missing = [h for h in segment_hashes if result[h] is None]
     if still_missing:
@@ -309,7 +308,7 @@ def fix_missing_embeddings():
         with open(MISSING_LOG_PATH, "w") as f:
             for h in missing_hashes:
                 f.write(f"{h}\n")
-        console.log_info(f"[green][EMBEDDING CACHE] Fixed {len(fixed)} missing embeddings automatically.[/green]")
+        console.print(f"[green][EMBEDDING CACHE] Fixed {len(fixed)} missing embeddings automatically.[/green]")
 
 # --- Ensure table and fix missing embeddings at startup ---
 ensure_embedding_cache_table()

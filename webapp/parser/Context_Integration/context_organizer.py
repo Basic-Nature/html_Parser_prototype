@@ -29,13 +29,12 @@ from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
 from ..utils.html_scanner import load_context_cache_from_disk, save_context_cache_to_disk
-from ..utils.shared_logger import log_info, log_warning, log_error, log_debug
+from ..utils.shared_logger import log_info, log_warning, log_error, log_debug, RichConsoleProxy
 from rich.table import Table
-from rich.console import Console
 import matplotlib.pyplot as plt
 from collections import Counter
 
-console = Console()
+console = RichConsoleProxy()
 
 from ..config import (
     BASE_DIR, CONTEXT_LIBRARY_PATH, CONTEXT_DB_PATH, 
@@ -135,30 +134,58 @@ def get_table_structure_from_db(contest_title, context=None) -> dict:
 def upsert_contest(session, contest_dict):
     """
     Upsert a contest using SQLAlchemy ORM. Updates if exists, else inserts.
-    Ensures the object is attached to the current session before updating.
+    Handles state/county as relationships robustly.
     """
+    # --- Resolve state and county relationships ---
+    state_name = contest_dict.get("state")
+    county_name = contest_dict.get("county")
+
+    # Get State and County classes from the session's registry
+    State = session.registry.mapped_classes['State']
+    County = session.registry.mapped_classes['County']
+
+    # Find the state and county objects by name
+    state_obj = session.query(State).filter(State.name == state_name).first() if state_name else None
+    county_obj = session.query(County).filter(
+        County.name == county_name,
+        County.state == state_obj  # Ensure county is in the correct state
+    ).first() if county_name and state_obj else None
+
+    # Optionally, create if not found (uncomment if you want auto-create)
+    # if not state_obj and state_name:
+    #     state_obj = State(name=state_name)
+    #     session.add(state_obj)
+    #     session.flush()
+    # if not county_obj and county_name:
+    #     county_obj = County(name=county_name, state=state_obj)
+    #     session.add(county_obj)
+    #     session.flush()
+
+    # Build filters for upsert
+    filters = [
+        Contest.title == contest_dict.get("title"),
+        Contest.year == contest_dict.get("year"),
+        Contest.type_ == contest_dict.get("type_"),
+        Contest.state_id == (state_obj.id if state_obj else None),
+        Contest.county_id == (county_obj.id if county_obj else None),
+    ]
+
     obj = session.execute(
-        select(Contest).where(
-            and_(
-                Contest.title == contest_dict.get("title"),
-                Contest.year == contest_dict.get("year"),
-                Contest.type_ == contest_dict.get("type_"),
-                Contest.state == contest_dict.get("state"),
-                Contest.county == contest_dict.get("county")
-            )
-        )
+        select(Contest).where(and_(*filters))
     ).scalar_one_or_none()
+
     if obj:
-        # Ensure obj is attached to the current session
         obj = session.merge(obj)
+        obj.election_types = contest_dict.get("election_types")
         obj.metadata = orjson.dumps(clean_for_json(contest_dict))
     else:
         obj = Contest(
             title=contest_dict.get("title"),
             year=contest_dict.get("year"),
             type_=contest_dict.get("type_"),
-            state=contest_dict.get("state"),
-            county=contest_dict.get("county"),
+            election_types=contest_dict.get("election_types"),
+            state=state_obj,
+            county=county_obj,
             metadata=orjson.dumps(clean_for_json(contest_dict))
         )
         session.add(obj)
@@ -309,8 +336,7 @@ class ContextOrganizer:
                 str(c.get("county", "")),
                 str(c.get("year", ""))
             )
-        console = Console()
-        console.log_info(table)
+        console.print(table)
 
     @staticmethod
     def plot_contest_distribution(contests):
@@ -1127,7 +1153,7 @@ class ContextOrganizer:
             for child_idx in node["children"]:
                 if child_idx >= len(nodes) or nodes[child_idx].get("parent_idx") != node["_idx"]:
                     indicator = get_loading_indicator()
-                    console.log_info(
+                    console.print(
                         f"{indicator} Inconsistent parent/child: node {node['_idx']} child {child_idx}",
                         highlight=False,
                         end="\r"

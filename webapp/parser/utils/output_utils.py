@@ -1,12 +1,10 @@
 import csv
 import orjson
 import os
-import collections.abc
 from datetime import datetime
 from ..utils.shared_logger import log_info, log_warning, log_debug
-from ..utils.table_builder import build_dynamic_table, harmonize_headers_and_data
 from ..config import CONTEXT_DB_PATH, BASE_DIR, LOG_DIR
-from ..utils.user_prompt import prompt_yes_no
+
 
 CACHE_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
 
@@ -197,7 +195,7 @@ def finalize_election_output(
     Finalize and write election output to CSV and metadata JSON.
     Output is always placed in a subfolder of the project root (parent of webapp).
     """
-    from ..Context_Integration.context_organizer import ContextOrganizer, organize_context
+    from ..Context_Integration.context_organizer import ContextOrganizer
     import re
 
     if context is None:

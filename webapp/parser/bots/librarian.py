@@ -609,8 +609,21 @@ def atomic_write_json(obj, path):
     if path.exists():
         shutil.copy2(path, backup_path)
 
-    # Atomically move .tmp to final path
-    shutil.move(str(tmp_path), str(path))
+    # --- Fix: If the target file exists and is locked, try to close it or retry ---
+    import time
+    for _ in range(3):
+        try:
+            shutil.move(str(tmp_path), str(path))
+            break
+        except (OSError, PermissionError, FileExistsError) as e:
+            # Try to remove the target file if possible (only if you are sure it's safe)
+            try:
+                os.remove(str(path))
+            except Exception:
+                pass
+            time.sleep(0.5)
+    else:
+        raise RuntimeError(f"Could not move {tmp_path} to {path} after several attempts.")
 
     # Clean up any stray .tmp (should not exist, but just in case)
     if tmp_path.exists():

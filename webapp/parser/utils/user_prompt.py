@@ -1,189 +1,206 @@
 import sys
 import threading
 import datetime
-from ..utils.shared_logger import log_info, log_warning, log_error
 import os
+import re
+import json
+import inspect
+from typing import Any, Callable, Dict, List, Optional, Union, Generator, ContextManager
+from contextlib import contextmanager
+from ..utils.shared_logger import log_info, log_warning, log_error
 
-# --- Mode and SocketIO integration ---
-PROMPT_MODE = "cli"  # or "webapp"
-SOCKETIO_EMIT_FUNC = None
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv is optional
 
-def set_prompt_mode(mode):
-    global PROMPT_MODE
-    PROMPT_MODE = mode
-
-def set_socketio_emit_func(emit_func):
-    global SOCKETIO_EMIT_FUNC
-    SOCKETIO_EMIT_FUNC = emit_func
-
-# --- Prompt session management for webapp mode ---
-class PromptSession:
-    def __init__(self):
-        self.event = threading.Event()
-        self.response = None
-
-    def wait_for_response(self, timeout=None):
-        self.event.wait(timeout)
-        return self.response
-
-    def set_response(self, response):
-        self.response = response
-        self.event.set()
-
-prompt_sessions = {}  # session_id -> PromptSession
-
-def get_prompt_session(session_id):
-    if session_id not in prompt_sessions:
-        prompt_sessions[session_id] = PromptSession()
-    return prompt_sessions[session_id]
-
-def clear_prompt_session(session_id):
-    if session_id in prompt_sessions:
-        del prompt_sessions[session_id]
-
-# --- Core prompt logic ---
-def prompt_user(message, session_id=None, timeout=None, default=None):
-    """
-    Unified prompt function for CLI and webapp.
-    - In CLI: uses input()
-    - In webapp: emits prompt to SocketIO and waits for response
-    """
-    if PROMPT_MODE == "webapp" and SOCKETIO_EMIT_FUNC and session_id:
-        SOCKETIO_EMIT_FUNC(message)
-        prompt_session = get_prompt_session(session_id)
-        response = prompt_session.wait_for_response(timeout)
-        clear_prompt_session(session_id)
-        if response is None and default is not None:
-            return default
-        return response
-    else:
-        try:
-            resp = input(message)
-            if not resp and default is not None:
-                return default
-            return resp
-        except EOFError:
-            return default
+def get_prompt_mode() -> str:
+    """Get prompt mode from environment or default to CLI."""
+    return os.environ.get("PROMPT_MODE", "cli").lower()
 
 class PromptCancelled(Exception):
     """Raised when the user cancels a prompt."""
     pass
 
-def print_header(title: str = "USER INPUT REQUIRED", char: str = "=", width: int = 60):
-    log_info("\n" + char * width)
-    log_info(f"{title.center(width)}")
-    log_info(char * width)
+class PromptSession:
+    """Session object for webapp prompt responses."""
+    def __init__(self):
+        self.event = threading.Event()
+        self.response = None
 
-def prompt_user_input(
-    message,
-    session_id=None,
-    timeout=None,
-    default=None,
-    validator=None,
-    allow_cancel=True,
-    on_error=None,
-    header=None,
-    log_func=None,
-    max_attempts=5
-):
+    def wait_for_response(self, timeout: Optional[float] = None) -> Any:
+        """Wait for a response with optional timeout."""
+        self.event.wait(timeout)
+        return self.response
+
+    def set_response(self, response: Any) -> None:
+        """Set the response and notify waiting thread."""
+        self.response = response
+        self.event.set()
+
+class UserPrompt:
     """
-    Prompt the user for input, with optional default, validation, cancel, timeout, header, and logging.
-    Returns the validated input or raises PromptCancelled if cancelled.
+    Unified user prompt handler for CLI and webapp modes.
+    All prompt logic is encapsulated as methods.
+    Use .prompt(prompt_type, ...) to dispatch to a specific prompt type.
     """
-    def input_with_timeout(prompt, timeout):
-        result = [None]
-        def inner():
+
+    # Compiled regex patterns for performance
+    RICH_MARKUP_RE = re.compile(r"\[[a-zA-Z0-9_]+\]")
+    LABEL_COLOR_RE = re.compile(r"^\[([a-zA-Z0-9_ ]+)\]\s*(.*)")
+
+    def __init__(
+        self,
+        mode: Optional[str] = None,
+        socketio_emit_func: Optional[Callable[[str], None]] = None,
+        file_path: Optional[str] = None,
+    ):
+        """
+        Initialize the UserPrompt.
+        """
+        self.mode = mode or get_prompt_mode()
+        self.socketio_emit_func = socketio_emit_func
+        self.prompt_sessions: Dict[str, PromptSession] = {}
+        self.file_path = file_path
+
+    def set_mode(self, mode: Optional[str] = None) -> None:
+        """Set the prompt mode (cli/webapp)."""
+        self.mode = mode or get_prompt_mode()
+
+    def set_socketio_emit_func(self, emit_func: Callable[[str], None]) -> None:
+        """Set the function to emit prompts via socketio (for webapp mode)."""
+        self.socketio_emit_func = emit_func
+
+    def set_file_path(self, file_path: str) -> None:
+        """Set the file path for prompt logging."""
+        self.file_path = file_path
+
+    def get_prompt_session(self, session_id: str) -> PromptSession:
+        """Get or create a prompt session by session_id."""
+        if session_id not in self.prompt_sessions:
+            self.prompt_sessions[session_id] = PromptSession()
+        return self.prompt_sessions[session_id]
+
+    def clear_prompt_session(self, session_id: str) -> None:
+        """Clear a prompt session by session_id."""
+        if session_id in self.prompt_sessions:
+            del self.prompt_sessions[session_id]
+
+    def print_header(self, title: str = "USER INPUT REQUIRED", char: str = "=", width: int = 60) -> None:
+        """Print a formatted header for prompts."""
+        log_info("\n" + char * width)
+        log_info(f"{title.center(width)}")
+        log_info(char * width)
+
+    def prompt(self, prompt_type: str, *args, **kwargs) -> Any:
+        """
+        Dispatcher for prompt types.
+        Example: prompt("yes_no", message="Continue?")
+        """
+        method = getattr(self, f"prompt_{prompt_type}", None)
+        if not method:
+            raise ValueError(f"Unknown prompt type: {prompt_type}")
+        return method(*args, **kwargs)
+
+    def _should_emit(self, level: str = "INFO") -> bool:
+        """Stub for log level filtering (extend as needed)."""
+        # Could integrate with shared_logger's log level if desired
+        return True
+
+    def _format_context(self, context: Any) -> str:
+        """Format context for output."""
+        if context is None:
+            return ""
+        if isinstance(context, dict):
             try:
-                result[0] = input(prompt)
+                return json.dumps(context, indent=2, ensure_ascii=False)
             except Exception:
-                result[0] = None
-        t = threading.Thread(target=inner)
-        t.start()
-        t.join(timeout)
-        if t.is_alive():
-            print("\n[Prompt] Timed out.")
-            return None
-        return result[0]
+                return str(context)
+        return str(context)
 
-    attempts = 0
-    if header:
-        print_header(header)
-    while True:
-        prompt = f"{message}"
-        if default is not None:
-            prompt += f" [{default}]"
-        if allow_cancel:
-            prompt += " (type 'cancel' to abort)"
-        prompt += " "
-        # --- Use webapp/CLI unified prompt ---
-        try:
-            if PROMPT_MODE == "webapp" and session_id:
-                response = prompt_user(prompt, session_id=session_id, timeout=timeout, default=default)
-            else:
-                response = input_with_timeout(prompt, timeout) if timeout else input(prompt)
-        except EOFError:
-            log_warning("\n[Prompt] No input available (EOF). Exiting prompt.")
-            return default
-        if response is None:
-            if timeout:
-                if on_error:
-                    on_error("Timed out.")
-                if log_func:
-                    log_func(f"[PROMPT] Timed out at {datetime.datetime.now()}")
+    def _get_caller_info(self) -> Dict[str, Any]:
+        """Get structured caller info for advanced/structured logging."""
+        frame = inspect.currentframe()
+        if frame is not None:
+            outer = inspect.getouterframes(frame, 3)
+            if len(outer) > 3:
+                caller = outer[3]
+                return {
+                    "module": caller.frame.f_globals.get("__name__", ""),
+                    "function": caller.function,
+                    "line": caller.lineno
+                }
+        return {}
+
+    def _log_to_file(self, msg: str, context: Any = None) -> None:
+        """Log prompt interactions to a file if file_path is set."""
+        if not self.file_path:
+            return
+        log_line = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "message": msg,
+            "context": self._format_context(context),
+            **self._get_caller_info()
+        }
+        with open(self.file_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_line, ensure_ascii=False) + "\n")
+
+    def prompt_user(
+        self,
+        message: str,
+        session_id: Optional[str] = None,
+        timeout: Optional[float] = None,
+        default: Optional[str] = None,
+        context: Any = None,
+    ) -> Any:
+        """
+        Unified prompt function for CLI and webapp.
+        - In CLI: uses input()
+        - In webapp: emits prompt to SocketIO and waits for response
+        """
+        if self.mode == "webapp" and self.socketio_emit_func and session_id:
+            self.socketio_emit_func(message)
+            prompt_session = self.get_prompt_session(session_id)
+            response = prompt_session.wait_for_response(timeout)
+            self.clear_prompt_session(session_id)
+            if response is None and default is not None:
                 return default
-            continue
-        if allow_cancel and response.strip().lower() == "cancel":
-            if log_func:
-                log_func(f"[PROMPT] User cancelled at {datetime.datetime.now()}")
-            raise PromptCancelled("User cancelled the prompt.")
-        if not response and default is not None:
-            response = default
-        if validator:
-            try:
-                if validator(response):
-                    if log_func:
-                        log_func(f"[PROMPT] User input: {response} at {datetime.datetime.now()}")
-                    return response
-            except Exception:
-                pass
-            attempts += 1
-            if on_error:
-                on_error("Invalid input.")
-            log_warning("Invalid input. Please try again.")
-            if attempts >= max_attempts:
-                log_warning("[Prompt] Too many invalid attempts. Cancelling.")
-                if log_func:
-                    log_func(f"[PROMPT] Too many invalid attempts at {datetime.datetime.now()}")
-                raise PromptCancelled("Too many invalid attempts.")
-        else:
-            if log_func:
-                log_func(f"[PROMPT] User input: {response} at {datetime.datetime.now()}")
+            self._log_to_file(message, context)
             return response
+        else:
+            try:
+                resp = input(message)
+                if not resp and default is not None:
+                    return default
+                self._log_to_file(message, context)
+                return resp
+            except EOFError:
+                return default
 
-# --- Yes/No and choice helpers ---
-def prompt_yes_no(
-    message,
-    default="y",
-    allow_cancel=True,
-    timeout=None,
-    header=None,
-    log_func=None,
-    session_id=None
-):
-    if header:
-        print_header(header)
-    prompt_str = f"{message} (y/n) [{default}]"
-    if allow_cancel:
-        prompt_str += " (type 'cancel' to abort)"
-    prompt_str += ": "
-    while True:
-        if PROMPT_MODE == "webapp" and session_id:
-            resp = prompt_user(prompt_str, session_id=session_id, timeout=timeout, default=default)
-        elif timeout:
+    def prompt_input(
+        self,
+        message: str,
+        session_id: Optional[str] = None,
+        timeout: Optional[float] = None,
+        default: Optional[str] = None,
+        validator: Optional[Callable[[str], bool]] = None,
+        allow_cancel: bool = True,
+        on_error: Optional[Callable[[str], None]] = None,
+        header: Optional[str] = None,
+        log_func: Optional[Callable[[str], None]] = None,
+        max_attempts: int = 5,
+        context: Any = None,
+    ) -> str:
+        """
+        Prompt the user for input, with optional default, validation, cancel, timeout, header, and logging.
+        Returns the validated input or raises PromptCancelled if cancelled.
+        """
+        def input_with_timeout(prompt: str, timeout: float) -> Optional[str]:
             result = [None]
             def inner():
                 try:
-                    result[0] = input(prompt_str)
+                    result[0] = input(prompt)
                 except Exception:
                     result[0] = None
             t = threading.Thread(target=inner)
@@ -191,156 +208,340 @@ def prompt_yes_no(
             t.join(timeout)
             if t.is_alive():
                 log_warning("\n[Prompt] Timed out.")
-                return default.lower() == "y"
-            resp = result[0]
-        else:
-            resp = input(prompt_str)
-        if resp is None or not resp.strip():
-            resp = default
-        resp = resp.strip().lower()
-        if allow_cancel and resp == "cancel":
-            if log_func:
-                log_func(f"[PROMPT] User cancelled yes/no at {datetime.datetime.now()}")
-            raise PromptCancelled("User cancelled the prompt.")
-        if resp in ("y", "yes"):
-            if log_func:
-                log_func(f"[PROMPT] User input: YES at {datetime.datetime.now()}")
-            return True
-        if resp in ("n", "no"):
-            if log_func:
-                log_func(f"[PROMPT] User input: NO at {datetime.datetime.now()}")
-            return False
-        log_info("Please enter 'y' or 'n'.")
+                return None
+            return result[0]
 
-def prompt_choice(
-    message,
-    options,
-    default=None,
-    allow_cancel=True,
-    header=None,
-    log_func=None,
-    session_id=None
-):
-    if not options:
-        raise ValueError("No options provided for selection.")
-    if header:
-        print_header(header)
-    for idx, opt in enumerate(options):
-        print(f"  [{idx}] {opt}")
-    def validator(x):
-        return x.isdigit() and 0 <= int(x) < len(options)
-    selection = prompt_user_input(
-        f"{message} (0-{len(options)-1})",
-        default=str(default) if default is not None else "0",
-        validator=validator,
-        allow_cancel=allow_cancel,
-        header=None,
-        log_func=log_func,
-        session_id=session_id
-    )
-    if log_func:
-        log_func(f"[PROMPT] User selected option {selection} at {datetime.datetime.now()}")
-    return options[int(selection)]
+        attempts = 0
+        if header:
+            self.print_header(header)
+        while True:
+            prompt = f"{message}"
+            if default is not None:
+                prompt += f" [{default}]"
+            if allow_cancel:
+                prompt += " (type 'cancel' to abort)"
+            prompt += " "
+            try:
+                if self.mode == "webapp" and session_id:
+                    response = self.prompt_user(prompt, session_id=session_id, timeout=timeout, default=default, context=context)
+                else:
+                    response = input_with_timeout(prompt, timeout) if timeout else input(prompt)
+            except EOFError:
+                log_warning("\n[Prompt] No input available (EOF). Exiting prompt.")
+                return default
+            if response is None:
+                if timeout:
+                    if on_error:
+                        on_error("Timed out.")
+                    if log_func:
+                        log_func(f"[PROMPT] Timed out at {datetime.datetime.now()}")
+                    self._log_to_file(prompt + " [Timed out]", context)
+                    return default
+                continue
+            if allow_cancel and response.strip().lower() == "cancel":
+                if log_func:
+                    log_func(f"[PROMPT] User cancelled at {datetime.datetime.now()}")
+                self._log_to_file(prompt + " [User cancelled]", context)
+                raise PromptCancelled("User cancelled the prompt.")
+            if not response and default is not None:
+                response = default
+            if validator:
+                try:
+                    if validator(response):
+                        if log_func:
+                            log_func(f"[PROMPT] User input: {response} at {datetime.datetime.now()}")
+                        self._log_to_file(prompt + f" [User input: {response}]", context)
+                        return response
+                except Exception:
+                    pass
+                attempts += 1
+                if on_error:
+                    on_error("Invalid input.")
+                log_warning("Invalid input. Please try again.")
+                if attempts >= max_attempts:
+                    log_warning("[Prompt] Too many invalid attempts. Cancelling.")
+                    if log_func:
+                        log_func(f"[PROMPT] Too many invalid attempts at {datetime.datetime.now()}")
+                    self._log_to_file(prompt + " [Too many invalid attempts]", context)
+                    raise PromptCancelled("Too many invalid attempts.")
+            else:
+                if log_func:
+                    log_func(f"[PROMPT] User input: {response} at {datetime.datetime.now()}")
+                self._log_to_file(prompt + f" [User input: {response}]", context)
+                return response
 
-# --- Advanced Context Prompts ---
-def prompt_for_metadata_field(field_name, suggestions=None, default=None, allow_cancel=True, session_id=None):
-    if suggestions:
-        print(f"Suggestions for {field_name}:")
-        for idx, s in enumerate(suggestions):
-            print(f"  [{idx}] {s}")
-        def validator(x):
-            return (x.isdigit() and 0 <= int(x) < len(suggestions)) or bool(x.strip())
-        response = prompt_user_input(
-            f"Enter {field_name} or select a suggestion (0-{len(suggestions)-1}):",
-            default=str(default) if default is not None else "",
+    def prompt_yes_no(
+        self,
+        message: str,
+        default: str = "y",
+        allow_cancel: bool = True,
+        timeout: Optional[float] = None,
+        header: Optional[str] = None,
+        log_func: Optional[Callable[[str], None]] = None,
+        session_id: Optional[str] = None,
+        context: Any = None,
+    ) -> bool:
+        """
+        Prompt the user for a yes/no answer.
+        """
+        if header:
+            self.print_header(header)
+        prompt_str = f"{message} (y/n) [{default}]"
+        if allow_cancel:
+            prompt_str += " (type 'cancel' to abort)"
+        prompt_str += ": "
+        while True:
+            if self.mode == "webapp" and session_id:
+                resp = self.prompt_user(prompt_str, session_id=session_id, timeout=timeout, default=default, context=context)
+            elif timeout:
+                result = [None]
+                def inner():
+                    try:
+                        result[0] = input(prompt_str)
+                    except Exception:
+                        result[0] = None
+                t = threading.Thread(target=inner)
+                t.start()
+                t.join(timeout)
+                if t.is_alive():
+                    log_warning("\n[Prompt] Timed out.")
+                    return default.lower() == "y"
+                resp = result[0]
+            else:
+                resp = input(prompt_str)
+            if resp is None or not resp.strip():
+                resp = default
+            resp = resp.strip().lower()
+            if allow_cancel and resp == "cancel":
+                if log_func:
+                    log_func(f"[PROMPT] User cancelled yes/no at {datetime.datetime.now()}")
+                self._log_to_file(prompt_str + " [User cancelled]", context)
+                raise PromptCancelled("User cancelled the prompt.")
+            if resp in ("y", "yes"):
+                if log_func:
+                    log_func(f"[PROMPT] User input: YES at {datetime.datetime.now()}")
+                self._log_to_file(prompt_str + " [YES]", context)
+                return True
+            if resp in ("n", "no"):
+                if log_func:
+                    log_func(f"[PROMPT] User input: NO at {datetime.datetime.now()}")
+                self._log_to_file(prompt_str + " [NO]", context)
+                return False
+            log_info("Please enter 'y' or 'n'.")
+
+    def prompt_choice(
+        self,
+        message: str,
+        options: List[str],
+        default: Optional[int] = None,
+        allow_cancel: bool = True,
+        header: Optional[str] = None,
+        log_func: Optional[Callable[[str], None]] = None,
+        session_id: Optional[str] = None,
+        context: Any = None,
+    ) -> str:
+        """
+        Prompt the user to select from a list of options.
+        """
+        if not options:
+            raise ValueError("No options provided for selection.")
+        if header:
+            self.print_header(header)
+        for idx, opt in enumerate(options):
+            log_info(f"  [{idx}] {opt}")
+        def validator(x: str) -> bool:
+            return x.isdigit() and 0 <= int(x) < len(options)
+        selection = self.prompt_input(
+            f"{message} (0-{len(options)-1})",
+            default=str(default) if default is not None else "0",
             validator=validator,
             allow_cancel=allow_cancel,
-            session_id=session_id
+            header=None,
+            log_func=log_func,
+            session_id=session_id,
+            context=context
         )
-        if response.isdigit():
-            return suggestions[int(response)]
-        return response
-    else:
-        return prompt_user_input(
-            f"Enter {field_name}:",
-            default=default,
-            allow_cancel=allow_cancel,
-            session_id=session_id
-        )
+        if log_func:
+            log_func(f"[PROMPT] User selected option {selection} at {datetime.datetime.now()}")
+        self._log_to_file(f"{message} [User selected: {selection}]", context)
+        return options[int(selection)]
 
-def prompt_for_metadata(metadata_fields, session_id=None):
-    responses = {}
-    for field, opts in metadata_fields.items():
-        responses[field] = prompt_for_metadata_field(
-            field,
-            suggestions=opts.get("suggestions", []),
-            default=opts.get("default", []),
-            session_id=session_id
-        )
-    return responses
-
-def prompt_review_context(context, session_id=None):
-    log_info("\n[Context Review]")
-    for k, v in context.items():
-        log_info(f"  {k}: {v}")
-    if prompt_yes_no("Is this context correct?", default="y", session_id=session_id):
-        return context
-    for k in context:
-        if prompt_yes_no(f"Edit {k}? (current: {context[k]})", default="n", session_id=session_id):
-            context[k] = prompt_user_input(f"Enter new value for {k}:", default=str(context[k]), session_id=session_id)
-    return context
-
-def prompt_resolve_conflict(conflict_type, options, session_id=None):
-    log_info(f"\n[Conflict Detected: {conflict_type}]")
-    for idx, opt in enumerate(options):
-        log_info(f"  [{idx}] {opt}")
-    idx = prompt_user_input(
-        f"Select the correct option (0-{len(options)-1}):",
-        validator=lambda x: x.isdigit() and 0 <= int(x) < len(options),
-        session_id=session_id
-    )
-    return options[int(idx)]
-
-def prompt_user_for_button(page, candidates, toggle_name, session_id=None):
-    log_info(f"\n[FEEDBACK] Please select the correct button for '{toggle_name}':")
-    for idx, btn in enumerate(candidates):
-        print(
-            f"{idx}: label='{btn.get('label', '')}'"
-            f" | class='{btn.get('class', '')}'"
-            f" | tag='{btn.get('tag', '')}'"
-            f" | context_heading='{btn.get('context_heading', '')}'"
-            f" | context_anchor='{btn.get('context_anchor', '')}'"
-            f" | visible={btn.get('is_visible', False)}"
-            f" | enabled={btn.get('is_clickable', False)}"
-        )
-    try:
-        choice = prompt_user_input("Enter the number of the correct button (or -1 to skip): ", session_id=session_id)
-        choice = int(choice)
-        if 0 <= choice < len(candidates):
-            chosen_btn = candidates[choice]
-            log_info(f"[bold green][FEEDBACK] You selected: '{chosen_btn.get('label', '')}'[/bold green]")
-            return chosen_btn, choice
+    def prompt_for_metadata_field(
+        self,
+        field_name: str,
+        suggestions: Optional[List[str]] = None,
+        default: Optional[str] = None,
+        allow_cancel: bool = True,
+        session_id: Optional[str] = None,
+        context: Any = None,
+    ) -> str:
+        """
+        Prompt for a metadata field, optionally with suggestions.
+        """
+        if suggestions:
+            log_info(f"Suggestions for {field_name}:")
+            for idx, s in enumerate(suggestions):
+                log_info(f"  [{idx}] {s}")
+            def validator(x: str) -> bool:
+                return (x.isdigit() and 0 <= int(x) < len(suggestions)) or bool(x.strip())
+            response = self.prompt_input(
+                f"Enter {field_name} or select a suggestion (0-{len(suggestions)-1}):",
+                default=str(default) if default is not None else "",
+                validator=validator,
+                allow_cancel=allow_cancel,
+                session_id=session_id,
+                context=context
+            )
+            if response.isdigit():
+                return suggestions[int(response)]
+            return response
         else:
-            log_warning("[yellow][FEEDBACK] Skipped manual correction.[/yellow]")
-            return None, None
-    except Exception as e:
-        log_error(f"[red][FEEDBACK ERROR] {e}[/red]")
-        return None, None
+            return self.prompt_input(
+                f"Enter {field_name}:",
+                default=default,
+                allow_cancel=allow_cancel,
+                session_id=session_id,
+                context=context
+            )
 
-def confirm_button_callback(candidate, session_id=None):
-    label = candidate.get("label", "")
-    selector = candidate.get("selector", "")
-    log_info(f"\n[CONFIRMATION] Candidate button found: '{label}'\nSelector: {selector}")
-    try:
-        resp = prompt_user_input(
-            f"Do you want to click this button? (y/n): ",
-            default="y",
-            validator=lambda x: x.lower() in {"y", "n", "yes", "no"},
-            allow_cancel=True,
-            header="BUTTON CONFIRMATION",
-            session_id=session_id
-        ).strip().lower()
-    except PromptCancelled:
-        log_warning("[yellow]Button confirmation cancelled by user.[/yellow]")
-        return False
-    return resp in {"y", "yes"}
+    def prompt_for_metadata(
+        self,
+        metadata_fields: Dict[str, Dict[str, Any]],
+        session_id: Optional[str] = None,
+        context: Any = None,
+    ) -> Dict[str, Any]:
+        """
+        Prompt for multiple metadata fields.
+        """
+        responses = {}
+        for field, opts in metadata_fields.items():
+            responses[field] = self.prompt_for_metadata_field(
+                field,
+                suggestions=opts.get("suggestions", []),
+                default=opts.get("default", []),
+                session_id=session_id,
+                context=context
+            )
+        return responses
+
+    def prompt_review_context(
+        self,
+        context: Dict[str, Any],
+        session_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Review and optionally edit a context dictionary.
+        """
+        log_info("\n[Context Review]")
+        for k, v in context.items():
+            log_info(f"  {k}: {v}")
+        if self.prompt_yes_no("Is this context correct?", default="y", session_id=session_id, context=context):
+            return context
+        for k in context:
+            if self.prompt_yes_no(f"Edit {k}? (current: {context[k]})", default="n", session_id=session_id, context=context):
+                context[k] = self.prompt_input(f"Enter new value for {k}:", default=str(context[k]), session_id=session_id, context=context)
+        return context
+
+    def prompt_resolve_conflict(
+        self,
+        conflict_type: str,
+        options: List[str],
+        session_id: Optional[str] = None,
+        context: Any = None,
+    ) -> str:
+        """
+        Prompt user to resolve a conflict by selecting an option.
+        """
+        log_info(f"\n[Conflict Detected: {conflict_type}]")
+        for idx, opt in enumerate(options):
+            log_info(f"  [{idx}] {opt}")
+        idx = self.prompt_input(
+            f"Select the correct option (0-{len(options)-1}):",
+            validator=lambda x: x.isdigit() and 0 <= int(x) < len(options),
+            session_id=session_id,
+            context=context
+        )
+        self._log_to_file(f"Conflict resolved: {conflict_type} -> {options[int(idx)]}", context)
+        return options[int(idx)]
+
+    def prompt_user_for_button(
+        self,
+        page: Any,
+        candidates: List[Dict[str, Any]],
+        toggle_name: str,
+        session_id: Optional[str] = None,
+        context: Any = None,
+    ) -> Union[Dict[str, Any], None]:
+        """
+        Prompt user to select the correct button from candidates.
+        """
+        log_info(f"\n[FEEDBACK] Please select the correct button for '{toggle_name}':")
+        for idx, btn in enumerate(candidates):
+            log_info(
+                f"{idx}: label='{btn.get('label', '')}'"
+                f" | class='{btn.get('class', '')}'"
+                f" | tag='{btn.get('tag', '')}'"
+                f" | context_heading='{btn.get('context_heading', '')}'"
+                f" | context_anchor='{btn.get('context_anchor', '')}'"
+                f" | visible={btn.get('is_visible', False)}"
+                f" | enabled={btn.get('is_clickable', False)}"
+            )
+        try:
+            choice = self.prompt_input("Enter the number of the correct button (or -1 to skip): ", session_id=session_id, context=context)
+            choice = int(choice)
+            if 0 <= choice < len(candidates):
+                chosen_btn = candidates[choice]
+                log_info(f"[bold green][FEEDBACK] You selected: '{chosen_btn.get('label', '')}'[/bold green]")
+                self._log_to_file(f"Button selected: {chosen_btn}", context)
+                return chosen_btn, choice
+            else:
+                log_warning("[yellow][FEEDBACK] Skipped manual correction.[/yellow]")
+                self._log_to_file("Button selection skipped", context)
+                return None, None
+        except Exception as e:
+            log_error(f"[red][FEEDBACK ERROR] {e}[/red]")
+            self._log_to_file(f"Button selection error: {e}", context)
+            return None, None
+
+    def confirm_button_callback(
+        self,
+        candidate: Dict[str, Any],
+        session_id: Optional[str] = None,
+        context: Any = None,
+    ) -> bool:
+        """
+        Confirm with the user if a button should be clicked.
+        """
+        label = candidate.get("label", "")
+        selector = candidate.get("selector", "")
+        log_info(f"\n[CONFIRMATION] Candidate button found: '{label}'\nSelector: {selector}")
+        try:
+            resp = self.prompt_input(
+                f"Do you want to click this button? (y/n): ",
+                default="y",
+                validator=lambda x: x.lower() in {"y", "n", "yes", "no"},
+                allow_cancel=True,
+                header="BUTTON CONFIRMATION",
+                session_id=session_id,
+                context=context
+            ).strip().lower()
+        except PromptCancelled:
+            log_warning("[yellow]Button confirmation cancelled by user.[/yellow]")
+            self._log_to_file("Button confirmation cancelled", context)
+            return False
+        self._log_to_file(f"Button confirmation: {resp}", context)
+        return resp in {"y", "yes"}
+
+    @contextmanager
+    def progress_bar(self, description: str = "Processing", total: int = 100) -> Generator[None, None, None]:
+        """
+        Context manager for a progress bar (stub for future extension).
+        """
+        # You can integrate with rich.progress here if desired
+        yield
+
+# Example usage:
+# prompt = UserPrompt()  # mode will be set from .env PROMPT_MODE or default to "cli"
+# answer = prompt.prompt("yes_no", message="Continue?", default="y")
+# choice = prompt.prompt("choice", message="Pick one:", options=["A", "B", "C"])
+# user_input = prompt.prompt("input", message="Enter your name:")

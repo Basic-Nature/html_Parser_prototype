@@ -22,10 +22,12 @@ from ..bots.librarian import (
 from ..utils.embedding_cache import (
     save_embedding, get_embedding_from_memory, load_embeddings_batch, save_embeddings_batch
 )
-from ..utils.user_prompt import prompt_user_input
+from ..utils.user_prompt import UserPrompt
 from selectolax.parser import HTMLParser
 from ..utils.model_registry import ModelRegistry
 from difflib import get_close_matches
+
+user_prompt = UserPrompt()
 
 ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 console = None  # Only import rich.console.Console if needed for interactive output
@@ -1353,7 +1355,7 @@ def prompt_for_segment_label(segment, context_library=None):
     log_info(
         "[cyan]What is the semantic role of this segment? (e.g., results_table, ballot_toggle, heading, panel, candidate_panel, location_panel, ballot_types, results_timestamp, download_link, clickable, footer, legend, contest_title, party_label, vote_method, reporting_status, summary, error_message, warning, info_box, navigation, pagination, tab, modal, tooltip, ignore, unknown, etc.)[/cyan]"
     )
-    label = prompt_user_input("> ").strip()
+    label = user_prompt.prompt_input("> ").strip()
     cache_segment_label(seg_hash, label)
     return label
 

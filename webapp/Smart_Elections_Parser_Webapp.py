@@ -25,12 +25,14 @@ from threading import Thread
 from webapp.parser.utils import shared_logger
 from webapp.parser.web_pipeline import cancellation_manager, process_single_url, cancel_processing
 from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
-from webapp.parser.utils.user_prompt import get_prompt_session, clear_prompt_session
+from webapp.parser.utils.user_prompt import UserPrompt
 from webapp.parser.utils import user_prompt as prompt_manager
 from webapp.parser.utils.shared_logger import log_info, log_error
 # Load environment variables from .env
 
 load_dotenv()
+
+prompt = UserPrompt()
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -369,10 +371,10 @@ def manage_data():
 def handle_parser_prompt_response(data):
     session_id = session.get('sid') if 'sid' in session else request.sid
     response = data.get('response')
-    prompt_session = get_prompt_session(session_id)
+    prompt_session = prompt.get_prompt_session(session_id)
     prompt_session.set_response(response)
     # Optionally clear after use
-    clear_prompt_session(session_id)
+    prompt.clear_prompt_session(session_id)
 
 @app.route("/output-files")
 def output_files():

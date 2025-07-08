@@ -10,8 +10,7 @@ from typing import cast, Dict, Any, List
 from multiprocessing import Pool
 
 from dotenv import load_dotenv
-from rich.console import Console
-from .utils.shared_logger import log_info, log_debug, log_warning, log_error
+from .utils.shared_logger import log_info, log_debug, log_warning, log_error, RichConsoleProxy
 from playwright.sync_api import sync_playwright, Page
 from sqlalchemy.exc import OperationalError
 
@@ -25,12 +24,12 @@ from .utils.download_utils import ensure_input_directory, ensure_output_director
 from .utils.format_router import prompt_and_handle_download
 from .utils.shared_logic import infer_state_county_from_url
 from .bots.librarian import safe_join
-from .utils.user_prompt import prompt_user_input
-import hashlib
+from .utils.user_prompt import UserPrompt
 
+user_prompt = UserPrompt()
 # --- Environment & Path Setup ---
 load_dotenv()
-console = Console()
+console = RichConsoleProxy()
 INPUT_DIR = os.path.join(PROJECT_ROOT, "input")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 URL_LIST_FILE = os.path.join(BASE_DIR, "parser", "urls.txt")
@@ -56,9 +55,9 @@ if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     log_debug("Deleting .processed_urls cache for fresh start...")
     PROCESSED_URLS_FILE.unlink()
 
-def load_urls(prompt_func=prompt_user_input) -> List[str]:
+def load_urls(prompt_func=user_prompt.prompt_input) -> List[str]:
     if not URL_LIST_FILE.exists():
-        console.log_error("[bold red]\nNo urls.txt found. Please input a URL to append:")
+        console.print("[bold red]\nNo urls.txt found. Please input a URL to append:")
         url = prompt_func("URL: ").strip()
         if url:
             URL_LIST_FILE.write_text(url + "\n")
@@ -67,7 +66,7 @@ def load_urls(prompt_func=prompt_user_input) -> List[str]:
     with URL_LIST_FILE.open('r') as f:
         lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
         if not lines:
-            console.log_error("[bold red]\nurls.txt has no usable URLs. Please input a URL to append:")
+            console.print("[bold red]\nurls.txt has no usable URLs. Please input a URL to append:")
             url = prompt_func("URL: ").strip()
             if url:
                 with URL_LIST_FILE.open('a') as f_append:
@@ -106,7 +105,7 @@ def mark_url_processed(url, status="success", **metadata):
         with open(PROCESSED_URLS_FILE, 'wb') as f:
             f.write(orjson.dumps(entries, option=orjson.OPT_INDENT_2))
 
-def prompt_url_selection(urls: List[str], processed: Dict[str, Any], prompt_func=prompt_user_input) -> List[str]:
+def prompt_url_selection(urls: List[str], processed: Dict[str, Any], prompt_func=user_prompt.prompt_input) -> List[str]:
     log_info("\n[bold #eb4f43]URLs loaded:[/bold #eb4f43]")
     for i, url in enumerate(urls):
         status = processed.get(url, {}).get("status", "unprocessed")
@@ -140,7 +139,7 @@ def process_format_override():
     for i, f in enumerate(files):
         log_info(f"  [bold cyan][{i}][/bold cyan] {f}")
     try:
-        selection = prompt_user_input("[PROMPT] Select a file index to parse: ").strip()
+        selection = user_prompt.prompt_input("[PROMPT] Select a file index to parse: ").strip()
         index = int(selection)
         if not (0 <= index < len(files)):
             raise ValueError("Invalid file index")
@@ -303,7 +302,7 @@ def orchestrate_url(target_url, processed_info, cancel_flag=None):
         except Exception:
             pass
 
-def main(prompt_func=prompt_user_input, output_func=log_info):
+def main(prompt_func=user_prompt.prompt_input, output_func=log_info):
     try:
         if process_format_override():
             return

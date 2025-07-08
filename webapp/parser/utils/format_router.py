@@ -9,9 +9,10 @@ from urllib.parse import urljoin
 from ..config import CONTEXT_LIBRARY_PATH
 load_dotenv()
 from .download_utils import download_file
-from ..utils.user_prompt import prompt_user_input
+from ..utils.user_prompt import UserPrompt
 from .html_scanner import load_pattern_kb, append_pattern_kb
 
+user_prompt = UserPrompt()
 
 # --- Load supported formats from .env or context library ---
 
@@ -220,7 +221,7 @@ def prompt_user_for_format(confirmed, logger=None):
             (x.isdigit() and 0 <= int(x) < len(format_options))
         )
 
-    selection = prompt_user_input(
+    selection = user_prompt.prompt_input(
         f"[PROMPT] Select a format to download (0-{len(format_options)-1}) or 'n' to skip:",
         default="n",
         validator=validator

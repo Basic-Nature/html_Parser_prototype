@@ -12,21 +12,22 @@ import threading
 import orjson
 import time
 from pathlib import Path
-from ..utils.shared_logger import log_info, log_error
+from ..utils.shared_logger import RichConsoleProxy
 from typing import List, Dict, Any, Tuple, Optional
 from ..utils.spacy_utils import extract_dates
 from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
 from ..utils import db_utils
 from sqlalchemy.orm import Session
+
+
 from sqlalchemy import select
 from ..utils.db_utils import get_session
 from ..utils.models import Alert
 # --- Rich imports for CLI output ---
-from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 
-console = Console()
+console = RichConsoleProxy()
 
 def _ensure_alerts_table():
     # Table is managed by SQLAlchemy migrations; nothing to do here
@@ -158,7 +159,7 @@ def auto_tune_contamination(
 ) -> float:
     clf = IsolationForest(contamination=initial_contamination, random_state=42)
     if X is None or len(X) == 0:
-        log_info("No contest features to check for anomalies.")
+        print("No contest features to check for anomalies.")
         return
     clf.fit(X)
     scores = -clf.decision_function(X)
@@ -172,7 +173,7 @@ def auto_tune_contamination(
 
 def print_issues_table(issues, title="Issues"):
     if not issues:
-        console.log_info(f"[bold green]No {title.lower()} found.[/bold green]")
+        console.print(f"[bold green]No {title.lower()} found.[/bold green]")
         return
     table = Table(title=title, show_lines=True)
     table.add_column("Issue Type", style="red")
@@ -188,7 +189,7 @@ def print_issues_table(issues, title="Issues"):
             contest.get("state", ""),
             contest.get("county", "")
         )
-    console.log_info(table)
+    console.print(table)
 
 def print_entity_summary(entity_summary):
     table = Table(title="Entity Label Summary")
@@ -196,11 +197,11 @@ def print_entity_summary(entity_summary):
     table.add_column("Count", style="magenta")
     for label, count in entity_summary.items():
         table.add_row(label, str(count))
-    console.log_info(table)
+    console.print(table)
 
 def print_ml_anomalies(anomaly_indices, contests, X=None, feature_names=None):
     if not anomaly_indices:
-        console.log_info("[bold green]No ML anomalies detected.[/bold green]")
+        console.print("[bold green]No ML anomalies detected.[/bold green]")
         return
     table = Table(title="ML Detected Anomalies", show_lines=True)
     table.add_column("Index", style="magenta")
@@ -226,11 +227,11 @@ def print_ml_anomalies(anomaly_indices, contests, X=None, feature_names=None):
             deviations = [f"{X[idx, i] - medians[i]:.2f}" for i in range(X.shape[1])]
             row.extend(deviations)
         table.add_row(*row)
-    console.log_info(table)
+    console.print(table)
 
 def print_date_anomalies(date_anomalies):
     if not date_anomalies:
-        console.log_info("[bold green]No date anomalies found.[/bold green]")
+        console.print("[bold green]No date anomalies found.[/bold green]")
         return
     table = Table(title="Date Anomalies", show_lines=True)
     table.add_column("Title", style="cyan")
@@ -244,22 +245,22 @@ def print_date_anomalies(date_anomalies):
             contest.get("state", ""),
             contest.get("county", "")
         )
-    console.log_info(table)
+    console.print(table)
 
 def print_auto_tune_result(contamination):
     if contamination is None:
-        console.log_warning(Panel("Auto-tuned contamination: [bold yellow]N/A[/bold yellow]", title="IsolationForest Auto-Tune"))
+        console.print(Panel("Auto-tuned contamination: [bold yellow]N/A[/bold yellow]", title="IsolationForest Auto-Tune"))
     else:
-        console.log_info(Panel(f"Auto-tuned contamination: [bold green]{contamination:.4f}[/bold green]", title="IsolationForest Auto-Tune"))
+        console.print(Panel(f"Auto-tuned contamination: [bold green]{contamination:.4f}[/bold green]", title="IsolationForest Auto-Tune"))
 
 def print_analyze_contest_titles(results):
     print_issues_table(results["integrity_issues"], title="Integrity Issues")
     print_date_anomalies(results["date_anomalies"])
     print_ml_anomalies(results["ml_anomalies"], results.get("contests", []))
     if results.get("flagged_suspicious"):
-        console.log_warning(Panel(f"[yellow]{len(results['flagged_suspicious'])} suspicious contests flagged[/yellow]: {results['flagged_suspicious']}", title="Suspicious Contests"))
+        console.print(Panel(f"[yellow]{len(results['flagged_suspicious'])} suspicious contests flagged[/yellow]: {results['flagged_suspicious']}", title="Suspicious Contests"))
     else:
-        console.log_info("[bold green]No suspicious contests flagged.[/bold green]")
+        console.print("[bold green]No suspicious contests flagged.[/bold green]")
 
 # --- Real-Time Monitoring (unchanged) ---
 
@@ -277,9 +278,9 @@ def monitor_db_for_alerts(db_path: str = None, poll_interval: int = 10):
                     rows = session.execute(stmt).scalars().all()
                     for row in rows:
                         last_alert_id = row.id
-                        log_info(f"[REAL-TIME ALERT][{row.level}] {row.msg} | Context: {row.context} | ALERT_TYPE: {row.level}")
+                        console.print(f"[REAL-TIME ALERT][{row.level}] {row.msg} | Context: {row.context} | ALERT_TYPE: {row.level}")
             except Exception as e:
-                log_error(f"[MONITOR] Error in real-time alert monitor: {e}")
+                console.print(f"[MONITOR] Error in real-time alert monitor: {e}")
             time.sleep(poll_interval)
     thread = threading.Thread(target=monitor, daemon=True)
     thread.start()
@@ -344,7 +345,7 @@ def print_integrity_summary(contests, expected_year=None, X=None):
     # Add contests to results for ML anomaly printing
     results["contests"] = contests
 
-    console.log_info("[bold blue]Election Data Integrity Summary[/bold blue]")
+    console.rule("[bold blue]Election Data Integrity Summary[/bold blue]")
 
     # Print integrity issues, date anomalies, ML anomalies, suspicious contests
     print_analyze_contest_titles(results)
@@ -362,4 +363,4 @@ def print_integrity_summary(contests, expected_year=None, X=None):
         contamination = auto_tune_contamination(X)
         print_auto_tune_result(contamination)
 
-    console.log_info("[bold blue]End of Integrity Summary[/bold blue]")
+    console.rule("[bold blue]End of Integrity Summary[/bold blue]")

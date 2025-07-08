@@ -7,31 +7,31 @@ tags:
 - dataset_size:517
 - loss:CosineSimilarityLoss
 widget:
-- source_sentence: Unknown Contest
-  sentences:
-  - DEM Chrissy KnappDemocratic - Total Vote
-  - DEM Chrissy KnappDemocratic - Total Vote
-  - WOR Chrissy KnappWorking Families - Total Vote
-- source_sentence: Unknown Contest
-  sentences:
-  - Write-in - Election Day
-  - Percent Reported
-  - Candidate
-- source_sentence: Unknown Contest
-  sentences:
-  - Label (Other) - Absentee
-  - REP Daniel W. SullivanRepublican - Election Day
-  - Chrissy Knapp (Democratic) - Absentee
 - source_sentence: ''
   sentences:
   - REP Daniel W. SullivanRepublican - Early Voting
-  - Votes (Other) - Election Day
-  - Absentee Mail
+  - Votes (Other) - Early Voting
+  - Write-in - Early Voting
 - source_sentence: Unknown Contest
   sentences:
-  - Totals - Total Vote
-  - DEM Chrissy KnappDemocratic - Election Day
+  - Daniel W. Sullivan (Republican) - Absentee
+  - Orangetown
+  - '%Reported'
+- source_sentence: Unknown Contest
+  sentences:
+  - WOR Chrissy KnappWorking Families - Absentee Mail
   - DEM Chrissy KnappDemocratic - Absentee Mail
+  - Total Votes
+- source_sentence: ''
+  sentences:
+  - CON Daniel W. Sullivan (Conservative) - Early Voting
+  - REP Daniel W. Sullivan (Republican) - Early Voting
+  - CON Daniel W. Sullivan (Conservative) - Election Day
+- source_sentence: Unknown Contest
+  sentences:
+  - '%reported'
+  - Candidate (Other) - Mail
+  - Daniel W. Sullivan (Republican) - Mail
 pipeline_tag: sentence-similarity
 library_name: sentence-transformers
 ---
@@ -87,8 +87,8 @@ model = SentenceTransformer("sentence_transformers_model_id")
 # Run inference
 sentences = [
     'Unknown Contest',
-    'DEM Chrissy KnappDemocratic - Absentee Mail',
-    'DEM Chrissy KnappDemocratic - Election Day',
+    'Daniel W. Sullivan (Republican) - Mail',
+    'Candidate (Other) - Mail',
 ]
 embeddings = model.encode(sentences)
 print(embeddings.shape)
@@ -150,11 +150,11 @@ You can finetune this model on your own dataset.
   | type    | string                                                                          | string                                                                            | float                                                         |
   | details | <ul><li>min: 2 tokens</li><li>mean: 3.71 tokens</li><li>max: 9 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 10.34 tokens</li><li>max: 16 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
 * Samples:
-  | sentence_0                   | sentence_1                                                    | label            |
-  |:-----------------------------|:--------------------------------------------------------------|:-----------------|
-  | <code>Unknown Contest</code> | <code>REP Daniel W. SullivanRepublican - Absentee Mail</code> | <code>1.0</code> |
-  | <code>Unknown Contest</code> | <code>DEM Chrissy KnappDemocratic - Early Voting</code>       | <code>1.0</code> |
-  | <code></code>                | <code>DEM Chrissy Knapp (Democratic) - Election Day</code>    | <code>1.0</code> |
+  | sentence_0                                         | sentence_1                                                    | label            |
+  |:---------------------------------------------------|:--------------------------------------------------------------|:-----------------|
+  | <code>Unknown Contest</code>                       | <code>Daniel W. Sullivan (Conservative) - Mail</code>         | <code>1.0</code> |
+  | <code>Unknown Contest</code>                       | <code>Totals - Absentee Mail</code>                           | <code>1.0</code> |
+  | <code>Orangetown Town Council<br>Vote for 1</code> | <code>Daniel W. Sullivan (Conservative) - Election Day</code> | <code>1.0</code> |
 * Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
   ```json
   {

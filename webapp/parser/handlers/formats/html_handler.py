@@ -9,11 +9,14 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     from ...state_router import get_handler, list_available_handlers, fuzzy_match_handler
     from ...utils.shared_logic import normalize_state_name, normalize_county_name
     from ...utils.shared_logger import log_info, log_debug, log_warning, log_error
-    from ...utils.user_prompt import prompt_user_input
+    from ...utils.user_prompt import UserPrompt
     import orjson
     import os
     import importlib
     from ...bots.librarian import KNOWN_COUNTY_TO_PRECINCTS_MAP
+    
+    user_prompt = UserPrompt()
+    
     # 1. Organize and enrich context
     html_context = context or {}
     if context:
@@ -44,7 +47,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
 
     # 5. Feedback loop: If handler not found, try ML/NLP and prompt user
     if not handler_found:
-        handler_path = prompt_user_input("Enter handler path manually (or leave blank to skip): ").strip()
+        handler_path = user_prompt.prompt_input("Enter handler path manually (or leave blank to skip): ").strip()
         if handler_path:
             try:
                 handler_mod = importlib.import_module(handler_path)
@@ -106,7 +109,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
         if not non_interactive:
             log_info("[HTML Handler] Prompting user for manual state/county selection.")
             while True:
-                user_state = prompt_user_input(
+                user_state = user_prompt.prompt_input(
                     f"Enter state (or leave blank to keep '{suggested_state or state}'): "
                 ).strip() or (suggested_state or state)
                 user_state = normalize_state_name(user_state)
@@ -115,7 +118,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                     matches = fuzzy_match_handler(user_state, available_states)
                     log_warning(f"[HTML Handler] State '{user_state}' not found. Closest matches: {matches}")
                     if matches:
-                        confirm = prompt_user_input(
+                        confirm = user_prompt.prompt_input(
                             f"Did you mean '{matches[0]}'? (y/n): "
                         ).strip().lower()
                         if confirm == "y":
@@ -127,7 +130,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                         continue
 
                 available_counties = list_available_handlers(level="county", state=user_state)
-                user_county = prompt_user_input(
+                user_county = user_prompt.prompt_input(
                     f"Enter county (or leave blank to keep '{suggested_county or county}'): "
                 ).strip() or (suggested_county or county)
                 user_county = normalize_county_name(user_county)
@@ -145,7 +148,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                         matches = fuzzy_match_handler(user_county, available_counties)
                         log_warning(f"[HTML Handler] County '{user_county}' not found. Closest matches: {matches}")
                         if matches:
-                            confirm = prompt_user_input(
+                            confirm = user_prompt.prompt_input(
                                 f"Did you mean '{matches[0]}'? (y/n): "
                             ).strip().lower()
                             if confirm == "y":
@@ -173,7 +176,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
 
             # Optionally allow user to specify handler path directly
             if not handler_found:
-                handler_path = prompt_user_input("Enter handler path manually (or leave blank to skip): ").strip()
+                handler_path = user_prompt.prompt_input("Enter handler path manually (or leave blank to skip): ").strip()
                 if handler_path:
                     try:
                         handler_mod = importlib.import_module(handler_path)
@@ -213,7 +216,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
 
     # Offer to export context for manual review
     if not non_interactive:
-        export = prompt_user_input("Routing failed. Export organized context for debugging? (y/n): ").strip().lower()
+        export = user_prompt.prompt_input("Routing failed. Export organized context for debugging? (y/n): ").strip().lower()
         if export == "y":
             export_path = os.path.join(log_dir, "html_handler_failed_context.json")
             with open(export_path, "wb") as ef:

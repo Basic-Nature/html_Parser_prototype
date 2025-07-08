@@ -1,15 +1,12 @@
 # shared_logic.py - Common parsing utilities for context-integrated pipeline
 
 import difflib
-import orjson
 import os
 import platform
 import re
-
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, SpinnerColumn
-
-from ..utils.shared_logger import log_info, log_warning, log_error
-from ..utils.user_prompt import prompt_user_input
+import time
+from ..utils.shared_logger import log_info, log_warning, RichConsoleProxy, progress_bar
+from ..utils.user_prompt import UserPrompt
 from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -17,6 +14,8 @@ if TYPE_CHECKING:
 
 assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
     "STATE_MODULE_MAP and KNOWN_STATE_TO_COUNTY_MAP keys are out of sync!"
+console = RichConsoleProxy()   
+user_prompt = UserPrompt()
 
 def normalize_state_name(name):
     """
@@ -179,17 +178,13 @@ def get_title_embedding_features(contests, model_name="all-MiniLM-L6-v2"):
     return model.encode(titles, show_progress_bar=False)
 
 def show_progress_bar(task_desc, total, update_iter):
-    with Progress(
-        SpinnerColumn(style="bold cyan"),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=None, style="bold cyan"),
-        "[progress.percentage]{task.percentage:>3.0f}%",
-        TimeElapsedColumn(),
-        transient=True,
-    ) as progress:
-        task = progress.add_task(task_desc, total=total)
-        for n in update_iter:
-            progress.update(task, advance=1)
+    """
+    Show a progress bar for any iterable, compatible with CLI and webapp (SocketIO) modes.
+    Yields each item from update_iter.
+    """
+    with progress_bar(task_desc, total=total) as update_progress:
+        for idx, n in enumerate(update_iter):
+            update_progress(idx + 1)
             yield n
 
 def coordinator_feedback(domain, scrolls, step, incomplete=False):
@@ -223,14 +218,10 @@ def autoscroll_until_stable(
     Continuously scrolls a Playwright page until its scroll height and visible content stabilize
     for at least 5 consecutive measurements, or until max_total_time is reached.
     Optionally waits for a selector to appear.
-    Shows a dynamic progress bar using rich and prompts user if scrolling takes too long.
+    Shows a dynamic progress bar using rich or emits progress via SocketIO in webapp mode.
     Does NOT use or save any cached scroll pattern.
     """
-    from rich.console import Console
-    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
-    import time
 
-    console = Console()
     logger = logger or globals().get("logger", None)
     start_time = time.time()
     page.evaluate("window.scrollTo(0, 0)")
@@ -250,16 +241,7 @@ def autoscroll_until_stable(
         except Exception:
             return ""
 
-    with Progress(
-        SpinnerColumn(style="bold cyan"),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=None, style="bold cyan"),
-        "[progress.percentage]{task.percentage:>3.0f}%",
-        TimeElapsedColumn(),
-        transient=True,
-        console=console,
-    ) as progress:
-        task = progress.add_task("[cyan]Scrolling page...", total=max_scrolls)
+    with progress_bar("[cyan]Scrolling page...", total=max_scrolls) as update_progress:
         while stable < max_stable_frames and scroll_attempts < max_scrolls:
             current_height = page.evaluate("() => document.body.scrollHeight")
             current_text = get_main_text()
@@ -280,18 +262,19 @@ def autoscroll_until_stable(
             page.evaluate(f"window.scrollBy(0, {step})")
             page.wait_for_timeout(delay_ms)
             scroll_attempts += 1
-            progress.update(task, advance=1)
+            update_progress(scroll_attempts)
             if wait_for_selector and page.query_selector(wait_for_selector):
                 logger and log_info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
                 break
             elapsed = (time.time() - start_time) * 1000
             if elapsed > max_total_time * 0.8 and scroll_attempts % 10 == 0:
-                console.log_warning("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
-                resp = prompt_user_input("Continue scrolling? (y/N): ").strip().lower()
+                console.print("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
+                resp = user_prompt.prompt_input("Continue scrolling? (y/N): ").strip().lower()
                 if resp != "y":
                     logger and log_warning("[SCROLL] User aborted scrolling.")
                     break
-        progress.update(task, completed=max_scrolls)
+        # Ensure progress bar is completed
+        update_progress(max_scrolls)
 
     if stable >= max_stable_frames:
         logger and log_info("[SCROLL] Completed scrolling until page height/content stabilized.")
@@ -306,24 +289,18 @@ def autoscroll_until_stable(
 
 def scan_buttons_with_progress(buttons, scan_callback=None):
     """
-    Scan a list of buttons with a single-line progress bar.
+    Scan a list of buttons with a single-line progress bar or emits progress via SocketIO in webapp mode.
     Optionally, provide a scan_callback(button, idx) for custom logic.
     """
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        "[progress.percentage]{task.percentage:>3.0f}%",
-        TimeElapsedColumn(),
-        transient=True,
-    ) as progress:
-        task = progress.add_task("Scanning buttons...", total=len(buttons))
+    total = len(buttons)
+    with progress_bar("Scanning buttons...", total=total) as update_progress:
         for idx, btn in enumerate(buttons):
             label = ""
             try:
                 label = btn.inner_text()[:60]
             except Exception:
                 label = str(btn)[:60]
-            progress.update(task, advance=1, description=f"Scanning: {label}")
+            update_progress(idx + 1, extra={"label": label})
             if scan_callback:
                 scan_callback(btn, idx)
 

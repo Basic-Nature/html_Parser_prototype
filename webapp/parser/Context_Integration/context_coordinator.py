@@ -39,10 +39,8 @@ from ..bots.librarian import (
 )
 from sklearn.preprocessing import LabelEncoder
 import subprocess
-from rich.console import Console
 from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR
 import threading
-console = Console()
 
 from ..utils.spacy_utils import (
     extract_entities, extract_locations, extract_dates

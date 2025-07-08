@@ -1,12 +1,12 @@
 import re
 from ..utils.shared_logger import log_info, log_debug, log_warning
 from ..utils.shared_logic import normalize_state_name, normalize_county_name
-from ..utils.user_prompt import prompt_user_input, PromptCancelled
+from ..utils.user_prompt import UserPrompt, PromptCancelled
 from collections import defaultdict
 from ..bots.librarian import (
     ELECTION_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP
     )
-
+user_prompt = UserPrompt()
 from typing import TYPE_CHECKING, List, Dict, Any
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -126,7 +126,7 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
         for idx, c in items:
             log_info(f"  [{idx}] {c.get('title', '')}")
     try:
-        choice = prompt_user_input(
+        choice = user_prompt.prompt_input(
             "[PROMPT] Enter contest indices (comma-separated), 'all', 'skip', or leave blank to skip: ",
             default="all",
             validator=lambda x: x == "all" or x == "skip" or all(
@@ -340,7 +340,7 @@ def select_contest(
 
     # --- Interactive prompt ---
     try:
-        choice = prompt_user_input(
+        choice = user_prompt.prompt_input(
             prompt_message,
             default="all",
             validator=lambda x: x == "all" or all(
