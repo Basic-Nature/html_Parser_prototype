@@ -1,6 +1,5 @@
 from playwright.sync_api import Page
-from .....utils.shared_logger import logger
-from .....utils.shared_logger import rprint
+from .....utils.shared_logger import log_info, log_error, log_warning
 from .....utils.output_utils import finalize_election_output
 from .....utils.table_builder import build_dynamic_table
 from .....utils.table_core import robust_table_extraction
@@ -26,7 +25,7 @@ def parse(
     if html_context is None:
         html_context = {}
 
-    rprint("[bold cyan][Example County Handler] Parsing county results page...[/bold cyan]")
+    log_info("[bold cyan][Example County Handler] Parsing county results page...[/bold cyan]")
 
     # 1. Scan HTML for context and update html_context
     context_result = scan_html_for_context(
@@ -55,7 +54,7 @@ def parse(
         non_interactive=non_interactive
     )
     if not selected:
-        rprint("[red]No contest selected. Skipping.[/red]")
+        log_error("[red]No contest selected. Skipping.[/red]")
         return None, None, None, {"skipped": True}
 
     # 4. If multiple contests, process each (aggregate or return first)
@@ -78,7 +77,7 @@ def parse_single_contest_dynamic(page, html_context, state, county, coordinator)
     Parses a single contest (race) from the county page using dynamic, context/NLP-driven extraction.
     """
     contest_title = html_context.get("selected_race")
-    rprint(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
+    log_info(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
 
     # --- Use context/NLP to guide extraction ---
     entities = coordinator.extract_entities(contest_title)
@@ -121,17 +120,17 @@ def parse_single_contest_dynamic(page, html_context, state, county, coordinator)
             data_rows = [dict(zip(headers, row)) for row in ballot_items]
     else:
         # Fallback: try table-based extraction as a last resort
-        rprint(f"[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+        log_warning(f"[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
         headers, data_rows = robust_table_extraction(page, html_context)
         if not headers or not data_rows:
-            rprint(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+            log_error(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
             return None, None, contest_title, {"skipped": True}
 
     # --- Build dynamic table ---
     headers, data = build_dynamic_table(headers, data_rows, coordinator, html_context)
 
     if not data:
-        rprint("[red][ERROR] No contest data was parsed.[/red]")
+        log_error("[red][ERROR] No contest data was parsed.[/red]")
         return None, None, contest_title, {"skipped": True}
 
     # --- Assemble headers and finalize output ---

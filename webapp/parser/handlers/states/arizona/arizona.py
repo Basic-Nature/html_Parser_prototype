@@ -32,7 +32,7 @@ def parse(page, html_context=None):
     if html_context is None:
         html_context = {}
 
-    print("[INFO] Arizona handler activated. Expanding race-level cards...")
+    log_info("[INFO] Arizona handler activated. Expanding race-level cards...")
 
     # Step 1: Click all 'View More' buttons if present
     view_more_selector = config.get("view_more_selector")
@@ -92,7 +92,7 @@ def parse(page, html_context=None):
                 label = el.inner_text().strip()
                 if any(w in label for w in ["County", "Precinct", "District"]):
                     current_precinct = label
-                    print(f"[DEBUG] Found precinct header: {label}")
+                    log_debug(f"[DEBUG] Found precinct header: {label}")
             elif tag == "TABLE" and current_precinct:
                 headers = el.query_selector_all('thead tr th')
                 rows = el.query_selector_all('tbody tr')
@@ -152,15 +152,15 @@ def parse(page, html_context=None):
             continue
 
     if county_totals:
-        print("[SUMMARY] County-Level Totals Found:")
+        log_info("[SUMMARY] County-Level Totals Found:")
         for k, v in county_totals.items():
-            print(f"  {k}: {v}")
+            log_info(f"  {k}: {v}")
 
     contest_title = "Arizona Statewide Results"
     headers_out = sorted([col for col in precinct_data[0] if col != "Precinct Name"] if precinct_data else [])
     if not precinct_data:
-        print("[FALLBACK] No tables were parsed. Either no results are published yet or the structure has changed.")
-        print("[FALLBACK] Please verify that the site has posted election data.")
+        log_warning("[FALLBACK] No tables were parsed. Either no results are published yet or the structure has changed.")
+        log_warning("[FALLBACK] Please verify that the site has posted election data.")
 
         # Insert county-level totals as a dummy precinct row if any were found
     contest_title = "Arizona Statewide Results"
