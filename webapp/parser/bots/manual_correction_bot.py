@@ -473,7 +473,7 @@ def check_and_fix_json_files(
                                 valid_objs = []
                                 for item in items:
                                     try:
-                                        valid_objs.append(orjson.loads(item))
+                                        valid_objs.append(orjson.loads(item.encode("utf-8")))
                                     except Exception:
                                         if verbose:
                                             log_warning(f"[CORRUPT-OBJ] {file}: {item[:80]}...")
@@ -530,11 +530,14 @@ def load_jsonl_incremental(path, cache):
     file_id = str(path)
     last_offset = cache.get(f"{file_id}_offset", 0)
     entries = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "rb") as f:
         f.seek(last_offset)
-        for line in f:
+        for line_num, line in enumerate(f, 1):
             if line.strip():
-                entries.append(orjson.loads(line))
+                try:
+                    entries.append(orjson.loads(line))
+                except Exception as e:
+                    log_warning(f"[CORRUPT] {path} line {line_num}: {e}")
         cache[f"{file_id}_offset"] = f.tell()
     cache[f"{file_id}_hash"] = file_hash(path)
     return entries
@@ -542,7 +545,7 @@ def load_jsonl_incremental(path, cache):
 def save_jsonl(path, entries):
     path = safe_path(path, [LOG_DIR, CONTEXT_LIBRARY_DIR])
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with open(tmp_path, "wb") as f:
         for entry in entries:
             f.write(orjson.dumps(entry) + b"\n")
     shutil.move(tmp_path, path)

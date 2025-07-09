@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 from ..utils.db_utils import get_session, engine
 from ..utils.models import EmbeddingCache
 from ..config import LOG_DIR, CACHE_DIR
-from ..utils.shared_logger import RichConsoleProxy
+from ..utils.shared_logger import RichConsoleProxy, SharedLogger, SQLAlchemyToSharedLoggerHandler
 
 try:
     import joblib
@@ -22,17 +22,25 @@ except ImportError:
     JOBLIB_AVAILABLE = False
 
 console = RichConsoleProxy()
-logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
-logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
-logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
+logger = SharedLogger()
+
+for name in [
+    "sqlalchemy",
+    "sqlalchemy.engine",
+    "sqlalchemy.dialects",
+    "sqlalchemy.pool"
+]:
+    logger_obj = logging.getLogger(name)
+    logger_obj.addHandler(SQLAlchemyToSharedLoggerHandler(logger))
+
 
 DISK_CACHE_PATH = os.path.join(CACHE_DIR, "embedding_disk_cache.pkl")
 MISSING_LOG_PATH = os.path.join(LOG_DIR, "missing_embeddings.log")
 
-_spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-def get_loading_indicator():
-    return next(_spinner)
+with logger.progress_bar("Loading...", total=100) as update_progress:
+    for i in range(100):
+        # ... do work ...
+        update_progress(i + 1)
 
 # --- In-memory process-level cache for batch operations ---
 _batch_cache = {}
@@ -158,18 +166,19 @@ def get_embedding_from_memory(segment_hash):
     try:
         emb = load_embedding(segment_hash)
         if emb is None:
-            indicator = get_loading_indicator()
-            console.print(
-                f"{indicator} [yellow][EMBEDDING CACHE] No embedding found for hash: {segment_hash}[/yellow]",
-                highlight=False,
-                end="\r"
-            )
+            msg = f"[EMBEDDING CACHE] No embedding found for hash: {segment_hash}"
+            if logger.mode == "cli":
+                # In CLI, overwrite the line in place
+                print(msg.ljust(80), end="\r", flush=True)
+            else:
+                # In webapp mode, emit as a normal log message
+                logger.warning(msg)
         return emb
     except DetachedInstanceError as e:
-        console.print(f"[red][EMBEDDING CACHE ERROR][/red] DetachedInstanceError for hash {segment_hash}: {str(e)}", highlight=False)
+        logger.error(f"[EMBEDDING CACHE ERROR] DetachedInstanceError for hash {segment_hash}: {str(e)}")
         return None
     except Exception as e:
-        console.print(f"[red][EMBEDDING CACHE ERROR][/red] Unexpected error for hash {segment_hash}: {str(e)}", highlight=False)
+        logger.error(f"[EMBEDDING CACHE ERROR] Unexpected error for hash {segment_hash}: {str(e)}")
         return None
 
 def save_embeddings_batch(hash_emb_list):
@@ -289,24 +298,28 @@ def fix_missing_embeddings():
     if not os.path.exists(MISSING_LOG_PATH):
         return
     with open(MISSING_LOG_PATH, "r") as f:
-        missing_hashes = set(line.strip() for line in f if line.strip())
+        missing_hashes = [line.strip() for line in f if line.strip()]
     if not missing_hashes:
         return
     fixed = []
-    for h in list(missing_hashes):
-        emb = load_embedding(h)
-        if emb is not None:
-            fixed.append(h)
-            continue
-        emb = compute_embedding_for_hash(h)
-        if emb is not None:
-            save_embedding(h, emb)
-            fixed.append(h)
+    total = len(missing_hashes)
+    with logger.progress_bar("Fixing missing embeddings...", total=total) as update_progress:
+        for idx, h in enumerate(missing_hashes, 1):
+            emb = load_embedding(h)
+            if emb is not None:
+                fixed.append(h)
+                update_progress(idx)
+                continue
+            emb = compute_embedding_for_hash(h)
+            if emb is not None:
+                save_embedding(h, emb)
+                fixed.append(h)
+            update_progress(idx)
     # Remove fixed hashes from log
     if fixed:
-        missing_hashes -= set(fixed)
+        remaining = set(missing_hashes) - set(fixed)
         with open(MISSING_LOG_PATH, "w") as f:
-            for h in missing_hashes:
+            for h in remaining:
                 f.write(f"{h}\n")
         console.print(f"[green][EMBEDDING CACHE] Fixed {len(fixed)} missing embeddings automatically.[/green]")
 

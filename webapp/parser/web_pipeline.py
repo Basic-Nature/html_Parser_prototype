@@ -1,7 +1,7 @@
 from .html_election_parser import main
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-
+from .Context_Integration.context_organizer import ContextOrganizer
 # Global cancellation flag (could be improved for multi-user)
 class CancellationManager:
     """
@@ -41,9 +41,20 @@ def process_single_url(url, output_callback, idx, total, cancel_flag):
         return
     output_callback(f"\n[Parsing {idx}/{total}] {url}\n")
     try:
-        # Call process_url and capture output (you may need to adapt this to your needs)
-        main()  # You may want to capture output or log here
+        # Step 1: Parse the URL and get raw_context (adapt this to your actual parser)
+        raw_context = main(url)  # main() should return the parsed context for the URL
+
+        # Step 2: Organize context using ContextOrganizer
+        organizer = ContextOrganizer()
+        result = organizer.organize_context(raw_context)
+
+        # Step 3: Output summary/log (customize as needed)
         output_callback(f"[DONE] Finished: {url}\n")
+        if "log" in result:
+            for line in result["log"]:
+                output_callback(f"[LOG] {line}\n")
+        if "error" in result and result["error"]:
+            output_callback(f"[ERROR] {result['error']}\n")
     except Exception as e:
         output_callback(f"[ERROR] Exception while processing {url}: {e}\n")
 

@@ -275,33 +275,6 @@ class Alert(Base):
     def __repr__(self):
         return f"<Alert(id={self.id}, level={self.level})>"
 
-# --- SESSION/UTILITY ---
-
-def get_session():
-    """
-    Context manager for SQLAlchemy session.
-    Usage:
-        with get_session() as session:
-            ...
-    """
-    try:
-        from .db_utils import SessionLocal
-    except ImportError:
-        raise RuntimeError("SessionLocal is not available. Check db_utils import.")
-    from contextlib import contextmanager
-    @contextmanager
-    def _session_scope():
-        session = SessionLocal()
-        try:
-            yield session
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-    return _session_scope()
-
 def main():
     """
     Create all tables in the configured database.

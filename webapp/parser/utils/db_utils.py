@@ -2,12 +2,17 @@ import os
 import orjson
 import re
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Generator
 from sqlalchemy import create_engine, update, select, and_, or_, desc
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 from contextlib import contextmanager
-from .models import Contest, TableStructure, BatchMetadata, StagingElectionResult, WarehouseElectionResult, Base
+from .models import (
+    Contest, TableStructure, BatchMetadata, 
+    StagingElectionResult, WarehouseElectionResult, Base,
+    State, County, Party,
+)
+from .shared_logger import log_error
 from ..config import POSTGRES_URL, CONTEXT_LIBRARY_PATH
 
 # Set up SQLAlchemy engine and session
@@ -15,9 +20,34 @@ engine = create_engine(POSTGRES_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 _engine = None  # for lazy initialization if needed
 
+def robust_orjson_loads(val) -> dict:
+    """Load JSON robustly from either bytes or str."""
+    if isinstance(val, bytes):
+        return orjson.loads(val)
+    elif isinstance(val, str):
+        return orjson.loads(val.encode("utf-8"))
+    else:
+        raise TypeError(f"Cannot decode type {type(val)} with orjson")
+    
+def clean_for_json(obj) -> dict:
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: clean_for_json(v) for k, v in obj.items() if k != "_fixed_fields"}
+    elif isinstance(obj, list):
+        return [clean_for_json(i) for i in obj]
+    elif isinstance(obj, set):
+        return [clean_for_json(i) for i in obj]
+    elif isinstance(obj, np.ndarray):
+        return clean_for_json(obj.tolist())
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    else:
+        # Fallback: convert to string
+        return str(obj)
+
 # --- Robust session context manager ---
 @contextmanager
-def get_session():
+def get_session() -> Generator[Session, None, None]:
     """Yield a SQLAlchemy session, ensuring proper cleanup."""
     session = SessionLocal()
     try:
@@ -29,18 +59,18 @@ def get_session():
     finally:
         session.close()
 
-def get_engine():
+def get_engine() -> create_engine:
     global _engine
     if _engine is None:
         _engine = create_engine(POSTGRES_URL, echo=False, future=True)
     return _engine
 
 # --- DB Path Safety (for legacy compatibility, not used for SQLAlchemy) ---
-def _safe_db_path(path):
+def _safe_db_path(path) -> str:
     return str(Path(path or CONTEXT_LIBRARY_PATH).resolve())
 
 # --- Contest Operations ---
-def update_contest_in_db(contest: dict, session: Optional[Session] = None):
+def update_contest_in_db(contest: dict, session: Optional[Session] = None) -> None:
     """
     Update a contest in the database using SQLAlchemy.
     """
@@ -96,7 +126,7 @@ def fetch_contests_by_filter(filters: Optional[dict] = None, limit: int = 100, s
         if close_session:
             session.close()
 
-def normalize_label(label):
+def normalize_label(label) -> str:
     if not label:
         return ""
     return re.sub(r"\W+", "", str(label).strip().lower())
@@ -121,7 +151,7 @@ def load_processed_urls() -> Dict[str, Any]:
             processed[url] = entry
     return processed
 
-def load_output_cache(path=None):
+def load_output_cache(path=None) -> List[dict]:
     if path is None:
         from ..Context_Integration.context_organizer import OUTPUT_CACHE
         path = OUTPUT_CACHE
@@ -132,7 +162,7 @@ def load_output_cache(path=None):
         return [orjson.loads(line) for line in f if line.strip()]
 
 # --- Utility: Create all tables (run once at startup or migration) ---
-def create_all_tables():
+def create_all_tables() -> None:
     Base.metadata.create_all(engine)
 
 # --- BatchMetadata Operations ---
@@ -143,7 +173,7 @@ def create_batch_metadata(source: str, status: str = 'pending') -> BatchMetadata
         session.flush()  # get batch_id
         return batch
 
-def update_batch_metadata(batch_id, **kwargs):
+def update_batch_metadata(batch_id, **kwargs) -> Optional[BatchMetadata]:
     with get_session() as session:
         batch = session.get(BatchMetadata, batch_id)
         if batch:
@@ -152,7 +182,7 @@ def update_batch_metadata(batch_id, **kwargs):
             session.commit()
         return batch
 
-def get_batch_metadata(batch_id):
+def get_batch_metadata(batch_id) -> Optional[BatchMetadata]:
     with get_session() as session:
         return session.get(BatchMetadata, batch_id)
 
@@ -164,7 +194,7 @@ def create_staging_election_result(**kwargs) -> StagingElectionResult:
         session.flush()
         return result
 
-def get_staging_results_by_batch(batch_id):
+def get_staging_results_by_batch(batch_id) -> List[StagingElectionResult]:
     with get_session() as session:
         return session.query(StagingElectionResult).filter_by(batch_id=batch_id).all()
 
@@ -176,7 +206,7 @@ def create_warehouse_election_result(**kwargs) -> WarehouseElectionResult:
         session.flush()
         return result
 
-def get_warehouse_results_by_batch(batch_id):
+def get_warehouse_results_by_batch(batch_id) -> List[WarehouseElectionResult]:
     with get_session() as session:
         return session.query(WarehouseElectionResult).filter_by(batch_id=batch_id).all()
 
@@ -193,7 +223,7 @@ def create_table_structure(contest_title, headers, context, ml_confidence=None, 
         session.flush()
         return obj
 
-def update_table_structure(table_id, **kwargs):
+def update_table_structure(table_id, **kwargs) -> Optional[TableStructure]:
     with get_session() as session:
         obj = session.get(TableStructure, table_id)
         if obj:
@@ -202,7 +232,7 @@ def update_table_structure(table_id, **kwargs):
             session.commit()
         return obj
 
-def get_table_structure_by_id(table_id):
+def get_table_structure_by_id(table_id) -> Optional[TableStructure]:
     with get_session() as session:
         return session.get(TableStructure, table_id)
 
@@ -236,7 +266,7 @@ def search_table_structures(search_terms: dict, limit: int = 100) -> list:
         query = session.query(TableStructure).filter(and_(*conditions)).order_by(desc(TableStructure.id)).limit(limit)
         return query.all()
 
-def update_table_structure_fields(table_id, fields: dict):
+def update_table_structure_fields(table_id, fields: dict) -> int:
     """
     Use SQLAlchemy's update construct for dynamic field updates on TableStructure.
     """
@@ -251,10 +281,180 @@ def update_table_structure_fields(table_id, fields: dict):
         session.commit()
         return result.rowcount
 
-def select_table_structures_by_title(title: str, limit: int = 10):
+def select_table_structures_by_title(title: str, limit: int = 10) -> List[TableStructure]:
     """
     Use SQLAlchemy's select construct to fetch TableStructures by contest_title.
     """
     with get_session() as session:
         stmt = select(TableStructure).where(TableStructure.contest_title == title).limit(limit)
         return session.execute(stmt).scalars().all()
+    
+def save_table_structure_to_db(contest_title, headers, context, ml_confidence=None, confirmed_by_user=False) -> None:
+    """
+    Upsert a table structure using SQLAlchemy ORM. Updates if contest_title exists, else inserts.
+    """
+    try:
+        with get_session() as session:
+            obj = session.execute(
+                select(TableStructure).where(TableStructure.contest_title == contest_title)
+            ).scalar_one_or_none()
+            if obj:
+                obj.headers = orjson.dumps(clean_for_json(headers)).decode("utf-8")
+                obj.context = orjson.dumps(clean_for_json(context)).decode("utf-8")
+                obj.ml_confidence = ml_confidence
+                obj.confirmed_by_user = confirmed_by_user
+            else:
+                obj = TableStructure(
+                    contest_title=contest_title,
+                    headers=orjson.dumps(clean_for_json(headers)).decode("utf-8"),
+                    context=orjson.dumps(clean_for_json(context)).decode("utf-8"),
+                    ml_confidence=ml_confidence,
+                    confirmed_by_user=confirmed_by_user
+                )
+                session.add(obj)
+            session.commit()
+    except SQLAlchemyError as e:
+        log_error(f"[DB][TableStructure] Error saving: {e}")
+        raise
+
+def get_table_structure_from_db(contest_title, context=None) -> dict:
+    """
+    Retrieve the best-matching table structure for a contest_title using SQLAlchemy ORM.
+    """
+    try:
+        with get_session() as session:
+            row = session.execute(
+                select(TableStructure).where(TableStructure.contest_title == contest_title)
+                .order_by(TableStructure.confirmed_by_user.desc(), TableStructure.ml_confidence.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+        if row:
+            headers = robust_orjson_loads(row.headers)
+            context = robust_orjson_loads(row.context)
+            ml_confidence = row.ml_confidence
+            return {"headers": headers, "context": context, "ml_confidence": ml_confidence}
+        return None
+    except SQLAlchemyError as e:
+        log_error(f"[DB][TableStructure] Error loading: {e}")
+        return None
+
+def upsert_contest(session, contest_dict, auto_create_related=True) -> None:
+    """
+    Upsert a contest using SQLAlchemy ORM. Updates if exists, else inserts.
+    Handles state/county as relationships robustly.
+    """
+    
+    # --- Resolve state and county relationships ---
+    state_name = contest_dict.get("state")
+    county_name = contest_dict.get("county")
+
+    # Use get_or_create helpers for robust linking
+    state_obj = get_or_create_state(session, state_name) if auto_create_related else session.query(State).filter_by(name=state_name).first()
+    county_obj = get_or_create_county(session, county_name, state_obj) if auto_create_related else session.query(County).filter_by(name=county_name, state=state_obj).first()
+
+    # Find the state and county objects by name
+    state_obj = session.query(State).filter(State.name == state_name).first() if state_name else None
+    county_obj = session.query(County).filter(
+        County.name == county_name,
+        County.state == state_obj  # Ensure county is in the correct state
+    ).first() if county_name and state_obj else None
+
+    # Optionally, create if not found (uncomment if you want auto-create)
+    # if not state_obj and state_name:
+    #     state_obj = State(name=state_name)
+    #     session.add(state_obj)
+    #     session.flush()
+    # if not county_obj and county_name:
+    #     county_obj = County(name=county_name, state=state_obj)
+    #     session.add(county_obj)
+    #     session.flush()
+
+    # Build filters for upsert
+    filters = [
+        Contest.title == contest_dict.get("title"),
+        Contest.year == contest_dict.get("year"),
+        Contest.type_ == contest_dict.get("type_"),
+        Contest.state_id == (state_obj.id if state_obj else None),
+        Contest.county_id == (county_obj.id if county_obj else None),
+    ]
+
+    obj = session.execute(
+        select(Contest).where(and_(*filters))
+    ).scalar_one_or_none()
+
+    if obj:
+        obj = session.merge(obj)
+        obj.election_types = contest_dict.get("election_types")
+        obj.metastats = orjson.dumps(clean_for_json(contest_dict))
+    else:
+        obj = Contest(
+            title=contest_dict.get("title"),
+            year=contest_dict.get("year"),
+            type_=contest_dict.get("type_"),
+            election_types=contest_dict.get("election_types"),
+            state=state_obj,
+            county=county_obj,
+            metastats=orjson.dumps(clean_for_json(contest_dict))
+        )
+        session.add(obj)
+        
+def get_or_create_state(session, state_name) -> Optional[State]:
+    state = session.query(State).filter_by(name=state_name).first()
+    if not state and state_name:
+        state = State(name=state_name)
+        session.add(state)
+        session.flush()
+    return state
+
+def get_or_create_county(session, county_name, state) -> Optional[County]:
+    county = session.query(County).filter_by(name=county_name, state=state).first()
+    if not county and county_name and state:
+        county = County(name=county_name, state=state)
+        session.add(county)
+        session.flush()
+    return county
+
+def get_or_create_party(session, party_name) -> Optional[Party]:
+    party = session.query(Party).filter_by(name=party_name).first()
+    if not party and party_name:
+        party = Party(name=party_name)
+        session.add(party)
+        session.flush()
+    return party
+
+def fetch_contest_full(session, contest) -> Optional[dict]:
+    # contest: ORM object or dict with id
+    if isinstance(contest, dict):
+        obj = session.query(Contest).filter_by(id=contest.get("id")).first()
+    else:
+        obj = contest
+    if not obj:
+        return None
+    return {
+        "id": obj.id,
+        "title": obj.title,
+        "year": obj.year,
+        "type_": obj.type_,
+        "state": obj.state.name if obj.state else None,
+        "county": obj.county.name if obj.county else None,
+        "office": obj.office.name if obj.office else None,
+        "candidates": [c.name for c in getattr(obj, "candidates", [])],
+        "results": [
+            {
+                "candidate": r.candidate.name if r.candidate else None,
+                "votes": r.votes,
+                "percent": r.percent,
+                "is_winner": r.is_winner,
+            }
+            for r in getattr(obj, "results", [])
+        ],
+        "metastats": obj.metastats,
+    }
+def check_missing_tables(self):
+    """Return a list of expected tables that are missing in the DB."""
+    from sqlalchemy import inspect
+    engine = get_engine()
+    inspector = inspect(engine)
+    db_tables = set(inspector.get_table_names())
+    expected_tables = set(Base.metadata.tables.keys())
+    return list(expected_tables - db_tables)

@@ -35,18 +35,18 @@ def get_log_level() -> str:
     """Get log level from environment or default to INFO."""
     return os.environ.get("LOG_LEVEL", "INFO").upper()
 
-class RichConsoleProxy:
+class RichConsoleProxy(Console):
     """
     Proxy class to provide a Console-like API using SharedLogger.
     Use this as a drop-in replacement for rich.console.Console.
     Handles routing of rich output (Table, Panel, Progress, etc.) to CLI or webapp (SocketIO).
     """
-    def __init__(self, logger=None):
+    def __init__(self, logger=None) -> None:
         from .shared_logger import _logger_instance as logger_instance
         self.logger = logger or logger_instance
         self._console = Console()
 
-    def print(self, *args, **kwargs):
+    def print(self, *args, **kwargs) -> None:
         """
         Print using rich's Console.print (for tables, panels, etc).
         In webapp mode, serialize the output and emit via SocketIO.
@@ -70,7 +70,7 @@ class RichConsoleProxy:
         output = temp_console.file.getvalue()
         return output
 
-    def rule(self, title: str = "", **kwargs):
+    def rule(self, title: str = "", **kwargs) -> None:
         """Draw a rule (horizontal line) with optional title."""
         if getattr(self.logger, "mode", "webapp") and getattr(self.logger, "socketio_emit_func", None):
             sio = self.logger.socketio_emit_func
@@ -78,16 +78,33 @@ class RichConsoleProxy:
         else:
             self._console.rule(title, **kwargs)
 
-    def panel(self, msg: str, title: str = "", style: str = "blue"):
+    def panel(self, msg: str, title: str = "", style: str = "blue") -> None:
         """Print a message in a rich Panel."""
         panel = Panel(msg, title=title, style=style)
         self.print(panel)
+
+    def table(self, *args, **kwargs) -> None:
+        """
+        Print a rich Table object.
+        In webapp mode, serialize the table and emit via SocketIO.
+        In CLI mode, print using rich's Console.
+        """
+        from rich.table import Table
+        if args and isinstance(args[0], Table):
+            table_obj = args[0]
+        else:
+            table_obj = Table(*args, **kwargs)
+        if getattr(self.logger, "mode", "webapp") and getattr(self.logger, "socketio_emit_func", None):
+            sio = self.logger.socketio_emit_func
+            sio(self._render_to_text(table_obj))
+        else:
+            self._console.print(table_obj)
 
     def input(self, prompt: str = "") -> str:
         """Proxy for input, using rich's Console.input."""
         return self._console.input(prompt)
 
-    def log(self, *args, **kwargs):
+    def log(self, *args, **kwargs) -> None:
         """Log a message using rich's Console.log (for debug/info output)."""
         if getattr(self.logger, "mode", "webapp") and getattr(self.logger, "socketio_emit_func", None):
             sio = self.logger.socketio_emit_func
@@ -103,7 +120,24 @@ class RichConsoleProxy:
 # console.panel("Hello", title="Greeting")
 # console.rule("Section")
 
-class SharedLogger:
+class SQLAlchemyToSharedLoggerHandler(logging.Handler):
+    def __init__(self, shared_logger: "SharedLogger"):
+        super().__init__()
+        self.shared_logger = shared_logger
+
+    def emit(self, record: logging.LogRecord) -> None:
+        msg = self.format(record)
+        # You can choose the log level mapping here
+        if record.levelno >= logging.ERROR:
+            self.shared_logger.error(msg)
+        elif record.levelno >= logging.WARNING:
+            self.shared_logger.warning(msg)
+        elif record.levelno >= logging.INFO:
+            self.shared_logger.info(msg)
+        else:
+            self.shared_logger.debug(msg)
+            
+class SharedLogger(logging.Logger):
     """
     Unified logger supporting CLI/webapp and plain/json/file output.
     Mode, format, and level can be set via .env or at init.
@@ -115,7 +149,7 @@ class SharedLogger:
 
     _instance = None  # Singleton
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args, **kwargs) -> "SharedLogger":
         # Singleton pattern (optional, can be removed for multi-instance)
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -129,7 +163,7 @@ class SharedLogger:
         socketio_emit_func: Optional[Callable[[str], None]] = None,
         suppress_rich_logs: bool = False,
         file_path: Optional[str] = None,
-    ):
+    ) -> None:
         """
         Initialize the logger.
         """
@@ -238,7 +272,7 @@ class SharedLogger:
         """Format context for output."""
         if context is None:
             return ""
-        if isinstance(context, dict):
+        if isinstance(context, dict) or isinstance(context, list):
             try:
                 return json.dumps(context, indent=2, ensure_ascii=False)
             except Exception:
@@ -252,8 +286,11 @@ class SharedLogger:
             outer = inspect.getouterframes(frame, 3)
             if len(outer) > 3:
                 caller = outer[3]
+                module = caller.frame.f_globals.get("__name__", "")
+                if not isinstance(module, str):
+                    module = str(module)
                 return {
-                    "module": caller.frame.f_globals.get("__name__", ""),
+                    "module": module,
                     "function": caller.function,
                     "line": caller.lineno
                 }
@@ -312,7 +349,11 @@ class SharedLogger:
                 text_msg = str(text_msg)
             if not isinstance(panel_color, str):
                 panel_color = str(panel_color)
-            rprint(Panel(text_msg, style=panel_color))
+            try:
+                rprint(Panel(text_msg, style=panel_color))
+            except Exception:
+                # Fallback to plain print if Rich is unavailable (e.g., during interpreter shutdown)
+                print(text_msg)
 
         # File output (optional, always logs to file if file_path is set)
         if self.file_path:
@@ -392,7 +433,7 @@ class SharedLogger:
         if self.mode == "webapp" and self.socketio_emit_func:
             last_emit = 0
 
-            def update_progress(completed: int, extra: Optional[dict] = None):
+            def update_progress(completed: int, extra: Optional[dict] = None) -> None:
                 now = time.time()
                 if now - update_progress.last_emit >= emit_interval or completed == total:
                     percent = (completed / total) * 100 if total else 0
@@ -479,49 +520,49 @@ class SharedLogger:
 
 _logger_instance = SharedLogger()
 
-def set_log_mode(mode: Optional[str]):
+def set_log_mode(mode: Optional[str]) -> None:
     """Set the global logger mode."""
     _logger_instance.set_mode(mode)
 
-def set_log_format(fmt: Optional[str]):
+def set_log_format(fmt: Optional[str]) -> None:
     """Set the global logger format."""
     _logger_instance.set_format(fmt)
 
-def set_log_level(level: Optional[str]):
+def set_log_level(level: Optional[str]) -> None:
     """Set the global logger level."""
     _logger_instance.set_level(level)
 
-def set_socketio_emit_func(emit_func: Callable[[str], None]):
+def set_socketio_emit_func(emit_func: Callable[[str], None]) -> None:
     """Set the global logger's socketio emit function."""
     _logger_instance.set_socketio_emit_func(emit_func)
 
-def set_log_file_path(file_path: str):
+def set_log_file_path(file_path: str) -> None:
     """Set the global logger's file output path."""
     _logger_instance.set_file_path(file_path)
 
-def suppress_rich_logs(value: bool = True):
+def suppress_rich_logs(value: bool = True) -> None:
     """Suppress rich logs globally."""
     _logger_instance.suppress(value)
 
-def log_trace(msg: str, context: Any = None, *args, **kwargs):
+def log_trace(msg: str, context: Any = None, *args, **kwargs) -> None:
     _logger_instance.trace(msg, context)
 
-def log_debug(msg: str, context: Any = None, *args, **kwargs):
+def log_debug(msg: str, context: Any = None, *args, **kwargs) -> None:
     _logger_instance.debug(msg, context)
 
-def log_info(msg: str, context: Any = None, *args, **kwargs):
+def log_info(msg: str, context: Any = None, *args, **kwargs) -> None:
     _logger_instance.info(msg, context)
 
-def log_warning(msg: str, context: Any = None, *args, **kwargs):
+def log_warning(msg: str, context: Any = None, *args, **kwargs) -> None:
     _logger_instance.warning(msg, context)
 
-def log_error(msg: str, context: Any = None, *args, **kwargs):
+def log_error(msg: str, context: Any = None, *args, **kwargs) -> None:
     _logger_instance.error(msg, context)
 
-def log_critical(msg: str, context: Any = None, *args, **kwargs):
+def log_critical(msg: str, context: Any = None, *args, **kwargs) -> None:
     _logger_instance.critical(msg, context)
 
-def log_alert(msg: str, context: Any = None, alert_type: str = "info"):
+def log_alert(msg: str, context: Any = None, alert_type: str = "info") -> None:
     _logger_instance.alert(msg, context, alert_type=alert_type)
 
 @contextmanager

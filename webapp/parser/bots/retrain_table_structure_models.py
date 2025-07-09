@@ -9,7 +9,6 @@ import shutil
 import gc
 import sys
 import random
-import logging
 from typing import List, Dict, Any, Optional, Set, Tuple
 from ..utils.model_registry import ModelRegistry
 from collections import Counter
@@ -17,7 +16,7 @@ from sentence_transformers import InputExample, losses
 from torch.utils.data import DataLoader
 from ..bots.librarian import load_context_library
 from ..utils.db_utils import _safe_db_path, get_session, create_engine
-from ..utils.shared_logger import log_info, log_error, log_warning, log_debug
+from ..utils.shared_logger import log_info, log_error, log_warning, log_debug, RichConsoleProxy
 from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, POSTGRES_URL, LOG_DIR
 import numpy as np
 import spacy
@@ -30,11 +29,10 @@ import tqdm
 import torch
 from sqlalchemy import select, inspect
 from ..utils.models import TableStructure, Base
-from ..utils.shared_logger import log_warning
+
+console = RichConsoleProxy()
 
 # --- Logging Setup ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("retrain_table_structure_models")
 
 # --- Advanced Entity Models (see models.py for full implementation) ---
 # See previous answer for SQLAlchemy models: Party, State, County, District, Office, Candidate, Contest, Result, etc.
@@ -84,11 +82,11 @@ def update_advanced_entities(parsed_data: List[Dict[str, Any]], db_path: str):
                     is_winner=row.get("is_winner", False), is_incumbent=row.get("is_incumbent", False),
                     vote_method=row.get("vote_method")
                 )
-                logger.info(f"Upserted result for candidate {candidate.name} in contest {contest.title}")
+                console.panel(f"Upserted result for candidate {candidate.name} in contest {contest.title}")
             except Exception as e:
-                logger.error(f"Failed to upsert entity row: {row} ({e})")
+                console.table(f"Failed to upsert entity row: {row} ({e})")
         session.commit()
-    logger.info("Advanced entity DB update complete.")
+    console.log("Advanced entity DB update complete.")
 
 ELECTION_ENTITY_LABELS = [
     "CONTEST", "CANDIDATE", "PARTY", "COUNTY", "STATE", "DISTRICT", "VOTE_METHOD",
@@ -389,7 +387,7 @@ def remove_overlapping_entities(entities):
         # else: skip this entity because it overlaps or is a duplicate span
     return result
 
-def validate_training_data(train_data, nlp, logger=None):
+def validate_training_data(train_data, nlp, logged=None):
     """
     Validate and skip misaligned spaCy NER training examples to avoid [W030] warnings.
     Pre-check alignment before creating Example.
@@ -399,12 +397,12 @@ def validate_training_data(train_data, nlp, logger=None):
         try:
             tags = offsets_to_biluo_tags(nlp.make_doc(text), annots["entities"])
             if "-" in tags:
-                if logger:
+                if logged:
                     log_warning(f"Skipping misaligned entity in: {text}")
                 continue
             valid_data.append((text, annots))
         except Exception as e:
-            if logger:
+            if logged:
                 log_warning(f"Error validating entity alignment: {e}")
     return valid_data
 
@@ -815,7 +813,7 @@ def main():
     clean_misaligned_ner_jsonl(ner_train_jsonl)
 
     confirmed_structures = get_all_confirmed_structures()
-    logger.info(f"Found {len(confirmed_structures)} confirmed table structures.")
+    console.table(f"Found {len(confirmed_structures)} confirmed table structures.")
 
     # Log user feedback/corrections for ML
     feedback_log_path = os.path.join(LOG_DIR, "structure_feedback_log.jsonl")
@@ -843,7 +841,7 @@ def main():
         seg_hash = segment_hash(struct)
         if seg_hash not in cached_hashes:
             deduped_train_data.append(struct)
-    logger.info(f"Deduplicated to {len(deduped_train_data)} unique structures for training.")
+    console.table(f"Deduplicated to {len(deduped_train_data)} unique structures for training.")
 
     # Build NER training data (auto-label, dedupe, etc.)
     train_data = []
@@ -857,7 +855,7 @@ def main():
         os.path.join(LOG_DIR, "spacy_ner_train_data.jsonl")
     )
     if extra_examples:
-        logger.info(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
+        console.table(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
     train_data.extend(extra_examples)
 
     for struct in deduped_train_data:
@@ -887,10 +885,10 @@ def main():
                 train_data.append((header, {"entities": entities}))
 
     # Scan in-memory NER examples for misalignments before retraining
-    logger.info("[INFO] Scanning in-memory NER training data for misalignments before retraining...")
+    console.log("[INFO] Scanning in-memory NER training data for misalignments before retraining...")
     misaligned = scan_in_memory_ner_examples(train_data, verbose=True)
     if misaligned:
-        logger.error(f"{len(misaligned)} misaligned NER examples found in final training data. Running diagnostics and launching manual_correction_bot. Aborting retraining.")
+        console.panel(f"{len(misaligned)} misaligned NER examples found in final training data. Running diagnostics and launching manual_correction_bot. Aborting retraining.")
         misaligned_path = os.path.join(LOG_DIR, "spacy_ner_misaligned.jsonl")
         with open(misaligned_path, "wb") as f:
             for text, entities in misaligned:
@@ -900,9 +898,9 @@ def main():
                 sys.executable, "-m", "webapp.parser.bots.scan_misaligned_ner", "--jsonl", misaligned_path
             ], check=True, cwd=PROJECT_ROOT, env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT)})
         except Exception as e:
-            logger.warning(f"scan_misaligned_ner diagnostics failed: {e}")
+            console.table(f"scan_misaligned_ner diagnostics failed: {e}")
         run_manual_correction_bot()
-        logger.info("Please correct misalignments and rerun retraining.")
+        console.log("Please correct misalignments and rerun retraining.")
         sys.exit(2)
 
     # Use deduped_train_data for retraining
@@ -920,10 +918,10 @@ def main():
         batch_size=int(os.getenv("SPACY_NER_BATCH_SIZE", 32))
     )
     cluster_container_patterns()
-    logger.info("\n[SUMMARY] Table Structure Model Retraining Complete.")
-    logger.info("If you see repeated model save failures, close any file explorers or editors viewing the model directory.")
-    logger.info("If you see spaCy lexeme normalization warnings, you can ignore them for English. To suppress, install spacy-lookups-data and load the table if needed.")
-    logger.info("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
+    console.log("\n[SUMMARY] Table Structure Model Retraining Complete.")
+    console.log("If you see repeated model save failures, close any file explorers or editors viewing the model directory.")
+    console.log("If you see spaCy lexeme normalization warnings, you can ignore them for English. To suppress, install spacy-lookups-data and load the table if needed.")
+    console.log("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
     gc.collect()
 
 if __name__ == "__main__":

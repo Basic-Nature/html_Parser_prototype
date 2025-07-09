@@ -1,0 +1,252 @@
+"""
+ElectionDataService: Service layer for all election DB operations.
+Encapsulates CRUD, queries, and integrity helpers for contests, tables, batches, and related entities.
+This allows orchestrator classes (ContextOrganizer, ContextCoordinator, etc.) to focus on business logic,
+not DB details.
+
+All methods are annotated and include docstrings for clarity.
+"""
+
+from typing import Optional, List, Any
+from ..utils.db_utils import (
+    get_session, upsert_contest, fetch_contest_full,
+    get_table_structure_from_db, save_table_structure_to_db,
+    create_batch_metadata, update_batch_metadata, get_batch_metadata,
+    create_staging_election_result, get_staging_results_by_batch,
+    create_warehouse_election_result, get_warehouse_results_by_batch,
+    fetch_table_structures, search_table_structures, update_table_structure_fields,
+    select_table_structures_by_title, clean_for_json, get_or_create_state,
+    get_or_create_county, get_or_create_party, check_missing_tables
+)
+from ..utils.models import Base, Contest, State, County, Party, TableStructure
+
+class ElectionDataService(object):
+    """
+    Service layer for all election-related DB operations.
+    """
+
+    # --- Contest Operations ---
+
+    def upsert_contest(self, contest_dict: dict, auto_create_related: bool = True) -> None:
+        """
+        Insert or update a contest, auto-creating related State/County if needed.
+        """
+        with get_session() as session:
+            upsert_contest(session, contest_dict, auto_create_related=auto_create_related)
+            session.commit()
+
+    def get_full_contest(self, contest_id: int) -> Optional[dict]:
+        """
+        Fetch a contest with all related data (state, county, office, candidates, results).
+        """
+        with get_session() as session:
+            return fetch_contest_full(session, {"id": contest_id})
+
+    def get_contests_by_advanced_filter(
+        self,
+        filters: Optional[dict] = None,
+        columns: Optional[list] = None,
+        limit: int = 100
+    ) -> List[dict]:
+        """
+        Fetch contests with advanced filters and optional column selection.
+        Args:
+            filters: dict of field:value pairs to filter on (AND logic).
+            columns: list of column names to return (if None, returns all fields).
+            limit: max number of results.
+        Returns:
+            List of dicts, each representing a contest.
+        """
+        with get_session() as session:
+            query = session.query(Contest)
+            # Apply filters
+            for k, v in (filters or {}).items():
+                if hasattr(Contest, k):
+                    query = query.filter(getattr(Contest, k) == v)
+            query = query.limit(limit)
+            # Select columns if specified
+            if columns:
+                query = query.with_entities(*[getattr(Contest, col) for col in columns])
+                # Return as dicts with column names
+                return [dict(zip(columns, row)) for row in query.all()]
+            else:
+                # Return as dicts (all fields)
+                return [row.as_dict() if hasattr(row, "as_dict") else {c.name: getattr(row, c.name) for c in Contest.__table__.columns} for row in query.all()]
+
+    def get_all_full_contests(self, filters: Optional[dict] = None, limit: int = 100) -> List[dict]:
+        """
+        Fetch all contests with related data, optionally filtered.
+        """
+        contests = self.get_contests_by_advanced_filter(filters, limit=limit)
+        with get_session() as session:
+            return [fetch_contest_full(session, c) for c in contests]
+
+    def update_contest_in_db(self, contest_update: dict) -> None:
+        """
+        Update an existing contest in the database by ID.
+        contest_update must include the 'id' field.
+        """
+        from ..utils.db_utils import get_session
+        from ..utils.models import Contest
+        contest_id = contest_update.get("id")
+        if not contest_id:
+            raise ValueError("contest_update must include 'id'")
+        with get_session() as session:
+            contest = session.query(Contest).filter_by(id=contest_id).first()
+            if not contest:
+                raise ValueError(f"Contest with id={contest_id} not found")
+            for k, v in contest_update.items():
+                if k != "id" and hasattr(contest, k):
+                    setattr(contest, k, v)
+            session.commit()
+
+    # --- Table Structure Operations ---
+
+    def save_table_structure(self, contest_title: str, headers: Any, context: Any, ml_confidence: Optional[float] = None, confirmed_by_user: bool = False) -> None:
+        """
+        Upsert a table structure for a contest.
+        """
+        save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
+
+    def get_table_structure(self, contest_title: str, context: Any = None) -> Optional[dict]:
+        """
+        Retrieve the best-matching table structure for a contest.
+        """
+        return get_table_structure_from_db(contest_title, context)
+
+    def fetch_table_structures(self, filters: Optional[dict] = None, limit: int = 100, order_by=None, confirmed_only: bool = False) -> List[TableStructure]:
+        """
+        Fetch table structures with optional filters, ordering, and confirmation status.
+        """
+        return fetch_table_structures(filters, limit, order_by, confirmed_only)
+
+    def search_table_structures(self, search_terms: dict, limit: int = 100) -> List[TableStructure]:
+        """
+        Search TableStructure using dynamic AND/OR conditions.
+        """
+        return search_table_structures(search_terms, limit)
+
+    def update_table_structure_fields(self, table_id: int, fields: dict) -> int:
+        """
+        Update fields on a TableStructure by ID.
+        """
+        return update_table_structure_fields(table_id, fields)
+
+    def select_table_structures_by_title(self, title: str, limit: int = 10) -> List[TableStructure]:
+        """
+        Fetch TableStructures by contest_title.
+        """
+        return select_table_structures_by_title(title, limit)
+
+    # --- Batch Metadata Operations ---
+
+    def create_batch_metadata(self, source: str, status: str = 'pending'):
+        """
+        Create a new batch metadata record.
+        """
+        return create_batch_metadata(source, status)
+
+    def update_batch_metadata(self, batch_id, **kwargs):
+        """
+        Update fields on a batch metadata record.
+        """
+        return update_batch_metadata(batch_id, **kwargs)
+
+    def get_batch_metadata(self, batch_id):
+        """
+        Fetch a batch metadata record by ID.
+        """
+        return get_batch_metadata(batch_id)
+
+    # --- Staging/Warehouse Election Result Operations ---
+
+    def create_staging_election_result(self, **kwargs):
+        """
+        Create a new staging election result.
+        """
+        return create_staging_election_result(**kwargs)
+
+    def get_staging_results_by_batch(self, batch_id):
+        """
+        Fetch all staging results for a batch.
+        """
+        return get_staging_results_by_batch(batch_id)
+
+    def create_warehouse_election_result(self, **kwargs):
+        """
+        Create a new warehouse election result.
+        """
+        return create_warehouse_election_result(**kwargs)
+
+    def get_warehouse_results_by_batch(self, batch_id):
+        """
+        Fetch all warehouse results for a batch.
+        """
+        return get_warehouse_results_by_batch(batch_id)
+
+    # --- State/County/Party CRUD ---
+
+    def get_or_create_state(self, state_name: str) -> Optional[State]:
+        """
+        Get or create a State by name.
+        """
+        with get_session() as session:
+            return get_or_create_state(session, state_name)
+
+    def get_or_create_county(self, county_name: str, state: State) -> Optional[County]:
+        """
+        Get or create a County by name and State.
+        """
+        with get_session() as session:
+            return get_or_create_county(session, county_name, state)
+
+    def get_or_create_party(self, party_name: str) -> Optional[Party]:
+        """
+        Get or create a Party by name.
+        """
+        with get_session() as session:
+            return get_or_create_party(session, party_name)
+
+    # --- DB Schema/Diagnostics ---
+
+    def list_tables(self) -> List[str]:
+        """
+        List all table names in the current DB schema.
+        """
+        return list(Base.metadata.tables.keys())
+
+    def describe_table(self, table_name: str) -> Optional[dict]:
+        """
+        Return columns and relationships for a given table.
+        """
+        table = Base.metadata.tables.get(table_name)
+        if not table:
+            return None
+        columns = [col.name for col in table.columns]
+        return {
+            "columns": columns,
+            "table_args": str(table.table_args),
+        }
+
+    def get_table_metadata(self, table_name: str) -> Optional[dict]:
+        """
+        Return column names and types for a given table.
+        """
+        table = Base.metadata.tables.get(table_name)
+        if not table:
+            return None
+        return {col.name: str(col.type) for col in table.columns}
+
+    def check_missing_tables(self) -> List[str]:
+        """
+        Return a list of expected tables that are missing in the DB.
+        """
+        return check_missing_tables(self)
+
+    # --- Utility ---
+
+    def clean_for_json(self, obj) -> dict:
+        """
+        Clean an object for JSON serialization (handles sets, numpy, etc.).
+        """
+        return clean_for_json(obj)

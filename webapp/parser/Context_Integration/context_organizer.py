@@ -12,17 +12,17 @@ import orjson
 from collections import defaultdict
 import types
 import collections.abc
-
-from sqlalchemy import select, and_
+from ..utils.model_registry import ModelRegistry
 from sqlalchemy.exc import SQLAlchemyError
 from ..utils.db_utils import (
     load_processed_urls,
     load_output_cache,
     normalize_label,
-    get_session,
+    save_table_structure_to_db,
+    get_table_structure_from_db,
+    clean_for_json,    
 )
-from ..utils.model_registry import ModelRegistry
-from ..utils.models import Contest, TableStructure
+from ..services.election_data_services import ElectionDataService
 from ..utils.shared_logic import scan_environment
 from ..bots.librarian import load_context_library, update_context_library
 from .Integrity_check import (
@@ -37,19 +37,12 @@ from collections import Counter
 console = RichConsoleProxy()
 
 from ..config import (
-    BASE_DIR, CONTEXT_LIBRARY_PATH, CONTEXT_DB_PATH, 
-    CACHE_DIR, INPUT_DIR, OUTPUT_DIR
+    CONTEXT_LIBRARY_PATH, CONTEXT_DB_PATH, 
+    CACHE_DIR
 )
 
 PROCESSED_URLS_CACHE = os.path.join(CACHE_DIR, "processed_urls.json")
 OUTPUT_CACHE = os.path.join(CACHE_DIR, "output_cache.jsonl")
-
-# --- DB Schema Setup (now handled by Alembic migrations) ---
-def ensure_db_schema():
-    # Schema is managed by Alembic migrations; nothing to do here
-    pass
-
-ensure_db_schema()
 
 processed_urls = load_processed_urls()
 output_cache = load_output_cache()
@@ -58,22 +51,6 @@ _spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 def get_loading_indicator() -> str:
     return next(_spinner)
 
-def clean_for_json(obj) -> dict:
-    import numpy as np
-    if isinstance(obj, dict):
-        return {k: clean_for_json(v) for k, v in obj.items() if k != "_fixed_fields"}
-    elif isinstance(obj, list):
-        return [clean_for_json(i) for i in obj]
-    elif isinstance(obj, set):
-        return [clean_for_json(i) for i in obj]
-    elif isinstance(obj, np.ndarray):
-        return clean_for_json(obj.tolist())
-    elif isinstance(obj, (str, int, float, bool)) or obj is None:
-        return obj
-    else:
-        # Fallback: convert to string
-        return str(obj)
-
 def remove_functions(obj) -> dict:
     if isinstance(obj, dict):
         return {k: remove_functions(v) for k, v in obj.items() if not isinstance(v, types.FunctionType)}
@@ -81,123 +58,6 @@ def remove_functions(obj) -> dict:
         return [remove_functions(v) for v in obj]
     else:
         return obj
-
-def save_table_structure_to_db(contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
-    """
-    Upsert a table structure using SQLAlchemy ORM. Updates if contest_title exists, else inserts.
-    """
-    try:
-        with get_session() as session:
-            obj = session.execute(
-                select(TableStructure).where(TableStructure.contest_title == contest_title)
-            ).scalar_one_or_none()
-            if obj:
-                obj.headers = orjson.dumps(clean_for_json(headers))
-                obj.context = orjson.dumps(clean_for_json(context))
-                obj.ml_confidence = ml_confidence
-                obj.confirmed_by_user = confirmed_by_user
-            else:
-                obj = TableStructure(
-                    contest_title=contest_title,
-                    headers=orjson.dumps(clean_for_json(headers)),
-                    context=orjson.dumps(clean_for_json(context)),
-                    ml_confidence=ml_confidence,
-                    confirmed_by_user=confirmed_by_user
-                )
-                session.add(obj)
-            session.commit()
-    except SQLAlchemyError as e:
-        log_error(f"[DB][TableStructure] Error saving: {e}")
-        raise
-
-def get_table_structure_from_db(contest_title, context=None) -> dict:
-    """
-    Retrieve the best-matching table structure for a contest_title using SQLAlchemy ORM.
-    """
-    try:
-        with get_session() as session:
-            row = session.execute(
-                select(TableStructure).where(TableStructure.contest_title == contest_title)
-                .order_by(TableStructure.confirmed_by_user.desc(), TableStructure.ml_confidence.desc())
-                .limit(1)
-            ).scalar_one_or_none()
-        if row:
-            headers = robust_orjson_loads(row.headers)
-            context = robust_orjson_loads(row.context)
-            ml_confidence = row.ml_confidence
-            return {"headers": headers, "context": context, "ml_confidence": ml_confidence}
-        return None
-    except SQLAlchemyError as e:
-        log_error(f"[DB][TableStructure] Error loading: {e}")
-        return None
-
-def upsert_contest(session, contest_dict):
-    """
-    Upsert a contest using SQLAlchemy ORM. Updates if exists, else inserts.
-    Handles state/county as relationships robustly.
-    """
-    # --- Resolve state and county relationships ---
-    state_name = contest_dict.get("state")
-    county_name = contest_dict.get("county")
-
-    # Get State and County classes from the session's registry
-    State = session.registry.mapped_classes['State']
-    County = session.registry.mapped_classes['County']
-
-    # Find the state and county objects by name
-    state_obj = session.query(State).filter(State.name == state_name).first() if state_name else None
-    county_obj = session.query(County).filter(
-        County.name == county_name,
-        County.state == state_obj  # Ensure county is in the correct state
-    ).first() if county_name and state_obj else None
-
-    # Optionally, create if not found (uncomment if you want auto-create)
-    # if not state_obj and state_name:
-    #     state_obj = State(name=state_name)
-    #     session.add(state_obj)
-    #     session.flush()
-    # if not county_obj and county_name:
-    #     county_obj = County(name=county_name, state=state_obj)
-    #     session.add(county_obj)
-    #     session.flush()
-
-    # Build filters for upsert
-    filters = [
-        Contest.title == contest_dict.get("title"),
-        Contest.year == contest_dict.get("year"),
-        Contest.type_ == contest_dict.get("type_"),
-        Contest.state_id == (state_obj.id if state_obj else None),
-        Contest.county_id == (county_obj.id if county_obj else None),
-    ]
-
-    obj = session.execute(
-        select(Contest).where(and_(*filters))
-    ).scalar_one_or_none()
-
-    if obj:
-        obj = session.merge(obj)
-        obj.election_types = contest_dict.get("election_types")
-        obj.metadata = orjson.dumps(clean_for_json(contest_dict))
-    else:
-        obj = Contest(
-            title=contest_dict.get("title"),
-            year=contest_dict.get("year"),
-            type_=contest_dict.get("type_"),
-            election_types=contest_dict.get("election_types"),
-            state=state_obj,
-            county=county_obj,
-            metadata=orjson.dumps(clean_for_json(contest_dict))
-        )
-        session.add(obj)
-
-def robust_orjson_loads(val) -> dict:
-    """Load JSON robustly from either bytes or str."""
-    if isinstance(val, bytes):
-        return orjson.loads(val)
-    elif isinstance(val, str):
-        return orjson.loads(val.encode("utf-8"))
-    else:
-        raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
 def repair_dom_segments(segments) -> list:
     """
@@ -231,7 +91,7 @@ def repair_dom_segments(segments) -> list:
 def contest_hash(c) -> int:
     return hash((c.get("title"), c.get("year"), c.get("county"), c.get("type_")))
 
-class ContextOrganizer:
+class ContextOrganizer(object):
     def __init__(
         self,
         use_library=True,
@@ -243,7 +103,7 @@ class ContextOrganizer:
         plot_anomalies=True,
         debug=False,
         fuzzy_cutoff=0.6
-    ):
+    ) -> None:
         self.use_library = use_library
         self.enable_ml = enable_ml
         self.contamination = contamination
@@ -264,11 +124,10 @@ class ContextOrganizer:
         self.debug = debug
         self.fuzzy_cutoff = fuzzy_cutoff
         self._context_cache = load_context_cache_from_disk()
-        ensure_db_schema()
         # --- Embedding model validation/loading ---
         self.embedding_model_obj = None
+        self.data_service = ElectionDataService()
         try:
-            from ..utils.model_registry import ModelRegistry
             if isinstance(self.embedding_model, str):
                 self.embedding_model_obj = ModelRegistry.get_sentence_transformer(self.embedding_model)
                 log_info(f"[CONTEXT ORGANIZER] Loaded embedding model: {self.embedding_model}")
@@ -323,7 +182,7 @@ class ContextOrganizer:
             "download_links": []
         }
     @staticmethod
-    def print_contest_summary(contests):
+    def print_contest_summary(contests) -> None:
         table = Table(title="Contest Summary by State/County")
         table.add_column("Title")
         table.add_column("State")
@@ -339,7 +198,7 @@ class ContextOrganizer:
         console.print(table)
 
     @staticmethod
-    def plot_contest_distribution(contests):
+    def plot_contest_distribution(contests) -> None:
         state_county = [ (c.get("state", "Unknown"), c.get("county", "Unknown")) for c in contests ]
         counter = Counter(state_county)
         labels, values = zip(*counter.items())
@@ -350,6 +209,7 @@ class ContextOrganizer:
         plt.title("Contest Count by State/County")
         plt.tight_layout()
         plt.show()
+        
     @staticmethod
     def suggest_and_apply_fixes(contests, context_library, logs=None, min_confidence=0.8, embedding_model=None) -> tuple:
         """
@@ -599,11 +459,57 @@ class ContextOrganizer:
             if "_fixed_fields" in c and isinstance(c["_fixed_fields"], set):
                 c["_fixed_fields"] = list(c["_fixed_fields"])
         return contests, fix_log
-        
-    
-    @staticmethod
-    @staticmethod
-    def _describe_embedding_model(model) -> str:
+
+    def get_table_structures(self, filters=None, limit=100, confirmed_only=False) -> list:
+        """
+        Fetch table structures with optional filters and confirmation status.
+        """
+        return self.data_service.fetch_table_structures(filters=filters, limit=limit, confirmed_only=confirmed_only)
+
+    def get_full_contest(self, contest_id) -> dict:
+        """
+        Return a contest with all related data (state, county, office, candidates, results).
+        """
+        return self.data_service.get_full_contest(contest_id)
+
+    def get_all_full_contests(self, filters=None, limit=100) -> list[dict]:
+        """
+        Return all contests with related data, optionally filtered.
+        """
+        return self.data_service.get_all_full_contests(filters=filters, limit=limit)
+
+    def list_tables(self) -> list[str]:
+        """
+        Return a list of all table names in the current DB schema.
+        """
+        return self.data_service.list_tables()
+
+    def describe_table(self, table_name) -> dict:
+        """
+        Return columns and relationships for a given table.
+        """
+        return self.data_service.describe_table(table_name)
+
+    def get_contests_by_advanced_filter(self, filters: dict, columns: list = None, limit=100) -> list:
+        """
+        Fetch contests with advanced filters and optional column selection.
+        """
+        # You may want to add this method to ElectionDataService for full encapsulation.
+        return self.data_service.get_contests_by_advanced_filter(filters, columns, limit)
+
+    def get_table_metadata(self, table_name) -> dict:
+        """
+        Return column names and types for a given table.
+        """
+        return self.data_service.get_table_metadata(table_name)
+
+    def check_missing_tables(self) -> list:
+        """
+        Return a list of expected tables that are missing in the DB.
+        """
+        return self.data_service.check_missing_tables()
+
+    def _describe_embedding_model(self, model) -> str:
         """
         Return a human-friendly description of the embedding model.
         Uses ModelRegistry.get_model_name if available, else falls back to class name or str.
@@ -614,7 +520,7 @@ class ContextOrganizer:
             if callable(model) and not hasattr(model, "model_name_or_path"):
                 return f"{type(model).__name__} (not loaded)"
             # Use ModelRegistry utility if available
-            from ..utils.model_registry import ModelRegistry  # <-- add this import here if needed
+
             if hasattr(ModelRegistry, "get_model_name"):
                 name = ModelRegistry.get_model_name(model)
                 if name and isinstance(name, str):
@@ -626,6 +532,94 @@ class ContextOrganizer:
             return str(model)[:80]
         except Exception as e:
             return f"Unknown model ({e})"
+
+    def log_field_selection(
+        self,
+        field_type,
+        field_name,
+        extracted_value,
+        method,
+        score,
+        result,
+        context,
+        user_feedback=None,
+        log_path=None
+    ) -> None:
+        """
+        Log field extraction/correction attempts for ML/feedback.
+        Ensures log file is always inside the log/ directory and filename is sanitized.
+        """
+        import re, os, orjson
+        from datetime import datetime, timezone
+        from ..config import LOG_DIR
+        def _sanitize_log_filename(name: str) -> str:
+            return re.sub(r'[^a-zA-Z0-9_\-]', '_', name)
+        safe_field_type = _sanitize_log_filename(field_type)
+        if log_path is None:
+            log_path = os.path.join(LOG_DIR, "log", f"{safe_field_type}_selection_log.jsonl")
+        else:
+            base = os.path.basename(log_path)
+            safe_base = _sanitize_log_filename(base)
+            log_path = os.path.join(LOG_DIR, "log", safe_base)
+        log_entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "field_type": field_type,
+            "field_name": field_name,
+            "extracted_value": extracted_value,
+            "method": method,
+            "score": score,
+            "result": result,
+            "context": context,
+            "user_feedback": user_feedback
+        }
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(log_entry) + b"\n")
+
+    def get_for_state_router(self) -> dict:
+        """
+        Return a summary of contests and metadata for state routing logic.
+        """
+        if not self.organized or "contests" not in self.organized:
+            return {}
+        return {
+            "states": list({c.get("state") for c in self.organized["contests"] if c.get("state")}),
+            "counties": list({c.get("county") for c in self.organized["contests"] if c.get("county")}),
+            "contests": self.organized["contests"],
+            "metadata": self.organized.get("metadata", {})
+        }
+
+    def get_for_html_handler(self) -> dict:
+        """
+        Return all organized context needed for HTML handler logic.
+        """
+        return self.organized if self.organized else {}
+
+    def get_for_table_builder(self) -> dict:
+        """
+        Return all table structures and related context for table builder logic.
+        """
+        if not self.organized:
+            return {}
+        return {
+            "tables": self.organized.get("tables", {}),
+            "contests": self.organized.get("contests", []),
+            "metadata": self.organized.get("metadata", {})
+        }
+
+    def get_for_selector(self) -> dict:
+        """
+        Return all selectors and related context for selector logic.
+        """
+        if not self.organized:
+            return {}
+        return {
+            "selectors": self.organized.get("metadata", {}).get("selectors", {}),
+            "contests": self.organized.get("contests", []),
+            "buttons": self.organized.get("buttons", {}),
+            "panels": self.organized.get("panels", {}),
+            "tables": self.organized.get("tables", {}),
+        }
     
     def organize_context(
         self,
@@ -1081,10 +1075,8 @@ class ContextOrganizer:
 
         # Insert or update contests robustly using SQLAlchemy ORM
         try:
-            with get_session() as session:
-                for c in contests:
-                    upsert_contest(session, c)
-                session.commit()
+            for c in contests:
+                self.data_service.upsert_contest(c)
         except SQLAlchemyError as e:
             log_error(f"[DB][Contest] Error upserting contests: {e}")
 
@@ -1119,7 +1111,7 @@ class ContextOrganizer:
         save_context_cache_to_disk(self._context_cache)
         self.organized = organized
         return result
-
+    
     def build_dom_tree(self, segments) -> dict:
         """
         Build a DOM tree from a list of segments that already include parent/child relationships and indices.

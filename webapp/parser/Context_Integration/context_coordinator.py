@@ -13,9 +13,8 @@ import os
 import numpy as np
 import orjson
 from datetime import datetime, timezone
-import types
-from fuzzywuzzy import fuzz, process
-from ..utils.shared_logger import log_info, log_error, log_debug, log_warning
+from fuzzywuzzy import process
+from ..utils.shared_logger import log_info, log_error, log_warning
 import difflib
 from ..utils.shared_logic import (
     scan_buttons_with_progress, keyphrase_match,
@@ -31,15 +30,11 @@ from ..bots.librarian import (
     TABLE_TAGS,
     PANEL_TAGS,
     STATE_TAGS,
-    BUTTON_TAGS,
-    NOISY_LABEL_PATTERNS,
-    PRECINCT_HEADER_PATTERNS,
-    SELECTORS,
-    CONTEST_PANEL_TAGS   
+    BUTTON_TAGS,  
 )
 from sklearn.preprocessing import LabelEncoder
 import subprocess
-from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR
+from ..config import PROJECT_ROOT, LOG_DIR
 import threading
 
 from ..utils.spacy_utils import (
@@ -53,8 +48,9 @@ from .Integrity_check import (
     print_integrity_summary
 )
 from .context_organizer import ContextOrganizer, clean_for_json
+from ..services.election_data_services import ElectionDataService
 import inspect
-from typing import Optional, Any, List, Dict, Union
+from typing import Optional, Any, List, Dict, Tuple
 
 def _sanitize_log_filename(name: str) -> str:
     # Only allow alphanumeric, underscore, and dash
@@ -74,14 +70,14 @@ def get_semantic_score(model, text1, text2) -> float:
 def merge_and_rank_candidates(
     memory_candidates, dom_candidates, context, keywords, model,
     fuzzy_weight=0.3, semantic_weight=0.3, context_weight=0.2, hierarchy_weight=0.2
-):
+) -> List[Dict[str, Any]]:
     """
     Merge memory and DOM candidates, deduplicate, and rank by combined fuzzy and semantic score.
     """
     seen = set()
     all_candidates = []
     for cand in memory_candidates + dom_candidates:
-        if not isinstance(cand, dict):
+        if not isinstance(cand, dict) or not cand.get("label"):
             continue
         key = (cand.get("label", ""), cand.get("selector", ""))
         if key not in seen:
@@ -109,7 +105,7 @@ def merge_and_rank_candidates(
         # Keyphrase-aware match
         keyphrase_score = 0.0
         for kw in (keywords or []):
-            if keyphrase_match(label, kw, min_words=2, fuzzy_cutoff=0.85):
+            if keyphrase_match(label, kw, min_words=2, fuzzy_cutoff=0.85) or keyphrase_match(label, kw, min_words=2, fuzzy_cutoff=0.85):
                 keyphrase_score = 1.0
                 break
         # Fuzzy/semantic as fallback
@@ -126,9 +122,9 @@ def merge_and_rank_candidates(
             context_proximity = get_semantic_score(model, contest_title, context_heading)
         # Hierarchy/class/tag bonus
         hierarchy_score = 0.0
-        if expected_class and expected_class in cand.get("class", ""):
+        if expected_class and expected_class in cand.get("class", "") or expected_class in cand.get("class", "").lower():
             hierarchy_score += 0.5
-        if expected_tag and expected_tag == cand.get("tag", ""):
+        if expected_tag and expected_tag == cand.get("tag", "") or expected_tag in cand.get("tag", "").lower():
             hierarchy_score += 0.5
         if full_match:
             hierarchy_score += 1.0
@@ -156,7 +152,7 @@ def merge_and_rank_candidates(
     )
     return all_candidates
 
-def call_handler_with_coordinator(handler, *args, coordinator=None, **kwargs):
+def call_handler_with_coordinator(handler, *args, coordinator=None, **kwargs) -> Any:
 
     sig = inspect.signature(handler.parse)
     if 'coordinator' in sig.parameters:
@@ -164,7 +160,7 @@ def call_handler_with_coordinator(handler, *args, coordinator=None, **kwargs):
     else:
         return handler.parse(*args, **kwargs)
 
-def dynamic_state_county_detection(context, html, debug=False):
+def dynamic_state_county_detection(context, html, debug=False) -> tuple:
     """
     Robustly detect county (first) and state (second) using all available clues and cross-referencing.
     Utilizes context fields, contest titles, URL, and canonical librarian mappings.
@@ -179,7 +175,7 @@ def dynamic_state_county_detection(context, html, debug=False):
     all_precincts = {normalize_county_name(d) for precincts in county_to_precinct.values() for d in precincts}
 
     # --- 1. Try context fields directly (normalize and validate) ---
-    if not isinstance(context, dict):
+    if not isinstance(context, dict) or not context:
         context = {}
     raw_county = context.get("county")
     raw_state = context.get("state")
@@ -446,14 +442,21 @@ def dynamic_state_county_detection(context, html, debug=False):
 
 # --- Core Coordinator Class ---
 
-class ContextCoordinator:
+class ContextCoordinator(object):
     """
     Main interface for all context/NLP/ML operations.
     Use this class to access contests, buttons, panels, tables, candidates, precincts, etc.
     """
-    def __init__(self, use_library=True, enable_ml=True, alert_monitor=True):
+    def __init__(self, use_library=True, enable_ml=True, alert_monitor=True, debug=False) -> None:
         self.enable_ml = enable_ml
         self.alert_monitor = alert_monitor
+        self.debug = debug
+        self.data_service = ElectionDataService()
+        self.organizer = ContextOrganizer(
+            use_library=use_library,
+            enable_ml=enable_ml,
+            debug=debug
+        )
         self.organized = None
         self.last_raw_context = None
         self.clicked_button_selectors = set()
@@ -469,7 +472,7 @@ class ContextCoordinator:
         if alert_monitor:
             self.start_alert_monitoring()
             
-    def __del__(self):
+    def __del__(self) -> None:
         """
         Ensure alert monitoring thread is cleaned up on destruction.
         """
@@ -487,12 +490,14 @@ class ContextCoordinator:
             log_error(f"[ALERT MONITOR] Exception during cleanup: {e}", exc_info=True)
         finally:
             self.alert_monitor_thread = None
-            
-    def start_alert_monitoring(self, background=True):
+
+    # --- Monitoring, Reporting, and CLI ---            
+    def start_alert_monitoring(self, background=True) -> Optional[threading.Thread]:
         """
         Start real-time alert monitoring, optionally in a background thread.
+        Returns the thread object if background=True, otherwise None.
         """
-        def run_monitor():
+        def run_monitor() -> None:
             try:
                 monitor_db_for_alerts()
             except Exception as e:
@@ -508,15 +513,38 @@ class ContextCoordinator:
             log_info("[ALERT MONITOR] Started in background thread.")
             return t
         else:
+            log_info("[ALERT MONITOR] Running in foreground (blocking).")
             run_monitor()
             return None
+
+    def report_summary(self) -> None:
+        contests = self.get_contests()
+        log_info(f"[bold cyan][COORDINATOR] {len(contests)} contests loaded[/bold cyan]")
+        all_entities = set()
+        all_labels = set()
+        for c in contests:
+            if not isinstance(c, dict) or "entities" not in c:
+                continue
+            for ent, label in c.get("entities", []):
+                all_entities.add(ent)
+                all_labels.add(label)
+        log_info(f"Unique entity labels: {sorted(all_labels)}")
+        log_info(f"Unique entities: {sorted(all_entities)}")
+        log_info(f"States: {sorted({c.get('state') for c in contests if c.get('state')})}")
+        log_info(f"Years: {sorted({c.get('year') for c in contests if c.get('year')})}")
+        issues = self.validate_and_check_integrity()
+        if issues["integrity_issues"]:
+            log_warning(f"[yellow]Integrity issues:[/yellow] {issues['integrity_issues']}")
+        if issues["anomalies"]:
+            log_error(f"[red]Anomalies detected:[/red] {issues['anomalies']}")
+
     def _log_jsonl(self, log_path, log_entry):
         """Centralized JSONL logging utility."""
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _extract_with_strategies(self, text, strategies):
+    def _extract_with_strategies(self, text, strategies) -> tuple:
         """
         Try a list of (method, function) strategies on text, returning the first successful result.
         Each function should return (value, score, method, result) or None.
@@ -531,64 +559,65 @@ class ContextCoordinator:
         """Safely get a key from a dict, returning default if not a dict or key missing."""
         return dct.get(key, default) if isinstance(dct, dict) else default
             
-    def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
+    def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False) -> Dict[str, Any]:
         from .context_organizer import save_table_structure_to_db
         return save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
 
-    def get_table_structure_from_db(self, contest_title, context=None):
+    def get_table_structure_from_db(self, contest_title, context=None) -> Optional[List[Dict[str, Any]]]:
         from .context_organizer import get_table_structure_from_db
         return get_table_structure_from_db(contest_title, context)
 
-    def organize_and_enrich(self, raw_context, contamination=None, n_estimators=100, random_state=42):
+    def organize_and_enrich(self, raw_context, **kwargs) -> Dict[str, Any]:
         """
         Organize raw context (from HTML/DOM or DB), deduplicate, cluster, and enrich with NLP.
         """
-        self.last_raw_context = raw_context  # <-- Store the latest raw context
-        organizer = ContextOrganizer(
-            use_library=True,
-            enable_ml=self.enable_ml,
-            contamination=contamination,
-            n_estimators=n_estimators,
-            random_state=random_state
-        )
-        self.organized = organizer.organize_context(raw_context)
+        self.last_raw_context = raw_context
+        result = self.organizer.organize_context(raw_context, **kwargs)
+        self.organized = result["organized"]
         self._enrich_contests_with_nlp()
         return self.organized
 
-    def submit_user_feedback(self, field_type, field_name, correct_value, context):
-        self.log_field_selection(
-            field_type=field_type,
-            field_name=field_name,
-            extracted_value=correct_value,
-            method="user_feedback",
-            score=1.0,
-            result="user_corrected",
-            context=context,
-            user_feedback=correct_value
-        )  
-        self._enrich_contests_with_nlp()         
+    # --- Feedback, Learning, and Correction ---
+    def submit_user_feedback(self, field_type, field_name, correct_value, context) -> Dict[str, Any]:
+        self.organizer.submit_user_feedback(field_type, field_name, correct_value, context)
+        self._enrich_contests_with_nlp()
         return self.organized
+    
+    def correct_and_update_contest(self, contest_id, correction_data) -> None:
+        self.data_service.update_contest_in_db({"id": contest_id, **correction_data})
+        self.organized = None
+        self.organize_and_enrich(self.last_raw_context)
+        self.organizer.log_field_selection(
+            field_type="contest",
+            field_name="correction",
+            extracted_value=correction_data,
+            method="manual",
+            score=1.0,
+            result="manual_pass",
+            context={"contest_id": contest_id},
+            user_feedback=None
+        )
 
-    def get_known_state_to_county_map(self):
+    def get_known_state_to_county_map(self) -> List[str]:
         """
         Return all known states (keys) from the canonical state-to-county mapping in librarian.py.
         """
         return list(KNOWN_STATE_TO_COUNTY_MAP.keys())
 
-    def get_known_county_to_PRECINCTS_map(self):
+    def get_known_county_to_PRECINCTS_map(self) -> List[str]:
         """
         Return all known counties (keys) from the canonical county-to-precinct mapping in librarian.py.
         """
         return list(KNOWN_COUNTY_TO_PRECINCTS_MAP.keys())
 
-    def get_known_states(self):
+    def get_known_states(self) -> List[str]:
         """
         Return all known states from the canonical mapping in librarian.py.
         """
         # STATE_MODULE_MAP keys are already normalized (snake_case)
         return list(STATE_MODULE_MAP.keys())
 
-    def get_known_counties(self, state=None):
+    def get_known_counties(self, state=None) -> List[str]:
         """
         Return all known counties from the canonical mapping in librarian.py.
         If a state is provided, return counties for that state only.
@@ -602,7 +631,7 @@ class ContextCoordinator:
             counties.extend(county_list)
         return counties
 
-    def _enrich_contests_with_nlp(self):
+    def _enrich_contests_with_nlp(self) -> None:
         """
         Add NLP-derived fields (entities, locations, dates) to each contest.
         """ 
@@ -614,16 +643,15 @@ class ContextCoordinator:
             title = c.get("title", "")
             c["entities"] = extract_entities(title)
             c["locations"] = extract_locations(title)
-            c["dates"] = extract_dates(title) 
+            c["dates"] = extract_dates(title)
 
-    def fuzzy_score(self, a, b):
+    def fuzzy_score(self, a, b) -> float:
         """
         Compute a fuzzy string similarity score between two strings.
         """
-        from fuzzywuzzy import fuzz
         model = self._semantic_model
-        return fuzz.ratio(str(a), str(b))
-               
+        return model.similarity(str(a), str(b))
+
     def log_field_selection(
         self,
         field_type,
@@ -635,7 +663,7 @@ class ContextCoordinator:
         context,
         user_feedback=None,
         log_path=None
-    ):
+    ) -> None:
         """
         Log field extraction/correction attempts for ML/feedback.
         Ensures log file is always inside the log/ directory and filename is sanitized.
@@ -664,12 +692,12 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
     
-    def extract_contest_title(self, contest):
+    def extract_contest_title(self, contest) -> Optional[str]:
         """
         Extract the contest title using ML/NLP/manual methods.
         Log the extraction attempt and result.
         """
-        if not isinstance(contest, dict):
+        if not isinstance(contest, dict) or "title" not in contest:
             return None
         extracted_value = contest.get("title")
         score = 1.0 if extracted_value else 0.0
@@ -690,12 +718,12 @@ class ContextCoordinator:
         )
         return extracted_value
 
-    def extract_candidate(self, contest):
+    def extract_candidate(self, contest) -> List[str]:
         """
         Extract candidate names from contest using ML/NLP/manual methods.
         Log the extraction attempt and result.
         """
-        if not isinstance(contest, dict):
+        if not isinstance(contest, dict) or "entities" not in contest:
             return []
         # Use entities if available
         candidates = []
@@ -722,24 +750,24 @@ class ContextCoordinator:
         )
         return candidates
 
-    def extract_party(self, contest):
+    def extract_party(self, contest) -> Optional[str]:
         """
         Extract party using regex, spaCy NER, and fuzzy matching with PARTY_KEYWORDS.
         Log the extraction attempt and result.
         """
-        if not isinstance(contest, dict):
+        if not isinstance(contest, dict) or "title" not in contest:
             return None
         title = contest.get("title", "")
 
         party_pattern = "|".join([re.escape(k) for k in PARTY_KEYWORDS])
 
-        def regex_party(text):
+        def regex_party(text) -> Optional[Tuple[str, float, str, str]]:
             match = re.search(rf"({party_pattern})", text, re.IGNORECASE)
             if match:
                 return (match.group(1), 0.9, "regex", "pass")
             return None
 
-        def nlp_party(text):
+        def nlp_party(text) -> Optional[Tuple[str, float, str, str]]:
             entities = extract_entities(text)
             known_parties = PARTY_KEYWORDS
             for ent, label in entities:
@@ -749,7 +777,7 @@ class ContextCoordinator:
                         return (best[0], best[1] / 100.0, "spacy_ner_fuzzy", "pass")
             return None
 
-        def fuzzy_party(text):
+        def fuzzy_party(text) -> Optional[Tuple[str, float, str, str]]:
             known_parties = PARTY_KEYWORDS
             best = process.extractOne(text, known_parties)
             if best and best[1] > 80:
@@ -774,7 +802,7 @@ class ContextCoordinator:
         )
         return value
     
-    def extract_panel(self, contest_title):
+    def extract_panel(self, contest_title) -> Optional[Tuple[str, float, str, str]]:
         """
         Extract the panel for a given contest title using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
@@ -782,20 +810,20 @@ class ContextCoordinator:
         panel_keywords = list(PANEL_TAGS)
         panel_pattern = "|".join([re.escape(k) for k in panel_keywords])
 
-        def regex_panel(text):
+        def regex_panel(text) -> Optional[Tuple[str, float, str, str]]:
             match = re.search(rf"({panel_pattern})", text, re.IGNORECASE)
             if match:
                 return (match.group(1), 0.9, "regex", "pass")
             return None
 
-        def nlp_panel(text):
+        def nlp_panel(text) -> Optional[Tuple[str, float, str, str]]:
             entities = extract_entities(text)
             for ent, label in entities:
                 if label in {"ORG", "NORP"}:
                     return (ent, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(text):
+        def direct_lookup(text) -> Optional[Tuple[List[str], float, str, str]]:
             panel = self.get_panel(text)
             if panel:
                 return (panel, 1.0, "direct_lookup", "pass")
@@ -819,7 +847,7 @@ class ContextCoordinator:
         )
         return value
 
-    def extract_tables(self, contest_title):
+    def extract_tables(self, contest_title) -> List[str]:
         """
         Extract tables for a given contest title using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
@@ -864,27 +892,27 @@ class ContextCoordinator:
         )
         return value
 
-    def extract_precincts(self, state=None, county=None):
+    def extract_precincts(self, state=None, county=None) -> List[str]:
         """
         Extract known precincts for a state/county using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
         location_pattern = "|".join([re.escape(k) for k in LOCATION_KEYWORDS])
 
-        def regex_precinct(text):
+        def regex_precinct(text) -> Optional[Tuple[List[str], float, str, str]]:
             match = re.search(rf"({location_pattern})", text, re.IGNORECASE)
             if match:
                 return ([match.group(1)], 0.9, "regex", "pass")
             return None
 
-        def nlp_precinct(text):
+        def nlp_precinct(text) -> Optional[Tuple[List[str], float, str, str]]:
             entities = extract_entities(text)
             for ent, label in entities:
                 if label in {"ORG", "NORP"}:
                     return ([ent], 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(_):
+        def direct_lookup(_) -> Optional[Tuple[List[str], float, str, str]]:
             precincts = self.get_precincts(state=state, county=county)
             if precincts:
                 return (precincts, 1.0, "direct_lookup", "pass")
@@ -908,7 +936,7 @@ class ContextCoordinator:
         )
         return value
 
-    def extract_states(self):
+    def extract_states(self) -> List[str]:
         """
         Extract all known states using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
@@ -917,20 +945,20 @@ class ContextCoordinator:
         state_pattern = "|".join([re.escape(k) for k in state_keywords])
         known_states = list(STATE_MODULE_MAP.keys())
 
-        def regex_state(text):
+        def regex_state(text) -> Optional[Tuple[str, float, str, str]]:
             match = re.search(rf"({state_pattern})", text, re.IGNORECASE)
             if match:
                 return (text, 0.9, "regex", "pass")
             return None
 
-        def nlp_state(text):
+        def nlp_state(text) -> Optional[Tuple[str, float, str, str]]:
             entities = extract_entities(text)
             for ent, label in entities:
                 if label in {"ORG", "NORP"}:
                     return (ent, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(_):
+        def direct_lookup(_) -> Optional[Tuple[List[str], float, str, str]]:
             states = self.get_states()
             if states:
                 return (states, 1.0, "direct_lookup", "pass")
@@ -969,7 +997,7 @@ class ContextCoordinator:
         )
         return found_states
 
-    def extract_election_types(self):
+    def extract_election_types(self) -> List[str]:
         """
         Extract all known election types using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
@@ -978,20 +1006,20 @@ class ContextCoordinator:
         location_pattern = "|".join([re.escape(k) for k in LOCATION_KEYWORDS])
         election_type_pattern = r"(primary|general|special|runoff|municipal|presidential|senate|mayoral|school board|" + location_pattern + ")"
 
-        def regex_election_type(text):
+        def regex_election_type(text) -> Optional[Tuple[str, float, str, str]]:
             match = re.search(election_type_pattern, text, re.IGNORECASE)
             if match:
                 return (match.group(1), 0.9, "regex", "pass")
             return None
 
-        def nlp_election_type(text):
+        def nlp_election_type(text) -> Optional[Tuple[str, float, str, str]]:
             entities = extract_entities(text)
             for ent, label in entities:
                 if label in {"ORG", "NORP"}:
                     return (ent, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(_):
+        def direct_lookup(_) -> Optional[Tuple[List[str], float, str, str]]:
             types = self.get_election_types()
             if types:
                 return (types, 1.0, "direct_lookup", "pass")
@@ -1029,27 +1057,27 @@ class ContextCoordinator:
         )
         return found_types
 
-    def extract_years(self):
+    def extract_years(self) -> List[str]:
         """
         Extract all years found in contests using regex, spaCy NER, and direct lookup.
         Log the extraction attempt and result.
         """
         contests = self.get_contests()
 
-        def regex_year(text):
+        def regex_year(text) -> Optional[Tuple[str, float, str, str]]:
             match = re.search(r"\b(19|20)\d{2}\b", text)
             if match:
                 return (match.group(0), 0.9, "regex", "pass")
             return None
 
-        def nlp_year(text):
+        def nlp_year(text) -> Optional[Tuple[str, float, str, str]]:
             entities = extract_entities(text)
             for ent, label in entities:
                 if label == "DATE" and re.match(r"\b(19|20)\d{2}\b", ent):
                     return (ent, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(_):
+        def direct_lookup(_) -> Optional[Tuple[List[int], float, str, str]]:
             years = self.get_years()
             if years:
                 return (years, 1.0, "direct_lookup", "pass")
@@ -1088,7 +1116,7 @@ class ContextCoordinator:
         )
         return found_years
 
-    def extract_buttons(self, contest_title=None, keyword=None, url=None):
+    def extract_buttons(self, contest_title=None, keyword=None, url=None) -> List[str]:
         """
         Extract button labels using regex, spaCy NER (ORG/NORP), and direct lookup.
         Log the extraction attempt and result.
@@ -1098,20 +1126,20 @@ class ContextCoordinator:
 
         sources = [contest_title or "", keyword or "", url or ""]
 
-        def regex_button(text):
+        def regex_button(text) -> Optional[Tuple[str, float, str, str]]:
             match = re.search(rf"({button_pattern})", text, re.IGNORECASE)
             if match:
                 return (match.group(1), 0.9, "regex", "pass")
             return None
 
-        def nlp_button(text):
+        def nlp_button(text) -> Optional[Tuple[str, float, str, str]]:
             entities = extract_entities(text)
             for ent, label in entities:
                 if label in {"ORG", "NORP"}:
                     return (ent, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(_):
+        def direct_lookup(_) -> Optional[Tuple[List[str], float, str, str]]:
             candidates = []
             buttons = self.get_buttons(contest_title=contest_title, keyword=keyword, url=url)
             for btn in buttons:
@@ -1160,18 +1188,43 @@ class ContextCoordinator:
         )
         return found_buttons
 
-    def score_header(self, title, context=None):
+    def score_header(self, title, context=None) -> float:
         # Simple fallback: just call score_entry or return a default score
         return self.score_entry(title) if hasattr(self, "score_entry") else 0.5
+    
+    # --- DB/Service Delegation ---
+    def get_full_contest(self, contest_id) -> Optional[Dict[str, Any]]:
+        return self.data_service.get_full_contest(contest_id)
 
-    # --- Data Accessors ---
-    def get_contests(self, filters=None):
-        """
-        Return contests, optionally filtered by state, county, year, type_, etc.
-        """   
-        if not isinstance(self.organized, dict):
+    def get_all_full_contests(self, filters=None, limit=100) -> List[Dict[str, Any]]:
+        return self.data_service.get_all_full_contests(filters=filters, limit=limit)
+
+    def list_tables(self) -> List[str]:
+        return self.data_service.list_tables()
+
+    def describe_table(self, table_name) -> Optional[Dict[str, Any]]:
+        return self.data_service.describe_table(table_name)
+
+    def get_table_metadata(self, table_name) -> Optional[Dict[str, Any]]:
+        return self.data_service.get_table_metadata(table_name)
+
+    def check_missing_tables(self) -> List[str]:
+        return self.data_service.check_missing_tables()
+
+    def get_table_structures(self, filters=None, limit=100, confirmed_only=False) -> List[Dict[str, Any]]:
+        return self.data_service.fetch_table_structures(filters=filters, limit=limit, confirmed_only=confirmed_only)
+
+    def get_table_structure(self, contest_title, context=None) -> Optional[Dict[str, Any]]:
+        return self.data_service.get_table_structure(contest_title, context)
+
+    def save_table_structure(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False) -> bool:
+        return self.data_service.save_table_structure(contest_title, headers, context, ml_confidence, confirmed_by_user)
+
+    # --- Context/Contest Accessors ---
+    def get_contests(self, filters=None) -> List[Dict[str, Any]]:
+        if not self.organized:
             return []
-        contests = self._safe_get(self.organized, "contests", [])
+        contests = self.organized.get("contests", [])
         if not filters:
             return clean_for_json(contests)
         def match(c):
@@ -1227,14 +1280,10 @@ class ContextCoordinator:
             return []
         buttons_dict = self.organized.get("buttons", {})
         results = []
-
-        # By contest title (exact match)
-        if contest_title and isinstance(contest_title, str):
+        if contest_title:
             results = buttons_dict.get(contest_title, [])
             if results:
                 return clean_for_json(results)
-
-        # By keyword in label or selector
         if keyword:
             keyword = keyword.lower()
             for btn_list in buttons_dict.values():
@@ -1245,32 +1294,28 @@ class ContextCoordinator:
                         results.append(btn)
             if results:
                 return clean_for_json(results)
-
-        # By URL (if you want to associate buttons with URLs)
         if url:
             for btn_list in buttons_dict.values():
                 for btn in btn_list:
-                    if not isinstance(btn, dict):  
+                    if not isinstance(btn, dict):
                         continue
                     if url in btn.get("selector", ""):
                         results.append(btn)
             if results:
                 return clean_for_json(results)
-
-        # Fallback: return all buttons
         all_buttons = []
         for btns in buttons_dict.values():
             all_buttons.extend(btns)
         return clean_for_json(all_buttons)
 
-    def matches_html_label_pattern(label, patterns):
+    def matches_html_label_pattern(label, patterns) -> bool:
         """Check if label matches any HTML-specific regex pattern."""
         for pat in patterns:
             if re.search(pat, label, re.IGNORECASE):
                 return True
         return False
 
-    def log_pattern_attempt(self, label, pattern, result, context=None):
+    def log_pattern_attempt(self, label, pattern, result, context=None) -> None:
         """Log each pattern attempt for self-learning."""
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -1294,7 +1339,7 @@ class ContextCoordinator:
         prompt_user_for_button=None,
         confirm_button_callback=None,
         learning_mode=True
-    ):
+    ) -> Tuple[Optional[Dict[str, Any]], int]:
         """
         Advanced button selection: combines memory, DOM, semantic similarity, adaptive threshold, and feedback.
         Now supports confirmation, exclusion of rejected buttons, and learning mode (auto-apply corrections from log/DB).
@@ -1369,7 +1414,7 @@ class ContextCoordinator:
         )
         button_features = page.locator(BUTTON_SELECTORS)
 
-        def scan_btn(btn, i):
+        def scan_btn(btn, i) -> None:
             try:
                 # Robust label extraction
                 label = btn.inner_text() or ""
@@ -1458,7 +1503,7 @@ class ContextCoordinator:
         log_error(f"[red][ERROR] No suitable button could be clicked for '{context.get('toggle_name', '')}'.[/red]")
         return None, None
 
-    def _log_confirmed_button_for_learning(self, button, contest_title, context):
+    def _log_confirmed_button_for_learning(self, button, contest_title, context) -> None:
         """
         Log confirmed button for learning mode (auto-apply next time).
         """
@@ -1477,7 +1522,7 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _get_confirmed_button_from_log(self, contest_title, keywords, context):
+    def _get_confirmed_button_from_log(self, contest_title, keywords, context) -> Optional[Dict[str, Any]]:
         """
         Retrieve a previously confirmed button from the learning log.
         """
@@ -1501,7 +1546,7 @@ class ContextCoordinator:
                     }
         return None
 
-    def _log_button_memory(self, button, contest_title, result):
+    def _log_button_memory(self, button, contest_title, result) -> None:
         """
         Log button selection attempts for future ML or rule improvements.
         """
@@ -1520,7 +1565,7 @@ class ContextCoordinator:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     # --- Table structure learning/lookup ---
-    def get_table_structure(self, contest_title, context=None, learning_mode=True):
+    def get_table_structure(self, contest_title, context=None, learning_mode=True) -> Optional[list[str]]:
         """
         Retrieve or learn the expected table structure for a contest.
         """
@@ -1540,7 +1585,7 @@ class ContextCoordinator:
         # 2. Fallback: return None (caller should trigger extraction and confirmation)
         return None
 
-    def log_table_structure(self, contest_title, headers, context=None):
+    def log_table_structure(self, contest_title, headers, context=None) -> None:
         """
         Log confirmed table structure for learning mode.
         """
@@ -1556,7 +1601,7 @@ class ContextCoordinator:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     # --- CLI for reviewing/editing corrections and feedback ---
-    def review_and_edit_corrections(self, field_type="buttons"):
+    def review_and_edit_corrections(self, field_type="buttons") -> None:
         """
         Launch the manual_correction_bot CLI for reviewing/editing corrections and feedback.
         """
@@ -1564,23 +1609,20 @@ class ContextCoordinator:
         subprocess.run(["python", script_path, "--fields", field_type, "--feedback", "--enhanced"], check=True, cwd=PROJECT_ROOT)
 
     # --- Learning mode: auto-apply corrections from log/database ---
-    def enable_learning_mode(self):
+    def enable_learning_mode(self) -> None:
         """
         Enable learning mode for auto-applying corrections from logs/database.
         """
         self.learning_mode = True
 
-    def disable_learning_mode(self):
+    def disable_learning_mode(self) -> None:
         """
         Disable learning mode.
         """
         self.learning_mode = False
 
     def get_panel(self, contest_title) -> dict:
-        """
-        Retrieve the panel for a given contest title.
-        """
-        if not isinstance(self.organized, dict):
+        if not self.organized:
             return None
         panels = self.organized.get("panels", {})
         if not isinstance(panels, dict):
@@ -1588,10 +1630,7 @@ class ContextCoordinator:
         return clean_for_json(panels.get(contest_title))
 
     def get_tables(self, contest_title) -> list[dict]:
-        """
-        Retrieve tables for a given contest title.
-        """
-        if not isinstance(self.organized, dict):
+        if not self.organized:
             return []
         tables = self.organized.get("tables", {})
         if not isinstance(tables, dict):
@@ -1661,7 +1700,7 @@ class ContextCoordinator:
 
     # --- Integrity & Anomaly Checks ---
 
-    def _log_get_contests_access(self, filters):
+    def _log_get_contests_access(self, filters) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_contests",
@@ -1672,7 +1711,7 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_buttons_access(self, contest_title, keyword, url):
+    def _log_get_buttons_access(self, contest_title, keyword, url) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_buttons",
@@ -1686,7 +1725,7 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_best_button_access(self, contest_title, keywords, class_hint, url):
+    def _log_get_best_button_access(self, contest_title, keywords, class_hint, url) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_best_button",
@@ -1700,7 +1739,7 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_panel_access(self, contest_title):
+    def _log_get_panel_access(self, contest_title) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_panel",
@@ -1711,7 +1750,7 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_tables_access(self, contest_title):
+    def _log_get_tables_access(self, contest_title) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_tables",
@@ -1722,7 +1761,7 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_candidates_access(self, contest_title):
+    def _log_get_candidates_access(self, contest_title) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_candidates",
@@ -1733,7 +1772,7 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_precincts_access(self, state, county):
+    def _log_get_precincts_access(self, state, county) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_precincts",
@@ -1745,7 +1784,7 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_states_access(self):
+    def _log_get_states_access(self) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_states",
@@ -1755,7 +1794,7 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_election_types_access(self):
+    def _log_get_election_types_access(self) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_election_types",
@@ -1765,7 +1804,7 @@ class ContextCoordinator:
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_years_access(self):
+    def _log_get_years_access(self) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_years",
@@ -1774,116 +1813,26 @@ class ContextCoordinator:
         log_path = os.path.join(LOG_DIR, "get_years_access_log.jsonl")
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
-
-    # --- Reporting ---
-
-    def report_summary(self):
-        """
-        Print a summary of contests, entities, locations, and integrity issues.
-        """  
-        contests = self.get_contests()
-        log_info(f"[bold cyan][COORDINATOR] {len(contests)} contests loaded[/bold cyan]")
-        all_entities = set()
-        all_labels = set()
-        for c in contests:
-            if not isinstance(c, dict):
-                continue
-            for ent, label in c.get("entities", []):
-                all_entities.add(ent)
-                all_labels.add(label)
-        log_info(f"Unique entity labels: {sorted(all_labels)}")
-        log_info(f"Unique entities: {sorted(all_entities)}")
-        # Show states and years
-        log_info(f"States: {sorted({c.get('state') for c in contests if c.get('state')})}")
-        log_info(f"Years: {sorted({c.get('year') for c in contests if c.get('year')})}")
-        # Integrity issues
-        issues = self.validate_and_check_integrity()
-        if issues["integrity_issues"]:
-            log_warning(f"[yellow]Integrity issues:[/yellow] {issues['integrity_issues']}")
-        if issues["anomalies"]:
-            log_error(f"[red]Anomalies detected:[/red] {issues['anomalies']}")
-     
+            
     # --- Dynamic Data for Downstream Consumers ---
-
     def get_for_selector(self) -> dict:
-        """
-        Return contests, buttons, and patterns for contest_selector.
-        """      
-        noisy_patterns = list(NOISY_LABEL_PATTERNS)
-        return clean_for_json({
-            "contests": self.get_contests(),
-            "buttons": self.get_buttons(),
-            "noisy_patterns": noisy_patterns
-        })
+        return self.organizer.get_for_selector()
 
     def get_for_table_builder(self) -> dict:
-        """
-        Return precinct headers and table tags for table_builder.
-        """        
-        precinct_headers = list(PRECINCT_HEADER_PATTERNS)
-        table_tags = list(TABLE_TAGS)
-        return clean_for_json({
-            "precinct_headers": precinct_headers,
-            "table_tags": table_tags
-        })
+        return self.organizer.get_for_table_builder()
 
     def get_for_html_handler(self) -> dict:
-        """
-        Return panel tags, contest panel tags, and selectors for html_handler.
-        """
-        panel_tags = list(PANEL_TAGS)
-        contest_panel_tags = list(CONTEST_PANEL_TAGS)
-        selectors = list(SELECTORS)
+        return self.organizer.get_for_html_handler()
 
-        all_selectors = selectors.get("all_selectors", [])
-        return clean_for_json({
-            "panel_tags": panel_tags,
-            "contest_panel_tags": contest_panel_tags,
-            "all_selectors": all_selectors
-        })
+    def get_for_state_router(self) -> dict:
+        return self.organizer.get_for_state_router()
 
-    def get_for_state_router(self) -> list[str]:
-        """
-        Return state_module_map for state_router.
-        """       
-        return list(STATE_MODULE_MAP)
-
-    def correct_and_update_contest(self, contest_id, correction_data):
-        """
-        Update a contest in the DB and then re-organize context.
-        """
-        from ..utils.db_utils import update_contest_in_db
-
-        # 1. Update DB
-        update_contest_in_db({"id": contest_id, **correction_data})
-
-        # 2. Re-organize context
-        self.organized = None
-        # Optionally, re-run organize_and_enrich if you want to refresh immediately:
-        self.organize_and_enrich(self.last_raw_context)
-
-        # 3. Log correction
-        self.log_field_selection(
-            field_type="contest",
-            field_name="correction",
-            extracted_value=correction_data,
-            method="manual",
-            score=1.0,
-            result="manual_pass",
-            context={"contest_id": contest_id},
-            user_feedback=None
-        )       
-
-    def validate_and_check_integrity(self, expected_year=None):
-        """
-        Run all integrity checks and anomaly detection on contest data.
-        Returns a dict with issues, anomalies, clusters, and advanced validation.
-        """  
+    # --- Integrity & Anomaly Checks ---
+    def validate_and_check_integrity(self, expected_year=None) -> dict:
         contests = self.get_contests()
         integrity_issues = election_integrity_checks(contests)
         advanced_issues = advanced_cross_field_validation(contests)
         anomalies, clusters = detect_anomalies_with_ml(contests)
-        # Optionally plot clusters and anomalies
         features = []
         le_state = LabelEncoder()
         le_county = LabelEncoder()
@@ -1902,7 +1851,6 @@ class ContextCoordinator:
             ])
         X = np.array(features)
         print_integrity_summary(contests, expected_year, X=X)
-        # Cross-check with expected year
         date_anomalies = []
         if expected_year:
             for c in contests:
@@ -1910,7 +1858,7 @@ class ContextCoordinator:
                     continue
                 dates = c.get("dates", [])
                 if not any(str(expected_year) in d for d in dates):
-                    date_anomalies.append(c)                          
+                    date_anomalies.append(c)
         return {
             "integrity_issues": integrity_issues,
             "advanced_issues": advanced_issues,
@@ -1918,7 +1866,7 @@ class ContextCoordinator:
             "clusters": clusters.tolist() if hasattr(clusters, "tolist") else clusters,
             "date_anomalies": date_anomalies
         }
-
+        
 # --- CLI Entrypoint ---
 if __name__ == "__main__":
     import argparse
