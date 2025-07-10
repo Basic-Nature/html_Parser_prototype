@@ -30,11 +30,11 @@ from ..bots.librarian import (
     TABLE_TAGS,
     PANEL_TAGS,
     STATE_TAGS,
-    BUTTON_TAGS,  
+    BUTTON_TAGS, atomic_write_json 
 )
 from sklearn.preprocessing import LabelEncoder
 import subprocess
-from ..config import PROJECT_ROOT, LOG_DIR
+from ..config import PROJECT_ROOT, LOG_DIR, CONTEXT_LIBRARY_PATH
 import threading
 
 from ..utils.spacy_utils import (
@@ -491,6 +491,42 @@ class ContextCoordinator(object):
         finally:
             self.alert_monitor_thread = None
 
+    def append_to_context_library(self, organized, path=None, merge_lists=True, deduplicate=True) -> bool:
+        """
+        Append or update the organized context into the context library JSON file.
+        """
+        try:
+            return self.organizer.append_to_context_library(
+                organized,
+                path=path,
+                merge_lists=merge_lists,
+                deduplicate=deduplicate
+            )
+        except Exception as e:
+            log_error(f"[append_to_context_library] Failed: {e}", exc_info=True)
+            return False
+            
+    def repair_contests_with_context(self, contests, context_library=None, db_service=None, parent_context=None, embedding_model=None, logs=None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Use ContextOrganizer.suggest_and_apply_fixes to robustly fill missing fields in contests.
+        Returns (fixed_contests, fix_log).
+        """
+        context_library = context_library or (self.organizer.library if hasattr(self.organizer, "library") else {})
+        embedding_model = embedding_model or self._semantic_model
+        try:
+            return ContextOrganizer.suggest_and_apply_fixes(
+                contests,
+                context_library,
+                logs=logs,
+                min_confidence=0.85,
+                embedding_model=embedding_model,
+                db_service=db_service or self.data_service,
+                parent_context=parent_context
+            )
+        except Exception as e:
+            log_error(f"[repair_contests_with_context] Failed: {e}", exc_info=True)
+            return contests, [{"error": str(e)}]
+        
     # --- Monitoring, Reporting, and CLI ---            
     def start_alert_monitoring(self, background=True) -> Optional[threading.Thread]:
         """
@@ -558,6 +594,173 @@ class ContextCoordinator(object):
     def _safe_get(self, dct, key, default=None) -> Optional[Any]:
         """Safely get a key from a dict, returning default if not a dict or key missing."""
         return dct.get(key, default) if isinstance(dct, dict) else default
+
+    def update_db_with_context(
+        self,
+        library: dict,
+        db_path: str = None,
+        enhanced: bool = True,
+        update_tables: bool = True,
+        update_contests: bool = True,
+        update_panels: bool = True,
+        update_buttons: bool = True,
+        update_candidates: bool = True,
+        update_parties: bool = True,
+        update_offices: bool = True,
+        update_districts: bool = True,
+        update_results: bool = True,
+        update_entities: bool = True,
+        update_table_structures: bool = True,
+        update_batch_metadata: bool = True,
+        update_alerts: bool = True,
+        update_embeddings: bool = True,
+        log_success: bool = True
+    ) -> None:
+        """
+        Robustly update the database with the provided context library.
+        Supports batch updates for contests, table structures, panels, buttons, candidates, parties, offices, districts, results, entities, batch metadata, alerts, and embeddings.
+        Uses ElectionDataService for all DB operations.
+        """
+        import os
+
+        # Determine DB path if not provided
+        if not db_path:
+            db_path = CONTEXT_LIBRARY_PATH
+        db_path = os.path.abspath(db_path)
+
+        try:
+            # --- Update contests ---
+            if update_contests and "contests" in library:
+                for contest in library["contests"]:
+                    try:
+                        self.data_service.upsert_contest(contest)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert contest: {contest.get('title', '')} - {e}")
+
+            # --- Update table structures (legacy and ML-inferred) ---
+            if update_tables and "tables" in library:
+                for contest_title, tables in library["tables"].items():
+                    for tbl in tables:
+                        headers = tbl.get("headers") or tbl.get("columns") or []
+                        context = tbl.get("context") or {}
+                        ml_confidence = tbl.get("ml_confidence")
+                        confirmed_by_user = tbl.get("confirmed_by_user", False)
+                        try:
+                            self.save_table_structure_to_db(
+                                contest_title, headers, context, ml_confidence, confirmed_by_user
+                            )
+                        except Exception as e:
+                            log_error(f"[update_db_with_context] Failed to save table structure for {contest_title}: {e}")
+
+            # --- Update panels ---
+            if update_panels and "panels" in library:
+                for contest_title, panel in library["panels"].items():
+                    try:
+                        self.data_service.upsert_panel(contest_title, panel)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert panel for {contest_title}: {e}")
+
+            # --- Update buttons ---
+            if update_buttons and "buttons" in library:
+                for contest_title, buttons in library["buttons"].items():
+                    for btn in buttons:
+                        try:
+                            self.data_service.upsert_button(contest_title, btn)
+                        except Exception as e:
+                            log_error(f"[update_db_with_context] Failed to upsert button for {contest_title}: {e}")
+
+            # --- Update candidates ---
+            if update_candidates and "candidates" in library:
+                for candidate in library["candidates"]:
+                    try:
+                        self.data_service.upsert_candidate(candidate)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert candidate: {candidate.get('name', '')} - {e}")
+
+            # --- Update parties ---
+            if update_parties and "parties" in library:
+                for party in library["parties"]:
+                    try:
+                        self.data_service.upsert_party(party)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert party: {party.get('name', '')} - {e}")
+
+            # --- Update offices ---
+            if update_offices and "offices" in library:
+                for office in library["offices"]:
+                    try:
+                        self.data_service.upsert_office(office)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert office: {office.get('name', '')} - {e}")
+
+            # --- Update districts ---
+            if update_districts and "districts" in library:
+                for district in library["districts"]:
+                    try:
+                        self.data_service.upsert_district(district)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert district: {district.get('name', '')} - {e}")
+
+            # --- Update results ---
+            if update_results and "results" in library:
+                for result in library["results"]:
+                    try:
+                        self.data_service.upsert_result(result)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert result: {result.get('id', '')} - {e}")
+
+            # --- Update entities (generic/misc entities) ---
+            if update_entities and "entities" in library:
+                for entity in library["entities"]:
+                    try:
+                        self.data_service.upsert_entity(entity)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert entity: {entity.get('value', '')} - {e}")
+
+            # --- Update table_structures (ML-inferred/user-confirmed) ---
+            if update_table_structures and "table_structures" in library:
+                for ts in library["table_structures"]:
+                    try:
+                        self.data_service.upsert_table_structure(ts)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert table_structure: {ts.get('contest_title', '')} - {e}")
+
+            # --- Update batch_metadata ---
+            if update_batch_metadata and "batch_metadata" in library:
+                for batch in library["batch_metadata"]:
+                    try:
+                        self.data_service.upsert_batch_metadata(batch)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert batch_metadata: {batch.get('batch_id', '')} - {e}")
+
+            # --- Update alerts ---
+            if update_alerts and "alerts" in library:
+                for alert in library["alerts"]:
+                    try:
+                        self.data_service.upsert_alert(alert)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert alert: {alert.get('id', '')} - {e}")
+
+            # --- Update embeddings (ML segment cache) ---
+            if update_embeddings and "embeddings" in library:
+                for emb in library["embeddings"]:
+                    try:
+                        self.data_service.upsert_embedding(emb)
+                    except Exception as e:
+                        log_error(f"[update_db_with_context] Failed to upsert embedding: {emb.get('segment_hash', '')} - {e}")
+
+            # --- Save the full library as a backup/atomic write ---
+            if enhanced:
+                try:
+                    atomic_write_json(library, db_path)
+                except Exception as e:
+                    log_error(f"[update_db_with_context] Failed to atomic write JSON: {e}")
+
+            if log_success:
+                log_info(f"[update_db_with_context] Database updated at {db_path}")
+
+        except Exception as e:
+            log_error(f"[update_db_with_context] Failed to update DB: {e}")
             
     def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False) -> Dict[str, Any]:
         from .context_organizer import save_table_structure_to_db
@@ -576,6 +779,116 @@ class ContextCoordinator(object):
         self.organized = result["organized"]
         self._enrich_contests_with_nlp()
         return self.organized
+
+    def organize_context_advanced(self, raw_context, **kwargs) -> Dict[str, Any]:
+        """
+        Call ContextOrganizer.organize_context with all advanced options.
+        Returns the full result dict (including log, summary, error).
+        """
+        try:
+            result = self.organizer.organize_context(raw_context, **kwargs)
+            # Optionally update self.organized if desired:
+            if isinstance(result, dict) and "organized" in result:
+                self.organized = result["organized"]
+            return result
+        except Exception as e:
+            log_error(f"[organize_context_advanced] Failed: {e}", exc_info=True)
+            return {"error": str(e)}
+
+    def auto_label_segment(
+        self,
+        segment,
+        context_library=None,
+        context_cache=None,
+        pattern_kb=None,
+        model=None,
+        ml_threshold=0.7
+    ):
+        """
+        ML-driven DOM segment labeling using all available context, cache, DOM grouping, and heuristics.
+        Uses context library, DOM parts, pattern KB, and semantic model for robust labeling.
+        """
+        # Use coordinator's own resources if not provided
+        context_library = context_library or getattr(self, "library", None)
+        context_cache = context_cache or getattr(self, "context_cache", None)
+        pattern_kb = pattern_kb or getattr(self, "pattern_kb", None)
+        model = model or getattr(self, "_semantic_model", None)
+
+        # 1. Try cache/context library for a direct match
+        segment_hash = segment.get("segment_hash")
+        if context_library and segment_hash:
+            cached_segments = context_library.get("cached_segments", [])
+            for entry in cached_segments:
+                if entry.get("segment_hash") == segment_hash and entry.get("ml_label"):
+                    return entry["ml_label"]
+
+        # 2. Try pattern KB for embedding similarity
+        if pattern_kb and model and "html" in segment:
+            from ..utils.html_scanner import get_segment_embedding
+            seg_emb = get_segment_embedding(model, segment)
+            if seg_emb is not None:
+                best_score = 0
+                best_label = None
+                for pat in pattern_kb:
+                    pat_emb = pat.get("embedding")
+                    if pat_emb is not None:
+                        # Cosine similarity
+                        score = float(np.dot(seg_emb, pat_emb) / (np.linalg.norm(seg_emb) * np.linalg.norm(pat_emb)))
+                        if score > best_score and score >= ml_threshold:
+                            best_score = score
+                            best_label = pat.get("label")
+                if best_label:
+                    return best_label
+
+        # 3. Try DOM grouping by label
+        dom_parts = self.get_dom_parts()
+        if dom_parts and "all_nodes" in dom_parts:
+            all_nodes = dom_parts["all_nodes"]
+            # Use the same normalization/hash as above
+            for node in all_nodes:
+                if node.get("html") == segment.get("html") and node.get("ml_label") and node.get("ml_confidence", 0) >= ml_threshold:
+                    return node["ml_label"]
+            # Try grouping by label field
+            grouped = self.group_dom_nodes_by_label(label_field="ml_label")
+            for label, nodes in grouped.items():
+                for node in nodes:
+                    if node.get("html") == segment.get("html"):
+                        return label
+
+        # 4. Try merge_and_rank_candidates if segment is a candidate-like dict
+        if "label" in segment or "selector" in segment:
+            # Use merge_and_rank_candidates for robust scoring
+            candidates = [segment]
+            ranked = merge_and_rank_candidates([], candidates, {}, [segment.get("label", "")], model)
+            if ranked and ranked[0].get("combined_score", 0) >= ml_threshold:
+                return ranked[0]["label"]
+
+        # 5. Fallback: use extract_field for heuristics
+        if "html" in segment:
+            label = self.extract_field("panel", text=segment["html"])
+            if label:
+                return label
+
+        # 6. Final fallback: unknown
+        return "unknown"
+
+    def group_dom_nodes_by_label(self, label_field="ml_label") -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Group DOM nodes by a given label field using ContextOrganizer utility.
+        Returns a dict mapping label values to lists of nodes.
+        """
+        if not self.organized or "dom_parts" not in self.organized:
+            log_warning("[group_dom_nodes_by_label] No organized DOM parts.")
+            return {}
+        nodes = self.organized["dom_parts"].get("all_nodes", [])
+        if not nodes:
+            log_warning("[group_dom_nodes_by_label] No DOM nodes found.")
+            return {}
+        try:
+            return self.organizer.group_nodes_by_label(nodes, label_field=label_field)
+        except Exception as e:
+            log_error(f"[group_dom_nodes_by_label] Failed: {e}", exc_info=True)
+            return {}
 
     # --- Feedback, Learning, and Correction ---
     def submit_user_feedback(self, field_type, field_name, correct_value, context) -> Dict[str, Any]:
@@ -597,6 +910,32 @@ class ContextCoordinator(object):
             context={"contest_id": contest_id},
             user_feedback=None
         )
+
+    def print_contest_summary(self) -> None:
+        """
+        Print a summary table of contests by state/county using ContextOrganizer.
+        """
+        if not self.organized or "contests" not in self.organized:
+            log_warning("[print_contest_summary] No organized contests to summarize.")
+            return
+        contests = self.organized["contests"]
+        try:
+            self.organizer.print_contest_summary(contests)
+        except Exception as e:
+            log_error(f"[print_contest_summary] Failed: {e}", exc_info=True)
+
+    def plot_contest_distribution(self) -> None:
+        """
+        Plot contest count by state/county using ContextOrganizer.
+        """
+        if not self.organized or "contests" not in self.organized:
+            log_warning("[plot_contest_distribution] No organized contests to plot.")
+            return
+        contests = self.organized["contests"]
+        try:
+            self.organizer.plot_contest_distribution(contests)
+        except Exception as e:
+            log_error(f"[plot_contest_distribution] Failed: {e}", exc_info=True)
 
     def get_known_state_to_county_map(self) -> List[str]:
         """
@@ -630,6 +969,67 @@ class ContextCoordinator(object):
         for county_list in KNOWN_STATE_TO_COUNTY_MAP.values():
             counties.extend(county_list)
         return counties
+
+    def get_dom_parts(self) -> Dict[str, Any]:
+        """
+        Return organized DOM parts (head, body, wrappers, tables, buttons, clickable, etc.).
+        """
+        if not self.organized or "dom_parts" not in self.organized:
+            log_warning("[get_dom_parts] No organized DOM parts.")
+            return {}
+        return self.organized["dom_parts"]
+
+    def get_contest_groups(self) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Return contest groups by keyword (from ContextOrganizer).
+        """
+        if not self.organized or "contest_groups" not in self.organized:
+            log_warning("[get_contest_groups] No contest groups found.")
+            return {}
+        return self.organized["contest_groups"]
+
+    def get_panel_groups(self) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Return panel groups by keyword (from ContextOrganizer).
+        """
+        if not self.organized or "panel_groups" not in self.organized:
+            log_warning("[get_panel_groups] No panel groups found.")
+            return {}
+        return self.organized["panel_groups"]
+
+    def get_button_groups(self) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Return button groups by keyword (from ContextOrganizer).
+        """
+        if not self.organized or "button_groups" not in self.organized:
+            log_warning("[get_button_groups] No button groups found.")
+            return {}
+        return self.organized["button_groups"]
+
+    def get_table_groups(self) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Return table groups by keyword (from ContextOrganizer).
+        """
+        if not self.organized or "table_groups" not in self.organized:
+            log_warning("[get_table_groups] No table groups found.")
+            return {}
+        return self.organized["table_groups"]
+
+    def get_relationships(self) -> Dict[str, Any]:
+        """
+        Return party/candidate/district/state/county relationships.
+        """
+        if not self.organized:
+            log_warning("[get_relationships] No organized context.")
+            return {}
+        return {
+            "party_to_candidates": self.organized.get("party_to_candidates", {}),
+            "candidate_to_party": self.organized.get("candidate_to_party", {}),
+            "candidate_to_district": self.organized.get("candidate_to_district", {}),
+            "district_to_candidates": self.organized.get("district_to_candidates", {}),
+            "state_to_counties": self.organized.get("state_to_counties", {}),
+            "county_to_state": self.organized.get("county_to_state", {}),
+        }
 
     def _enrich_contests_with_nlp(self) -> None:
         """
@@ -691,455 +1091,255 @@ class ContextCoordinator(object):
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
-    
-    def extract_contest_title(self, contest) -> Optional[str]:
-        """
-        Extract the contest title using ML/NLP/manual methods.
-        Log the extraction attempt and result.
-        """
-        if not isinstance(contest, dict) or "title" not in contest:
-            return None
-        extracted_value = contest.get("title")
-        score = 1.0 if extracted_value else 0.0
-        method = "manual" if extracted_value else "undefined"
-        result = "pass" if extracted_value else "fail"
-        user_feedback = None
 
-        self.log_field_selection(
-            field_type="contest",
-            field_name="contest_title",
-            extracted_value=extracted_value,
-            method=method,
-            score=score,
-            result=result,
-            context=contest,
-            user_feedback=user_feedback,
-            log_path="field_selection_log.jsonl"
-        )
-        return extracted_value
-
-    def extract_candidate(self, contest) -> List[str]:
+    def extract_entities(self, text, labels=None, first_only=False):
         """
-        Extract candidate names from contest using ML/NLP/manual methods.
-        Log the extraction attempt and result.
+        Unified NLP entity extraction using spaCy.
+        - text: input string
+        - labels: set or list of entity labels to filter (e.g., {"ORG", "PERSON"})
+        - first_only: if True, return only the first match (else all)
+        Returns: list of (entity, label) or a single (entity, label) if first_only
         """
-        if not isinstance(contest, dict) or "entities" not in contest:
-            return []
-        # Use entities if available
-        candidates = []
-        entities = contest.get("entities", [])
-        for ent, label in entities:
-            if label in {"PERSON", "CANDIDATE"}:
-                candidates.append(ent)
-        extracted_value = candidates
-        score = 1.0 if candidates else 0.0
-        method = "nlp"
-        result = "pass" if candidates else "fail"
-        user_feedback = None
+        try:
+            if not text or not isinstance(text, str):
+                return [] if not first_only else None
+            from ..utils.spacy_utils import extract_entities
+            entities = extract_entities(text)
+            if labels:
+                labels_set = set(labels)
+                filtered = [(ent, label) for ent, label in entities if label in labels_set]
+            else:
+                filtered = entities
+            if first_only:
+                return filtered[0] if filtered else None
+            return filtered
+        except Exception as e:
+            log_error(f"[ContextCoordinator.extract_entities] Error: {e}")
+            return [] if not first_only else None
 
-        self.log_field_selection(
-            field_type="candidate",
-            field_name="candidate",
-            extracted_value=extracted_value,
-            method=method,
-            score=score,
-            result=result,
-            context=contest,
-            user_feedback=user_feedback,
-            log_path="field_selection_log.jsonl"
-        )
-        return candidates
-
-    def extract_party(self, contest) -> Optional[str]:
+    def extract_locations(self, text, labels=None, first_only=False):
         """
-        Extract party using regex, spaCy NER, and fuzzy matching with PARTY_KEYWORDS.
-        Log the extraction attempt and result.
+        Unified location extraction using spaCy.
+        - text: input string
+        - labels: set or list of entity labels to filter (e.g., {"GPE", "LOC"})
+        - first_only: if True, return only the first match (else all)
+        Returns: list of (location, label) or a single (location, label) if first_only
         """
-        if not isinstance(contest, dict) or "title" not in contest:
-            return None
-        title = contest.get("title", "")
+        try:
+            if not text or not isinstance(text, str):
+                return [] if not first_only else None
+            from ..utils.spacy_utils import extract_locations
+            locations = extract_locations(text)
+            if labels:
+                labels_set = set(labels)
+                filtered = [(loc, label) for loc, label in locations if label in labels_set]
+            else:
+                filtered = locations
+            if first_only:
+                return filtered[0] if filtered else None
+            return filtered
+        except Exception as e:
+            log_error(f"[ContextCoordinator.extract_locations] Error: {e}")
+            return [] if not first_only else None
 
+    def extract_dates(self, text, labels=None, first_only=False):
+        """
+        Unified date extraction using spaCy.
+        - text: input string
+        - labels: set or list of entity labels to filter (e.g., {"DATE"})
+        - first_only: if True, return only the first match (else all)
+        Returns: list of (date, label) or a single (date, label) if first_only
+        """
+        try:
+            if not text or not isinstance(text, str):
+                return [] if not first_only else None
+            from ..utils.spacy_utils import extract_dates
+            dates = extract_dates(text)
+            if labels:
+                labels_set = set(labels)
+                filtered = [(date, label) for date, label in dates if label in labels_set]
+            else:
+                filtered = dates
+            if first_only:
+                return filtered[0] if filtered else None
+            return filtered
+        except Exception as e:
+            log_error(f"[ContextCoordinator.extract_dates] Error: {e}")
+            return [] if not first_only else None
+
+    def extract_field(self, field_type, text=None, context=None, extra=None):
+        """
+        Unified extraction for all field types (party, panel, tables, precincts, states, election_types, years, buttons).
+        - field_type: str, one of 'party', 'panel', 'tables', 'precincts', 'states', 'election_types', 'years', 'buttons'
+        - text: main string to extract from (or list of strings for some types)
+        - context: dict, optional, for lookups
+        - extra: dict, optional, for additional params (e.g., state/county for precincts)
+        Returns: extracted value(s)
+        """
+        import re
+        from fuzzywuzzy import process
+        context = context or {}
+        extra = extra or {}
+
+        # --- Patterns and lookups ---
         party_pattern = "|".join([re.escape(k) for k in PARTY_KEYWORDS])
+        panel_pattern = "|".join([re.escape(k) for k in PANEL_TAGS])
+        table_pattern = "|".join([re.escape(k) for k in TABLE_TAGS])
+        location_pattern = "|".join([re.escape(k) for k in LOCATION_KEYWORDS])
+        state_pattern = "|".join([re.escape(k) for k in STATE_TAGS])
+        button_pattern = "|".join([re.escape(k) for k in BUTTON_TAGS])
+        election_type_pattern = r"(primary|general|special|runoff|municipal|presidential|senate|mayoral|school board|" + location_pattern + ")"
 
-        def regex_party(text) -> Optional[Tuple[str, float, str, str]]:
+        # --- Extraction strategies ---
+        def regex_party(text):
             match = re.search(rf"({party_pattern})", text, re.IGNORECASE)
             if match:
-                return (match.group(1), 0.9, "regex", "pass")
+                return (match.group(1), None, 0.9, "regex", "pass")
             return None
 
-        def nlp_party(text) -> Optional[Tuple[str, float, str, str]]:
-            entities = extract_entities(text)
+        def nlp_party(text):
+            entities = self.extract_entities(text, labels={"ORG", "NORP"})
             known_parties = PARTY_KEYWORDS
             for ent, label in entities:
-                if label in {"ORG", "NORP"}:
-                    best = process.extractOne(ent, known_parties)
-                    if best and best[1] > 80:
-                        return (best[0], best[1] / 100.0, "spacy_ner_fuzzy", "pass")
+                best = process.extractOne(ent, known_parties)
+                if best and best[1] > 80:
+                    return (best[0], label, best[1] / 100.0, "spacy_ner_fuzzy", "pass")
             return None
 
-        def fuzzy_party(text) -> Optional[Tuple[str, float, str, str]]:
+        def fuzzy_party(text):
             known_parties = PARTY_KEYWORDS
             best = process.extractOne(text, known_parties)
             if best and best[1] > 80:
-                return (best[0], best[1] / 100.0, "fuzzy", "pass")
+                return (best[0], None, best[1] / 100.0, "fuzzy", "pass")
             return None
 
-        value, score, method, result, used_method = self._extract_with_strategies(
-            title,
-            [("regex", regex_party), ("nlp", nlp_party), ("fuzzy", fuzzy_party)]
-        )
-
-        self.log_field_selection(
-            field_type="party",
-            field_name="party",
-            extracted_value=value,
-            method=used_method,
-            score=score,
-            result=result,
-            context=contest,
-            user_feedback=None,
-            log_path="field_selection_log.jsonl"
-        )
-        return value
-    
-    def extract_panel(self, contest_title) -> Optional[Tuple[str, float, str, str]]:
-        """
-        Extract the panel for a given contest title using regex, spaCy NER, and direct lookup.
-        Log the extraction attempt and result.
-        """
-        panel_keywords = list(PANEL_TAGS)
-        panel_pattern = "|".join([re.escape(k) for k in panel_keywords])
-
-        def regex_panel(text) -> Optional[Tuple[str, float, str, str]]:
+        def regex_panel(text):
             match = re.search(rf"({panel_pattern})", text, re.IGNORECASE)
             if match:
-                return (match.group(1), 0.9, "regex", "pass")
+                return (match.group(1), None, 0.9, "regex", "pass")
             return None
 
-        def nlp_panel(text) -> Optional[Tuple[str, float, str, str]]:
-            entities = extract_entities(text)
+        def nlp_panel(text):
+            entities = self.extract_entities(text, labels={"ORG", "NORP"})
             for ent, label in entities:
-                if label in {"ORG", "NORP"}:
-                    return (ent, 0.85, "spacy_ner", "pass")
+                return (ent, label, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(text) -> Optional[Tuple[List[str], float, str, str]]:
+        def direct_panel(text):
             panel = self.get_panel(text)
             if panel:
-                return (panel, 1.0, "direct_lookup", "pass")
+                return (panel, None, 1.0, "direct_lookup", "pass")
             return None
-
-        value, score, method, result, used_method = self._extract_with_strategies(
-            contest_title or "",
-            [("regex", regex_panel), ("nlp", nlp_panel), ("direct_lookup", direct_lookup)]
-        )
-
-        self.log_field_selection(
-            field_type="panel",
-            field_name="panel",
-            extracted_value=value,
-            method=used_method,
-            score=score,
-            result=result,
-            context={"contest_title": contest_title},
-            user_feedback=None,
-            log_path="field_selection_log.jsonl"
-        )
-        return value
-
-    def extract_tables(self, contest_title) -> List[str]:
-        """
-        Extract tables for a given contest title using regex, spaCy NER, and direct lookup.
-        Log the extraction attempt and result.
-        """
-        table_keywords = list(TABLE_TAGS)
-        table_pattern = "|".join([re.escape(k) for k in table_keywords])
 
         def regex_table(text):
             match = re.search(rf"({table_pattern})", text, re.IGNORECASE)
             if match:
-                return ([match.group(1)], 0.9, "regex", "pass")
+                return ([match.group(1)], None, 0.9, "regex", "pass")
             return None
 
         def nlp_table(text):
-            entities = extract_entities(text)
+            entities = self.extract_entities(text, labels={"ORG", "NORP"})
             for ent, label in entities:
-                if label in {"ORG", "NORP"}:
-                    return ([ent], 0.85, "spacy_ner", "pass")
+                return ([ent], label, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(text):
+        def direct_table(text):
             tables = self.get_tables(text)
             if tables:
-                return (tables, 1.0, "direct_lookup", "pass")
+                return (tables, None, 1.0, "direct_lookup", "pass")
             return None
 
-        value, score, method, result, used_method = self._extract_with_strategies(
-            contest_title or "",
-            [("regex", regex_table), ("nlp", nlp_table), ("direct_lookup", direct_lookup)]
-        )
-
-        self.log_field_selection(
-            field_type="tables",
-            field_name="tables",
-            extracted_value=value,
-            method=used_method,
-            score=score,
-            result=result,
-            context={"contest_title": contest_title},
-            user_feedback=None,
-            log_path="field_selection_log.jsonl"
-        )
-        return value
-
-    def extract_precincts(self, state=None, county=None) -> List[str]:
-        """
-        Extract known precincts for a state/county using regex, spaCy NER, and direct lookup.
-        Log the extraction attempt and result.
-        """
-        location_pattern = "|".join([re.escape(k) for k in LOCATION_KEYWORDS])
-
-        def regex_precinct(text) -> Optional[Tuple[List[str], float, str, str]]:
+        def regex_precinct(text):
             match = re.search(rf"({location_pattern})", text, re.IGNORECASE)
             if match:
-                return ([match.group(1)], 0.9, "regex", "pass")
+                return ([match.group(1)], None, 0.9, "regex", "pass")
             return None
 
-        def nlp_precinct(text) -> Optional[Tuple[List[str], float, str, str]]:
-            entities = extract_entities(text)
+        def nlp_precinct(text):
+            entities = self.extract_entities(text, labels={"ORG", "NORP"})
             for ent, label in entities:
-                if label in {"ORG", "NORP"}:
-                    return ([ent], 0.85, "spacy_ner", "pass")
+                return ([ent], label, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(_) -> Optional[Tuple[List[str], float, str, str]]:
+        def direct_precinct(_):
+            state = extra.get("state")
+            county = extra.get("county")
             precincts = self.get_precincts(state=state, county=county)
             if precincts:
-                return (precincts, 1.0, "direct_lookup", "pass")
+                return (precincts, None, 1.0, "direct_lookup", "pass")
             return None
 
-        value, score, method, result, used_method = self._extract_with_strategies(
-            state or county or "",
-            [("regex", regex_precinct), ("nlp", nlp_precinct), ("direct_lookup", direct_lookup)]
-        )
-
-        self.log_field_selection(
-            field_type="precincts",
-            field_name="precincts",
-            extracted_value=value,
-            method=used_method,
-            score=score,
-            result=result,
-            context={"state": state, "county": county},
-            user_feedback=None,
-            log_path="field_selection_log.jsonl"
-        )
-        return value
-
-    def extract_states(self) -> List[str]:
-        """
-        Extract all known states using regex, spaCy NER, and direct lookup.
-        Log the extraction attempt and result.
-        """
-        state_keywords = list(STATE_TAGS)
-        state_pattern = "|".join([re.escape(k) for k in state_keywords])
-        known_states = list(STATE_MODULE_MAP.keys())
-
-        def regex_state(text) -> Optional[Tuple[str, float, str, str]]:
+        def regex_state(text):
             match = re.search(rf"({state_pattern})", text, re.IGNORECASE)
             if match:
-                return (text, 0.9, "regex", "pass")
+                return (text, None, 0.9, "regex", "pass")
             return None
 
-        def nlp_state(text) -> Optional[Tuple[str, float, str, str]]:
-            entities = extract_entities(text)
+        def nlp_state(text):
+            entities = self.extract_entities(text, labels={"ORG", "NORP"})
             for ent, label in entities:
-                if label in {"ORG", "NORP"}:
-                    return (ent, 0.85, "spacy_ner", "pass")
+                return (ent, label, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(_) -> Optional[Tuple[List[str], float, str, str]]:
+        def direct_state(_):
             states = self.get_states()
             if states:
-                return (states, 1.0, "direct_lookup", "pass")
+                return (states, None, 1.0, "direct_lookup", "pass")
             return None
 
-        # Try all known states
-        found_states = []
-        for s in known_states:
-            value, score, method, result, used_method = self._extract_with_strategies(
-                s,
-                [("regex", regex_state), ("nlp", nlp_state)]
-            )
-            if value:
-                found_states.append(value)
-        if not found_states:
-            value, score, method, result, used_method = self._extract_with_strategies(
-                "", [("direct_lookup", direct_lookup)]
-            )
-            found_states = value if value else []
-        else:
-            score = 0.9
-            method = "regex"
-            result = "pass"
-            used_method = "regex"
-
-        self.log_field_selection(
-            field_type="states",
-            field_name="states",
-            extracted_value=found_states,
-            method=used_method,
-            score=score,
-            result=result,
-            context={},
-            user_feedback=None,
-            log_path="field_selection_log.jsonl"
-        )
-        return found_states
-
-    def extract_election_types(self) -> List[str]:
-        """
-        Extract all known election types using regex, spaCy NER, and direct lookup.
-        Log the extraction attempt and result.
-        """
-        known_types = list(ELECTION_TYPES)
-        location_pattern = "|".join([re.escape(k) for k in LOCATION_KEYWORDS])
-        election_type_pattern = r"(primary|general|special|runoff|municipal|presidential|senate|mayoral|school board|" + location_pattern + ")"
-
-        def regex_election_type(text) -> Optional[Tuple[str, float, str, str]]:
+        def regex_election_type(text):
             match = re.search(election_type_pattern, text, re.IGNORECASE)
             if match:
-                return (match.group(1), 0.9, "regex", "pass")
+                return (match.group(1), None, 0.9, "regex", "pass")
             return None
 
-        def nlp_election_type(text) -> Optional[Tuple[str, float, str, str]]:
-            entities = extract_entities(text)
+        def nlp_election_type(text):
+            entities = self.extract_entities(text, labels={"ORG", "NORP"})
             for ent, label in entities:
-                if label in {"ORG", "NORP"}:
-                    return (ent, 0.85, "spacy_ner", "pass")
+                return (ent, label, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(_) -> Optional[Tuple[List[str], float, str, str]]:
+        def direct_election_type(_):
             types = self.get_election_types()
             if types:
-                return (types, 1.0, "direct_lookup", "pass")
+                return (types, None, 1.0, "direct_lookup", "pass")
             return None
 
-        found_types = []
-        for t in known_types:
-            value, score, method, result, used_method = self._extract_with_strategies(
-                t,
-                [("regex", regex_election_type), ("nlp", nlp_election_type)]
-            )
-            if value:
-                found_types.append(value)
-        if not found_types:
-            value, score, method, result, used_method = self._extract_with_strategies(
-                "", [("direct_lookup", direct_lookup)]
-            )
-            found_types = value if value else []
-        else:
-            score = 0.9
-            method = "regex"
-            result = "pass"
-            used_method = "regex"
-
-        self.log_field_selection(
-            field_type="election_types",
-            field_name="election_types",
-            extracted_value=found_types,
-            method=used_method,
-            score=score,
-            result=result,
-            context={},
-            user_feedback=None,
-            log_path="field_selection_log.jsonl"
-        )
-        return found_types
-
-    def extract_years(self) -> List[str]:
-        """
-        Extract all years found in contests using regex, spaCy NER, and direct lookup.
-        Log the extraction attempt and result.
-        """
-        contests = self.get_contests()
-
-        def regex_year(text) -> Optional[Tuple[str, float, str, str]]:
+        def regex_year(text):
             match = re.search(r"\b(19|20)\d{2}\b", text)
             if match:
-                return (match.group(0), 0.9, "regex", "pass")
+                return (match.group(0), None, 0.9, "regex", "pass")
             return None
 
-        def nlp_year(text) -> Optional[Tuple[str, float, str, str]]:
-            entities = extract_entities(text)
+        def nlp_year(text):
+            entities = self.extract_entities(text, labels={"DATE"})
             for ent, label in entities:
-                if label == "DATE" and re.match(r"\b(19|20)\d{2}\b", ent):
-                    return (ent, 0.85, "spacy_ner", "pass")
+                if re.match(r"\b(19|20)\d{2}\b", ent):
+                    return (ent, label, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(_) -> Optional[Tuple[List[int], float, str, str]]:
+        def direct_year(_):
             years = self.get_years()
             if years:
-                return (years, 1.0, "direct_lookup", "pass")
+                return (years, None, 1.0, "direct_lookup", "pass")
             return None
 
-        found_years = []
-        for c in contests:
-            title = str(c.get("title", ""))
-            value, score, method, result, used_method = self._extract_with_strategies(
-                title,
-                [("regex", regex_year), ("nlp", nlp_year)]
-            )
-            if value:
-                found_years.append(value)
-        if not found_years:
-            value, score, method, result, used_method = self._extract_with_strategies(
-                "", [("direct_lookup", direct_lookup)]
-            )
-            found_years = value if value else []
-        else:
-            score = 0.9
-            method = "regex"
-            result = "pass"
-            used_method = "regex"
-
-        self.log_field_selection(
-            field_type="years",
-            field_name="years",
-            extracted_value=found_years,
-            method=used_method,
-            score=score,
-            result=result,
-            context={},
-            user_feedback=None,
-            log_path="field_selection_log.jsonl"
-        )
-        return found_years
-
-    def extract_buttons(self, contest_title=None, keyword=None, url=None) -> List[str]:
-        """
-        Extract button labels using regex, spaCy NER (ORG/NORP), and direct lookup.
-        Log the extraction attempt and result.
-        """
-        button_keywords = list(BUTTON_TAGS)
-        button_pattern = "|".join([re.escape(k) for k in button_keywords])
-
-        sources = [contest_title or "", keyword or "", url or ""]
-
-        def regex_button(text) -> Optional[Tuple[str, float, str, str]]:
+        def regex_button(text):
             match = re.search(rf"({button_pattern})", text, re.IGNORECASE)
             if match:
-                return (match.group(1), 0.9, "regex", "pass")
+                return (match.group(1), None, 0.9, "regex", "pass")
             return None
 
-        def nlp_button(text) -> Optional[Tuple[str, float, str, str]]:
-            entities = extract_entities(text)
+        def nlp_button(text):
+            entities = self.extract_entities(text, labels={"ORG", "NORP"})
             for ent, label in entities:
-                if label in {"ORG", "NORP"}:
-                    return (ent, 0.85, "spacy_ner", "pass")
+                return (ent, label, 0.85, "spacy_ner", "pass")
             return None
 
-        def direct_lookup(_) -> Optional[Tuple[List[str], float, str, str]]:
+        def direct_button(_):
+            contest_title = extra.get("contest_title")
+            keyword = extra.get("keyword")
+            url = extra.get("url")
             candidates = []
             buttons = self.get_buttons(contest_title=contest_title, keyword=keyword, url=url)
             for btn in buttons:
@@ -1149,48 +1349,155 @@ class ContextCoordinator(object):
                 if label:
                     candidates.append(label)
             if candidates:
-                return (list(dict.fromkeys(candidates)), 1.0, "direct_lookup", "pass")
+                return (list(dict.fromkeys(candidates)), None, 1.0, "direct_lookup", "pass")
             return None
 
-        found_buttons = []
-        for src in sources:
-            value, score, method, result, used_method = self._extract_with_strategies(
-                src,
-                [("regex", regex_button), ("nlp", nlp_button)]
-            )
-            if value:
-                found_buttons.append(value)
-        if not found_buttons:
-            value, score, method, result, used_method = self._extract_with_strategies(
-                "", [("direct_lookup", direct_lookup)]
-            )
-            found_buttons = value if value else []
-        else:
-            score = 0.9
-            method = "regex"
-            result = "pass"
-            used_method = "regex"
+        # --- Strategy selection ---
+        strategies = {
+            "party": [("regex", regex_party), ("nlp", nlp_party), ("fuzzy", fuzzy_party)],
+            "panel": [("regex", regex_panel), ("nlp", nlp_panel), ("direct_lookup", direct_panel)],
+            "tables": [("regex", regex_table), ("nlp", nlp_table), ("direct_lookup", direct_table)],
+            "precincts": [("regex", regex_precinct), ("nlp", nlp_precinct), ("direct_lookup", direct_precinct)],
+            "states": [("regex", regex_state), ("nlp", nlp_state), ("direct_lookup", direct_state)],
+            "election_types": [("regex", regex_election_type), ("nlp", nlp_election_type), ("direct_lookup", direct_election_type)],
+            "years": [("regex", regex_year), ("nlp", nlp_year), ("direct_lookup", direct_year)],
+            "buttons": [("regex", regex_button), ("nlp", nlp_button), ("direct_lookup", direct_button)],
+        }
 
-        # Deduplicate
-        if isinstance(found_buttons, list):
-            found_buttons = list(dict.fromkeys(found_buttons))
+        # --- Extraction ---
+        if field_type not in strategies:
+            log_error(f"[extract_field] Unknown field_type: {field_type}")
+            return None
 
+        # For types that may use multiple sources (like buttons), try all
+        if field_type == "buttons":
+            sources = [extra.get("contest_title") or "", extra.get("keyword") or "", extra.get("url") or ""]
+            found = []
+            found_methods = []
+            found_labels = []
+            for src in sources:
+                value, label, score, method, result = self._extract_with_strategies(
+                    src,
+                    strategies[field_type][:2]  # regex, nlp
+                )
+                if value:
+                    found.append(value)
+                    found_methods.append(method)
+                    found_labels.append(label if label is not None else src)
+            if not found:
+                value, label, score, method, result = self._extract_with_strategies(
+                    "", [strategies[field_type][2]]
+                )
+                if value:
+                    found = value if isinstance(value, list) else [value]
+                    found_methods = [method] * len(found)
+                    found_labels = [label if label is not None else "direct_lookup"] * len(found)
+                else:
+                    found = []
+                    found_methods = []
+                    found_labels = []
+            else:
+                score = 0.9
+                method = "regex"
+                result = "pass"
+            # Deduplicate
+            if isinstance(found, list):
+                found = list(dict.fromkeys(found))
+            # Log each found value with its method and label - Get cooking Mr. White - No real blue used
+            for val, meth, lab in zip(found, found_methods, found_labels):
+                self.log_field_selection(
+                    field_type="buttons",
+                    field_name="buttons",
+                    extracted_value=val,
+                    method=meth,
+                    score=score,
+                    result=result,
+                    context={**extra, "source_label": lab},
+                    user_feedback=None,
+                    log_path="field_selection_log.jsonl"
+                )
+            return found
+
+        # For other types
+        value, label, score, method, result = self._extract_with_strategies(
+            text or "",
+            strategies[field_type]
+        )
+        # Try to extract a label for logging (if possible)
+        label_val = label if label is not None else (text if isinstance(text, str) else str(text))
         self.log_field_selection(
-            field_type="buttons",
-            field_name="buttons",
-            extracted_value=found_buttons,
-            method=used_method,
+            field_type=field_type,
+            field_name=field_type,
+            extracted_value=value,
+            method=method,
             score=score,
             result=result,
-            context={"contest_title": contest_title, "keyword": keyword, "url": url},
+            context={**extra, "source_label": label_val},
             user_feedback=None,
             log_path="field_selection_log.jsonl"
         )
-        return found_buttons
+        return value
+
+    def _extract_with_strategies(self, text, strategies) -> tuple:
+        """
+        Try a list of (method, function) strategies on text, returning the first successful result.
+        Each function should return (value, label, score, method, result) or None.
+        """
+        for method, func in strategies:
+            result = func(text)
+            if result and result[0]:
+                # Ensure result is a 5-tuple: (value, label, score, method, result)
+                if len(result) == 5:
+                    # Overwrite method to ensure consistency
+                    return (result[0], result[1], result[2], method, result[4])
+                elif len(result) == 4:
+                    # Insert None as label, force method
+                    return (result[0], None, result[1], method, result[3])
+                elif len(result) == 3:
+                    return (result[0], None, result[1], method, result[2])
+                elif len(result) == 2:
+                    return (result[0], None, result[1], method, "pass")
+                elif len(result) == 1:
+                    return (result[0], None, 1.0, method, "pass")
+                else:
+                    return (result[0], None, 1.0, method, "pass")
+        return (None, None, 0.0, "fail", "none")
 
     def score_header(self, title, context=None) -> float:
-        # Simple fallback: just call score_entry or return a default score
-        return self.score_entry(title) if hasattr(self, "score_entry") else 0.5
+        """
+        Score a table header using ML, NLP, or fallback heuristics.
+        - title: header string
+        - context: optional dict with additional info (e.g., contest, known headers)
+        Returns: float score between 0.0 and 1.0
+        """
+        try:
+            # Use ML model if available
+            if hasattr(self, "score_entry"):
+                return float(self.score_entry(title, context or {}))
+            if hasattr(self, "score_header_ml"):
+                return float(self.score_header_ml(title, context or {}))
+            # Use NLP entity type as a weak signal
+            if hasattr(self, "extract_entities"):
+                ents = self.extract_entities(title)
+                if ents:
+                    # Boost if header is a known entity type
+                    for ent, label in ents:
+                        if label in {"PERSON", "CANDIDATE", "ORG", "NORP", "GPE", "LOC"}:
+                            return 0.8
+            # Use known header keywords if available in context
+            known_headers = set()
+            if context and isinstance(context, dict):
+                known_headers = set(context.get("known_headers", []))
+            if known_headers and title.lower() in (h.lower() for h in known_headers):
+                return 0.9
+            # Fallback: score by length and capitalization
+            if isinstance(title, str) and len(title) > 2 and title[0].isupper():
+                return 0.6
+            # Default fallback
+            return 0.5
+        except Exception as e:
+            log_error(f"[score_header] Error scoring header '{title}': {e}")
+            return 0.5
     
     # --- DB/Service Delegation ---
     def get_full_contest(self, contest_id) -> Optional[Dict[str, Any]]:

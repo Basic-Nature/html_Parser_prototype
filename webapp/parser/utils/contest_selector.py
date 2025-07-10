@@ -7,11 +7,12 @@ from ..bots.librarian import (
     ELECTION_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP
     )
 user_prompt = UserPrompt()
-from typing import TYPE_CHECKING, List, Dict, Any
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
+coordinator = ContextCoordinator()
 
-def extract_year_from_title(title):
+def extract_year_from_title(title) -> Optional[int]:
     import re
     if not title:
         return None
@@ -43,7 +44,7 @@ def extract_year_from_title(title):
                     best_year = y
     return best_year if best_year else max(years)
 
-def normalize_race_name(name):
+def normalize_race_name(name) -> str:
     import re
     return re.sub(r"\W+", "", name.strip().lower()) if name else ""
 
@@ -159,12 +160,12 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
         coordinator.submit_user_feedback("contest", "contest_title", c.get("title", ""), context)
     return selected
 
-def ensure_contest_title(contest):
+def ensure_contest_title(contest) -> Dict[str, Any]:
     """
     Ensures the contest dict has a non-empty 'title' key.
     Falls back to 'name', or stringifies the contest if needed.
     """
-    if not isinstance(contest, dict):
+    if not isinstance(contest, dict) or not contest:
         return {"title": str(contest)}
     title = contest.get("title")
     if title and isinstance(title, str) and title.strip():
@@ -189,7 +190,7 @@ def select_contest(
     non_interactive=False,
     log_func=None,
     context=None
-):
+) -> Optional[List[Dict[str, Any]]]:
     """
     Prompts the user to select contests from the organized context, filtering out noisy/generic labels.
     Uses ML/NER/regex feedback loop to verify correct year/type/title.

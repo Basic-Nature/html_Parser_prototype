@@ -33,7 +33,7 @@ from .table_core import (
 
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
-
+coordinator = ContextCoordinator()
 # ===================================================================
 # MAIN TABLE BUILDING PIPELINE
 # ===================================================================

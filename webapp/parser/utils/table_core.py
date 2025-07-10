@@ -49,7 +49,7 @@ from ..bots.librarian import (
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
-
+coordinator = ContextCoordinator()
 # --- CONSTANTS & GLOBALS ---
 
 TABLE_STRUCTURE_CACHE_PATH = os.path.join(CACHE_DIR, "table_structure_cache.json")
@@ -676,7 +676,9 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         for h in headers:
             score = 0
             if coordinator:
-                ents = coordinator.extract_entities(h)
+                ents = []
+                if coordinator and hasattr(coordinator, "extract_entities"):
+                    ents = coordinator.extract_entities(h)
                 for ents, label in ents:
                     if label in {"GPE", "LOC", "FAC"} and h.lower() != "candidate":
                         score += 1.0
@@ -1177,6 +1179,8 @@ def ml_based_table_detection(page, extraction_context=None):
             data = table_dict.get("data", [])
             # Optionally, correlate context to this table (if available)
             context = extraction_context if extraction_context else {}
+            if coordinator and hasattr(coordinator, "get_for_table_builder"):
+                context = coordinator.get_for_table_builder()
             diagnostics = {
                 "ml_table_index": idx,
                 "row_count": len(data),
@@ -2335,8 +2339,16 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     location_patterns = set()
     percent_patterns = set()
     if coordinator and hasattr(coordinator, "library"):
-        location_patterns = set(coordinator.library.get("location_patterns", []))
-        percent_patterns = set(coordinator.library.get("percent_patterns", []))
+        location_patterns = set()
+        percent_patterns = set()
+        if coordinator and hasattr(coordinator, "get_dom_parts"):
+            dom_parts = coordinator.get_dom_parts()
+            location_patterns = set(dom_parts.get("location_patterns", []))
+            percent_patterns = set(dom_parts.get("percent_patterns", []))
+        if not location_patterns and hasattr(coordinator, "get_known_counties"):
+            location_patterns = set(LOCATION_KEYWORDS)
+        if not percent_patterns:
+            percent_patterns = set(PERCENT_KEYWORDS)
     if not location_patterns:
         location_patterns = set(LOCATION_KEYWORDS)
     if not percent_patterns:

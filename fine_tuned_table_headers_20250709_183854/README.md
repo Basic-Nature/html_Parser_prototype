@@ -7,31 +7,33 @@ tags:
 - dataset_size:517
 - loss:CosineSimilarityLoss
 widget:
+- source_sentence: Unknown Contest
+  sentences:
+  - Label
+  - Absentee Mail
+  - REP Daniel W. SullivanRepublican - Election Day
 - source_sentence: ''
   sentences:
-  - Percent Reported (Other) - Mail
-  - CON Daniel W. Sullivan (Conservative) - Absentee
-  - Write-in - Early Voting
-- source_sentence: ''
+  - Election Day (Other) - Mail
+  - WOR Chrissy KnappWorking Families - Total Vote
+  - Daniel W. Sullivan (Conservative) - Absentee
+- source_sentence: Unknown Contest
   sentences:
-  - Early Voting (Other) - Total
-  - Candidate (Other) - Early Voting
-  - Daniel W. Sullivan (Republican) - Election Day
-- source_sentence: ''
-  sentences:
+  - REP Daniel W. SullivanRepublican - Total Vote
+  - Totals - Absentee Mail
   - Chrissy Knapp (Democratic) - Election Day
-  - Absentee Mail (Absentee Mail) - Mail
-  - Write-in - Early Voting
-- source_sentence: ''
+- source_sentence: Unknown Contest
   sentences:
-  - Totals - Election Day
-  - Early Voting (Other) - Election Day
-  - Grand Total
-- source_sentence: ''
+  - Daniel W. Sullivan (Republican) - Absentee
+  - CON Daniel W. SullivanConservative - Total Vote
+  - WOR Chrissy KnappWorking Families - Absentee Mail
+- source_sentence: 'Orangetown Town Council
+
+    Vote for 1'
   sentences:
-  - Election Day (Other) - Total
-  - CON Daniel W. Sullivan (Conservative) - Mail
-  - Absentee Mail (Absentee Mail) - Early Voting
+  - Candidate (Total Votes)
+  - Daniel W. Sullivan (Republican) - Absentee
+  - Write-in - Absentee
 pipeline_tag: sentence-similarity
 library_name: sentence-transformers
 ---
@@ -86,9 +88,9 @@ from sentence_transformers import SentenceTransformer
 model = SentenceTransformer("sentence_transformers_model_id")
 # Run inference
 sentences = [
-    '',
-    'Absentee Mail (Absentee Mail) - Early Voting',
-    'CON Daniel W. Sullivan (Conservative) - Mail',
+    'Orangetown Town Council\nVote for 1',
+    'Write-in - Absentee',
+    'Daniel W. Sullivan (Republican) - Absentee',
 ]
 embeddings = model.encode(sentences)
 print(embeddings.shape)
@@ -150,11 +152,11 @@ You can finetune this model on your own dataset.
   | type    | string                                                                          | string                                                                            | float                                                         |
   | details | <ul><li>min: 2 tokens</li><li>mean: 3.71 tokens</li><li>max: 9 tokens</li></ul> | <ul><li>min: 3 tokens</li><li>mean: 10.34 tokens</li><li>max: 16 tokens</li></ul> | <ul><li>min: 1.0</li><li>mean: 1.0</li><li>max: 1.0</li></ul> |
 * Samples:
-  | sentence_0                                         | sentence_1                                             | label            |
-  |:---------------------------------------------------|:-------------------------------------------------------|:-----------------|
-  | <code>Unknown Contest</code>                       | <code>Write-in - Early Voting</code>                   | <code>1.0</code> |
-  | <code>Unknown Contest</code>                       | <code>Write-in - Early Voting</code>                   | <code>1.0</code> |
-  | <code>Orangetown Town Council<br>Vote for 1</code> | <code>Chrissy Knapp (Democratic) - Early Voting</code> | <code>1.0</code> |
+  | sentence_0                                         | sentence_1                                                     | label            |
+  |:---------------------------------------------------|:---------------------------------------------------------------|:-----------------|
+  | <code>Unknown Contest</code>                       | <code>CON Daniel W. SullivanConservative - Early Voting</code> | <code>1.0</code> |
+  | <code>Orangetown Town Council<br>Vote for 1</code> | <code>Daniel W. Sullivan (Republican) - Early Voting</code>    | <code>1.0</code> |
+  | <code></code>                                      | <code>DEM Chrissy Knapp (Democratic) - Total</code>            | <code>1.0</code> |
 * Loss: [<code>CosineSimilarityLoss</code>](https://sbert.net/docs/package_reference/sentence_transformer/losses.html#cosinesimilarityloss) with these parameters:
   ```json
   {

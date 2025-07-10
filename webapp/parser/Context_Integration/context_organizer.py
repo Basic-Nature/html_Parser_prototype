@@ -23,8 +23,11 @@ from ..utils.db_utils import (
     clean_for_json,    
 )
 from ..services.election_data_services import ElectionDataService
-from ..utils.shared_logic import scan_environment
-from ..bots.librarian import load_context_library, update_context_library
+from ..utils.shared_logic import scan_environment, flatten_raw_field, flatten_raw_field, infer_contest_fields
+from ..bots.librarian import (
+    load_context_library, update_context_library, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, 
+    CONTEST_KEYWORDS, PERCENT_KEYWORDS, TOTAL_KEYWORDS, MISC_FOOTER_KEYWORDS
+)
 from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
@@ -211,53 +214,78 @@ class ContextOrganizer(object):
         plt.show()
         
     @staticmethod
-    def suggest_and_apply_fixes(contests, context_library, logs=None, min_confidence=0.8, embedding_model=None) -> tuple:
+    def suggest_and_apply_fixes(
+        contests,
+        context_library,
+        logs=None,
+        min_confidence=0.8,
+        embedding_model=None,
+        db_service=None,
+        parent_context=None,
+    ) -> tuple:
         """
-        Try to fix missing state/county/year/type_ using context_library, logs, and ML similarity.
+        Try to fix missing state/county/year/type_ using all available context:
+        - Flattened raw field
+        - Context library
+        - Database (if available)
+        - Majority vote
+        - Fuzzy match
+        - ML similarity
+        - Parent context
+        - Fallback: extract_year_and_type
         Returns: (fixed_contests, fix_log)
         Ensures _fixed_fields is always a set internally, but converts to list before serialization.
         """
         from difflib import get_close_matches
         import numpy as np
+        from ..utils.shared_logic import flatten_raw_field
+        from ..utils.html_scanner import extract_year_and_type
 
         fix_log = []
-        # Ensure _fixed_fields is a set for all contests
+        logs = logs if logs is not None else []
+
+        # Ensure _fixed_fields is a set for all contests and flatten raw
         for c in contests:
             if "_fixed_fields" not in c or not isinstance(c["_fixed_fields"], set):
                 c["_fixed_fields"] = set(c.get("_fixed_fields", []))
+            # Always flatten raw to avoid infinite nesting
+            if "raw" in c and isinstance(c["raw"], dict):
+                c["raw"] = flatten_raw_field(c["raw"])
+            else:
+                c["raw"] = flatten_raw_field(c)
 
         # Build lookup tables from context_library
         title_to_state = {}
         title_to_county = {}
         title_to_year = {}
         title_to_type_ = {}
-        for c in context_library.get("contests", []):
-            if not isinstance(c, dict):
+        for lib_c in context_library.get("contests", []):
+            if not isinstance(lib_c, dict):
                 continue
-            title = c.get("title") or c.get("label")
+            title = lib_c.get("title") or lib_c.get("label")
             if title:
                 key = title.lower()
-                if c.get("state"):
-                    title_to_state[key] = c["state"]
-                if c.get("county"):
-                    title_to_county[key] = c["county"]
-                if c.get("year"):
-                    title_to_year[key] = c["year"]
-                if c.get("type_"):
-                    title_to_type_[key] = c["type_"]
+                if lib_c.get("state"):
+                    title_to_state[key] = lib_c["state"]
+                if lib_c.get("county"):
+                    title_to_county[key] = lib_c["county"]
+                if lib_c.get("year"):
+                    title_to_year[key] = lib_c["year"]
+                if lib_c.get("type_"):
+                    title_to_type_[key] = lib_c["type_"]
 
         # --- ML Embedding Preparation ---
         lib_titles, lib_states, lib_counties, lib_years, lib_types = [], [], [], [], []
-        for c in context_library.get("contests", []):
-            if not isinstance(c, dict):
+        for lib_c in context_library.get("contests", []):
+            if not isinstance(lib_c, dict):
                 continue
-            title = c.get("title") or c.get("label")
-            if title and (c.get("state") or c.get("county")):
+            title = lib_c.get("title") or lib_c.get("label")
+            if title and (lib_c.get("state") or lib_c.get("county")):
                 lib_titles.append(title)
-                lib_states.append(c.get("state"))
-                lib_counties.append(c.get("county"))
-                lib_years.append(c.get("year"))
-                lib_types.append(c.get("type_"))
+                lib_states.append(lib_c.get("state"))
+                lib_counties.append(lib_c.get("county"))
+                lib_years.append(lib_c.get("year"))
+                lib_types.append(lib_c.get("type_"))
         lib_embeddings = None
         if embedding_model and lib_titles:
             try:
@@ -265,6 +293,28 @@ class ContextOrganizer(object):
             except Exception:
                 lib_embeddings = None
         min_confidence = 0.85
+
+        # Helper: update both contest and its raw field
+        def update_field(c, field, value, reason):
+            c[field] = value
+            if isinstance(c.get("raw"), dict):
+                c["raw"][field] = value
+            c["_fixed_fields"].add(field)
+            logs.append(f"[FIX] {c.get('title','?')} - {field}: {value} ({reason})")
+
+        # Helper: get from parent context
+        def get_from_parent(field):
+            if parent_context and isinstance(parent_context, dict):
+                return parent_context.get(field)
+            return None
+
+        # Helper: get from DB
+        def get_from_db(title, field):
+            if db_service:
+                db_contests = db_service.get_contests_by_advanced_filter(filters={"title": title}, limit=1)
+                if db_contests and db_contests[0].get(field):
+                    return db_contests[0][field]
+            return None
 
         # Try to fix each contest
         fixed_hashes = set()
@@ -275,30 +325,60 @@ class ContextOrganizer(object):
             fixed = False
             reasons = []
             title = (c.get("title") or "").lower()
-            # Fix state
-            if not c.get("state") and "state" not in c["_fixed_fields"]:
-                # 1. Try context_library
-                if title in title_to_state:
-                    c["state"] = title_to_state[title]
-                    reasons.append("filled state from context_library")
+            raw_flat = flatten_raw_field(c.get("raw", {}))
+
+            # --- Fix each field in robust order ---
+            for field, lookup, lib_list, lib_vals in [
+                ("state", title_to_state, lib_states, lib_states),
+                ("county", title_to_county, lib_counties, lib_counties),
+                ("year", title_to_year, lib_years, lib_years),
+                ("type_", title_to_type_, lib_types, lib_types),
+            ]:
+                if c.get(field) or field in c["_fixed_fields"]:
+                    continue
+
+                # 1. Direct field (already checked above)
+                # 2. Flattened raw field
+                if raw_flat.get(field):
+                    update_field(c, field, raw_flat[field], f"filled {field} from flattened raw")
+                    reasons.append(f"filled {field} from flattened raw")
                     fixed = True
-                # 2. Try majority vote from other contests
-                elif contests:
-                    states = [x.get("state") for x in contests if x.get("state")]
-                    if states:
-                        most_common = max(set(states), key=states.count)
-                        c["state"] = most_common
-                        reasons.append("filled state from majority vote")
-                        fixed = True
-                # 3. Try fuzzy match
-                else:
-                    matches = get_close_matches(title, list(title_to_state.keys()), n=1, cutoff=0.8)
-                    if matches:
-                        c["state"] = title_to_state[matches[0]]
-                        reasons.append(f"filled state from fuzzy match: {matches[0]}")
-                        fixed = True
-                # 4. ML similarity
-                if not c.get("state") and embedding_model and lib_embeddings is not None:
+                    continue
+
+                # 3. Context library
+                if title in lookup:
+                    update_field(c, field, lookup[title], f"filled {field} from context_library")
+                    reasons.append(f"filled {field} from context_library")
+                    fixed = True
+                    continue
+
+                # 4. Database
+                db_val = get_from_db(c.get("title"), field)
+                if db_val:
+                    update_field(c, field, db_val, f"filled {field} from database")
+                    reasons.append(f"filled {field} from database")
+                    fixed = True
+                    continue
+
+                # 5. Majority vote
+                vals = [x.get(field) for x in contests if x.get(field)]
+                if vals:
+                    most_common = max(set(vals), key=vals.count)
+                    update_field(c, field, most_common, f"filled {field} from majority vote")
+                    reasons.append(f"filled {field} from majority vote")
+                    fixed = True
+                    continue
+
+                # 6. Fuzzy match
+                matches = get_close_matches(title, list(lookup.keys()), n=1, cutoff=0.8)
+                if matches:
+                    update_field(c, field, lookup[matches[0]], f"filled {field} from fuzzy match: {matches[0]}")
+                    reasons.append(f"filled {field} from fuzzy match: {matches[0]}")
+                    fixed = True
+                    continue
+
+                # 7. ML similarity
+                if embedding_model and lib_embeddings is not None and lib_list:
                     try:
                         query_emb = embedding_model.encode([c.get("title") or ""])[0]
                         sims = np.dot(lib_embeddings, query_emb) / (
@@ -306,150 +386,45 @@ class ContextOrganizer(object):
                         )
                         best_idx = int(np.argmax(sims))
                         best_score = sims[best_idx]
-                        if best_score > min_confidence and lib_states[best_idx]:
-                            c["state"] = lib_states[best_idx]
+                        if best_score > min_confidence and lib_vals[best_idx]:
+                            update_field(
+                                c, field, lib_vals[best_idx],
+                                f"filled {field} from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
+                            )
                             reasons.append(
-                                f"filled state from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
+                                f"filled {field} from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
                             )
                             fixed = True
+                            continue
                         else:
                             reasons.append(
-                                f"ML similarity for state below threshold ({best_score:.2f} < {min_confidence})"
+                                f"ML similarity for {field} below threshold ({best_score:.2f} < {min_confidence})"
                             )
                     except Exception as e:
                         reasons.append(f"ML similarity failed: {e}")
-                if c.get("state"):
-                    c["_fixed_fields"].add("state")
+
+                # 8. Parent context
+                parent_val = get_from_parent(field)
+                if parent_val:
+                    update_field(c, field, parent_val, f"filled {field} from parent context")
+                    reasons.append(f"filled {field} from parent context")
                     fixed = True
-            # Fix county
-            if not c.get("county") and "county" not in c["_fixed_fields"]:
-                if title in title_to_county:
-                    c["county"] = title_to_county[title]
-                    reasons.append("filled county from context_library")
-                    fixed = True
-                elif contests:
-                    counties = [x.get("county") for x in contests if x.get("county")]
-                    if counties:
-                        most_common = max(set(counties), key=counties.count)
-                        c["county"] = most_common
-                        reasons.append("filled county from majority vote")
+                    continue
+
+                # 9. Fallback: extract_year_and_type (only for year/type_)
+                if field in ("year", "type_"):
+                    y, t, _ = extract_year_and_type(c.get("title", ""))
+                    if field == "year" and y:
+                        update_field(c, "year", y, "filled year from extract_year_and_type")
+                        reasons.append("filled year from extract_year_and_type")
                         fixed = True
-                else:
-                    matches = get_close_matches(title, list(title_to_county.keys()), n=1, cutoff=0.8)
-                    if matches:
-                        c["county"] = title_to_county[matches[0]]
-                        reasons.append(f"filled county from fuzzy match: {matches[0]}")
+                        continue
+                    if field == "type_" and t:
+                        update_field(c, "type_", t, "filled type_ from extract_year_and_type")
+                        reasons.append("filled type_ from extract_year_and_type")
                         fixed = True
-                # ML similarity
-                if not c.get("county") and embedding_model and lib_embeddings is not None:
-                    try:
-                        query_emb = embedding_model.encode([c.get("title") or ""])[0]
-                        sims = np.dot(lib_embeddings, query_emb) / (
-                            np.linalg.norm(lib_embeddings, axis=1) * np.linalg.norm(query_emb) + 1e-8
-                        )
-                        best_idx = int(np.argmax(sims))
-                        best_score = sims[best_idx]
-                        if best_score > min_confidence and lib_counties[best_idx]:
-                            c["county"] = lib_counties[best_idx]
-                            reasons.append(
-                                f"filled county from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
-                            )
-                            fixed = True
-                        else:
-                            reasons.append(
-                                f"ML similarity for county below threshold ({best_score:.2f} < {min_confidence})"
-                            )
-                    except Exception as e:
-                        reasons.append(f"ML similarity failed: {e}")
-                if c.get("county"):
-                    c["_fixed_fields"].add("county")
-                    fixed = True
-            # Fix year
-            if not c.get("year") and "year" not in c["_fixed_fields"]:
-                if title in title_to_year:
-                    c["year"] = title_to_year[title]
-                    reasons.append("filled year from context_library")
-                    fixed = True
-                elif contests:
-                    years = [x.get("year") for x in contests if x.get("year")]
-                    if years:
-                        most_common = max(set(years), key=years.count)
-                        c["year"] = most_common
-                        reasons.append("filled year from majority vote")
-                        fixed = True
-                else:
-                    matches = get_close_matches(title, list(title_to_year.keys()), n=1, cutoff=0.8)
-                    if matches:
-                        c["year"] = title_to_year[matches[0]]
-                        reasons.append(f"filled year from fuzzy match: {matches[0]}")
-                        fixed = True
-                # ML similarity
-                if not c.get("year") and embedding_model and lib_embeddings is not None:
-                    try:
-                        query_emb = embedding_model.encode([c.get("title") or ""])[0]
-                        sims = np.dot(lib_embeddings, query_emb) / (
-                            np.linalg.norm(lib_embeddings, axis=1) * np.linalg.norm(query_emb) + 1e-8
-                        )
-                        best_idx = int(np.argmax(sims))
-                        best_score = sims[best_idx]
-                        if best_score > min_confidence and lib_years[best_idx]:
-                            c["year"] = lib_years[best_idx]
-                            reasons.append(
-                                f"filled year from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
-                            )
-                            fixed = True
-                        else:
-                            reasons.append(
-                                f"ML similarity for year below threshold ({best_score:.2f} < {min_confidence})"
-                            )
-                    except Exception as e:
-                        reasons.append(f"ML similarity failed: {e}")
-                if c.get("year"):
-                    c["_fixed_fields"].add("year")
-                    fixed = True
-            # Fix type
-            if not c.get("type_") and "type_" not in c["_fixed_fields"]:
-                if title in title_to_type_:
-                    c["type_"] = title_to_type_[title]
-                    reasons.append("filled type from context_library")
-                    fixed = True
-                elif contests:
-                    types = [x.get("type_") for x in contests if x.get("type_")]
-                    if types:
-                        most_common = max(set(types), key=types.count)
-                        c["type_"] = most_common
-                        reasons.append("filled type from majority vote")
-                        fixed = True
-                else:
-                    matches = get_close_matches(title, list(title_to_type_.keys()), n=1, cutoff=0.8)
-                    if matches:
-                        c["type_"] = title_to_type_[matches[0]]
-                        reasons.append(f"filled type from fuzzy match: {matches[0]}")
-                        fixed = True
-                # ML similarity
-                if not c.get("type_") and embedding_model and lib_embeddings is not None:
-                    try:
-                        query_emb = embedding_model.encode([c.get("title") or ""])[0]
-                        sims = np.dot(lib_embeddings, query_emb) / (
-                            np.linalg.norm(lib_embeddings, axis=1) * np.linalg.norm(query_emb) + 1e-8
-                        )
-                        best_idx = int(np.argmax(sims))
-                        best_score = sims[best_idx]
-                        if best_score > min_confidence and lib_types[best_idx]:
-                            c["type_"] = lib_types[best_idx]
-                            reasons.append(
-                                f"filled type from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
-                            )
-                            fixed = True
-                        else:
-                            reasons.append(
-                                f"ML similarity for type below threshold ({best_score:.2f} < {min_confidence})"
-                            )
-                    except Exception as e:
-                        reasons.append(f"ML similarity failed: {e}")
-                if c.get("type_"):
-                    c["_fixed_fields"].add("type_")
-                    fixed = True
+                        continue
+
             if fixed and reasons:
                 fix_log.append({"title": c.get("title"), "fixes": reasons})
                 fixed_hashes.add(c_hash)
@@ -642,10 +617,8 @@ class ContextOrganizer(object):
         Organizes the context for a parsed HTML page, including DOM structure, contests, panels, buttons, tables, and ML features.
         Now includes dynamic state/county detection, verbose logging, and returns a detailed result object.
         Enhanced: robust keyword-based grouping, use_library/cache integration, and diagnostics.
-        """
-        from ..bots.librarian import (
-            LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, CONTEST_KEYWORDS, PERCENT_KEYWORDS, TOTAL_KEYWORDS, MISC_FOOTER_KEYWORDS
-        )
+        """ 
+
         log_debug("DEBUG: raw_context keys:", list(raw_context.keys()))
         log_debug("DEBUG: raw_context['contests']:", raw_context.get("contests"))
         debug = self.debug if debug is None else debug
@@ -718,19 +691,26 @@ class ContextOrganizer(object):
             norm_title = normalize_label(title)
             if norm_title not in contest_titles:
                 contest_titles.add(norm_title)
+                year, type_, state, county = infer_contest_fields(
+                    c,
+                    context_library,
+                    db_service=self.data_service,
+                    embedding_model=embedding_model,
+                    log=log
+                )
                 contests.append({
                     "title": title,
-                    "year": c.get("year"),
-                    "type_": c.get("type_"),
-                    "state": c.get("state", raw_context.get("state")),
-                    "county": c.get("county", raw_context.get("county")),
-                    "raw": c
+                    "year": year,
+                    "type_": type_,
+                    "state": state or c.get("state", raw_context.get("state")),
+                    "county": county or c.get("county", raw_context.get("county")),
+                    "raw": flatten_raw_field(c)
                 })
         for c in context_library.get("contests", []):
-            if not isinstance(c, dict):
+            if not isinstance(c, dict) or not c.get("title") or not c.get("label"):
                 continue
             norm_title = normalize_label(c.get("title", c.get("label", str(c))))
-            if norm_title not in contest_titles:
+            if norm_title not in contest_titles and norm_title not in [normalize_label(c.get("title", "")) for c in contests]:
                 contests.append(c)
                 contest_titles.add(norm_title)
 
@@ -1080,11 +1060,11 @@ class ContextOrganizer(object):
         except SQLAlchemyError as e:
             log_error(f"[DB][Contest] Error upserting contests: {e}")
 
+        # --- Dynamic state/county detection if missing ---
         missing_location = any(
             not c.get("state") or not c.get("county")
             for c in contests
         )
-
         if missing_location:
             from .context_coordinator import dynamic_state_county_detection
             html = raw_context.get("raw_html", "")

@@ -6,7 +6,7 @@ import time
 import threading
 import traceback
 import numpy as np
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 import concurrent.futures
 from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH
 from ..utils.shared_logger import log_info, log_debug, log_warning, log_error
@@ -27,12 +27,16 @@ from selectolax.parser import HTMLParser
 from ..utils.model_registry import ModelRegistry
 from difflib import get_close_matches
 
+if TYPE_CHECKING:
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+coordinator = ContextCoordinator()
+
 user_prompt = UserPrompt()
 
 ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 console = None  # Only import rich.console.Console if needed for interactive output
 
-def convert_ndarrays(obj):
+def convert_ndarrays(obj) -> Any:
     if isinstance(obj, dict):
         return {k: convert_ndarrays(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -52,7 +56,7 @@ _pattern_kb_cache = None
 embedding_cache_hits = set()
 embedding_cache_misses = set()
 
-def robust_orjson_loads(val):
+def robust_orjson_loads(val) -> Any:
     if isinstance(val, bytes):
         return orjson.loads(val)
     elif isinstance(val, str):
@@ -60,7 +64,7 @@ def robust_orjson_loads(val):
     else:
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
-def _get_label_cache_path():
+def _get_label_cache_path() -> str:
     path = safe_cache_path(_LABEL_CACHE_FILENAME)
     if os.name == "nt" and len(os.path.abspath(path)) >= 260:
         import tempfile
@@ -69,7 +73,7 @@ def _get_label_cache_path():
         return short_path
     return path
 
-def _load_label_cache():
+def _load_label_cache() -> Dict[str, Any]:
     global _LABEL_CACHE
     path = _get_label_cache_path()
     if os.path.exists(path):
@@ -82,19 +86,19 @@ def _load_label_cache():
         _LABEL_CACHE = {}
     return _LABEL_CACHE
 
-def _save_label_cache():
+def _save_label_cache() -> None:
     global _LABEL_CACHE
     path = _get_label_cache_path()
     with open(path, "wb") as f:
         f.write(orjson.dumps(_LABEL_CACHE, option=orjson.OPT_INDENT_2))
 
-def cache_segment_label(seg_hash, label):
+def cache_segment_label(seg_hash, label) -> None:
     with _LABEL_CACHE_LOCK:
         cache = _load_label_cache()
         cache[seg_hash] = {"label": label, "timestamp": int(time.time())}
         _save_label_cache()
 
-def get_cached_segment_label(seg_hash):
+def get_cached_segment_label(seg_hash) -> Optional[List[str]]:
     with _LABEL_CACHE_LOCK:
         cache = _load_label_cache()
         entry = cache.get(seg_hash, {})
@@ -140,7 +144,7 @@ def _normalize_html_for_hash(html: str, maxlen: int = 256) -> str:
     html = re.sub(r'\s+', ' ', html.strip())
     return html[:maxlen]
 
-def is_trivial_segment(seg):
+def is_trivial_segment(seg) -> bool:
     html = seg.get("html", "")
     tag = seg.get("tag", "")
     if not html or not html.strip():
@@ -154,7 +158,7 @@ def is_trivial_segment(seg):
         return True
     return False
 
-def segment_identity_hash(segment):
+def segment_identity_hash(segment) -> str:
     tag = segment.get("tag", "").lower()
     classes = " ".join(sorted([c.lower() for c in segment.get("classes", [])]))
     attrs = segment.get("attrs", {})
@@ -164,7 +168,7 @@ def segment_identity_hash(segment):
     base = tag + "|" + classes + "|" + orjson.dumps(attrs_filtered, option=orjson.OPT_SORT_KEYS).decode() + "|" + html_norm
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
-def embedding_cache_hash(segment, model_id):
+def embedding_cache_hash(segment, model_id) -> str:
     tag = segment.get("tag", "")
     attrs = segment.get("attrs", {})
     attrs_filtered = {k: v for k, v in attrs.items() if not (k.startswith('_ngcontent-') or k.startswith('_nghost-') or k.startswith('ng-') or k.startswith('data-') or k in {'style', 'id', 'class', 'tabindex', 'aria-checked'})}
@@ -174,7 +178,7 @@ def embedding_cache_hash(segment, model_id):
     base = tag + orjson.dumps(attrs_sorted, option=orjson.OPT_SORT_KEYS).decode() + html_norm + str(model_id)
     return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
-def get_segment_embedding(model, segment, cache=None, cache_hits=None, cache_misses=None):
+def get_segment_embedding(model, segment, cache=None, cache_hits=None, cache_misses=None) -> Optional[np.ndarray]:
     model_id = getattr(model, 'name_or_path', str(model))
     identity = embedding_cache_hash(segment, model_id)
     emb = get_embedding_from_memory(identity)
@@ -198,7 +202,7 @@ def get_segment_embedding(model, segment, cache=None, cache_hits=None, cache_mis
         segment["embedding_error"] = str(e)
         return None
 
-def batch_get_segment_embeddings(model, segments):
+def batch_get_segment_embeddings(model, segments) -> List[Optional[np.ndarray]]:
     model_id = getattr(model, 'name_or_path', str(model))
     identities = [embedding_cache_hash(seg, model_id) if not is_trivial_segment(seg) else None for seg in segments]
     cached = [get_embedding_from_memory(identity) if identity else None for identity in identities]
@@ -236,7 +240,7 @@ def batch_get_segment_embeddings(model, segments):
                 cached[idx] = new_embs[i]
     return [emb if identity else None for emb, identity in zip(cached, identities)]
 
-def deduplicate_pattern_kb(pattern_kb):
+def deduplicate_pattern_kb(pattern_kb) -> List[Dict[str, Any]]:
     """Deduplicate pattern KB entries by segment_hash, keeping the latest timestamp."""
     dedup = {}
     for entry in pattern_kb:
@@ -246,7 +250,7 @@ def deduplicate_pattern_kb(pattern_kb):
             dedup[seg_hash] = entry
     return list(dedup.values())
 
-def prune_embedding_cache(valid_hashes):
+def prune_embedding_cache(valid_hashes) -> None:
     """Remove embeddings not in valid_hashes from the cache directory."""
     cache_dir = CACHE_DIR
     for fname in os.listdir(cache_dir):
@@ -258,7 +262,7 @@ def prune_embedding_cache(valid_hashes):
                 except Exception:
                     pass
 
-def submit_segment_correction(segment_hash, new_label, context_library=None):
+def submit_segment_correction(segment_hash, new_label, context_library=None) -> None:
     """Allow downstream modules to submit corrections for a segment label."""
     cache_segment_label(segment_hash, new_label)
     if context_library is not None:
@@ -275,7 +279,7 @@ def auto_label_segment(
     model=None,
     ml_threshold=0.7,
     coordinator=None
-):
+) -> Optional[tuple]:
     seg_hash = segment_identity_hash(segment)
     # 1. Persistent label cache
     cached_label = get_cached_segment_label(seg_hash)
@@ -447,7 +451,7 @@ def auto_label_segment(
         return canonical
     return "unknown", "heuristic"
 
-def _extract_clean_text(html):
+def _extract_clean_text(html) -> str:
     """Extracts clean text from HTML using selectolax, fallback to raw HTML if parsing fails.
     Returns '' if the result is only whitespace or just tags."""
     try:
@@ -462,7 +466,7 @@ def _extract_clean_text(html):
     except Exception:
         return ""
 
-def _label_in(label, target):
+def _label_in(label, target) -> bool:
     """Robustly checks if label is or contains the target label."""
     if isinstance(label, str):
         return label == target
@@ -470,7 +474,7 @@ def _label_in(label, target):
         return target in label
     return False
 
-def _extract_segments_by_label(segments, label_name, extra_fields=None):
+def _extract_segments_by_label(segments, label_name, extra_fields=None) -> List[Dict[str, Any]]:
     """
     Extracts and cleans segments by label, returns list of dicts with clean text and extra fields.
     Skips segments with empty, whitespace-only, or trivial text (e.g., only tags or &nbsp;).
@@ -500,14 +504,15 @@ def _extract_segments_by_label(segments, label_name, extra_fields=None):
             results.append(entry)
     return results
 
-def _keyword_in_text(text, keywords):
+def _keyword_in_text(text, keywords) -> bool:
     """Check if any keyword is present in the text (case-insensitive, word-boundary)."""
     text = text.lower()
     for kw in keywords:
         if re.search(rf'\b{re.escape(kw.lower())}\b', text):
             return True
     return False
-def extract_year_and_type(text):
+
+def extract_year_and_type(text) -> tuple:
     """
     Extracts the most likely year and election type from anywhere in the string.
     Picks the last year and the most frequent or last type found.
@@ -542,7 +547,7 @@ def extract_year_and_type(text):
     cleaned = cleaned.strip(" -:|,")
     return year, type_found, cleaned
 
-def is_update_panel(text):
+def is_update_panel(text) -> bool:
     """
     Detects if a panel/heading is a last-updated, status, or reporting info panel.
     Uses robust keyword and phrase matching.
@@ -559,7 +564,7 @@ def is_update_panel(text):
         return True
     return False
 
-def split_possible_contests(text):
+def split_possible_contests(text) -> List[str]:
     """
     Split a long contest block into individual contest-like lines.
     Uses contest keywords, newlines, and vote/candidate patterns.
@@ -676,7 +681,7 @@ def scan_html_for_context(
         context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
 
         # --- Helper for diagnostics and filtering ---
-        def diagnostics_and_filter(data, name, required_fields=None, max_title_len=500):
+        def diagnostics_and_filter(data, name, required_fields=None, max_title_len=500) -> List[Dict[str, Any]]:
             # Diagnostics
             if data:
                 avg_len = sum(len(str(d.get("title", d.get("text", "")))) for d in data) / len(data)
@@ -1234,11 +1239,11 @@ def extract_tagged_segments_with_attrs(
             raise
         return []
 
-def get_page_hash(page):
+def get_page_hash(page) -> str:
     content = page.content()
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
-def load_context_cache_from_disk(filename=None):
+def load_context_cache_from_disk(filename=None) -> Dict[str, Any]:
     global _context_cache
     if filename is None:
         filename = os.path.basename(CONTEXT_CACHE_PATH)
@@ -1256,14 +1261,14 @@ def load_context_cache_from_disk(filename=None):
     _context_cache = {}
     return {}
 
-def save_context_cache_to_disk(context_cache, path=CONTEXT_CACHE_PATH):
+def save_context_cache_to_disk(context_cache, path=CONTEXT_CACHE_PATH) -> None:
     log_debug(f"[DEBUG] Saving context cache to: {path}")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     context_cache = convert_ndarrays(context_cache)
     with open(path, "wb") as f:
         f.write(orjson.dumps(context_cache))
 
-def clean_cache_inplace(cache):
+def clean_cache_inplace(cache) -> int:
     if isinstance(cache, dict):
         keys_to_remove = [k for k, v in cache.items() if not isinstance(v, dict)]
         for k in keys_to_remove:
@@ -1275,7 +1280,7 @@ def clean_cache_inplace(cache):
         return original_len - len(cache)
     return 0
 
-def _to_json_safe(obj):
+def _to_json_safe(obj) -> Any:
     if isinstance(obj, np.ndarray):
         return obj.tolist()
     if isinstance(obj, dict):
@@ -1284,7 +1289,7 @@ def _to_json_safe(obj):
         return [_to_json_safe(v) for v in obj]
     return obj
 
-def load_pattern_kb():
+def load_pattern_kb() -> List[Dict[str, Any]]:
     global _pattern_kb_cache
     if _pattern_kb_cache is not None:
         return _pattern_kb_cache
@@ -1300,7 +1305,7 @@ def load_pattern_kb():
     _pattern_kb_cache = kb
     return kb
 
-def append_pattern_kb(entry):
+def append_pattern_kb(entry) -> None:
     if not isinstance(entry, dict):
         raise ValueError("Only dict entries can be written to dom_pattern_kb.jsonl")
     entry = convert_ndarrays(entry)
@@ -1310,7 +1315,7 @@ def append_pattern_kb(entry):
     with open(path, "ab") as f:
         f.write(orjson.dumps(entry, option=orjson.OPT_INDENT_2) + b"\n")
 
-def append_feedback_log(entry):
+def append_feedback_log(entry) -> None:
     if not isinstance(entry, dict):
         raise ValueError("Only dict entries can be written to segment_feedback_log.jsonl")
     entry = convert_ndarrays(entry)
@@ -1333,7 +1338,7 @@ def append_feedback_log(entry):
         if _pattern_kb_cache is not None and isinstance(_pattern_kb_cache, list):
             _pattern_kb_cache.append(kb_entry)
 
-def prompt_for_segment_label(segment, context_library=None):
+def prompt_for_segment_label(segment, context_library=None) -> str:
     seg_hash = segment_identity_hash(segment)
     cached_label = get_cached_segment_label(seg_hash)
     if cached_label:
@@ -1359,7 +1364,7 @@ def prompt_for_segment_label(segment, context_library=None):
     cache_segment_label(seg_hash, label)
     return label
 
-def segment_hash(html):
+def segment_hash(html) -> str:
     canon = canonicalize_segment(html)
     return hashlib.sha256(canon.encode('utf-8')).hexdigest()
 

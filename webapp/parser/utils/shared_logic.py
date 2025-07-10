@@ -37,6 +37,21 @@ def normalize_county_name(name):
     name = re.sub(r"^[^a-z]+|[^a-z]+$", "", name)
     return name
 
+def flatten_raw_field(contest):
+    """
+    Recursively flatten the 'raw' field in a contest dict so that only the base/original raw data is kept.
+    """
+    if not isinstance(contest, dict):
+        return contest
+    base = dict(contest)
+    while isinstance(base.get("raw"), dict):
+        # Go deeper until 'raw' is not a dict
+        base = base["raw"]
+    # Remove any nested 'raw' from the base
+    if isinstance(base, dict) and "raw" in base:
+        base = {k: v for k, v in base.items() if k != "raw"}
+    return base
+
 def normalize_state_name(name):
     """
     Normalize state names and abbreviations to snake_case full state name.
@@ -323,3 +338,112 @@ def keyphrase_match(label, keyphrase, min_words=2, fuzzy_cutoff=0.8):
     if len(words) >= min_words and matches >= min_words:
         return True
     return False
+
+def infer_contest_fields(
+    contest: dict,
+    context_library: dict,
+    db_service=None,
+    embedding_model=None,
+    log=None
+):
+    """
+    Infer missing fields for a contest using (in order):
+    1. Direct field on contest
+    2. Context library lookup (by normalized title)
+    3. Database lookup (by normalized title, if db_service provided)
+    4. ML/NLP model (if available)
+    5. Fallback: extract_year_and_type (only if all else fails)
+    Logs the inference path if log is provided.
+    """
+    from ..utils.db_utils import normalize_label
+    title = contest.get("title") or contest.get("label") or ""
+    norm_title = normalize_label(title)
+    year = contest.get("year")
+    type_ = contest.get("type_")
+    state = contest.get("state")
+    county = contest.get("county")
+    inference_path = []
+
+    # 1. Context library lookup
+    for c in context_library.get("contests", []):
+        c_title = c.get("title") or c.get("label") or ""
+        if normalize_label(c_title) == norm_title:
+            if not year and c.get("year"):
+                year = c["year"]
+                inference_path.append("year:context_library")
+            if not type_ and c.get("type_"):
+                type_ = c["type_"]
+                inference_path.append("type_:context_library")
+            if not state and c.get("state"):
+                state = c["state"]
+                inference_path.append("state:context_library")
+            if not county and c.get("county"):
+                county = c["county"]
+                inference_path.append("county:context_library")
+            if year and type_ and state and county:
+                break
+
+    # 2. Database lookup (if db_service provided)
+    if db_service and (not year or not type_ or not state or not county):
+        try:
+            db_contests = db_service.get_contests_by_advanced_filter(
+                filters={"title": title}, limit=1
+            )
+            if db_contests:
+                db_c = db_contests[0]
+                if not year and db_c.get("year"):
+                    year = db_c["year"]
+                    inference_path.append("year:db")
+                if not type_ and db_c.get("type_"):
+                    type_ = db_c["type_"]
+                    inference_path.append("type_:db")
+                if not state and db_c.get("state"):
+                    state = db_c["state"]
+                    inference_path.append("state:db")
+                if not county and db_c.get("county"):
+                    county = db_c["county"]
+                    inference_path.append("county:db")
+        except Exception as e:
+            if log is not None:
+                log.append(f"[infer_contest_fields] DB lookup failed: {e}")
+
+    # 3. ML/NLP model (if available)
+    if embedding_model and (not year or not type_ or not state or not county):
+        try:
+            pred = embedding_model.predict(title)
+            if not year and pred.get("year", {}).get("value"):
+                year = pred["year"]["value"]
+                inference_path.append("year:ml")
+            if not type_ and pred.get("type_", {}).get("value"):
+                type_ = pred["type_"]["value"]
+                inference_path.append("type_:ml")
+            if not state and pred.get("state", {}).get("value"):
+                state = pred["state"]["value"]
+                inference_path.append("state:ml")
+            if not county and pred.get("county", {}).get("value"):
+                county = pred["county"]["value"]
+                inference_path.append("county:ml")
+        except Exception as e:
+            if log is not None:
+                log.append(f"[infer_contest_fields] ML/NLP model failed: {e}")
+
+    # 4. Fallback: extract_year_and_type (only if still missing)
+    if (not year or not type_) and title:
+        try:
+            from ..utils.html_scanner import extract_year_and_type
+            y, t, _ = extract_year_and_type(title)
+            if not year and y:
+                year = y
+                inference_path.append("year:extract_year_and_type")
+            if not type_ and t:
+                type_ = t
+                inference_path.append("type_:extract_year_and_type")
+        except Exception as e:
+            if log is not None:
+                log.append(f"[infer_contest_fields] extract_year_and_type failed: {e}")
+
+    # Log the inference path if requested
+    if log is not None:
+        log.append(f"[infer_contest_fields] {title} → {inference_path}")
+
+    return year, type_, state, county
