@@ -6,8 +6,10 @@ from .....utils.table_core import harmonize_headers_and_data
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import log_error, log_info, log_warning, log_debug
 from .....utils.shared_logic import autoscroll_until_stable
-from .....utils.user_prompt import prompt_user_for_button, confirm_button_callback
+from .....utils.user_prompt import UserPrompt
 from .....utils.html_scanner import scan_html_for_context
+
+prompt = UserPrompt()
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -96,8 +98,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 contest_title=contest_title_for_button,
                 keywords=election_district_keywords,
                 context={**html_context, "toggle_name": toggle_name},
-                confirm_button_callback=confirm_button_callback,
-                prompt_user_for_button=prompt_user_for_button,
+                confirm_button_callback=prompt.confirm_button_callback,
+                prompt_user_for_button=prompt.prompt_user_for_button,
                 learning_mode=True,
             )
             if btn and "element_handle" in btn:
@@ -133,8 +135,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 contest_title=contest_title_for_button,
                 keywords=vote_method_keywords,
                 context={**html_context, "toggle_name": toggle_name},
-                confirm_button_callback=confirm_button_callback,
-                prompt_user_for_button=prompt_user_for_button,
+                confirm_button_callback=prompt.confirm_button_callback,
+                prompt_user_for_button=prompt.prompt_user_for_button,
                 learning_mode=True,
             )
             if btn and "element_handle" in btn:

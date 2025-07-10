@@ -41,16 +41,16 @@ MISALIGNED_KEYWORDS = ["misaligned", "pattern-excluding"]
 ALLOWED_EXTS = (".json", ".jsonl", ".html")
 EMPTY_WATCH_FILE = os.path.join(CONTEXT_LIBRARY_DIR, "empty_entries_watch.jsonl")
 
-def is_jsonl_file(fname):
+def is_jsonl_file(fname) -> bool:
     return fname.endswith(".jsonl")
 
-def is_json_file(fname):
+def is_json_file(fname) -> bool:
     return fname.endswith(".json")
 
-def is_html_file(fname):
+def is_html_file(fname) -> bool:
     return fname.endswith(".html")
 
-def safe_path(path, allowed_roots):
+def safe_path(path, allowed_roots) -> str:
     path = os.path.abspath(path)
     for root in allowed_roots:
         root = os.path.abspath(root)
@@ -58,7 +58,7 @@ def safe_path(path, allowed_roots):
             return path
     raise ValueError(f"Unsafe path detected: {path}")
 
-def log_empty_entry(file_path, entry_type, key_or_index, entry):
+def log_empty_entry(file_path, entry_type, key_or_index, entry) -> None:
     """Append info about an empty entry to the watch file for traceability."""
     record = {
         "file_path": file_path,
@@ -69,7 +69,7 @@ def log_empty_entry(file_path, entry_type, key_or_index, entry):
     with open(EMPTY_WATCH_FILE, "ab") as f:
         f.write(orjson.dumps(record) + b"\n")
 
-def clean_jsonl(path, required_fields=None, backup=True):
+def clean_jsonl(path, required_fields=None, backup=True) -> dict:
     """
     Enhanced cleaner for .jsonl files:
     - Deduplicates entries (by full serialization)
@@ -147,6 +147,9 @@ def clean_jsonl(path, required_fields=None, backup=True):
                 misaligned.append(entry)
         with open(path, "wb") as f:
             for entry in entries:
+                if not isinstance(entry, dict) or not entry:
+                    log_warning(f"Skipping non-dict entry in spacy_ner_train_data.jsonl: {entry}")
+                    continue
                 f.write(orjson.dumps(entry) + b"\n")
         error_parts = []
         if malformed_count:
@@ -169,7 +172,7 @@ def clean_jsonl(path, required_fields=None, backup=True):
     except Exception as e:
         return None, None, None, str(e)
 
-def clean_json(path, required_fields=None, backup=True):
+def clean_json(path, required_fields=None, backup=True) -> tuple:
     """
     Enhanced cleaner for .json files:
     - Handles empty files (overwrites with {})
@@ -289,7 +292,7 @@ def clean_json(path, required_fields=None, backup=True):
             return 0, 0, 0, None
         return None, None, None, str(e)
     
-def clean_html(path, backup=True):
+def clean_html(path, backup=True) -> tuple:
     """
     Robust cleaner for .html files:
     - Removes duplicate lines
@@ -382,14 +385,14 @@ def clean_html(path, backup=True):
             return 0, 0, 0, None
         return None, None, None, str(e)
 
-def human_size(num_bytes):
+def human_size(num_bytes) -> str:
     for unit in ['B','KB','MB','GB']:
         if num_bytes < 1024.0:
             return f"{num_bytes:.1f}{unit}"
         num_bytes /= 1024.0
     return f"{num_bytes:.1f}TB"
 
-def clean_dir(target_dir, allowed_roots, max_size_bytes, full_sweep=False):
+def clean_dir(target_dir, allowed_roots, max_size_bytes, full_sweep=False) -> tuple:
     cleaned_files = 0
     total_before = 0
     total_after = 0
@@ -435,7 +438,7 @@ def clean_dir(target_dir, allowed_roots, max_size_bytes, full_sweep=False):
             pass
     return cleaned_files, total_before, total_after, flagged_large, misaligned_summary, errors
 
-def run_db_maintenance(engine=None, session=None):
+def run_db_maintenance(engine=None, session=None) -> dict:
     """
     Perform PostgreSQL VACUUM and ANALYZE on all tables using SQLAlchemy.
     - Handles connection errors, permission errors, and logs all actions.
@@ -480,7 +483,7 @@ def run_db_maintenance(engine=None, session=None):
         summary["errors"].append(("__connection__", str(e)))
     return summary
 
-def run_log_cache_cleaner(log_dir=LOG_DIR, context_lib_dir=CONTEXT_LIBRARY_DIR, cache_dir=CACHE_DIR, max_size_mb=DEFAULT_MAX_SIZE_MB, db_maintenance=False, full_sweep=False):
+def run_log_cache_cleaner(log_dir=LOG_DIR, context_lib_dir=CONTEXT_LIBRARY_DIR, cache_dir=CACHE_DIR, max_size_mb=DEFAULT_MAX_SIZE_MB, db_maintenance=False, full_sweep=False) -> list:
     max_size_bytes = int(max_size_mb * 1024 * 1024)
     allowed_roots = [log_dir, context_lib_dir, cache_dir]
     log_info(f"[CLEAN] Cleaning log dir: {log_dir}")
@@ -514,7 +517,7 @@ def run_log_cache_cleaner(log_dir=LOG_DIR, context_lib_dir=CONTEXT_LIBRARY_DIR, 
     log_info("[CLEAN] Context/log migration to PostgreSQL complete.")
     return errors
 
-def schedule_log_cache_cleaner(interval_min=60, db_maintenance=False, **kwargs):
+def schedule_log_cache_cleaner(interval_min=60, db_maintenance=False, **kwargs) -> threading.Thread:
     def loop():
         while True:
             run_log_cache_cleaner(db_maintenance=db_maintenance, **kwargs)
@@ -524,7 +527,7 @@ def schedule_log_cache_cleaner(interval_min=60, db_maintenance=False, **kwargs):
     log_info(f"[CLEAN] Log cleaner scheduled every {interval_min} minutes.")
     return t
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Automated log/cache cleaner for Smart Elections pipeline.")
     parser.add_argument("--log-dir", type=str, default=LOG_DIR, help="Directory containing log/cache files")
     parser.add_argument("--context-lib-dir", type=str, default=CONTEXT_LIBRARY_DIR, help="Context_Library directory")

@@ -17,6 +17,26 @@ assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
 console = RichConsoleProxy()   
 user_prompt = UserPrompt()
 
+def normalize_county_name(name):
+    """
+    Normalize county names for comparison.
+    Handles embedded county names, removes 'county' suffix, underscores, dashes, and extra spaces.
+    E.g. 'Miami-Dade County', 'miami_dade-county', 'ResultsMiamiDadeCounty2024' -> 'miami dade'
+    """
+    if not name:
+        return None
+    name = name.lower().replace("_", " ").replace("-", " ").strip()
+    # Remove 'county' suffix if present
+    name = re.sub(r"\s+county$", "", name)
+    name = re.sub(r"\s+", " ", name)
+    # Try to extract county name from within a longer string (e.g., ResultsMiamiDadeCounty2024)
+    match = re.search(r'([a-z ]+?)\s*county', name)
+    if match:
+        name = match.group(1).strip()
+    # Remove any leading/trailing non-alpha chars
+    name = re.sub(r"^[^a-z]+|[^a-z]+$", "", name)
+    return name
+
 def normalize_state_name(name):
     """
     Normalize state names and abbreviations to snake_case full state name.
@@ -52,27 +72,6 @@ def normalize_state_name(name):
         if name.endswith("_" + abbr):
             return full_name
     return name
-
-def normalize_county_name(name):
-    """
-    Normalize county names for comparison.
-    Handles embedded county names, removes 'county' suffix, underscores, dashes, and extra spaces.
-    E.g. 'Miami-Dade County', 'miami_dade-county', 'ResultsMiamiDadeCounty2024' -> 'miami dade'
-    """
-    if not name:
-        return None
-    name = name.lower().replace("_", " ").replace("-", " ").strip()
-    # Remove 'county' suffix if present
-    name = re.sub(r"\s+county$", "", name)
-    name = re.sub(r"\s+", " ", name)
-    # Try to extract county name from within a longer string (e.g., ResultsMiamiDadeCounty2024)
-    match = re.search(r'([a-z ]+?)\s*county', name)
-    if match:
-        name = match.group(1).strip()
-    # Remove any leading/trailing non-alpha chars
-    name = re.sub(r"^[^a-z]+|[^a-z]+$", "", name)
-    return name
-
 
 def infer_state_county_from_url(url: str):
     """

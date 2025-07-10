@@ -45,12 +45,9 @@ class BotPipeline:
     def ensure_db_tables(self):
         try:
             engine = get_engine()
+            # This will create all tables defined in Base.metadata, not just TableStructure
+            Base.metadata.create_all(engine)
             inspector = inspect(engine)
-            # Explicitly reference TableStructure to ensure it's registered with SQLAlchemy's metadata
-            _ = TableStructure 
-            if 'table_structures' not in inspector.get_table_names():
-                Base.metadata.create_all(engine)
-                log_info("[MODELS] Creating all tables in the configured database...")
             log_info("[MODELS] Tables present after creation: %s" % inspector.get_table_names())
             log_info("[MODELS] All tables created successfully.")
             log_info("[PIPELINE] DB tables ensured.")
@@ -60,7 +57,7 @@ class BotPipeline:
             log_error(f"[PIPELINE] DB table check failed: {e}")
             self.results['db_tables'] = 'fail'
             return False
-
+        
     def clean_and_migrate(self):
         try:
             errors = run_log_cache_cleaner()

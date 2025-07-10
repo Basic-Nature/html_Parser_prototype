@@ -41,6 +41,7 @@ from ..bots.librarian import (
 # --- Directory and file constants ---
 from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
 from webapp.parser.Context_Integration.context_coordinator import ContextCoordinator
+from ..utils.model_registry import ModelRegistry
 coordinator = ContextCoordinator()
 # Ensure these are Path objects
 LOG_DIR = Path(LOG_DIR)
@@ -324,20 +325,6 @@ def ml_suggest_field(entry, coordinator=None):
             return doc.ents[0].label_
     return None
 
-def find_log_files(log_dir=LOG_DIR, cache_dir=None, suffixes=(".jsonl", ".json")):
-    """
-    Recursively find all log files with given suffixes in log_dir and cache_dir.
-    """
-    log_dir = safe_path(log_dir, [LOG_DIR])
-    files = []
-    for suf in suffixes:
-        files.extend(log_dir.rglob(f"*{suf}"))
-    if cache_dir:
-        cache_dir = safe_path(cache_dir, [CONTEXT_LIBRARY_DIR])
-        for suf in suffixes:
-            files.extend(cache_dir.rglob(f"*{suf}"))
-    return files
-
 # --- JSONL utilities ---
 
 def load_jsonl(path):
@@ -375,7 +362,6 @@ def check_and_fix_json_files(
     """
     import re
 
-    # Try to import tolerant JSON parser
     try:
         import json5
         has_json5 = True
@@ -392,8 +378,11 @@ def check_and_fix_json_files(
         for suf in suffixes:
             for file in directory.rglob(f"*{suf}"):
                 try:
+                    if not file.exists():
+                        if verbose:
+                            log_warning(f"[SKIP] File not found: {file}")
+                        continue
                     if suf == ".jsonl":
-                        # Try to load all lines, salvage valid ones if needed
                         valid_lines = []
                         with open(file, "rb") as f:
                             for line in f:
@@ -414,13 +403,19 @@ def check_and_fix_json_files(
                             shutil.move(fixed_path, file)
                             if verbose:
                                 log_warning(f"[FIXED] Salvaged {len(valid_lines)}/{len(all_lines)} lines in {file}")
-                            continue  # File is now fixed, skip deletion
+                            # If all lines were bad, create an empty file to preserve format
+                            if not valid_lines:
+                                with open(file, "wb") as out:
+                                    out.write(b"")
+                                if verbose:
+                                    log_warning(f"[FIXED] All lines invalid, recreated empty .jsonl file: {file}")
+                            continue
                         elif len(valid_lines) == len(all_lines):
                             continue  # All lines valid
                         else:
+                            # All lines are bad and try_fix is False
                             raise Exception("Unrecoverable .jsonl corruption")
                     else:
-                        # Try to load as JSON, if fails, try tolerant parsing or salvage array elements
                         with open(file, "rb") as f:
                             content = f.read()
                         try:
@@ -434,7 +429,6 @@ def check_and_fix_json_files(
                                 with open(file, "r", encoding="utf-8") as f:
                                     text = f.read()
                                 obj = json5.loads(text)
-                                # If json5 can parse, rewrite as strict JSON
                                 fixed_path = file.with_suffix(file.suffix + ".fixed")
                                 with open(fixed_path, "wb") as out:
                                     out.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
@@ -448,7 +442,6 @@ def check_and_fix_json_files(
                         if try_fix:
                             try:
                                 text = content.decode("utf-8", errors="ignore")
-                                # Find last closing bracket for array or object
                                 last_brace = max(text.rfind("}"), text.rfind("]"))
                                 if last_brace != -1:
                                     truncated = text[:last_brace+1]
@@ -487,6 +480,18 @@ def check_and_fix_json_files(
                                     continue
                             except Exception:
                                 pass
+                        # If all else fails, recreate as minimal valid JSON
+                        if try_fix:
+                            try:
+                                # Guess if file should be an array or object
+                                minimal = b"[]" if "array" in file.name or file.name.endswith("s.json") else b"{}"
+                                with open(file, "wb") as out:
+                                    out.write(minimal)
+                                if verbose:
+                                    log_warning(f"[FIXED] Recreated minimal valid JSON in {file}")
+                                continue
+                            except Exception:
+                                pass
                         raise Exception("Unrecoverable .json corruption")
                 except Exception as e:
                     corrupted.append(str(file))
@@ -494,35 +499,69 @@ def check_and_fix_json_files(
                         log_warning(f"[CORRUPT] {file}: {e}")
                     if auto_delete:
                         try:
-                            if quarantine:
-                                quarantine_dir = file.parent / "corrupt"
-                                quarantine_dir.mkdir(exist_ok=True)
-                                file.rename(quarantine_dir / file.name)
-                                if verbose:
-                                    log_warning(f"[QUARANTINED] {file} -> {quarantine_dir / file.name}")
+                            if file.exists():
+                                if quarantine:
+                                    quarantine_dir = file.parent / "corrupt"
+                                    quarantine_dir.mkdir(exist_ok=True)
+                                    file.rename(quarantine_dir / file.name)
+                                    if verbose:
+                                        log_warning(f"[QUARANTINED] {file} -> {quarantine_dir / file.name}")
+                                else:
+                                    file.unlink()
+                                    if verbose:
+                                        log_warning(f"[DELETED] {file}")
                             else:
-                                file.unlink()
                                 if verbose:
-                                    log_warning(f"[DELETED] {file}")
+                                    log_warning(f"[SKIP-DELETE] File already missing: {file}")
                         except Exception as del_e:
                             log_error(f"[ERROR] Could not remove {file}: {del_e}")
     if verbose:
         log_info(f"[SUMMARY] Corrupted files found: {corrupted}")
     return corrupted
 
-def find_log_files(log_dir=LOG_DIR, cache_dir=CACHE_DIR, suffixes=(".jsonl", ".json")):
+def find_log_files(
+    dirs=None,
+    suffixes=(".jsonl", ".json"),
+    field_filter=None,
+    regex_filter=None,
+    allowed_roots=None,
+    dedupe=True
+):
     """
-    Recursively find all log files with given suffixes in log_dir and cache_dir.
+    Recursively find all log files with given suffixes in dirs.
+    Optionally filter by field name or regex.
+    Returns a list of Path objects.
     """
-    log_dir = safe_path(log_dir, [LOG_DIR])
-    files = []
-    for suf in suffixes:
-        files.extend(log_dir.rglob(f"*{suf}"))
-    if cache_dir:
-        cache_dir = safe_path(cache_dir, [CACHE_DIR])
-        for suf in suffixes:
-            files.extend(cache_dir.rglob(f"*{suf}"))
-    return files
+    if dirs is None:
+        dirs = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]
+    if allowed_roots is None:
+        allowed_roots = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]
+    found = []
+    for d in dirs:
+        try:
+            d = safe_path(d, allowed_roots)
+            d = Path(d)
+            if not d.exists() or not d.is_dir():
+                continue
+            for suf in suffixes:
+                for f in d.rglob(f"*{suf}"):
+                    if field_filter and field_filter not in f.name:
+                        continue
+                    if regex_filter and not re.search(regex_filter, str(f)):
+                        continue
+                    found.append(f)
+        except Exception as e:
+            log_warning(f"[FIND-LOGS] Skipped {d}: {e}")
+    if dedupe:
+        # Remove duplicates while preserving order
+        seen = set()
+        unique = []
+        for f in found:
+            if str(f) not in seen:
+                seen.add(str(f))
+                unique.append(f)
+        found = unique
+    return found
 
 def load_jsonl_incremental(path, cache):
     """Read only new lines since last offset for this file."""
@@ -822,6 +861,108 @@ def autofix_contest_fields(contest):
             changed = True
     return changed
 
+def suggest_fields_with_models(contest, nlp=None):
+    """
+    Suggest missing fields using spaCy NER and other ML models.
+    Returns a dict of {field: suggestion or None}.
+    """
+    title = contest.get("title", "")
+    raw = contest.get("raw", {})
+    suggestions = {}
+
+    # Load models if not provided
+    if not nlp:
+        try:
+            nlp = ModelRegistry.get_spacy_model()
+        except Exception:
+            nlp = None
+    if not torch_model:
+        try:
+            torch_model = ModelRegistry.get_torch_contest_model()
+        except Exception:
+            torch_model = None
+
+    # Torch-based suggestion (if available)
+    torch_suggestion = {}
+    if torch_model:
+        try:
+            torch_suggestion = torch_model.predict(title)
+        except Exception:
+            torch_suggestion = {}
+
+    # Helper for extracting with spaCy
+    def extract_with_spacy(label, text):
+        if nlp and text:
+            doc = nlp(str(text))
+            for ent in doc.ents:
+                if ent.label_ == label:
+                    return ent.text
+        return None
+
+    # Year
+    if not contest.get("year"):
+        year = torch_suggestion.get("year") \
+            or extract_with_spacy("DATE", title) \
+            or extract_with_spacy("DATE", raw.get("title", ""))
+        if not year:
+            m = re.search(r"(19|20)\d{2}", title)
+            year = m.group(0) if m else None
+        suggestions["year"] = year
+
+    # State
+    if not contest.get("state"):
+        state = torch_suggestion.get("state") \
+            or extract_with_spacy("GPE", title) \
+            or extract_with_spacy("GPE", raw.get("title", ""))
+        suggestions["state"] = state
+
+    # County
+    if not contest.get("county"):
+        county = torch_suggestion.get("county") \
+            or extract_with_spacy("LOC", title) \
+            or extract_with_spacy("LOC", raw.get("title", ""))
+        if not county:
+            m = re.search(r"([A-Za-z ]+) County", title)
+            county = m.group(1).strip() if m else None
+        suggestions["county"] = county
+
+    # Type
+    if not contest.get("type_"):
+        ctype = torch_suggestion.get("type_") \
+            or extract_with_spacy("EVENT", title) \
+            or extract_with_spacy("ORG", title)
+        if not ctype:
+            for t in ["General", "Primary", "Special"]:
+                if t.lower() in title.lower():
+                    ctype = t
+                    break
+        suggestions["type_"] = ctype
+
+    return suggestions
+
+def prompt_for_missing_fields(contest, suggestions):
+    """
+    Prompt user for all missing fields, showing model suggestions.
+    Updates contest in-place.
+    """
+    print(f"\n[INTEGRITY] Contest missing fields: {contest.get('title', '')}")
+    for field, suggestion in suggestions.items():
+        if contest.get(field):
+            continue
+        prompt = f"Enter {field} (suggested: {suggestion!r}, leave blank to skip): "
+        value = input(prompt).strip()
+        if not value and suggestion:
+            value = suggestion
+        if value:
+            # For year, ensure int
+            if field == "year":
+                try:
+                    value = int(re.search(r"(19|20)\d{2}", str(value)).group(0))
+                except Exception:
+                    print(f"Could not parse year from input: {value}")
+                    continue
+            contest[field] = value
+
 def highlight_anomalies(context_library, field_type, context_path=None, autofix=True):
     try:
         from ..Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
@@ -832,13 +973,21 @@ def highlight_anomalies(context_library, field_type, context_path=None, autofix=
         contests = context_library["contests"]
         results = analyze_contest_titles(contests)
         fixed_count = 0
+        nlp = None
+        try:
+            nlp = ModelRegistry.get_spacy_model()
+        except Exception:
+            pass
         if results.get("integrity_issues"):
             log_info("[INTEGRITY] Issues detected:", results["integrity_issues"])
-            if autofix:
-                for issue in results["integrity_issues"]:
-                    # Each issue should have a 'context' with the contest dict
-                    contest = issue.get("context")
-                    if contest and autofix_contest_fields(contest):
+            for issue in results["integrity_issues"]:
+                contest = issue.get("context")
+                if contest:
+                    # Suggest all missing fields using ML models
+                    suggestions = suggest_fields_with_models(contest, nlp=nlp)
+                    missing = [f for f, v in suggestions.items() if v or not contest.get(f)]
+                    if missing:
+                        prompt_for_missing_fields(contest, suggestions)
                         fixed_count += 1
         if results.get("flagged_suspicious"):
             log_info("[INTEGRITY] Suspicious entries:", results["flagged_suspicious"])
@@ -1061,10 +1210,13 @@ def main():
     context_library["metadata"]["last_accessed"] = datetime.now().isoformat()
     # Only write at end if changed
     context_library_changed = False
-    log_dir = safe_path(LOG_DIR, [LOG_DIR]) if LOG_DIR else None
-    cache_dir = safe_path(CACHE_DIR, [CACHE_DIR]) if CACHE_DIR else None
-    log_files = find_log_files(log_dir, cache_dir)
-    log_info(f"Discovered {len(log_files)} log files in {log_dir}")
+    # Discover log files dynamically
+    log_files = find_log_files(
+        dirs=[LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR],
+        suffixes=(".jsonl", ".json"),
+        # Optionally: field_filter=field, regex_filter=your_regex
+    )
+    log_info(f"Discovered {len(log_files)} log files in {[str(d) for d in [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]]}")
     log_debug(f"[DEBUG] Discovered log files: {[str(f) for f in log_files]}")
     discovered_fields = discover_field_types_from_logs(log_files)
     log_debug(f"[DEBUG] Discovered field types in logs: {discovered_fields}")

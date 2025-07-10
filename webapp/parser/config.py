@@ -18,7 +18,9 @@ CONTEXT_LIBRARY_PATH = os.path.join(
 )
 CONTEXT_LIBRARY_DIR = os.path.dirname(CONTEXT_LIBRARY_PATH)
 
-
+# Directory for all vocabularies used by ML/NLP models
+VOCAB_DIR = os.path.join(BASE_DIR, "parser", "Context_Integration", "vocab")
+os.makedirs(VOCAB_DIR, exist_ok=True)
 
 INPUT_DIR = os.path.join(PROJECT_ROOT, "input")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
