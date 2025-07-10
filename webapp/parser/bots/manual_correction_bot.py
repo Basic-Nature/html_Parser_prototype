@@ -42,7 +42,6 @@ from ..bots.librarian import (
 from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
 from webapp.parser.Context_Integration.context_coordinator import ContextCoordinator
 from ..utils.model_registry import ModelRegistry
-coordinator = ContextCoordinator()
 # Ensure these are Path objects
 LOG_DIR = Path(LOG_DIR)
 CONTEXT_LIBRARY_PATH = Path(CONTEXT_LIBRARY_PATH)
@@ -292,6 +291,8 @@ def ml_score_entry(entry, coordinator=None):
     Use ML/NER or coordinator's ML model to score the entry for likely correctness.
     Returns a float score between 0 and 1.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     text = entry.get("extracted_value", "")
     score = 0.0
     if coordinator and hasattr(coordinator, "score_entry"):
@@ -313,6 +314,8 @@ def ml_suggest_field(entry, coordinator=None):
     """
     Use ML/NER or coordinator to suggest a better field for the entry.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     text = entry.get("extracted_value", "")
     if coordinator and hasattr(coordinator, "suggest_field"):
         try:
@@ -657,6 +660,8 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
 
 # --- Feedback loop (interactive and LLM/ML-powered) ---
 def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, coordinator=None, context_organizer=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None, fast_mode=False):
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     context_library_path = safe_path(context_library_path, [CONTEXT_LIBRARY_DIR])
     if not new_entries:
         log_info(f"No new entries to review for {field_type}.")
@@ -1002,6 +1007,8 @@ def highlight_anomalies(context_library, field_type, context_path=None, autofix=
 
 # --- DB update logic (batch, periodic, error handling) ---
 def update_database_with_context(library, db_path=None, coordinator=None, enhanced=True):
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     if not db_path:
         db_path = CONTEXT_LIBRARY_DIR / "context_library.json"
     db_path = safe_path(db_path, [CONTEXT_LIBRARY_DIR])

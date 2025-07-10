@@ -10,7 +10,6 @@ user_prompt = UserPrompt()
 from typing import TYPE_CHECKING, List, Dict, Any, Optional
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
-coordinator = ContextCoordinator()
 
 def extract_year_from_title(title) -> Optional[int]:
     import re
@@ -59,6 +58,8 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     Use ML/NER to verify if the contest's year/type/title are likely correct.
     Returns True if above threshold, False otherwise.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     title = contest.get("title", "")
     year = contest.get("year", "")
     ctype = contest.get("type_", "")
@@ -107,6 +108,8 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
     Feedback loop: rescans and verifies contests using ML/NER, retries if below threshold.
     Prompts user for clarification if still ambiguous after max_loops.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     for loop in range(max_loops):
         verified = []
         for c in contests:
@@ -196,6 +199,8 @@ def select_contest(
     Uses ML/NER/regex feedback loop to verify correct year/type/title.
     Returns a list of selected contest dicts or None if skipped/cancelled.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     norm_state = normalize_state_name(state)
     norm_county = normalize_county_name(county)
     selector_data = coordinator.get_for_selector()

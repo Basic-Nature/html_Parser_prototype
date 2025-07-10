@@ -49,7 +49,6 @@ from ..bots.librarian import (
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
-coordinator = ContextCoordinator()
 # --- CONSTANTS & GLOBALS ---
 
 TABLE_STRUCTURE_CACHE_PATH = os.path.join(CACHE_DIR, "table_structure_cache.json")
@@ -76,7 +75,8 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     Now supports ML-driven context, segments, and panels from html_scanner.
     """
     import types
-
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     def safe_json(obj):
         if isinstance(obj, dict):
             result = {}
@@ -450,7 +450,8 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
         find_tables_with_panel_headings,
         find_tables_with_section_headings,
     )
-
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     extraction_types = [
         ("panel", find_tables_with_panel_headings(page)),
         ("section", find_tables_with_section_headings(page)),
@@ -580,7 +581,8 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
     Returns headers, data, and a meta dict with entity preview and detected location/percent columns.
     Now walks the DOM for best-matching columns and values, scoring all candidates and picking the best.
     """
-
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     if table is None:
         log_error("[TABLE BUILDER][extract_table_data] Table locator is None.")
         return [], [], {}
@@ -884,6 +886,8 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     Returns headers, data, and diagnostics.
     Enhanced: logs and returns what is being removed, and column stats.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     log_info("[TABLE_BUILDER][extract_rows_and_headers_from_dom] Starting DOM structure extraction.")
     repeated_rows = extract_repeated_dom_structures(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
     log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Found {len(repeated_rows)} repeated rows.")
@@ -1171,6 +1175,8 @@ def ml_based_table_detection(page, extraction_context=None):
     Returns a list of (headers, data, diagnostics) tuples.
     Each diagnostics dict includes the extraction_context for traceability.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     try:
         ml_tables = detect_tables_ml(page.content())
         results = []
@@ -1633,6 +1639,8 @@ def nlp_entity_annotate_table(
     Annotate table with detected entities (people, locations, ballot types, numbers).
     Improved: Uses both 'Candidate' and 'Party' fields for entity extraction.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     log_info("[TABLE_CORE][nlp_entity_annotate_table] Starting NLP entity annotation.")
     if not coordinator:
         log_warning("[TABLE_CORE][nlp_entity_annotate_table] No coordinator provided, skipping NLP annotation.")
@@ -1731,6 +1739,8 @@ def verify_table_structure(
     - At least one numeric column (votes/totals)
     Returns (verified: bool, missing: List[str])
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     log_info("[TABLE_CORE][verify_table_structure] Verifying table structure using NLP and DOM info.")
     missing = []
     # Check for location
@@ -1768,7 +1778,8 @@ def progressive_table_verification(headers, data, coordinator, context):
     Returns (verified_headers, verified_data, structure_info)
     """
     log_info("[TABLE BUILDER][progressive_table_verification] Starting verification of extracted table.")
-
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     # 1. Detect location column
     location_header = None
     location_patterns = set(coordinator.library.get("location_patterns", [])) | LOCATION_KEYWORDS
@@ -1834,6 +1845,8 @@ def rescan_and_verify(headers: List[str], data: List[Dict[str, Any]], coordinato
     Returns (headers, data, passed)
     """
     # Use coordinator's ML/NER to score headers
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     scores = []
     for h in headers:
         score = coordinator.score_header(h, context)
@@ -1867,6 +1880,8 @@ def force_fully_wide_format(headers, data, coordinator: "ContextCoordinator" = N
     columns for each candidate/party/ballot type pair, plus special columns like
     Percent Reported and Misc Totals. Preserves all rows.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     # 1. Find or synthesize location column
     location_col = next((h for h in headers if is_location_header(h)), None)
     if not location_col:
@@ -1976,6 +1991,8 @@ def detect_table_structure(
     Returns a dict with structure type and detected entity columns.
     Never transforms data.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     log_info("[TABLE_CORE][detect_table_structure] Analyzing table structure.")
     if entity_info is None:
         entity_info = {}
@@ -2013,6 +2030,8 @@ def handle_candidate_major(headers, data, coordinator, context):
     """
     Handles tables where each row is a candidate, columns are ballot types.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     # Detect location and percent columns
     location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
     if not location_header:
@@ -2092,12 +2111,16 @@ def handle_precinct_major(headers, data, coordinator, context):
     """
     Handles tables where each row is a precinct, columns are candidates.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     return pivot_precinct_major_to_wide(headers, data, coordinator, context)
 
 def handle_ambiguous(headers, data, coordinator, context):
     """
     Handles ambiguous tables by trying both handlers and picking the one with more filled data.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     # Try candidate-major
     cand_headers, cand_data = handle_candidate_major(headers, data, coordinator, context)
     # Try precinct-major
@@ -2119,6 +2142,8 @@ def pivot_to_wide_format(
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     log_info("[TABLE_CORE][pivot_to_wide_format] Pivoting to wide format.")
     # 1. Detect location header robustly and normalize to "Precinct"
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     location_header = None
     percent_header = None
     for h in headers:
@@ -2209,6 +2234,8 @@ def pivot_precinct_major_to_wide(
     Precinct | Percent Reported | [Candidate (Party) - BallotType ... Total Votes] | [Misc Totals] | Grand Total
     Handles variable ballot types and miscellaneous columns.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
     if not percent_header:
         percent_header = "Percent Reported"
@@ -2335,6 +2362,8 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     Uses context, regex, NER, and library.
     Returns (location_header, percent_reported_header)
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     # Use patterns from the context library if available, else fall back to librarian
     location_patterns = set()
     percent_patterns = set()

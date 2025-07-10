@@ -29,7 +29,7 @@ from difflib import get_close_matches
 
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
-coordinator = ContextCoordinator()
+
 
 user_prompt = UserPrompt()
 
@@ -280,6 +280,8 @@ def auto_label_segment(
     ml_threshold=0.7,
     coordinator=None
 ) -> Optional[tuple]:
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     seg_hash = segment_identity_hash(segment)
     # 1. Persistent label cache
     cached_label = get_cached_segment_label(seg_hash)
@@ -602,6 +604,8 @@ def scan_html_for_context(
     Main pipeline entry: Efficient, dynamic, and feedback-driven HTML scanner.
     Leverages ContextCoordinator for context, ML model, and feedback logs.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     start_time = time.time()
     page_hash = get_page_hash(page)
     if context_cache is None:
@@ -1076,6 +1080,8 @@ def extract_tagged_segments_with_attrs(
     Extract DOM segments with attributes and ML-driven semantic labels.
     Uses selectolax for DOM, leverages context, pattern KB, and coordinator for optimal labeling.
     """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
     if context_cache is not None:
         clean_cache_inplace(context_cache)
     if model is None:
