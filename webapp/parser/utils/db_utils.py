@@ -299,15 +299,15 @@ def save_table_structure_to_db(contest_title, headers, context, ml_confidence=No
                 select(TableStructure).where(TableStructure.contest_title == contest_title)
             ).scalar_one_or_none()
             if obj:
-                obj.headers = orjson.dumps(clean_for_json(headers)).decode("utf-8")
-                obj.context = orjson.dumps(clean_for_json(context)).decode("utf-8")
+                obj.headers = clean_for_json(headers)
+                obj.context = clean_for_json(context)
                 obj.ml_confidence = ml_confidence
                 obj.confirmed_by_user = confirmed_by_user
             else:
                 obj = TableStructure(
                     contest_title=contest_title,
-                    headers=orjson.dumps(clean_for_json(headers)).decode("utf-8"),
-                    context=orjson.dumps(clean_for_json(context)).decode("utf-8"),
+                    headers=clean_for_json(headers),
+                    context=clean_for_json(context),
                     ml_confidence=ml_confidence,
                     confirmed_by_user=confirmed_by_user
                 )
@@ -385,7 +385,7 @@ def upsert_contest(session, contest_dict, auto_create_related=True) -> None:
     if obj:
         obj = session.merge(obj)
         obj.election_types = contest_dict.get("election_types")
-        obj.metastats = orjson.dumps(clean_for_json(contest_dict))
+        obj.metastats = clean_for_json(contest_dict)
     else:
         obj = Contest(
             title=contest_dict.get("title"),
@@ -394,7 +394,7 @@ def upsert_contest(session, contest_dict, auto_create_related=True) -> None:
             election_types=contest_dict.get("election_types"),
             state=state_obj,
             county=county_obj,
-            metastats=orjson.dumps(clean_for_json(contest_dict))
+            metastats=clean_for_json(contest_dict)
         )
         session.add(obj)
         

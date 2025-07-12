@@ -529,12 +529,14 @@ def find_log_files(
     regex_filter=None,
     allowed_roots=None,
     dedupe=True
-):
+) -> list[Path]:
     """
     Recursively find all log files with given suffixes in dirs.
     Optionally filter by field name or regex.
     Returns a list of Path objects.
     """
+    if isinstance(dirs, (str, Path)):
+        dirs = [dirs]
     if dirs is None:
         dirs = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]
     if allowed_roots is None:
@@ -547,6 +549,8 @@ def find_log_files(
             if not d.exists() or not d.is_dir():
                 continue
             for suf in suffixes:
+                if not isinstance(suf, str):
+                    suf = str(suf)
                 for f in d.rglob(f"*{suf}"):
                     if field_filter and field_filter not in f.name:
                         continue
