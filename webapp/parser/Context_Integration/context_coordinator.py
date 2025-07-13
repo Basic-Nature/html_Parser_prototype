@@ -447,6 +447,7 @@ class ContextCoordinator(object):
     Main interface for all context/NLP/ML operations.
     Use this class to access contests, buttons, panels, tables, candidates, precincts, etc.
     """
+    _dom_parts_warning_count = 0
     def __init__(self, use_library=True, enable_ml=True, alert_monitor=True, debug=False) -> None:
         self.enable_ml = enable_ml
         self.alert_monitor = alert_monitor
@@ -878,7 +879,11 @@ class ContextCoordinator(object):
         Returns a dict mapping label values to lists of nodes.
         """
         if not self.organized or "dom_parts" not in self.organized:
-            log_warning("[group_dom_nodes_by_label] No organized DOM parts.")
+            ContextCoordinator._dom_parts_warning_count += 1
+            if ContextCoordinator._dom_parts_warning_count == 1:
+                log_warning("[group_dom_nodes_by_label] No organized DOM parts. (Further warnings suppressed)")
+            elif ContextCoordinator._dom_parts_warning_count % 10 == 0:
+                log_warning(f"[group_dom_nodes_by_label] No organized DOM parts. (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
             return {}
         nodes = self.organized["dom_parts"].get("all_nodes", [])
         if not nodes:
@@ -975,7 +980,11 @@ class ContextCoordinator(object):
         Return organized DOM parts (head, body, wrappers, tables, buttons, clickable, etc.).
         """
         if not self.organized or "dom_parts" not in self.organized:
-            log_warning("[get_dom_parts] No organized DOM parts.")
+            ContextCoordinator._dom_parts_warning_count += 1
+            if ContextCoordinator._dom_parts_warning_count == 1:
+                log_warning("[get_dom_parts] No organized DOM parts. (Further warnings suppressed)")
+            elif ContextCoordinator._dom_parts_warning_count % 10 == 0:
+                log_warning(f"[get_dom_parts] No organized DOM parts. (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
             return {}
         return self.organized["dom_parts"]
 

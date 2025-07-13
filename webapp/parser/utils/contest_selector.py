@@ -260,6 +260,7 @@ def select_contest(
 
     # --- Filter contests ---
     filtered_contests = []
+    fallback_contests = []
     for c in contests:
         skip_reason = None
         if norm_state and normalize_state_name(c.get("state", "")) != norm_state:
@@ -274,11 +275,19 @@ def select_contest(
             skip_reason = "empty/generic title"
         if skip_reason:
             log_debug(f"Skipping contest '{c.get('title', '')}': {skip_reason}")
+            # PATCH: Add to fallback if it has a title
+            if c.get("title"):
+                fallback_contests.append(c)
             continue
         filtered_contests.append(c)
 
     log_debug(f"[DEBUG] Filtered contests: {filtered_contests}")
     log_debug(f"[DEBUG] Number of filtered contests: {len(filtered_contests)}")
+    # PATCH: If no valid contests, fallback to any contest with a title
+    if not filtered_contests and fallback_contests:
+        log_warning("[yellow]No contests passed strict filtering. Falling back to any contest with a title.[/yellow]")
+        filtered_contests = fallback_contests
+
     if not filtered_contests:
         log_warning("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
         return None

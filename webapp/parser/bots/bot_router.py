@@ -6,13 +6,10 @@ import orjson
 import errno
 from datetime import datetime
 from sqlalchemy import inspect
+from pathlib import Path
 from ..utils.shared_logger import log_info, log_error, summarize_logs, log_debug, log_warning
-from ..bots.log_cache_cleaner_bot import run_log_cache_cleaner
-from ..bots.context_migration import migrate_all
-from ..bots.scan_misaligned_ner import scan_misaligned
-from ..bots.manual_correction_bot import find_log_files, load_jsonl, check_and_fix_json_files
 from ..bots.librarian import load_context_library
-from ..utils.models import TableStructure, Base
+from ..utils.models import Base
 from ..utils.db_utils import get_engine
 from ..config import LOG_DIR, CACHE_DIR, PROJECT_ROOT
 try:
@@ -58,31 +55,6 @@ class BotPipeline:
             self.results['db_tables'] = 'fail'
             return False
         
-    def clean_and_migrate(self):
-        try:
-            errors = run_log_cache_cleaner()
-            migrate_all()
-            if errors:
-                log_error(f"[PIPELINE] Cleaning errors: {errors}")
-                self.results['clean_migrate'] = 'fail'
-                return False
-            self.results['clean_migrate'] = 'success'
-            return True
-        except Exception as e:
-            log_error(f"[PIPELINE] Clean/migrate failed: {e}")
-            self.results['clean_migrate'] = 'fail'
-            return False
-
-    def scan_misaligned(self):
-        try:
-            exit_code = scan_misaligned()
-            self.results['scan_misaligned'] = 'clean' if exit_code == 0 else 'misaligned'
-            return exit_code
-        except Exception as e:
-            log_error(f"[PIPELINE] scan_misaligned_ner failed: {e}")
-            self.results['scan_misaligned'] = 'fail'
-            return 2
-
     def build_correction_args(self):
         args = []
         if os.getenv("ENABLE_ENHANCED", "true").lower() == "true":
@@ -152,13 +124,65 @@ class BotPipeline:
             args.extend(["--db-path", os.getenv("DB_PATH")])
         return args
 
-    def has_new_entries(self, log_dir, cache_dir):
-        log_files = find_log_files(log_dir, cache_dir)
-        for log_file in log_files:
-            entries = load_jsonl(log_file)
-            if entries:
-                return True
+    def run_manual_correction(self, mode="auto", extra_args=None, retries=1, timeout=600):
+        """
+        Optimized wrapper for manual_correction_bot for end-of-pipeline use.
+        Only runs after other pipeline steps succeed. Uses auto mode for fast, non-interactive correction.
+        """
+        args = self.build_correction_args()
+        # Remove conflicting modes
+        args = [a for a in args if a not in ["--enhanced", "--feedback", "--batch", "--fast", "--self-heal"]]
+        # Always use auto mode for end-of-pipeline
+        args.append("--auto")
+        # Add extra arguments if provided
+        if extra_args:
+            args.extend(extra_args)
+        # Always add context and log-dir
+        log_dir_path = Path(LOG_DIR) if not isinstance(LOG_DIR, Path) else LOG_DIR
+        context_path = Path(LOG_DIR) / "context_library.json" if not os.getenv("CONTEXT_PATH") else os.getenv("CONTEXT_PATH")
+        args.extend([
+            "--context", str(context_path),
+            "--log-dir", str(log_dir_path)
+        ])
+        # Check for new entries before running
+        if not self.has_new_entries(LOG_DIR, CACHE_DIR):
+            log_info("[BOT_ROUTER] No new entries for manual correction. Skipping auto mode and exiting gracefully.")
+            self.results['manual_correction'] = 'skipped'
+            return True  # Graceful exit
+        # Try running with retries and timeout
+        for attempt in range(1, retries + 1):
+            try:
+                log_info(f"[BOT_ROUTER] Running manual_correction_bot (auto mode, attempt={attempt}) with args: {args}")
+                cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot"] + args
+                result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=timeout)
+                log_info(f"[BOT_ROUTER] manual_correction_bot stdout:\n{result.stdout[:1000]}")
+                if result.returncode == 0:
+                    log_info("[BOT_ROUTER] manual_correction_bot completed successfully.")
+                    self.results['manual_correction'] = 'success'
+                    return True
+                else:
+                    log_warning(f"[BOT_ROUTER] manual_correction_bot failed (attempt {attempt}): {result.stderr}")
+                    time.sleep(2)
+            except subprocess.TimeoutExpired:
+                log_error(f"[BOT_ROUTER] manual_correction_bot timed out after {timeout} seconds (attempt {attempt}).")
+            except Exception as e:
+                log_error(f"[BOT_ROUTER] manual_correction_bot exception: {e}")
+        log_error("[BOT_ROUTER] manual_correction_bot failed after all retries.")
+        self.results['manual_correction'] = 'fail'
         return False
+
+    def has_new_entries(self, log_dir, cache_dir):
+        # Use subprocess to call manual_correction_bot with --dry-run
+        log_dir_path = Path(LOG_DIR) if not isinstance(LOG_DIR, Path) else LOG_DIR
+        cmd = [
+            sys.executable, "-m", "webapp.parser.bots.manual_correction_bot",
+            "--log-dir", str(log_dir_path),
+            "--fields", "all",
+            "--dry-run"
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT)
+        # Parse output or return True if any log files found (customize as needed)
+        return "Discovered" in result.stdout and "log files" in result.stdout
 
     def lock(self):
         try:
@@ -202,33 +226,96 @@ class BotPipeline:
         try:
             self.last_run = datetime.now().isoformat()
             log_info(f"[PIPELINE] Starting pipeline at {self.last_run}")
+
+            # 1. Ensure DB tables
             if not self.ensure_db_tables():
+                log_error("[PIPELINE] DB table creation failed. Aborting pipeline.")
                 return
-            if not self.clean_and_migrate():
+
+            # 2. Clean logs/cache and migrate context
+            clean_success = self.clean_and_migrate()
+            if not clean_success:
+                log_error("[PIPELINE] Clean/migrate failed. Skipping retrain and correction.")
                 return
-            # Clean up corrupted JSON/JSONL files before processing
-            check_and_fix_json_files()
+
+            # 3. Fix corrupted JSON files before any processing
+            try:
+                cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fix-corrupt-json"]
+                subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
+                log_info("[PIPELINE] Corrupted JSON files checked and fixed.")
+            except Exception as e:
+                log_warning(f"[PIPELINE] Could not fix corrupted JSON files: {e}")
+
+            # 4. Scan for misaligned NER examples
             misaligned = self.scan_misaligned()
-            correction_args = self.build_correction_args()
-            # Only run correction if new entries exist
-            if self.has_new_entries(LOG_DIR, CACHE_DIR):
-                if misaligned != 0:
-                    self.self_heal_loop()
-                else:
-                    self.manual_correction(args=correction_args)
+            if misaligned == 2:
+                log_warning("[PIPELINE] scan_misaligned_ner failed. Proceeding with caution.")
+            elif misaligned == 0:
+                log_info("[PIPELINE] No misaligned NER examples found. Proceeding to manual correction.")
+
+            # 5. Optimized orchestration for manual correction and misaligned NER
+            has_entries = self.has_new_entries(LOG_DIR, CACHE_DIR)
+            if misaligned == 2:
+                log_warning("[PIPELINE] scan_misaligned_ner failed. Proceeding with caution.")
+            elif misaligned != 0:
+                # Handle misaligned NER separately, do not block manual correction
+                log_info("[PIPELINE] Misalignments detected. Running manual_correction_bot in self-heal mode for NER only.")
+                self.run_manual_correction(mode="self-heal", retries=3)
+                # Optionally, tidy up misaligned logs or retrain NER here
+                # e.g., self.retrain_models() or clean misaligned logs
+            # Now run manual correction for all other entries (auto mode, end-of-pipeline)
+            if has_entries:
+                extra_args = []
+                # Dynamically add arguments based on pipeline state and env
+                if os.getenv("INTEGRITY_CHECK", "false").lower() == "true":
+                    extra_args.append("--integrity")
+                if os.getenv("LLM_API_KEY"):
+                    extra_args.extend([
+                        "--llm-api-key", os.getenv("LLM_API_KEY"),
+                        "--llm-provider", os.getenv("LLM_PROVIDER", "openai"),
+                        "--llm-model", os.getenv("LLM_MODEL", "gpt-4-turbo")
+                    ])
+                if os.getenv("EXPORT_AUDIT_LOG"):
+                    extra_args.extend(["--export-audit-log", os.getenv("EXPORT_AUDIT_LOG")])
+                if os.getenv("FLUSH_CACHE", "false").lower() == "true":
+                    extra_args.append("--flush-cache")
+                if os.getenv("CACHE_EXPIRE_DAYS"):
+                    extra_args.extend(["--cache-expire-days", os.getenv("CACHE_EXPIRE_DAYS")])
+                # Always run in auto mode for end-of-pipeline
+                log_info("[PIPELINE] Running manual_correction_bot in auto mode for context correction.")
+                self.run_manual_correction(mode="auto", extra_args=extra_args)
             else:
                 log_info("[PIPELINE] No new entries for manual correction. Skipping manual_correction_bot.")
                 self.results['manual_correction'] = 'skipped'
-            self.retrain_models()
+                return
+
+            # 6. Retrain models (only if previous steps succeeded)
+            retrain_success = self.retrain_models()
+            if not retrain_success:
+                log_warning("[PIPELINE] Model retraining failed.")
+
+            # 7. Reload context library after corrections
             self.context = load_context_library()
             log_debug("DEBUG: Loaded context library:", type(self.context))
             if not isinstance(self.context, dict):
                 log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
                 raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
+
+            # 8. Post-process context (organizer, coordinator, integrity)
             self.context_postprocess()
+
+            # 9. Run orchestration plugins
             self.run_orchestration_plugins()
+
+            # 10. Self-improvement suggestions (LLM/static)
             self.self_improve()
+
+            # 11. Print pipeline summary
             self.print_summary()
+
+        except Exception as e:
+            log_error(f"[PIPELINE] Unhandled exception: {e}")
+            self.results['pipeline'] = 'fail'
         finally:
             self.unlock()
 
@@ -248,12 +335,37 @@ class BotPipeline:
     def retrain_models(self):
         try:
             cmd = [sys.executable, "-m", "webapp.parser.bots.retrain_table_structure_models"]
-            subprocess.run(cmd, check=True, cwd=os.environ.get("PROJECT_ROOT", "."))
+            subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
             self.results['retrain_models'] = 'success'
             return True
         except Exception as e:
             log_error(f"[PIPELINE] retrain_table_structure_models failed: {e}")
             self.results['retrain_models'] = 'fail'
+            return False
+
+    def scan_misaligned(self):
+        try:
+            cmd = [sys.executable, "-m", "webapp.parser.bots.scan_misaligned_ner"]
+            result = subprocess.run(cmd, cwd=PROJECT_ROOT)
+            exit_code = result.returncode
+            self.results['scan_misaligned'] = 'clean' if exit_code == 0 else 'misaligned'
+            return exit_code
+        except Exception as e:
+            log_error(f"[PIPELINE] scan_misaligned_ner failed: {e}")
+            self.results['scan_misaligned'] = 'fail'
+            return 2
+
+    def clean_and_migrate(self):
+        try:
+            cmd = [sys.executable, "-m", "webapp.parser.bots.log_cache_cleaner_bot"]
+            subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
+            cmd = [sys.executable, "-m", "webapp.parser.bots.context_migration"]
+            subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
+            self.results['clean_migrate'] = 'success'
+            return True
+        except Exception as e:
+            log_error(f"[PIPELINE] Clean/migrate failed: {e}")
+            self.results['clean_migrate'] = 'fail'
             return False
 
     def context_postprocess(self):

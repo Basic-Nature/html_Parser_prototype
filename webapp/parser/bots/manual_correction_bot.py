@@ -535,6 +535,7 @@ def find_log_files(
     Optionally filter by field name or regex.
     Returns a list of Path objects.
     """
+    log_debug(f"[DEBUG] Searching in dirs: {dirs} with suffixes: {suffixes}")
     if isinstance(dirs, (str, Path)):
         dirs = [dirs]
     if dirs is None:
@@ -551,6 +552,7 @@ def find_log_files(
             for suf in suffixes:
                 if not isinstance(suf, str):
                     suf = str(suf)
+                log_debug(f"[DEBUG] Searching after isinstance in dirs: {dirs} with suffixes: {suffixes}")
                 for f in d.rglob(f"*{suf}"):
                     if field_filter and field_filter not in f.name:
                         continue
@@ -1140,6 +1142,53 @@ def summarize_misaligned_entities(log_path=None, top_n=10):
         log_warning(f"  {repr(text)}: {count} times")
     log_warning("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data.")
 
+def process_auto_mode(file_field_map, context_path, cache, batch_size=BATCH_SIZE):
+    total_processed = 0
+    total_skipped = 0
+    total_errors = 0
+    batch_entries = []
+    for log_file, field in file_field_map:
+        try:
+            entries = load_jsonl_incremental(log_file, cache)
+            unique_entries, _ = deduplicate_entries(entries)
+            field_entries = defaultdict(list)
+            for entry in unique_entries:
+                entry_id = str(hash(orjson.dumps(entry)))
+                if entry_id in cache:
+                    total_skipped += 1
+                    continue
+                field_entries[entry.get("context_key", "default")].append(entry)
+                cache[entry_id] = {
+                    "status": "accepted",
+                    "timestamp": datetime.now().isoformat(),
+                    "action": "auto-accept",
+                    "user": os.environ.get("USER", "system"),
+                }
+                write_audit_log("accept", entry, user=os.environ.get("USER", "system"))
+                total_processed += 1
+                batch_entries.append(entry)
+                # Periodic progress log
+                if total_processed % 100 == 0:
+                    log_info(f"[AUTO] Processed {total_processed} entries so far...")
+                # Periodic batch update
+                if len(batch_entries) >= batch_size:
+                    update_context_with_new_entries(context_path, field, field_entries)
+                    batch_entries.clear()
+            # Final flush for this file/field
+            if batch_entries:
+                update_context_with_new_entries(context_path, field, field_entries)
+                batch_entries.clear()
+            # Remove processed log file
+            try:
+                os.remove(log_file)
+                log_info(f"[AUTO] Deleted processed log file: {log_file}")
+            except Exception as e:
+                log_warning(f"[AUTO] Could not delete log file {log_file}: {e}")
+        except Exception as e:
+            log_error(f"[AUTO] Error processing {log_file} for field {field}: {e}")
+            total_errors += 1
+    log_info(f"[AUTO] Finished. Total processed: {total_processed}, skipped: {total_skipped}, errors: {total_errors}")
+
 # --- Main CLI logic ---
 def main():
     parser = argparse.ArgumentParser(
@@ -1222,10 +1271,10 @@ def main():
     # Only write at end if changed
     context_library_changed = False
     # Discover log files dynamically
+    log_debug(f"[DEBUG] About to call find_log_files with dirs={[LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]} and suffixes={('.jsonl', '.json')}")
     log_files = find_log_files(
         dirs=[LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR],
         suffixes=(".jsonl", ".json"),
-        # Optionally: field_filter=field, regex_filter=your_regex
     )
     log_info(f"Discovered {len(log_files)} log files in {[str(d) for d in [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]]}")
     log_debug(f"[DEBUG] Discovered log files: {[str(f) for f in log_files]}")
@@ -1343,9 +1392,7 @@ def main():
                 log_info(f"[DRY-RUN] Would process {n_new} new entries for field {field} from {log_file}")
                 continue
             if args.auto or args.fast:
-                update_context_with_new_entries(context_path, field, field_entries)
-                log_info(f"Auto-accepted new entries for {field}.")
-                total_accepted += sum(len(v) for v in field_entries.values())
+                process_auto_mode(file_field_map, context_path, cache, batch_size=BATCH_SIZE)
                 context_library_changed = True
             else:
                 # Feedback loop returns accepted, edited, removed counts

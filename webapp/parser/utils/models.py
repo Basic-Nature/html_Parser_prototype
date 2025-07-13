@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, DateTime, Text, JSON, ForeignKey, Boolean, Float, LargeBinary,
+    Column, Integer, String, DateTime, Text, ForeignKey, Boolean, Float, LargeBinary,
     UniqueConstraint, Index, Enum
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -154,6 +154,133 @@ class Result(Base):
     vote_method = Column(String)
     metastats = Column(JSONB, default=dict)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
+
+class Panel(Base):
+    """
+    Stores extracted or user-confirmed panels from election pages.
+    """
+    __tablename__ = "panels"
+    id = Column(Integer, primary_key=True)
+    panel_text = Column(Text, nullable=False, index=True)
+    panel_html = Column(Text)
+    segment_hash = Column(String, index=True)
+    contest_id = Column(Integer, ForeignKey("contests.id"), nullable=True)
+    contest = relationship("Contest", backref=backref("panels", cascade="all, delete-orphan"))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    metastats = Column(JSONB, default=dict)
+
+class CandidatePanel(Base):
+    """
+    Stores candidate panels (grouped candidate info) from election pages.
+    """
+    __tablename__ = "candidate_panels"
+    id = Column(Integer, primary_key=True)
+    candidate_panel_text = Column(Text, nullable=False, index=True)
+    candidate_panel_html = Column(Text)
+    year = Column(Integer, index=True)
+    type_ = Column(String)
+    segment_hash = Column(String, index=True)
+    contest_id = Column(Integer, ForeignKey("contests.id"), nullable=True)
+    contest = relationship("Contest", backref=backref("candidate_panels", cascade="all, delete-orphan"))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    metastats = Column(JSONB, default=dict)
+
+class LocationPanel(Base):
+    """
+    Stores location panels (jurisdiction info) from election pages.
+    """
+    __tablename__ = "location_panels"
+    id = Column(Integer, primary_key=True)
+    location_panel_text = Column(Text, nullable=False, index=True)
+    location_panel_html = Column(Text)
+    year = Column(Integer, index=True)
+    type_ = Column(String)
+    segment_hash = Column(String, index=True)
+    contest_id = Column(Integer, ForeignKey("contests.id"), nullable=True)
+    contest = relationship("Contest", backref=backref("location_panels", cascade="all, delete-orphan"))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    metastats = Column(JSONB, default=dict)
+
+class Heading(Base):
+    """
+    Stores headings (section titles, update info) from election pages.
+    """
+    __tablename__ = "headings"
+    id = Column(Integer, primary_key=True)
+    heading_text = Column(Text, nullable=False, index=True)
+    heading_html = Column(Text)
+    heading_type = Column(String)  # e.g., "last_webpage_update", "content"
+    segment_hash = Column(String, index=True)
+    contest_id = Column(Integer, ForeignKey("contests.id"), nullable=True)
+    contest = relationship("Contest", backref=backref("headings", cascade="all, delete-orphan"))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    metastats = Column(JSONB, default=dict)
+
+class BallotType(Base):
+    """
+    Stores ballot type info (e.g., absentee, provisional) from election pages.
+    """
+    __tablename__ = "ballot_types"
+    id = Column(Integer, primary_key=True)
+    ballot_types_text = Column(Text, nullable=False, index=True)
+    ballot_types_html = Column(Text)
+    year = Column(Integer, index=True)
+    type_ = Column(String)
+    segment_hash = Column(String, index=True)
+    contest_id = Column(Integer, ForeignKey("contests.id"), nullable=True)
+    contest = relationship("Contest", backref=backref("ballot_types", cascade="all, delete-orphan"))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    metastats = Column(JSONB, default=dict)
+
+class ResultsTimestamp(Base):
+    """
+    Stores results timestamp info (last updated, etc.) from election pages.
+    """
+    __tablename__ = "results_timestamps"
+    id = Column(Integer, primary_key=True)
+    timestamp_text = Column(Text, nullable=False, index=True)
+    timestamp_html = Column(Text)
+    segment_hash = Column(String, index=True)
+    contest_id = Column(Integer, ForeignKey("contests.id"), nullable=True)
+    contest = relationship("Contest", backref=backref("results_timestamps", cascade="all, delete-orphan"))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    metastats = Column(JSONB, default=dict)
+
+class PartyLabel(Base):
+    """
+    Stores party label info from election pages.
+    """
+    __tablename__ = "party_labels"
+    id = Column(Integer, primary_key=True)
+    party_label_text = Column(Text, nullable=False, index=True)
+    party_label_html = Column(Text)
+    segment_hash = Column(String, index=True)
+    contest_id = Column(Integer, ForeignKey("contests.id"), nullable=True)
+    contest = relationship("Contest", backref=backref("party_labels", cascade="all, delete-orphan"))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    metastats = Column(JSONB, default=dict)
+
+class VoteMethod(Base):
+    """
+    Stores vote method info (e.g., in-person, mail-in) from election pages.
+    """
+    __tablename__ = "vote_methods"
+    id = Column(Integer, primary_key=True)
+    vote_method_text = Column(Text, nullable=False, index=True)
+    vote_method_html = Column(Text)
+    segment_hash = Column(String, index=True)
+    contest_id = Column(Integer, ForeignKey("contests.id"), nullable=True)
+    contest = relationship("Contest", backref=backref("vote_methods", cascade="all, delete-orphan"))
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    metastats = Column(JSONB, default=dict)
 
 # --- OPTIONAL/GENERIC MODELS ---
 

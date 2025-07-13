@@ -683,7 +683,7 @@ def scan_html_for_context(
         )
         context_result["tagged_segments_with_attrs"] = segments_with_attrs
         context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
-
+               
         # --- Helper for diagnostics and filtering ---
         def diagnostics_and_filter(data, name, required_fields=None, max_title_len=500) -> List[Dict[str, Any]]:
             # Diagnostics
@@ -737,6 +737,11 @@ def scan_html_for_context(
                         "type_": seg_type,
                         "segment_hash": seg["segment_hash"],
                     })
+        if not raw_contests and coordinator and hasattr(coordinator, "data_service"):
+            db_contests = coordinator.data_service.get_all_full_contests(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_contests)} contests from DB as fallback.")
+            raw_contests.extend(db_contests)
+            
         contests = diagnostics_and_filter(
             raw_contests, "contest",
             required_fields=["title"],
@@ -753,6 +758,10 @@ def scan_html_for_context(
             }
             for seg in _extract_segments_by_label(segments_with_attrs, "panel")
         ]
+        if not raw_panels and coordinator and hasattr(coordinator, "data_service"):
+            db_panels = coordinator.data_service.get_all_panels(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_panels)} panels from DB as fallback.")
+            raw_panels.extend(db_panels)
         panels = diagnostics_and_filter(
             raw_panels, "panel",
             required_fields=["panel_text"],
@@ -773,6 +782,10 @@ def scan_html_for_context(
                 "type_": seg_type,
                 "segment_hash": seg["segment_hash"],
             })
+        if not raw_tables and coordinator and hasattr(coordinator, "data_service"):
+            db_tables = coordinator.data_service.get_all_tables(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_tables)} tables from DB as fallback.")
+            raw_tables.extend(db_tables)
         tables = diagnostics_and_filter(
             raw_tables, "table",
             required_fields=["table_text"],
@@ -793,6 +806,10 @@ def scan_html_for_context(
                 "type_": seg_type,
                 "segment_hash": seg["segment_hash"],
             })
+        if not raw_candidate_panels and coordinator and hasattr(coordinator, "data_service"):
+            db_candidate_panels = coordinator.data_service.get_all_candidate_panels(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_candidate_panels)} candidate_panels from DB as fallback.")
+            raw_candidate_panels.extend(db_candidate_panels)
         candidate_panels = diagnostics_and_filter(
             raw_candidate_panels, "candidate_panel",
             required_fields=["candidate_panel_text"],
@@ -813,6 +830,10 @@ def scan_html_for_context(
                 "type_": seg_type,
                 "segment_hash": seg["segment_hash"],
             })
+        if not raw_location_panels and coordinator and hasattr(coordinator, "data_service"):
+            db_location_panels = coordinator.data_service.get_all_location_panels(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_location_panels)} location_panels from DB as fallback.")
+            raw_location_panels.extend(db_location_panels)
         location_panels = diagnostics_and_filter(
             raw_location_panels, "location_panel",
             required_fields=["location_panel_text"],
@@ -842,7 +863,10 @@ def scan_html_for_context(
                     "segment_hash": seg["segment_hash"],
                     "heading_type": "content"
                 })
-
+        if not raw_headings and coordinator and hasattr(coordinator, "data_service"):
+            db_headings = coordinator.data_service.get_all_headings(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_headings)} headings from DB as fallback.")
+            raw_headings.extend(db_headings)
         headings = diagnostics_and_filter(
             raw_headings, "heading",
             required_fields=["heading_text"],
@@ -863,6 +887,10 @@ def scan_html_for_context(
                 "type_": seg_type,
                 "segment_hash": seg["segment_hash"],
             })
+        if not raw_ballot_types and coordinator and hasattr(coordinator, "data_service"):
+            db_ballot_types = coordinator.data_service.get_all_ballot_types(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_ballot_types)} ballot_types from DB as fallback.")
+            raw_ballot_types.extend(db_ballot_types)
         ballot_types = diagnostics_and_filter(
             raw_ballot_types, "ballot_types",
             required_fields=["ballot_types_text"],
@@ -884,6 +912,10 @@ def scan_html_for_context(
                 "timestamp_html": seg["raw_html"],
                 "segment_hash": seg["segment_hash"],
             })
+        if not raw_results_timestamps and coordinator and hasattr(coordinator, "data_service"):
+            db_results_timestamps = coordinator.data_service.get_all_results_timestamps(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_results_timestamps)} results_timestamps from DB as fallback.")
+            raw_results_timestamps.extend(db_results_timestamps)
         results_timestamps = diagnostics_and_filter(
             raw_results_timestamps, "results_timestamp",
             required_fields=["timestamp_text"],
@@ -900,7 +932,11 @@ def scan_html_for_context(
                 "party_label_text": text,
                 "party_label_html": seg["raw_html"],
                 "segment_hash": seg["segment_hash"],
-            })
+            })           
+        if not raw_party_labels and coordinator and hasattr(coordinator, "data_service"):
+            db_party_labels = coordinator.data_service.get_all_party_labels(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_party_labels)} party_labels from DB as fallback.")
+            raw_party_labels.extend(db_party_labels)
         party_labels = diagnostics_and_filter(
             raw_party_labels, "party_label",
             required_fields=["party_label_text"],
@@ -918,6 +954,10 @@ def scan_html_for_context(
                 "vote_method_html": seg["raw_html"],
                 "segment_hash": seg["segment_hash"],
             })
+        if not raw_vote_methods and coordinator and hasattr(coordinator, "data_service"):
+            db_vote_methods = coordinator.data_service.get_all_vote_methods(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_vote_methods)} vote_methods from DB as fallback.")
+            raw_vote_methods.extend(db_vote_methods)
         vote_methods = diagnostics_and_filter(
             raw_vote_methods, "vote_method",
             required_fields=["vote_method_text"],
@@ -1050,7 +1090,6 @@ def scan_html_for_context(
     except Exception as e:
         tb = traceback.format_exc()
         log_error(f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}")
-        log_error(f"[SCAN ERROR] HTML parsing failed: {e}", extra={"traceback": tb, "url": getattr(page, 'url', None)})
         context_result["error"] = f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}"
 
     if context_cache is not None:

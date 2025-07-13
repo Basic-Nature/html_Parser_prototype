@@ -620,7 +620,6 @@ class ContextOrganizer(object):
         """ 
 
         log_debug("DEBUG: raw_context keys:", list(raw_context.keys()))
-        log_debug("DEBUG: raw_context['contests']:", raw_context.get("contests"))
         debug = self.debug if debug is None else debug
         fuzzy_cutoff = self.fuzzy_cutoff if fuzzy_cutoff is None else fuzzy_cutoff
         embedding_model = embedding_model if embedding_model is not None else self.embedding_model_obj
@@ -634,7 +633,7 @@ class ContextOrganizer(object):
         summary = {"attempts": [], "final": None, "error": None}
 
         # --- Use/merge context library if provided ---
-        context_library = self.library.copy() if hasattr(self, 'library') else {}
+        context_library = self.library.copy() if hasattr(self, 'library') else {}     
         if use_library:
             context_library.update(use_library)
             log.append("[LIBRARY] Merged use_library into context_library.")
@@ -645,9 +644,6 @@ class ContextOrganizer(object):
             else:
                 self._context_cache = cache.copy()
             log.append(f"[CACHE] Using provided cache with {len(cache)} entries.")
-
-        if "panels" in raw_context and isinstance(raw_context["panels"], list):
-            raw_context["panels"] = {}
 
         tagged_segments = raw_context.get("tagged_segments_with_attrs", [])
         url_value = raw_context.get("url", "")
@@ -679,6 +675,67 @@ class ContextOrganizer(object):
         dom_tree = self.build_dom_tree(tagged_segments)
         dom_tree["source_url"] = url_value
         dom_parts = self.expose_dom_parts(dom_tree)
+
+        # --- Merge and deduplicate all context types from DB ---
+        def dedupe(items, key_fields):
+            seen = set()
+            deduped = []
+            for item in items:
+                key = tuple(item.get(f) for f in key_fields)
+                if key not in seen and any(item.get(f) for f in key_fields):
+                    deduped.append(item)
+                    seen.add(key)
+            return deduped
+
+        # Contests
+        db_contests = self.data_service.get_all_full_contests(limit=500)
+        contests = raw_context.get("contests", []) + db_contests
+        contests = dedupe(contests, ["title", "year", "type_"])
+
+        # Panels
+        db_panels = self.data_service.get_all_panels(limit=500)
+        panels = raw_context.get("panels", []) + db_panels
+        panels = dedupe(panels, ["panel_text", "segment_hash"])
+
+        # Tables
+        db_tables = self.data_service.get_all_tables(limit=500)
+        tables = raw_context.get("tables", []) + db_tables
+        tables = dedupe(tables, ["table_text", "segment_hash"])
+
+        # Candidate Panels
+        db_candidate_panels = self.data_service.get_all_candidate_panels(limit=500)
+        candidate_panels = raw_context.get("candidate_panels", []) + db_candidate_panels
+        candidate_panels = dedupe(candidate_panels, ["candidate_panel_text", "segment_hash"])
+
+        # Location Panels
+        db_location_panels = self.data_service.get_all_location_panels(limit=500)
+        location_panels = raw_context.get("location_panels", []) + db_location_panels
+        location_panels = dedupe(location_panels, ["location_panel_text", "segment_hash"])
+
+        # Headings
+        db_headings = self.data_service.get_all_headings(limit=500)
+        headings = raw_context.get("headings", []) + db_headings
+        headings = dedupe(headings, ["heading_text", "segment_hash"])
+
+        # Ballot Types
+        db_ballot_types = self.data_service.get_all_ballot_types(limit=500)
+        ballot_types = raw_context.get("ballot_types", []) + db_ballot_types
+        ballot_types = dedupe(ballot_types, ["ballot_types_text", "segment_hash"])
+
+        # Results Timestamps
+        db_results_timestamps = self.data_service.get_all_results_timestamps(limit=500)
+        results_timestamps = raw_context.get("results_timestamps", []) + db_results_timestamps
+        results_timestamps = dedupe(results_timestamps, ["timestamp_text", "segment_hash"])
+
+        # Party Labels
+        db_party_labels = self.data_service.get_all_party_labels(limit=500)
+        party_labels = raw_context.get("party_labels", []) + db_party_labels
+        party_labels = dedupe(party_labels, ["party_label_text", "segment_hash"])
+
+        # Vote Methods
+        db_vote_methods = self.data_service.get_all_vote_methods(limit=500)
+        vote_methods = raw_context.get("vote_methods", []) + db_vote_methods
+        vote_methods = dedupe(vote_methods, ["vote_method_text", "segment_hash"])
 
         # --- Robust contest organization using all available keywords ---
         contests = []
@@ -884,24 +941,13 @@ class ContextOrganizer(object):
                         groups[group].append(item)
             return groups
 
-        panel_groups = group_by_keywords([p for p in panels.values() if p], label_field="label")
-        button_groups = group_by_keywords(all_buttons, label_field="label")
-        table_groups = group_by_keywords(all_tables, label_field="label")
+        panels = group_by_keywords([p for p in panels.values() if p], label_field="label")
+        buttons = group_by_keywords(all_buttons, label_field="label")
+        tables = group_by_keywords(all_tables, label_field="label")
 
-        log.append(f"[KEYWORDS] Panel groups: {{k: len(v) for k,v in panel_groups.items()}}")
-        log.append(f"[KEYWORDS] Button groups: {{k: len(v) for k,v in button_groups.items()}}")
-        log.append(f"[KEYWORDS] Table groups: {{k: len(v) for k,v in table_groups.items()}}")
-
-        metadata = {
-            "state": raw_context.get("state"),
-            "county": raw_context.get("county"),
-            "source_url": raw_context.get("url"),
-            "election_types": raw_context.get("election_types"),
-            "scrape_time": raw_context.get("scrape_time"),
-            "year": None,
-            "race": raw_context.get("race"),
-            "environment": scan_environment(),
-        }
+        log.append(f"[KEYWORDS] Panel groups: {{k: len(v) for k,v in panel.items()}}")
+        log.append(f"[KEYWORDS] Button groups: {{k: len(v) for k,v in button.items()}}")
+        log.append(f"[KEYWORDS] Table groups: {{k: len(v) for k,v in table.items()}}")
 
         anomalies, clusters = [], []
         if enable_ml and len(contests) > 0:
@@ -947,98 +993,40 @@ class ContextOrganizer(object):
         if len(contests) > 50:
             log_error(f"[bold red][CONTEXT ORGANIZER][/bold red] High contest count detected — possible congestion.\n  [dim]Context:[/dim] contest_count={len(contests)}")
 
-        # --- Advanced relationship extraction: party/candidate/district/state/county mappings ---
-        party_to_candidates = defaultdict(set)
-        candidate_to_party = defaultdict(set)
-        candidate_to_district = defaultdict(set)
-        district_to_candidates = defaultdict(set)
-        state_to_counties = defaultdict(set)
-        county_to_state = dict()
-        for c in contests:
-            party = c.get("party") or c.get("party_label") or c.get("affiliation")
-            candidate = c.get("candidate") or c.get("candidates")
-            district = c.get("district") or c.get("district_name")
-            state = c.get("state")
-            county = c.get("county")
-            if isinstance(candidate, str):
-                candidate = [candidate]
-            if isinstance(party, str):
-                party = [party]
-            if isinstance(district, str):
-                district = [district]
-            if party and candidate:
-                for p in party:
-                    for cand in candidate:
-                        if p and cand:
-                            party_to_candidates[p.strip()].add(cand.strip())
-                            candidate_to_party[cand.strip()].add(p.strip())
-            if candidate and district:
-                for cand in candidate:
-                    for d in district:
-                        if cand and d:
-                            candidate_to_district[cand.strip()].add(d.strip())
-                            district_to_candidates[d.strip()].add(cand.strip())
-            if state and county:
-                state_to_counties[state.strip()].add(county.strip())
-                county_to_state[county.strip()] = state.strip()
-        for group in [panels.values(), tables_by_contest.values()]:
-            for items in group:
-                if items is None:
-                    continue
-                if isinstance(items, dict):
-                    items = [items]
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    label = (item.get("label") or "").lower()
-                    for p in PARTY_KEYWORDS:
-                        if p in label:
-                            party_to_candidates[p].add(label)
-                    for cand in CANDIDATE_KEYWORDS:
-                        if cand in label:
-                            candidate_to_party[label].add(cand)
-                    for d in CONTEST_KEYWORDS:
-                        if d in label:
-                            candidate_to_district[label].add(d)
-        party_to_candidates = {k: sorted(v) for k, v in party_to_candidates.items()}
-        candidate_to_party = {k: sorted(v) for k, v in candidate_to_party.items()}
-        candidate_to_district = {k: sorted(v) for k, v in candidate_to_district.items()}
-        district_to_candidates = {k: sorted(v) for k, v in district_to_candidates.items()}
-        state_to_counties = {k: sorted(v) for k, v in state_to_counties.items()}
-        log.append(f"[RELATIONSHIPS] party_to_candidates: { {k: len(v) for k,v in party_to_candidates.items()} }")
-        log.append(f"[RELATIONSHIPS] candidate_to_party: { {k: len(v) for k,v in candidate_to_party.items()} }")
-        log.append(f"[RELATIONSHIPS] candidate_to_district: { {k: len(v) for k,v in candidate_to_district.items()} }")
-        log.append(f"[RELATIONSHIPS] district_to_candidates: { {k: len(v) for k,v in district_to_candidates.items()} }")
-        log.append(f"[RELATIONSHIPS] state_to_counties: { {k: len(v) for k,v in state_to_counties.items()} }")
-        log.append(f"[RELATIONSHIPS] county_to_state: {county_to_state}")
-
         organized = {
             "contests": contests,
-            "contest_groups": group_by_keywords(contests, label_field="title"),
-            "panel_groups": panel_groups,
-            "button_groups": button_groups,
-            "table_groups": table_groups,
-            "buttons": dict(buttons_by_contest),
             "panels": panels,
-            "tables": dict(tables_by_contest),
-            "metadata": metadata,
+            "buttons": buttons,
+            "tables": tables,
+            "candidate_panels": candidate_panels,
+            "location_panels": location_panels,
+            "headings": headings,
+            "ballot_types": ballot_types,
+            "results_timestamps": results_timestamps,
+            "party_labels": party_labels,
+            "vote_methods": vote_methods,
+            "metadata": {
+                "state": raw_context.get("state"),
+                "county": raw_context.get("county"),
+                "source_url": raw_context.get("url"),
+                "election_types": raw_context.get("election_types"),
+                "scrape_time": raw_context.get("scrape_time"),
+                "year": None,
+                "race": raw_context.get("race"),
+                "environment": scan_environment(),
+            },
+            "dom_tree": dom_tree,
+            "dom_parts": dom_parts,        
             "anomalies": [contests[i] for i in anomalies] if anomalies else [],
             "clusters": clusters.tolist() if hasattr(clusters, "tolist") else clusters,
             "integrity_issues": integrity_issues,
-            "dom_tree": dom_tree,
-            "dom_parts": dom_parts,
-            "party_to_candidates": party_to_candidates,
-            "candidate_to_party": candidate_to_party,
-            "candidate_to_district": candidate_to_district,
-            "district_to_candidates": district_to_candidates,
-            "state_to_counties": state_to_counties,
-            "county_to_state": county_to_state,
         }
         valid_years = [
             c.get("year")
             for c in contests
             if c.get("year") and c.get("type_") and str(c.get("year")).isdigit()
         ]
+        metadata = organized["metadata"]
         if valid_years:
             metadata["year"] = valid_years[0]
         else:
@@ -1082,15 +1070,15 @@ class ContextOrganizer(object):
             summary["final"] = {"state": state, "county": county, "handler_path": handler_path}
             log.append(f"Final detected state: {state}, county: {county}, handler_path: {handler_path}")
 
-        result = {
+        self.append_to_context_library(organized, path=self.context_library_path)
+        log_info(f"[CONTEXT ORGANIZER] Organized context for {len(contests)} contests.")
+        self.organized = organized
+        return {
             "organized": organized,
             "summary": summary,
             "log": log,
             "error": None,
         }
-        save_context_cache_to_disk(self._context_cache)
-        self.organized = organized
-        return result
     
     def build_dom_tree(self, segments) -> dict:
         """
