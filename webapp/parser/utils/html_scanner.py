@@ -518,25 +518,27 @@ def extract_year_and_type(text) -> tuple:
     """
     Extracts the most likely year and election type from anywhere in the string.
     Picks the last year and the most frequent or last type found.
-    Returns (year, election_types, cleaned_text)
+    Returns (year, election_type, cleaned_text)
     """
+    import re
+    from collections import Counter
     # Find all years (4 digits, 2020-2099)
     years = re.findall(r'(20\d{2})', text)
     year = years[-1] if years else None
 
-    # Find all types (case-insensitive, from ELECTION_TYPE)
+    # Find all types (case-insensitive, from ELECTION_TYPES)
     type_matches = []
     for t in ELECTION_TYPES:
         for m in re.finditer(rf'\b{re.escape(t)}\b', text, re.IGNORECASE):
             type_matches.append((m.start(), t))
-    # Pick the last type found, or the most frequent if multiple
+    # Pick the most frequent type, fallback to last found
     type_found = None
     if type_matches:
-        # Option 1: last found
-        type_found = sorted(type_matches, key=lambda x: x[0])[-1][1]
-        # Option 2: most frequent (uncomment if this is preferred)
-        # from collections import Counter
-        # type_found = Counter([t for _, t in type_matches]).most_common(1)[0][0]
+        types_only = [t for _, t in type_matches]
+        type_found = Counter(types_only).most_common(1)[0][0] if types_only else None
+        # Fallback to last found if tie
+        if type_found is None:
+            type_found = sorted(type_matches, key=lambda x: x[0])[-1][1]
 
     # Remove all years/types from text for cleaner title
     cleaned = text
@@ -546,7 +548,11 @@ def extract_year_and_type(text) -> tuple:
     if type_matches:
         for _, t in type_matches:
             cleaned = re.sub(rf'\b{re.escape(t)}\b', '', cleaned, flags=re.IGNORECASE)
+    # Remove common date patterns (e.g., "November 5, 2024")
+    cleaned = re.sub(r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}\b', '', cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.strip(" -:|,")
+    # Remove extra spaces
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return year, type_found, cleaned
 
 def is_update_panel(text) -> bool:
@@ -589,518 +595,6 @@ def split_possible_contests(text) -> List[str]:
         blocks.append(" ".join(buffer))
     # Remove blocks that are just status/update lines
     return [b for b in blocks if not is_update_panel(b) and len(b) > 20]
-
-def scan_html_for_context(
-    target_url,
-    page,
-    coordinator=None,
-    debug=False,
-    context_cache=None,
-    model_name: Optional[str] = None,
-    use_finetuned: bool = True,
-    non_interactive=False,    
-) -> Dict[str, Any]:
-    """
-    Main pipeline entry: Efficient, dynamic, and feedback-driven HTML scanner.
-    Leverages ContextCoordinator for context, ML model, and feedback logs.
-    """
-    if coordinator is None:
-        coordinator = ContextCoordinator()
-    start_time = time.time()
-    page_hash = get_page_hash(page)
-    if context_cache is None:
-        context_cache = load_context_cache_from_disk()
-    # --- FAST-PATH: If all segment hashes are in cache with high confidence, skip full scan ---
-    html = page.content()
-    def extract_all_segment_html(html):
-        try:
-            tree = HTMLParser(html)
-            return [n.html for n in tree.root.traverse() if hasattr(n, "html")]
-        except Exception:
-            return []
-    segment_htmls = extract_all_segment_html(html)
-    segment_hashes = [segment_hash(h) for h in segment_htmls]
-    fast_path_hits = [
-        h for h in segment_hashes
-        if h in context_cache and context_cache[h].get("ml_confidence", 0) > 0.95
-    ]
-    if len(fast_path_hits) == len(segment_hashes) and segment_hashes:
-        log_info("[FAST-PATH] All segments covered by cache. Skipping full scan.")
-        return {h: context_cache[h] for h in segment_hashes}
-    if page_hash in context_cache:
-        log_info(f"[SCAN] Using cached context for {target_url}")
-        log_info("[bold green][CACHE] Entire context loaded from cache. Skipping scan.[/bold green]")
-        return context_cache[page_hash]
-
-    context_result = {
-        "raw_html": "",
-        "tagged_segments": [],
-        "tagged_segments_with_attrs": [],
-        "metadata": {},
-        "selector_log": [],
-        "error": None,
-        "url": page.url,
-        "pattern_kb_matches": [],
-        "segments_needing_review": [],
-    }
-
-    try:
-        # --- 1. Get context library, pattern KB, and ML model from coordinator if available ---
-        if coordinator:
-            context_library = getattr(coordinator, "library", None)
-            pattern_kb = getattr(coordinator, "pattern_kb", None)
-            model = getattr(coordinator, "_semantic_model", None)
-            # Optionally merge in feedback logs
-            if hasattr(coordinator, "get_feedback_pattern_kb"):
-                feedback_kb = coordinator.get_feedback_pattern_kb()
-                if feedback_kb:
-                    if pattern_kb is None:
-                        pattern_kb = []
-                    pattern_kb.extend(feedback_kb)
-                    pattern_kb = deduplicate_pattern_kb(pattern_kb)
-        else:
-            try:
-                context_library = load_context_library(CONTEXT_LIBRARY_PATH)
-                log_debug("DEBUG: Loaded context library:", type(context_library))
-                if not isinstance(context_library, dict):
-                    log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
-                    raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
-            except Exception:
-                context_library = {}
-            pattern_kb = load_pattern_kb()
-            model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
-        # --- 2. Extract segments with attributes and ML labels ---
-        segments_with_attrs = extract_tagged_segments_with_attrs(
-            html,
-            context_cache=context_cache,
-            include_data_attrs=True,
-            fallback_on_error=True,
-            pattern_kb=pattern_kb,
-            ml_threshold=0.85,
-            context_library=context_library,
-            model=model,
-            coordinator=coordinator
-        )
-        context_result["tagged_segments_with_attrs"] = segments_with_attrs
-        context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
-               
-        # --- Helper for diagnostics and filtering ---
-        def diagnostics_and_filter(data, name, required_fields=None, max_title_len=500) -> List[Dict[str, Any]]:
-            # Diagnostics
-            if data:
-                avg_len = sum(len(str(d.get("title", d.get("text", "")))) for d in data) / len(data)
-                log_info(f"[{name.upper()}] Extracted {len(data)} items, avg title/text length: {avg_len:.1f}")
-            else:
-                log_warning(f"[{name.upper()}] No valid items extracted after validation.")
-            # Filtering
-            filtered = []
-            filtered_out = []
-            for d in data:
-                log_debug(f"[DEBUG][{name.upper()}] candidate: {d}")
-                title = d.get("title", d.get("text", ""))
-                # Only filter out if title is None or empty after stripping
-                if title is None or (isinstance(title, str) and len(title.strip()) == 0) or len(title) > max_title_len:
-                    filtered_out.append((d, "missing or invalid title/text"))
-                    continue
-                if required_fields:
-                    if not any(d.get(f) for f in required_fields):
-                        filtered_out.append((d, f"missing required fields: {required_fields}"))
-                        continue
-                filtered.append(d)
-            if filtered_out:
-                log_warning(f"[{name.upper()}] Filtered out {len(filtered_out)} items due to missing/invalid fields.")
-                for d, reason in filtered_out[:5]:
-                    log_warning(f"  [Filtered] {reason}: {str(d)[:100]}...")
-            if not filtered:
-                log_warning(f"[{name.upper()}] No items with required fields for downstream output.")
-            return filtered
-
-        # --- Robust extraction for all key segment types ---
-        state = context_result.get("state")
-        county = context_result.get("county")
-        year = context_result.get("year")
-
-        # Contests
-        raw_contests = []
-        for seg in _extract_segments_by_label(segments_with_attrs, "contest_title"):
-            text = seg["text"]
-            # Split long blocks into possible contests
-            for possible in split_possible_contests(text):
-                seg_year, seg_type, cleaned_title = extract_year_and_type(possible)
-                # Only treat as contest if it contains a contest keyword or a valid type
-                if any(kw in possible.lower() for kw in CONTEST_KEYWORDS) or seg_type:
-                    raw_contests.append({
-                        "title": cleaned_title,
-                        "state": state,
-                        "county": county,
-                        "year": seg_year or year,
-                        "type_": seg_type,
-                        "segment_hash": seg["segment_hash"],
-                    })
-        if not raw_contests and coordinator and hasattr(coordinator, "data_service"):
-            db_contests = coordinator.data_service.get_all_full_contests(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_contests)} contests from DB as fallback.")
-            raw_contests.extend(db_contests)
-            
-        contests = diagnostics_and_filter(
-            raw_contests, "contest",
-            required_fields=["title"],
-            max_title_len=500,
-        )
-        context_result["contests"] = contests
-
-        # Panels
-        raw_panels = [
-            {
-                "panel_text": seg["text"],
-                "panel_html": seg["raw_html"],
-                "segment_hash": seg["segment_hash"],
-            }
-            for seg in _extract_segments_by_label(segments_with_attrs, "panel")
-        ]
-        if not raw_panels and coordinator and hasattr(coordinator, "data_service"):
-            db_panels = coordinator.data_service.get_all_panels(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_panels)} panels from DB as fallback.")
-            raw_panels.extend(db_panels)
-        panels = diagnostics_and_filter(
-            raw_panels, "panel",
-            required_fields=["panel_text"],
-            max_title_len=1000,
-        )
-        context_result["panels"] = panels
-
-        # Tables
-        raw_tables = []
-        for seg in _extract_segments_by_label(segments_with_attrs, "results_table"):
-            text = seg["text"]
-            # Optionally extract year/type if present in table captions or headings
-            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
-            raw_tables.append({
-                "table_text": cleaned_text,
-                "table_html": seg["raw_html"],
-                "year": seg_year,
-                "type_": seg_type,
-                "segment_hash": seg["segment_hash"],
-            })
-        if not raw_tables and coordinator and hasattr(coordinator, "data_service"):
-            db_tables = coordinator.data_service.get_all_tables(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_tables)} tables from DB as fallback.")
-            raw_tables.extend(db_tables)
-        tables = diagnostics_and_filter(
-            raw_tables, "table",
-            required_fields=["table_text"],
-            max_title_len=10000,
-
-        )
-        context_result["tables"] = tables
-
-        # Candidate Panels
-        raw_candidate_panels = []
-        for seg in _extract_segments_by_label(segments_with_attrs, "candidate_panel"):
-            text = seg["text"]
-            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
-            raw_candidate_panels.append({
-                "candidate_panel_text": cleaned_text,
-                "candidate_panel_html": seg["raw_html"],
-                "year": seg_year,
-                "type_": seg_type,
-                "segment_hash": seg["segment_hash"],
-            })
-        if not raw_candidate_panels and coordinator and hasattr(coordinator, "data_service"):
-            db_candidate_panels = coordinator.data_service.get_all_candidate_panels(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_candidate_panels)} candidate_panels from DB as fallback.")
-            raw_candidate_panels.extend(db_candidate_panels)
-        candidate_panels = diagnostics_and_filter(
-            raw_candidate_panels, "candidate_panel",
-            required_fields=["candidate_panel_text"],
-            max_title_len=1000,
-
-        )
-        context_result["candidate_panels"] = candidate_panels
-
-        # Location Panels
-        raw_location_panels = []
-        for seg in _extract_segments_by_label(segments_with_attrs, "location_panel"):
-            text = seg["text"]
-            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
-            raw_location_panels.append({
-                "location_panel_text": cleaned_text,
-                "location_panel_html": seg["raw_html"],
-                "year": seg_year,
-                "type_": seg_type,
-                "segment_hash": seg["segment_hash"],
-            })
-        if not raw_location_panels and coordinator and hasattr(coordinator, "data_service"):
-            db_location_panels = coordinator.data_service.get_all_location_panels(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_location_panels)} location_panels from DB as fallback.")
-            raw_location_panels.extend(db_location_panels)
-        location_panels = diagnostics_and_filter(
-            raw_location_panels, "location_panel",
-            required_fields=["location_panel_text"],
-            max_title_len=1000,
-
-        )
-        context_result["location_panels"] = location_panels
-
-        # Headings (with update/timestamp detection)
-        raw_headings = []
-        for seg in _extract_segments_by_label(segments_with_attrs, "heading"):
-            text = seg["text"]
-            if is_update_panel(text):
-                raw_headings.append({
-                    "heading_text": text,
-                    "heading_html": seg["raw_html"],
-                    "segment_hash": seg["segment_hash"],
-                    "heading_type": "last_webpage_update"
-                })
-                ts_match = re.search(r'(\w+day,?\s+\w+\s+\d{1,2},\s+20\d{2}.*\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?)', text)
-                if ts_match:
-                    context_result["metadata"]["last_webpage_update"] = ts_match.group(1)
-            else:
-                raw_headings.append({
-                    "heading_text": text,
-                    "heading_html": seg["raw_html"],
-                    "segment_hash": seg["segment_hash"],
-                    "heading_type": "content"
-                })
-        if not raw_headings and coordinator and hasattr(coordinator, "data_service"):
-            db_headings = coordinator.data_service.get_all_headings(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_headings)} headings from DB as fallback.")
-            raw_headings.extend(db_headings)
-        headings = diagnostics_and_filter(
-            raw_headings, "heading",
-            required_fields=["heading_text"],
-            max_title_len=500,
-
-        )
-        context_result["headings"] = headings
-
-        # Ballot Types
-        raw_ballot_types = []
-        for seg in _extract_segments_by_label(segments_with_attrs, "ballot_types"):
-            text = seg["text"]
-            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
-            raw_ballot_types.append({
-                "ballot_types_text": cleaned_text,
-                "ballot_types_html": seg["raw_html"],
-                "year": seg_year,
-                "type_": seg_type,
-                "segment_hash": seg["segment_hash"],
-            })
-        if not raw_ballot_types and coordinator and hasattr(coordinator, "data_service"):
-            db_ballot_types = coordinator.data_service.get_all_ballot_types(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_ballot_types)} ballot_types from DB as fallback.")
-            raw_ballot_types.extend(db_ballot_types)
-        ballot_types = diagnostics_and_filter(
-            raw_ballot_types, "ballot_types",
-            required_fields=["ballot_types_text"],
-            max_title_len=200,
-
-        )
-        context_result["ballot_types"] = ballot_types
-
-        # Results Timestamps
-        raw_results_timestamps = []
-        for seg in _extract_segments_by_label(segments_with_attrs, "results_timestamp"):
-            text = seg["text"]
-            # Try to extract timestamp string for metadata
-            ts_match = re.search(r'(\w+day,?\s+\w+\s+\d{1,2},\s+20\d{2}.*\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?)', text)
-            if ts_match:
-                context_result["metadata"]["results_last_updated"] = ts_match.group(1)
-            raw_results_timestamps.append({
-                "timestamp_text": text,
-                "timestamp_html": seg["raw_html"],
-                "segment_hash": seg["segment_hash"],
-            })
-        if not raw_results_timestamps and coordinator and hasattr(coordinator, "data_service"):
-            db_results_timestamps = coordinator.data_service.get_all_results_timestamps(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_results_timestamps)} results_timestamps from DB as fallback.")
-            raw_results_timestamps.extend(db_results_timestamps)
-        results_timestamps = diagnostics_and_filter(
-            raw_results_timestamps, "results_timestamp",
-            required_fields=["timestamp_text"],
-            max_title_len=200,
-
-        )
-        context_result["results_timestamps"] = results_timestamps
-
-        # Party Labels
-        raw_party_labels = []
-        for seg in _extract_segments_by_label(segments_with_attrs, "party_label"):
-            text = seg["text"]
-            raw_party_labels.append({
-                "party_label_text": text,
-                "party_label_html": seg["raw_html"],
-                "segment_hash": seg["segment_hash"],
-            })           
-        if not raw_party_labels and coordinator and hasattr(coordinator, "data_service"):
-            db_party_labels = coordinator.data_service.get_all_party_labels(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_party_labels)} party_labels from DB as fallback.")
-            raw_party_labels.extend(db_party_labels)
-        party_labels = diagnostics_and_filter(
-            raw_party_labels, "party_label",
-            required_fields=["party_label_text"],
-            max_title_len=200,
-
-        )
-        context_result["party_labels"] = party_labels
-
-        # Vote Methods
-        raw_vote_methods = []
-        for seg in _extract_segments_by_label(segments_with_attrs, "vote_method"):
-            text = seg["text"]
-            raw_vote_methods.append({
-                "vote_method_text": text,
-                "vote_method_html": seg["raw_html"],
-                "segment_hash": seg["segment_hash"],
-            })
-        if not raw_vote_methods and coordinator and hasattr(coordinator, "data_service"):
-            db_vote_methods = coordinator.data_service.get_all_vote_methods(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_vote_methods)} vote_methods from DB as fallback.")
-            raw_vote_methods.extend(db_vote_methods)
-        vote_methods = diagnostics_and_filter(
-            raw_vote_methods, "vote_method",
-            required_fields=["vote_method_text"],
-            max_title_len=200,
-
-        )
-        context_result["vote_methods"] = vote_methods
-
-        # --- 3. ML-driven DOM pattern clustering and tagging ---
-        pattern_matches = []
-        segments_needing_review = []
-        seen = set()
-        unique_segments = []
-        for seg in segments_with_attrs:
-            html_norm = _normalize_html_for_hash(seg['html'])
-            if html_norm not in seen:
-                seen.add(html_norm)
-                unique_segments.append(seg)
-        segments_with_attrs = unique_segments
-        for seg in segments_with_attrs:
-            if seg.get("ml_confidence", 0.0) < 0.7 or seg.get("ml_label", "unknown") == "unknown":
-                # Use coordinator as oracle if available
-                user_label = None
-                if coordinator and hasattr(coordinator, "auto_label_segment"):
-                    try:
-                        user_label = coordinator.auto_label_segment(seg)
-                    except Exception:
-                        user_label = None
-                if not user_label:
-                    user_label = prompt_for_segment_label(seg, context_library=context_library)
-                seg["ml_label"] = user_label
-                seg["ml_confidence"] = 1.0
-                seg["pattern_id"] = f"pattern_{hashlib.sha256(seg['html'].encode('utf-8')).hexdigest()[:10]}"
-                emb = get_segment_embedding(model, seg, cache_hits=embedding_cache_hits, cache_misses=embedding_cache_misses)
-                if emb is not None:
-                    emb = emb.tolist()
-                kb_entry = {
-                    "pattern_id": seg["pattern_id"],
-                    "label": user_label,
-                    "embedding": emb,
-                    "example_html": seg["html"][:500],
-                    "source_url": page.url,
-                    "timestamp": time.time(),
-                }
-                append_pattern_kb(kb_entry)
-                append_feedback_log({
-                    "pattern_id": seg["pattern_id"],
-                    "label": user_label,
-                    "html": seg["html"][:500],
-                    "source_url": page.url,
-                    "timestamp": time.time(),
-                })
-                segments_needing_review.append(seg)
-                if context_library is not None and seg.get("segment_hash", []):
-                    update_context_library(
-                        CONTEXT_LIBRARY_PATH,
-                        lambda lib: lib.setdefault("cached_segments", []).append({
-                            "segment_hash": seg["segment_hash"],
-                            "ml_label": user_label,
-                        })
-                    )
-                    valid_hashes = set(seg["segment_hash"] for seg in context_library.get("cached_segments", []))
-                    prune_embedding_cache(valid_hashes)
-            else:
-                pattern_matches.append({
-                    "pattern_id": seg["pattern_id"],
-                    "label": seg["ml_label"],
-                    "confidence": seg["ml_confidence"],
-                    "segment_html": seg["html"][:200],
-                })
-
-        context_result["pattern_kb_matches"] = pattern_matches
-        context_result["segments_needing_review"] = segments_needing_review
-
-        # --- 4. Dynamic tagging and context enrichment ---
-        selector_log = set()
-        for seg in segments_with_attrs:
-            if seg["id"]:
-                selector_log.add(f'#{seg["id"]}')
-            for cls in seg["classes"]:
-                selector_log.add(f'.{cls}')
-            selector_log.add(seg["tag"].lower())
-            if "semantic_tags" not in seg:
-                seg["semantic_tags"] = []
-            if seg["ml_label"] not in ("unknown", "ignore"):
-                seg["semantic_tags"].append(seg["ml_label"])
-        context_result["selector_log"] = sorted(selector_log)
-
-        context_result["metadata"].update({
-            "source_url": page.url,
-            "scrape_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "pattern_kb_size": len(pattern_kb) if pattern_kb else 0,
-        })
-
-        if debug:
-            log_debug("\n[orange][DEBUG] Extracted HTML segments with ML labels:[/orange]")
-            for seg in segments_with_attrs:
-                log_info(f"{seg['tag']} {seg['attrs']} [label={seg['ml_label']}, conf={seg['ml_confidence']:.2f}] {seg['html'][:80]}{'...' if len(seg['html']) > 80 else ''}")
-            if segments_needing_review:
-                log_debug(f"\n[red][DEBUG] {len(segments_needing_review)} segments flagged for review.[/red]")
-
-        # --- 5. Update context library with new segments for future runs ---
-        if context_library is not None:
-            if "cached_segments" not in context_library:
-                context_library["cached_segments"] = []
-            known_hashes = {seg.get("segment_hash", []) for seg in context_library["cached_segments"]}
-            for seg in segments_with_attrs:
-                if seg.get("segment_hash", []) and seg["segment_hash"] not in known_hashes:
-                    context_library["cached_segments"].append({
-                        "segment_hash": seg["segment_hash"],
-                        "ml_label": seg["ml_label"],
-                        "ml_confidence": seg["ml_confidence"],
-                        "pattern_id": seg["pattern_id"],
-                    })
-            update_context_library(
-                CONTEXT_LIBRARY_PATH,
-                lambda lib: lib.setdefault("cached_segments", []).extend([
-                    {
-                        "segment_hash": seg["segment_hash"],
-                        "ml_label": seg["ml_label"],
-                        "ml_confidence": seg["ml_confidence"],
-                        "pattern_id": seg["pattern_id"],
-                    }
-                    for seg in segments_with_attrs
-                    if seg.get("segment_hash", []) and seg["segment_hash"] not in known_hashes
-                ])
-            )
-            valid_hashes = set(seg["segment_hash"] for seg in context_library.get("cached_segments", []))
-            prune_embedding_cache(valid_hashes)
-    except Exception as e:
-        tb = traceback.format_exc()
-        log_error(f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}")
-        context_result["error"] = f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}"
-
-    if context_cache is not None:
-        context_cache[page_hash] = context_result
-        save_context_cache_to_disk(context_cache)
-    if embedding_cache_hits and not embedding_cache_misses:
-        log_info(f"[bold green][CACHE] All segment embeddings loaded from cache.[/bold green]")
-    elif embedding_cache_hits:
-        log_warning(f"[yellow][CACHE] {len(embedding_cache_hits)} embeddings loaded from cache, {len(embedding_cache_misses)} computed.[/yellow]")
-    log_info(f"[PROFILE] scan_html_for_context completed in {time.time() - start_time:.2f} seconds.")
-    return context_result
 
 def extract_tagged_segments_with_attrs(
     html: str,
@@ -1448,7 +942,7 @@ def canonicalize_segment(html: str) -> str:
     html = html.strip()
 
     # Optionally: sort attributes within tags for stability
-    def sort_attrs(match):
+    def sort_attrs(match) -> str:
         tag = match.group(1)
         attrs = match.group(2)
         # Split attributes, sort, and rejoin
@@ -1459,3 +953,852 @@ def canonicalize_segment(html: str) -> str:
     html = re.sub(r'<(\w+)\s+([^>]+)>', sort_attrs, html)
 
     return html
+
+def validate_dom_parts(dom_parts: dict, verbose: bool = True) -> bool:
+    """
+    Advanced validation for dom_parts structure.
+    Checks for all expected keys, types, required fields, value formats, allowed values, cross-field consistency,
+    and additional schema logic from librarian.py.
+    Returns True if valid, False otherwise.
+    Logs detailed warnings for missing or malformed data.
+    """
+    import datetime
+    from ..bots.librarian import (
+        KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, ELECTION_TYPES, BALLOT_TYPES, PARTY_KEYWORDS,
+        LOCATION_KEYWORDS, STATE_ABBR, LOCATION_ABBREVIATIONS, CANONICAL_SEGMENT_LABELS, PANEL_TAGS, HEADING_TAGS, EXTRA_HEADING_TAGS
+    )
+
+    valid = True
+
+    expected_keys = [
+        "contests", "panels", "tables", "candidate_panels", "location_panels",
+        "headings", "ballot_types", "results_timestamps", "party_labels", "vote_methods",
+        "pattern_kb_matches", "segments_needing_review", "selector_log", "metadata",
+        "tagged_segments", "tagged_segments_with_attrs", "raw_html", "error", "url"
+    ]
+    required_keys = ["contests", "panels", "tables", "candidate_panels", "location_panels"]
+    section_fields = {
+        "contests": ["title", "year", "type_", "state", "county", "segment_hash"],
+        "panels": ["panel_text", "panel_html", "segment_hash"],
+        "tables": ["table_text", "table_html", "year", "type_", "segment_hash"],
+        "candidate_panels": ["candidate_panel_text", "candidate_panel_html", "year", "type_", "segment_hash"],
+        "location_panels": ["location_panel_text", "location_panel_html", "year", "type_", "segment_hash", "county"],
+        "headings": ["heading_text", "heading_html", "segment_hash", "heading_type"],
+        "ballot_types": ["ballot_types_text", "ballot_types_html", "year", "type_", "segment_hash"],
+        "results_timestamps": ["timestamp_text", "timestamp_html", "segment_hash"],
+        "party_labels": ["party_label_text", "party_label_html", "segment_hash"],
+        "vote_methods": ["vote_method_text", "vote_method_html", "segment_hash"],
+    }
+
+    # Check all expected keys exist
+    for key in expected_keys:
+        if key not in dom_parts:
+            if verbose:
+                log_warning(f"[DOM_PARTS] Missing key: {key}")
+            valid = False
+
+    # Check required keys are lists and not empty
+    for key in required_keys:
+        val = dom_parts.get(key)
+        if not isinstance(val, list):
+            if verbose:
+                log_warning(f"[DOM_PARTS] Key '{key}' is not a list.")
+            valid = False
+        elif len(val) == 0:
+            if verbose:
+                log_warning(f"[DOM_PARTS] No items found in '{key}'.")
+            valid = False
+
+    # Deep schema, regex, allowed values, and cross-field checks
+    for section, fields in section_fields.items():
+        items = dom_parts.get(section, [])
+        if not isinstance(items, list):
+            continue
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                if verbose:
+                    log_warning(f"[DOM_PARTS] Item {i} in '{section}' is not a dict.")
+                valid = False
+                continue
+            for field in fields:
+                value = item.get(field)
+                # Required field check
+                if value is None or (isinstance(value, str) and not value.strip()):
+                    if verbose:
+                        log_warning(f"[DOM_PARTS] Item {i} in '{section}' missing or empty field '{field}'.")
+                    valid = False
+                # Type checks
+                if field.endswith("_html") and value and not isinstance(value, str):
+                    if verbose:
+                        log_warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' should be str (HTML).")
+                    valid = False
+                if field.endswith("_text") and value and not isinstance(value, str):
+                    if verbose:
+                        log_warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' should be str (text).")
+                    valid = False
+                if field == "year" and value:
+                    if not re.fullmatch(r"20\d{2}", str(value)):
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has invalid year format: {value}")
+                        valid = False
+                    else:
+                        year_int = int(value)
+                        if year_int < 2000 or year_int > datetime.datetime.now().year + 1:
+                            if verbose:
+                                log_warning(f"[DOM_PARTS] Item {i} in '{section}' has out-of-range year: {value}")
+                            valid = False
+                if field == "type_" and value:
+                    if value.lower() not in {t.lower() for t in ELECTION_TYPES}:
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown election type: {value}")
+                        valid = False
+                if field == "county" and value and "state" in item:
+                    state_val = item.get("state", "").lower()
+                    if state_val and value.lower() not in KNOWN_STATE_TO_COUNTY_MAP.get(state_val, []):
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown county '{value}' for state '{state_val}'")
+                        valid = False
+                if field == "state" and value:
+                    if value.lower() not in KNOWN_STATE_TO_COUNTY_MAP:
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown state: {value}")
+                        valid = False
+                if field == "timestamp_text" and value:
+                    if not re.search(r"\d{4}.*\d{1,2}:\d{2}", value):
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' does not look like a timestamp: {value}")
+                        valid = False
+                if section == "ballot_types" and field == "ballot_types_text" and value:
+                    if value not in BALLOT_TYPES:
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown ballot type: {value}")
+                        valid = False
+                if section == "party_labels" and field == "party_label_text" and value:
+                    if value.lower() not in {k.lower() for k in PARTY_KEYWORDS}:
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown party label: {value}")
+                        valid = False
+                if section == "location_panels" and field == "location_panel_text" and value:
+                    if not any(kw in value.lower() for kw in LOCATION_KEYWORDS):
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has location text missing known keywords: {value}")
+                        valid = False
+                    # Precinct/district validation
+                    county_val = item.get("county", "").lower()
+                    for abbrev, full_names in LOCATION_ABBREVIATIONS.items():
+                        if abbrev in value.lower():
+                            for full_name in full_names:
+                                if full_name in value.lower() and county_val in KNOWN_COUNTY_TO_PRECINCTS_MAP:
+                                    precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP[county_val]
+                                    found = any(p in value.lower() for p in precincts)
+                                    if not found:
+                                        if verbose:
+                                            log_warning(f"[DOM_PARTS] Location panel {i}: '{value}' does not match any known precinct/district for county '{county_val}'.")
+                                        valid = False
+                # Canonical label checks for headings/panels
+                if section == "headings" and field == "heading_text" and value:
+                    canonical = CANONICAL_SEGMENT_LABELS.get(value.lower())
+                    if canonical and canonical != "heading":
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Heading {i}: text '{value}' has canonical label '{canonical}' not 'heading'.")
+                        valid = False
+                if section == "panels" and field == "panel_text" and value:
+                    canonical = CANONICAL_SEGMENT_LABELS.get(value.lower())
+                    if canonical and canonical != "panel":
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Panel {i}: text '{value}' has canonical label '{canonical}' not 'panel'.")
+                        valid = False
+                # Tag checks for headings/panels
+                if section == "headings" and "heading_html" in item:
+                    tag_match = any(tag in item["heading_html"].lower() for tag in HEADING_TAGS | EXTRA_HEADING_TAGS)
+                    if not tag_match:
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Heading {i}: html '{item['heading_html']}' does not contain a valid heading tag.")
+                        valid = False
+                if section == "panels" and "panel_html" in item:
+                    tag_match = any(tag in item["panel_html"].lower() for tag in PANEL_TAGS)
+                    if not tag_match:
+                        if verbose:
+                            log_warning(f"[DOM_PARTS] Panel {i}: html '{item['panel_html']}' does not contain a valid panel tag.")
+                        valid = False
+
+    # Metadata checks
+    meta = dom_parts.get("metadata", {})
+    if not isinstance(meta, dict):
+        if verbose:
+            log_warning("[DOM_PARTS] 'metadata' is not a dict.")
+        valid = False
+    else:
+        scrape_time = meta.get("scrape_time")
+        if scrape_time:
+            try:
+                datetime.datetime.strptime(scrape_time, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                if verbose:
+                    log_warning(f"[DOM_PARTS] metadata.scrape_time has invalid format: {scrape_time}")
+                valid = False
+
+    # Check selector_log is a list
+    if "selector_log" in dom_parts and not isinstance(dom_parts["selector_log"], list):
+        if verbose:
+            log_warning("[DOM_PARTS] 'selector_log' is not a list.")
+        valid = False
+
+    # Check tagged_segments and tagged_segments_with_attrs are lists
+    for key in ["tagged_segments", "tagged_segments_with_attrs"]:
+        if key in dom_parts and not isinstance(dom_parts[key], list):
+            if verbose:
+                log_warning(f"[DOM_PARTS] '{key}' is not a list.")
+            valid = False
+
+    # Check url is a string
+    if "url" in dom_parts and dom_parts["url"] is not None and not isinstance(dom_parts["url"], str):
+        if verbose:
+            log_warning("[DOM_PARTS] 'url' is not a string.")
+        valid = False
+
+    # Check raw_html is a string
+    if "raw_html" in dom_parts and dom_parts["raw_html"] is not None and not isinstance(dom_parts["raw_html"], str):
+        if verbose:
+            log_warning("[DOM_PARTS] 'raw_html' is not a string.")
+        valid = False
+
+    # Check error is None or str
+    if "error" in dom_parts and dom_parts["error"] is not None and not isinstance(dom_parts["error"], str):
+        if verbose:
+            log_warning("[DOM_PARTS] 'error' is not a string or None.")
+        valid = False
+
+    if not valid and verbose:
+        log_error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
+
+    return valid
+
+def scan_html_for_context(
+    target_url,
+    page,
+    coordinator=None,
+    debug=False,
+    context_cache=None,
+    model_name: Optional[str] = None,
+    use_finetuned: bool = True,
+    non_interactive=False,    
+) -> Dict[str, Any]:
+    """
+    Main pipeline entry: Efficient, dynamic, and feedback-driven HTML scanner.
+    Leverages ContextCoordinator for context, ML model, and feedback logs.
+    """
+    if coordinator is None:
+        coordinator = ContextCoordinator()
+    start_time = time.time()
+    page_hash = get_page_hash(page)
+    if context_cache is None:
+        context_cache = load_context_cache_from_disk()
+    # --- FAST-PATH: If all segment hashes are in cache with high confidence, skip full scan ---
+    html = page.content()
+    def extract_all_segment_html(html) -> List[str]:
+        try:
+            tree = HTMLParser(html)
+            return [n.html for n in tree.root.traverse() if hasattr(n, "html")]
+        except Exception:
+            return []
+    segment_htmls = extract_all_segment_html(html)
+    segment_hashes = [segment_hash(h) for h in segment_htmls]
+    fast_path_hits = [
+        h for h in segment_hashes
+        if h in context_cache and context_cache[h].get("ml_confidence", 0) > 0.95
+    ]
+    if len(fast_path_hits) == len(segment_hashes) and segment_hashes:
+        log_info("[FAST-PATH] All segments covered by cache. Skipping full scan.")
+        fast_path_result = {h: context_cache[h] for h in segment_hashes}
+        if coordinator is not None:
+            coordinator.organize_and_enrich(fast_path_result)
+        return fast_path_result
+    if page_hash in context_cache:
+        log_info(f"[SCAN] Using cached context for {target_url}")
+        log_info("[bold green][CACHE] Entire context loaded from cache. Skipping scan.[/bold green]")
+        cached_result = context_cache[page_hash]
+        if coordinator is not None:
+            coordinator.organize_and_enrich(cached_result)
+        return cached_result
+
+    context_result = {
+        "raw_html": "",
+        "tagged_segments": [],
+        "tagged_segments_with_attrs": [],
+        "metadata": {},
+        "selector_log": [],
+        "error": None,
+        "url": page.url,
+        "pattern_kb_matches": [],
+        "segments_needing_review": [],
+    }
+
+    try:
+        # --- 1. Get context library, pattern KB, and ML model from coordinator if available ---
+        if coordinator:
+            context_library = getattr(coordinator, "library", None)
+            pattern_kb = getattr(coordinator, "pattern_kb", None)
+            model = getattr(coordinator, "_semantic_model", None)
+            # Optionally merge in feedback logs
+            if hasattr(coordinator, "get_feedback_pattern_kb"):
+                feedback_kb = coordinator.get_feedback_pattern_kb()
+                if feedback_kb:
+                    if pattern_kb is None:
+                        pattern_kb = []
+                    pattern_kb.extend(feedback_kb)
+                    pattern_kb = deduplicate_pattern_kb(pattern_kb)
+        else:
+            try:
+                context_library = load_context_library(CONTEXT_LIBRARY_PATH)
+                log_debug("DEBUG: Loaded context library:", type(context_library))
+                if not isinstance(context_library, dict):
+                    log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                    raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
+            except Exception:
+                context_library = {}
+            pattern_kb = load_pattern_kb()
+            model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
+        # --- 2. Extract segments with attributes and ML labels ---
+        segments_with_attrs = extract_tagged_segments_with_attrs(
+            html,
+            context_cache=context_cache,
+            include_data_attrs=True,
+            fallback_on_error=True,
+            pattern_kb=pattern_kb,
+            ml_threshold=0.85,
+            context_library=context_library,
+            model=model,
+            coordinator=coordinator
+        )
+        context_result["tagged_segments_with_attrs"] = segments_with_attrs
+        context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
+               
+        # --- Helper for diagnostics and filtering ---
+        def diagnostics_and_filter(data, name, required_fields=None, max_title_len=500) -> List[Dict[str, Any]]:
+            # Diagnostics
+            if data:
+                avg_len = sum(len(str(d.get("title", d.get("text", "")))) for d in data) / len(data)
+                log_info(f"[{name.upper()}] Extracted {len(data)} items, avg title/text length: {avg_len:.1f}")
+            else:
+                log_warning(f"[{name.upper()}] No valid items extracted after validation.")
+            filtered = []
+            filtered_out = []
+            for d in data:
+                title = d.get("title", d.get("text", ""))
+                # Only filter out if title/text is None or empty after stripping, or absurdly long
+                if title is None or (isinstance(title, str) and len(title.strip()) == 0) or len(title) > max_title_len:
+                    filtered_out.append((d, "missing or invalid title/text"))
+                    continue
+                # Do NOT filter out for missing secondary fields (year, type_, county, etc.)
+                filtered.append(d)
+            if filtered_out:
+                log_warning(f"[{name.upper()}] Filtered out {len(filtered_out)} items due to missing/invalid fields.")
+                for d, reason in filtered_out[:5]:
+                    log_warning(f"  [Filtered] {reason}: {str(d)[:100]}...")
+            if not filtered:
+                log_warning(f"[{name.upper()}] No items with usable title/text for downstream output.")
+            return filtered
+
+        # --- Robust extraction for all key segment types ---
+        state = context_result.get("state")
+        county = context_result.get("county")
+        year = context_result.get("year")
+        best_year = None
+        best_type = None
+
+        # --- Contests ---
+        raw_contests = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "contest_title"):
+            text = seg["text"]
+            for possible in split_possible_contests(text):
+                seg_year, seg_type, cleaned_title = extract_year_and_type(possible)
+                if seg_year:
+                    best_year = seg_year
+                if seg_type:
+                    best_type = seg_type
+                # Accept if title is present, even if secondary fields are missing
+                if cleaned_title:
+                    raw_contests.append({
+                        "title": cleaned_title,
+                        "state": state,
+                        "county": county,
+                        "year": seg_year,
+                        "type_": seg_type,
+                        "segment_hash": seg["segment_hash"],
+                    })
+        if not raw_contests and coordinator and hasattr(coordinator, "data_service"):
+            db_contests = coordinator.data_service.get_all_full_contests(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_contests)} contests from DB as fallback.")
+            for c in db_contests:
+                seg_year, seg_type, cleaned_title = extract_year_and_type(c.get("title", ""))
+                if seg_year:
+                    c["year"] = seg_year
+                if seg_type:
+                    c["type_"] = seg_type
+                if cleaned_title:
+                    c["title"] = cleaned_title
+                if not c.get("state") or not c.get("county"):
+                    try:
+                        from ..Context_Integration.context_coordinator import dynamic_state_county_detection
+                        county, state, _, _ = dynamic_state_county_detection(c, c.get("title", ""), debug=False)
+                        if state:
+                            c["state"] = state
+                        if county:
+                            c["county"] = county
+                    except Exception:
+                        pass
+                if not c.get("segment_hash"):
+                    c["segment_hash"] = hashlib.sha256(c.get("title", "").encode("utf-8")).hexdigest()
+            raw_contests.extend(db_contests)
+        # Propagate best year/type to contests missing them
+        for c in raw_contests:
+            if not c.get("year") and best_year:
+                c["year"] = best_year
+            if not c.get("type_") and best_type:
+                c["type_"] = best_type
+        contests = diagnostics_and_filter(
+            raw_contests, "contest",
+            required_fields=["title"],
+            max_title_len=500,
+        )
+        context_result["contests"] = contests
+
+        # --- Propagate year/type to metadata ---
+        if best_year:
+            context_result["metadata"]["year"] = best_year
+        if best_type:
+            context_result["metadata"]["election_type"] = best_type
+
+        # --- Panels ---
+        raw_panels = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "panel"):
+            panel_text = seg["text"]
+            if panel_text:
+                raw_panels.append({
+                    "panel_text": panel_text,
+                    "panel_html": seg["raw_html"],
+                    "segment_hash": seg["segment_hash"],
+                })
+        if not raw_panels and coordinator and hasattr(coordinator, "data_service"):
+            db_panels = coordinator.data_service.get_all_panels(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_panels)} panels from DB as fallback.")
+            for p in db_panels:
+                if not p.get("panel_text") and p.get("title"):
+                    p["panel_text"] = p["title"]
+                if not p.get("panel_html") and p.get("html"):
+                    p["panel_html"] = p["html"]
+                if not p.get("segment_hash"):
+                    p["segment_hash"] = hashlib.sha256(str(p.get("panel_text", "")).encode("utf-8")).hexdigest()
+            raw_panels.extend(db_panels)
+        panels = diagnostics_and_filter(
+            raw_panels, "panel",
+            required_fields=["panel_text"],
+            max_title_len=1000,
+        )
+        context_result["panels"] = panels
+
+        # --- Tables ---
+        raw_tables = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "results_table"):
+            text = seg["text"]
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            if cleaned_text:
+                raw_tables.append({
+                    "table_text": cleaned_text,
+                    "table_html": seg["raw_html"],
+                    "year": seg_year,
+                    "type_": seg_type,
+                    "segment_hash": seg["segment_hash"],
+                })
+        if not raw_tables and coordinator and hasattr(coordinator, "data_service"):
+            db_tables = coordinator.data_service.get_all_tables(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_tables)} tables from DB as fallback.")
+            for t in db_tables:
+                seg_year, seg_type, cleaned_text = extract_year_and_type(t.get("table_text", "") or t.get("title", ""))
+                if seg_year:
+                    t["year"] = seg_year
+                if seg_type:
+                    t["type_"] = seg_type
+                if cleaned_text:
+                    t["table_text"] = cleaned_text
+                if not t.get("segment_hash"):
+                    t["segment_hash"] = hashlib.sha256(str(t.get("table_text", "")).encode("utf-8")).hexdigest()
+            raw_tables.extend(db_tables)
+        tables = diagnostics_and_filter(
+            raw_tables, "table",
+            required_fields=["table_text"],
+            max_title_len=10000,
+        )
+        context_result["tables"] = tables
+
+        # --- Candidate Panels ---
+        raw_candidate_panels = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "candidate_panel"):
+            text = seg["text"]
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            if cleaned_text:
+                raw_candidate_panels.append({
+                    "candidate_panel_text": cleaned_text,
+                    "candidate_panel_html": seg["raw_html"],
+                    "year": seg_year,
+                    "type_": seg_type,
+                    "segment_hash": seg["segment_hash"],
+                })
+        if not raw_candidate_panels and coordinator and hasattr(coordinator, "data_service"):
+            db_candidate_panels = coordinator.data_service.get_all_candidate_panels(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_candidate_panels)} candidate_panels from DB as fallback.")
+            for cp in db_candidate_panels:
+                seg_year, seg_type, cleaned_text = extract_year_and_type(cp.get("candidate_panel_text", "") or cp.get("title", ""))
+                if seg_year:
+                    cp["year"] = seg_year
+                if seg_type:
+                    cp["type_"] = seg_type
+                if cleaned_text:
+                    cp["candidate_panel_text"] = cleaned_text
+                if not cp.get("segment_hash"):
+                    cp["segment_hash"] = hashlib.sha256(str(cp.get("candidate_panel_text", "")).encode("utf-8")).hexdigest()
+            raw_candidate_panels.extend(db_candidate_panels)
+        candidate_panels = diagnostics_and_filter(
+            raw_candidate_panels, "candidate_panel",
+            required_fields=["candidate_panel_text"],
+            max_title_len=1000,
+        )
+        context_result["candidate_panels"] = candidate_panels
+
+        # --- Location Panels ---
+        raw_location_panels = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "location_panel"):
+            text = seg["text"]
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            if cleaned_text:
+                raw_location_panels.append({
+                    "location_panel_text": cleaned_text,
+                    "location_panel_html": seg["raw_html"],
+                    "year": seg_year,
+                    "type_": seg_type,
+                    "segment_hash": seg["segment_hash"],
+                })
+        if not raw_location_panels and coordinator and hasattr(coordinator, "data_service"):
+            db_location_panels = coordinator.data_service.get_all_location_panels(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_location_panels)} location_panels from DB as fallback.")
+            for lp in db_location_panels:
+                seg_year, seg_type, cleaned_text = extract_year_and_type(lp.get("location_panel_text", "") or lp.get("title", ""))
+                if seg_year:
+                    lp["year"] = seg_year
+                if seg_type:
+                    lp["type_"] = seg_type
+                if cleaned_text:
+                    lp["location_panel_text"] = cleaned_text
+                if not lp.get("segment_hash"):
+                    lp["segment_hash"] = hashlib.sha256(str(lp.get("location_panel_text", "")).encode("utf-8")).hexdigest()
+            raw_location_panels.extend(db_location_panels)
+        location_panels = diagnostics_and_filter(
+            raw_location_panels, "location_panel",
+            required_fields=["location_panel_text"],
+            max_title_len=1000,
+        )
+        context_result["location_panels"] = location_panels
+
+        # --- Headings ---
+        raw_headings = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "heading"):
+            text = seg["text"]
+            if text:
+                if is_update_panel(text):
+                    raw_headings.append({
+                        "heading_text": text,
+                        "heading_html": seg["raw_html"],
+                        "segment_hash": seg["segment_hash"],
+                        "heading_type": "last_webpage_update"
+                    })
+                    ts_match = re.search(r'(\w+day,?\s+\w+\s+\d{1,2},\s+20\d{2}.*\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?)', text)
+                    if ts_match:
+                        context_result["metadata"]["last_webpage_update"] = ts_match.group(1)
+                else:
+                    raw_headings.append({
+                        "heading_text": text,
+                        "heading_html": seg["raw_html"],
+                        "segment_hash": seg["segment_hash"],
+                        "heading_type": "content"
+                    })
+        if not raw_headings and coordinator and hasattr(coordinator, "data_service"):
+            db_headings = coordinator.data_service.get_all_headings(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_headings)} headings from DB as fallback.")
+            raw_headings.extend(db_headings)
+        headings = diagnostics_and_filter(
+            raw_headings, "heading",
+            required_fields=["heading_text"],
+            max_title_len=500,
+        )
+        context_result["headings"] = headings
+
+        # --- Ballot Types ---
+        raw_ballot_types = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "ballot_types"):
+            text = seg["text"]
+            seg_year, seg_type, cleaned_text = extract_year_and_type(text)
+            if cleaned_text:
+                raw_ballot_types.append({
+                    "ballot_types_text": cleaned_text,
+                    "ballot_types_html": seg["raw_html"],
+                    "year": seg_year,
+                    "type_": seg_type,
+                    "segment_hash": seg["segment_hash"],
+                })
+        if not raw_ballot_types and coordinator and hasattr(coordinator, "data_service"):
+            db_ballot_types = coordinator.data_service.get_all_ballot_types(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_ballot_types)} ballot_types from DB as fallback.")
+            raw_ballot_types.extend(db_ballot_types)
+        ballot_types = diagnostics_and_filter(
+            raw_ballot_types, "ballot_types",
+            required_fields=["ballot_types_text"],
+            max_title_len=200,
+        )
+        context_result["ballot_types"] = ballot_types
+
+        # --- Results Timestamps ---
+        raw_results_timestamps = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "results_timestamp"):
+            text = seg["text"]
+            if text:
+                ts_match = re.search(r'(\w+day,?\s+\w+\s+\d{1,2},\s+20\d{2}.*\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?)', text)
+                if ts_match:
+                    context_result["metadata"]["results_last_updated"] = ts_match.group(1)
+                raw_results_timestamps.append({
+                    "timestamp_text": text,
+                    "timestamp_html": seg["raw_html"],
+                    "segment_hash": seg["segment_hash"],
+                })
+        if not raw_results_timestamps and coordinator and hasattr(coordinator, "data_service"):
+            db_results_timestamps = coordinator.data_service.get_all_results_timestamps(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_results_timestamps)} results_timestamps from DB as fallback.")
+            raw_results_timestamps.extend(db_results_timestamps)
+        results_timestamps = diagnostics_and_filter(
+            raw_results_timestamps, "results_timestamp",
+            required_fields=["timestamp_text"],
+            max_title_len=200,
+        )
+        context_result["results_timestamps"] = results_timestamps
+
+        # --- Party Labels ---
+        raw_party_labels = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "party_label"):
+            text = seg["text"]
+            if text:
+                raw_party_labels.append({
+                    "party_label_text": text,
+                    "party_label_html": seg["raw_html"],
+                    "segment_hash": seg["segment_hash"],
+                })
+        if not raw_party_labels and coordinator and hasattr(coordinator, "data_service"):
+            db_party_labels = coordinator.data_service.get_all_party_labels(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_party_labels)} party_labels from DB as fallback.")
+            raw_party_labels.extend(db_party_labels)
+        party_labels = diagnostics_and_filter(
+            raw_party_labels, "party_label",
+            required_fields=["party_label_text"],
+            max_title_len=200,
+        )
+        context_result["party_labels"] = party_labels
+
+        # --- Vote Methods ---
+        raw_vote_methods = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "vote_method"):
+            text = seg["text"]
+            if text:
+                raw_vote_methods.append({
+                    "vote_method_text": text,
+                    "vote_method_html": seg["raw_html"],
+                    "segment_hash": seg["segment_hash"],
+                })
+        if not raw_vote_methods and coordinator and hasattr(coordinator, "data_service"):
+            db_vote_methods = coordinator.data_service.get_all_vote_methods(limit=100)
+            log_debug(f"[DEBUG][DB] Loaded {len(db_vote_methods)} vote_methods from DB as fallback.")
+            raw_vote_methods.extend(db_vote_methods)
+        vote_methods = diagnostics_and_filter(
+            raw_vote_methods, "vote_method",
+            required_fields=["vote_method_text"],
+            max_title_len=200,
+        )
+        context_result["vote_methods"] = vote_methods
+        # --- Propagate best year/type to all sections ---
+        def propagate_year_type(items, year, type_, year_field="year", type_field="type_") -> None:
+            for item in items:
+                if year and not item.get(year_field):
+                    item[year_field] = year
+                if type_ and not item.get(type_field):
+                    item[type_field] = type_
+        propagate_year_type(context_result.get("tables", []), best_year, best_type)
+        propagate_year_type(context_result.get("candidate_panels", []), best_year, best_type)
+        propagate_year_type(context_result.get("location_panels", []), best_year, best_type)
+        propagate_year_type(context_result.get("ballot_types", []), best_year, best_type)
+        # --- 3. ML-driven DOM pattern clustering and tagging ---
+        pattern_matches = []
+        segments_needing_review = []
+        seen = set()
+        unique_segments = []
+        for seg in segments_with_attrs:
+            html_norm = _normalize_html_for_hash(seg['html'])
+            if html_norm not in seen:
+                seen.add(html_norm)
+                unique_segments.append(seg)
+        segments_with_attrs = unique_segments
+        for seg in segments_with_attrs:
+            if seg.get("ml_confidence", 0.0) < 0.7 or seg.get("ml_label", "unknown") == "unknown":
+                # Use coordinator as oracle if available
+                user_label = None
+                if coordinator and hasattr(coordinator, "auto_label_segment"):
+                    try:
+                        user_label = coordinator.auto_label_segment(seg)
+                    except Exception:
+                        user_label = None
+                if not user_label:
+                    user_label = prompt_for_segment_label(seg, context_library=context_library)
+                seg["ml_label"] = user_label
+                seg["ml_confidence"] = 1.0
+                seg["pattern_id"] = f"pattern_{hashlib.sha256(seg['html'].encode('utf-8')).hexdigest()[:10]}"
+                emb = get_segment_embedding(model, seg, cache_hits=embedding_cache_hits, cache_misses=embedding_cache_misses)
+                if emb is not None:
+                    emb = emb.tolist()
+                kb_entry = {
+                    "pattern_id": seg["pattern_id"],
+                    "label": user_label,
+                    "embedding": emb,
+                    "example_html": seg["html"][:500],
+                    "source_url": page.url,
+                    "timestamp": time.time(),
+                }
+                append_pattern_kb(kb_entry)
+                append_feedback_log({
+                    "pattern_id": seg["pattern_id"],
+                    "label": user_label,
+                    "html": seg["html"][:500],
+                    "source_url": page.url,
+                    "timestamp": time.time(),
+                })
+                segments_needing_review.append(seg)
+                if context_library is not None and seg.get("segment_hash", []):
+                    update_context_library(
+                        CONTEXT_LIBRARY_PATH,
+                        lambda lib: lib.setdefault("cached_segments", []).append({
+                            "segment_hash": seg["segment_hash"],
+                            "ml_label": user_label,
+                        })
+                    )
+                    valid_hashes = set(seg["segment_hash"] for seg in context_library.get("cached_segments", []))
+                    prune_embedding_cache(valid_hashes)
+            else:
+                pattern_matches.append({
+                    "pattern_id": seg["pattern_id"],
+                    "label": seg["ml_label"],
+                    "confidence": seg["ml_confidence"],
+                    "segment_html": seg["html"][:200],
+                })
+
+        context_result["pattern_kb_matches"] = pattern_matches
+        context_result["segments_needing_review"] = segments_needing_review
+
+        # --- 4. Dynamic tagging and context enrichment ---
+        selector_log = set()
+        for seg in segments_with_attrs:
+            if seg["id"]:
+                selector_log.add(f'#{seg["id"]}')
+            for cls in seg["classes"]:
+                selector_log.add(f'.{cls}')
+            selector_log.add(seg["tag"].lower())
+            if "semantic_tags" not in seg:
+                seg["semantic_tags"] = []
+            if seg["ml_label"] not in ("unknown", "ignore"):
+                seg["semantic_tags"].append(seg["ml_label"])
+        context_result["selector_log"] = sorted(selector_log)
+
+        context_result["metadata"].update({
+            "source_url": page.url,
+            "scrape_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "pattern_kb_size": len(pattern_kb) if pattern_kb else 0,
+        })
+
+        if debug:
+            log_debug("\n[orange][DEBUG] Extracted HTML segments with ML labels:[/orange]")
+            for seg in segments_with_attrs:
+                log_info(f"{seg['tag']} {seg['attrs']} [label={seg['ml_label']}, conf={seg['ml_confidence']:.2f}] {seg['html'][:80]}{'...' if len(seg['html']) > 80 else ''}")
+            if segments_needing_review:
+                log_debug(f"\n[red][DEBUG] {len(segments_needing_review)} segments flagged for review.[/red]")
+
+        # --- 5. Update context library with new segments for future runs ---
+        if context_library is not None:
+            if "cached_segments" not in context_library:
+                context_library["cached_segments"] = []
+            known_hashes = {seg.get("segment_hash", []) for seg in context_library["cached_segments"]}
+            for seg in segments_with_attrs:
+                if seg.get("segment_hash", []) and seg["segment_hash"] not in known_hashes:
+                    context_library["cached_segments"].append({
+                        "segment_hash": seg["segment_hash"],
+                        "ml_label": seg["ml_label"],
+                        "ml_confidence": seg["ml_confidence"],
+                        "pattern_id": seg["pattern_id"],
+                    })
+            update_context_library(
+                CONTEXT_LIBRARY_PATH,
+                lambda lib: lib.setdefault("cached_segments", []).extend([
+                    {
+                        "segment_hash": seg["segment_hash"],
+                        "ml_label": seg["ml_label"],
+                        "ml_confidence": seg["ml_confidence"],
+                        "pattern_id": seg["pattern_id"],
+                    }
+                    for seg in segments_with_attrs
+                    if seg.get("segment_hash", []) and seg["segment_hash"] not in known_hashes
+                ])
+            )
+            valid_hashes = set(seg["segment_hash"] for seg in context_library.get("cached_segments", []))
+            prune_embedding_cache(valid_hashes)
+    except Exception as e:
+        tb = traceback.format_exc()
+        log_error(f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}")
+        context_result["error"] = f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}"
+
+    if context_cache is not None:
+        context_cache[page_hash] = context_result
+        save_context_cache_to_disk(context_cache)
+    if embedding_cache_hits and not embedding_cache_misses:
+        log_info(f"[bold green][CACHE] All segment embeddings loaded from cache.[/bold green]")
+    elif embedding_cache_hits:
+        log_warning(f"[yellow][CACHE] {len(embedding_cache_hits)} embeddings loaded from cache, {len(embedding_cache_misses)} computed.[/yellow]")
+    log_info(f"[PROFILE] scan_html_for_context completed in {time.time() - start_time:.2f} seconds.")
+    dom_parts = {
+        "contests": context_result.get("contests", []),
+        "panels": context_result.get("panels", []),
+        "tables": context_result.get("tables", []),
+        "candidate_panels": context_result.get("candidate_panels", []),
+        "location_panels": context_result.get("location_panels", []),
+        "headings": context_result.get("headings", []),
+        "ballot_types": context_result.get("ballot_types", []),
+        "results_timestamps": context_result.get("results_timestamps", []),
+        "party_labels": context_result.get("party_labels", []),
+        "vote_methods": context_result.get("vote_methods", []),
+        "pattern_kb_matches": context_result.get("pattern_kb_matches", []),
+        "segments_needing_review": context_result.get("segments_needing_review", []),
+        "selector_log": context_result.get("selector_log", []),
+        "metadata": context_result.get("metadata", {}),
+        "tagged_segments": context_result.get("tagged_segments", []),
+        "tagged_segments_with_attrs": context_result.get("tagged_segments_with_attrs", []),
+        "raw_html": context_result.get("raw_html", ""),
+        "error": context_result.get("error", None),
+        "url": context_result.get("url", None),
+        # Add more keys as needed for future extractions
+    }
+    # Validate dom_parts before organizing
+    if not validate_dom_parts(dom_parts):
+        log_error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
+        # Optionally: raise Exception or return early
+        # raise ValueError("DOM parts validation failed.")
+
+    # Attach dom_parts to context_result for downstream use
+    context_result["dom_parts"] = dom_parts
+    
+    if coordinator is not None:
+        coordinator.organize_and_enrich(context_result)
+    return context_result
+

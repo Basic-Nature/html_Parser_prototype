@@ -31,6 +31,65 @@ def run_orchestration_plugins(context=None):
             log_error(f"[BOT ROUTER][PLUGIN ERROR] {e}")
     return suggestions
 
+def preclean_json_logs(log_dirs, required_files=None):
+    """
+    Clean all JSON/JSONL files in log_dirs.
+    Quarantine corrupt lines, salvage valid lines, and create missing required files.
+    """
+    import glob
+    import os
+    import re
+    import shutil
+
+    # Clean all .jsonl and .json files
+    for log_dir in log_dirs:
+        for suf in [".jsonl", ".json"]:
+            for path in glob.glob(os.path.join(log_dir, f"*{suf}")):
+                valid_lines = []
+                corrupt_lines = []
+                with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+                    for i, line in enumerate(f):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            # Try to parse as JSON
+                            import json
+                            json.loads(line)
+                            valid_lines.append(line)
+                        except Exception as e:
+                            # Try to fix common issues
+                            fixed = line
+                            fixed = re.sub(r",\s*$", "", fixed)
+                            fixed = re.sub(r"'", '"', fixed)
+                            fixed = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', fixed)
+                            fixed = fixed.replace('\ufeff', '').replace('\x00', '')
+                            try:
+                                json.loads(fixed)
+                                valid_lines.append(fixed)
+                            except Exception:
+                                corrupt_lines.append((i, line, str(e)))
+                # Write back valid lines
+                with open(path, "w", encoding="utf-8") as out:
+                    for line in valid_lines:
+                        out.write(line + "\n")
+                # Save corrupt lines for review
+                if corrupt_lines:
+                    corrupt_path = path + ".corrupt"
+                    with open(corrupt_path, "w", encoding="utf-8") as out:
+                        for i, line, err in corrupt_lines:
+                            out.write(f"Line {i+1}: {line}\nError: {err}\n\n")
+                    print(f"[CORRUPT] {len(corrupt_lines)} lines saved to {corrupt_path}")
+                print(f"[FIXED] Salvaged {len(valid_lines)}/{len(valid_lines)+len(corrupt_lines)} lines in {path}")
+
+    # Ensure required files exist
+    if required_files:
+        for req in required_files:
+            if not os.path.exists(req):
+                with open(req, "w", encoding="utf-8") as f:
+                    pass  # create empty file
+                print(f"[INFO] Created missing required file: {req}")
+
 class BotPipeline:
     def __init__(self):
         self.results = {}
@@ -227,6 +286,14 @@ class BotPipeline:
             self.last_run = datetime.now().isoformat()
             log_info(f"[PIPELINE] Starting pipeline at {self.last_run}")
 
+            # 0. Pre-clean all logs/cache/library files
+            log_dirs = [LOG_DIR, CACHE_DIR, os.path.join(LOG_DIR, "log"), os.path.join(LOG_DIR, "cache")]
+            required_files = [
+                os.path.join(LOG_DIR, "spacy_ner_train_data.jsonl"),
+                os.path.join(LOG_DIR, "context_library.json"),
+            ]
+            preclean_json_logs(log_dirs, required_files=required_files)
+
             # 1. Ensure DB tables
             if not self.ensure_db_tables():
                 log_error("[PIPELINE] DB table creation failed. Aborting pipeline.")
@@ -249,21 +316,14 @@ class BotPipeline:
             # 4. Scan for misaligned NER examples
             misaligned = self.scan_misaligned()
             if misaligned == 2:
-                log_warning("[PIPELINE] scan_misaligned_ner failed. Proceeding with caution.")
+                log_warning("[PIPELINE] Misaligned NER examples found. Self-heal loop will be handled by scan_misaligned_ner.")
+            elif misaligned == 1:
+                log_warning("[PIPELINE] scan_misaligned_ner failed or file missing. Proceeding with caution.")
             elif misaligned == 0:
                 log_info("[PIPELINE] No misaligned NER examples found. Proceeding to manual correction.")
 
-            # 5. Optimized orchestration for manual correction and misaligned NER
+            # 5. Optimized orchestration for manual correction (scan_misaligned_ner already handled misalignments)
             has_entries = self.has_new_entries(LOG_DIR, CACHE_DIR)
-            if misaligned == 2:
-                log_warning("[PIPELINE] scan_misaligned_ner failed. Proceeding with caution.")
-            elif misaligned != 0:
-                # Handle misaligned NER separately, do not block manual correction
-                log_info("[PIPELINE] Misalignments detected. Running manual_correction_bot in self-heal mode for NER only.")
-                self.run_manual_correction(mode="self-heal", retries=3)
-                # Optionally, tidy up misaligned logs or retrain NER here
-                # e.g., self.retrain_models() or clean misaligned logs
-            # Now run manual correction for all other entries (auto mode, end-of-pipeline)
             if has_entries:
                 extra_args = []
                 # Dynamically add arguments based on pipeline state and env

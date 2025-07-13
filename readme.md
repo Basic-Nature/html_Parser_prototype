@@ -206,23 +206,27 @@ html_Parser_prototype/
    - Populate `urls.txt` with target election result URLs.
    - `url_hint_overrides.txt` is used in conjunction with `state_router.py` when dynamic state detection fails.
 
-4. **Run Parser (CLI)**
+4. **Run Parser (Web UI)**
 
-   ``bash <--Terminal
-   (uncomment the "")--
-   `python -m webapp.parser.html_election_parser`
-   if terminal already in root folder; otherwise,
-    (replace full path with the actual path to the folder)
-    "cd ...full path...\html_Parser_prototype"
-   ``
-
-5. **Run Parser (Web UI, Optional)**
-
-   ``bash<Same as above with "" and folder path>
+   `bash<Same as above with "" and folder path>`
     `python -m webapp.Smart_Elections_Parser_Webapp`
    ``"cd ...full path...\html_Parser_prototype\"
-   - Then visit [http://localhost:5000](http://localhost:5000) in your browser or more likely the printed to terminal IP address pasted into browser of choice.
+   - Then visit [http://localhost:5000](http://localhost:5000) in your browser or more likely the printed to terminal IP address pasted into browser of choice. This script activates the postgreSQL database so it must be ran first.
 
+5. **Run Parser (CLI)**
+
+   `bash # <--- Terminal
+   - `(uncomment the "")
+   - `python -m webapp.parser.html_election_parser`
+   - if terminal already in root folder; otherwise,
+    (replace full path with the actual path to the folder)
+    "cd ...full path...\html_Parser_prototype"
+   `
+6. **Run Bot_router**
+   
+   - `python -m webapp.parser.bots.bot_router`
+   - The bot_router cleans up the .json/.jsonl and preps for 
+   retraining as well as migrating data to postgreSQL
 ---
 
 ## 📦 Output Format

@@ -978,13 +978,19 @@ class ContextCoordinator(object):
     def get_dom_parts(self) -> Dict[str, Any]:
         """
         Return organized DOM parts (head, body, wrappers, tables, buttons, clickable, etc.).
+        Suppress repeated warnings after a limit.
         """
+        NO_DOM_WARNING_LIMIT = 5
+        if not hasattr(self, "_no_dom_warning_count"):
+            self._no_dom_warning_count = 0
         if not self.organized or "dom_parts" not in self.organized:
-            ContextCoordinator._dom_parts_warning_count += 1
-            if ContextCoordinator._dom_parts_warning_count == 1:
-                log_warning("[get_dom_parts] No organized DOM parts. (Further warnings suppressed)")
-            elif ContextCoordinator._dom_parts_warning_count % 10 == 0:
-                log_warning(f"[get_dom_parts] No organized DOM parts. (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
+            if self._no_dom_warning_count < NO_DOM_WARNING_LIMIT:
+                log_warning("No organized DOM parts.")
+                self._no_dom_warning_count += 1
+            elif self._no_dom_warning_count == NO_DOM_WARNING_LIMIT:
+                log_warning("No organized DOM parts. (Further warnings suppressed)")
+                self._no_dom_warning_count += 1
+            # else: suppress further warnings
             return {}
         return self.organized["dom_parts"]
 

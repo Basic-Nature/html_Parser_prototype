@@ -51,8 +51,22 @@ processed_urls = load_processed_urls()
 output_cache = load_output_cache()
 import itertools
 _spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+
 def get_loading_indicator() -> str:
     return next(_spinner)
+
+def ensure_dict(obj):
+    if isinstance(obj, dict):
+        return obj
+    elif isinstance(obj, list):
+        # Use 'label' or 'title' as key if possible
+        result = {}
+        for i, v in enumerate(obj):
+            key = v.get("label") or v.get("title") or str(i) if isinstance(v, dict) else str(i)
+            result[key] = v
+        return result
+    else:
+        return {}
 
 def remove_functions(obj) -> dict:
     if isinstance(obj, dict):
@@ -941,14 +955,27 @@ class ContextOrganizer(object):
                         groups[group].append(item)
             return groups
 
-        panels = group_by_keywords([p for p in panels.values() if p], label_field="label")
-        buttons = group_by_keywords(all_buttons, label_field="label")
-        tables = group_by_keywords(all_tables, label_field="label")
-
-        log.append(f"[KEYWORDS] Panel groups: {{k: len(v) for k,v in panel.items()}}")
-        log.append(f"[KEYWORDS] Button groups: {{k: len(v) for k,v in button.items()}}")
-        log.append(f"[KEYWORDS] Table groups: {{k: len(v) for k,v in table.items()}}")
-
+        panels = ensure_dict(group_by_keywords([p for p in panels.values() if p], label_field="label"))
+        buttons = ensure_dict(group_by_keywords(all_buttons, label_field="label"))
+        tables = ensure_dict(group_by_keywords(all_tables, label_field="label"))
+        candidate_panels = ensure_dict(group_by_keywords(candidate_panels, label_field="label"))
+        location_panels = ensure_dict(group_by_keywords(location_panels, label_field="label"))
+        headings = ensure_dict(group_by_keywords(headings, label_field="label"))
+        ballot_types = ensure_dict(group_by_keywords(ballot_types, label_field="label"))
+        results_timestamps = ensure_dict(group_by_keywords(results_timestamps, label_field="label"))
+        party_labels = ensure_dict(group_by_keywords(party_labels, label_field="label"))
+        vote_methods = ensure_dict(group_by_keywords(vote_methods, label_field="label"))
+        log.append(f"[KEYWORDS] Panel groups: {{k: len(v) for k,v in panels.items()}}")
+        log.append(f"[KEYWORDS] Button groups: {{k: len(v) for k,v in buttons.items()}}")
+        log.append(f"[KEYWORDS] Table groups: {{k: len(v) for k,v in tables.items()}}")
+        log.append(f"[KEYWORDS] Candidate panel groups: {{k: len(v) for k,v in candidate_panels.items()}}")
+        log.append(f"[KEYWORDS] Location panel groups: {{k: len(v) for k,v in location_panels.items()}}")
+        log.append(f"[KEYWORDS] Heading groups: {{k: len(v) for k,v in headings.items()}}")
+        log.append(f"[KEYWORDS] Ballot type groups: {{k: len(v) for k,v in ballot_types.items()}}")
+        log.append(f"[KEYWORDS] Results timestamp groups: {{k: len(v) for k,v in results_timestamps.items()}}")
+        log.append(f"[KEYWORDS] Party label groups: {{k: len(v) for k,v in party_labels.items()}}")
+        log.append(f"[KEYWORDS] Vote method groups: {{k: len(v) for k,v in vote_methods.items()}}")
+        
         anomalies, clusters = [], []
         if enable_ml and len(contests) > 0:
             try:
