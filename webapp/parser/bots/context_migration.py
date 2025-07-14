@@ -9,7 +9,7 @@ from ..utils.shared_logger import RichConsoleProxy, SharedLogger
 console = RichConsoleProxy()
 logger = SharedLogger()
 
-MIGRATION_STATE_FILE = Path(CONTEXT_LIBRARY_DIR) / ".migration_state.json"
+MIGRATION_STATE_FILE = Path(CONTEXT_LIBRARY_DIR) / "migration_state.json"
 
 def table_structure_exists(session, contest_title: str, headers: str, context: str) -> bool:
     return session.query(TableStructure).filter_by(
@@ -97,6 +97,7 @@ def load_migration_state() -> Dict[str, Any]:
     return {}
 
 def save_migration_state(state: Dict[str, Any]):
+    MIGRATION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)  # Ensure directory exists
     with open(MIGRATION_STATE_FILE, "wb") as f:
         f.write(orjson.dumps(state))
 

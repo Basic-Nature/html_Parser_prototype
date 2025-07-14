@@ -954,20 +954,21 @@ def canonicalize_segment(html: str) -> str:
 
     return html
 
-def validate_dom_parts(dom_parts: dict, verbose: bool = True) -> bool:
+def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=None) -> bool:
     """
-    Advanced validation for dom_parts structure.
-    Checks for all expected keys, types, required fields, value formats, allowed values, cross-field consistency,
-    and additional schema logic from librarian.py.
-    Returns True if valid, False otherwise.
-    Logs detailed warnings for missing or malformed data.
+    Robust validation for dom_parts structure.
+    - Checks for expected keys, types, required fields, value formats, allowed values, cross-field consistency.
+    - Uses STATE_ABBR for state normalization.
+    - Suppresses redundant warnings, adapts to context.
+    - Returns True if valid, False otherwise.
     """
     import datetime
     from ..bots.librarian import (
         KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, ELECTION_TYPES, BALLOT_TYPES, PARTY_KEYWORDS,
         LOCATION_KEYWORDS, STATE_ABBR, LOCATION_ABBREVIATIONS, CANONICAL_SEGMENT_LABELS, PANEL_TAGS, HEADING_TAGS, EXTRA_HEADING_TAGS
     )
-
+    MAX_WARNINGS = 20
+    warning_count = 0
     valid = True
 
     expected_keys = [
@@ -976,7 +977,11 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True) -> bool:
         "pattern_kb_matches", "segments_needing_review", "selector_log", "metadata",
         "tagged_segments", "tagged_segments_with_attrs", "raw_html", "error", "url"
     ]
+    # Only warn about missing required keys if context expects them
     required_keys = ["contests", "panels", "tables", "candidate_panels", "location_panels"]
+    if context_expected is not None:
+        required_keys = [k for k in required_keys if k in context_expected]
+
     section_fields = {
         "contests": ["title", "year", "type_", "state", "county", "segment_hash"],
         "panels": ["panel_text", "panel_html", "segment_hash"],
@@ -990,14 +995,14 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True) -> bool:
         "vote_methods": ["vote_method_text", "vote_method_html", "segment_hash"],
     }
 
-    # Check all expected keys exist
+    # Check all expected keys exist, but only warn if context expects them
     for key in expected_keys:
         if key not in dom_parts:
-            if verbose:
+            if verbose and (context_expected is None or key in context_expected):
                 log_warning(f"[DOM_PARTS] Missing key: {key}")
             valid = False
 
-    # Check required keys are lists and not empty
+    # Check required keys are lists and not empty, but only warn if context expects them
     for key in required_keys:
         val = dom_parts.get(key)
         if not isinstance(val, list):
@@ -1016,17 +1021,17 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True) -> bool:
             continue
         for i, item in enumerate(items):
             if not isinstance(item, dict):
-                if verbose:
+                if verbose and warning_count < MAX_WARNINGS:
                     log_warning(f"[DOM_PARTS] Item {i} in '{section}' is not a dict.")
-                valid = False
+                warning_count += 1
                 continue
             for field in fields:
                 value = item.get(field)
-                # Required field check
+                # Only warn for missing/empty fields if context expects this section
                 if value is None or (isinstance(value, str) and not value.strip()):
-                    if verbose:
+                    if verbose and warning_count < MAX_WARNINGS and (context_expected is None or section in context_expected):
                         log_warning(f"[DOM_PARTS] Item {i} in '{section}' missing or empty field '{field}'.")
-                    valid = False
+                    warning_count += 1
                 # Type checks
                 if field.endswith("_html") and value and not isinstance(value, str):
                     if verbose:
@@ -1054,12 +1059,15 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True) -> bool:
                         valid = False
                 if field == "county" and value and "state" in item:
                     state_val = item.get("state", "").lower()
+                    # Normalize state using STATE_ABBR
+                    state_val = STATE_ABBR.get(state_val, state_val)
                     if state_val and value.lower() not in KNOWN_STATE_TO_COUNTY_MAP.get(state_val, []):
                         if verbose:
                             log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown county '{value}' for state '{state_val}'")
                         valid = False
                 if field == "state" and value:
-                    if value.lower() not in KNOWN_STATE_TO_COUNTY_MAP:
+                    state_norm = STATE_ABBR.get(value.lower(), value.lower())
+                    if state_norm not in KNOWN_STATE_TO_COUNTY_MAP:
                         if verbose:
                             log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown state: {value}")
                         valid = False
@@ -1121,7 +1129,8 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True) -> bool:
                         if verbose:
                             log_warning(f"[DOM_PARTS] Panel {i}: html '{item['panel_html']}' does not contain a valid panel tag.")
                         valid = False
-
+    if warning_count > MAX_WARNINGS:
+        log_warning(f"[DOM_PARTS] {warning_count} items missing required fields (warnings suppressed after {MAX_WARNINGS}).")
     # Metadata checks
     meta = dom_parts.get("metadata", {})
     if not isinstance(meta, dict):
@@ -1275,29 +1284,37 @@ def scan_html_for_context(
         context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
                
         # --- Helper for diagnostics and filtering ---
-        def diagnostics_and_filter(data, name, required_fields=None, max_title_len=500) -> List[Dict[str, Any]]:
+        import concurrent.futures
+        def diagnostics_and_filter(data, field, max_title_len=500) -> List[Dict[str, Any]]:
             # Diagnostics
             if data:
-                avg_len = sum(len(str(d.get("title", d.get("text", "")))) for d in data) / len(data)
-                log_info(f"[{name.upper()}] Extracted {len(data)} items, avg title/text length: {avg_len:.1f}")
+                avg_len = sum(len(str(d.get(field, ""))) for d in data) / len(data)
+                log_info(f"[{field.upper()}] Extracted {len(data)} items, avg {field} length: {avg_len:.1f}")
             else:
-                log_warning(f"[{name.upper()}] No valid items extracted after validation.")
+                log_warning(f"[{field.upper()}] No valid items extracted after validation.")
+
+            def filter_item(d):
+                title = d.get("title", d.get("text", ""))
+                if title is None or (isinstance(title, str) and len(title.strip()) == 0) or len(title) > max_title_len:
+                    return (d, "missing or invalid title/text")
+                return (d, None)
+
             filtered = []
             filtered_out = []
-            for d in data:
-                title = d.get("title", d.get("text", ""))
-                # Only filter out if title/text is None or empty after stripping, or absurdly long
-                if title is None or (isinstance(title, str) and len(title.strip()) == 0) or len(title) > max_title_len:
-                    filtered_out.append((d, "missing or invalid title/text"))
-                    continue
-                # Do NOT filter out for missing secondary fields (year, type_, county, etc.)
-                filtered.append(d)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                results = list(executor.map(filter_item, data))
+            for d, reason in results:
+                if reason is not None:
+                    filtered_out.append((d, reason))
+                else:
+                    filtered.append(d)
+
             if filtered_out:
-                log_warning(f"[{name.upper()}] Filtered out {len(filtered_out)} items due to missing/invalid fields.")
+                log_warning(f"[{field.upper()}] Filtered out {len(filtered_out)} items due to missing/invalid fields.")
                 for d, reason in filtered_out[:5]:
                     log_warning(f"  [Filtered] {reason}: {str(d)[:100]}...")
             if not filtered:
-                log_warning(f"[{name.upper()}] No items with usable title/text for downstream output.")
+                log_warning(f"[{field.upper()}] No items with usable title/text for downstream output.")
             return filtered
 
         # --- Robust extraction for all key segment types ---
@@ -1359,7 +1376,7 @@ def scan_html_for_context(
                 c["type_"] = best_type
         contests = diagnostics_and_filter(
             raw_contests, "contest",
-            required_fields=["title"],
+            field=["title"],
             max_title_len=500,
         )
         context_result["contests"] = contests
@@ -1393,7 +1410,7 @@ def scan_html_for_context(
             raw_panels.extend(db_panels)
         panels = diagnostics_and_filter(
             raw_panels, "panel",
-            required_fields=["panel_text"],
+            field=["panel_text"],
             max_title_len=1000,
         )
         context_result["panels"] = panels
@@ -1427,7 +1444,7 @@ def scan_html_for_context(
             raw_tables.extend(db_tables)
         tables = diagnostics_and_filter(
             raw_tables, "table",
-            required_fields=["table_text"],
+            field=["table_text"],
             max_title_len=10000,
         )
         context_result["tables"] = tables
@@ -1461,7 +1478,7 @@ def scan_html_for_context(
             raw_candidate_panels.extend(db_candidate_panels)
         candidate_panels = diagnostics_and_filter(
             raw_candidate_panels, "candidate_panel",
-            required_fields=["candidate_panel_text"],
+            field=["candidate_panel_text"],
             max_title_len=1000,
         )
         context_result["candidate_panels"] = candidate_panels
@@ -1495,7 +1512,7 @@ def scan_html_for_context(
             raw_location_panels.extend(db_location_panels)
         location_panels = diagnostics_and_filter(
             raw_location_panels, "location_panel",
-            required_fields=["location_panel_text"],
+            field=["location_panel_text"],
             max_title_len=1000,
         )
         context_result["location_panels"] = location_panels
@@ -1528,7 +1545,7 @@ def scan_html_for_context(
             raw_headings.extend(db_headings)
         headings = diagnostics_and_filter(
             raw_headings, "heading",
-            required_fields=["heading_text"],
+            field=["heading_text"],
             max_title_len=500,
         )
         context_result["headings"] = headings
@@ -1552,7 +1569,7 @@ def scan_html_for_context(
             raw_ballot_types.extend(db_ballot_types)
         ballot_types = diagnostics_and_filter(
             raw_ballot_types, "ballot_types",
-            required_fields=["ballot_types_text"],
+            field=["ballot_types_text"],
             max_title_len=200,
         )
         context_result["ballot_types"] = ballot_types
@@ -1576,7 +1593,7 @@ def scan_html_for_context(
             raw_results_timestamps.extend(db_results_timestamps)
         results_timestamps = diagnostics_and_filter(
             raw_results_timestamps, "results_timestamp",
-            required_fields=["timestamp_text"],
+            field=["timestamp_text"],
             max_title_len=200,
         )
         context_result["results_timestamps"] = results_timestamps
@@ -1597,7 +1614,7 @@ def scan_html_for_context(
             raw_party_labels.extend(db_party_labels)
         party_labels = diagnostics_and_filter(
             raw_party_labels, "party_label",
-            required_fields=["party_label_text"],
+            field=["party_label_text"],
             max_title_len=200,
         )
         context_result["party_labels"] = party_labels
@@ -1618,7 +1635,7 @@ def scan_html_for_context(
             raw_vote_methods.extend(db_vote_methods)
         vote_methods = diagnostics_and_filter(
             raw_vote_methods, "vote_method",
-            required_fields=["vote_method_text"],
+            field=["vote_method_text"],
             max_title_len=200,
         )
         context_result["vote_methods"] = vote_methods

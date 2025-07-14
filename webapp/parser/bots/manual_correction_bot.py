@@ -696,8 +696,9 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
     changed = False
     accepted, edited, removed = 0, 0, 0
     # Summary preview
-    total_new = sum(len(v) for v in new_entries.values())
-    preview = Counter(entry.get("extracted_value") for vals in new_entries.values() for entry in vals)
+    new_entries_values = new_entries.values() if isinstance(new_entries, dict) else new_entries
+    total_new = sum(len(v) for v in new_entries_values)
+    preview = Counter(entry.get("extracted_value") for vals in new_entries_values for entry in vals)
     log_info(f"[SUMMARY] {total_new} new entries to review. Top values:")
     for val, count in preview.most_common(5):
         log_info(f"  {val!r}: {count} times")
@@ -1115,68 +1116,61 @@ def ensure_context_library(path):
         log_warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
     return context_lib
 
-def validate_training_data(train_data, nlp):
-    """
-    Validate and skip misaligned spaCy NER training examples to avoid [W030] warnings.
-    """
-    from spacy.training import offsets_to_biluo_tags
-    valid_data = []
-    for text, annots in train_data:
-        try:
-            tags = offsets_to_biluo_tags(nlp.make_doc(text), annots["entities"])
-            if "-" in tags:
-                log_warning(f"Skipping misaligned entity in: {text}")
-                continue
-            valid_data.append((text, annots))
-        except Exception as e:
-            log_warning(f"Error validating entity alignment: {e}")
-    return valid_data
-
 def process_auto_mode(file_field_map, context_path, cache, batch_size=BATCH_SIZE):
     total_processed = 0
     total_skipped = 0
     total_errors = 0
-    batch_entries = []
+    batch_field_entries = defaultdict(lambda: defaultdict(list))  # field -> context_key -> entries
+
     for log_file, field in file_field_map:
         try:
-            entries = load_jsonl_incremental(log_file, cache)
-            unique_entries, _ = deduplicate_entries(entries)
-            field_entries = defaultdict(list)
-            for entry in unique_entries:
-                entry_id = str(hash(orjson.dumps(entry)))
-                if entry_id in cache:
-                    total_skipped += 1
-                    continue
-                field_entries[entry.get("context_key", "default")].append(entry)
-                cache[entry_id] = {
-                    "status": "accepted",
-                    "timestamp": datetime.now().isoformat(),
-                    "action": "auto-accept",
-                    "user": os.environ.get("USER", "system"),
-                }
-                write_audit_log("accept", entry, user=os.environ.get("USER", "system"))
-                total_processed += 1
-                batch_entries.append(entry)
-                # Periodic progress log
-                if total_processed % 100 == 0:
-                    log_info(f"[AUTO] Processed {total_processed} entries so far...")
-                # Periodic batch update
-                if len(batch_entries) >= batch_size:
-                    update_context_with_new_entries(context_path, field, field_entries)
-                    batch_entries.clear()
-            # Final flush for this file/field
-            if batch_entries:
-                update_context_with_new_entries(context_path, field, field_entries)
-                batch_entries.clear()
-            # Remove processed log file
-            try:
-                os.remove(log_file)
-                log_info(f"[AUTO] Deleted processed log file: {log_file}")
-            except Exception as e:
-                log_warning(f"[AUTO] Could not delete log file {log_file}: {e}")
+            # Use aggregate_successful_field_entries for dedup/group
+            field_entries, dup_count, skipped_existing, n_new = aggregate_successful_field_entries(
+                log_file, None, field, fast_mode=True
+            )
+            for context_key, entries in field_entries.items():
+                for entry in entries:
+                    entry_id = str(hash(orjson.dumps(entry)))
+                    if entry_id in cache:
+                        total_skipped += 1
+                        continue
+                    batch_field_entries[field][context_key].append(entry)
+                    cache[entry_id] = {
+                        "status": "accepted",
+                        "timestamp": datetime.now().isoformat(),
+                        "action": "auto-accept",
+                        "user": os.environ.get("USER", "system"),
+                    }
+                    write_audit_log("accept", entry, user=os.environ.get("USER", "system"))
+                    total_processed += 1
+
+            # Remove processed log file if it exists
+            if Path(log_file).exists():
+                try:
+                    os.remove(log_file)
+                    log_info(f"[AUTO] Deleted processed log file: {log_file}")
+                except Exception as e:
+                    log_warning(f"[AUTO] Could not delete log file {log_file}: {e}")
         except Exception as e:
             log_error(f"[AUTO] Error processing {log_file} for field {field}: {e}")
             total_errors += 1
+
+        # Periodic progress log
+        if total_processed % 100 == 0 and total_processed > 0:
+            log_info(f"[AUTO] Processed {total_processed} entries so far...")
+
+        # Periodic batch update
+        if total_processed % batch_size == 0 and total_processed > 0:
+            for field, context_entries in batch_field_entries.items():
+                update_context_with_new_entries(context_path, field, context_entries)
+            batch_field_entries.clear()
+
+    # Final flush
+    if batch_field_entries:
+        for field, context_entries in batch_field_entries.items():
+            update_context_with_new_entries(context_path, field, context_entries)
+
+    cache.sync()
     log_info(f"[AUTO] Finished. Total processed: {total_processed}, skipped: {total_skipped}, errors: {total_errors}")
 
 # --- Main CLI logic ---
@@ -1317,13 +1311,15 @@ def main():
             log_info(f"  Duplicates skipped: {dup_count}")
             log_info(f"  Already in context library: {skipped_existing}")
             preview = []
-            for v in field_entries.values():
+            field_entries_values = field_entries.values() if isinstance(field_entries, dict) else field_entries
+            for v in field_entries_values:
                 preview.extend(v)
             log_info(f"  Preview: {preview[:3]}")
             if args.dry_run:
                 log_info(f"[DRY-RUN] Would process {n_new} new entries for field {field} from {log_file}")
                 continue
-            if args.auto or args.fast:
+            if args.auto:
+                log_info(f"[AUTO] Automatically accepting all new entries for field {field} from {log_file}")
                 process_auto_mode(file_field_map, context_path, cache, batch_size=BATCH_SIZE)
                 context_library_changed = True
             else:

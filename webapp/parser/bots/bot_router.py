@@ -183,16 +183,15 @@ class BotPipeline:
             args.extend(["--db-path", os.getenv("DB_PATH")])
         return args
 
-    def run_manual_correction(self, mode="auto", extra_args=None, retries=1, timeout=600):
+    def run_manual_correction(self, mode="enhanced", extra_args=None, retries=1, timeout=600):
         """
         Optimized wrapper for manual_correction_bot for end-of-pipeline use.
-        Only runs after other pipeline steps succeed. Uses auto mode for fast, non-interactive correction.
+        Runs in enhanced/manual mode for safe, interactive correction.
         """
         args = self.build_correction_args()
-        # Remove conflicting modes
-        args = [a for a in args if a not in ["--enhanced", "--feedback", "--batch", "--fast", "--self-heal"]]
-        # Always use auto mode for end-of-pipeline
-        args.append("--auto")
+        # Remove conflicting modes and always use enhanced/manual
+        args = [a for a in args if a not in ["--auto", "--feedback", "--batch", "--fast", "--self-heal"]]
+        args.append("--enhanced")
         # Add extra arguments if provided
         if extra_args:
             args.extend(extra_args)
@@ -205,13 +204,13 @@ class BotPipeline:
         ])
         # Check for new entries before running
         if not self.has_new_entries(LOG_DIR, CACHE_DIR):
-            log_info("[BOT_ROUTER] No new entries for manual correction. Skipping auto mode and exiting gracefully.")
+            log_info("[BOT_ROUTER] No new entries for manual correction. Skipping enhanced mode and exiting gracefully.")
             self.results['manual_correction'] = 'skipped'
             return True  # Graceful exit
         # Try running with retries and timeout
         for attempt in range(1, retries + 1):
             try:
-                log_info(f"[BOT_ROUTER] Running manual_correction_bot (auto mode, attempt={attempt}) with args: {args}")
+                log_info(f"[BOT_ROUTER] Running manual_correction_bot (enhanced mode, attempt={attempt}) with args: {args}")
                 cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot"] + args
                 result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=timeout)
                 log_info(f"[BOT_ROUTER] manual_correction_bot stdout:\n{result.stdout[:1000]}")
@@ -231,17 +230,49 @@ class BotPipeline:
         return False
 
     def has_new_entries(self, log_dir, cache_dir):
-        # Use subprocess to call manual_correction_bot with --dry-run
-        log_dir_path = Path(LOG_DIR) if not isinstance(LOG_DIR, Path) else LOG_DIR
-        cmd = [
-            sys.executable, "-m", "webapp.parser.bots.manual_correction_bot",
-            "--log-dir", str(log_dir_path),
-            "--fields", "all",
-            "--dry-run"
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT)
-        # Parse output or return True if any log files found (customize as needed)
-        return "Discovered" in result.stdout and "log files" in result.stdout
+        # Use the provided log_dir and cache_dir, not just LOG_DIR/CACHE_DIR from config
+        log_dirs = [Path(log_dir), Path(cache_dir)]
+        new_entries_found = False
+
+        for dir_path in log_dirs:
+            if not dir_path.exists():
+                continue
+            cmd = [
+                sys.executable, "-m", "webapp.parser.bots.manual_correction_bot",
+                "--log-dir", str(dir_path),
+                "--fields", "all",
+                "--dry-run"
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT)
+            # Look for "Discovered X new entries" or "Discovered X valid entries" in output
+            for line in result.stdout.splitlines():
+                if ("Discovered" in line and "new entries" in line) or ("Discovered" in line and "valid entries" in line):
+                    try:
+                        # Try to extract the number between "Discovered" and "entries"
+                        parts = line.split("Discovered")[1].split("entries")[0].strip()
+                        count = int(''.join(filter(str.isdigit, parts)))
+                        if count > 0:
+                            new_entries_found = True
+                            break
+                    except Exception:
+                        continue
+            if new_entries_found:
+                break
+
+        # Additional check: if any .jsonl/.json file in log/cache dir is non-empty and not .corrupt
+        if not new_entries_found:
+            for dir_path in log_dirs:
+                for suf in [".jsonl", ".json"]:
+                    for file in dir_path.glob(f"*{suf}"):
+                        if file.stat().st_size > 0 and not file.name.endswith(".corrupt"):
+                            new_entries_found = True
+                            break
+                    if new_entries_found:
+                        break
+                if new_entries_found:
+                    break
+
+        return new_entries_found
 
     def lock(self):
         try:

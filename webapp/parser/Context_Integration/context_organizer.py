@@ -875,7 +875,14 @@ class ContextOrganizer(object):
                 panels[c["title"]] = panel
 
         # --- Optionally, add unmatched panels (not linked to a contest) ---
-        for p in (panel_features or []) + list(raw_context.get("panels", {}).values()) + lib_panels:
+        raw_panels = raw_context.get("panels", {})
+        if isinstance(raw_panels, dict):
+            raw_panels_list = list(raw_panels.values())
+        elif isinstance(raw_panels, list):
+            raw_panels_list = raw_panels
+        else:
+            raw_panels_list = []
+        for p in (panel_features or []) + raw_panels_list + lib_panels:
             if not isinstance(p, dict):
                 continue
             if not p.get("panel_text"):
@@ -904,7 +911,6 @@ class ContextOrganizer(object):
                     tables_by_contest[c["title"]].append(tbl)
             if not any(tbl in v for v in tables_by_contest.values()):
                 tables_by_contest["__unmatched__"].append(tbl)
-
         # --- Buttons: relaxed filtering, only require label ---
         buttons_by_contest = defaultdict(list)
         raw_buttons = button_features or raw_context.get("buttons", [])
@@ -955,7 +961,8 @@ class ContextOrganizer(object):
                         groups[group].append(item)
             return groups
 
-        panels = ensure_dict(group_by_keywords([p for p in panels.values() if p], label_field="label"))
+        panel_items = panels.values() if isinstance(panels, dict) else panels
+        panels = ensure_dict(group_by_keywords([p for p in panel_items if p], label_field="label"))
         buttons = ensure_dict(group_by_keywords(all_buttons, label_field="label"))
         tables = ensure_dict(group_by_keywords(all_tables, label_field="label"))
         candidate_panels = ensure_dict(group_by_keywords(candidate_panels, label_field="label"))
