@@ -8,7 +8,7 @@ import time
 from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..utils.user_prompt import UserPrompt
 from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
@@ -17,6 +17,39 @@ assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
 console = RichConsoleProxy()   
 prompt = UserPrompt()
 logger = SharedLogger()
+
+def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
+    """
+    Resolve a county name to its canonical form using known counties and aliases.
+    Optionally, provide a state for more accurate mapping.
+    """
+    
+    county_norm = normalize_county_name(county_name)
+    # If state is provided, check only that state's counties
+    if state:
+        state_norm = state.lower().replace(" ", "_")
+        counties = KNOWN_STATE_TO_COUNTY_MAP.get(state_norm, [])
+        if county_norm in counties:
+            return county_norm
+        # Fuzzy match if not found
+        import difflib
+        matches = difflib.get_close_matches(county_norm, counties, n=1, cutoff=0.8)
+        if matches:
+            return matches[0]
+    else:
+        # Search all counties
+        for counties in KNOWN_STATE_TO_COUNTY_MAP.values():
+            if county_norm in counties:
+                return county_norm
+        # Fuzzy match across all counties
+        all_counties = [c for counties in KNOWN_STATE_TO_COUNTY_MAP.values() for c in counties]
+        import difflib
+        matches = difflib.get_close_matches(county_norm, all_counties, n=1, cutoff=0.8)
+        if matches:
+            return matches[0]
+    # If no match, return normalized input
+    return county_norm
+
 def normalize_county_name(name):
     """
     Normalize county names for comparison.

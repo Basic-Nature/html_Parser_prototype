@@ -1,6 +1,6 @@
 import os, re
 
-from typing import Dict, Set, List, Optional
+from typing import Dict, Set, List
 from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT, LOG_DIR, BASE_DIR
 import orjson
 import subprocess
@@ -16,7 +16,6 @@ import threading
 import shutil
 import tempfile
 from ..utils.shared_logger import SharedLogger
-from ..utils.shared_logic import normalize_county_name
 logger = SharedLogger()
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
@@ -31,37 +30,7 @@ DEFAULT_STRUCTURE = {
 }
 _context_library_cache = None
 
-def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
-    """
-    Resolve a county name to its canonical form using known counties and aliases.
-    Optionally, provide a state for more accurate mapping.
-    """
-    
-    county_norm = normalize_county_name(county_name)
-    # If state is provided, check only that state's counties
-    if state:
-        state_norm = state.lower().replace(" ", "_")
-        counties = KNOWN_STATE_TO_COUNTY_MAP.get(state_norm, [])
-        if county_norm in counties:
-            return county_norm
-        # Fuzzy match if not found
-        import difflib
-        matches = difflib.get_close_matches(county_norm, counties, n=1, cutoff=0.8)
-        if matches:
-            return matches[0]
-    else:
-        # Search all counties
-        for counties in KNOWN_STATE_TO_COUNTY_MAP.values():
-            if county_norm in counties:
-                return county_norm
-        # Fuzzy match across all counties
-        all_counties = [c for counties in KNOWN_STATE_TO_COUNTY_MAP.values() for c in counties]
-        import difflib
-        matches = difflib.get_close_matches(county_norm, all_counties, n=1, cutoff=0.8)
-        if matches:
-            return matches[0]
-    # If no match, return normalized input
-    return county_norm
+
 
 #: Maps normalized state names to a sorted list of their counties (all lowercase).
 KNOWN_STATE_TO_COUNTY_MAP: Dict[str, List[str]] = {
