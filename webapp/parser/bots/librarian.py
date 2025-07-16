@@ -30,8 +30,6 @@ DEFAULT_STRUCTURE = {
 }
 _context_library_cache = None
 
-
-
 #: Maps normalized state names to a sorted list of their counties (all lowercase).
 KNOWN_STATE_TO_COUNTY_MAP: Dict[str, List[str]] = {
     "alabama": sorted([
