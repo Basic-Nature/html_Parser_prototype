@@ -7,15 +7,13 @@ import os
 import orjson
 from dotenv import load_dotenv
 from ...config import BASE_DIR
-from ...state_router import get_handler
-from ...utils.output_utils import finalize_election_output
-from ...utils.shared_logger import log_info, log_warning, log_error
+from ...utils.shared_logger import SharedLogger
 from ...bots.librarian import (
     LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
 )
 from ...utils.table_core import harmonize_headers_and_data
-
+logger = SharedLogger()
 load_dotenv()
 
 def get_input_folder():
@@ -32,28 +30,28 @@ def list_csv_files(input_folder):
         csv_files.sort(key=lambda x: os.path.getmtime(os.path.join(input_folder, x)), reverse=True)
         return [os.path.join(input_folder, f) for f in csv_files]
     except Exception as e:
-        log_error(f"[ERROR] Failed to list CSV files: {e}")
+        logger.error(f"[ERROR] Failed to list CSV files: {e}")
         return []
 
 def prompt_for_csv_file(input_folder):
     csv_files = list_csv_files(input_folder)
     if not csv_files:
-        log_error("[red][ERROR] No CSV files found in the input directory.[/red]")
+        logger.error("[red][ERROR] No CSV files found in the input directory.[/red]")
         return None
-    log_warning("\n[yellow]Available CSV files in 'input' folder:[/yellow]")
+    logger.warning("\n[yellow]Available CSV files in 'input' folder:[/yellow]")
     for i, f in enumerate(csv_files):
-        log_info(f"  [bold cyan][{i}][/bold cyan] {os.path.basename(f)}")
+        logger.info(f"  [bold cyan][{i}][/bold cyan] {os.path.basename(f)}")
     idx = input("\n[PROMPT] Enter file index or press Enter to cancel: ").strip()
     if not idx:
-        log_warning("[yellow]No file selected. Skipping CSV parsing.[/yellow]")
+        logger.warning("[yellow]No file selected. Skipping CSV parsing.[/yellow]")
         return None
     if idx.isdigit():
         try:
             return csv_files[int(idx)]
         except (IndexError, ValueError):
-            log_error("[red]Invalid index. Skipping CSV parsing.[/red]")
+            logger.error("[red]Invalid index. Skipping CSV parsing.[/red]")
             return None
-    log_error("[red]Invalid selection. Skipping CSV parsing.[/red]")
+    logger.error("[red]Invalid selection. Skipping CSV parsing.[/red]")
     return None
 
 def detect_headers_and_skip_metadata(f, handler_keywords):
@@ -75,10 +73,10 @@ def detect_headers_and_skip_metadata(f, handler_keywords):
                 break
         f.seek(f.tell())
     else:
-        log_warning("[yellow]No recognizable header found in preview. Proceed anyway? (y/n):[/yellow]")
+        logger.warning("[yellow]No recognizable header found in preview. Proceed anyway? (y/n):[/yellow]")
         confirm = input().strip().lower()
         if confirm != 'y':
-            log_warning("[WARN] No header match found and user declined to proceed.")
+            logger.warning("[WARN] No header match found and user declined to proceed.")
             return False
         f.seek(f.tell())
     return True
@@ -118,21 +116,21 @@ def parse_csv_election_results(csv_path, output_dir=None):
         if contest_column:
             contests = sorted({row[contest_column].strip() for row in data if row.get(contest_column)})
             if len(contests) > 1:
-                log_warning("\n[yellow]Multiple contests detected:[/yellow]")
+                logger.warning("\n[yellow]Multiple contests detected:[/yellow]")
                 for i, name in enumerate(contests, 1):
-                    log_info(f" [bold cyan]{i:2d}[/bold cyan]. {name}")
-                log_info("\nEnter the contest name (exactly as shown), or type its number:")
+                    logger.info(f" [bold cyan]{i:2d}[/bold cyan]. {name}")
+                logger.info("\nEnter the contest name (exactly as shown), or type its number:")
                 user_input = input("> ").strip()
                 if user_input.isdigit():
                     idx = int(user_input)
                     try:
                         contest_title = contests[idx - 1]
                     except IndexError:
-                        log_error("[red]Invalid contest number.[/red]")
+                        logger.error("[red]Invalid contest number.[/red]")
                         return None, None, None, {"error": "Invalid contest number"}
                 else:
                     if user_input not in contests:
-                        log_error(f"[red][ERROR] Contest name '{user_input}' not found.[/red]")
+                        logger.error(f"[red][ERROR] Contest name '{user_input}' not found.[/red]")
                         return None, None, None, {"error": "Contest name not found"}
                     contest_title = user_input
                 # Filter data to only selected contest
@@ -202,8 +200,8 @@ def parse_csv_election_results(csv_path, output_dir=None):
     with open(output_meta, "w") as jf:
         jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
-    log_info(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(wide_data)}[/bold] rows to:\n  [cyan]{output_csv}[/cyan]")
-    log_info(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{output_meta}[/cyan]")
+    logger.info(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(wide_data)}[/bold] rows to:\n  [cyan]{output_csv}[/cyan]")
+    logger.info(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{output_meta}[/cyan]")
 
     return headers, wide_data, contest_title, metadata
 
@@ -215,7 +213,7 @@ def parse(page=None, coordinator=None, html_context=None, non_interactive=False,
     """
     html_context = html_context or {}
     if html_context.get("skip_format") or html_context.get("manual_skip"):
-        log_info("[SKIP] CSV parsing intentionally skipped via context flag.")
+        logger.info("[SKIP] CSV parsing intentionally skipped via context flag.")
         return None, None, None, {"skipped": True}
 
     input_folder = get_input_folder()
@@ -231,17 +229,17 @@ def parse(page=None, coordinator=None, html_context=None, non_interactive=False,
             return None, None, None, {"skipped": True}
 
     try:
-        log_warning("[yellow]Available CSV file detected:[/yellow]")
-        log_warning(f"  [bold cyan]{os.path.basename(csv_path)}[/bold cyan]")
+        logger.warning("[yellow]Available CSV file detected:[/yellow]")
+        logger.warning(f"  [bold cyan]{os.path.basename(csv_path)}[/bold cyan]")
         user_input = input("[PROMPT] Parse this file? (y/n, or 'h' to fallback to HTML): ").strip().lower()
         if user_input == 'h':
-            log_info("[INFO] User opted to fallback to HTML scanning.")
+            logger.info("[INFO] User opted to fallback to HTML scanning.")
             return None, None, None, {"fallback_to_html": True}
         elif user_input != 'y':
-            log_info("[INFO] User declined CSV parse. Skipping.")
+            logger.info("[INFO] User declined CSV parse. Skipping.")
             return None, None, None, {"skip_csv": True}
     except Exception as e:
-        log_warning(f"[WARN] Skipping user input prompt due to error: {e}")
+        logger.warning(f"[WARN] Skipping user input prompt due to error: {e}")
         return None, None, None, {"error": str(e)}
 
     # --- Main CSV parsing logic ---

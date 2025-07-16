@@ -16,7 +16,7 @@ from sentence_transformers import InputExample, losses
 from torch.utils.data import DataLoader
 from ..bots.librarian import load_context_library
 from ..utils.db_utils import _safe_db_path, get_session, create_engine
-from ..utils.shared_logger import log_info, log_error, log_warning, log_debug, RichConsoleProxy
+from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, POSTGRES_URL, LOG_DIR
 import numpy as np
 import spacy
@@ -30,6 +30,7 @@ import torch
 from sqlalchemy import select, inspect
 from ..utils.models import TableStructure, Base
 
+logger = SharedLogger()
 console = RichConsoleProxy()
 
 # --- Logging Setup ---
@@ -185,8 +186,8 @@ def clean_misaligned_ner_jsonl(jsonl_path, extra_patterns=None):
         with open(misaligned_path, "wb") as f:
             for obj in misaligned:
                 f.write(orjson.dumps(obj, option=orjson.OPT_APPEND_NEWLINE))
-        log_info(f"[CLEAN] Removed {len(misaligned)} misaligned NER examples. Saved to {misaligned_path}")
-    log_info(f"[CLEAN] Cleaned NER training data saved to {jsonl_path}. Remaining: {len(cleaned)}")
+        logger.info(f"[CLEAN] Removed {len(misaligned)} misaligned NER examples. Saved to {misaligned_path}")
+    logger.info(f"[CLEAN] Cleaned NER training data saved to {jsonl_path}. Remaining: {len(cleaned)}")
 
 def safe_model_save(model, model_save_path, retries=3):
 
@@ -194,10 +195,10 @@ def safe_model_save(model, model_save_path, retries=3):
         try:
             gc.collect()
             model.save(model_save_path)
-            log_info(f"[INFO] Model saved successfully on attempt {attempt}.")
+            logger.info(f"[INFO] Model saved successfully on attempt {attempt}.")
             return
         except Exception as e:
-            log_warning(f"[WARN] Model save failed (attempt {attempt}): {e}")
+            logger.warning(f"[WARN] Model save failed (attempt {attempt}): {e}")
             time.sleep(2 * attempt)
             gc.collect()
     # Try saving to a temp dir and moving
@@ -207,9 +208,9 @@ def safe_model_save(model, model_save_path, retries=3):
         model.save(tmp_path)
         shutil.rmtree(model_save_path, ignore_errors=True)
         shutil.move(tmp_path, model_save_path)
-        log_info(f"[INFO] Model saved via temp path workaround.")
+        logger.info(f"[INFO] Model saved via temp path workaround.")
     except Exception as e:
-        log_error(f"[ERROR] Final model save failed: {e}\nIf you see repeated save failures, close any file explorers or editors viewing the model directory.")
+        logger.error(f"[ERROR] Final model save failed: {e}\nIf you see repeated save failures, close any file explorers or editors viewing the model directory.")
 
 def append_training_data(new_data, path="spacy_ner_train_data.jsonl"):
     """
@@ -248,7 +249,7 @@ def save_training_data_jsonl(train_data, path="spacy_ner_train_data.jsonl"):
     with open(safe_path, "wb") as f:
         for text, annots in train_data:
             f.write(orjson.dumps({"text": text, "entities": annots["entities"]}, option=orjson.OPT_APPEND_NEWLINE))
-    log_info(f"Saved spaCy NER training data to {safe_path}")
+    logger.info(f"Saved spaCy NER training data to {safe_path}")
 
 def cluster_container_patterns(log_dir=None, n_clusters=5):
     """
@@ -267,7 +268,7 @@ def cluster_container_patterns(log_dir=None, n_clusters=5):
             htmls.append(entry.get("html", ""))
             meta.append(entry)
     if not htmls:
-        log_info("No failed containers to cluster.")
+        logger.info("No failed containers to cluster.")
         return
 
     vectorizer = TfidfVectorizer(max_features=200, stop_words="english")
@@ -278,14 +279,14 @@ def cluster_container_patterns(log_dir=None, n_clusters=5):
         clusters[label].append(meta[i])
 
     for idx, group in enumerate(clusters):
-        log_info(f"\n=== Cluster {idx+1} ({len(group)} containers) ===")
+        logger.info(f"\n=== Cluster {idx+1} ({len(group)} containers) ===")
         selectors = [g.get("selector") for g in group]
         parent_classes = [g.get("parent_class") for g in group]
         headings = [g.get("heading") for g in group]
-        log_info("  Common selectors:", Counter(selectors).most_common(3))
-        log_info("  Common parent classes:", Counter(parent_classes).most_common(3))
-        log_info("  Common headings:", Counter(headings).most_common(3))
-        log_info("  Example HTML snippet:", group[0].get("html", "")[:200].replace("\n", " ") if group else "")
+        logger.info("  Common selectors:", Counter(selectors).most_common(3))
+        logger.info("  Common parent classes:", Counter(parent_classes).most_common(3))
+        logger.info("  Common headings:", Counter(headings).most_common(3))
+        logger.info("  Example HTML snippet:", group[0].get("html", "")[:200].replace("\n", " ") if group else "")
 
 def auto_label_header(header: str, context: dict = None):
     labels = []
@@ -325,7 +326,7 @@ def entity_frequency_analysis(train_data):
     for _, annots in train_data:
         for _, _, label in annots["entities"]:
             counter[label] += 1
-    log_info("Entity frequency:", counter)
+    logger.info("Entity frequency:", counter)
 
 def update_db_with_new_entities(new_entities, db_path):
     """
@@ -341,7 +342,7 @@ def update_db_with_new_entities(new_entities, db_path):
                 if not exists:
                     session.add(Entity(entity_type=entity_type, value=value))
         session.commit()
-    log_info(f"Updated DB with new entities: {{ { {k: len(v) for k,v in new_entities.items()} } }}")
+    logger.info(f"Updated DB with new entities: {{ { {k: len(v) for k,v in new_entities.items()} } }}")
 
 def load_spacy_ner_examples(jsonl_path):
     """
@@ -398,12 +399,12 @@ def validate_training_data(train_data, nlp, logged=None):
             tags = offsets_to_biluo_tags(nlp.make_doc(text), annots["entities"])
             if "-" in tags:
                 if logged:
-                    log_warning(f"Skipping misaligned entity in: {text}")
+                    logger.warning(f"Skipping misaligned entity in: {text}")
                 continue
             valid_data.append((text, annots))
         except Exception as e:
             if logged:
-                log_warning(f"Error validating entity alignment: {e}")
+                logger.warning(f"Error validating entity alignment: {e}")
     return valid_data
 
 def retrain_spacy_ner_advanced(
@@ -420,9 +421,9 @@ def retrain_spacy_ner_advanced(
     nlp = spacy.blank("en")
     # Try to use GPU if available
     if spacy.prefer_gpu():
-        log_info("[INFO] spaCy using GPU for training.")
+        logger.info("[INFO] spaCy using GPU for training.")
     else:
-        log_info("[INFO] spaCy using CPU for training.")
+        logger.info("[INFO] spaCy using CPU for training.")
 
     # --- Robust lexeme normalization loading ---
     try:
@@ -433,7 +434,7 @@ def retrain_spacy_ner_advanced(
                 lookups.add_table("lexeme_norm", spacy.lookups.load_lookups_data("en", tables=["lexeme_norm"]).get_table("lexeme_norm"))
                 nlp.vocab.lookups = lookups
     except Exception as e:
-        log_warning("[spaCy] Could not load lexeme normalization table. You may ignore this for English. Error:", e)
+        logger.warning("[spaCy] Could not load lexeme normalization table. You may ignore this for English. Error:", e)
 
     if "ner" not in nlp.pipe_names:
         ner = nlp.add_pipe("ner")
@@ -457,7 +458,7 @@ def retrain_spacy_ner_advanced(
         os.path.join(LOG_DIR, "spacy_ner_train_data.jsonl")
     )
     if extra_examples:
-        log_info(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
+        logger.info(f"Loaded {len(extra_examples)} extra NER examples from log/spacy_ner_train_data.jsonl")
     train_data.extend(extra_examples)
 
     # ...existing code for auto-labeling confirmed_structures...
@@ -509,11 +510,11 @@ def retrain_spacy_ner_advanced(
         with open(misaligned_path, "wb") as f:
             for ex in misaligned_examples:
                 f.write(orjson.dumps(ex, option=orjson.OPT_APPEND_NEWLINE))
-        log_warning(f"[NER] Skipped {misaligned_count} misaligned examples. Saved to {misaligned_path}")
+        logger.warning(f"[NER] Skipped {misaligned_count} misaligned examples. Saved to {misaligned_path}")
     train_data = valid_data
     save_training_data_jsonl(train_data)
     entity_frequency_analysis(train_data)
-    log_info(f"[NER] Used {len(train_data)} valid examples, skipped {misaligned_count} misaligned.")
+    logger.info(f"[NER] Used {len(train_data)} valid examples, skipped {misaligned_count} misaligned.")
 
     # --- Training ---
     examples = []
@@ -523,7 +524,7 @@ def retrain_spacy_ner_advanced(
         example = Example.from_dict(doc, annots)
         examples.append(example)
     if not examples:
-        log_warning("No NER training examples found. Skipping spaCy NER retraining.")
+        logger.warning("No NER training examples found. Skipping spaCy NER retraining.")
         return
 
     optimizer = nlp.begin_training()
@@ -540,7 +541,7 @@ def retrain_spacy_ner_advanced(
     best_epoch = 0
     loss_history = []
 
-    log_info(f"[INFO] Starting spaCy NER training for up to {epochs} epochs, batch size {batch_size}...")
+    logger.info(f"[INFO] Starting spaCy NER training for up to {epochs} epochs, batch size {batch_size}...")
     for i in range(epochs):
         losses = {}
         random.shuffle(examples)
@@ -548,13 +549,13 @@ def retrain_spacy_ner_advanced(
             nlp.update(batch, sgd=optimizer, drop=0.2, losses=losses)
         epoch_loss = losses.get("ner", 0)
         loss_history.append(epoch_loss)
-        log_info(f"spaCy NER retraining epoch {i+1}, loss: {epoch_loss:.4f}")
+        logger.info(f"spaCy NER retraining epoch {i+1}, loss: {epoch_loss:.4f}")
 
         # --- Dynamic min_delta: scale with loss magnitude ---
         if i == 0 and min_delta < 1:
             # If user left min_delta at default, auto-scale for large loss
             min_delta = max(0.01, epoch_loss * 0.01)
-            log_info(f"[AUTO] Adjusted min_delta to {min_delta:.2f} based on initial loss.")
+            logger.info(f"[AUTO] Adjusted min_delta to {min_delta:.2f} based on initial loss.")
 
         # --- Loss smoothing: use moving average over last 3 epochs ---
         if len(loss_history) > 3:
@@ -568,33 +569,33 @@ def retrain_spacy_ner_advanced(
             no_improve = 0
             best_epoch = i + 1
             nlp.to_disk(best_model_path)
-            log_info(f"[INFO] New best model saved at epoch {i+1} with smoothed loss {smoothed_loss:.2f}")
+            logger.info(f"[INFO] New best model saved at epoch {i+1} with smoothed loss {smoothed_loss:.2f}")
         else:
             no_improve += 1
 
         # --- Dynamic patience: extend if still improving fast ---
         if no_improve >= patience:
-            log_info(f"[INFO] Early stopping at epoch {i+1} (no improvement for {patience} epochs).")
+            logger.info(f"[INFO] Early stopping at epoch {i+1} (no improvement for {patience} epochs).")
             break
         if i > 2 and smoothed_loss < 0.5 * loss_history[0] and patience < 8:
             patience += 1
-            log_info(f"[AUTO] Increased patience to {patience} due to rapid improvement.")
+            logger.info(f"[AUTO] Increased patience to {patience} due to rapid improvement.")
 
     # Restore best model
     if os.path.exists(best_model_path):
-        log_info(f"[INFO] Restoring best model from epoch {best_epoch} with loss {best_loss:.2f}")
+        logger.info(f"[INFO] Restoring best model from epoch {best_epoch} with loss {best_loss:.2f}")
         nlp = spacy.load(best_model_path)
         shutil.rmtree(best_model_path, ignore_errors=True)
     nlp.to_disk(model_save_path)
-    log_info(f"Fine-tuned spaCy NER model saved to: {model_save_path}")
+    logger.info(f"Fine-tuned spaCy NER model saved to: {model_save_path}")
 
     # --- Training summary and suggestions ---
-    log_info(f"[SUMMARY] Best loss: {best_loss:.2f} at epoch {best_epoch}")
+    logger.info(f"[SUMMARY] Best loss: {best_loss:.2f} at epoch {best_epoch}")
     if best_epoch < epochs:
-        log_warning(f"[SUGGESTION] Consider lowering min_delta or increasing patience if you want longer training.")
+        logger.warning(f"[SUGGESTION] Consider lowering min_delta or increasing patience if you want longer training.")
     elif best_epoch == epochs:
-        log_warning(f"[SUGGESTION] Model improved until the last epoch. Consider increasing epochs for further improvement.")
-    log_warning(f"[SUGGESTION] Next run: patience={patience}, min_delta={min_delta:.2f}, epochs={epochs}")
+        logger.warning(f"[SUGGESTION] Model improved until the last epoch. Consider increasing epochs for further improvement.")
+    logger.warning(f"[SUGGESTION] Next run: patience={patience}, min_delta={min_delta:.2f}, epochs={epochs}")
     def normalize_entity_list(entity_list):
         return sorted(set(e.strip().title() for e in entity_list if e and isinstance(e, str)))
     # Update DB with new entities
@@ -618,7 +619,7 @@ def retrain_spacy_ner_advanced(
         "MISC": normalize_entity_list(context_library.get("known_misc", [])),
     }
     update_db_with_new_entities(new_entities, _safe_db_path(CONTEXT_DB_PATH))
-    log_info(f"[DB] Updated with entities: {{ { {k: len(v) for k, v in new_entities.items()} } }}")
+    logger.info(f"[DB] Updated with entities: {{ { {k: len(v) for k, v in new_entities.items()} } }}")
 
 def get_all_confirmed_structures():
     """
@@ -655,11 +656,11 @@ def run_manual_correction_bot():
             text=True,
             env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT)}
         )
-        log_info(result.stdout)
+        logger.info(result.stdout)
         if result.stderr:
-            log_info(result.stderr)
+            logger.info(result.stderr)
     except subprocess.CalledProcessError as e:
-        log_error(f"[ERROR] Manual correction bot failed: {e.stderr}")
+        logger.error(f"[ERROR] Manual correction bot failed: {e.stderr}")
 
 def retrain_sentence_transformer(confirmed_structures, model_save_path=None, epochs=1, batch_size=8):
     """
@@ -680,7 +681,7 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None, epo
         for header in headers:
             train_examples.append(InputExample(texts=[contest_title, header], label=1.0))
     if not train_examples:
-        log_warning("No training examples found. Aborting retraining.")
+        logger.warning("No training examples found. Aborting retraining.")
         return
 
     base_dir = MODEL_DIR if 'MODEL_DIR' in globals() else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../model"))
@@ -697,9 +698,9 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None, epo
         oldest_path = os.path.join(base_dir, oldest)
         try:
             shutil.rmtree(oldest_path)
-            log_info(f"[CLEANUP] Deleted oldest fine-tuned model directory: {oldest_path}")
+            logger.info(f"[CLEANUP] Deleted oldest fine-tuned model directory: {oldest_path}")
         except Exception as e:
-            log_warning(f"[WARN] Could not delete old model directory {oldest_path}: {e}")
+            logger.warning(f"[WARN] Could not delete old model directory {oldest_path}: {e}")
 
     # Model loading
     model = None
@@ -707,25 +708,25 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None, epo
     model_files = ["config.json", "pytorch_model.bin", "model.safetensors", "tf_model.h5", "model.ckpt.index", "flax_model.msgpack"]
     model_files_exist = any(os.path.exists(os.path.join(prev_model_dir, f)) for f in model_files)
     if model_files_exist:
-        log_info(f"Attempting to load existing model from {prev_model_dir} for further fine-tuning...")
+        logger.info(f"Attempting to load existing model from {prev_model_dir} for further fine-tuning...")
         try:
             model = ModelRegistry.get_sentence_transformer(model_name=prev_model_dir, use_finetuned=False)
         except Exception as e:
-            log_warning(f"[WARN] Failed to load existing model: {e}")
+            logger.warning(f"[WARN] Failed to load existing model: {e}")
             model = None
     if model is None:
-        log_warning("Falling back to base model (all-MiniLM-L6-v2).")
+        logger.warning("Falling back to base model (all-MiniLM-L6-v2).")
         try:
             model = ModelRegistry.get_sentence_transformer(model_name="all-MiniLM-L6-v2", use_finetuned=False)
         except Exception as e:
-            log_error(f"[ERROR] Could not load base SentenceTransformer: {e}")
+            logger.error(f"[ERROR] Could not load base SentenceTransformer: {e}")
             return
 
     # Defensive: clean up incomplete/corrupt model directory before saving
     for f in model_files:
         fpath = os.path.join(model_save_path, f)
         if os.path.exists(fpath) and os.path.getsize(fpath) == 0:
-            log_info(f"[CLEANUP] Removing empty/corrupt file: {fpath}")
+            logger.info(f"[CLEANUP] Removing empty/corrupt file: {fpath}")
             try:
                 os.remove(fpath)
             except Exception:
@@ -733,7 +734,7 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None, epo
 
     train_dataloader = DataLoader(train_examples, shuffle=True, batch_size=batch_size)
     train_loss = losses.CosineSimilarityLoss(model)
-    log_info(f"Retraining SentenceTransformer on {len(train_examples)} pairs for {epochs} epoch(s)...")
+    logger.info(f"Retraining SentenceTransformer on {len(train_examples)} pairs for {epochs} epoch(s)...")
     try:
         model.fit(
             train_objectives=[(train_dataloader, train_loss)],
@@ -742,21 +743,21 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None, epo
             show_progress_bar=True
         )
     except Exception as e:
-        log_error(f"[ERROR] Model training failed: {e}")
+        logger.error(f"[ERROR] Model training failed: {e}")
         return
     try:
         safe_model_save(model, model_save_path)
-        log_info(f"Fine-tuned model saved to: {model_save_path}")
+        logger.info(f"Fine-tuned model saved to: {model_save_path}")
         canonical_dir = os.path.join(base_dir, "fine_tuned_table_headers")
         try:
             if os.path.exists(canonical_dir):
                 shutil.rmtree(canonical_dir, ignore_errors=True)
             shutil.copytree(model_save_path, canonical_dir)
-            log_info(f"[INFO] Copied new model to canonical directory: {canonical_dir}")
+            logger.info(f"[INFO] Copied new model to canonical directory: {canonical_dir}")
         except Exception as e:
-            log_warning(f"[WARN] Could not update canonical model directory: {e}")
+            logger.warning(f"[WARN] Could not update canonical model directory: {e}")
     except Exception as e:
-        log_error(f"[ERROR] Model save failed: {e}")
+        logger.error(f"[ERROR] Model save failed: {e}")
         
 def segment_hash(segment):
     """Generate a stable hash for a DOM segment based on tag, attrs, and first 200 chars of HTML."""
@@ -782,11 +783,11 @@ def scan_in_memory_ner_examples(train_data, verbose=False):
             if "-" in tags:
                 misaligned.append((text, annots["entities"]))
                 if verbose:
-                    log_warning(f"MISALIGNED: {text} {annots['entities']}")
+                    logger.warning(f"MISALIGNED: {text} {annots['entities']}")
         except Exception as e:
             misaligned.append((text, annots["entities"]))
             if verbose:
-                log_error(f"ERROR: {text} {annots['entities']} ({e})")
+                logger.error(f"ERROR: {text} {annots['entities']} ({e})")
     return misaligned
 
 def ensure_table_structures_exists():
@@ -797,11 +798,11 @@ def ensure_table_structures_exists():
     engine = create_engine(POSTGRES_URL)
     inspector = inspect(engine)
     if 'table_structures' not in inspector.get_table_names():
-        log_info("[INFO] 'table_structures' table not found. Creating all tables...")
+        logger.info("[INFO] 'table_structures' table not found. Creating all tables...")
         Base.metadata.create_all(engine)
-        log_info("[INFO] All tables created.")
+        logger.info("[INFO] All tables created.")
     else:
-        log_info("[INFO] 'table_structures' table exists.")
+        logger.info("[INFO] 'table_structures' table exists.")
 
 def main():
     ensure_table_structures_exists()
@@ -831,9 +832,9 @@ def main():
                 "sample_row": data[0] if data else {},
             }, option=orjson.OPT_APPEND_NEWLINE))
     context_library = load_context_library()
-    log_debug("DEBUG: Loaded context library:", type(context_library))
+    logger.debug("DEBUG: Loaded context library:", type(context_library))
     if not isinstance(context_library, dict):
-        log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+        logger.error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
         raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
     cached_hashes = load_cached_segment_hashes(context_library)
     deduped_train_data = []

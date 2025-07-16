@@ -7,8 +7,8 @@ import json
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union, Generator, ContextManager
 from contextlib import contextmanager
-from ..utils.shared_logger import log_info, log_warning, log_error
-
+from ..utils.shared_logger import SharedLogger
+logger = SharedLogger()
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -89,9 +89,9 @@ class UserPrompt:
 
     def print_header(self, title: str = "USER INPUT REQUIRED", char: str = "=", width: int = 60) -> None:
         """Print a formatted header for prompts."""
-        log_info("\n" + char * width)
-        log_info(f"{title.center(width)}")
-        log_info(char * width)
+        logger.info("\n" + char * width)
+        logger.info(f"{title.center(width)}")
+        logger.info(char * width)
 
     def prompt(self, prompt_type: str, *args, **kwargs) -> Any:
         """
@@ -207,7 +207,7 @@ class UserPrompt:
             t.start()
             t.join(timeout)
             if t.is_alive():
-                log_warning("\n[Prompt] Timed out.")
+                logger.warning("\n[Prompt] Timed out.")
                 return None
             return result[0]
 
@@ -227,7 +227,7 @@ class UserPrompt:
                 else:
                     response = input_with_timeout(prompt, timeout) if timeout else input(prompt)
             except EOFError:
-                log_warning("\n[Prompt] No input available (EOF). Exiting prompt.")
+                logger.warning("\n[Prompt] No input available (EOF). Exiting prompt.")
                 return default
             if response is None:
                 if timeout:
@@ -257,9 +257,9 @@ class UserPrompt:
                 attempts += 1
                 if on_error:
                     on_error("Invalid input.")
-                log_warning("Invalid input. Please try again.")
+                logger.warning("Invalid input. Please try again.")
                 if attempts >= max_attempts:
-                    log_warning("[Prompt] Too many invalid attempts. Cancelling.")
+                    logger.warning("[Prompt] Too many invalid attempts. Cancelling.")
                     if log_func:
                         log_func(f"[PROMPT] Too many invalid attempts at {datetime.datetime.now()}")
                     self._log_to_file(prompt + " [Too many invalid attempts]", context)
@@ -304,7 +304,7 @@ class UserPrompt:
                 t.start()
                 t.join(timeout)
                 if t.is_alive():
-                    log_warning("\n[Prompt] Timed out.")
+                    logger.warning("\n[Prompt] Timed out.")
                     return default.lower() == "y"
                 resp = result[0]
             else:
@@ -327,7 +327,7 @@ class UserPrompt:
                     log_func(f"[PROMPT] User input: NO at {datetime.datetime.now()}")
                 self._log_to_file(prompt_str + " [NO]", context)
                 return False
-            log_info("Please enter 'y' or 'n'.")
+            logger.info("Please enter 'y' or 'n'.")
 
     def prompt_choice(
         self,
@@ -348,7 +348,7 @@ class UserPrompt:
         if header:
             self.print_header(header)
         for idx, opt in enumerate(options):
-            log_info(f"  [{idx}] {opt}")
+            logger.info(f"  [{idx}] {opt}")
         def validator(x: str) -> bool:
             return x.isdigit() and 0 <= int(x) < len(options)
         selection = self.prompt_input(
@@ -379,9 +379,9 @@ class UserPrompt:
         Prompt for a metadata field, optionally with suggestions.
         """
         if suggestions:
-            log_info(f"Suggestions for {field_name}:")
+            logger.info(f"Suggestions for {field_name}:")
             for idx, s in enumerate(suggestions):
-                log_info(f"  [{idx}] {s}")
+                logger.info(f"  [{idx}] {s}")
             def validator(x: str) -> bool:
                 return (x.isdigit() and 0 <= int(x) < len(suggestions)) or bool(x.strip())
             response = self.prompt_input(
@@ -432,9 +432,9 @@ class UserPrompt:
         """
         Review and optionally edit a context dictionary.
         """
-        log_info("\n[Context Review]")
+        logger.info("\n[Context Review]")
         for k, v in context.items():
-            log_info(f"  {k}: {v}")
+            logger.info(f"  {k}: {v}")
         if self.prompt_yes_no("Is this context correct?", default="y", session_id=session_id, context=context):
             return context
         for k in context:
@@ -452,9 +452,9 @@ class UserPrompt:
         """
         Prompt user to resolve a conflict by selecting an option.
         """
-        log_info(f"\n[Conflict Detected: {conflict_type}]")
+        logger.info(f"\n[Conflict Detected: {conflict_type}]")
         for idx, opt in enumerate(options):
-            log_info(f"  [{idx}] {opt}")
+            logger.info(f"  [{idx}] {opt}")
         idx = self.prompt_input(
             f"Select the correct option (0-{len(options)-1}):",
             validator=lambda x: x.isdigit() and 0 <= int(x) < len(options),
@@ -475,9 +475,9 @@ class UserPrompt:
         """
         Prompt user to select the correct button from candidates.
         """
-        log_info(f"\n[FEEDBACK] Please select the correct button for '{toggle_name}':")
+        logger.info(f"\n[FEEDBACK] Please select the correct button for '{toggle_name}':")
         for idx, btn in enumerate(candidates):
-            log_info(
+            logger.info(
                 f"{idx}: label='{btn.get('label', '')}'"
                 f" | class='{btn.get('class', '')}'"
                 f" | tag='{btn.get('tag', '')}'"
@@ -491,15 +491,15 @@ class UserPrompt:
             choice = int(choice)
             if 0 <= choice < len(candidates):
                 chosen_btn = candidates[choice]
-                log_info(f"[bold green][FEEDBACK] You selected: '{chosen_btn.get('label', '')}'[/bold green]")
+                logger.info(f"[bold green][FEEDBACK] You selected: '{chosen_btn.get('label', '')}'[/bold green]")
                 self._log_to_file(f"Button selected: {chosen_btn}", context)
                 return chosen_btn, choice
             else:
-                log_warning("[yellow][FEEDBACK] Skipped manual correction.[/yellow]")
+                logger.warning("[yellow][FEEDBACK] Skipped manual correction.[/yellow]")
                 self._log_to_file("Button selection skipped", context)
                 return None, None
         except Exception as e:
-            log_error(f"[red][FEEDBACK ERROR] {e}[/red]")
+            logger.error(f"[red][FEEDBACK ERROR] {e}[/red]")
             self._log_to_file(f"Button selection error: {e}", context)
             return None, None
 
@@ -514,7 +514,7 @@ class UserPrompt:
         """
         label = candidate.get("label", "")
         selector = candidate.get("selector", "")
-        log_info(f"\n[CONFIRMATION] Candidate button found: '{label}'\nSelector: {selector}")
+        logger.info(f"\n[CONFIRMATION] Candidate button found: '{label}'\nSelector: {selector}")
         try:
             resp = self.prompt_input(
                 f"Do you want to click this button? (y/n): ",
@@ -526,7 +526,7 @@ class UserPrompt:
                 context=context
             ).strip().lower()
         except PromptCancelled:
-            log_warning("[yellow]Button confirmation cancelled by user.[/yellow]")
+            logger.warning("[yellow]Button confirmation cancelled by user.[/yellow]")
             self._log_to_file("Button confirmation cancelled", context)
             return False
         self._log_to_file(f"Button confirmation: {resp}", context)

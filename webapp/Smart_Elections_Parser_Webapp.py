@@ -22,29 +22,19 @@ import orjson
 import os
 import subprocess
 from threading import Thread
-from webapp.parser.utils import shared_logger
-from webapp.parser.web_pipeline import cancellation_manager, process_single_url, cancel_processing
+from webapp.parser.utils.shared_logger import SharedLogger, set_log_mode, set_socketio_emit_func
+from webapp.parser.web_pipeline import process_urls_for_web, cancel_processing
 from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
 from webapp.parser.utils.user_prompt import UserPrompt
-from webapp.parser.utils import user_prompt as prompt_manager
-from webapp.parser.utils.shared_logger import log_info, log_error
 # Load environment variables from .env
 
 load_dotenv()
 
 prompt = UserPrompt()
-
+logger = SharedLogger()
 app = Flask(__name__)
 socketio = SocketIO(app)
 
-class SocketIOLogHandler(logging.Handler):
-    def emit(self, record):
-        log_entry = self.format(record)
-        socketio.emit('parser_output', log_entry)
-
-socketio_handler = SocketIOLogHandler()
-socketio_handler.setLevel(logging.INFO)
-logging.getLogger().addHandler(socketio_handler)
 
 ALLOWED_EXTENSIONS = {"csv", "json", "pdf", "txt"}
 INPUT_FOLDER = os.path.join(PROJECT_ROOT, "input")
@@ -75,33 +65,13 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 
 # SocketIO event for real-time updates
 
-def run_parser_for_urls(urls, session_id):
-    
-    shared_logger.SUPPRESS_RICH_LOGS = True
-    def emit_to_socketio(line):
-        socketio.emit('parser_output', line, room=session_id)
-    shared_logger.set_socketio_emit_func(emit_to_socketio)
-    prompt_manager.set_prompt_mode("webapp")
-    prompt_manager.set_socketio_emit_func(lambda msg: socketio.emit('parser_output', msg, room=session_id))
-
-    def webapp_prompt_func(message):
-        return prompt_manager.prompt_user(message, session_id=session_id, timeout=300)
-
-    from webapp.parser.html_election_parser import main as parser_main
-    # Call the real CLI pipeline, but with webapp prompt/output
-    thread = Thread(target=parser_main, kwargs={
-        "prompt_func": webapp_prompt_func,
-        "output_func": emit_to_socketio
-    })
-    thread.start()
-
 # --- Utility functions for Data management ---
 def add_url():
     url = input("Enter new URL to add: ").strip()
     if url:
         with open(URLS_FILE, "a", encoding="utf-8") as f:
             f.write(url + "\n")
-        log_info(f"[ADDED] {url}")
+        logger.info(f"[ADDED] {url}")
         
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -137,13 +107,13 @@ def get_url_list():
 
 def list_urls():
     if not os.path.exists(URLS_FILE):
-        log_info("[INFO] No urls.txt found.")
+        logger.info("[INFO] No urls.txt found.")
         return []
     with open(URLS_FILE, "r", encoding="utf-8") as f:
         urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
-    log_info("\n[URLS.TXT ENTRIES]")
+    logger.info("\n[URLS.TXT ENTRIES]")
     for i, url in enumerate(urls, 1):
-        log_info(f"{i}. {url}")
+        logger.info(f"{i}. {url}")
     return urls
 
 def load_overrides():
@@ -164,7 +134,7 @@ def postgres_service_status(service_name=None):
         else:
             return "unknown"
     except Exception as e:
-        log_error(f"[ERROR] Could not check service status: {e}")
+        logger.error(f"[ERROR] Could not check service status: {e}")
         return "error"
 
 def save_overrides(data):
@@ -194,8 +164,23 @@ def index():
 
 @socketio.on('connect')
 def handle_connect():
-    log_info("Client connected")
-    emit('parser_output', "Connected to server.\n")
+    # Set logging mode to webapp for this session
+    set_log_mode("webapp")
+
+    # Get the session ID for this client
+    session_id = session.get('sid') if 'sid' in session else request.sid
+
+    # Set the global logger's emit function to route logs to this client's SocketIO room
+    def emit_to_socketio(line):
+        socketio.emit('parser_output', line, room=session_id)
+    set_socketio_emit_func(emit_to_socketio)
+
+    # Set the prompt system to webapp mode and route prompts to this client's SocketIO room
+    prompt.set_mode("webapp")
+    prompt.set_socketio_emit_func(lambda msg: socketio.emit('parser_output', msg, room=session_id))
+
+    # Log connection event
+    logger.info("Client connected")
 
 @app.route("/delete-hint/<frag>", methods=["POST"])
 def delete_hint_route(frag):
@@ -213,7 +198,7 @@ def delete_hint_route(frag):
 def handle_disconnect():
     session_id = session.get('sid') or request.sid
     cancel_processing(session_id)
-    log_info("Client disconnected")
+    logger.info("Client disconnected")
     emit('parser_output', "Disconnected from server.\n")
 @app.route("/edit-hint", methods=["POST"])
 
@@ -388,10 +373,11 @@ def handle_cancel_parser():
 
 @socketio.on('parser_prompt')
 def handle_parser_prompt(data):
-    log_info(f"Received prompt: {data}")
+    logger.info(f"Received prompt: {data}")
     session_id = session.get('sid') if 'sid' in session else request.sid
-    output = run_parser_for_urls(data, session_id)
-    emit('parser_output', output, room=session_id)
+    # Start the parser pipeline in a thread, passing session_id for correct routing
+    thread = Thread(target=process_urls_for_web, args=(data, session_id))
+    thread.start()
 
 @app.route("/run-parser")
 def run_parser_page():
@@ -399,17 +385,16 @@ def run_parser_page():
 
 @socketio.on('data_framework')
 def handle_data_framework(data):
-    log_info(f"Received data_framework event: {data}")
+    logger.info(f"Received data_framework event: {data}")
     session_id = session.get('sid') if 'sid' in session else request.sid
     output = postgres_service_status(POSTGRES_SERVICE_NAME)
     emit('parser_output', output, room=session_id)
 
 @socketio.on('run_parser')
 def handle_run_parser():
-    shared_logger.set_log_mode("webapp")
     session_id = session.get('sid') if 'sid' in session else request.sid
-    # Just start the pipeline (it will prompt for selection, etc.)
-    thread = Thread(target=run_parser_for_urls, args=(None, session_id))
+    logger.info("Starting parser run...")
+    thread = Thread(target=process_urls_for_web, args=(None, session_id))
     thread.start()
     
 @app.route("/undo-hints", methods=["POST"])

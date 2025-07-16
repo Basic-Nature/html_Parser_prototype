@@ -4,7 +4,7 @@ import orjson
 import re
 from dotenv import load_dotenv
 from ..handlers.formats import json_handler, pdf_handler, csv_handler
-from ..utils.shared_logger import log_info, log_debug, log_warning, log_error
+from ..utils.shared_logger import SharedLogger
 from urllib.parse import urljoin
 from ..config import CONTEXT_LIBRARY_PATH
 load_dotenv()
@@ -12,8 +12,8 @@ from .download_utils import download_file
 from ..utils.user_prompt import UserPrompt
 from .html_scanner import load_pattern_kb, append_pattern_kb
 
-user_prompt = UserPrompt()
-
+prompt = UserPrompt()
+logger = SharedLogger()
 # --- Load supported formats from .env or context library ---
 
 if os.path.exists(CONTEXT_LIBRARY_PATH):
@@ -21,7 +21,7 @@ if os.path.exists(CONTEXT_LIBRARY_PATH):
         CONTEXT_LIBRARY = orjson.loads(f.read())
     JSON_FORMATS = CONTEXT_LIBRARY.get("supported_formats", [".json", ".csv", ".pdf"])
 else:
-    log_error("[format_router] context_library.json not found. Using default formats.")
+    logger.error("[format_router] context_library.json not found. Using default formats.")
     JSON_FORMATS = [".json", ".csv", ".pdf"]
 
 # .env takes priority if set, else use JSON
@@ -44,7 +44,7 @@ def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tu
     """
     links = page.query_selector_all("a")
     found = {ext: [] for ext in SUPPORTED_FORMATS}
-    log_info("[INFO] Scanning for available download links...")
+    logger.info("[INFO] Scanning for available download links...")
     for link in links:
         try:
             href = link.get_attribute("href") or ""
@@ -52,19 +52,19 @@ def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tu
                 if ext.lower() in href.lower():
                     abs_url = urljoin(base_url or page.url, href)
                     found[ext].append(abs_url)
-                    log_debug(f"[DEBUG] Found {ext} link: {abs_url}")
+                    logger.debug(f"[DEBUG] Found {ext} link: {abs_url}")
         except Exception as e:
-            log_debug(f"[DEBUG] Failed to evaluate a link: {e}")
+            logger.debug(f"[DEBUG] Failed to evaluate a link: {e}")
 
     flat_results = []
     for ext in SUPPORTED_FORMATS:
         for url in found[ext]:
             flat_results.append((ext.strip("."), url))
     if not flat_results:
-        log_warning("[WARN] No supported file formats found on the page.")
+        logger.warning("[WARN] No supported file formats found on the page.")
     # Auto-confirm logic: return only the first found format if enabled
     if auto_confirm and flat_results:
-        log_info(f"[INFO] Auto-confirm enabled. Automatically selecting: {flat_results[0]}")
+        logger.info(f"[INFO] Auto-confirm enabled. Automatically selecting: {flat_results[0]}")
         return [flat_results[0]]
     return flat_results
 
@@ -80,10 +80,10 @@ def route_format_handler(format_str: str):
         elif "csv" in format_str:
             return csv_handler
         else:
-            log_warning(f"[WARN] Unsupported format requested: {format_str}")
+            logger.warning(f"[WARN] Unsupported format requested: {format_str}")
             return None
     except ImportError as e:
-        log_warning(f"[Router] Failed to load handler for format {format_str}: {e}")
+        logger.warning(f"[Router] Failed to load handler for format {format_str}: {e}")
         return None
 
 def extract_download_links_from_html(html, exts=None):
@@ -139,7 +139,7 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
                         "source": "dom"
                     })
     except Exception as e:
-        log_warning(f"[format_router] DOM scan failed: {e}")
+        logger.warning(f"[format_router] DOM scan failed: {e}")
 
     # 3. Extract links dynamically from HTML (regex or pattern-based)
     dynamic_links = extract_download_links_from_html(html, exts=[".json", ".csv", ".pdf"])
@@ -156,7 +156,7 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
     # 5. Remove rejected
     new_links = [link for link in merged_links if link["href"] not in rejected_downloads]
     if not new_links:
-        log_info("[format_router] No new downloadable links found.")
+        logger.info("[format_router] No new downloadable links found.")
         return None, False
     # 6. Optionally update context metadata (if available)
     if hasattr(page, "context_result") and isinstance(page.context_result, dict):
@@ -178,7 +178,7 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
 
     # 8. Prompt user for format
     available_files = [f"{os.path.basename(link['href'])} ({link['format']})" for link in new_links]
-    log_info(f"[cyan]Downloadable file(s) found: {', '.join(available_files)}.[/cyan]")
+    logger.info(f"[cyan]Downloadable file(s) found: {', '.join(available_files)}.[/cyan]")
     confirmed = [(link["format"], link["href"]) for link in new_links]
     fmt, file_url = prompt_user_for_format(confirmed)
     if not fmt or not file_url:
@@ -190,7 +190,7 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
     # 9. Download and handle
     local_file = download_file(page.url, file_url)
     if not local_file:
-        log_error(f"[red]Failed to download file: {file_url}[/red]")
+        logger.error(f"[red]Failed to download file: {file_url}[/red]")
         return None, False
 
     format_handler = route_format_handler(fmt)
@@ -198,7 +198,7 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
         result = format_handler.parse(None, {"manual_file": local_file, "source_url": target_url})
         return result, True
 
-    log_error(f"[red]No handler found for format: {fmt}[/red]")
+    logger.error(f"[red]No handler found for format: {fmt}[/red]")
     return None, False
 
 def prompt_user_for_format(confirmed, logger=None):
@@ -207,33 +207,33 @@ def prompt_user_for_format(confirmed, logger=None):
     Returns (fmt, file_url) or (None, None) if skipped or denied.
     """
     if not confirmed:
-        log_warning("[WARN] No downloadable formats detected.")
+        logger.warning("[WARN] No downloadable formats detected.")
         return None, None
 
     format_options = [f"{fmt.upper()} ({os.path.basename(file_url)})" for fmt, file_url in confirmed]
-    log_info("\n[FORMATS] Available formats:")
+    logger.info("\n[FORMATS] Available formats:")
     for i, opt in enumerate(format_options):
-        log_info(f"  [{i}] {opt}")
-    log_info("  [n or Enter] Skip download")
+        logger.info(f"  [{i}] {opt}")
+    logger.info("  [n or Enter] Skip download")
     def validator(x):
         return (
             x == "" or x.lower() == "n" or
             (x.isdigit() and 0 <= int(x) < len(format_options))
         )
 
-    selection = user_prompt.prompt_input(
+    selection = prompt.prompt_input(
         f"[PROMPT] Select a format to download (0-{len(format_options)-1}) or 'n' to skip:",
         default="n",
         validator=validator
     )
     if selection == "" or selection.lower() == "n":
-        log_info("[INFO] User chose to skip format download.")
+        logger.info("[INFO] User chose to skip format download.")
         return None, None
     try:
         selected_index = int(selection)
         fmt, file_url = confirmed[selected_index]
-        log_info(f"[INFO] User selected format: {fmt.upper()}")
+        logger.info(f"[INFO] User selected format: {fmt.upper()}")
         return fmt, file_url
     except (IndexError, ValueError):
-        log_warning("[WARN] Invalid selection. Skipping format download.")
+        logger.warning("[WARN] Invalid selection. Skipping format download.")
         return None, None

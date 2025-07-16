@@ -2,9 +2,9 @@ import csv
 import orjson
 import os
 from datetime import datetime
-from ..utils.shared_logger import log_info, log_warning, log_debug
+from ..utils.shared_logger import SharedLogger
 from ..config import CONTEXT_DB_PATH, BASE_DIR, LOG_DIR
-
+logger = SharedLogger()
 
 CACHE_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
 
@@ -64,10 +64,10 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
             break
 
     if not year or not str(year).isdigit() or len(str(year)) != 4:
-        log_warning("[yellow][OUTPUT] Year could not be verified. Using 'Unknown'.[/yellow]")
+        logger.warning("[yellow][OUTPUT] Year could not be verified. Using 'Unknown'.[/yellow]")
         year = "Unknown"
     if not race:
-        log_warning("[yellow][OUTPUT] Race could not be verified. Using 'unknown_race'.[/yellow]")
+        logger.warning("[yellow][OUTPUT] Race could not be verified. Using 'unknown_race'.[/yellow]")
         race = "unknown_race"
 
     race_safe = safe_filename(race)
@@ -141,7 +141,7 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
                 try:
                     entries.append(orjson.loads(line))
                 except Exception as e:
-                    log_debug(f"[DEBUG] Failed to parse line as JSON: {line!r}")
+                    logger.debug(f"[DEBUG] Failed to parse line as JSON: {line!r}")
                     continue
         for entry in entries:
             meta = entry.get("metadata", {})
@@ -201,7 +201,7 @@ def finalize_election_output(
     if context is None:
         context = {}
 
-    log_info(f"[OUTPUT_UTILS] finalize_election_output called with contest_title: '{contest_title}'")
+    logger.info(f"[OUTPUT_UTILS] finalize_election_output called with contest_title: '{contest_title}'")
 
     meta = {
         "race": contest_title or "Unknown",
@@ -305,8 +305,8 @@ def finalize_election_output(
 
     update_output_cache(metadata_out, filepath)
 
-    log_info(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
-    log_info(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
+    logger.info(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
+    logger.info(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
 
     if enable_user_feedback or os.environ.get("ENABLE_USER_FEEDBACK", "false").lower() == "true":
         feedback_log_path = safe_join(LOG_DIR, "user_feedback_log.jsonl")
@@ -322,7 +322,7 @@ def finalize_election_output(
             }
             with open(feedback_log_path, "ab") as fb:
                 fb.write(orjson.dumps(feedback_entry) + b"\n")
-            log_info(f"[bold blue][FEEDBACK][/bold blue] Feedback logged to {feedback_log_path}")
+            logger.info(f"[bold blue][FEEDBACK][/bold blue] Feedback logged to {feedback_log_path}")
 
     return {
         "csv_path": filepath,

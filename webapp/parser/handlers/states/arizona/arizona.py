@@ -6,10 +6,12 @@
 import os
 import orjson
 from tqdm import tqdm
-from ....utils.shared_logger import log_info, log_debug, log_warning, log_error
+from ....utils.shared_logger import SharedLogger
 from ....Context_Integration.context_organizer import ContextOrganizer
 from ....utils.output_utils import finalize_election_output
 from ....config import CONTEXT_LIBRARY_PATH
+
+logger = SharedLogger()
 # Load config from context library if available
 # Debug: Print the path being checked and whether it exists
 
@@ -20,7 +22,7 @@ if os.path.exists(CONTEXT_LIBRARY_PATH):
     STATE_CONFIGS = CONTEXT_LIBRARY.get("state_configs", {})
     config = STATE_CONFIGS.get("arizona", {})
 else:
-    log_warning("[WARN] context_library.json not found. Using fallback config for Arizona handler.")
+    logger.warning("[WARN] context_library.json not found. Using fallback config for Arizona handler.")
     config = {}
 
 # Fallback defaults if not set in context library
@@ -32,7 +34,7 @@ def parse(page, html_context=None):
     if html_context is None:
         html_context = {}
 
-    log_info("[INFO] Arizona handler activated. Expanding race-level cards...")
+    logger.info("[INFO] Arizona handler activated. Expanding race-level cards...")
 
     # Step 1: Click all 'View More' buttons if present
     view_more_selector = config.get("view_more_selector")
@@ -44,9 +46,9 @@ def parse(page, html_context=None):
                 btn.scroll_into_view_if_needed()
                 btn.click()
                 page.wait_for_timeout(500)
-                log_info(f"[INFO] Expanded card {i+1}/{buttons.count()}")
+                logger.info(f"[INFO] Expanded card {i+1}/{buttons.count()}")
             except Exception as e:
-                log_warning(f"[WARN] Could not expand card {i+1}: {e}")
+                logger.warning(f"[WARN] Could not expand card {i+1}: {e}")
 
     # Step 2: Toggle to 'Vote Type' view
     vote_type_selector = config.get("vote_type_toggle_selector")
@@ -56,10 +58,10 @@ def parse(page, html_context=None):
             if vote_toggle.count() > 0:
                 vote_toggle.first.scroll_into_view_if_needed()
                 vote_toggle.first.click()
-                log_info("[INFO] Toggled to 'Vote Type' view")
+                logger.info("[INFO] Toggled to 'Vote Type' view")
                 page.wait_for_timeout(1500)
         except Exception as e:
-            log_warning(f"[WARN] Vote Type toggle failed: {e}")
+            logger.warning(f"[WARN] Vote Type toggle failed: {e}")
 
     # Step 3: Toggle to 'By County' view if present
     county_selector = config.get("county_toggle_selector")
@@ -69,14 +71,14 @@ def parse(page, html_context=None):
             if county_toggle.count() > 0:
                 county_toggle.first.scroll_into_view_if_needed()
                 county_toggle.first.click()
-                log_info("[INFO] Toggled to 'By County' view")
+                logger.info("[INFO] Toggled to 'By County' view")
                 page.wait_for_timeout(1500)
         except Exception as e:
-            log_warning(f"[WARN] County toggle failed: {e}")
+            logger.warning(f"[WARN] County toggle failed: {e}")
 
     # Step 4: Attempt to find all visible tables and modal/overlay containers
-    log_info("[INFO] Attempting to extract precinct-level data...")
-    log_info("[INFO] Also collecting county-wide totals from overlay where available.")
+    logger.info("[INFO] Attempting to extract precinct-level data...")
+    logger.info("[INFO] Also collecting county-wide totals from overlay where available.")
     all_candidates = set()
     precinct_data = []
         # Capture everything including modal content (vote types)
@@ -86,13 +88,13 @@ def parse(page, html_context=None):
     for el in all_elements:
         tag = el.evaluate("e => e.tagName").strip().upper()
         text_preview = el.inner_text().strip().replace("\n", " ")[:100]
-        log_debug(f"[DEBUG] Element tag: {tag} | Text: {text_preview}")
+        logger.debug(f"[DEBUG] Element tag: {tag} | Text: {text_preview}")
         try:
             if tag in ["H3", "STRONG", "B", "SPAN"]:
                 label = el.inner_text().strip()
                 if any(w in label for w in ["County", "Precinct", "District"]):
                     current_precinct = label
-                    log_debug(f"[DEBUG] Found precinct header: {label}")
+                    logger.debug(f"[DEBUG] Found precinct header: {label}")
             elif tag == "TABLE" and current_precinct:
                 headers = el.query_selector_all('thead tr th')
                 rows = el.query_selector_all('tbody tr')
@@ -133,7 +135,7 @@ def parse(page, html_context=None):
                 precinct_data.append(full_row)
                 current_precinct = None
         except Exception as e:
-            log_error(f"[ERROR] Table parse error: {e}")
+            logger.error(f"[ERROR] Table parse error: {e}")
 
     # Extract county-level totals if available
     county_totals = {}
@@ -152,15 +154,15 @@ def parse(page, html_context=None):
             continue
 
     if county_totals:
-        log_info("[SUMMARY] County-Level Totals Found:")
+        logger.info("[SUMMARY] County-Level Totals Found:")
         for k, v in county_totals.items():
-            log_info(f"  {k}: {v}")
+            logger.info(f"  {k}: {v}")
 
     contest_title = "Arizona Statewide Results"
     headers_out = sorted([col for col in precinct_data[0] if col != "Precinct Name"] if precinct_data else [])
     if not precinct_data:
-        log_warning("[FALLBACK] No tables were parsed. Either no results are published yet or the structure has changed.")
-        log_warning("[FALLBACK] Please verify that the site has posted election data.")
+        logger.warning("[FALLBACK] No tables were parsed. Either no results are published yet or the structure has changed.")
+        logger.warning("[FALLBACK] Please verify that the site has posted election data.")
 
         # Insert county-level totals as a dummy precinct row if any were found
     contest_title = "Arizona Statewide Results"

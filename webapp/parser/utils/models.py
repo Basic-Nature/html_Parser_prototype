@@ -7,7 +7,8 @@ from sqlalchemy.orm import declarative_base, relationship, backref
 import uuid
 from datetime import datetime, timezone
 import enum
-
+from .shared_logger import SharedLogger
+logger = SharedLogger()
 Base = declarative_base()
 
 # --- ENUMS ---
@@ -410,18 +411,18 @@ def main():
         from .db_utils import get_engine
     except ImportError:
         raise RuntimeError("get_engine not available. Cannot create tables.")
-    from .shared_logger import log_info, log_error
+    
     from sqlalchemy import inspect
     try:
         engine = get_engine()
-        log_info("[MODELS] Creating all tables in the configured database...")
+        logger.info("[MODELS] Creating all tables in the configured database...")
         Base.metadata.create_all(engine)
         inspector = inspect(engine)
         tables = inspector.get_table_names()
-        log_info(f"[MODELS] Tables present after creation: {tables}")
-        log_info("[MODELS] All tables created successfully.")
+        logger.info(f"[MODELS] Tables present after creation: {tables}")
+        logger.info("[MODELS] All tables created successfully.")
     except Exception as e:
-        log_error(f"[MODELS][ERROR] Failed to create tables: {e}")
+        logger.error(f"[MODELS][ERROR] Failed to create tables: {e}")
 
 if __name__ == "__main__":
     main()

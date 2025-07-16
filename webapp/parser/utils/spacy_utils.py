@@ -12,7 +12,7 @@ from ..config import PROJECT_ROOT
 from ..bots.librarian import KNOWN_STATE_TO_COUNTY_MAP
 import os
 import orjson
-from ..utils.shared_logger import log_info
+from ..utils.shared_logger import SharedLogger
 # Load spaCy model globally for efficiency, auto-download if missing
 try:
     nlp = spacy.load("en_core_web_sm")
@@ -21,6 +21,7 @@ except OSError:
     subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=True, cwd=PROJECT_ROOT)
     nlp = spacy.load("en_core_web_sm")
 
+logger = SharedLogger()
 # --- Core NLP Utilities ---
 
 def extract_entities(text: str) -> List[Tuple[str, str]]:
@@ -210,20 +211,20 @@ def flag_suspicious_contests(contests, context_library_path=None):
     return flagged
 
 def demo_analysis(text: str):
-    log_info("Entities:", extract_entities(text))
-    log_info("Sentences:", get_sentences(text))
-    log_info("Locations:", extract_locations(text))
-    log_info("Dates:", extract_dates(text))
-    log_info("Persons:", extract_persons(text))
-    log_info("Organizations:", extract_organizations(text))
-    log_info("Money:", extract_money(text))
-    log_info("Emails:", extract_emails(text))
-    log_info("URLs:", extract_urls(text))
-    log_info("Entity frequency:", entity_frequency([text]))
-    log_info("Similarity (sample vs itself):", similarity_score(text, text))
+    logger.info("Entities:", extract_entities(text))
+    logger.info("Sentences:", get_sentences(text))
+    logger.info("Locations:", extract_locations(text))
+    logger.info("Dates:", extract_dates(text))
+    logger.info("Persons:", extract_persons(text))
+    logger.info("Organizations:", extract_organizations(text))
+    logger.info("Money:", extract_money(text))
+    logger.info("Emails:", extract_emails(text))
+    logger.info("URLs:", extract_urls(text))
+    logger.info("Entity frequency:", entity_frequency([text]))
+    logger.info("Similarity (sample vs itself):", similarity_score(text, text))
     # Election integrity check example
     known_states, known_counties = load_known_states_counties()
-    log_info("Contest validation:", validate_contest_title(text, known_states, known_counties))
+    logger.info("Contest validation:", validate_contest_title(text, known_states, known_counties))
 
 if __name__ == "__main__":
     import sys
@@ -231,4 +232,4 @@ if __name__ == "__main__":
         sample = sys.argv[1]
         demo_analysis(sample)
     else:
-        log_info("Usage: python spacy_utils.py 'your sample text here'")
+        logger.info("Usage: python spacy_utils.py 'your sample text here'")

@@ -4,11 +4,11 @@ import hashlib
 import orjson
 from urllib.parse import urljoin
 from datetime import datetime
-from ..utils.shared_logger import log_info, log_error
+from ..utils.shared_logger import SharedLogger
 from ..Context_Integration.context_organizer import ContextOrganizer
 from ..config import INPUT_DIR, OUTPUT_DIR
 
-
+logger = SharedLogger()
 DOWNLOAD_MANIFEST = os.path.join(INPUT_DIR, ".download_manifest.jsonl")
 
 def ensure_input_directory():
@@ -76,7 +76,7 @@ def download_file(page_url, href, context_info=None, check_hash=False):
 
     # Prevent re-download if already present
     if is_already_downloaded(file_url, save_path, check_hash=check_hash):
-        log_info(f"[DOWNLOAD] Skipping already downloaded file: {filename}")
+        logger.info(f"[DOWNLOAD] Skipping already downloaded file: {filename}")
         return save_path
 
     try:
@@ -85,7 +85,7 @@ def download_file(page_url, href, context_info=None, check_hash=False):
         with open(save_path, "wb") as f:
             f.write(response.content)
         filehash = file_hash(save_path)
-        log_info(f"[DOWNLOAD] Downloaded: {filename} -> {INPUT_DIR}/")
+        logger.info(f"[DOWNLOAD] Downloaded: {filename} -> {INPUT_DIR}/")
         # Update manifest
         entry = {
             "url": file_url,
@@ -101,7 +101,7 @@ def download_file(page_url, href, context_info=None, check_hash=False):
             organizer.append_to_context_library({"downloads": [entry]})
         return save_path
     except Exception as e:
-        log_error(f"[ERROR] Failed to download {file_url}: {e}")
+        logger.error(f"[ERROR] Failed to download {file_url}: {e}")
         entry = {
             "url": file_url,
             "filename": save_path,
@@ -118,7 +118,7 @@ def download_multiple_files(page_url, href_list, confirmed: bool = True, context
     Returns a list of file paths for successfully downloaded files.
     """
     if not confirmed or not href_list:
-        log_info("[DOWNLOAD] Multiple download skipped by user or empty list.")
+        logger.info("[DOWNLOAD] Multiple download skipped by user or empty list.")
         return []
     ensure_input_directory()
     downloaded_files = []
@@ -134,16 +134,16 @@ def download_confirmed_file(file_url: str, page_url: str, confirmed: bool = True
     If not confirmed, return None so the pipeline can skip to HTML handler.
     """
     if not confirmed:
-        log_info("[DOWNLOAD] Download skipped by user.")
+        logger.info("[DOWNLOAD] Download skipped by user.")
         return None
     return download_file(page_url, file_url, context_info=context_info, check_hash=check_hash)
 
 def summarize_downloads():
     """Print a summary of all downloads from the manifest."""
     manifest = load_download_manifest()
-    log_info("\n[DOWNLOAD SUMMARY]")
+    logger.info("\n[DOWNLOAD SUMMARY]")
     for entry in manifest.values():
-        log_info(f"  {entry.get('filename')} | {entry.get('url')} | {entry.get('status')} | {entry.get('timestamp')}")
+        logger.info(f"  {entry.get('filename')} | {entry.get('url')} | {entry.get('status')} | {entry.get('timestamp')}")
 
 def get_downloaded_files_by_status(status="success"):
     """Return a list of filenames for downloads with the given status."""

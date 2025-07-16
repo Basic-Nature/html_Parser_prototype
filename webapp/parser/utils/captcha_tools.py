@@ -6,17 +6,17 @@
 import time
 import os
 import platform
-from ..utils.shared_logger import log_info, log_debug, log_warning, log_error
+from ..utils.shared_logger import SharedLogger
 import orjson
 from ..config import CONTEXT_LIBRARY_PATH
-
+logger = SharedLogger()
 # Load CAPTCHA indicators from context library
 if os.path.exists(CONTEXT_LIBRARY_PATH):
     with open(CONTEXT_LIBRARY_PATH, "rb") as f:
         CONTEXT_LIBRARY = orjson.loads(f.read())
     CLOUDFLARE_CAPTCHA_INDICATORS = CONTEXT_LIBRARY.get("cloudflare_captcha_indicators", [])
 else:
-    log_error("[captcha_tools] context_library.json not found. CAPTCHA detection will be limited.")
+    logger.error("[captcha_tools] context_library.json not found. CAPTCHA detection will be limited.")
     CLOUDFLARE_CAPTCHA_INDICATORS = []
 
 DEFAULT_CAPTCHA_TIMEOUT = int(os.getenv("CAPTCHA_TIMEOUT", "300"))
@@ -32,7 +32,7 @@ def detect_cloudflare_challenge(page_or_driver, indicators=None):
         html = get_page_content(page_or_driver).lower()
         return any(keyword.lower() in html for keyword in indicators)
     except Exception as e:
-        log_error(f"[CAPTCHA] Error reading content: {e}")
+        logger.error(f"[CAPTCHA] Error reading content: {e}")
         return False
 
 def get_page_content(page_or_driver):
@@ -69,7 +69,7 @@ def bring_to_front(page_or_driver):
         elif os_type == "Linux":
             os.system("xdotool windowactivate $(xdotool search --onlyvisible --name 'Chromium' | head -1) 2>/dev/null")
     except Exception as e:
-        log_warning(f"[CAPTCHA] Foreground window fallback failed: {e}")
+        logger.warning(f"[CAPTCHA] Foreground window fallback failed: {e}")
 
 def is_cloudflare_captcha_present(page_or_driver) -> bool:
     """
@@ -79,7 +79,7 @@ def is_cloudflare_captcha_present(page_or_driver) -> bool:
         html = get_page_content(page_or_driver).lower()
         return any(keyword.lower() in html for keyword in CLOUDFLARE_CAPTCHA_INDICATORS)
     except Exception as e:
-        log_error(f"[CAPTCHA] Failed reading page content: {e}")
+        logger.error(f"[CAPTCHA] Failed reading page content: {e}")
         return False
 
 def wait_for_user_to_solve_captcha(page_or_driver, timeout: int = DEFAULT_CAPTCHA_TIMEOUT):
@@ -87,23 +87,23 @@ def wait_for_user_to_solve_captcha(page_or_driver, timeout: int = DEFAULT_CAPTCH
     Waits for manual CAPTCHA resolution by checking if challenge elements disappear.
     Works for both Playwright and SeleniumBase.
     """
-    log_info(f"[CAPTCHA] Waiting up to {timeout} seconds for CAPTCHA to be solved...")
+    logger.info(f"[CAPTCHA] Waiting up to {timeout} seconds for CAPTCHA to be solved...")
     start = time.time()
     retries = 0
     while time.time() - start < timeout:
         try:
             if not is_cloudflare_captcha_present(page_or_driver):
-                log_info("[CAPTCHA] CAPTCHA resolved — continuing.")
+                logger.info("[CAPTCHA] CAPTCHA resolved — continuing.")
                 return True
             if retries % 3 == 0:
                 try:
                     bring_to_front(page_or_driver)
                 except Exception as e:
-                    log_debug(f"[CAPTCHA] Could not bring browser to front: {e}")
+                    logger.debug(f"[CAPTCHA] Could not bring browser to front: {e}")
             time.sleep(POLL_INTERVAL)
             retries += 1
         except Exception as e:
-            log_error(f"[CAPTCHA] CAPTCHA monitoring failed: {e}")
+            logger.error(f"[CAPTCHA] CAPTCHA monitoring failed: {e}")
             break
-    log_warning("[CAPTCHA] CAPTCHA not resolved within timeout.")
+    logger.warning("[CAPTCHA] CAPTCHA not resolved within timeout.")
     return False

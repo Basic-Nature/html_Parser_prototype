@@ -11,9 +11,9 @@ from ...bots.librarian import (
     LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
 )
-from ...utils.shared_logger import log_info, log_error
+from ...utils.shared_logger import SharedLogger
 from ...utils.table_core import harmonize_headers_and_data
-
+logger = SharedLogger()
 def get_input_folder():
     # Parent of webapp, then 'input'
     return os.path.join(os.path.dirname(BASE_DIR), "input")
@@ -28,12 +28,12 @@ def list_json_files(input_folder):
 def prompt_for_json_file(input_folder):
     json_files = list_json_files(input_folder)
     if not json_files:
-        log_error("[ERROR] No JSON files found in the input directory.")
+        logger.error("[ERROR] No JSON files found in the input directory.")
         return None
-    log_info("\nAvailable JSON files in 'input' folder:")
+    logger.info("\nAvailable JSON files in 'input' folder:")
     for i, fname in enumerate(json_files):
-        log_info(f"  [{i}] {fname}")
-    log_info("\n[PROMPT] Enter file index or press Enter to cancel:", end=" ")
+        logger.info(f"  [{i}] {fname}")
+    logger.info("\n[PROMPT] Enter file index or press Enter to cancel:", end=" ")
     user_input = input().strip()
     if not user_input:
         return None
@@ -41,7 +41,7 @@ def prompt_for_json_file(input_folder):
         idx = int(user_input)
         if 0 <= idx < len(json_files):
             return os.path.join(input_folder, json_files[idx])
-    log_error("[ERROR] Invalid selection.")
+    logger.error("[ERROR] Invalid selection.")
     return None
 
 def parse_json_election_results(json_path, output_dir=None):
@@ -56,12 +56,12 @@ def parse_json_election_results(json_path, output_dir=None):
         if name:
             contests.add(name)
 
-    log_info("\nAvailable contests:")
+    logger.info("\nAvailable contests:")
     for i, name in enumerate(sorted(contests), 1):
-        log_info(f" {i:2d}. {name}")
+        logger.info(f" {i:2d}. {name}")
 
     # === Prompt for Contest Name ===
-    log_info("\nEnter the contest name (exactly as shown), or type its number:")
+    logger.info("\nEnter the contest name (exactly as shown), or type its number:")
     user_input = input("> ").strip()
 
     # Resolve numeric index to name
@@ -76,7 +76,7 @@ def parse_json_election_results(json_path, output_dir=None):
             raise ValueError("Contest name not found.")
         target_contest = user_input
 
-    log_info(f"\n🔍 Parsing contest: {target_contest}\n")
+    logger.info(f"\n🔍 Parsing contest: {target_contest}\n")
 
     # === Setup Output Paths ===
     if output_dir is None:
@@ -162,9 +162,9 @@ def parse_json_election_results(json_path, output_dir=None):
     with open(output_meta, "w") as jf:
         jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
-    log_info("✅ Completed!")
-    log_info(" - Output CSV:", output_csv)
-    log_info(" - Metadata:", output_meta)
+    logger.info("✅ Completed!")
+    logger.info(" - Output CSV:", output_csv)
+    logger.info(" - Metadata:", output_meta)
 
     return headers, rows, target_contest, metadata
 
@@ -189,10 +189,10 @@ def parse(page=None, coordinator=None, html_context=None, non_interactive=False,
         # 2. Otherwise, prompt user to select from input folder
         json_path = prompt_for_json_file(input_folder)
         if not json_path:
-            log_info("[INFO] No file selected. Exiting JSON parser.")
+            logger.info("[INFO] No file selected. Exiting JSON parser.")
             return None, None, None, {"skipped": True}
 
-    log_info(f"\n[INFO] Using JSON file: {json_path}")
+    logger.info(f"\n[INFO] Using JSON file: {json_path}")
 
     # Run the contest parser pipeline
     return parse_json_election_results(json_path)

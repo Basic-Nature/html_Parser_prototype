@@ -2,14 +2,14 @@ import importlib
 from playwright.sync_api import Page
 from typing import Optional, Tuple, Any, List, Dict
 
-from ....utils.shared_logger import log_info, log_warning, log_error, log_error, log_debug
+from ....utils.shared_logger import SharedLogger
 from ....utils.output_utils import finalize_election_output
 from ....utils.contest_selector import select_contest
 from ....utils.table_builder import build_dynamic_table
 from ....utils.table_core import robust_table_extraction
 from ....utils.html_scanner import scan_html_for_context
 from typing import TYPE_CHECKING
-
+logger = SharedLogger()
 if TYPE_CHECKING:
     from ....Context_Integration.context_coordinator import ContextCoordinator
 
@@ -34,16 +34,16 @@ def parse(
         module_path = f"webapp.parser.handlers.states.example.county.{county}"
         try:
             county_module = importlib.import_module(module_path)
-            log_info(f"[Example Handler] Routing to county parser: {module_path}")
+            logger.info(f"[Example Handler] Routing to county parser: {module_path}")
             return county_module.parse(page, coordinator=coordinator, html_context=html_context, non_interactive=non_interactive)
         except ModuleNotFoundError:
-            log_warning(f"[Example Handler] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
+            logger.warning(f"[Example Handler] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
         except Exception as e:
-            log_error(f"[Example Handler] Error in county parser: {e}")
+            logger.error(f"[Example Handler] Error in county parser: {e}")
             return None, None, None, {"error": str(e)}
 
     # --- 2. Otherwise, handle all counties within this page ---
-    log_info("[Example Handler] No county-specific handler found. Attempting state-level parsing.")
+    logger.info("[Example Handler] No county-specific handler found. Attempting state-level parsing.")
 
     # Scan for context and contests
     context_result = scan_html_for_context(
@@ -75,7 +75,7 @@ def parse(
         non_interactive=non_interactive
     )
     if not selected:
-        log_error("[red]No contest selected. Skipping.[/red]")
+        logger.error("[red]No contest selected. Skipping.[/red]")
         return None, None, None, {"skipped": True}
 
     # If multiple contests, process each (aggregate or return first)
@@ -98,7 +98,7 @@ def parse_single_contest_dynamic(page, html_context, state, county, coordinator)
     Parses a single contest (race) from the page using dynamic, context/NLP-driven extraction.
     """
     contest_title = html_context.get("selected_race")
-    log_info(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
+    logger.info(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
 
     # --- Use context/NLP to guide extraction ---
     entities = coordinator.extract_entities(contest_title)
@@ -141,18 +141,18 @@ def parse_single_contest_dynamic(page, html_context, state, county, coordinator)
             data_rows = [dict(zip(headers, row)) for row in ballot_items]
     else:
         # Fallback: try table-based extraction as a last resort
-        log_warning(f"[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+        logger.warning(f"[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
         
         headers, data_rows = robust_table_extraction(page, html_context)
         if not headers or not data_rows:
-            log_error(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+            logger.error(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
             return None, None, contest_title, {"skipped": True}
 
     # --- Build dynamic table ---
     headers, data = build_dynamic_table(headers, data_rows, coordinator, html_context)
 
     if not data:
-        log_error("[red][ERROR] No contest data was parsed.[/red]")
+        logger.error("[red][ERROR] No contest data was parsed.[/red]")
         return None, None, contest_title, {"skipped": True}
 
     # --- Assemble headers and finalize output ---

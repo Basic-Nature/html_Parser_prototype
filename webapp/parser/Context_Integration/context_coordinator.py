@@ -14,7 +14,7 @@ import numpy as np
 import orjson
 from datetime import datetime, timezone
 from fuzzywuzzy import process
-from ..utils.shared_logger import log_info, log_error, log_warning
+from ..utils.shared_logger import SharedLogger
 import difflib
 from ..utils.shared_logic import (
     scan_buttons_with_progress, keyphrase_match,
@@ -51,7 +51,7 @@ from .context_organizer import ContextOrganizer, clean_for_json
 from ..services.election_data_services import ElectionDataService
 import inspect
 from typing import Optional, Any, List, Dict, Tuple
-
+logger = SharedLogger()
 def _sanitize_log_filename(name: str) -> str:
     # Only allow alphanumeric, underscore, and dash
     return re.sub(r'[^a-zA-Z0-9_\-]', '_', name) 
@@ -171,8 +171,11 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
     county_to_precinct = KNOWN_COUNTY_TO_PRECINCTS_MAP
     state_module_map = STATE_MODULE_MAP
     known_states = set(state_to_county.keys())
-    all_counties = {normalize_county_name(c) for counties in state_to_county.values() for c in counties}
-    all_precincts = {normalize_county_name(d) for precincts in county_to_precinct.values() for d in precincts}
+    state_to_county_values = state_to_county.values() if isinstance(state_to_county, dict) else state_to_county
+    all_counties = {normalize_county_name(c) for counties in state_to_county_values for c in counties}
+
+    county_to_precinct_values = county_to_precinct.values() if isinstance(county_to_precinct, dict) else county_to_precinct
+    all_precincts = {normalize_county_name(d) for precincts in county_to_precinct_values for d in precincts}
 
     # --- 1. Try context fields directly (normalize and validate) ---
     if not isinstance(context, dict) or not context:
@@ -437,7 +440,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
 
     if debug:
         for log in detection_log:
-            log_info("[dynamic_state_county_detection]", log)
+            logger.info("[dynamic_state_county_detection]", log)
     return normalized_county, normalized_state, handler_path, detection_log
 
 # --- Core Coordinator Class ---
@@ -479,16 +482,16 @@ class ContextCoordinator(object):
         """
         try:
             if self.alert_monitor_thread and self.alert_monitor_thread.is_alive():
-                log_info("[ALERT MONITOR] Stopping alert monitoring thread.")
+                logger.info("[ALERT MONITOR] Stopping alert monitoring thread.")
                 self.alert_monitor_thread.join(timeout=1)
                 if self.alert_monitor_thread.is_alive():
-                    log_warning("[ALERT MONITOR] Thread did not stop cleanly.")
+                    logger.warning("[ALERT MONITOR] Thread did not stop cleanly.")
                 else:
-                    log_info("[ALERT MONITOR] Thread stopped successfully.")
+                    logger.info("[ALERT MONITOR] Thread stopped successfully.")
             else:
-                log_info("[ALERT MONITOR] No active thread to stop.")
+                logger.info("[ALERT MONITOR] No active thread to stop.")
         except Exception as e:
-            log_error(f"[ALERT MONITOR] Exception during cleanup: {e}", exc_info=True)
+            logger.error(f"[ALERT MONITOR] Exception during cleanup: {e}", exc_info=True)
         finally:
             self.alert_monitor_thread = None
 
@@ -504,7 +507,7 @@ class ContextCoordinator(object):
                 deduplicate=deduplicate
             )
         except Exception as e:
-            log_error(f"[append_to_context_library] Failed: {e}", exc_info=True)
+            logger.error(f"[append_to_context_library] Failed: {e}", exc_info=True)
             return False
             
     def repair_contests_with_context(self, contests, context_library=None, db_service=None, parent_context=None, embedding_model=None, logs=None) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -525,7 +528,7 @@ class ContextCoordinator(object):
                 parent_context=parent_context
             )
         except Exception as e:
-            log_error(f"[repair_contests_with_context] Failed: {e}", exc_info=True)
+            logger.error(f"[repair_contests_with_context] Failed: {e}", exc_info=True)
             return contests, [{"error": str(e)}]
         
     # --- Monitoring, Reporting, and CLI ---            
@@ -538,25 +541,25 @@ class ContextCoordinator(object):
             try:
                 monitor_db_for_alerts()
             except Exception as e:
-                log_error(f"[ALERT MONITOR] Exception: {e}", exc_info=True)
+                logger.error(f"[ALERT MONITOR] Exception: {e}", exc_info=True)
 
         if background:
             if self.alert_monitor_thread and self.alert_monitor_thread.is_alive():
-                log_info("[ALERT MONITOR] Already running.")
+                logger.info("[ALERT MONITOR] Already running.")
                 return self.alert_monitor_thread
             t = threading.Thread(target=run_monitor, daemon=True)
             t.start()
             self.alert_monitor_thread = t
-            log_info("[ALERT MONITOR] Started in background thread.")
+            logger.info("[ALERT MONITOR] Started in background thread.")
             return t
         else:
-            log_info("[ALERT MONITOR] Running in foreground (blocking).")
+            logger.info("[ALERT MONITOR] Running in foreground (blocking).")
             run_monitor()
             return None
 
     def report_summary(self) -> None:
         contests = self.get_contests()
-        log_info(f"[bold cyan][COORDINATOR] {len(contests)} contests loaded[/bold cyan]")
+        logger.info(f"[bold cyan][COORDINATOR] {len(contests)} contests loaded[/bold cyan]")
         all_entities = set()
         all_labels = set()
         for c in contests:
@@ -565,15 +568,15 @@ class ContextCoordinator(object):
             for ent, label in c.get("entities", []):
                 all_entities.add(ent)
                 all_labels.add(label)
-        log_info(f"Unique entity labels: {sorted(all_labels)}")
-        log_info(f"Unique entities: {sorted(all_entities)}")
-        log_info(f"States: {sorted({c.get('state') for c in contests if c.get('state')})}")
-        log_info(f"Years: {sorted({c.get('year') for c in contests if c.get('year')})}")
+        logger.info(f"Unique entity labels: {sorted(all_labels)}")
+        logger.info(f"Unique entities: {sorted(all_entities)}")
+        logger.info(f"States: {sorted({c.get('state') for c in contests if c.get('state')})}")
+        logger.info(f"Years: {sorted({c.get('year') for c in contests if c.get('year')})}")
         issues = self.validate_and_check_integrity()
         if issues["integrity_issues"]:
-            log_warning(f"[yellow]Integrity issues:[/yellow] {issues['integrity_issues']}")
+            logger.warning(f"[yellow]Integrity issues:[/yellow] {issues['integrity_issues']}")
         if issues["anomalies"]:
-            log_error(f"[red]Anomalies detected:[/red] {issues['anomalies']}")
+            logger.error(f"[red]Anomalies detected:[/red] {issues['anomalies']}")
 
     def _log_jsonl(self, log_path, log_entry):
         """Centralized JSONL logging utility."""
@@ -636,7 +639,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_contest(contest)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert contest: {contest.get('title', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert contest: {contest.get('title', '')} - {e}")
 
             # --- Update table structures (legacy and ML-inferred) ---
             if update_tables and "tables" in library:
@@ -651,7 +654,7 @@ class ContextCoordinator(object):
                                 contest_title, headers, context, ml_confidence, confirmed_by_user
                             )
                         except Exception as e:
-                            log_error(f"[update_db_with_context] Failed to save table structure for {contest_title}: {e}")
+                            logger.error(f"[update_db_with_context] Failed to save table structure for {contest_title}: {e}")
 
             # --- Update panels ---
             if update_panels and "panels" in library:
@@ -659,7 +662,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_panel(contest_title, panel)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert panel for {contest_title}: {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert panel for {contest_title}: {e}")
 
             # --- Update buttons ---
             if update_buttons and "buttons" in library:
@@ -668,7 +671,7 @@ class ContextCoordinator(object):
                         try:
                             self.data_service.upsert_button(contest_title, btn)
                         except Exception as e:
-                            log_error(f"[update_db_with_context] Failed to upsert button for {contest_title}: {e}")
+                            logger.error(f"[update_db_with_context] Failed to upsert button for {contest_title}: {e}")
 
             # --- Update candidates ---
             if update_candidates and "candidates" in library:
@@ -676,7 +679,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_candidate(candidate)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert candidate: {candidate.get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert candidate: {candidate.get('name', '')} - {e}")
 
             # --- Update parties ---
             if update_parties and "parties" in library:
@@ -684,7 +687,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_party(party)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert party: {party.get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert party: {party.get('name', '')} - {e}")
 
             # --- Update offices ---
             if update_offices and "offices" in library:
@@ -692,7 +695,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_office(office)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert office: {office.get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert office: {office.get('name', '')} - {e}")
 
             # --- Update districts ---
             if update_districts and "districts" in library:
@@ -700,7 +703,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_district(district)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert district: {district.get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert district: {district.get('name', '')} - {e}")
 
             # --- Update results ---
             if update_results and "results" in library:
@@ -708,7 +711,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_result(result)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert result: {result.get('id', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert result: {result.get('id', '')} - {e}")
 
             # --- Update entities (generic/misc entities) ---
             if update_entities and "entities" in library:
@@ -716,7 +719,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_entity(entity)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert entity: {entity.get('value', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert entity: {entity.get('value', '')} - {e}")
 
             # --- Update table_structures (ML-inferred/user-confirmed) ---
             if update_table_structures and "table_structures" in library:
@@ -724,7 +727,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_table_structure(ts)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert table_structure: {ts.get('contest_title', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert table_structure: {ts.get('contest_title', '')} - {e}")
 
             # --- Update batch_metadata ---
             if update_batch_metadata and "batch_metadata" in library:
@@ -732,7 +735,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_batch_metadata(batch)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert batch_metadata: {batch.get('batch_id', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert batch_metadata: {batch.get('batch_id', '')} - {e}")
 
             # --- Update alerts ---
             if update_alerts and "alerts" in library:
@@ -740,7 +743,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_alert(alert)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert alert: {alert.get('id', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert alert: {alert.get('id', '')} - {e}")
 
             # --- Update embeddings (ML segment cache) ---
             if update_embeddings and "embeddings" in library:
@@ -748,20 +751,20 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_embedding(emb)
                     except Exception as e:
-                        log_error(f"[update_db_with_context] Failed to upsert embedding: {emb.get('segment_hash', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert embedding: {emb.get('segment_hash', '')} - {e}")
 
             # --- Save the full library as a backup/atomic write ---
             if enhanced:
                 try:
                     atomic_write_json(library, db_path)
                 except Exception as e:
-                    log_error(f"[update_db_with_context] Failed to atomic write JSON: {e}")
+                    logger.error(f"[update_db_with_context] Failed to atomic write JSON: {e}")
 
             if log_success:
-                log_info(f"[update_db_with_context] Database updated at {db_path}")
+                logger.info(f"[update_db_with_context] Database updated at {db_path}")
 
         except Exception as e:
-            log_error(f"[update_db_with_context] Failed to update DB: {e}")
+            logger.error(f"[update_db_with_context] Failed to update DB: {e}")
             
     def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False) -> Dict[str, Any]:
         from .context_organizer import save_table_structure_to_db
@@ -793,7 +796,7 @@ class ContextCoordinator(object):
                 self.organized = result["organized"]
             return result
         except Exception as e:
-            log_error(f"[organize_context_advanced] Failed: {e}", exc_info=True)
+            logger.error(f"[organize_context_advanced] Failed: {e}", exc_info=True)
             return {"error": str(e)}
 
     def auto_label_segment(
@@ -881,18 +884,18 @@ class ContextCoordinator(object):
         if not self.organized or "dom_parts" not in self.organized:
             ContextCoordinator._dom_parts_warning_count += 1
             if ContextCoordinator._dom_parts_warning_count == 1:
-                log_warning("[group_dom_nodes_by_label] No organized DOM parts. (Further warnings suppressed)")
+                logger.warning("[group_dom_nodes_by_label] No organized DOM parts. (Further warnings suppressed)")
             elif ContextCoordinator._dom_parts_warning_count % 10 == 0:
-                log_warning(f"[group_dom_nodes_by_label] No organized DOM parts. (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
+                logger.warning(f"[group_dom_nodes_by_label] No organized DOM parts. (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
             return {}
         nodes = self.organized["dom_parts"].get("all_nodes", [])
         if not nodes:
-            log_warning("[group_dom_nodes_by_label] No DOM nodes found.")
+            logger.warning("[group_dom_nodes_by_label] No DOM nodes found.")
             return {}
         try:
             return self.organizer.group_nodes_by_label(nodes, label_field=label_field)
         except Exception as e:
-            log_error(f"[group_dom_nodes_by_label] Failed: {e}", exc_info=True)
+            logger.error(f"[group_dom_nodes_by_label] Failed: {e}", exc_info=True)
             return {}
 
     # --- Feedback, Learning, and Correction ---
@@ -921,26 +924,26 @@ class ContextCoordinator(object):
         Print a summary table of contests by state/county using ContextOrganizer.
         """
         if not self.organized or "contests" not in self.organized:
-            log_warning("[print_contest_summary] No organized contests to summarize.")
+            logger.warning("[print_contest_summary] No organized contests to summarize.")
             return
         contests = self.organized["contests"]
         try:
             self.organizer.print_contest_summary(contests)
         except Exception as e:
-            log_error(f"[print_contest_summary] Failed: {e}", exc_info=True)
+            logger.error(f"[print_contest_summary] Failed: {e}", exc_info=True)
 
     def plot_contest_distribution(self) -> None:
         """
         Plot contest count by state/county using ContextOrganizer.
         """
         if not self.organized or "contests" not in self.organized:
-            log_warning("[plot_contest_distribution] No organized contests to plot.")
+            logger.warning("[plot_contest_distribution] No organized contests to plot.")
             return
         contests = self.organized["contests"]
         try:
             self.organizer.plot_contest_distribution(contests)
         except Exception as e:
-            log_error(f"[plot_contest_distribution] Failed: {e}", exc_info=True)
+            logger.error(f"[plot_contest_distribution] Failed: {e}", exc_info=True)
 
     def get_known_state_to_county_map(self) -> List[str]:
         """
@@ -985,10 +988,10 @@ class ContextCoordinator(object):
             self._no_dom_warning_count = 0
         if not self.organized or "dom_parts" not in self.organized:
             if self._no_dom_warning_count < NO_DOM_WARNING_LIMIT:
-                log_warning("No organized DOM parts.")
+                logger.warning("No organized DOM parts.")
                 self._no_dom_warning_count += 1
             elif self._no_dom_warning_count == NO_DOM_WARNING_LIMIT:
-                log_warning("No organized DOM parts. (Further warnings suppressed)")
+                logger.warning("No organized DOM parts. (Further warnings suppressed)")
                 self._no_dom_warning_count += 1
             # else: suppress further warnings
             return {}
@@ -999,7 +1002,7 @@ class ContextCoordinator(object):
         Return contest groups by keyword (from ContextOrganizer).
         """
         if not self.organized or "contest_groups" not in self.organized:
-            log_warning("[get_contest_groups] No contest groups found.")
+            logger.warning("[get_contest_groups] No contest groups found.")
             return {}
         return self.organized["contest_groups"]
 
@@ -1008,7 +1011,7 @@ class ContextCoordinator(object):
         Return panel groups by keyword (from ContextOrganizer).
         """
         if not self.organized or "panel_groups" not in self.organized:
-            log_warning("[get_panel_groups] No panel groups found.")
+            logger.warning("[get_panel_groups] No panel groups found.")
             return {}
         return self.organized["panel_groups"]
 
@@ -1017,7 +1020,7 @@ class ContextCoordinator(object):
         Return button groups by keyword (from ContextOrganizer).
         """
         if not self.organized or "button_groups" not in self.organized:
-            log_warning("[get_button_groups] No button groups found.")
+            logger.warning("[get_button_groups] No button groups found.")
             return {}
         return self.organized["button_groups"]
 
@@ -1026,7 +1029,7 @@ class ContextCoordinator(object):
         Return table groups by keyword (from ContextOrganizer).
         """
         if not self.organized or "table_groups" not in self.organized:
-            log_warning("[get_table_groups] No table groups found.")
+            logger.warning("[get_table_groups] No table groups found.")
             return {}
         return self.organized["table_groups"]
 
@@ -1035,7 +1038,7 @@ class ContextCoordinator(object):
         Return party/candidate/district/state/county relationships.
         """
         if not self.organized:
-            log_warning("[get_relationships] No organized context.")
+            logger.warning("[get_relationships] No organized context.")
             return {}
         return {
             "party_to_candidates": self.organized.get("party_to_candidates", {}),
@@ -1129,7 +1132,7 @@ class ContextCoordinator(object):
                 return filtered[0] if filtered else None
             return filtered
         except Exception as e:
-            log_error(f"[ContextCoordinator.extract_entities] Error: {e}")
+            logger.error(f"[ContextCoordinator.extract_entities] Error: {e}")
             return [] if not first_only else None
 
     def extract_locations(self, text, labels=None, first_only=False):
@@ -1154,7 +1157,7 @@ class ContextCoordinator(object):
                 return filtered[0] if filtered else None
             return filtered
         except Exception as e:
-            log_error(f"[ContextCoordinator.extract_locations] Error: {e}")
+            logger.error(f"[ContextCoordinator.extract_locations] Error: {e}")
             return [] if not first_only else None
 
     def extract_dates(self, text, labels=None, first_only=False):
@@ -1179,7 +1182,7 @@ class ContextCoordinator(object):
                 return filtered[0] if filtered else None
             return filtered
         except Exception as e:
-            log_error(f"[ContextCoordinator.extract_dates] Error: {e}")
+            logger.error(f"[ContextCoordinator.extract_dates] Error: {e}")
             return [] if not first_only else None
 
     def extract_field(self, field_type, text=None, context=None, extra=None):
@@ -1191,8 +1194,6 @@ class ContextCoordinator(object):
         - extra: dict, optional, for additional params (e.g., state/county for precincts)
         Returns: extracted value(s)
         """
-        import re
-        from fuzzywuzzy import process
         context = context or {}
         extra = extra or {}
 
@@ -1381,7 +1382,7 @@ class ContextCoordinator(object):
 
         # --- Extraction ---
         if field_type not in strategies:
-            log_error(f"[extract_field] Unknown field_type: {field_type}")
+            logger.error(f"[extract_field] Unknown field_type: {field_type}")
             return None
 
         # For types that may use multiple sources (like buttons), try all
@@ -1511,7 +1512,7 @@ class ContextCoordinator(object):
             # Default fallback
             return 0.5
         except Exception as e:
-            log_error(f"[score_header] Error scoring header '{title}': {e}")
+            logger.error(f"[score_header] Error scoring header '{title}': {e}")
             return 0.5
     
     # --- DB/Service Delegation ---
@@ -1608,7 +1609,8 @@ class ContextCoordinator(object):
                 return clean_for_json(results)
         if keyword:
             keyword = keyword.lower()
-            for btn_list in buttons_dict.values():
+            btn_lists = buttons_dict.values() if isinstance(buttons_dict, dict) else buttons_dict
+            for btn_list in btn_lists:
                 for btn in btn_list:
                     if not isinstance(btn, dict):
                         continue
@@ -1626,7 +1628,8 @@ class ContextCoordinator(object):
             if results:
                 return clean_for_json(results)
         all_buttons = []
-        for btns in buttons_dict.values():
+        btn_lists = buttons_dict.values() if isinstance(buttons_dict, dict) else buttons_dict
+        for btns in btn_lists:
             all_buttons.extend(btns)
         return clean_for_json(all_buttons)
 
@@ -1707,16 +1710,16 @@ class ContextCoordinator(object):
                     and learned_btn.get("is_visible")
                     and learned_btn.get("is_clickable")
                 ):
-                    log_info(f"[green][LEARNING] Auto-applying learned button: {learned_btn.get('label')}[/green]")
+                    logger.info(f"[green][LEARNING] Auto-applying learned button: {learned_btn.get('label')}[/green]")
                     try:
                         learned_btn["element_handle"].click()
                         page.wait_for_timeout(1500)
                         self.clicked_button_selectors.add(learned_btn.get("selector"))
                         return learned_btn, 0
                     except Exception:
-                        log_error("[red][ERROR] Failed to click learned button element.[/red]")
+                        logger.error("[red][ERROR] Failed to click learned button element.[/red]")
                 else:
-                    log_error("[red][ERROR] No element_handle found for the learned button candidate.[/red]")
+                    logger.error("[red][ERROR] No element_handle found for the learned button candidate.[/red]")
 
         # --- 2. Gather candidates from memory/log ---
         memory_candidates = []
@@ -1786,10 +1789,10 @@ class ContextCoordinator(object):
                         if confirm_button_callback:
                             confirmed = confirm_button_callback(cand)
                         if confirmed:
-                            log_info(f"[bold green][Coordinator] Confirmed button: '{cand.get('label')}' (score={cand.get('combined_score', 0):.2f})[/bold green]")
+                            logger.info(f"[bold green][Coordinator] Confirmed button: '{cand.get('label')}' (score={cand.get('combined_score', 0):.2f})[/bold green]")
                             self._log_button_memory(cand, contest_title, f"confirmed_pass_{cand.get('combined_score', 0):.2f}")
                             if not isinstance(cand, dict):
-                                log_error(f"[red][ERROR] Candidate is not a dict: {cand}[/red]")
+                                logger.error(f"[red][ERROR] Candidate is not a dict: {cand}[/red]")
                                 continue
                             if learning_mode:
                                 self._log_confirmed_button_for_learning(cand, contest_title, context)
@@ -1802,7 +1805,7 @@ class ContextCoordinator(object):
                             return cand, idx
                         else:
                             excluded_labels.add(cand.get("label"))
-                            log_warning(f"[yellow][Coordinator] Button '{cand.get('label')}' rejected, retrying...[/yellow]")
+                            logger.warning(f"[yellow][Coordinator] Button '{cand.get('label')}' rejected, retrying...[/yellow]")
                             found = True
                             break
                 if found:
@@ -1822,7 +1825,7 @@ class ContextCoordinator(object):
                     self._log_confirmed_button_for_learning(chosen_btn, contest_title, context)
                 return chosen_btn, chosen_idx
 
-        log_error(f"[red][ERROR] No suitable button could be clicked for '{context.get('toggle_name', '')}'.[/red]")
+        logger.error(f"[red][ERROR] No suitable button could be clicked for '{context.get('toggle_name', '')}'.[/red]")
         return None, None
 
     def _log_confirmed_button_for_learning(self, button, contest_title, context) -> None:

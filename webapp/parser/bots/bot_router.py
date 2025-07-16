@@ -7,7 +7,7 @@ import errno
 from datetime import datetime
 from sqlalchemy import inspect
 from pathlib import Path
-from ..utils.shared_logger import log_info, log_error, summarize_logs, log_debug, log_warning
+from ..utils.shared_logger import SharedLogger, RichConsoleProxy, summarize_logs
 from ..bots.librarian import load_context_library
 from ..utils.models import Base
 from ..utils.db_utils import get_engine
@@ -17,6 +17,8 @@ try:
 except ImportError:
     openai = None
 
+logger = SharedLogger()
+console = RichConsoleProxy()
 ORCHESTRATION_PLUGINS = []
 
 def register_orchestration_plugin(plugin_func):
@@ -28,7 +30,7 @@ def run_orchestration_plugins(context=None):
         try:
             suggestions.extend(plugin(context))
         except Exception as e:
-            log_error(f"[BOT ROUTER][PLUGIN ERROR] {e}")
+            logger.error(f"[BOT ROUTER][PLUGIN ERROR] {e}")
     return suggestions
 
 def preclean_json_logs(log_dirs, required_files=None):
@@ -101,16 +103,21 @@ class BotPipeline:
     def ensure_db_tables(self):
         try:
             engine = get_engine()
-            # This will create all tables defined in Base.metadata, not just TableStructure
             Base.metadata.create_all(engine)
             inspector = inspect(engine)
-            log_info("[MODELS] Tables present after creation: %s" % inspector.get_table_names())
-            log_info("[MODELS] All tables created successfully.")
-            log_info("[PIPELINE] DB tables ensured.")
+            table_names = inspector.get_table_names()
+            from rich.table import Table
+            table = Table(title="[MODELS] Tables present after creation")
+            table.add_column("Table Name", style="green")
+            for name in table_names:
+                table.add_row(name)
+            console.table(table)
+            logger.info("[MODELS] All tables created successfully.")
+            logger.info("[PIPELINE] DB tables ensured.")
             self.results['db_tables'] = 'success'
             return True
         except Exception as e:
-            log_error(f"[PIPELINE] DB table check failed: {e}")
+            logger.error(f"[PIPELINE] DB table check failed: {e}")
             self.results['db_tables'] = 'fail'
             return False
         
@@ -204,28 +211,28 @@ class BotPipeline:
         ])
         # Check for new entries before running
         if not self.has_new_entries(LOG_DIR, CACHE_DIR):
-            log_info("[BOT_ROUTER] No new entries for manual correction. Skipping enhanced mode and exiting gracefully.")
+            logger.info("[BOT_ROUTER] No new entries for manual correction. Skipping enhanced mode and exiting gracefully.")
             self.results['manual_correction'] = 'skipped'
             return True  # Graceful exit
         # Try running with retries and timeout
         for attempt in range(1, retries + 1):
             try:
-                log_info(f"[BOT_ROUTER] Running manual_correction_bot (enhanced mode, attempt={attempt}) with args: {args}")
+                logger.info(f"[BOT_ROUTER] Running manual_correction_bot (enhanced mode, attempt={attempt}) with args: {args}")
                 cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot"] + args
                 result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=timeout)
-                log_info(f"[BOT_ROUTER] manual_correction_bot stdout:\n{result.stdout[:1000]}")
+                logger.info(f"[BOT_ROUTER] manual_correction_bot stdout:\n{result.stdout[:1000]}")
                 if result.returncode == 0:
-                    log_info("[BOT_ROUTER] manual_correction_bot completed successfully.")
+                    logger.info("[BOT_ROUTER] manual_correction_bot completed successfully.")
                     self.results['manual_correction'] = 'success'
                     return True
                 else:
-                    log_warning(f"[BOT_ROUTER] manual_correction_bot failed (attempt {attempt}): {result.stderr}")
+                    logger.warning(f"[BOT_ROUTER] manual_correction_bot failed (attempt {attempt}): {result.stderr}")
                     time.sleep(2)
             except subprocess.TimeoutExpired:
-                log_error(f"[BOT_ROUTER] manual_correction_bot timed out after {timeout} seconds (attempt {attempt}).")
+                logger.error(f"[BOT_ROUTER] manual_correction_bot timed out after {timeout} seconds (attempt {attempt}).")
             except Exception as e:
-                log_error(f"[BOT_ROUTER] manual_correction_bot exception: {e}")
-        log_error("[BOT_ROUTER] manual_correction_bot failed after all retries.")
+                logger.error(f"[BOT_ROUTER] manual_correction_bot exception: {e}")
+        logger.error("[BOT_ROUTER] manual_correction_bot failed after all retries.")
         self.results['manual_correction'] = 'fail'
         return False
 
@@ -281,11 +288,11 @@ class BotPipeline:
                 f.write("locked")
             return True
         except FileExistsError:
-            log_info("[INFO] Pipeline already running or ran.")
+            logger.info("[INFO] Pipeline already running or ran.")
             return False
         except OSError as e:
             if e.errno == errno.EEXIST:
-                log_info("[INFO] Pipeline already running or ran.")
+                logger.info("[INFO] Pipeline already running or ran.")
                 return False
             else:
                 raise
@@ -298,16 +305,16 @@ class BotPipeline:
 
     def self_heal_loop(self, max_retries=3, cooldown=2):
         for attempt in range(1, max_retries + 1):
-            log_info(f"\n[SELF-HEAL] Attempt {attempt}...")
+            logger.info(f"\n[SELF-HEAL] Attempt {attempt}...")
             exit_code = self.scan_misaligned()
             if exit_code == 0:
-                log_info("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
+                logger.info("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
                 return 0
-            log_warning(f"[SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
+            logger.warning(f"[SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
             self.manual_correction(args=self.build_correction_args())
-            log_warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+            logger.warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
             time.sleep(cooldown)
-        log_warning("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
+        logger.warning("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
         return 2
 
     def run(self):
@@ -315,7 +322,7 @@ class BotPipeline:
             return
         try:
             self.last_run = datetime.now().isoformat()
-            log_info(f"[PIPELINE] Starting pipeline at {self.last_run}")
+            logger.info(f"[PIPELINE] Starting pipeline at {self.last_run}")
 
             # 0. Pre-clean all logs/cache/library files
             log_dirs = [LOG_DIR, CACHE_DIR, os.path.join(LOG_DIR, "log"), os.path.join(LOG_DIR, "cache")]
@@ -327,31 +334,31 @@ class BotPipeline:
 
             # 1. Ensure DB tables
             if not self.ensure_db_tables():
-                log_error("[PIPELINE] DB table creation failed. Aborting pipeline.")
+                logger.error("[PIPELINE] DB table creation failed. Aborting pipeline.")
                 return
 
             # 2. Clean logs/cache and migrate context
             clean_success = self.clean_and_migrate()
             if not clean_success:
-                log_error("[PIPELINE] Clean/migrate failed. Skipping retrain and correction.")
+                logger.error("[PIPELINE] Clean/migrate failed. Skipping retrain and correction.")
                 return
 
             # 3. Fix corrupted JSON files before any processing
             try:
                 cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fix-corrupt-json"]
                 subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
-                log_info("[PIPELINE] Corrupted JSON files checked and fixed.")
+                logger.info("[PIPELINE] Corrupted JSON files checked and fixed.")
             except Exception as e:
-                log_warning(f"[PIPELINE] Could not fix corrupted JSON files: {e}")
+                logger.warning(f"[PIPELINE] Could not fix corrupted JSON files: {e}")
 
             # 4. Scan for misaligned NER examples
             misaligned = self.scan_misaligned()
             if misaligned == 2:
-                log_warning("[PIPELINE] Misaligned NER examples found. Self-heal loop will be handled by scan_misaligned_ner.")
+                logger.warning("[PIPELINE] Misaligned NER examples found. Self-heal loop will be handled by scan_misaligned_ner.")
             elif misaligned == 1:
-                log_warning("[PIPELINE] scan_misaligned_ner failed or file missing. Proceeding with caution.")
+                logger.warning("[PIPELINE] scan_misaligned_ner failed or file missing. Proceeding with caution.")
             elif misaligned == 0:
-                log_info("[PIPELINE] No misaligned NER examples found. Proceeding to manual correction.")
+                logger.info("[PIPELINE] No misaligned NER examples found. Proceeding to manual correction.")
 
             # 5. Optimized orchestration for manual correction (scan_misaligned_ner already handled misalignments)
             has_entries = self.has_new_entries(LOG_DIR, CACHE_DIR)
@@ -373,23 +380,23 @@ class BotPipeline:
                 if os.getenv("CACHE_EXPIRE_DAYS"):
                     extra_args.extend(["--cache-expire-days", os.getenv("CACHE_EXPIRE_DAYS")])
                 # Always run in auto mode for end-of-pipeline
-                log_info("[PIPELINE] Running manual_correction_bot in auto mode for context correction.")
+                logger.info("[PIPELINE] Running manual_correction_bot in auto mode for context correction.")
                 self.run_manual_correction(mode="auto", extra_args=extra_args)
             else:
-                log_info("[PIPELINE] No new entries for manual correction. Skipping manual_correction_bot.")
+                logger.info("[PIPELINE] No new entries for manual correction. Skipping manual_correction_bot.")
                 self.results['manual_correction'] = 'skipped'
                 return
 
             # 6. Retrain models (only if previous steps succeeded)
             retrain_success = self.retrain_models()
             if not retrain_success:
-                log_warning("[PIPELINE] Model retraining failed.")
+                logger.warning("[PIPELINE] Model retraining failed.")
 
             # 7. Reload context library after corrections
             self.context = load_context_library()
-            log_debug("DEBUG: Loaded context library:", type(self.context))
+            logger.debug("DEBUG: Loaded context library:", type(self.context))
             if not isinstance(self.context, dict):
-                log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                logger.error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
                 raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
 
             # 8. Post-process context (organizer, coordinator, integrity)
@@ -405,7 +412,7 @@ class BotPipeline:
             self.print_summary()
 
         except Exception as e:
-            log_error(f"[PIPELINE] Unhandled exception: {e}")
+            logger.error(f"[PIPELINE] Unhandled exception: {e}")
             self.results['pipeline'] = 'fail'
         finally:
             self.unlock()
@@ -419,7 +426,7 @@ class BotPipeline:
             self.results['manual_correction'] = 'success'
             return True
         except Exception as e:
-            log_error(f"[PIPELINE] manual_correction_bot failed: {e}")
+            logger.error(f"[PIPELINE] manual_correction_bot failed: {e}")
             self.results['manual_correction'] = 'fail'
             return False
 
@@ -430,7 +437,7 @@ class BotPipeline:
             self.results['retrain_models'] = 'success'
             return True
         except Exception as e:
-            log_error(f"[PIPELINE] retrain_table_structure_models failed: {e}")
+            logger.error(f"[PIPELINE] retrain_table_structure_models failed: {e}")
             self.results['retrain_models'] = 'fail'
             return False
 
@@ -442,7 +449,7 @@ class BotPipeline:
             self.results['scan_misaligned'] = 'clean' if exit_code == 0 else 'misaligned'
             return exit_code
         except Exception as e:
-            log_error(f"[PIPELINE] scan_misaligned_ner failed: {e}")
+            logger.error(f"[PIPELINE] scan_misaligned_ner failed: {e}")
             self.results['scan_misaligned'] = 'fail'
             return 2
 
@@ -455,7 +462,7 @@ class BotPipeline:
             self.results['clean_migrate'] = 'success'
             return True
         except Exception as e:
-            log_error(f"[PIPELINE] Clean/migrate failed: {e}")
+            logger.error(f"[PIPELINE] Clean/migrate failed: {e}")
             self.results['clean_migrate'] = 'fail'
             return False
 
@@ -476,7 +483,7 @@ class BotPipeline:
             coordinator.organize_and_enrich(self.context)
             self.results["context_coordinator"] = "success"
         except Exception as e:
-            log_error(f"[PIPELINE] Context modules failed: {e}")
+            logger.error(f"[PIPELINE] Context modules failed: {e}")
             self.results["integrity_check"] = "fail"
             self.results["context_organizer"] = "fail"
             self.results["context_coordinator"] = "fail"
@@ -486,11 +493,11 @@ class BotPipeline:
             plugin_results = run_orchestration_plugins(self.context)
             self.results["orchestration_plugins"] = "success" if plugin_results else "none"
         except Exception as e:
-            log_error(f"[PIPELINE] Orchestration plugins failed: {e}")
+            logger.error(f"[PIPELINE] Orchestration plugins failed: {e}")
             self.results["orchestration_plugins"] = "fail"
 
     def self_improve(self):
-        logs = summarize_logs()
+        logs = logger.summarize_logs()
         prompt = (
             "You are an AI pipeline assistant. Given the following pipeline results and logs, "
             "suggest improvements or next steps for the pipeline. "
@@ -508,26 +515,26 @@ class BotPipeline:
                     temperature=0.2,
                 )
                 suggestion = response.choices[0].message.content
-                log_info(f"[PIPELINE][LLM SUGGESTION]: {suggestion}")
+                logger.info(f"[PIPELINE][LLM SUGGESTION]: {suggestion}")
                 self.llm_suggestions.append(suggestion)
             except Exception as e:
-                log_error(f"[PIPELINE][LLM] Suggestion failed: {e}")
+                logger.error(f"[PIPELINE][LLM] Suggestion failed: {e}")
         else:
             if self.results.get("scan_misaligned") == "misaligned":
                 suggestion = "Consider running manual_correction_bot with --self-heal or retraining models."
             else:
                 suggestion = "Pipeline ran clean. Monitor logs for anomalies."
-            log_info(f"[PIPELINE][STATIC SUGGESTION]: {suggestion}")
+            logger.info(f"[PIPELINE][STATIC SUGGESTION]: {suggestion}")
             self.llm_suggestions.append(suggestion)
 
     def print_summary(self):
-        log_info("\n[PIPELINE] Run Summary:")
+        logger.info("\n[PIPELINE] Run Summary:")
         for k, v in self.results.items():
-            log_info(f"  {k:<20}: {v}")
+            logger.info(f"  {k:<20}: {v}")
         if self.llm_suggestions:
-            log_info("\n[PIPELINE] LLM/AI Suggestions:")
+            console.print("\n[PIPELINE] LLM/AI Suggestions:")
             for s in self.llm_suggestions:
-                log_info(f"  - {s}")
+                console.print(f"  - {s}")
 
 if __name__ == "__main__":
     pipeline = BotPipeline()

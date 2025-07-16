@@ -29,15 +29,15 @@ from sqlalchemy import create_engine, inspect
 from dotenv import load_dotenv
 from pathlib import Path
 import sys
-from webapp.parser.utils.shared_logger import log_info, log_warning, log_error
+from webapp.parser.utils.shared_logger import SharedLogger
 # --- Import config robustly ---
 try:
-    from . import config
+    from .. import config
 except ImportError:
     # Allow running as a script from project root
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
     import webapp.parser.config as config
-
+logger = SharedLogger()
 # Load environment variables
 load_dotenv()
 
@@ -64,10 +64,10 @@ def import_json_to_postgres():
         for ext in ("*.jsonl", "*.json"):
             for path in glob.glob(os.path.join(folder, ext)):
                 if not is_safe_path(path, ALLOWED_ROOTS):
-                    log_warning(f"[SKIP] Unsafe path: {path}")
+                    logger.warning(f"[SKIP] Unsafe path: {path}")
                     continue
                 table_name = os.path.splitext(os.path.basename(path))[0]
-                log_info(f"Importing {path} to table {table_name}...")
+                logger.info(f"Importing {path} to table {table_name}...")
                 try:
                     if path.endswith(".jsonl"):
                         df = pd.read_json(path, lines=True)
@@ -75,7 +75,7 @@ def import_json_to_postgres():
                         df = pd.read_json(path)
                     df.to_sql(table_name, engine, if_exists="replace", index=False)
                 except Exception as e:
-                    log_error(f"[ERROR] {path}: {e}")
+                    logger.error(f"[ERROR] {path}: {e}")
 
 def export_postgres_to_json():
     """Export all PostgreSQL tables to .jsonl in log/ directory."""
@@ -83,14 +83,14 @@ def export_postgres_to_json():
     for table_name in insp.get_table_names():
         out_path = os.path.join(LOG_DIR, f"{table_name}.jsonl")
         if not is_safe_path(out_path, ALLOWED_ROOTS):
-            log_warning(f"[SKIP] Unsafe output path: {out_path}")
+            logger.warning(f"[SKIP] Unsafe output path: {out_path}")
             continue
-        log_info(f"Exporting table {table_name} to {out_path}...")
+        logger.info(f"Exporting table {table_name} to {out_path}...")
         try:
             df = pd.read_sql_table(table_name, engine)
             df.to_json(out_path, orient="records", lines=True)
         except Exception as e:
-            log_error(f"[ERROR] {table_name}: {e}")
+            logger.error(f"[ERROR] {table_name}: {e}")
 
 def import_sqlite_to_postgres():
     """Import all .db files from allowed dirs to PostgreSQL."""
@@ -98,17 +98,17 @@ def import_sqlite_to_postgres():
     for folder in ALLOWED_ROOTS:
         for db_path in glob.glob(os.path.join(folder, "*.db")):
             if not is_safe_path(db_path, ALLOWED_ROOTS):
-                log_warning(f"[SKIP] Unsafe path: {db_path}")
+                logger.warning(f"[SKIP] Unsafe path: {db_path}")
                 continue
             sqlite_engine = create_sqlite_engine(f"sqlite:///{db_path}")
             insp = inspect(sqlite_engine)
             for table_name in insp.get_table_names():
-                log_info(f"Importing SQLite table {table_name} from {db_path} to PostgreSQL...")
+                logger.info(f"Importing SQLite table {table_name} from {db_path} to PostgreSQL...")
                 try:
                     df = pd.read_sql_table(table_name, sqlite_engine)
                     df.to_sql(table_name, engine, if_exists="replace", index=False)
                 except Exception as e:
-                    log_error(f"[ERROR] {db_path}:{table_name}: {e}")
+                    logger.error(f"[ERROR] {db_path}:{table_name}: {e}")
 
 def export_sqlite_to_json():
     """Export all tables from .db files in allowed dirs to .jsonl in log/."""
@@ -116,21 +116,21 @@ def export_sqlite_to_json():
     for folder in ALLOWED_ROOTS:
         for db_path in glob.glob(os.path.join(folder, "*.db")):
             if not is_safe_path(db_path, ALLOWED_ROOTS):
-                log_warning(f"[SKIP] Unsafe path: {db_path}")
+                logger.warning(f"[SKIP] Unsafe path: {db_path}")
                 continue
             sqlite_engine = create_sqlite_engine(f"sqlite:///{db_path}")
             insp = inspect(sqlite_engine)
             for table_name in insp.get_table_names():
                 out_path = os.path.join(LOG_DIR, f"{table_name}_from_sqlite.jsonl")
                 if not is_safe_path(out_path, ALLOWED_ROOTS):
-                    log_warning(f"[SKIP] Unsafe output path: {out_path}")
+                    logger.warning(f"[SKIP] Unsafe output path: {out_path}")
                     continue
-                log_info(f"Exporting SQLite table {table_name} from {db_path} to {out_path}...")
+                logger.info(f"Exporting SQLite table {table_name} from {db_path} to {out_path}...")
                 try:
                     df = pd.read_sql_table(table_name, sqlite_engine)
                     df.to_json(out_path, orient="records", lines=True)
                 except Exception as e:
-                    log_error(f"[ERROR] {db_path}:{table_name}: {e}")
+                    logger.error(f"[ERROR] {db_path}:{table_name}: {e}")
 
 def main():
     import argparse

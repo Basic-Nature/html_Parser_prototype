@@ -1,12 +1,14 @@
 import re
-from ..utils.shared_logger import log_info, log_debug, log_warning
+from ..utils.shared_logger import SharedLogger
 from ..utils.shared_logic import normalize_state_name, normalize_county_name
 from ..utils.user_prompt import UserPrompt, PromptCancelled
 from collections import defaultdict
 from ..bots.librarian import (
     ELECTION_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP
     )
-user_prompt = UserPrompt()
+
+logger = SharedLogger()
+prompt = UserPrompt()
 from typing import TYPE_CHECKING, List, Dict, Any, Optional
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -99,8 +101,8 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     score = 0.45 * year_score + 0.35 * type_score + 0.1 * title_score + 0.1 * ml_score
 
     if score < threshold:
-        log_debug(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type_: {ctype}")
-        log_info(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, total={score:.2f}")
+        logger.debug(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type_: {ctype}")
+        logger.info(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, total={score:.2f}")
     return score >= threshold
 
 def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "ContextCoordinator", context: dict, max_loops: int = 3, threshold: float = 0.85) -> List[Dict[str, Any]]:
@@ -116,21 +118,21 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
             if ml_verify_contest(c, coordinator, context, threshold=threshold):
                 verified.append(c)
         if verified:
-            log_info(f"[CONTEST SELECTOR] Feedback loop {loop+1}: {len(verified)} contests passed ML/NER verification.")
+            logger.info(f"[CONTEST SELECTOR] Feedback loop {loop+1}: {len(verified)} contests passed ML/NER verification.")
             return verified
-        log_warning(f"[CONTEST SELECTOR] Feedback loop {loop+1}: No contests passed ML/NER verification. Retrying...")
+        logger.warning(f"[CONTEST SELECTOR] Feedback loop {loop+1}: No contests passed ML/NER verification. Retrying...")
     # If still ambiguous, prompt user for clarification
-    log_warning("[yellow]Unable to confidently identify valid contests after feedback loop. Please clarify selection.[/yellow]")
+    logger.warning("[yellow]Unable to confidently identify valid contests after feedback loop. Please clarify selection.[/yellow]")
     grouped = defaultdict(list)
     for idx, c in enumerate(contests):
         grouped[(c.get('year', ''), c.get('type_', ''))].append((idx, c))
 
     for (year, ctype), items in sorted(grouped.items()):
-        log_info(f"[bold cyan]Year: {year or 'Unknown'}, Type: {ctype or 'Unknown'}[/bold cyan]")
+        logger.info(f"[bold cyan]Year: {year or 'Unknown'}, Type: {ctype or 'Unknown'}[/bold cyan]")
         for idx, c in items:
-            log_info(f"  [{idx}] {c.get('title', '')}")
+            logger.info(f"  [{idx}] {c.get('title', '')}")
     try:
-        choice = user_prompt.prompt_input(
+        choice = prompt.prompt_input(
             "[PROMPT] Enter contest indices (comma-separated), 'all', 'skip', or leave blank to skip: ",
             default="all",
             validator=lambda x: x == "all" or x == "skip" or all(
@@ -141,10 +143,10 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
             header="CONTEST FEEDBACK",
         ).strip().lower()
     except PromptCancelled:
-        log_warning("[yellow]Contest selection cancelled by user.[/yellow]")
+        logger.warning("[yellow]Contest selection cancelled by user.[/yellow]")
         return []
     if not choice or choice == "skip":
-        log_warning("[yellow]No contest selected. Skipping.[/yellow]")
+        logger.warning("[yellow]No contest selected. Skipping.[/yellow]")
         return []
     if choice == "all":
         return contests
@@ -157,9 +159,9 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
                 indices.append(idx)
     selected = [contests[i] for i in indices]
     # Log user feedback for ML improvement
-    log_debug(f"norm_state: {context.get('state')}, norm_county: {context.get('county')}, year: {context.get('year')}")
+    logger.debug(f"norm_state: {context.get('state')}, norm_county: {context.get('county')}, year: {context.get('year')}")
     for c in selected:
-        log_debug(f"Contest: {c.get('title', '')}, state: {c.get('state', '')}, county: {c.get('county', '')}, year: {c.get('year', '')}")
+        logger.debug(f"Contest: {c.get('title', '')}, state: {c.get('state', '')}, county: {c.get('county', '')}, year: {c.get('year', '')}")
         coordinator.submit_user_feedback("contest", "contest_title", c.get("title", ""), context)
     return selected
 
@@ -240,10 +242,10 @@ def select_contest(
         "contests": contests,
         "url": getattr(coordinator, "last_url", None) if hasattr(coordinator, "last_url") else None
     }
-    log_debug(f"DEBUG: selector_data['contests']: {selector_data.get('contests', None)}")
-    log_debug(f"[DEBUG] norm_state: {norm_state}, norm_county: {norm_county}, year: {year}")
-    log_debug(f"[DEBUG] noisy_patterns: {noisy_patterns}")
-    log_debug(f"[DEBUG] contests before filtering: {contests}")
+    logger.debug(f"DEBUG: selector_data['contests']: {selector_data.get('contests', None)}")
+    logger.debug(f"[DEBUG] norm_state: {norm_state}, norm_county: {norm_county}, year: {year}")
+    logger.debug(f"[DEBUG] noisy_patterns: {noisy_patterns}")
+    logger.debug(f"[DEBUG] contests before filtering: {contests}")
 
     # Helper for county matching
     def county_matches(contest_county):
@@ -274,22 +276,22 @@ def select_contest(
         elif not c.get("title") or c.get("title", "").strip().lower() in ["", "results", "summary"]:
             skip_reason = "empty/generic title"
         if skip_reason:
-            log_debug(f"Skipping contest '{c.get('title', '')}': {skip_reason}")
+            logger.debug(f"Skipping contest '{c.get('title', '')}': {skip_reason}")
             # PATCH: Add to fallback if it has a title
             if c.get("title"):
                 fallback_contests.append(c)
             continue
         filtered_contests.append(c)
 
-    log_debug(f"[DEBUG] Filtered contests: {filtered_contests}")
-    log_debug(f"[DEBUG] Number of filtered contests: {len(filtered_contests)}")
+    logger.debug(f"[DEBUG] Filtered contests: {filtered_contests}")
+    logger.debug(f"[DEBUG] Number of filtered contests: {len(filtered_contests)}")
     # PATCH: If no valid contests, fallback to any contest with a title
     if not filtered_contests and fallback_contests:
-        log_warning("[yellow]No contests passed strict filtering. Falling back to any contest with a title.[/yellow]")
+        logger.warning("[yellow]No contests passed strict filtering. Falling back to any contest with a title.[/yellow]")
         filtered_contests = fallback_contests
 
     if not filtered_contests:
-        log_warning("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
+        logger.warning("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")
         return None
 
     # --- Deduplicate by normalized title, year, and type ---
@@ -304,7 +306,7 @@ def select_contest(
     filtered_contests = unique_contests
 
     if not filtered_contests:
-        log_warning("[yellow]No valid contests detected after deduplication. Skipping.[/yellow]")
+        logger.warning("[yellow]No valid contests detected after deduplication. Skipping.[/yellow]")
         return None
 
     # --- ML/NER verification ---
@@ -316,7 +318,7 @@ def select_contest(
         # Try feedback loop for user clarification
         verified_contests = feedback_loop_verify_contests(filtered_contests, coordinator, context)
         if not verified_contests:
-            log_warning("[yellow]No contests passed ML/NER verification. Skipping.[/yellow]")
+            logger.warning("[yellow]No contests passed ML/NER verification. Skipping.[/yellow]")
             return None
 
     # --- Group by (year, type) for display ---
@@ -332,17 +334,17 @@ def select_contest(
             label = f"{state or 'Unknown State'} {county or ''} {year_val or 'Unknown'} {etype or 'Unknown'}"
         else:
             label = f"{year_val or 'Unknown'} {etype or 'Unknown'}"
-        log_info(f"[bold cyan]{label.strip()}[/bold cyan]")
+        logger.info(f"[bold cyan]{label.strip()}[/bold cyan]")
         for c in contests_in_group:
-            log_info(f"  [{idx}] {c.get('title', '')}")
+            logger.info(f"  [{idx}] {c.get('title', '')}")
             contest_indices.append(c)
             idx += 1
-    log_debug(f"[DEBUG] Number of contests displayed: {idx}")
+    logger.debug(f"[DEBUG] Number of contests displayed: {idx}")
 
     # --- Auto-select if only one contest ---
     if len(verified_contests) == 1:
         contest = ensure_contest_title(verified_contests[0])
-        log_info(f"[green]Only one contest found. Auto-selecting: {contest['title']}[/green]")
+        logger.info(f"[green]Only one contest found. Auto-selecting: {contest['title']}[/green]")
         if log_func:
             log_func(f"[CONTEST] Auto-selected: {contest['title']}")
         return [contest]
@@ -355,7 +357,7 @@ def select_contest(
 
     # --- Interactive prompt ---
     try:
-        choice = user_prompt.prompt_input(
+        choice = prompt.prompt_input(
             prompt_message,
             default="all",
             validator=lambda x: x == "all" or all(
@@ -367,13 +369,13 @@ def select_contest(
             log_func=log_func
         ).strip().lower()
     except PromptCancelled:
-        log_warning("[yellow]Contest selection cancelled by user.[/yellow]")
+        logger.warning("[yellow]Contest selection cancelled by user.[/yellow]")
         if log_func:
             log_func("[CONTEST] User cancelled contest selection.")
         return None
 
     if not choice:
-        log_warning("[yellow]No contest selected. Skipping.[/yellow]")
+        logger.warning("[yellow]No contest selected. Skipping.[/yellow]")
         if log_func:
             log_func("[CONTEST] No contest selected.")
         return None
@@ -392,7 +394,7 @@ def select_contest(
             if 0 <= idx < len(contest_indices):
                 indices.append(idx)
     if not indices:
-        log_warning("[yellow]No valid contest indices selected. Skipping.[/yellow]")
+        logger.warning("[yellow]No valid contest indices selected. Skipping.[/yellow]")
         if log_func:
             log_func("[CONTEST] No valid contest indices selected.")
         return None

@@ -26,7 +26,7 @@ from ..bots.librarian import (
     PARTY_KEYWORDS
 )
 from typing import List, Dict
-from ..utils.shared_logger import log_info, log_error, log_warning
+from ..utils.shared_logger import SharedLogger
 from ..config import BASE_DIR
 from typing import TYPE_CHECKING
 from ..utils.table_core import (
@@ -44,7 +44,7 @@ from ..utils.table_core import (
     robust_table_extraction,
     is_date_like,
 )
-
+logger = SharedLogger()
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
@@ -62,11 +62,11 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
         soup = BeautifulSoup(table_html, "html.parser")
         table = soup.find("table")
         if not table:
-            log_warning("[DYNAMIC_TABLE_EXTRACTOR] No <table> found in provided table_html.")
+            logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No <table> found in provided table_html.")
             return [], []
         rows = table.find_all("tr")
         if not rows:
-            log_warning("[DYNAMIC_TABLE_EXTRACTOR] No <tr> rows found in table_html.")
+            logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No <tr> rows found in table_html.")
             return [], []
         headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
         data = []
@@ -80,7 +80,7 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
                 headers = ["Precinct"] + headers
             for row in data:
                 row["Precinct"] = precinct
-        log_info(f"[DYNAMIC_TABLE_EXTRACTOR] Extracted {len(data)} rows from HTML table.")
+        logger.info(f"[DYNAMIC_TABLE_EXTRACTOR] Extracted {len(data)} rows from HTML table.")
         return headers, data
     candidates = find_tabular_candidates(page, context=context)
     enriched_candidates = []
@@ -91,7 +91,7 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
     enriched_candidates.sort(key=lambda c: c['score'], reverse=True)
     best = enriched_candidates[0] if enriched_candidates else None
     if best:
-        log_info(f"[DYNAMIC_TABLE_EXTRACTOR] Best candidate source: {best.get('source')}, score: {best.get('score'):.2f}")
+        logger.info(f"[DYNAMIC_TABLE_EXTRACTOR] Best candidate source: {best.get('source')}, score: {best.get('score'):.2f}")
         # --- PATCH: Attach context to each row if Precinct/panel_heading is present ---
         precinct = context.get("panel_heading") or context.get("Precinct")
         if precinct and "Precinct" not in best['headers']:
@@ -99,7 +99,7 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None):
             for row in best['rows']:
                 row["Precinct"] = precinct
         return best['headers'], best['rows']
-    log_warning("[DYNAMIC_TABLE_EXTRACTOR] No suitable table candidates found.")
+    logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No suitable table candidates found.")
     return [], []
 
 # --- Candidate Generation & Scoring ---
@@ -133,7 +133,7 @@ def find_tabular_candidates(page, context=None):
                 candidate["context"] = context.copy()
             candidates.append(candidate)
     except Exception as e:
-        log_warning(f"[DYNAMIC_TABLE_EXTRACTOR] DOM extraction failed: {e}")
+        logger.warning(f"[DYNAMIC_TABLE_EXTRACTOR] DOM extraction failed: {e}")
     # 3. Pattern-based extraction (if any patterns are approved)
     try:
         pattern_rows = extract_with_patterns(page, context=context)
@@ -166,7 +166,7 @@ def find_tabular_candidates(page, context=None):
                         candidate["context"] = context.copy()
                     candidates.append(candidate)
     except Exception as e:
-        log_warning(f"[DYNAMIC_TABLE_EXTRACTOR] Pattern extraction failed: {e}")
+        logger.warning(f"[DYNAMIC_TABLE_EXTRACTOR] Pattern extraction failed: {e}")
     return candidates
 
 def analyze_candidate_nlp(candidate, coordinator):
@@ -593,17 +593,17 @@ def review_dom_patterns(log_path=None):
     if log_path is None:
         log_path = get_safe_log_path()
     if not os.path.exists(log_path):
-        log_warning("No learned DOM patterns found.")
+        logger.warning("No learned DOM patterns found.")
         return
 
     with open(log_path, "rb") as f:
         entries = [orjson.loads(line) for line in f if line.strip()]
 
     for idx, entry in enumerate(entries):
-        log_info(f"\n[{idx}] Selector: {entry.get('selector')}")
-        log_info(f"    Example HTML: {entry.get('example_html')[:200]}...")
-        log_info(f"    Context: {entry.get('context')}")
-        log_info("-" * 40)
+        logger.info(f"\n[{idx}] Selector: {entry.get('selector')}")
+        logger.info(f"    Example HTML: {entry.get('example_html')[:200]}...")
+        logger.info(f"    Context: {entry.get('context')}")
+        logger.info("-" * 40)
 
     while True:
         cmd = input("\nEnter entry number to approve/delete, or 'q' to quit: ")
@@ -617,19 +617,19 @@ def review_dom_patterns(log_path=None):
                 action = input("Approve (a) or Delete (d) this entry? [a/d]: ").strip().lower()
                 if action == "d":
                     entries.pop(idx)
-                    log_warning("Entry deleted.")
+                    logger.warning("Entry deleted.")
                 elif action == "a":
                     entries[idx]["approved"] = True
-                    log_info("Entry approved.")
+                    logger.info("Entry approved.")
                 else:
-                    log_warning("Unknown action.")
+                    logger.warning("Unknown action.")
             else:
-                log_warning("Invalid entry number.")
+                logger.warning("Invalid entry number.")
         # Save changes
         with open(log_path, "wb") as f:
             for entry in entries:
                 f.write(orjson.dumps(entry) + b"\n")
-        log_info("Changes saved.")
+        logger.info("Changes saved.")
 
 def auto_approve_dom_pattern(selector, log_path=None, min_count=2):
     """
@@ -745,14 +745,14 @@ def is_candidate_major_row(headers, data, coordinator, context):
     if not headers or not data:
         headers, data = robust_table_extraction(context.get("page"), context)
         if not headers or not data:
-            log_error("[TABLE BUILDER] No data could be extracted from the page.")
+            logger.error("[TABLE BUILDER] No data could be extracted from the page.")
             return [], []
     candidate_major_headers = {"Candidate", "Election Day", "Early Voting", "Absentee Mail", "Total Votes"}
     if set(headers) == candidate_major_headers:
         structure_info = {"type_": "candidate-major", "candidate_col": 0, "ballot_types_cols": [1, 2, 3]}
     else:
         structure_info = detect_table_structure(headers, data, coordinator)
-    log_info(f"[TABLE BUILDER] Detected table structure: {structure_info}")        
+    logger.info(f"[TABLE BUILDER] Detected table structure: {structure_info}")        
     first_col = normalize_text(headers[0])
     return first_col in CANDIDATE_KEYWORDS and len(data) > 1
 
@@ -774,7 +774,7 @@ def is_precinct_major(headers, coordinator):
 def is_flat_candidate_table(headers):
     # Only candidate and total columns (no locations)
     if not headers:
-        log_error("[red][ERROR] No headers extracted from table. Skipping this table.[/red]")
+        logger.error("[red][ERROR] No headers extracted from table. Skipping this table.[/red]")
         return False
     first_col = normalize_text(headers[0])
     return (

@@ -3,35 +3,38 @@ import orjson
 import os
 from difflib import get_close_matches
 from .config import BASE_DIR
-from .utils.shared_logger import log_info, log_warning, log_error
+from .utils.shared_logger import SharedLogger, RichConsoleProxy
+from webapp.parser.utils.user_prompt import UserPrompt
 PARSER_DIR = os.path.join(os.path.dirname(__file__))
 INPUT_FOLDER = os.path.join(BASE_DIR, "input")
 OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")
 HINT_FILE = os.path.join(PARSER_DIR, "url_hint_overrides.txt")
 URLS_FILE = os.path.join(PARSER_DIR, "urls.txt")
-
+logger = SharedLogger()
+console = RichConsoleProxy()
+prompt = UserPrompt()
 def load_overrides():
     try:
         with open(HINT_FILE, "rb") as f:
             return orjson.loads(f.read())
     except FileNotFoundError:
-        log_info("[INFO] No overrides file found. Creating new one...")
+        logger.info("[INFO] No overrides file found. Creating new one...")
         return {}
     except Exception as e:
-        log_error(f"[ERROR] Failed to read {HINT_FILE}: {e}")
+        logger.error(f"[ERROR] Failed to read {HINT_FILE}: {e}")
         return {}
 
 def save_overrides(overrides):
     with open(HINT_FILE, "wb") as f:
         f.write(orjson.dumps(overrides))
-    log_info(f"[SAVED] {len(overrides)} entries written to {HINT_FILE}")
+    logger.info(f"[SAVED] {len(overrides)} entries written to {HINT_FILE}")
 
 def validate_entry(url_fragment, module_path):
     try:
         importlib.import_module(module_path)
         return True
     except ModuleNotFoundError:
-        log_warning(f"[INVALID] {url_fragment} → {module_path} (module not found)")
+        logger.warning(f"[INVALID] {url_fragment} → {module_path} (module not found)")
         parent = ".".join(module_path.split(".")[:-1])
         base = module_path.split(".")[-1]
         try:
@@ -39,7 +42,7 @@ def validate_entry(url_fragment, module_path):
             options = dir(pkg)
             suggestion = get_close_matches(base, options, n=1, cutoff=0.6)
             if suggestion:
-                log_info(f"    Suggest: {parent}.{suggestion[0]}")
+                logger.info(f"    Suggest: {parent}.{suggestion[0]}")
         except Exception:
             pass
         return False
@@ -49,17 +52,17 @@ def interactive_add_override(overrides):
     path = input("Enter module path (e.g. handlers.states.pennsylvania): ").strip()
     if frag and path:
         overrides[frag] = path
-        log_info(f"[ADDED] {frag} → {path}")
+        logger.info(f"[ADDED] {frag} → {path}")
 
 def list_urls():
     if not os.path.exists(URLS_FILE):
-        log_info("[INFO] No urls.txt found.")
+        logger.info("[INFO] No urls.txt found.")
         return []
     with open(URLS_FILE, "r", encoding="utf-8") as f:
         urls = [line.strip() for line in f if line.strip()]
-    log_info("\n[URLS.TXT ENTRIES]")
+    logger.info("\n[URLS.TXT ENTRIES]")
     for i, url in enumerate(urls, 1):
-        log_info(f"{i}. {url}")
+        logger.info(f"{i}. {url}")
     return urls
 
 def add_url():
@@ -67,53 +70,56 @@ def add_url():
     if url:
         with open(URLS_FILE, "a", encoding="utf-8") as f:
             f.write(url + "\n")
-        log_info(f"[ADDED] {url}")
+        logger.info(f"[ADDED] {url}")
 
 def list_files(folder, allow_delete=False):
-    log_info(f"\n[{os.path.basename(folder).upper()} FOLDER FILES]")
+    logger.info(f"\n[{os.path.basename(folder).upper()} FOLDER FILES]")
     files = os.listdir(folder)
     if not files:
-        log_info("  (empty)")
+        logger.info("  (empty)")
         return
     for i, fname in enumerate(files, 1):
-        log_info(f"{i}. {fname}")
+        logger.info(f"{i}. {fname}")
     if allow_delete and files:
         choice = input("Delete a file? Enter number or leave blank: ").strip()
         if choice.isdigit():
             idx = int(choice) - 1
             if 0 <= idx < len(files):
                 os.remove(os.path.join(folder, files[idx]))
-                log_warning(f"[DELETED] {files[idx]}")
+                logger.warning(f"[DELETED] {files[idx]}")
 
 def copy_file_to_folder(src_path, dest_folder):
     if not os.path.isfile(src_path):
-        log_error("[ERROR] File does not exist.")
+        logger.error("[ERROR] File does not exist.")
         return
     dest_path = os.path.join(dest_folder, os.path.basename(src_path))
     with open(src_path, "rb") as src, open(dest_path, "wb") as dst:
         dst.write(src.read())
-    log_info(f"[COPIED] {src_path} → {dest_path}")
+    logger.info(f"[COPIED] {src_path} → {dest_path}")
 
 def run_manager():
-    log_info("=== Data Management CLI ===")
+    console.panel("=== Data Management CLI ===", title="Menu", style="green")
     while True:
-        log_info("\nOptions:")
-        log_info(" 1. List/validate URL hint overrides")
-        log_info(" 2. Add URL hint override")
-        log_info(" 3. Save URL hint overrides")
-        log_info(" 4. List urls.txt entries")
-        log_info(" 5. Add URL to urls.txt")
-        log_info(" 6. List input folder files")
-        log_info(" 7. List output folder files")
-        log_info(" 8. Copy file to input folder")
-        log_info(" 9. Copy file to output folder")
-        log_info("10. Delete file from input folder")
-        log_info("11. Delete file from output folder")
-        log_info(" Q. Quit")
-        choice = input("Select: ").strip().lower()
+        menu = (
+            "\nOptions:\n"
+            " 1. List/validate URL hint overrides\n"
+            " 2. Add URL hint override\n"
+            " 3. Save URL hint overrides\n"
+            " 4. List urls.txt entries\n"
+            " 5. Add URL to urls.txt\n"
+            " 6. List input folder files\n"
+            " 7. List output folder files\n"
+            " 8. Copy file to input folder\n"
+            " 9. Copy file to output folder\n"
+            "10. Delete file from input folder\n"
+            "11. Delete file from output folder\n"
+            " Q. Quit"
+        )
+        console.panel(menu, title="Options", style="cyan")
+        choice = prompt.prompt_input("Select: ").strip().lower()
         if choice == "1":
             overrides = load_overrides()
-            log_info("\n[VALIDATION RESULTS]")
+            logger.info("\n[VALIDATION RESULTS]")
             for url, path in overrides.items():
                 validate_entry(url, path)
         elif choice == "2":
@@ -131,10 +137,10 @@ def run_manager():
         elif choice == "7":
             list_files(OUTPUT_FOLDER)
         elif choice == "8":
-            src = input("Path to file to copy to input/: ").strip()
+            src = prompt.prompt_input("Path to file to copy to input/: ").strip()
             copy_file_to_folder(src, INPUT_FOLDER)
         elif choice == "9":
-            src = input("Path to file to copy to output/: ").strip()
+            src = prompt.prompt_input("Path to file to copy to output/: ").strip()
             copy_file_to_folder(src, OUTPUT_FOLDER)
         elif choice == "10":
             list_files(INPUT_FOLDER, allow_delete=True)

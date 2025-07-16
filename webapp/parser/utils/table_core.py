@@ -30,7 +30,7 @@ from typing import List, Dict, Any, Tuple, TYPE_CHECKING
 import time
 from bs4 import BeautifulSoup
 import hashlib
-from ..utils.shared_logger import log_info, log_warning, log_error, log_alert
+from ..utils.shared_logger import SharedLogger
 from ..utils.ml_table_detector import detect_tables_ml
 from ..config import CACHE_DIR, PROJECT_ROOT, LOG_DIR
 from difflib import get_close_matches
@@ -50,7 +50,7 @@ from ..bots.librarian import (
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 # --- CONSTANTS & GLOBALS ---
-
+logger = SharedLogger()
 TABLE_STRUCTURE_CACHE_PATH = os.path.join(CACHE_DIR, "table_structure_cache.json")
 
 def get_safe_log_path(filename):
@@ -110,7 +110,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         if existing_headers:
             cached = get_cached_table_structure(domain, existing_headers)
             if cached:
-                log_info(f"[TABLE BUILDER] Using cached table structure for domain: {domain}")
+                logger.info(f"[TABLE BUILDER] Using cached table structure for domain: {domain}")
                 return cached.get("headers", []), cached.get("data", [])
 
     # --- ML context integration ---
@@ -138,7 +138,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                 "diagnostics": diagnostics_dom,
             })
     except Exception as e:
-        log_error(f"[TABLE BUILDER] DOM structure extraction failed: {e}")
+        logger.error(f"[TABLE BUILDER] DOM structure extraction failed: {e}")
         extraction_logs.append({
             "method": "repeated_dom",
             "error": str(e),
@@ -162,7 +162,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                 "diagnostics": diagnostics_pat,
             })
     except Exception as e:
-        log_error(f"[TABLE BUILDER] Pattern extraction failed: {e}")
+        logger.error(f"[TABLE BUILDER] Pattern extraction failed: {e}")
         extraction_logs.append({
             "method": "pattern",
             "error": str(e),
@@ -194,7 +194,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                         "diagnostics": diagnostics_tab,
                     })
     except Exception as e:
-        log_error(f"[TABLE BUILDER] Table extraction failed: {e}")
+        logger.error(f"[TABLE BUILDER] Table extraction failed: {e}")
         extraction_logs.append({
             "method": "table",
             "error": str(e),
@@ -220,7 +220,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                 "diagnostics": diagnostics_loc,
             })
     except Exception as e:
-        log_error(f"[TABLE BUILDER] Table-with-heading extraction failed: {e}")
+        logger.error(f"[TABLE BUILDER] Table-with-heading extraction failed: {e}")
         extraction_logs.append({
             "method": "table_with_heading",
             "error": str(e),
@@ -245,7 +245,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                     "diagnostics": diagnostics_ml,
                 })
     except Exception as e:
-        log_error(f"[TABLE BUILDER] ML table detection failed: {e}")
+        logger.error(f"[TABLE BUILDER] ML table detection failed: {e}")
         extraction_logs.append({
             "method": "ml_table_detection",
             "error": str(e),
@@ -270,7 +270,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                     "diagnostics": diagnostics_nested,
                 })
     except Exception as e:
-        log_error(f"[TABLE BUILDER] Nested table extraction failed: {e}")
+        logger.error(f"[TABLE BUILDER] Nested table extraction failed: {e}")
         extraction_logs.append({
             "method": "nested_table",
             "error": str(e),
@@ -295,7 +295,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                     "diagnostics": diagnostics_plugin,
                 })
     except Exception as e:
-        log_error(f"[TABLE BUILDER] Plugin extraction failed: {e}")
+        logger.error(f"[TABLE BUILDER] Plugin extraction failed: {e}")
         extraction_logs.append({
             "method": "plugin",
             "error": str(e),
@@ -333,7 +333,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                     "diagnostics": diagnostics_fallback,
                 })
     except Exception as e:
-        log_error(f"[TABLE BUILDER] HTML fallback extraction failed: {e}")
+        logger.error(f"[TABLE BUILDER] HTML fallback extraction failed: {e}")
         extraction_logs.append({
             "method": "html_fallback",
             "error": str(e),
@@ -342,7 +342,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "diagnostics": None,
         })
 
-    log_info(f"[TABLE BUILDER] Extraction summary: {orjson.dumps(safe_json(extraction_logs), option=orjson.OPT_INDENT_2)}")
+    logger.info(f"[TABLE BUILDER] Extraction summary: {orjson.dumps(safe_json(extraction_logs), option=orjson.OPT_INDENT_2)}")
 
     # --- Deduplicate tables by header signature ---
     unique_tables = {}
@@ -382,7 +382,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                 "entity_info": entity_info,
                 "context": extraction_context
             })
-            log_info(f"[TABLE BUILDER] Cached table structure for domain: {domain}")
+            logger.info(f"[TABLE BUILDER] Cached table structure for domain: {domain}")
 
         return combined_headers, combined_data
 
@@ -398,10 +398,10 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "context": extraction_context
         })
         if headers and data:
-            log_warning("[TABLE BUILDER] Fallback NLP extraction used. Only candidate/vote pairs extracted.")
+            logger.warning("[TABLE BUILDER] Fallback NLP extraction used. Only candidate/vote pairs extracted.")
             return headers, data
     except Exception as e:
-        log_error(f"[TABLE BUILDER] NLP fallback extraction failed: {e}")
+        logger.error(f"[TABLE BUILDER] NLP fallback extraction failed: {e}")
         extraction_logs.append({
             "method": "nlp_fallback",
             "error": str(e),
@@ -409,7 +409,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             "context": extraction_context
         })
 
-    log_warning("[TABLE BUILDER] No extraction method succeeded.")
+    logger.warning("[TABLE BUILDER] No extraction method succeeded.")
     return [], []
 
 # ===================================================================
@@ -584,10 +584,10 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
     if coordinator is None:
         coordinator = ContextCoordinator()
     if table is None:
-        log_error("[TABLE BUILDER][extract_table_data] Table locator is None.")
+        logger.error("[TABLE BUILDER][extract_table_data] Table locator is None.")
         return [], [], {}
 
-    log_info("[TABLE BUILDER][extract_table_data] Starting table extraction.")
+    logger.info("[TABLE BUILDER][extract_table_data] Starting table extraction.")
     headers = []
     data = []
     entity_preview = {
@@ -769,7 +769,7 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
 
         # --- Automated feedback/learning: log if location_col is missing or suspect ---
         if not location_col or len(entity_preview["locations"]) == 0:
-            log_warning(f"[TABLE BUILDER][extract_table_data] No valid location column {location_col} or values detected {entity_preview['locations']}. Consider user/ML feedback.")
+            logger.warning(f"[TABLE BUILDER][extract_table_data] No valid location column {location_col} or values detected {entity_preview['locations']}. Consider user/ML feedback.")
 
         # --- Percent Reported Value Extraction ---
         percent_value = ""
@@ -809,15 +809,15 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
             f"LocCol: [bold]{loc_col_disp}[/bold], "
             f"PctCol: [bold]{pct_col_disp}[/bold]"
         )
-        log_alert(summary)
+        logger.alert(summary)
         if unique_locations:
-            log_info(f"[blue]Unique {loc_col_disp}s: {unique_locations}[/blue]")
+            logger.info(f"[blue]Unique {loc_col_disp}s: {unique_locations}[/blue]")
         else:
-            log_warning(f"[yellow]No unique {loc_col_disp}s detected in data.[/yellow]")
+            logger.warning(f"[yellow]No unique {loc_col_disp}s detected in data.[/yellow]")
         if unique_candidates:
-            log_info(f"[magenta]Unique Candidates: {unique_candidates}[/magenta]")
+            logger.info(f"[magenta]Unique Candidates: {unique_candidates}[/magenta]")
         else:
-            log_warning(f"[yellow]No unique candidates detected in data.[/yellow]")
+            logger.warning(f"[yellow]No unique candidates detected in data.[/yellow]")
         # Optional: show a compact table preview of the first 2 rows
         if data:
             from rich.table import Table as RichTable
@@ -826,12 +826,12 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
                 preview_table.add_column(h)
             for row in data[:2]:
                 preview_table.add_row(*(str(row.get(h, "")) for h in headers))
-            log_alert(preview_table)
+            logger.alert(preview_table)
         # If not headers and data, fallback to generic headers
         if not headers and data:
             max_cols = max(len(row) for row in data)
             headers = [f"Column {i+1}" for i in range(max_cols)]
-            log_warning("[TABLE BUILDER][extract_table_data] No headers but there is data. Generating generic headers.")
+            logger.warning("[TABLE BUILDER][extract_table_data] No headers but there is data. Generating generic headers.")
             new_data = []
             for row in data:
                 new_row = {}
@@ -841,13 +841,13 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
             data = new_data
 
         if not headers and not data:
-            log_warning("[TABLE BUILDER][extract_table_data] Empty table encountered.")
+            logger.warning("[TABLE BUILDER][extract_table_data] Empty table encountered.")
 
     except Exception as e:
-        log_error(f"[TABLE BUILDER][extract_table_data] Malformed HTML or extraction error: {e}")
+        logger.error(f"[TABLE BUILDER][extract_table_data] Malformed HTML or extraction error: {e}")
         return [], [], {}
 
-    log_info(f"[TABLE BUILDER][extract_table_data] Finished: {len(data)} rows, {len(headers)} columns.")
+    logger.info(f"[TABLE BUILDER][extract_table_data] Finished: {len(data)} rows, {len(headers)} columns.")
     return headers, data, entity_preview
 
 def guess_headers_from_row(row, known_keywords=None, context=None):
@@ -857,7 +857,7 @@ def guess_headers_from_row(row, known_keywords=None, context=None):
     """
     diagnostics = {}
     if row is None:
-        log_warning("[TABLE BUILDER][guess_headers_from_row] Row is None, cannot guess headers.")
+        logger.warning("[TABLE BUILDER][guess_headers_from_row] Row is None, cannot guess headers.")
         diagnostics["error"] = "Row is None"
         return [], diagnostics
     if known_keywords is None:
@@ -888,11 +888,11 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     """
     if coordinator is None:
         coordinator = ContextCoordinator()
-    log_info("[TABLE_BUILDER][extract_rows_and_headers_from_dom] Starting DOM structure extraction.")
+    logger.info("[TABLE_BUILDER][extract_rows_and_headers_from_dom] Starting DOM structure extraction.")
     repeated_rows = extract_repeated_dom_structures(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
-    log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Found {len(repeated_rows)} repeated rows.")
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Found {len(repeated_rows)} repeated rows.")
     if not repeated_rows:
-        log_warning("[TABLE_BUILDER][extract_rows_and_headers_from_dom] No repeated rows found.")
+        logger.warning("[TABLE_BUILDER][extract_rows_and_headers_from_dom] No repeated rows found.")
         return [], [], {"diagnostics": "No repeated rows found."}
 
     # --- Heuristic header detection block ---
@@ -900,28 +900,28 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     header_row_idx = None
     for idx, (heading, row) in enumerate(repeated_rows[:10]):
         if row is None:
-            log_warning(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Row locator is None at index {idx}. Skipping.")
+            logger.warning(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Row locator is None at index {idx}. Skipping.")
             continue
         cells = row.locator("> *")
         cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
-        log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Checking row {idx} for headers: {cell_texts}")
+        logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Checking row {idx} for headers: {cell_texts}")
         # Heuristic: header row if at least 2 known fields or all non-numeric
         if is_likely_header(cell_texts) or all(not re.match(r"^\d+([,.]\d+)?$", c) for c in cell_texts):
             headers = cell_texts
             header_row_idx = idx
-            log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Detected header row at index {idx}: {headers}")
+            logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Detected header row at index {idx}: {headers}")
             break
     if headers is not None:
         repeated_rows = repeated_rows[header_row_idx + 1 :]
     else:
         headers, _ = guess_headers_from_row(repeated_rows[0][1], context=context or {})
-        log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Guessed headers from first row: {headers}")
+        logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Guessed headers from first row: {headers}")
 
     # --- Merge split header rows (e.g., two header rows) ---
     if len(repeated_rows) > 1:
         first_row_cells = [repeated_rows[0][1].locator("> *").nth(i).inner_text().strip() for i in range(repeated_rows[0][1].locator("> *").count())]
         if all(c.isalpha() or c == "" for c in first_row_cells) and any(c for c in first_row_cells):
-            log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Merging split header rows: {headers} + {first_row_cells}")
+            logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Merging split header rows: {headers} + {first_row_cells}")
             headers = [" ".join(filter(None, [h, f])) for h, f in zip(headers, first_row_cells)]
             repeated_rows = repeated_rows[1:]
 
@@ -931,7 +931,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         cells = row.locator("> *")
         cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
         sample_rows.append(cell_texts)
-    log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Sample rows for stats: {sample_rows[:3]}")
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Sample rows for stats: {sample_rows[:3]}")
 
     # --- Column stats ---
     col_stats = []
@@ -946,7 +946,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
             "unique_vals": unique_vals,
             "values": values,
         })
-    log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Column stats: {col_stats}")
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Column stats: {col_stats}")
 
     # --- Build all data rows before filtering ---
     all_panel_rows = []
@@ -964,7 +964,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
             removed_footer_rows.append(row)
         else:
             filtered_data.append(row)
-    log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Removed {len(removed_footer_rows)} footer/summary rows.")
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Removed {len(removed_footer_rows)} footer/summary rows.")
 
     # --- Remove outlier/empty rows, log what is removed ---
     final_data = []
@@ -974,7 +974,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
             removed_empty_rows.append(row)
         else:
             final_data.append(row)
-    log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Removed {len(removed_empty_rows)} empty/outlier rows.")
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Removed {len(removed_empty_rows)} empty/outlier rows.")
 
     # --- Diagnostics dictionary ---
     diagnostics = {
@@ -988,7 +988,7 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
         "final_col_count": len(headers),
     }
 
-    log_info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Finished: {len(final_data)} rows, {len(headers)} columns.")
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Finished: {len(final_data)} rows, {len(headers)} columns.")
     return headers, final_data, diagnostics
 
 def extract_with_patterns(page, context=None, log_path=None):
@@ -1087,7 +1087,7 @@ def fallback_nlp_candidate_vote_scan(page):
         if label is not None:
             data.append({"Label": label, "Votes": vote_val})
     headers = ["Label", "Votes"]
-    log_info(f"[TABLE BUILDER] Robust NLP fallback: {len(data)} rows, {len(headers)} columns.")
+    logger.info(f"[TABLE BUILDER] Robust NLP fallback: {len(data)} rows, {len(headers)} columns.")
     return headers, data
 
 def extract_repeated_dom_structures(page, container_selectors=None, min_row_count=2, extra_keywords=None):
@@ -1157,7 +1157,7 @@ def extract_all_candidates_from_data(headers, data, extraction_context=None):
         candidate_col = "Candidate"
     # 4. If still not found, skip extraction
     if not candidate_col:
-        log_warning("[extract_all_candidates_from_data] No candidate column found in headers or context.")
+        logger.warning("[extract_all_candidates_from_data] No candidate column found in headers or context.")
         return candidates
 
     for row in data:
@@ -1201,7 +1201,7 @@ def ml_based_table_detection(page, extraction_context=None):
                 results.append((headers, data, diagnostics))
         return results
     except Exception as e:
-        log_error(f"[ML TABLE DETECTION] Error: {e}")
+        logger.error(f"[ML TABLE DETECTION] Error: {e}")
         return []
     
 # 2. Nested table extraction (see handle_nested_tables)
@@ -1223,7 +1223,7 @@ def nested_table_extraction(page):
                     results.append((headers, data, diagnostics))
         return results
     except Exception as e:
-        log_error(f"[NESTED TABLE EXTRACTION] Error: {e}")
+        logger.error(f"[NESTED TABLE EXTRACTION] Error: {e}")
         return []
 
 # 3. Robust HTML fallback using BeautifulSoup (see robust_html_fallback)
@@ -1255,7 +1255,7 @@ def robust_html_fallback_extraction(page):
                 all_tables.append((headers, data, diagnostics))
         return all_tables
     except Exception as e:
-        log_error(f"[HTML FALLBACK] Error: {e}")
+        logger.error(f"[HTML FALLBACK] Error: {e}")
         return []
 
 # 4. Custom per-county or per-state extraction strategies (plug-in architecture)
@@ -1280,10 +1280,10 @@ def custom_plugin_extraction(page, extraction_context=None):
                         if headers and data:
                             results.append((headers, data, diagnostics))
             except Exception as e:
-                log_error(f"[PLUGIN EXTRACTION] Plugin {plugin}: {e}")
+                logger.error(f"[PLUGIN EXTRACTION] Plugin {plugin}: {e}")
         return results
     except Exception as e:
-        log_error(f"[PLUGIN EXTRACTION] Error: {e}")
+        logger.error(f"[PLUGIN EXTRACTION] Error: {e}")
         return []
 
 # 5. Feedback/correction loop for user-in-the-loop extraction
@@ -1294,10 +1294,10 @@ def feedback_correction_loop(headers, data, extraction_context=None):
     """
     try:
         if extraction_context and extraction_context.get("interactive", []):
-            log_info("\n[FEEDBACK] Review extracted headers and data:")
-            log_info("Headers:", headers)
+            logger.info("\n[FEEDBACK] Review extracted headers and data:")
+            logger.info("Headers:", headers)
             for i, row in enumerate(data[:5]):
-                log_info(f"Row {i+1}:", row)
+                logger.info(f"Row {i+1}:", row)
             resp = input("Are the headers and data correct? (y/n): ").strip().lower()
             if resp == "n":
                 new_headers = input("Enter corrected headers as comma-separated values: ").strip().split(",")
@@ -1306,7 +1306,7 @@ def feedback_correction_loop(headers, data, extraction_context=None):
                 # For brevity, only headers are corrected here
         return headers, data
     except Exception as e:
-        log_error(f"[FEEDBACK LOOP] Error: {e}")
+        logger.error(f"[FEEDBACK LOOP] Error: {e}")
         return headers, data
 
 # --- CLIENT-SIDE UNVALIDATED URL REDIRECTION MITIGATION ---
@@ -1416,10 +1416,10 @@ def harmonize_headers_and_data(headers: list, data: list, context: dict = None) 
 
     # 8. Log unique locations and warn if only one unique value
     unique_locations = set(row.get(location_col, "") for row in harmonized if location_col and location_col in row)
-    log_info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
-    log_info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
+    logger.info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
+    logger.info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
     if location_col and len(unique_locations) <= 1:
-        log_warning(f"[HARMONIZE] WARNING: Only one unique value found in location column '{location_col}'. Extraction may be incorrect.")
+        logger.warning(f"[HARMONIZE] WARNING: Only one unique value found in location column '{location_col}'. Extraction may be incorrect.")
 
     # 9. Reorder columns: Precinct, candidates, ballot types, then others
     candidate_cols = [h for h in keep if any(k in h.lower() for k in CANDIDATE_KEYWORDS)]
@@ -1641,9 +1641,9 @@ def nlp_entity_annotate_table(
     """
     if coordinator is None:
         coordinator = ContextCoordinator()
-    log_info("[TABLE_CORE][nlp_entity_annotate_table] Starting NLP entity annotation.")
+    logger.info("[TABLE_CORE][nlp_entity_annotate_table] Starting NLP entity annotation.")
     if not coordinator:
-        log_warning("[TABLE_CORE][nlp_entity_annotate_table] No coordinator provided, skipping NLP annotation.")
+        logger.warning("[TABLE_CORE][nlp_entity_annotate_table] No coordinator provided, skipping NLP annotation.")
         return headers, data, {}
 
     # ML context integration
@@ -1663,9 +1663,9 @@ def nlp_entity_annotate_table(
     }
     # Optionally: log ML context for debugging
     if ml_confidence is not None:
-        log_info(f"[TABLE_CORE][nlp_entity_annotate_table] ML confidence: {ml_confidence:.2f}")
+        logger.info(f"[TABLE_CORE][nlp_entity_annotate_table] ML confidence: {ml_confidence:.2f}")
     if association_log:
-        log_info(f"[TABLE_CORE][nlp_entity_annotate_table] Association log: {association_log}")
+        logger.info(f"[TABLE_CORE][nlp_entity_annotate_table] Association log: {association_log}")
 
     # Analyze headers for entity types
     header_entities = {}
@@ -1721,7 +1721,7 @@ def nlp_entity_annotate_table(
     for k in entity_info:
         if isinstance(entity_info[k], set):
             entity_info[k] = sorted(entity_info[k])
-    log_info(f"[TABLE_CORE][nlp_entity_annotate_table] Entity summary: {entity_info}")
+    logger.info(f"[TABLE_CORE][nlp_entity_annotate_table] Entity summary: {entity_info}")
     return headers, annotated_data, entity_info
 
 def verify_table_structure(
@@ -1741,7 +1741,7 @@ def verify_table_structure(
     """
     if coordinator is None:
         coordinator = ContextCoordinator()
-    log_info("[TABLE_CORE][verify_table_structure] Verifying table structure using NLP and DOM info.")
+    logger.info("[TABLE_CORE][verify_table_structure] Verifying table structure using NLP and DOM info.")
     missing = []
     # Check for location
     has_location = bool(entity_info.get("locations", [])) or any(
@@ -1768,7 +1768,7 @@ def verify_table_structure(
     if not has_numbers:
         missing.append("numbers")
     verified = len(missing) == 0
-    log_info(f"[TABLE_CORE][verify_table_structure] Verified: {verified}, Missing: {missing}")
+    logger.info(f"[TABLE_CORE][verify_table_structure] Verified: {verified}, Missing: {missing}")
     return verified, missing
 
 def progressive_table_verification(headers, data, coordinator, context):
@@ -1777,7 +1777,7 @@ def progressive_table_verification(headers, data, coordinator, context):
     Logs and verifies each component: location, ballot types, candidates, totals.
     Returns (verified_headers, verified_data, structure_info)
     """
-    log_info("[TABLE BUILDER][progressive_table_verification] Starting verification of extracted table.")
+    logger.info("[TABLE BUILDER][progressive_table_verification] Starting verification of extracted table.")
     if coordinator is None:
         coordinator = ContextCoordinator()
     # 1. Detect location column
@@ -1788,16 +1788,16 @@ def progressive_table_verification(headers, data, coordinator, context):
             location_header = h
             break
     if not location_header:
-        log_warning("[TABLE BUILDER][progressive_table_verification] No location column detected.")
+        logger.warning("[TABLE BUILDER][progressive_table_verification] No location column detected.")
     else:
-        log_info(f"[TABLE BUILDER][progressive_table_verification] Detected location column: {location_header}")
+        logger.info(f"[TABLE BUILDER][progressive_table_verification] Detected location column: {location_header}")
 
     # 2. Detect ballot type columns
     ballot_types_headers = [h for h in headers if any(bt.lower() in h.lower() for bt in BALLOT_TYPES)]
     if not ballot_types_headers:
-        log_warning("[TABLE BUILDER][progressive_table_verification] No ballot type columns detected.")
+        logger.warning("[TABLE BUILDER][progressive_table_verification] No ballot type columns detected.")
     else:
-        log_info(f"[TABLE BUILDER][progressive_table_verification] Detected ballot type columns: {ballot_types_headers}")
+        logger.info(f"[TABLE BUILDER][progressive_table_verification] Detected ballot type columns: {ballot_types_headers}")
 
     # 3. Detect candidate columns (using NER)
     candidate_headers = []
@@ -1806,23 +1806,23 @@ def progressive_table_verification(headers, data, coordinator, context):
         if any(label == "PERSON" for ent, label in ents):
             candidate_headers.append(h)
     if not candidate_headers:
-        log_warning("[TABLE BUILDER][progressive_table_verification] No candidate columns detected.")
+        logger.warning("[TABLE BUILDER][progressive_table_verification] No candidate columns detected.")
     else:
-        log_info(f"[TABLE BUILDER][progressive_table_verification] Detected candidate columns: {candidate_headers}")
+        logger.info(f"[TABLE BUILDER][progressive_table_verification] Detected candidate columns: {candidate_headers}")
 
     # 4. Detect Grand Total column
     total_header = next((h for h in headers if "total" in h.lower()), None)
     if not total_header:
-        log_warning("[TABLE BUILDER][progressive_table_verification] No Grand Total column detected.")
+        logger.warning("[TABLE BUILDER][progressive_table_verification] No Grand Total column detected.")
     else:
-        log_info(f"[TABLE BUILDER][progressive_table_verification] Detected Grand Total column: {total_header}")
+        logger.info(f"[TABLE BUILDER][progressive_table_verification] Detected Grand Total column: {total_header}")
 
     # 5. Verify row structure
     for i, row in enumerate(data[:5]):
         loc_val = row.get(location_header, "")
         ballot_vals = [row.get(h, "") for h in ballot_types_headers]
         candidate_vals = [row.get(h, "") for h in candidate_headers]
-        log_info(f"[TABLE BUILDER][progressive_table_verification] Row {i}: location={loc_val}, ballot_types={ballot_vals}, candidates={candidate_vals}")
+        logger.info(f"[TABLE BUILDER][progressive_table_verification] Row {i}: location={loc_val}, ballot_types={ballot_vals}, candidates={candidate_vals}")
 
     # 6. Structure info summary
     structure_info = {
@@ -1832,7 +1832,7 @@ def progressive_table_verification(headers, data, coordinator, context):
         "total_header": total_header,
         "verified": all([location_header, ballot_types_headers, candidate_headers, total_header])
     }
-    log_info(f"[TABLE BUILDER][progressive_table_verification] Structure summary: {structure_info}")
+    logger.info(f"[TABLE BUILDER][progressive_table_verification] Structure summary: {structure_info}")
 
     # Optionally: prompt for correction or fallback if not verified
     # Optionally: persist structure_info for feedback learning
@@ -1867,7 +1867,7 @@ def rescan_and_verify(headers: List[str], data: List[Dict[str, Any]], coordinato
         headers = new_headers
         # Optionally, re-harmonize data
         headers, data = harmonize_headers_and_data(headers, data)
-    log_info(f"[TABLE BUILDER] Rescan and verify final table: {len(data)} rows, {len(headers)} columns (learned structure).")
+    logger.info(f"[TABLE BUILDER] Rescan and verify final table: {len(data)} rows, {len(headers)} columns (learned structure).")
     return headers, data, passed
 
 # ===================================================================
@@ -1993,7 +1993,7 @@ def detect_table_structure(
     """
     if coordinator is None:
         coordinator = ContextCoordinator()
-    log_info("[TABLE_CORE][detect_table_structure] Analyzing table structure.")
+    logger.info("[TABLE_CORE][detect_table_structure] Analyzing table structure.")
     if entity_info is None:
         entity_info = {}
 
@@ -2140,7 +2140,7 @@ def pivot_to_wide_format(
     coordinator: "ContextCoordinator",
     context: dict = None
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
-    log_info("[TABLE_CORE][pivot_to_wide_format] Pivoting to wide format.")
+    logger.info("[TABLE_CORE][pivot_to_wide_format] Pivoting to wide format.")
     # 1. Detect location header robustly and normalize to "Precinct"
     if coordinator is None:
         coordinator = ContextCoordinator()
@@ -2220,7 +2220,7 @@ def pivot_to_wide_format(
             grand_total += cand_total
         out_row["Grand Total"] = str(grand_total)
         wide_data.append(out_row)
-    log_info(f"[TABLE_CORE][pivot_to_wide_format] Wide format: {len(wide_data)} rows, {len(wide_headers)} columns.")
+    logger.info(f"[TABLE_CORE][pivot_to_wide_format] Wide format: {len(wide_data)} rows, {len(wide_headers)} columns.")
     return wide_headers, wide_data
 
 def pivot_precinct_major_to_wide(
@@ -2309,7 +2309,7 @@ def pivot_precinct_major_to_wide(
     output_rows = []
     for row in data:
         if len(row) != len(headers):
-            log_warning(f"[TABLE BUILDER] pivot_precinct_major_to_wide Row length mismatch: {row}")
+            logger.warning(f"[TABLE BUILDER] pivot_precinct_major_to_wide Row length mismatch: {row}")
         out_row = {}
         out_row[location_header] = row.get(location_header, "")
         out_row[percent_header] = row.get(percent_header, "Fully Reported")
@@ -2353,7 +2353,7 @@ def pivot_precinct_major_to_wide(
         except Exception:
             totals_row[h] = ""
     output_rows.append(totals_row)
-    log_info(f"[TABLE BUILDER] Build dynamic tables Final table: {len(output_rows)} rows, {len(output_headers)} columns.")
+    logger.info(f"[TABLE BUILDER] Build dynamic tables Final table: {len(output_rows)} rows, {len(output_headers)} columns.")
     return output_headers, output_rows
 
 def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoordinator") -> Tuple[str, str]:
@@ -2444,7 +2444,7 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     if not percent_header and headers:
         percent_header = next((h for h in headers if "%" in h), None)
 
-    log_info(f"[TABLE BUILDER] Location header detected: {location_header}, Percent header detected: {percent_header}")
+    logger.info(f"[TABLE BUILDER] Location header detected: {location_header}, Percent header detected: {percent_header}")
     return location_header, percent_header
 
 def is_likely_header(row):
@@ -2527,7 +2527,7 @@ def dynamic_required_columns(context, default_required=None):
 
 def log_failed_container(page, container, selector, idx, error_msg):
     if container is None:
-        log_error(f"[TABLE BUILDER] log_failed_container: container is None for selector {selector} idx {idx}")
+        logger.error(f"[TABLE BUILDER] log_failed_container: container is None for selector {selector} idx {idx}")
         return
     try:
         html = container.evaluate("el => el.outerHTML")
@@ -2550,9 +2550,9 @@ def log_failed_container(page, container, selector, idx, error_msg):
         log_path = get_safe_log_path(f"failed_container_{selector.replace('.', '_')}_{idx}.json")
         with open(log_path, "wb") as f:
             f.write(orjson.dumps(log_entry))
-        log_error(f"[TABLE BUILDER] Failed container logged: {log_path}")
+        logger.error(f"[TABLE BUILDER] Failed container logged: {log_path}")
     except Exception as e:
-        log_error(f"[TABLE BUILDER] Could not log failed container: {e}")
+        logger.error(f"[TABLE BUILDER] Could not log failed container: {e}")
 
 
 
@@ -2575,8 +2575,8 @@ def suggest_new_row_classes_from_logs(log_dir):
     # Suggest top classes/IDs as new selectors
     suggested_classes = [c for c, _ in class_counter.most_common(10)]
     suggested_ids = [pid for pid, _ in parent_counter.most_common(5)]
-    log_info("Suggested new row classes:", suggested_classes)
-    log_info("Suggested new row IDs:", suggested_ids)
+    logger.info("Suggested new row classes:", suggested_classes)
+    logger.info("Suggested new row IDs:", suggested_ids)
     return suggested_classes, suggested_ids
 
 def load_dom_patterns(log_path=None):
@@ -2633,7 +2633,7 @@ def review_learned_table_structures(log_path=None):
     if log_path is None:
         log_path = get_safe_log_path("table_structure_learning_log.jsonl")
     if not os.path.exists(log_path):
-        log_info("No learned table structures found.")
+        logger.info("No learned table structures found.")
         return
 
     entries = []
@@ -2646,11 +2646,11 @@ def review_learned_table_structures(log_path=None):
                 continue
 
     for idx, entry in enumerate(entries):
-        log_info(f"\n[{idx}] Contest: {entry.get('contest_title', [])}")
-        log_info(f"    Headers: {entry.get('headers', [])}")
-        log_info(f"    Context: {entry.get('context', [])}")
-        log_info(f"    Result: {entry.get('result', [])}")
-        log_info("-" * 40)
+        logger.info(f"\n[{idx}] Contest: {entry.get('contest_title', [])}")
+        logger.info(f"    Headers: {entry.get('headers', [])}")
+        logger.info(f"    Context: {entry.get('context', [])}")
+        logger.info(f"    Result: {entry.get('result', [])}")
+        logger.info("-" * 40)
 
     while True:
         cmd = input("\nEnter entry number to delete/edit, or 'q' to quit: ").strip()
@@ -2662,20 +2662,20 @@ def review_learned_table_structures(log_path=None):
                 action = input("Delete (d) or Edit (e) this entry? [d/e]: ").strip().lower()
                 if action == "d":
                     entries.pop(idx)
-                    log_info("Entry deleted.")
+                    logger.info("Entry deleted.")
                 elif action == "e":
                     new_headers = input("Enter new headers as comma-separated values: ").strip().split(",")
                     entries[idx]["headers"] = [h.strip() for h in new_headers]
-                    log_info("Headers updated.")
+                    logger.info("Headers updated.")
                 else:
-                    log_info("Unknown action.")
+                    logger.info("Unknown action.")
             else:
-                log_warning("Invalid entry number.")
+                logger.warning("Invalid entry number.")
         # Save changes
         with open(log_path, "wb") as f:
             for entry in entries:
                 f.write(orjson.dumps(entry) + b"\n")
-        log_info("Changes saved.")
+        logger.info("Changes saved.")
 
 def table_signature(headers):
     return hashlib.md5(orjson.dumps(headers, sort_keys=True)).hexdigest()
@@ -2762,7 +2762,7 @@ def profile_extraction_step(func):
         start = time.time()
         result = func(*args, **kwargs)
         elapsed = time.time() - start
-        log_info(f"[PROFILE] {func.__name__} took {elapsed:.3f}s")
+        logger.info(f"[PROFILE] {func.__name__} took {elapsed:.3f}s")
         return result
     return wrapper
 
@@ -2770,7 +2770,7 @@ def log_decision(decision, context=None):
     """
     Log not just errors but also decisions made by heuristics for later review.
     """
-    log_info(f"[DECISION] {decision} | Context: {context}")
+    logger.info(f"[DECISION] {decision} | Context: {context}")
 
 def robust_html_fallback(page):
     """
@@ -2792,7 +2792,7 @@ def robust_html_fallback(page):
             all_tables.append((headers, data))
         return all_tables
     except Exception as e:
-        log_error(f"[HTML FALLBACK] Error: {e}")
+        logger.error(f"[HTML FALLBACK] Error: {e}")
         return []
 
 def handle_nested_tables(page):

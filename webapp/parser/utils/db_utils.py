@@ -12,9 +12,9 @@ from .models import (
     StagingElectionResult, WarehouseElectionResult, Base,
     State, County, Party,
 )
-from .shared_logger import log_error
+from .shared_logger import SharedLogger
 from ..config import POSTGRES_URL, CONTEXT_LIBRARY_PATH
-
+logger = SharedLogger()
 # Set up SQLAlchemy engine and session
 engine = create_engine(POSTGRES_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -314,7 +314,7 @@ def save_table_structure_to_db(contest_title, headers, context, ml_confidence=No
                 session.add(obj)
             session.commit()
     except SQLAlchemyError as e:
-        log_error(f"[DB][TableStructure] Error saving: {e}")
+        logger.error(f"[DB][TableStructure] Error saving: {e}")
         raise
 
 def get_table_structure_from_db(contest_title, context=None) -> dict:
@@ -335,7 +335,7 @@ def get_table_structure_from_db(contest_title, context=None) -> dict:
             return {"headers": headers, "context": context, "ml_confidence": ml_confidence}
         return None
     except SQLAlchemyError as e:
-        log_error(f"[DB][TableStructure] Error loading: {e}")
+        logger.error(f"[DB][TableStructure] Error loading: {e}")
         return None
 
 def upsert_contest(session, contest_dict, auto_create_related=True) -> None:

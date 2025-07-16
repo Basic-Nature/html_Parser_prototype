@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional, Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..utils.shared_logger import log_info, log_error
+from ..utils.shared_logger import SharedLogger
 from ..config import MODEL_DIR, PROJECT_ROOT, VOCAB_DIR
 
 try:
@@ -28,7 +28,7 @@ try:
     import spacy
 except ImportError:
     spacy = None
-
+logger = SharedLogger()
 _lock = threading.Lock()
 
 # --- Robust Vocabulary Loading Utilities ---
@@ -45,10 +45,10 @@ def load_vocab_from_file(path: str) -> Dict[str, int]:
                 word = line.strip()
                 if word:
                     if word in vocab:
-                        log_error(f"Duplicate token '{word}' in vocab file {path}")
+                        logger.error(f"Duplicate token '{word}' in vocab file {path}")
                     vocab[word] = idx + 1  # 0 reserved for padding/OOV
     else:
-        log_error(f"Vocab file not found: {path}")
+        logger.error(f"Vocab file not found: {path}")
     return vocab
 
 def build_reverse_vocab(vocab: Dict[str, int], cast_int: bool = False) -> Dict[int, Any]:
@@ -206,18 +206,18 @@ class ModelRegistry:
                 finetuned_path = cls._model_paths["spacy_ner"]
                 meta_path = os.path.join(finetuned_path, "meta.json")
                 if os.path.exists(meta_path):
-                    log_info(f"Loading fine-tuned spaCy model from {finetuned_path}")
+                    logger.info(f"Loading fine-tuned spaCy model from {finetuned_path}")
                     try:
                         nlp = spacy.load(finetuned_path)
                         cls._nlp_models[key] = nlp
                         cls._loaded_info[key] = finetuned_path
                         return nlp
                     except Exception as e:
-                        log_error(f"Failed to load fine-tuned spaCy model: {e}")
+                        logger.error(f"Failed to load fine-tuned spaCy model: {e}")
             # Fallback to base model
             base_name = model_name or "en_core_web_sm"
             try:
-                log_info(f"Loading base spaCy model: {base_name}")
+                logger.info(f"Loading base spaCy model: {base_name}")
                 nlp = spacy.load(base_name)
                 cls._nlp_models[key] = nlp
                 cls._loaded_info[key] = base_name
@@ -225,14 +225,14 @@ class ModelRegistry:
             except OSError:
                 # Auto-download if missing
                 import subprocess
-                log_info(f"Downloading spaCy model: {base_name}")
+                logger.info(f"Downloading spaCy model: {base_name}")
                 subprocess.run([sys.executable, "-m", "spacy", "download", base_name], check=True, cwd=PROJECT_ROOT)
                 nlp = spacy.load(base_name)
                 cls._nlp_models[key] = nlp
                 cls._loaded_info[key] = base_name
                 return nlp
             except Exception as e:
-                log_error(f"Failed to load base spaCy model: {e}")
+                logger.error(f"Failed to load base spaCy model: {e}")
                 raise
 
     @classmethod
@@ -240,7 +240,7 @@ class ModelRegistry:
         if cls._torch_contest_model is None:
             model_path = cls._model_paths["torch_contest"]
             if not os.path.exists(model_path):
-                log_error(f"Torch contest model checkpoint not found: {model_path}")
+                logger.error(f"Torch contest model checkpoint not found: {model_path}")
                 raise FileNotFoundError(f"Model checkpoint not found: {model_path}")
             cls._torch_contest_model = ContestFieldClassifier.load_from_checkpoint(model_path)
             cls._loaded_info["torch_contest_model"] = model_path
@@ -266,14 +266,14 @@ class ModelRegistry:
             CANDIDATE2IDX = {c: i+1 for i, c in enumerate(sorted(set(candidate_vocab)))}
             IDX2CANDIDATE = {v: k for k, v in CANDIDATE2IDX.items()}
         except Exception as e:
-            log_error(f"Failed to load candidate vocab from librarian.py: {e}")
+            logger.error(f"Failed to load candidate vocab from librarian.py: {e}")
             CANDIDATE2IDX = {}
             IDX2CANDIDATE = {}
 
         # --- Model loading ---
         model_path = cls._model_paths.get("torch_candidate", os.path.join(MODEL_DIR, "candidate_classifier.pt"))
         if not os.path.exists(model_path):
-            log_error(f"Torch candidate model checkpoint not found: {model_path}")
+            logger.error(f"Torch candidate model checkpoint not found: {model_path}")
             return None
 
         try:
@@ -290,7 +290,7 @@ class ModelRegistry:
             cls._loaded_info["torch_candidate_model"] = model_path
             return model
         except Exception as e:
-            log_error(f"Failed to load CandidateClassifier: {e}")
+            logger.error(f"Failed to load CandidateClassifier: {e}")
             return None
 
     @classmethod
@@ -300,9 +300,9 @@ class ModelRegistry:
     @classmethod
     def _get_device(cls):
         if torch is not None and torch.cuda.is_available():
-            log_info("Using CUDA for model loading.")
+            logger.info("Using CUDA for model loading.")
             return "cuda"
-        log_info("Using CPU for model loading.")
+        logger.info("Using CPU for model loading.")
         return "cpu"
 
     @classmethod
@@ -312,7 +312,7 @@ class ModelRegistry:
         with _lock:
             base_name = model_name or "all-MiniLM-L6-v2"
             if not isinstance(base_name, str) or base_name.strip() == "" or base_name.startswith("SentenceTransformer("):
-                log_error(f"Invalid model_name for SentenceTransformer: {base_name!r}. Using default 'all-MiniLM-L6-v2'.")
+                logger.error(f"Invalid model_name for SentenceTransformer: {base_name!r}. Using default 'all-MiniLM-L6-v2'.")
                 base_name = "all-MiniLM-L6-v2"
             key = f"sentence_transformer:{base_name}:{use_finetuned}"
             if key in cls._models:
@@ -322,25 +322,25 @@ class ModelRegistry:
                 finetuned_path = cls._model_paths["sentence_transformer"]
                 config_path = os.path.join(finetuned_path, "config.json")
                 if os.path.exists(config_path):
-                    log_info(f"Loading fine-tuned SentenceTransformer from {finetuned_path}")
+                    logger.info(f"Loading fine-tuned SentenceTransformer from {finetuned_path}")
                     try:
                         model = SentenceTransformer(finetuned_path, device=device or cls._get_device())
                         cls._models[key] = model
                         cls._loaded_info[key] = finetuned_path
                         return model
                     except Exception as e:
-                        log_error(f"Failed to load fine-tuned SentenceTransformer: {e}")
+                        logger.error(f"Failed to load fine-tuned SentenceTransformer: {e}")
                         cls._models[key] = None
                         return None
             # Fallback to base model
-            log_info(f"Loading base SentenceTransformer: {base_name}")
+            logger.info(f"Loading base SentenceTransformer: {base_name}")
             try:
                 model = SentenceTransformer(base_name, device=device or cls._get_device())
                 cls._models[key] = model
                 cls._loaded_info[key] = base_name
                 return model
             except Exception as e:
-                log_error(f"Failed to load base SentenceTransformer: {e}")
+                logger.error(f"Failed to load base SentenceTransformer: {e}")
                 cls._models[key] = None
                 return None
 
@@ -348,12 +348,12 @@ class ModelRegistry:
     def get_custom_model(cls, key: str, loader_func: Callable, *args, **kwargs):
         with _lock:
             if key not in cls._custom_models:
-                log_info(f"Loading custom model: {key}")
+                logger.info(f"Loading custom model: {key}")
                 try:
                     cls._custom_models[key] = loader_func(*args, **kwargs)
                     cls._loaded_info[key] = str(loader_func)
                 except Exception as e:
-                    log_error(f"Failed to load custom model {key}: {e}")
+                    logger.error(f"Failed to load custom model {key}: {e}")
                     raise
             return cls._custom_models[key]
 
@@ -373,7 +373,7 @@ class ModelRegistry:
                     del cls._custom_models[model_type]
                 if model_type in cls._loaded_info:
                     del cls._loaded_info[model_type]
-            log_info(f"Reloaded model(s) of type: {model_type}")
+            logger.info(f"Reloaded model(s) of type: {model_type}")
 
     @classmethod
     def clear_cache(cls):
@@ -382,7 +382,7 @@ class ModelRegistry:
             cls._nlp_models.clear()
             cls._custom_models.clear()
             cls._loaded_info.clear()
-            log_info("Model registry cache cleared.")
+            logger.info("Model registry cache cleared.")
 
     @classmethod
     def set_model_path(cls, model_type, path):

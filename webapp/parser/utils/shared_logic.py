@@ -5,7 +5,7 @@ import os
 import platform
 import re
 import time
-from ..utils.shared_logger import log_info, log_warning, RichConsoleProxy, progress_bar
+from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..utils.user_prompt import UserPrompt
 from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
 from typing import TYPE_CHECKING
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
     "STATE_MODULE_MAP and KNOWN_STATE_TO_COUNTY_MAP keys are out of sync!"
 console = RichConsoleProxy()   
-user_prompt = UserPrompt()
-
+prompt = UserPrompt()
+logger = SharedLogger()
 def normalize_county_name(name):
     """
     Normalize county names for comparison.
@@ -140,7 +140,7 @@ def infer_state_county_from_url(url: str):
     if state:
         state_norm = normalize_state_name(state)
         if state_norm not in county_map:
-            log_warning(f"State '{state_norm}' not found in county map")
+            logger.warning(f"State '{state_norm}' not found in county map")
         counties = county_map.get(state_norm, [])
         counties_norm = [normalize_county_name(c) for c in counties]
         # Try to match "-county" or "_county" in URL
@@ -196,13 +196,13 @@ def show_progress_bar(task_desc, total, update_iter):
     Show a progress bar for any iterable, compatible with CLI and webapp (SocketIO) modes.
     Yields each item from update_iter.
     """
-    with progress_bar(task_desc, total=total) as update_progress:
+    with logger.progress_bar(task_desc, total=total) as update_progress:
         for idx, n in enumerate(update_iter):
             update_progress(idx + 1)
             yield n
 
 def coordinator_feedback(domain, scrolls, step, incomplete=False):
-    log_info(f"[COORDINATOR] Scroll pattern for {domain}: {scrolls} scrolls, step {step}, incomplete={incomplete}")
+    logger.info(f"[COORDINATOR] Scroll pattern for {domain}: {scrolls} scrolls, step {step}, incomplete={incomplete}")
 
 def normalize_text(text):
     return re.sub(r"\s+", " ", text.strip().lower())
@@ -255,7 +255,7 @@ def autoscroll_until_stable(
         except Exception:
             return ""
 
-    with progress_bar("[cyan]Scrolling page...", total=max_scrolls) as update_progress:
+    with logger.progress_bar("[cyan]Scrolling page...", total=max_scrolls) as update_progress:
         while stable < max_stable_frames and scroll_attempts < max_scrolls:
             current_height = page.evaluate("() => document.body.scrollHeight")
             current_text = get_main_text()
@@ -278,25 +278,25 @@ def autoscroll_until_stable(
             scroll_attempts += 1
             update_progress(scroll_attempts)
             if wait_for_selector and page.query_selector(wait_for_selector):
-                logger and log_info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
+                logger and logger.info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
                 break
             elapsed = (time.time() - start_time) * 1000
             if elapsed > max_total_time * 0.8 and scroll_attempts % 10 == 0:
                 console.print("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
-                resp = user_prompt.prompt_input("Continue scrolling? (y/N): ").strip().lower()
+                resp = prompt.prompt_input("Continue scrolling? (y/N): ").strip().lower()
                 if resp != "y":
-                    logger and log_warning("[SCROLL] User aborted scrolling.")
+                    logger and logger.warning("[SCROLL] User aborted scrolling.")
                     break
         # Ensure progress bar is completed
         update_progress(max_scrolls)
 
     if stable >= max_stable_frames:
-        logger and log_info("[SCROLL] Completed scrolling until page height/content stabilized.")
+        logger and logger.info("[SCROLL] Completed scrolling until page height/content stabilized.")
         if coordinator_feedback:
             coordinator_feedback(domain, scroll_attempts, step)
         return True
     else:
-        logger and log_warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
+        logger and logger.warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
         if coordinator_feedback:
             coordinator_feedback(domain, scroll_attempts, step, incomplete=True)
         return False
@@ -307,7 +307,7 @@ def scan_buttons_with_progress(buttons, scan_callback=None):
     Optionally, provide a scan_callback(button, idx) for custom logic.
     """
     total = len(buttons)
-    with progress_bar("Scanning buttons...", total=total) as update_progress:
+    with logger.progress_bar("Scanning buttons...", total=total) as update_progress:
         for idx, btn in enumerate(buttons):
             label = ""
             try:

@@ -10,9 +10,10 @@ from ..bots.librarian import (
     # Add more normalization/alias utilities as needed
 )
 from ..utils.shared_logic import normalize_state_name
-from ..utils.shared_logger import log_info, log_error
+from ..utils.shared_logger import SharedLogger
 from ..utils.user_prompt import UserPrompt
 
+logger = SharedLogger()
 AUDIT_LOG = "context_audit_log.jsonl"
 
 class ContextService:
@@ -103,7 +104,7 @@ class ContextService:
             try:
                 handler(data)
             except Exception as e:
-                log_error(f"ContextService event handler error: {e}")
+                logger.error(f"ContextService event handler error: {e}")
         # Always log the event
         self._log_audit(event_type, data)
 
@@ -114,7 +115,7 @@ class ContextService:
         Handle events like new entity, unknown token, context update, etc.
         Enrich context, export vocabs, and log for review.
         """
-        log_info(f"[ContextService] Event: {event_type} | Data: {data}")
+        logger.info(f"[ContextService] Event: {event_type} | Data: {data}")
         if event_type == "new_entity":
             entity_type = data.get("entity_type")
             value = data.get("value")
@@ -123,7 +124,7 @@ class ContextService:
                     self.context[entity_type].append(value)
                     self.invalidate_cache()
                     self.export_vocab(entity_type)
-                    log_info(f"[ContextService] Added new {entity_type}: {value}")
+                    logger.info(f"[ContextService] Added new {entity_type}: {value}")
         elif event_type == "unknown_token":
             # Log for human review
             self._log_audit("unknown_token", data)
@@ -165,24 +166,24 @@ class ContextService:
         """CLI tool for reviewing and resolving unknowns."""
         unknowns = self.unknowns_report()
         if not unknowns:
-            log_info("[ContextService] No unknowns to review.")
+            logger.info("[ContextService] No unknowns to review.")
             return
-        log_info(f"[ContextService] Reviewing {len(unknowns)} unknowns.")
+        logger.info(f"[ContextService] Reviewing {len(unknowns)} unknowns.")
         for entry in unknowns:
             entity_type = entry["data"].get("entity_type")
             value = entry["data"].get("value")
-            log_info(f"Unknown {entity_type}: '{value}'")
+            logger.info(f"Unknown {entity_type}: '{value}'")
             if self.prompt.prompt_yes_no(f"Add '{value}' to {entity_type}?", default="n"):
                 self.update_from_event("new_entity", {"entity_type": entity_type, "value": value})
-                log_info(f"Added '{value}' to {entity_type}.")
+                logger.info(f"Added '{value}' to {entity_type}.")
             else:
-                log_info(f"Skipped '{value}'.")
+                logger.info(f"Skipped '{value}'.")
 
     def review_context_cli(self):
         """CLI tool for reviewing and editing the current context."""
-        log_info("[ContextService] Current context:")
+        logger.info("[ContextService] Current context:")
         for k, v in self.context.items():
-            log_info(f"  {k}: {v}")
+            logger.info(f"  {k}: {v}")
         if self.prompt.prompt_yes_no("Edit context?", default="n"):
             for k in self.context:
                 if self.prompt.prompt_yes_no(f"Edit {k}?", default="n"):
@@ -191,7 +192,7 @@ class ContextService:
             self.invalidate_cache()
             self.export_all_vocabs()
             self._log_audit("context_edit", {"context": self.context})
-            log_info("[ContextService] Context updated.")
+            logger.info("[ContextService] Context updated.")
 
     # --- Audit Logging ---
 
@@ -237,7 +238,7 @@ if __name__ == "__main__":
         service.review_context_cli()
     if args.export_all:
         service.export_all_vocabs()
-        log_info("Exported all vocab files.")
+        logger.info("Exported all vocab files.")
     if args.stats:
         stats = service.entity_stats(args.stats)
-        log_info(f"Stats for {args.stats}: {stats}")
+        logger.info(f"Stats for {args.stats}: {stats}")

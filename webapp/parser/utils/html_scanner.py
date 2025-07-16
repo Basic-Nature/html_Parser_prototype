@@ -9,7 +9,7 @@ import numpy as np
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 import concurrent.futures
 from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH
-from ..utils.shared_logger import log_info, log_debug, log_warning, log_error
+from ..utils.shared_logger import SharedLogger
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, 
     CANDIDATE_KEYWORDS, BALLOT_TYPES, update_context_library, load_context_library,
@@ -31,8 +31,8 @@ if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
 
-user_prompt = UserPrompt()
-
+prompt = UserPrompt()
+logger = SharedLogger()
 ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 console = None  # Only import rich.console.Console if needed for interactive output
 
@@ -69,7 +69,7 @@ def _get_label_cache_path() -> str:
     if os.name == "nt" and len(os.path.abspath(path)) >= 260:
         import tempfile
         short_path = os.path.join(tempfile.gettempdir(), _LABEL_CACHE_FILENAME)
-        log_warning(f"[CACHE] Path too long for Windows, using temp path: {short_path}")
+        logger.warning(f"[CACHE] Path too long for Windows, using temp path: {short_path}")
         return short_path
     return path
 
@@ -114,7 +114,7 @@ def safe_cache_path(filename: str) -> str:
     if os.name == "nt" and len(os.path.abspath(full_path)) >= 240:
         import tempfile
         temp_path = os.path.join(tempfile.gettempdir(), filename)
-        log_warning(f"[CACHE] Path too long for Windows, using temp path: {temp_path}")
+        logger.warning(f"[CACHE] Path too long for Windows, using temp path: {temp_path}")
         # Ensure temp dir exists
         os.makedirs(os.path.dirname(temp_path), exist_ok=True)
         return temp_path
@@ -715,7 +715,7 @@ def extract_tagged_segments_with_attrs(
         seg_hashes = [segment_hash(seg.get("html", "")) for seg in segments]
         seg_htmls = [seg.get("html", "") for seg in segments]
         total_segments = len(seg_hashes)
-        log_info(f"[EMBED] Total segments: {total_segments}")
+        logger.info(f"[EMBED] Total segments: {total_segments}")
 
         hash_to_embedding = {}
         CHUNK_SIZE = 1024
@@ -724,25 +724,25 @@ def extract_tagged_segments_with_attrs(
             chunk_result = load_embeddings_batch(chunk_hashes)
             hash_to_embedding.update(chunk_result)
             hits = sum(1 for v in chunk_result.values() if v is not None)
-            log_debug(f"[EMBED] Batch {i//CHUNK_SIZE+1}: {hits} hits, {len(chunk_hashes)-hits} misses")
+            logger.debug(f"[EMBED] Batch {i//CHUNK_SIZE+1}: {hits} hits, {len(chunk_hashes)-hits} misses")
         missing = [(h, html) for h, html in zip(seg_hashes, seg_htmls) if hash_to_embedding.get(h) is None]
         if missing:
-            log_info(f"[EMBED] Computing {len(missing)} missing embeddings in chunks of {CHUNK_SIZE}")
+            logger.info(f"[EMBED] Computing {len(missing)} missing embeddings in chunks of {CHUNK_SIZE}")
             for i in range(0, len(missing), CHUNK_SIZE):
                 chunk = missing[i:i+CHUNK_SIZE]
                 missing_hashes, missing_htmls = zip(*chunk)
                 try:
                     new_embs = model.encode(list(missing_htmls), convert_to_numpy=True, show_progress_bar=False)
                 except Exception as e:
-                    log_error(f"[EMBED] Batch embedding computation failed: {e}")
+                    logger.error(f"[EMBED] Batch embedding computation failed: {e}")
                     continue
                 save_embeddings_batch(list(zip(missing_hashes, new_embs)))
                 for h, emb in zip(missing_hashes, new_embs):
                     hash_to_embedding[h] = emb
-                log_debug(f"[EMBED] Saved {len(chunk)} new embeddings to cache.")
+                logger.debug(f"[EMBED] Saved {len(chunk)} new embeddings to cache.")
         for seg, h in zip(segments, seg_hashes):
             seg["_embedding"] = hash_to_embedding[h]
-        log_info(f"[EMBED] Embedding assignment complete for {len(segments)} segments.")
+        logger.info(f"[EMBED] Embedding assignment complete for {len(segments)} segments.")
 
         # --- Label segments using all available context, pattern KB, and coordinator ---
         for seg in segments:
@@ -773,7 +773,7 @@ def extract_tagged_segments_with_attrs(
         return segments
 
     except Exception as e:
-        log_error(f"[FALLBACK] selectolax failed: {e}", extra={"traceback": traceback.format_exc(), "html_snippet": html[:200]})
+        logger.error(f"[FALLBACK] selectolax failed: {e}", extra={"traceback": traceback.format_exc(), "html_snippet": html[:200]})
         if not fallback_on_error:
             raise
         return []
@@ -787,7 +787,7 @@ def load_context_cache_from_disk(filename=None) -> Dict[str, Any]:
     if filename is None:
         filename = os.path.basename(CONTEXT_CACHE_PATH)
     path = safe_cache_path(filename)
-    log_debug(f"[DEBUG] Loading context cache from: {path}")
+    logger.debug(f"[DEBUG] Loading context cache from: {path}")
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
@@ -795,13 +795,13 @@ def load_context_cache_from_disk(filename=None) -> Dict[str, Any]:
                 _context_cache = {k: v for k, v in raw_cache.items() if isinstance(v, dict)}
                 return _context_cache
         except Exception as e:
-            log_error(f"[ERROR] Failed to load {filename}: {e}")
+            logger.error(f"[ERROR] Failed to load {filename}: {e}")
             return {}
     _context_cache = {}
     return {}
 
 def save_context_cache_to_disk(context_cache, path=CONTEXT_CACHE_PATH) -> None:
-    log_debug(f"[DEBUG] Saving context cache to: {path}")
+    logger.debug(f"[DEBUG] Saving context cache to: {path}")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     context_cache = convert_ndarrays(context_cache)
     with open(path, "wb") as f:
@@ -895,11 +895,11 @@ def prompt_for_segment_label(segment, context_library=None) -> str:
         return "unknown"
     if not html_preview:
         html_preview = f"[No HTML] tag={segment.get('tag', [])} attrs={segment.get('attrs', [])}"
-    log_warning(f"\n[bold yellow]Segment needs review:[/bold yellow]\n{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
-    log_info(
+    logger.warning(f"\n[bold yellow]Segment needs review:[/bold yellow]\n{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
+    logger.info(
         "[cyan]What is the semantic role of this segment? (e.g., results_table, ballot_toggle, heading, panel, candidate_panel, location_panel, ballot_types, results_timestamp, download_link, clickable, footer, legend, contest_title, party_label, vote_method, reporting_status, summary, error_message, warning, info_box, navigation, pagination, tab, modal, tooltip, ignore, unknown, etc.)[/cyan]"
     )
-    label = user_prompt.prompt_input("> ").strip()
+    label = prompt.prompt_input("> ").strip()
     cache_segment_label(seg_hash, label)
     return label
 
@@ -999,7 +999,7 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
     for key in expected_keys:
         if key not in dom_parts:
             if verbose and (context_expected is None or key in context_expected):
-                log_warning(f"[DOM_PARTS] Missing key: {key}")
+                logger.warning(f"[DOM_PARTS] Missing key: {key}")
             valid = False
 
     # Check required keys are lists and not empty, but only warn if context expects them
@@ -1007,11 +1007,11 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
         val = dom_parts.get(key)
         if not isinstance(val, list):
             if verbose:
-                log_warning(f"[DOM_PARTS] Key '{key}' is not a list.")
+                logger.warning(f"[DOM_PARTS] Key '{key}' is not a list.")
             valid = False
         elif len(val) == 0:
             if verbose:
-                log_warning(f"[DOM_PARTS] No items found in '{key}'.")
+                logger.warning(f"[DOM_PARTS] No items found in '{key}'.")
             valid = False
 
     # Deep schema, regex, allowed values, and cross-field checks
@@ -1022,7 +1022,7 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
         for i, item in enumerate(items):
             if not isinstance(item, dict):
                 if verbose and warning_count < MAX_WARNINGS:
-                    log_warning(f"[DOM_PARTS] Item {i} in '{section}' is not a dict.")
+                    logger.warning(f"[DOM_PARTS] Item {i} in '{section}' is not a dict.")
                 warning_count += 1
                 continue
             for field in fields:
@@ -1030,32 +1030,32 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
                 # Only warn for missing/empty fields if context expects this section
                 if value is None or (isinstance(value, str) and not value.strip()):
                     if verbose and warning_count < MAX_WARNINGS and (context_expected is None or section in context_expected):
-                        log_warning(f"[DOM_PARTS] Item {i} in '{section}' missing or empty field '{field}'.")
+                        logger.warning(f"[DOM_PARTS] Item {i} in '{section}' missing or empty field '{field}'.")
                     warning_count += 1
                 # Type checks
                 if field.endswith("_html") and value and not isinstance(value, str):
                     if verbose:
-                        log_warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' should be str (HTML).")
+                        logger.warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' should be str (HTML).")
                     valid = False
                 if field.endswith("_text") and value and not isinstance(value, str):
                     if verbose:
-                        log_warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' should be str (text).")
+                        logger.warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' should be str (text).")
                     valid = False
                 if field == "year" and value:
                     if not re.fullmatch(r"20\d{2}", str(value)):
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has invalid year format: {value}")
+                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has invalid year format: {value}")
                         valid = False
                     else:
                         year_int = int(value)
                         if year_int < 2000 or year_int > datetime.datetime.now().year + 1:
                             if verbose:
-                                log_warning(f"[DOM_PARTS] Item {i} in '{section}' has out-of-range year: {value}")
+                                logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has out-of-range year: {value}")
                             valid = False
                 if field == "type_" and value:
                     if value.lower() not in {t.lower() for t in ELECTION_TYPES}:
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown election type: {value}")
+                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown election type: {value}")
                         valid = False
                 if field == "county" and value and "state" in item:
                     state_val = item.get("state", "").lower()
@@ -1063,33 +1063,33 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
                     state_val = STATE_ABBR.get(state_val, state_val)
                     if state_val and value.lower() not in KNOWN_STATE_TO_COUNTY_MAP.get(state_val, []):
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown county '{value}' for state '{state_val}'")
+                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown county '{value}' for state '{state_val}'")
                         valid = False
                 if field == "state" and value:
                     state_norm = STATE_ABBR.get(value.lower(), value.lower())
                     if state_norm not in KNOWN_STATE_TO_COUNTY_MAP:
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown state: {value}")
+                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown state: {value}")
                         valid = False
                 if field == "timestamp_text" and value:
                     if not re.search(r"\d{4}.*\d{1,2}:\d{2}", value):
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' does not look like a timestamp: {value}")
+                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' does not look like a timestamp: {value}")
                         valid = False
                 if section == "ballot_types" and field == "ballot_types_text" and value:
                     if value not in BALLOT_TYPES:
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown ballot type: {value}")
+                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown ballot type: {value}")
                         valid = False
                 if section == "party_labels" and field == "party_label_text" and value:
                     if value.lower() not in {k.lower() for k in PARTY_KEYWORDS}:
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown party label: {value}")
+                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown party label: {value}")
                         valid = False
                 if section == "location_panels" and field == "location_panel_text" and value:
                     if not any(kw in value.lower() for kw in LOCATION_KEYWORDS):
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Item {i} in '{section}' has location text missing known keywords: {value}")
+                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has location text missing known keywords: {value}")
                         valid = False
                     # Precinct/district validation
                     county_val = item.get("county", "").lower()
@@ -1101,41 +1101,41 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
                                     found = any(p in value.lower() for p in precincts)
                                     if not found:
                                         if verbose:
-                                            log_warning(f"[DOM_PARTS] Location panel {i}: '{value}' does not match any known precinct/district for county '{county_val}'.")
+                                            logger.warning(f"[DOM_PARTS] Location panel {i}: '{value}' does not match any known precinct/district for county '{county_val}'.")
                                         valid = False
                 # Canonical label checks for headings/panels
                 if section == "headings" and field == "heading_text" and value:
                     canonical = CANONICAL_SEGMENT_LABELS.get(value.lower())
                     if canonical and canonical != "heading":
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Heading {i}: text '{value}' has canonical label '{canonical}' not 'heading'.")
+                            logger.warning(f"[DOM_PARTS] Heading {i}: text '{value}' has canonical label '{canonical}' not 'heading'.")
                         valid = False
                 if section == "panels" and field == "panel_text" and value:
                     canonical = CANONICAL_SEGMENT_LABELS.get(value.lower())
                     if canonical and canonical != "panel":
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Panel {i}: text '{value}' has canonical label '{canonical}' not 'panel'.")
+                            logger.warning(f"[DOM_PARTS] Panel {i}: text '{value}' has canonical label '{canonical}' not 'panel'.")
                         valid = False
                 # Tag checks for headings/panels
                 if section == "headings" and "heading_html" in item:
                     tag_match = any(tag in item["heading_html"].lower() for tag in HEADING_TAGS | EXTRA_HEADING_TAGS)
                     if not tag_match:
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Heading {i}: html '{item['heading_html']}' does not contain a valid heading tag.")
+                            logger.warning(f"[DOM_PARTS] Heading {i}: html '{item['heading_html']}' does not contain a valid heading tag.")
                         valid = False
                 if section == "panels" and "panel_html" in item:
                     tag_match = any(tag in item["panel_html"].lower() for tag in PANEL_TAGS)
                     if not tag_match:
                         if verbose:
-                            log_warning(f"[DOM_PARTS] Panel {i}: html '{item['panel_html']}' does not contain a valid panel tag.")
+                            logger.warning(f"[DOM_PARTS] Panel {i}: html '{item['panel_html']}' does not contain a valid panel tag.")
                         valid = False
     if warning_count > MAX_WARNINGS:
-        log_warning(f"[DOM_PARTS] {warning_count} items missing required fields (warnings suppressed after {MAX_WARNINGS}).")
+        logger.warning(f"[DOM_PARTS] {warning_count} items missing required fields (warnings suppressed after {MAX_WARNINGS}).")
     # Metadata checks
     meta = dom_parts.get("metadata", {})
     if not isinstance(meta, dict):
         if verbose:
-            log_warning("[DOM_PARTS] 'metadata' is not a dict.")
+            logger.warning("[DOM_PARTS] 'metadata' is not a dict.")
         valid = False
     else:
         scrape_time = meta.get("scrape_time")
@@ -1144,42 +1144,42 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
                 datetime.datetime.strptime(scrape_time, "%Y-%m-%d %H:%M:%S")
             except Exception:
                 if verbose:
-                    log_warning(f"[DOM_PARTS] metadata.scrape_time has invalid format: {scrape_time}")
+                    logger.warning(f"[DOM_PARTS] metadata.scrape_time has invalid format: {scrape_time}")
                 valid = False
 
     # Check selector_log is a list
     if "selector_log" in dom_parts and not isinstance(dom_parts["selector_log"], list):
         if verbose:
-            log_warning("[DOM_PARTS] 'selector_log' is not a list.")
+            logger.warning("[DOM_PARTS] 'selector_log' is not a list.")
         valid = False
 
     # Check tagged_segments and tagged_segments_with_attrs are lists
     for key in ["tagged_segments", "tagged_segments_with_attrs"]:
         if key in dom_parts and not isinstance(dom_parts[key], list):
             if verbose:
-                log_warning(f"[DOM_PARTS] '{key}' is not a list.")
+                logger.warning(f"[DOM_PARTS] '{key}' is not a list.")
             valid = False
 
     # Check url is a string
     if "url" in dom_parts and dom_parts["url"] is not None and not isinstance(dom_parts["url"], str):
         if verbose:
-            log_warning("[DOM_PARTS] 'url' is not a string.")
+            logger.warning("[DOM_PARTS] 'url' is not a string.")
         valid = False
 
     # Check raw_html is a string
     if "raw_html" in dom_parts and dom_parts["raw_html"] is not None and not isinstance(dom_parts["raw_html"], str):
         if verbose:
-            log_warning("[DOM_PARTS] 'raw_html' is not a string.")
+            logger.warning("[DOM_PARTS] 'raw_html' is not a string.")
         valid = False
 
     # Check error is None or str
     if "error" in dom_parts and dom_parts["error"] is not None and not isinstance(dom_parts["error"], str):
         if verbose:
-            log_warning("[DOM_PARTS] 'error' is not a string or None.")
+            logger.warning("[DOM_PARTS] 'error' is not a string or None.")
         valid = False
 
     if not valid and verbose:
-        log_error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
+        logger.error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
 
     return valid
 
@@ -1218,14 +1218,14 @@ def scan_html_for_context(
         if h in context_cache and context_cache[h].get("ml_confidence", 0) > 0.95
     ]
     if len(fast_path_hits) == len(segment_hashes) and segment_hashes:
-        log_info("[FAST-PATH] All segments covered by cache. Skipping full scan.")
+        logger.info("[FAST-PATH] All segments covered by cache. Skipping full scan.")
         fast_path_result = {h: context_cache[h] for h in segment_hashes}
         if coordinator is not None:
             coordinator.organize_and_enrich(fast_path_result)
         return fast_path_result
     if page_hash in context_cache:
-        log_info(f"[SCAN] Using cached context for {target_url}")
-        log_info("[bold green][CACHE] Entire context loaded from cache. Skipping scan.[/bold green]")
+        logger.info(f"[SCAN] Using cached context for {target_url}")
+        logger.info("[bold green][CACHE] Entire context loaded from cache. Skipping scan.[/bold green]")
         cached_result = context_cache[page_hash]
         if coordinator is not None:
             coordinator.organize_and_enrich(cached_result)
@@ -1260,9 +1260,9 @@ def scan_html_for_context(
         else:
             try:
                 context_library = load_context_library(CONTEXT_LIBRARY_PATH)
-                log_debug("DEBUG: Loaded context library:", type(context_library))
+                logger.debug("DEBUG: Loaded context library:", type(context_library))
                 if not isinstance(context_library, dict):
-                    log_error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
+                    logger.error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
                     raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
             except Exception:
                 context_library = {}
@@ -1289,9 +1289,9 @@ def scan_html_for_context(
             # Diagnostics
             if data:
                 avg_len = sum(len(str(d.get(field, ""))) for d in data) / len(data)
-                log_info(f"[{field.upper()}] Extracted {len(data)} items, avg {field} length: {avg_len:.1f}")
+                logger.info(f"[{field.upper()}] Extracted {len(data)} items, avg {field} length: {avg_len:.1f}")
             else:
-                log_warning(f"[{field.upper()}] No valid items extracted after validation.")
+                logger.warning(f"[{field.upper()}] No valid items extracted after validation.")
 
             def filter_item(d):
                 title = d.get("title", d.get("text", ""))
@@ -1310,11 +1310,11 @@ def scan_html_for_context(
                     filtered.append(d)
 
             if filtered_out:
-                log_warning(f"[{field.upper()}] Filtered out {len(filtered_out)} items due to missing/invalid fields.")
+                logger.warning(f"[{field.upper()}] Filtered out {len(filtered_out)} items due to missing/invalid fields.")
                 for d, reason in filtered_out[:5]:
-                    log_warning(f"  [Filtered] {reason}: {str(d)[:100]}...")
+                    logger.warning(f"  [Filtered] {reason}: {str(d)[:100]}...")
             if not filtered:
-                log_warning(f"[{field.upper()}] No items with usable title/text for downstream output.")
+                logger.warning(f"[{field.upper()}] No items with usable title/text for downstream output.")
             return filtered
 
         # --- Robust extraction for all key segment types ---
@@ -1346,7 +1346,7 @@ def scan_html_for_context(
                     })
         if not raw_contests and coordinator and hasattr(coordinator, "data_service"):
             db_contests = coordinator.data_service.get_all_full_contests(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_contests)} contests from DB as fallback.")
+            logger.debug(f"[DEBUG][DB] Loaded {len(db_contests)} contests from DB as fallback.")
             for c in db_contests:
                 seg_year, seg_type, cleaned_title = extract_year_and_type(c.get("title", ""))
                 if seg_year:
@@ -1399,7 +1399,7 @@ def scan_html_for_context(
                 })
         if not raw_panels and coordinator and hasattr(coordinator, "data_service"):
             db_panels = coordinator.data_service.get_all_panels(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_panels)} panels from DB as fallback.")
+            logger.debug(f"[DEBUG][DB] Loaded {len(db_panels)} panels from DB as fallback.")
             for p in db_panels:
                 if not p.get("panel_text") and p.get("title"):
                     p["panel_text"] = p["title"]
@@ -1430,7 +1430,7 @@ def scan_html_for_context(
                 })
         if not raw_tables and coordinator and hasattr(coordinator, "data_service"):
             db_tables = coordinator.data_service.get_all_tables(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_tables)} tables from DB as fallback.")
+            logger.debug(f"[DEBUG][DB] Loaded {len(db_tables)} tables from DB as fallback.")
             for t in db_tables:
                 seg_year, seg_type, cleaned_text = extract_year_and_type(t.get("table_text", "") or t.get("title", ""))
                 if seg_year:
@@ -1464,7 +1464,7 @@ def scan_html_for_context(
                 })
         if not raw_candidate_panels and coordinator and hasattr(coordinator, "data_service"):
             db_candidate_panels = coordinator.data_service.get_all_candidate_panels(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_candidate_panels)} candidate_panels from DB as fallback.")
+            logger.debug(f"[DEBUG][DB] Loaded {len(db_candidate_panels)} candidate_panels from DB as fallback.")
             for cp in db_candidate_panels:
                 seg_year, seg_type, cleaned_text = extract_year_and_type(cp.get("candidate_panel_text", "") or cp.get("title", ""))
                 if seg_year:
@@ -1498,7 +1498,7 @@ def scan_html_for_context(
                 })
         if not raw_location_panels and coordinator and hasattr(coordinator, "data_service"):
             db_location_panels = coordinator.data_service.get_all_location_panels(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_location_panels)} location_panels from DB as fallback.")
+            logger.debug(f"[DEBUG][DB] Loaded {len(db_location_panels)} location_panels from DB as fallback.")
             for lp in db_location_panels:
                 seg_year, seg_type, cleaned_text = extract_year_and_type(lp.get("location_panel_text", "") or lp.get("title", ""))
                 if seg_year:
@@ -1541,7 +1541,7 @@ def scan_html_for_context(
                     })
         if not raw_headings and coordinator and hasattr(coordinator, "data_service"):
             db_headings = coordinator.data_service.get_all_headings(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_headings)} headings from DB as fallback.")
+            logger.debug(f"[DEBUG][DB] Loaded {len(db_headings)} headings from DB as fallback.")
             raw_headings.extend(db_headings)
         headings = diagnostics_and_filter(
             raw_headings, "heading",
@@ -1565,7 +1565,7 @@ def scan_html_for_context(
                 })
         if not raw_ballot_types and coordinator and hasattr(coordinator, "data_service"):
             db_ballot_types = coordinator.data_service.get_all_ballot_types(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_ballot_types)} ballot_types from DB as fallback.")
+            logger.debug(f"[DEBUG][DB] Loaded {len(db_ballot_types)} ballot_types from DB as fallback.")
             raw_ballot_types.extend(db_ballot_types)
         ballot_types = diagnostics_and_filter(
             raw_ballot_types, "ballot_types",
@@ -1589,7 +1589,7 @@ def scan_html_for_context(
                 })
         if not raw_results_timestamps and coordinator and hasattr(coordinator, "data_service"):
             db_results_timestamps = coordinator.data_service.get_all_results_timestamps(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_results_timestamps)} results_timestamps from DB as fallback.")
+            logger.debug(f"[DEBUG][DB] Loaded {len(db_results_timestamps)} results_timestamps from DB as fallback.")
             raw_results_timestamps.extend(db_results_timestamps)
         results_timestamps = diagnostics_and_filter(
             raw_results_timestamps, "results_timestamp",
@@ -1610,7 +1610,7 @@ def scan_html_for_context(
                 })
         if not raw_party_labels and coordinator and hasattr(coordinator, "data_service"):
             db_party_labels = coordinator.data_service.get_all_party_labels(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_party_labels)} party_labels from DB as fallback.")
+            logger.debug(f"[DEBUG][DB] Loaded {len(db_party_labels)} party_labels from DB as fallback.")
             raw_party_labels.extend(db_party_labels)
         party_labels = diagnostics_and_filter(
             raw_party_labels, "party_label",
@@ -1631,7 +1631,7 @@ def scan_html_for_context(
                 })
         if not raw_vote_methods and coordinator and hasattr(coordinator, "data_service"):
             db_vote_methods = coordinator.data_service.get_all_vote_methods(limit=100)
-            log_debug(f"[DEBUG][DB] Loaded {len(db_vote_methods)} vote_methods from DB as fallback.")
+            logger.debug(f"[DEBUG][DB] Loaded {len(db_vote_methods)} vote_methods from DB as fallback.")
             raw_vote_methods.extend(db_vote_methods)
         vote_methods = diagnostics_and_filter(
             raw_vote_methods, "vote_method",
@@ -1737,11 +1737,11 @@ def scan_html_for_context(
         })
 
         if debug:
-            log_debug("\n[orange][DEBUG] Extracted HTML segments with ML labels:[/orange]")
+            logger.debug("\n[orange][DEBUG] Extracted HTML segments with ML labels:[/orange]")
             for seg in segments_with_attrs:
-                log_info(f"{seg['tag']} {seg['attrs']} [label={seg['ml_label']}, conf={seg['ml_confidence']:.2f}] {seg['html'][:80]}{'...' if len(seg['html']) > 80 else ''}")
+                logger.info(f"{seg['tag']} {seg['attrs']} [label={seg['ml_label']}, conf={seg['ml_confidence']:.2f}] {seg['html'][:80]}{'...' if len(seg['html']) > 80 else ''}")
             if segments_needing_review:
-                log_debug(f"\n[red][DEBUG] {len(segments_needing_review)} segments flagged for review.[/red]")
+                logger.debug(f"\n[red][DEBUG] {len(segments_needing_review)} segments flagged for review.[/red]")
 
         # --- 5. Update context library with new segments for future runs ---
         if context_library is not None:
@@ -1773,17 +1773,17 @@ def scan_html_for_context(
             prune_embedding_cache(valid_hashes)
     except Exception as e:
         tb = traceback.format_exc()
-        log_error(f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}")
+        logger.error(f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}")
         context_result["error"] = f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}"
 
     if context_cache is not None:
         context_cache[page_hash] = context_result
         save_context_cache_to_disk(context_cache)
     if embedding_cache_hits and not embedding_cache_misses:
-        log_info(f"[bold green][CACHE] All segment embeddings loaded from cache.[/bold green]")
+        logger.info(f"[bold green][CACHE] All segment embeddings loaded from cache.[/bold green]")
     elif embedding_cache_hits:
-        log_warning(f"[yellow][CACHE] {len(embedding_cache_hits)} embeddings loaded from cache, {len(embedding_cache_misses)} computed.[/yellow]")
-    log_info(f"[PROFILE] scan_html_for_context completed in {time.time() - start_time:.2f} seconds.")
+        logger.warning(f"[yellow][CACHE] {len(embedding_cache_hits)} embeddings loaded from cache, {len(embedding_cache_misses)} computed.[/yellow]")
+    logger.info(f"[PROFILE] scan_html_for_context completed in {time.time() - start_time:.2f} seconds.")
     dom_parts = {
         "contests": context_result.get("contests", []),
         "panels": context_result.get("panels", []),
@@ -1808,7 +1808,7 @@ def scan_html_for_context(
     }
     # Validate dom_parts before organizing
     if not validate_dom_parts(dom_parts):
-        log_error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
+        logger.error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
         # Optionally: raise Exception or return early
         # raise ValueError("DOM parts validation failed.")
 

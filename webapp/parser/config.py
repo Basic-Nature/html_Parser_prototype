@@ -3,8 +3,9 @@ import os
 
 
 from dotenv import load_dotenv
-from .utils.shared_logger import log_info
+from .utils.shared_logger import SharedLogger
 load_dotenv()
+logger = SharedLogger()
 import psycopg2
 from psycopg2 import sql, OperationalError
 
@@ -79,7 +80,7 @@ def ensure_postgres_db():
         with conn.cursor() as cur:
             cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(POSTGRES_DB)))
         conn.close()
-        log_info(f"[INFO] Database '{POSTGRES_DB}' created.")
+        logger.info(f"[INFO] Database '{POSTGRES_DB}' created.")
     except Exception as e:
         raise RuntimeError(f"Failed to create database '{POSTGRES_DB}': {e}")
 

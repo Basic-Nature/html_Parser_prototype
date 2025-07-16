@@ -1,6 +1,6 @@
 import os, re
 
-from typing import Dict, Set, List
+from typing import Dict, Set, List, Optional
 from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT, LOG_DIR, BASE_DIR
 import orjson
 import subprocess
@@ -15,8 +15,9 @@ import time
 import threading
 import shutil
 import tempfile
-from ..utils.shared_logger import log_info, log_error, log_debug, log_warning
-
+from ..utils.shared_logger import SharedLogger
+from ..utils.shared_logic import normalize_county_name
+logger = SharedLogger()
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
 
@@ -29,6 +30,38 @@ DEFAULT_STRUCTURE = {
     "metadata": {},
 }
 _context_library_cache = None
+
+def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
+    """
+    Resolve a county name to its canonical form using known counties and aliases.
+    Optionally, provide a state for more accurate mapping.
+    """
+    
+    county_norm = normalize_county_name(county_name)
+    # If state is provided, check only that state's counties
+    if state:
+        state_norm = state.lower().replace(" ", "_")
+        counties = KNOWN_STATE_TO_COUNTY_MAP.get(state_norm, [])
+        if county_norm in counties:
+            return county_norm
+        # Fuzzy match if not found
+        import difflib
+        matches = difflib.get_close_matches(county_norm, counties, n=1, cutoff=0.8)
+        if matches:
+            return matches[0]
+    else:
+        # Search all counties
+        for counties in KNOWN_STATE_TO_COUNTY_MAP.values():
+            if county_norm in counties:
+                return county_norm
+        # Fuzzy match across all counties
+        all_counties = [c for counties in KNOWN_STATE_TO_COUNTY_MAP.values() for c in counties]
+        import difflib
+        matches = difflib.get_close_matches(county_norm, all_counties, n=1, cutoff=0.8)
+        if matches:
+            return matches[0]
+    # If no match, return normalized input
+    return county_norm
 
 #: Maps normalized state names to a sorted list of their counties (all lowercase).
 KNOWN_STATE_TO_COUNTY_MAP: Dict[str, List[str]] = {
@@ -806,7 +839,7 @@ def extend_ballot_types(new_types: List[str]):
 def safe_join(base, *paths):
     final_path = os.path.abspath(os.path.join(base, *paths))
     if not final_path.startswith(os.path.abspath(base)):
-        log_debug(f"DEBUG: Attempted to join {paths} to base {base} -> {final_path}")
+        logger.debug(f"DEBUG: Attempted to join {paths} to base {base} -> {final_path}")
         raise ValueError("Attempted Path Traversal Detected!")
     return final_path
 
@@ -1028,7 +1061,7 @@ def update_context_library_field(key, value, path=CONTEXT_LIBRARY_PATH):
     lib[key] = value
     save_context_library(lib, path)
     # Optionally log the change
-    log_info(f"Updated context_library field '{key}': {old_value} -> {value}")
+    logger.info(f"Updated context_library field '{key}': {old_value} -> {value}")
 
 def update_domain_selector_cache(domain, selector, label, success=True):
     lib = load_context_library()
@@ -1151,18 +1184,18 @@ def self_heal_context_library(max_retries=3, cooldown=2):
     """Self-heal: scan for misaligned NER, run correction bot, reload context library, repeat until clean or max_retries."""
     scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
     for attempt in range(1, max_retries + 1):
-        log_info(f"\n[LIBRARIAN SELF-HEAL] Attempt {attempt}...")
+        logger.warning(f"\n[LIBRARIAN SELF-HEAL] Attempt {attempt}...")
         scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
         scan_result = subprocess.run(scan_cmd, check=True, cwd=PROJECT_ROOT)
         if scan_result.returncode == 0:
-            log_info("[LIBRARIAN SELF-HEAL] Data is clean. Exiting self-heal mode.")
+            logger.info("[LIBRARIAN SELF-HEAL] Data is clean. Exiting self-heal mode.")
             return 0
-        log_warning("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
+        logger.warning("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
         bot_cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--enhanced"]
         subprocess.run(bot_cmd, check=True, cwd=PROJECT_ROOT)
-        log_warning(f"[LIBRARIAN SELF-HEAL] Sleeping {cooldown}s before rescanning...")
+        logger.warning(f"[LIBRARIAN SELF-HEAL] Sleeping {cooldown}s before rescanning...")
         time.sleep(cooldown)
-    log_info("[LIBRARIAN SELF-HEAL] Max retries reached. Some misalignments may remain.")
+    logger.info("[LIBRARIAN SELF-HEAL] Max retries reached. Some misalignments may remain.")
     return 2
 
 if __name__ == "__main__":

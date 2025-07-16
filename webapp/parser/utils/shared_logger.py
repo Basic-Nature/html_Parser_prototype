@@ -9,9 +9,7 @@ from rich import print as rprint
 from rich.console import Console, RenderableType
 from rich.panel import Panel
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
-from rich.text import Text
-from rich.markdown import Markdown
-from rich.rule import Rule
+from rich.json import JSON
 import orjson
 import json
 from contextlib import contextmanager
@@ -48,17 +46,35 @@ class RichConsoleProxy(Console):
 
     def print(self, *args, **kwargs) -> None:
         """
-        Print using rich's Console.print (for tables, panels, etc).
+        Print using rich's Console.print (for tables, panels, JSON, etc).
         In webapp mode, serialize the output and emit via SocketIO.
         """
-        # If in webapp mode and socketio_emit_func is set, serialize and emit
+        renderables = []
+        for obj in args:
+            # If it's a dict, wrap in Rich JSON
+            if isinstance(obj, dict):
+                renderables.append(JSON(obj))
+            # If it's bytes (from orjson), decode and wrap in Rich JSON
+            elif isinstance(obj, bytes):
+                try:
+                    renderables.append(JSON(obj.decode("utf-8")))
+                except Exception:
+                    renderables.append(str(obj))
+            # If it's a string that looks like JSON, wrap in Rich JSON
+            elif isinstance(obj, str) and obj.strip().startswith("{"):
+                try:
+                    renderables.append(JSON(obj))
+                except Exception:
+                    renderables.append(obj)
+            else:
+                renderables.append(obj)
+
         if getattr(self.logger, "mode", "cli") == "webapp" and getattr(self.logger, "socketio_emit_func", None):
             sio = self.logger.socketio_emit_func
-            for obj in args:
-                # Try to render as text
+            for obj in renderables:
                 sio(self._render_to_text(obj))
         else:
-            self._console.print(*args, **kwargs)
+            self._console.print(*renderables, **kwargs)
 
     def _render_to_text(self, obj: RenderableType) -> str:
         """
@@ -296,105 +312,29 @@ class SharedLogger(logging.Logger):
                 }
         return {}
 
-    def _emit(self, level: str, msg: str, context: Any = None, color: str = "white") -> None:
-        """
-        Emit a log message to the appropriate destination(s).
-        """
-        if self.suppress_rich_logs or not self._should_emit(level):
-            return
-
-        # Compose the message and context
-        context_str = self._format_context(context)
-        if context_str:
-            label, panel_color, msg_body = self._extract_label_and_color(msg)
-            panel_label = label or level
-            panel_color = panel_color or color
-            text_msg = f"[{panel_label}] {msg_body}\n{context_str}"
-        elif self._contains_rich_markup(msg):
-            text_msg = msg
-            panel_color = color
-            panel_label = level
-        else:
-            panel_label = level
-            panel_color = color
-            text_msg = f"[{panel_label}] {msg}"
-
-        # Structured logging info
-        caller_info = self._get_caller_info()
-
-        # Output logic
-        if self.mode == "webapp" and self.socketio_emit_func:
-            # --- Webapp: emit to socketio and log to Python logger ---
-            if self.format == "json":
-                log_obj = {
-                    "timestamp": time.time(),
-                    "level": panel_label,
-                    "color": panel_color,
-                    "message": re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg).strip(),
-                    "context": context_str,
-                    **caller_info
-                }
-                self.socketio_emit_func(orjson.dumps(log_obj).decode("utf-8"))
-            else:
-                plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
-                self.socketio_emit_func(plain_msg.strip())
-            # Also log to Python logger (RichHandler)
-            if hasattr(self.logger, level.lower()):
-                getattr(self.logger, level.lower())(re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg).strip())
-            else:
-                self.logger.info(re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg).strip())
-        elif self.mode == "cli":
-            # --- CLI: only print Rich panel, do NOT log to Python logger ---
-            if not isinstance(text_msg, str):
-                text_msg = str(text_msg)
-            if not isinstance(panel_color, str):
-                panel_color = str(panel_color)
-            try:
-                rprint(Panel(text_msg, style=panel_color))
-            except Exception:
-                # Fallback to plain print if Rich is unavailable (e.g., during interpreter shutdown)
-                print(text_msg)
-
-        # File output (optional, always logs to file if file_path is set)
-        if self.file_path:
-            log_line = {
-                "timestamp": time.time(),
-                "level": panel_label,
-                "color": panel_color,
-                "message": re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg).strip(),
-                "context": context_str,
-                **caller_info
-            }
-            with open(self.file_path, "a", encoding="utf-8") as f:
-                if self.format == "json":
-                    f.write(orjson.dumps(log_line).decode("utf-8") + "\n")
-                else:
-                    f.write(f"{log_line['timestamp']} [{log_line['level']}] {log_line['message']}\n")
-
-    # --- Logging methods ---
     def trace(self, msg: str, context: Any = None) -> None:
         """Log a trace message."""
-        self._emit("TRACE", msg, context, color="cyan")
+        self._log("TRACE", msg, context, color="cyan")
 
     def debug(self, msg: str, context: Any = None) -> None:
         """Log a debug message."""
-        self._emit("DEBUG", msg, context, color="blue")
+        self._log("DEBUG", msg, context, color="blue")
 
     def info(self, msg: str, context: Any = None) -> None:
         """Log an info message."""
-        self._emit("INFO", msg, context, color="green")
+        self._log("INFO", msg, context, color="green")
 
     def warning(self, msg: str, context: Any = None) -> None:
         """Log a warning message."""
-        self._emit("WARNING", msg, context, color="yellow")
+        self._log("WARNING", msg, context, color="yellow")
 
     def error(self, msg: str, context: Any = None) -> None:
         """Log an error message."""
-        self._emit("ERROR", msg, context, color="red")
+        self._log("ERROR", msg, context, color="red")
 
     def critical(self, msg: str, context: Any = None) -> None:
         """Log a critical message."""
-        self._emit("CRITICAL", msg, context, color="magenta")
+        self._log("CRITICAL", msg, context, color="magenta")
 
     def alert(self, msg: str, context: Any = None, alert_type: str = "info") -> None:
         """Log an alert message with a specific alert type."""
@@ -408,7 +348,63 @@ class SharedLogger(logging.Logger):
         panel_msg = f"[bold]{label} ALERT:[/bold] {msg}"
         if context:
             panel_msg += f"\n[dim]{self._format_context(context)}[/dim]"
-        self._emit(label, panel_msg, context, color=style)
+        self._log(label, panel_msg, context, color=style)
+
+    def _log(self, level: str, msg: str, context: Any = None, color: str = "white") -> None:
+        """
+        Robustly handle logging for both CLI and webapp GUI.
+        Emits to SocketIO in webapp mode, prints rich panels in CLI.
+        """
+        if self.suppress_rich_logs or not self._should_emit(level):
+            return
+
+        context_str = self._format_context(context)
+        # Compose message for panel or plain output
+        if context_str:
+            text_msg = f"[{level}] {msg}\n{context_str}"
+        else:
+            text_msg = f"[{level}] {msg}"
+
+        # Output logic
+        if self.mode == "webapp" and self.socketio_emit_func:
+            # Webapp: emit JSON if format is json, else plain text
+            if self.format == "json":
+                log_obj = {
+                    "timestamp": time.time(),
+                    "level": level,
+                    "color": color,
+                    "message": re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", msg).strip(),
+                    "context": context_str,
+                }
+                self.socketio_emit_func(orjson.dumps(log_obj).decode("utf-8"))
+            else:
+                plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
+                self.socketio_emit_func(plain_msg.strip())
+            # Also log to Python logger
+            if hasattr(self.logger, level.lower()):
+                getattr(self.logger, level.lower())(plain_msg.strip())
+            else:
+                self.logger.info(plain_msg.strip())
+        elif self.mode == "cli":
+            # CLI: print rich panel
+            try:
+                rprint(Panel(text_msg, style=color))
+            except Exception:
+                print(text_msg)
+        # File output (optional)
+        if self.file_path:
+            log_line = {
+                "timestamp": time.time(),
+                "level": level,
+                "color": color,
+                "message": re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", msg).strip(),
+                "context": context_str,
+            }
+            with open(self.file_path, "a", encoding="utf-8") as f:
+                if self.format == "json":
+                    f.write(orjson.dumps(log_line).decode("utf-8") + "\n")
+                else:
+                    f.write(f"{log_line['timestamp']} [{log_line['level']}] {log_line['message']}\n")
 
     # --- Progress Bar Helper ---
     @contextmanager

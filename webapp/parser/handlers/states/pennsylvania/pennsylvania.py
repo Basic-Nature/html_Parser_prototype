@@ -7,10 +7,12 @@
 import os
 from pathlib import Path
 import csv
-from ....utils.shared_logger import log_info, log_warning, log_error
+from ....utils.shared_logger import SharedLogger
 
 from ....utils.output_utils import finalize_election_output
 from ....config import CONTEXT_DB_PATH, BASE_DIR
+logger = SharedLogger()
+
 # Use BASE_DIR and INPUT_DIR for robust path handling
 
 INPUT_DIR = os.path.join(BASE_DIR, "input")
@@ -23,28 +25,28 @@ def apply_navigation_steps(page, config):
             if step["type_"] == "click":
                 el = page.query_selector(step["selector"])
                 if el:
-                    log_info(f"[NAV] Clicking {step['selector']}")
+                    logger.info(f"[NAV] Clicking {step['selector']}")
                     el.click()
                     page.wait_for_timeout(step.get("delay", 1000))
             elif step["type_"] == "wait":
-                log_info(f"[NAV] Waiting {step['seconds']}s")
+                logger.info(f"[NAV] Waiting {step['seconds']}s")
                 page.wait_for_timeout(step["seconds"] * 1000)
         except Exception as e:
-            log_warning(f"[NAV] Step failed: {step} — {e}")
+            logger.warning(f"[NAV] Step failed: {step} — {e}")
 
 def parse(page, html_context=None):
     html_context = html_context or {}
     config = html_context.get("config", {})
-    log_info("[PA Handler] Contest routing active — using shared contest context with state-level extraction.")
+    logger.info("[PA Handler] Contest routing active — using shared contest context with state-level extraction.")
 
     # STEP 1: Navigation (if needed)
     apply_navigation_steps(page, config)
 
     header_text = html_context.get("selected_race", "Unknown")
-    log_warning(f"[bold yellow]Detected election:[/bold yellow] {header_text}")
+    logger.warning(f"[bold yellow]Detected election:[/bold yellow] {header_text}")
     resp = input("Do you want to continue parsing this election's contests? (y/n): ").strip().lower()
     if resp != "y":
-        log_info("[cyan]Election skipped. Exploring other available elections...[/cyan]")
+        logger.info("[cyan]Election skipped. Exploring other available elections...[/cyan]")
         try:
             elections_toggle = page.query_selector("a[aria-label='Elections']")
             if elections_toggle:
@@ -53,54 +55,54 @@ def parse(page, html_context=None):
                 race_links = page.query_selector_all("ul.dropdown-menu li a")
                 for i, link in enumerate(race_links):
                     label = link.inner_text().strip()
-                    log_info(f"[{i}] {label}")
+                    logger.info(f"[{i}] {label}")
                 choice = input("Select an election to load by index: ").strip()
                 race_links[int(choice)].click()
                 page.wait_for_timeout(3000)
             else:
-                log_warning("[PA] Elections dropdown not found.")
+                logger.warning("[PA] Elections dropdown not found.")
         except Exception as e:
-            log_warning(f"[PA] Failed to expand Elections menu or load selection: {e}")
+            logger.warning(f"[PA] Failed to expand Elections menu or load selection: {e}")
 
-    log_info("[INFO] Pennsylvania handler activated. Waiting for CSV download logic.")
+    logger.info("[INFO] Pennsylvania handler activated. Waiting for CSV download logic.")
     apply_navigation_steps(page, config)
 
     # Click into County Breakdown view if flagged by scanner
     if config.get("requires_county_click"):
         try:
-            log_info("[PA] Clicking County Breakdown link based on scanner signal...")
+            logger.info("[PA] Clicking County Breakdown link based on scanner signal...")
             county_link = page.query_selector("a:has-text('County Breakdown')")
             if county_link:
                 county_link.click()
                 page.wait_for_timeout(4000)
-                log_info("[PA] County-level view loaded.")
+                logger.info("[PA] County-level view loaded.")
             else:
-                log_warning("[PA] County Breakdown link not found.")
+                logger.warning("[PA] County Breakdown link not found.")
         except Exception as e:
-            log_warning(f"[PA] Failed to click County Breakdown link: {e}")
+            logger.warning(f"[PA] Failed to click County Breakdown link: {e}")
 
     # Look for a CSV file in the input directory
     csv_files = [f for f in os.listdir(INPUT_DIR) if f.lower().endswith(".csv")]
     if not csv_files:
-        log_error(f"[ERROR] No CSV files found in input directory: {INPUT_DIR}")
+        logger.error(f"[ERROR] No CSV files found in input directory: {INPUT_DIR}")
         return [], [], "Pennsylvania (CSV not found)", {}
 
     # If multiple CSVs, prompt user to select
     if len(csv_files) > 1:
-        log_warning("[yellow]Multiple CSV files found in input. Please select one:[/yellow]")
+        logger.warning("[yellow]Multiple CSV files found in input. Please select one:[/yellow]")
         for i, fname in enumerate(csv_files):
-            log_info(f"  [bold cyan][{i}][/bold cyan] {fname}")
+            logger.info(f"  [bold cyan][{i}][/bold cyan] {fname}")
         try:
             idx = int(input("Select CSV file index: ").strip())
             csv_path = INPUT_DIR / csv_files[idx]
         except Exception:
-            log_error("[ERROR] Invalid selection.")
+            logger.error("[ERROR] Invalid selection.")
             return [], [], "Pennsylvania (CSV selection error)", {}
     else:
         csv_path = INPUT_DIR / csv_files[0]
 
     if not csv_path.exists():
-        log_error(f"[ERROR] CSV file not found: {csv_path}")
+        logger.error(f"[ERROR] CSV file not found: {csv_path}")
         return [], [], "Pennsylvania (CSV not found)", {}
 
     data = []
@@ -110,7 +112,7 @@ def parse(page, html_context=None):
         with open(csv_path, newline='', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
             if reader.fieldnames is None:
-                log_error("[ERROR] CSV file appears to be empty or missing headers.") 
+                logger.error("[ERROR] CSV file appears to be empty or missing headers.") 
                 return [], [], "Pennsylvania CSV Missing Headers", {}
             headers = reader.fieldnames
             for row in reader:
@@ -150,5 +152,5 @@ def parse(page, html_context=None):
         return headers, data, contest_title, metadata
 
     except Exception as e:
-        log_error(f"[ERROR] Failed to read or write CSV: {e}")
+        logger.error(f"[ERROR] Failed to read or write CSV: {e}")
         return [], [], "Pennsylvania CSV Parse Error", {}

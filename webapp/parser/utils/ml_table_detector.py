@@ -21,7 +21,7 @@ import os
 import re
 import orjson
 from typing import List, Dict, Any, Optional, Tuple
-from .shared_logger import log_error
+from .shared_logger import SharedLogger
 try:
     import torch
     import numpy as np
@@ -33,7 +33,7 @@ try:
     from bs4 import BeautifulSoup
 except ImportError:
     BeautifulSoup = None
-
+logger = SharedLogger()
 # --- Optional LLM integration (OpenAI, local LLM, etc.) ---
 def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
     """
@@ -102,7 +102,7 @@ def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
                 continue
         return tables
     except Exception as e:
-        log_error(f"[LLM TABLE DETECTION] Error ({llm_provider}): {e}")
+        logger.error(f"[LLM TABLE DETECTION] Error ({llm_provider}): {e}")
         return []
 
 def detect_tables_ml(html: str, options: Optional[dict] = None) -> List[Dict[str, Any]]:

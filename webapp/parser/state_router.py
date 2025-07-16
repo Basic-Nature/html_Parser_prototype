@@ -8,7 +8,7 @@
 import os
 import importlib
 from typing import Optional, Dict, Any, List, Tuple
-from .utils.shared_logger import log_info, log_warning, log_debug, log_error
+from .utils.shared_logger import SharedLogger, RichConsoleProxy
 import traceback
 from .config import BASE_DIR
 from .bots.librarian import STATE_MODULE_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
@@ -16,6 +16,8 @@ import difflib
 import time
 from .utils.shared_logic import normalize_state_name, normalize_county_name
 import orjson
+logger = SharedLogger()
+console = RichConsoleProxy()
 LOADED_HANDLERS: Dict[str, Any] = {}
 
 STATE_HANDLER_BASE_PATH = os.path.join(BASE_DIR, "parser", "handlers", "states")
@@ -33,7 +35,7 @@ def list_available_states() -> list:
     """List all available state handler modules (normalized names)."""
     base_path = STATE_HANDLER_BASE_PATH
     if not os.path.isdir(base_path):
-        log_warning("[Router] handlers/states directory not found.")
+        logger.warning("[Router] handlers/states directory not found.")
         return []
     return sorted([
         normalize_state_name(d)
@@ -50,7 +52,7 @@ def list_available_counties(state_key: str, suppress_warning: bool = False) -> l
     base_path = os.path.join(STATE_HANDLER_BASE_PATH, state_key, "county")
     if not os.path.isdir(base_path):
         if not suppress_warning:
-            log_warning(f"[Router] counties directory not found for state: {state_key}")
+            logger.warning(f"[Router] counties directory not found for state: {state_key}")
         return []
     counties = []
     for fname in os.listdir(base_path):
@@ -78,15 +80,15 @@ def import_handler(module_or_file_path: str):
             # Convert file path to module path
             abs_path = os.path.abspath(module_or_file_path)
             if not os.path.exists(abs_path):
-                log_error(f"[HTML Handler] Handler file does not exist: {abs_path}")
-                log_info("[HTML Handler] Example of valid file path: webapp\\parser\\handlers\\states\\new_york\\county\\rockland.py")
+                logger.error(f"[HTML Handler] Handler file does not exist: {abs_path}")
+                logger.info("[HTML Handler] Example of valid file path: webapp\\parser\\handlers\\states\\new_york\\county\\rockland.py")
                 return None
             # Remove BASE_DIR and .py, convert to dotted path
             rel_path = os.path.relpath(abs_path, BASE_DIR)
             module_path = rel_path.replace(os.sep, ".").replace("/", ".")
             if module_path.endswith(".py"):
                 module_path = module_path[:-3]
-            log_info(f"[HTML Handler] Converted file path to module path: {module_path}")
+            logger.info(f"[HTML Handler] Converted file path to module path: {module_path}")
         else:
             module_path = module_or_file_path
 
@@ -95,13 +97,13 @@ def import_handler(module_or_file_path: str):
             LOADED_HANDLERS[module_or_file_path] = module
             return module
         except Exception as e:
-            log_error(f"[HTML Handler] Failed to import handler from path '{module_or_file_path}': {e}")
-            log_debug(f"[HTML Handler] Traceback:\n{traceback.format_exc()}")
-            log_info("[HTML Handler] Example of valid module path: webapp.parser.handlers.states.new_york.county.rockland")
-            log_info("[HTML Handler] Example of valid file path: webapp\\parser\\handlers\\states\\new_york\\county\\rockland.py")
+            logger.error(f"[HTML Handler] Failed to import handler from path '{module_or_file_path}': {e}")
+            logger.debug(f"[HTML Handler] Traceback:\n{traceback.format_exc()}")
+            logger.info("[HTML Handler] Example of valid module path: webapp.parser.handlers.states.new_york.county.rockland")
+            logger.info("[HTML Handler] Example of valid file path: webapp\\parser\\handlers\\states\\new_york\\county\\rockland.py")
             return None
     except Exception as e:
-        log_error(f"[HTML Handler] Unexpected error importing handler: {e}\n{traceback.format_exc()}")
+        logger.error(f"[HTML Handler] Unexpected error importing handler: {e}\n{traceback.format_exc()}")
         return None
 
 def prompt_for_handler_fallback(available_states, available_counties_by_state, last_error=None, max_attempts=3):
@@ -114,28 +116,28 @@ def prompt_for_handler_fallback(available_states, available_counties_by_state, l
     county = None
     while attempts < max_attempts:
         if last_error:
-            log_error(f"\n[ERROR] Last import failed: {last_error}\n")
-        log_info("Available states:", ", ".join(available_states))
+            logger.error(f"\n[ERROR] Last import failed: {last_error}\n")
+        logger.info("Available states:", ", ".join(available_states))
         state = input("Enter state (or leave blank to cancel): ").strip().lower()
         if state == "cancel" or not state:
-            log_warning("Aborted by user.")
+            logger.warning("Aborted by user.")
             return None, None
         if state not in available_states:
-            log_info(f"State '{state}' not found. Try again.")
+            logger.info(f"State '{state}' not found. Try again.")
             attempts += 1
             continue
         counties = available_counties_by_state.get(state, [])
-        log_info("Available counties:", ", ".join(counties))
+        logger.info("Available counties:", ", ".join(counties))
         county = input("Enter county (or leave blank to skip county): ").strip().lower()
         if county == "cancel":
-            log_warning("Aborted by user.")
+            logger.warning("Aborted by user.")
             return None, None
         if county and county not in counties:
-            log_info(f"County '{county}' not found for state '{state}'. Try again.")
+            logger.info(f"County '{county}' not found for state '{state}'. Try again.")
             attempts += 1
             continue
         return state, county if county else None
-    log_warning("Too many failed attempts. Exiting fallback.")
+    logger.warning("Too many failed attempts. Exiting fallback.")
     return None, None
 
 def preload_handler_map(restrict_to_states=None):
@@ -154,14 +156,14 @@ def preload_handler_map(restrict_to_states=None):
     HANDLER_MAP["states"] = [normalize_state_name(s) for s in states]
     HANDLER_MAP["counties_by_state"] = counties_by_state
     HANDLER_MAP["last_loaded"] = time.time()
-    log_info(f"[Router] Handler map preloaded: {len(states)} states, {sum(len(c) for c in counties_by_state.values())} counties.")
+    logger.info(f"[Router] Handler map preloaded: {len(states)} states, {sum(len(c) for c in counties_by_state.values())} counties.")
 
 def reload_handler_map():
     """
     Reload the handler map cache.
     """
     preload_handler_map()
-    log_info("[Router] Handler map reloaded.")
+    logger.info("[Router] Handler map reloaded.")
 
 def scan_url_for_state_county(url: str, available_states: List[str], available_counties_by_state: Dict[str, List[str]]) -> Tuple[Optional[str], Optional[str], List[str]]:
     """
@@ -211,7 +213,7 @@ def fuzzy_match_handler(query: str, choices: list, n=3, cutoff=None, debug=False
     cutoff = cutoff if cutoff is not None else FUZZY_MATCH_THRESHOLD
     matches = difflib.get_close_matches(query, choices, n=n, cutoff=cutoff)
     if debug and matches:
-        log_info(f"[Router][Fuzzy] Query '{query}' matches: {matches} (cutoff={cutoff})")
+        logger.info(f"[Router][Fuzzy] Query '{query}' matches: {matches} (cutoff={cutoff})")
     return matches
 
 def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, debug=False):
@@ -226,7 +228,7 @@ def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, 
     counties_by_state = HANDLER_MAP["counties_by_state"] if HANDLER_MAP["counties_by_state"] else {normalize_state_name(s): list_available_counties(s) for s in states}
     norm_state = normalize_state_name(state) if state else None
     if debug:
-        log_info(f"[list_available_handlers] level={level}, state={state}, fuzzy={fuzzy}, refresh={refresh}")
+        logger.info(f"[list_available_handlers] level={level}, state={state}, fuzzy={fuzzy}, refresh={refresh}")
     for s in states:
         counties = counties_by_state.get(s, [])
         handlers[s] = sorted(set(counties))
@@ -239,13 +241,13 @@ def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, 
             if matches:
                 counties = handlers.get(matches[0], [])
                 if debug:
-                    log_info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
+                    logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
         return sorted(set(counties))
     if fuzzy and state:
         matches = difflib.get_close_matches(norm_state, handlers.keys(), n=3, cutoff=FUZZY_MATCH_THRESHOLD)
         if matches:
             if debug:
-                log_info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
+                logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
             return {matches[0]: handlers[matches[0]]}
     return handlers
 
@@ -268,16 +270,16 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
     }
     librarian_states = [normalize_state_name(s) for s in STATE_MODULE_MAP.keys()] if STATE_MODULE_MAP else []
     if debug:
-        log_info(f"[Router] Available states (filesystem): {available_states}")
-        log_info(f"[Router] Available states (context library): {librarian_states}")
+        logger.info(f"[Router] Available states (filesystem): {available_states}")
+        logger.info(f"[Router] Available states (context library): {librarian_states}")
         for s in available_states:
-            log_info(f"[Router] Counties for state '{s}': {available_counties_by_state[s]}")
+            logger.info(f"[Router] Counties for state '{s}': {available_counties_by_state[s]}")
     # Step 1: Scan URL for clues first
     url_state, url_county, url_log = scan_url_for_state_county(url or context.get('url', ''), available_states, available_counties_by_state)
     for entry in url_log:
         log.append(entry)
         if debug:
-            log_info(entry)
+            logger.info(entry)
     # Step 2: Enrich context using the coordinator (NLP, ML, etc.)
     coordinator = ContextCoordinator(use_library=True, enable_ml=False, alert_monitor=False)
     enriched = coordinator.organize_and_enrich(context)
@@ -289,7 +291,7 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
     for log_entry in detection_log:
         log.append(f"[Context Detection] {log_entry}")
         if debug:
-            log_info(f"[Router] [Context Detection] {log_entry}")
+            logger.info(f"[Router] [Context Detection] {log_entry}")
     # Step 4: Decide on state/county using priority: URL > context > context library > filesystem
     valid_state = None
     valid_county = None
@@ -311,8 +313,8 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
                 valid_state = matches[0]
                 summary["attempts"].append(f"Fuzzy matched state '{normalized_state}' to '{valid_state}'")
     if debug:
-        log_info(f"[Router] Available states (filesystem): {available_states}")
-        log_info(f"[Router] Counties for state '{valid_state}': {available_counties_by_state.get(valid_state, [])}")               
+        logger.info(f"[Router] Available states (filesystem): {available_states}")
+        logger.info(f"[Router] Counties for state '{valid_state}': {available_counties_by_state.get(valid_state, [])}")               
     if valid_state and not valid_county and county:
         normalized_county = normalize_county_name(county)
         counties = available_counties_by_state.get(valid_state, [])
@@ -396,18 +398,18 @@ def cli():
     if args.reload or args.refresh:
         reload_handler_map()
     if args.list_states:
-        log_info("Available states:")
+        logger.info("Available states:")
         for state in list_available_handlers(level="state", fuzzy=args.fuzzy, refresh=args.refresh, debug=args.debug):
-            log_info(f" - {state}")
+            console.print(f" - {state}")
     elif args.list_counties:
         state = args.list_counties
         counties = list_available_handlers(level="county", state=state, fuzzy=args.fuzzy, refresh=args.refresh, debug=args.debug)
         if counties:
-            log_info(f"Available counties for {state}:")
+            logger.info(f"Available counties for {state}:")
             for county in counties:
-                log_info(f" - {county}")
+                console.print(f" - {county}")
         else:
-            log_warning(f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
+            logger.warning(f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
     elif args.test_route:
         # Try to load as JSON context, else treat as URL
         test_input = args.test_route
@@ -418,28 +420,28 @@ def cli():
                 try:
                     context = orjson.loads(f.read())
                 except Exception as e:
-                    log_warning(f"Failed to load context from file: {e}")
+                    logger.warning(f"Failed to load context from file: {e}")
                     return
         else:
             url = test_input
         result = get_handler(context or {}, url=url, debug=args.debug, fuzzy_cutoff=args.fuzzy_cutoff)
-        log_info("Routing result:")
-        log_info(orjson.dumps(result["summary"], option=orjson.OPT_INDENT_2))
+        logger.info("Routing result:")
+        console.print(orjson.dumps(result["summary"], option=orjson.OPT_INDENT_2))
         if result["handler"]:
-            log_info(f"Handler module: {getattr(result['handler'], '__name__', str(result['handler']))}")
+            logger.info(f"Handler module: {getattr(result['handler'], '__name__', str(result['handler']))}")
         else:
-            log_warning("No suitable handler found.")
+            logger.warning("No suitable handler found.")
             # --- Add fallback prompt here ---
             available_states = list_available_states()
             available_counties_by_state = {s: list_available_counties(s) for s in available_states}
             import_error_message = result["summary"]["error"]["message"] if result["summary"].get("error") else "Unknown error"
             state, county = prompt_for_handler_fallback(available_states, available_counties_by_state, last_error=import_error_message)
             if not state:
-                log_warning("No handler selected. Exiting.")
+                logger.warning("No handler selected. Exiting.")
                 return
             handler_path = f"webapp.parser.handlers.states.{state}.county.{county}" if county else f"webapp.parser.handlers.states.{state}"
             handler = import_handler(handler_path)
             if handler and hasattr(handler, "parse"):
-                log_info(f"Handler module: {getattr(handler, '__name__', str(handler))}")
+                logger.info(f"Handler module: {getattr(handler, '__name__', str(handler))}")
             else:
-                log_warning("Still could not import a suitable handler.")
+                logger.warning("Still could not import a suitable handler.")
