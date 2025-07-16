@@ -40,8 +40,7 @@ class RichConsoleProxy(Console):
     Handles routing of rich output (Table, Panel, Progress, etc.) to CLI or webapp (SocketIO).
     """
     def __init__(self, logger=None) -> None:
-        from .shared_logger import _logger_instance as logger_instance
-        self.logger = logger or logger_instance
+        self.logger = logger or SharedLogger()
         self._console = Console()
 
     def print(self, *args, **kwargs) -> None:
@@ -360,10 +359,7 @@ class SharedLogger(logging.Logger):
 
         context_str = self._format_context(context)
         # Compose message for panel or plain output
-        if context_str:
-            text_msg = f"[{level}] {msg}\n{context_str}"
-        else:
-            text_msg = f"[{level}] {msg}"
+        text_msg = f"[{level}] {msg}"
 
         # Output logic
         if self.mode == "webapp" and self.socketio_emit_func:
@@ -511,67 +507,3 @@ class SharedLogger(logging.Logger):
         with open(log_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
         return "".join(lines[-max_lines:])
-
-# --- Global logger instance and wrappers for backward compatibility ---
-
-_logger_instance = SharedLogger()
-
-def set_log_mode(mode: Optional[str]) -> None:
-    """Set the global logger mode."""
-    _logger_instance.set_mode(mode)
-
-def set_log_format(fmt: Optional[str]) -> None:
-    """Set the global logger format."""
-    _logger_instance.set_format(fmt)
-
-def set_log_level(level: Optional[str]) -> None:
-    """Set the global logger level."""
-    _logger_instance.set_level(level)
-
-def set_socketio_emit_func(emit_func: Callable[[str], None]) -> None:
-    """Set the global logger's socketio emit function."""
-    _logger_instance.set_socketio_emit_func(emit_func)
-
-def set_log_file_path(file_path: str) -> None:
-    """Set the global logger's file output path."""
-    _logger_instance.set_file_path(file_path)
-
-def suppress_rich_logs(value: bool = True) -> None:
-    """Suppress rich logs globally."""
-    _logger_instance.suppress(value)
-
-def log_trace(msg: str, context: Any = None, *args, **kwargs) -> None:
-    _logger_instance.trace(msg, context)
-
-def log_debug(msg: str, context: Any = None, *args, **kwargs) -> None:
-    _logger_instance.debug(msg, context)
-
-def log_info(msg: str, context: Any = None, *args, **kwargs) -> None:
-    _logger_instance.info(msg, context)
-
-def log_warning(msg: str, context: Any = None, *args, **kwargs) -> None:
-    _logger_instance.warning(msg, context)
-
-def log_error(msg: str, context: Any = None, *args, **kwargs) -> None:
-    _logger_instance.error(msg, context)
-
-def log_critical(msg: str, context: Any = None, *args, **kwargs) -> None:
-    _logger_instance.critical(msg, context)
-
-def log_alert(msg: str, context: Any = None, alert_type: str = "info") -> None:
-    _logger_instance.alert(msg, context, alert_type=alert_type)
-
-@contextmanager
-def progress_bar(description: str = "Processing", total: int = 100, **kwargs) -> Generator[Any, None, None]:
-    """Context manager for a global progress bar (CLI or webapp)."""
-    with _logger_instance.progress_bar(description, total, **kwargs) as update_progress:
-        yield update_progress
-
-def discover_log_files(log_dirs: List[str], suffixes: tuple = (".jsonl", ".json", ".log", ".html")) -> List[Path]:
-    return _logger_instance.discover_log_files(log_dirs, suffixes)
-
-def safe_read_jsonl(path: str) -> List[Any]:
-    return _logger_instance.safe_read_jsonl(path)
-
-def summarize_logs(log_path: Optional[str] = None, max_lines: int = 1000) -> str:
-    return _logger_instance.summarize_logs(log_path, max_lines)

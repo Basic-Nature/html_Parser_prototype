@@ -15,14 +15,13 @@ from difflib import get_close_matches
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, session, url_for, flash, send_file, send_from_directory
 from flask_socketio import emit, SocketIO
-import logging
 import importlib
 from io import StringIO
 import orjson
 import os
 import subprocess
 from threading import Thread
-from webapp.parser.utils.shared_logger import SharedLogger, set_log_mode, set_socketio_emit_func
+from webapp.parser.utils.shared_logger import SharedLogger, RichConsoleProxy
 from webapp.parser.web_pipeline import process_urls_for_web, cancel_processing
 from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
 from webapp.parser.utils.user_prompt import UserPrompt
@@ -32,6 +31,7 @@ load_dotenv()
 
 prompt = UserPrompt()
 logger = SharedLogger()
+console = RichConsoleProxy(logger)
 app = Flask(__name__)
 socketio = SocketIO(app)
 
@@ -156,7 +156,22 @@ def validate_module_path(path):
         except Exception:
             pass
         return False, "Module not found"
-
+    
+def log_parser_status(msg, session_id=None, rich=False):
+    """
+    Log parser status to both logger and console as appropriate.
+    - msg: The message to log.
+    - session_id: The session ID (optional).
+    - rich: If True, use rich panel for GUI; else, plain log.
+    """
+    if rich and logger.mode == "webapp":
+        console.panel(f"{msg}\nSession: {session_id}", title="Parser Status")
+    else:
+        if session_id:
+            logger.info(f"{msg} (session_id={session_id})")
+        else:
+            logger.info(msg)
+            
 # --- Routes ---
 @app.route("/")
 def index():
@@ -165,7 +180,7 @@ def index():
 @socketio.on('connect')
 def handle_connect():
     # Set logging mode to webapp for this session
-    set_log_mode("webapp")
+    logger.set_mode("webapp")
 
     # Get the session ID for this client
     session_id = session.get('sid') if 'sid' in session else request.sid
@@ -173,7 +188,7 @@ def handle_connect():
     # Set the global logger's emit function to route logs to this client's SocketIO room
     def emit_to_socketio(line):
         socketio.emit('parser_output', line, room=session_id)
-    set_socketio_emit_func(emit_to_socketio)
+    logger.set_socketio_emit_func(emit_to_socketio)
 
     # Set the prompt system to webapp mode and route prompts to this client's SocketIO room
     prompt.set_mode("webapp")
@@ -393,7 +408,7 @@ def handle_data_framework(data):
 @socketio.on('run_parser')
 def handle_run_parser():
     session_id = session.get('sid') if 'sid' in session else request.sid
-    logger.info("Starting parser run...")
+    log_parser_status("Starting parser run...", session_id, rich=True)
     thread = Thread(target=process_urls_for_web, args=(None, session_id))
     thread.start()
     
