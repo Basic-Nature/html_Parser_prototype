@@ -373,14 +373,19 @@ class SharedLogger(logging.Logger):
                     "context": context_str,
                 }
                 self.socketio_emit_func(orjson.dumps(log_obj).decode("utf-8"))
+                # Also log to Python logger
+                if hasattr(self.logger, level.lower()):
+                    self.logger.info(log_obj["message"])
+                else:
+                    self.logger.info(log_obj["message"])
             else:
                 plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
                 self.socketio_emit_func(plain_msg.strip())
-            # Also log to Python logger
-            if hasattr(self.logger, level.lower()):
-                getattr(self.logger, level.lower())(plain_msg.strip())
-            else:
-                self.logger.info(plain_msg.strip())
+                # Also log to Python logger
+                if hasattr(self.logger, level.lower()):
+                    getattr(self.logger, level.lower())(plain_msg.strip())
+                else:
+                    self.logger.info(plain_msg.strip())
         elif self.mode == "cli":
             # CLI: print rich panel
             try:

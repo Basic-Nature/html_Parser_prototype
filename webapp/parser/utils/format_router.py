@@ -107,7 +107,7 @@ def extract_download_links_from_html(html, exts=None):
                 })
     return links
 
-def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_interactive=False):
+def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_interactive=False, prompt_func=None):
     """
     Extracts download links (from context library, DOM, and HTML), prompts user for format,
     downloads file, and routes to handler.
@@ -115,6 +115,8 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
     """
     if rejected_downloads is None:
         rejected_downloads = set()
+    if prompt_func is None:
+        prompt_func = prompt.prompt_input  # fallback
 
     html = page.content()
 
@@ -180,7 +182,7 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
     available_files = [f"{os.path.basename(link['href'])} ({link['format']})" for link in new_links]
     logger.info(f"[cyan]Downloadable file(s) found: {', '.join(available_files)}.[/cyan]")
     confirmed = [(link["format"], link["href"]) for link in new_links]
-    fmt, file_url = prompt_user_for_format(confirmed)
+    fmt, file_url = prompt_user_for_format(confirmed, logger=logger, prompt_func=prompt_func)
     if not fmt or not file_url:
         # User skipped or invalid
         for link in new_links:
@@ -201,11 +203,16 @@ def prompt_and_handle_download(page, target_url, rejected_downloads=None, non_in
     logger.error(f"[red]No handler found for format: {fmt}[/red]")
     return None, False
 
-def prompt_user_for_format(confirmed, logger=None):
+def prompt_user_for_format(confirmed, logger=None, prompt_func=None):
     """
     Prompts the user to select a format from the confirmed list.
     Returns (fmt, file_url) or (None, None) if skipped or denied.
     """
+    if logger is None:
+        logger = SharedLogger()
+    if prompt_func is None:
+        prompt_func = prompt.prompt_input
+
     if not confirmed:
         logger.warning("[WARN] No downloadable formats detected.")
         return None, None
@@ -221,7 +228,7 @@ def prompt_user_for_format(confirmed, logger=None):
             (x.isdigit() and 0 <= int(x) < len(format_options))
         )
 
-    selection = prompt.prompt_input(
+    selection = prompt_func(
         f"[PROMPT] Select a format to download (0-{len(format_options)-1}) or 'n' to skip:",
         default="n",
         validator=validator

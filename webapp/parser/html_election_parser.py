@@ -203,7 +203,9 @@ def orchestrate_url(target_url, processed_info, prompt_func, output_func, sessio
                 return
 
             # 1. Prompt for downloadable format and handle if chosen
-            result, handled = prompt_and_handle_download(page, target_url, rejected_downloads, non_interactive=False)
+            result, handled = prompt_and_handle_download(
+                page, target_url, rejected_downloads, non_interactive=False, prompt_func=prompt_func
+            )
             if handled:
                 mark_url_processed(target_url, status="success")
                 output_func(f"[INFO] Download handled for {target_url}")
@@ -281,7 +283,7 @@ def orchestrate_url(target_url, processed_info, prompt_func, output_func, sessio
                             if f.endswith(".csv") or f.endswith(".json"):
                                 possible_files.append(os.path.join(output_dir, f))
                     if possible_files:
-                        output_func(f"[WARN] No output file path returned from parser, but found files: {possible_files[-3:]}")
+                        output_func("[WARN] No output file path returned from parser, but found files:\n" + "\n".join(possible_files[-3:]))
                     else:
                         output_func("[WARN] No output file path returned from parser and no output files found.")
                 mark_url_processed(target_url, status="success")
@@ -308,7 +310,11 @@ def main(prompt_func=prompt.prompt_input, output_func=logger.info, session_id=No
         ensure_output_directory()
 
         urls = load_urls(prompt_func=prompt_func)
-        logger.info(f"Raw URLs loaded: {urls}")
+        # Output URLs as JSON array for webapp, plain text for CLI
+        if logger.mode == "webapp" and logger.format == "json":
+            output_func({"level": "INFO", "message": urls})
+        else:
+            output_func("Raw URLs loaded:\n" + "\n".join(urls))
         logger.info(f"Loaded {len(urls)} raw URLs from urls.txt")
 
         max_urls = os.getenv("MAX_URLS_DISPLAYED")

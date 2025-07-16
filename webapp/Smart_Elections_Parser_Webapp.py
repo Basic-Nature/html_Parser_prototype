@@ -162,15 +162,20 @@ def log_parser_status(msg, session_id=None, rich=False):
     Log parser status to both logger and console as appropriate.
     - msg: The message to log.
     - session_id: The session ID (optional).
-    - rich: If True, use rich panel for GUI; else, plain log.
+    - rich: If True, use rich panel for CLI; else, plain or json log depending on logger.format.
     """
-    if rich and logger.mode == "webapp":
+    # For webapp, always output a simple status message (no box drawing)
+    if logger.mode == "webapp":
+        # In webapp, always send as JSON for frontend rendering
+        status_msg = f"{msg} (session_id={session_id})" if session_id else msg
+        logger.info({"level": "INFO", "message": status_msg})
+    elif rich:
+        # In CLI, use rich panel for status
         console.panel(f"{msg}\nSession: {session_id}", title="Parser Status")
     else:
-        if session_id:
-            logger.info(f"{msg} (session_id={session_id})")
-        else:
-            logger.info(msg)
+        # Fallback: plain log
+        log_msg = f"{msg} (session_id={session_id})" if session_id else msg
+        logger.info(log_msg)
             
 # --- Routes ---
 @app.route("/")
@@ -181,6 +186,9 @@ def index():
 def handle_connect():
     # Set logging mode to webapp for this session
     logger.set_mode("webapp")
+    # Set logger format to JSON for this session
+    logger.set_format("json")
+    session['log_format'] = "json"
 
     # Get the session ID for this client
     session_id = session.get('sid') if 'sid' in session else request.sid
@@ -210,16 +218,30 @@ def delete_hint_route(frag):
     return redirect(url_for("url_hints"))
 
 @socketio.on('disconnect')
-def handle_disconnect():
-    session_id = session.get('sid') or request.sid
-    cancel_processing(session_id)
-    logger.info("Client disconnected")
-    emit('parser_output', "Disconnected from server.\n")
+def handle_disconnect(sid):
+    # Use the sid provided by Socket.IO
+    cancel_processing(sid)
+    logger.info(f"Client disconnected (sid={sid})")
+    # Optionally, emit a styled disconnect message
+    emit('parser_output', '{"level":"INFO","message":"🚪 Disconnected from server.","color":"#eb4f43"}', room=sid)
+    
 @app.route("/edit-hint", methods=["POST"])
+def edit_hint_route():
+    frag = request.form.get("fragment", "").strip()
+    path = request.form.get("module_path", "").strip()
+    overrides = load_overrides()
+    if frag and path and frag in overrides:
+        overrides[frag] = path
+        append_history(overrides)
+        save_overrides(overrides)
+        flash("Hint updated.", "success")
+    else:
+        flash("Invalid fragment or path.", "danger")
+    return redirect(url_for("url_hints"))
 
 @app.route("/data_framework", methods=["GET", "POST"])
 def data_framework():
-    # You can add logic here or just return a placeholder
+    # add logic here currently returning a placeholder
     return render_template("data_framework.html")
 
 @app.route("/delete/input/<filename>", methods=["POST"])
@@ -366,7 +388,23 @@ def manage_data():
         input_files=input_files,
         output_files=output_files
     )
-
+        
+@socketio.on('set_output_mode')
+def handle_set_output_mode(data):
+    """
+    Allows the frontend to set the output mode at runtime.
+    Example payload: {"mode": "live"} or {"mode": "batch"}
+    """
+    mode = data.get("mode", "live").lower()
+    valid_modes = {"live", "batch"}
+    session_id = session.get('sid') if 'sid' in session else request.sid
+    if mode in valid_modes:
+        # Store the mode in the session or a global/session dict as needed
+        session['output_mode'] = mode
+        emit('parser_output', f'{{"level":"INFO","message":"Output mode set to {mode}.","color":"#00ffe7"}}', room=session_id)
+    else:
+        emit('parser_output', '{"level":"ERROR","message":"Invalid output mode.","color":"#eb4f43"}', room=session_id)
+        
 @socketio.on('parser_prompt_response')
 def handle_parser_prompt_response(data):
     session_id = session.get('sid') if 'sid' in session else request.sid
@@ -409,6 +447,7 @@ def handle_data_framework(data):
 def handle_run_parser():
     session_id = session.get('sid') if 'sid' in session else request.sid
     log_parser_status("Starting parser run...", session_id, rich=True)
+    # Always pass None for urls to trigger interactive main() pipeline in webapp
     thread = Thread(target=process_urls_for_web, args=(None, session_id))
     thread.start()
     
