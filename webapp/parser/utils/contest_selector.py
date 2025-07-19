@@ -265,19 +265,15 @@ def select_contest(
     fallback_contests = []
     for c in contests:
         skip_reason = None
+        # Only filter out contests with a clear state mismatch or empty/generic title
         if norm_state and normalize_state_name(c.get("state", "")) != norm_state:
             skip_reason = "state mismatch"
-        elif not county_matches(c.get("county", "")):
-            skip_reason = "county mismatch"
-        elif year and str(c.get("year", "")) != str(year):
-            skip_reason = "year mismatch"
-        elif any(pat.lower() in c.get("title", "").lower() for pat in noisy_patterns):
-            skip_reason = "noisy pattern"
         elif not c.get("title") or c.get("title", "").strip().lower() in ["", "results", "summary"]:
             skip_reason = "empty/generic title"
+        # Do NOT filter by county, year, or noisy_patterns here
         if skip_reason:
             logger.debug(f"Skipping contest '{c.get('title', '')}': {skip_reason}")
-            # PATCH: Add to fallback if it has a title
+            # Add to fallback if it has a title
             if c.get("title"):
                 fallback_contests.append(c)
             continue

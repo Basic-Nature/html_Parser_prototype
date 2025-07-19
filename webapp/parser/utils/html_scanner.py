@@ -782,7 +782,12 @@ def get_page_hash(page) -> str:
     content = page.content()
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
+
 def load_context_cache_from_disk(filename=None) -> Dict[str, Any]:
+    """
+    Loads the context cache from disk as a dict of dicts.
+    If the file is corrupted, logs and resets the cache.
+    """
     global _context_cache
     if filename is None:
         filename = os.path.basename(CONTEXT_CACHE_PATH)
@@ -792,20 +797,58 @@ def load_context_cache_from_disk(filename=None) -> Dict[str, Any]:
         try:
             with open(path, "rb") as f:
                 raw_cache = robust_orjson_loads(f.read())
+                # Defensive: Only keep dict values
                 _context_cache = {k: v for k, v in raw_cache.items() if isinstance(v, dict)}
                 return _context_cache
         except Exception as e:
-            logger.error(f"[ERROR] Failed to load {filename}: {e}")
+            logger.error(f"[ERROR] Failed to load {filename}: {e}. Resetting context cache.")
+            _context_cache = {}
+            save_context_cache_to_disk(_context_cache, path)
             return {}
     _context_cache = {}
     return {}
 
 def save_context_cache_to_disk(context_cache, path=CONTEXT_CACHE_PATH) -> None:
+    """
+    Saves the entire context cache as a single JSON object (dict of dicts).
+    Always overwrites the file.
+    """
     logger.debug(f"[DEBUG] Saving context cache to: {path}")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     context_cache = convert_ndarrays(context_cache)
     with open(path, "wb") as f:
-        f.write(orjson.dumps(context_cache))
+        f.write(orjson.dumps(context_cache, option=orjson.OPT_INDENT_2))
+
+def add_context_entry(page_hash: str, context: dict, path=CONTEXT_CACHE_PATH) -> None:
+    """
+    Adds or updates a context entry for a page hash and saves to disk.
+    """
+    cache = load_context_cache_from_disk(path)
+    # Always ensure required metadata
+    context.setdefault("page_hash", page_hash)
+    context.setdefault("timestamp", time.strftime("%Y-%m-%d %H:%M:%S"))
+    cache[page_hash] = context
+    save_context_cache_to_disk(cache, path)
+
+def get_context_entry(page_hash: str, path=CONTEXT_CACHE_PATH) -> Optional[dict]:
+    """
+    Retrieves a context entry by page hash.
+    """
+    cache = load_context_cache_from_disk(path)
+    return cache.get(page_hash)
+
+def export_context_cache_for_db(path=CONTEXT_CACHE_PATH) -> List[dict]:
+    """
+    Flattens the context cache into a list of dicts for DB insertion.
+    Each dict contains url, page_hash, timestamp, and all context fields.
+    """
+    cache = load_context_cache_from_disk(path)
+    export = []
+    for page_hash, context in cache.items():
+        entry = dict(context)
+        entry["page_hash"] = page_hash
+        export.append(entry)
+    return export
 
 def clean_cache_inplace(cache) -> int:
     if isinstance(cache, dict):
@@ -1242,7 +1285,14 @@ def scan_html_for_context(
         "pattern_kb_matches": [],
         "segments_needing_review": [],
     }
-
+    if context_cache is not None:
+        # Always store with page_hash as key
+        page_hash = get_page_hash(page)
+        context_result.setdefault("page_hash", page_hash)
+        context_result.setdefault("timestamp", time.strftime("%Y-%m-%d %H:%M:%S"))
+        context_cache[page_hash] = context_result
+        save_context_cache_to_disk(context_cache)
+        
     try:
         # --- 1. Get context library, pattern KB, and ML model from coordinator if available ---
         if coordinator:
@@ -1286,17 +1336,22 @@ def scan_html_for_context(
         # --- Helper for diagnostics and filtering ---
         import concurrent.futures
         def diagnostics_and_filter(data, field, max_title_len=500) -> List[Dict[str, Any]]:
-            # Diagnostics
+            """
+            Filters and logs items in data based on required field(s).
+            field: str or list of str (fields to check for presence and length)
+            """
             if data:
-                avg_len = sum(len(str(d.get(field, ""))) for d in data) / len(data)
-                logger.info(f"[{field.upper()}] Extracted {len(data)} items, avg {field} length: {avg_len:.1f}")
+                avg_len = sum(len(str(d.get(field[0] if isinstance(field, list) else field, ""))) for d in data) / len(data)
+                logger.info(f"[{field}] Extracted {len(data)} items, avg field length: {avg_len:.1f}")
             else:
-                logger.warning(f"[{field.upper()}] No valid items extracted after validation.")
+                logger.warning(f"[{field}] No valid items extracted after validation.")
 
             def filter_item(d):
-                title = d.get("title", d.get("text", ""))
-                if title is None or (isinstance(title, str) and len(title.strip()) == 0) or len(title) > max_title_len:
-                    return (d, "missing or invalid title/text")
+                fields = field if isinstance(field, list) else [field]
+                for f in fields:
+                    val = d.get(f, "")
+                    if val is None or (isinstance(val, str) and len(val.strip()) == 0) or len(str(val)) > max_title_len:
+                        return (d, f"missing or invalid {f}")
                 return (d, None)
 
             filtered = []
@@ -1310,11 +1365,11 @@ def scan_html_for_context(
                     filtered.append(d)
 
             if filtered_out:
-                logger.warning(f"[{field.upper()}] Filtered out {len(filtered_out)} items due to missing/invalid fields.")
+                logger.warning(f"[{field}] Filtered out {len(filtered_out)} items due to missing/invalid fields.")
                 for d, reason in filtered_out[:5]:
                     logger.warning(f"  [Filtered] {reason}: {str(d)[:100]}...")
             if not filtered:
-                logger.warning(f"[{field.upper()}] No items with usable title/text for downstream output.")
+                logger.warning(f"[{field}] No items with usable field(s) for downstream output.")
             return filtered
 
         # --- Robust extraction for all key segment types ---
@@ -1375,8 +1430,8 @@ def scan_html_for_context(
             if not c.get("type_") and best_type:
                 c["type_"] = best_type
         contests = diagnostics_and_filter(
-            raw_contests, "contest",
-            field=["title"],
+            raw_contests,
+            ["title"],
             max_title_len=500,
         )
         context_result["contests"] = contests
@@ -1409,8 +1464,8 @@ def scan_html_for_context(
                     p["segment_hash"] = hashlib.sha256(str(p.get("panel_text", "")).encode("utf-8")).hexdigest()
             raw_panels.extend(db_panels)
         panels = diagnostics_and_filter(
-            raw_panels, "panel",
-            field=["panel_text"],
+            raw_panels,
+            ["panel_text"],
             max_title_len=1000,
         )
         context_result["panels"] = panels
@@ -1443,8 +1498,8 @@ def scan_html_for_context(
                     t["segment_hash"] = hashlib.sha256(str(t.get("table_text", "")).encode("utf-8")).hexdigest()
             raw_tables.extend(db_tables)
         tables = diagnostics_and_filter(
-            raw_tables, "table",
-            field=["table_text"],
+            raw_tables,
+            ["table_text"],
             max_title_len=10000,
         )
         context_result["tables"] = tables
@@ -1477,8 +1532,8 @@ def scan_html_for_context(
                     cp["segment_hash"] = hashlib.sha256(str(cp.get("candidate_panel_text", "")).encode("utf-8")).hexdigest()
             raw_candidate_panels.extend(db_candidate_panels)
         candidate_panels = diagnostics_and_filter(
-            raw_candidate_panels, "candidate_panel",
-            field=["candidate_panel_text"],
+            raw_candidate_panels,
+            ["candidate_panel_text"],
             max_title_len=1000,
         )
         context_result["candidate_panels"] = candidate_panels
@@ -1511,8 +1566,8 @@ def scan_html_for_context(
                     lp["segment_hash"] = hashlib.sha256(str(lp.get("location_panel_text", "")).encode("utf-8")).hexdigest()
             raw_location_panels.extend(db_location_panels)
         location_panels = diagnostics_and_filter(
-            raw_location_panels, "location_panel",
-            field=["location_panel_text"],
+            raw_location_panels,
+            ["location_panel_text"],
             max_title_len=1000,
         )
         context_result["location_panels"] = location_panels
@@ -1544,8 +1599,8 @@ def scan_html_for_context(
             logger.debug(f"[DEBUG][DB] Loaded {len(db_headings)} headings from DB as fallback.")
             raw_headings.extend(db_headings)
         headings = diagnostics_and_filter(
-            raw_headings, "heading",
-            field=["heading_text"],
+            raw_headings,
+            ["heading_text"],
             max_title_len=500,
         )
         context_result["headings"] = headings
@@ -1568,8 +1623,8 @@ def scan_html_for_context(
             logger.debug(f"[DEBUG][DB] Loaded {len(db_ballot_types)} ballot_types from DB as fallback.")
             raw_ballot_types.extend(db_ballot_types)
         ballot_types = diagnostics_and_filter(
-            raw_ballot_types, "ballot_types",
-            field=["ballot_types_text"],
+            raw_ballot_types,
+            ["ballot_types_text"],
             max_title_len=200,
         )
         context_result["ballot_types"] = ballot_types
@@ -1592,8 +1647,8 @@ def scan_html_for_context(
             logger.debug(f"[DEBUG][DB] Loaded {len(db_results_timestamps)} results_timestamps from DB as fallback.")
             raw_results_timestamps.extend(db_results_timestamps)
         results_timestamps = diagnostics_and_filter(
-            raw_results_timestamps, "results_timestamp",
-            field=["timestamp_text"],
+            raw_results_timestamps,
+            ["timestamp_text"],
             max_title_len=200,
         )
         context_result["results_timestamps"] = results_timestamps
@@ -1613,8 +1668,8 @@ def scan_html_for_context(
             logger.debug(f"[DEBUG][DB] Loaded {len(db_party_labels)} party_labels from DB as fallback.")
             raw_party_labels.extend(db_party_labels)
         party_labels = diagnostics_and_filter(
-            raw_party_labels, "party_label",
-            field=["party_label_text"],
+            raw_party_labels,
+            ["party_label_text"],
             max_title_len=200,
         )
         context_result["party_labels"] = party_labels
@@ -1634,8 +1689,8 @@ def scan_html_for_context(
             logger.debug(f"[DEBUG][DB] Loaded {len(db_vote_methods)} vote_methods from DB as fallback.")
             raw_vote_methods.extend(db_vote_methods)
         vote_methods = diagnostics_and_filter(
-            raw_vote_methods, "vote_method",
-            field=["vote_method_text"],
+            raw_vote_methods,
+            ["vote_method_text"],
             max_title_len=200,
         )
         context_result["vote_methods"] = vote_methods

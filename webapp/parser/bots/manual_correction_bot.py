@@ -120,11 +120,7 @@ def process_and_sync(log_files, context_library, cache, batch_size=100, sync_db=
     cache.sync()
 
 # Log and data file paths
-FIELD_LOG_SUFFIX = "_selection_log.jsonl"
-SEGMENT_FEEDBACK_LOG = LOG_DIR / "segment_feedback_log.jsonl"
-PATTERN_KB_FILE = LOG_DIR / "dom_pattern_kb.jsonl"
-DOWNLOAD_LINKS_LOG = LOG_DIR / "download_links_log.jsonl"
-ANOMALY_LOG = LOG_DIR / "anomaly_log.jsonl"
+# To be moved over to centralized logic later
 EXPORT_DIR = LOG_DIR / "correction_exports"
 MAIN_FIELDS = [
     "buttons", "panels", "tables", "contests", "districts", "states", "election_types", "years", "party", "candidate"
