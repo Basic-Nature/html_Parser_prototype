@@ -238,7 +238,7 @@ class UserPrompt:
                     self._log_to_file(prompt + " [Timed out]", context)
                     return default
                 continue
-            if allow_cancel and response.strip().lower() == "cancel":
+            if allow_cancel and (response or "").strip().lower() == "cancel":
                 if log_func:
                     log_func(f"[PROMPT] User cancelled at {datetime.datetime.now()}")
                 self._log_to_file(prompt + " [User cancelled]", context)
@@ -305,13 +305,13 @@ class UserPrompt:
                 t.join(timeout)
                 if t.is_alive():
                     logger.warning("\n[Prompt] Timed out.")
-                    return default.lower() == "y"
+                    return (default or "").lower() == "y"
                 resp = result[0]
             else:
                 resp = input(prompt_str)
             if resp is None or not resp.strip():
                 resp = default
-            resp = resp.strip().lower()
+            resp = (resp or "").strip().lower()
             if allow_cancel and resp == "cancel":
                 if log_func:
                     log_func(f"[PROMPT] User cancelled yes/no at {datetime.datetime.now()}")
@@ -519,7 +519,7 @@ class UserPrompt:
             resp = self.prompt_input(
                 f"Do you want to click this button? (y/n): ",
                 default="y",
-                validator=lambda x: x.lower() in {"y", "n", "yes", "no"},
+                validator=lambda x: (x or "").lower() in {"y", "n", "yes", "no"},
                 allow_cancel=True,
                 header="BUTTON CONFIRMATION",
                 session_id=session_id,

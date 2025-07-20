@@ -52,7 +52,11 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         if contest.get("year") is None and year is not None:
             contest["year"] = year
     context_result = clean_for_json(context_result)
-    coordinator.organize_and_enrich(context_result)
+    result = coordinator.organize_and_enrich(context_result)
+    if "organized" in result and "dom_parts" in result["organized"]:
+        logger.debug("[DEBUG] dom_parts successfully organized.")
+    else:
+        logger.warning("[WARNING] dom_parts missing after organize_and_enrich.")
     selector_data = coordinator.get_for_selector()
     logger.debug("DEBUG: selector_data['contests']:", selector_data.get("contests", []))
     # --- 3. Contest selection ---

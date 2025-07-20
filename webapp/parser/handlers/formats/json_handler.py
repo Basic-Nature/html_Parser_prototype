@@ -11,9 +11,10 @@ from ...bots.librarian import (
     LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
 )
-from ...utils.shared_logger import SharedLogger
+from ...utils.shared_logger import SharedLogger, RichConsoleProxy
 from ...utils.table_core import harmonize_headers_and_data
 logger = SharedLogger()
+console = RichConsoleProxy()
 def get_input_folder():
     # Parent of webapp, then 'input'
     return os.path.join(os.path.dirname(BASE_DIR), "input")
@@ -33,7 +34,7 @@ def prompt_for_json_file(input_folder):
     logger.info("\nAvailable JSON files in 'input' folder:")
     for i, fname in enumerate(json_files):
         logger.info(f"  [{i}] {fname}")
-    logger.info("\n[PROMPT] Enter file index or press Enter to cancel:", end=" ")
+    console.print("\n[PROMPT] Enter file index or press Enter to cancel:", end=" ")
     user_input = input().strip()
     if not user_input:
         return None

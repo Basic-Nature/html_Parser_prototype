@@ -174,7 +174,7 @@ def scan_url_for_state_county(url: str, available_states: List[str], available_c
     if not url:
         log_entries.append("[URL Scan] No URL provided.")
         return None, None, log_entries
-    url_lower = url.lower()
+    url_lower = (url or "").lower()
     state_match = None
     for state in available_states:
         if state in url_lower:

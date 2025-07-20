@@ -32,12 +32,15 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
     Build output path using organized context metadata.
     If any key info is missing, use feedback loop (ML/NER/user prompt) to resolve.
     """
+    if coordinator is None:
+        from ..Context_Integration.context_coordinator import ContextCoordinator
+        coordinator = ContextCoordinator()
     parts = []
     # Use coordinator to try to fill missing info if available
     state = metadata.get("state", "") or (coordinator.get_states()[0] if coordinator and coordinator.get_states() else "")
     county = metadata.get("county", "") or (coordinator.get_districts()[0] if coordinator and coordinator.get_districts() else "")
     year = metadata.get("year", "")
-    race = metadata.get("race", "")
+    contests = metadata.get("contests", "")
     election_types = metadata.get("election_types", "")
 
     def safe_filename(s):
@@ -53,41 +56,43 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
                     year = years[0]
             if not year and feedback_context:
                 year = feedback_context.get("year", "")
-        if not race or race.lower() == "unknown":
+        if not contests or (contests or "").lower() == "unknown":
             if coordinator:
                 contests = coordinator.get_contests()
                 if contests:
-                    race = contests[0].get("title", "")
-            if not race and feedback_context:
-                race = feedback_context.get("race", "")
-        if year and race:
+                    contests = contests[0].get("title", "")
+            if not contests and feedback_context:
+                contests = feedback_context.get("contests", "")
+        if year and contests:
             break
 
     if not year or not str(year).isdigit() or len(str(year)) != 4:
         logger.warning("[yellow][OUTPUT] Year could not be verified. Using 'Unknown'.[/yellow]")
         year = "Unknown"
-    if not race:
-        logger.warning("[yellow][OUTPUT] Race could not be verified. Using 'unknown_race'.[/yellow]")
-        race = "unknown_race"
+    if not contests:
+        logger.warning("[yellow][OUTPUT] contests could not be verified. Using 'unknown_contests'.[/yellow]")
+        contests = "unknown_contests"
 
-    race_safe = safe_filename(race)
+    contests_safe = safe_filename(contests)
     county_safe = safe_filename(county)
     state_safe = safe_filename(state)
+    if contests:
+        parts.append((contests_safe or "").lower())
     if state:
-        parts.append(state_safe.lower())
+        parts.append((state_safe or "").lower())
     if county:
-        parts.append(county_safe.lower())
+        parts.append((county_safe or "").lower())
     if year and str(year).isdigit() and len(str(year)) == 4:
         parts.append(str(year))
     else:
         parts.append("Unknown")
     if election_types:
         parts.append(safe_filename(election_types).lower())
-    if race:
-        safe_race = "".join([c if c.isalnum() or c in " _-" else "_" for c in str(race)])
-        parts.append(safe_race.replace(" ", "_"))
+    if contests:
+        safe_contests = "".join([c if c.isalnum() or c in " _-" else "_" for c in str(contests)])
+        parts.append(safe_contests.replace(" ", "_"))
     else:
-        parts.append("unknown_race")
+        parts.append("unknown_contests")
     if subfolder:
         parts.append(str(subfolder))
 
@@ -149,7 +154,7 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
                 meta.get("state", "Unknown") == metadata.get("state", "Unknown") and
                 meta.get("county", "Unknown") == metadata.get("county", "Unknown") and
                 meta.get("year", "Unknown") == metadata.get("year", "Unknown") and
-                meta.get("race", "Unknown") == metadata.get("race", "Unknown")
+                meta.get("contests", "Unknown") == metadata.get("contests", "Unknown")
             ):
                 return entry
     return None
@@ -204,7 +209,7 @@ def finalize_election_output(
     logger.info(f"[OUTPUT_UTILS] finalize_election_output called with contest_title: '{contest_title}'")
 
     meta = {
-        "race": contest_title or "Unknown",
+        "contests": contest_title or "Unknown",
         "year": "Unknown",
         "state": state or "Unknown",
         "county": county or "Unknown"
@@ -217,8 +222,8 @@ def finalize_election_output(
     enriched_meta = organized.get("metadata", meta)
 
     # Defensive: ensure required fields
-    if not enriched_meta.get("race", []):
-        enriched_meta["race"] = contest_title or "Unknown"
+    if not enriched_meta.get("contests", []):
+        enriched_meta["contests"] = contest_title or "Unknown"
     if not enriched_meta.get("year", []) or not (str(enriched_meta["year"]).isdigit() and len(str(enriched_meta["year"])) == 4):
         enriched_meta["year"] = meta.get("year", "Unknown")
     if not enriched_meta.get("state", []):
@@ -236,14 +241,14 @@ def finalize_election_output(
     state = enriched_meta.get("state", "")
     county = enriched_meta.get("county", "")
     election_types = enriched_meta.get("election_types", "")
-    race = enriched_meta.get("race", "")
+    contests = enriched_meta.get("contests", "")
 
     parts = [
         safe_filename(state).lower() if state else "",
         safe_filename(county).lower() if county else "",
         str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "Unknown",
         safe_filename(election_types).lower() if election_types else "",
-        safe_filename(race).replace(" ", "_") if race else "unknown_race",
+        safe_filename(contests).replace(" ", "_") if contests else "unknown_contests",
         "parsed"
     ]
     parts = [p for p in parts if p]
@@ -254,7 +259,7 @@ def finalize_election_output(
     os.makedirs(output_path, exist_ok=True)
 
     timestamp = format_timestamp()
-    safe_title = safe_filename(contest_title or race or "results").replace(" ", "_")
+    safe_title = safe_filename(contest_title or contests or "results").replace(" ", "_")
     filename_parts = [
         str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "",
         safe_filename(state).lower() if state else "",

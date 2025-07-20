@@ -374,7 +374,7 @@ class SharedLogger(logging.Logger):
                 }
                 self.socketio_emit_func(orjson.dumps(log_obj).decode("utf-8"))
                 # Also log to Python logger
-                if hasattr(self.logger, level.lower()):
+                if hasattr(self.logger, (level or "").lower()):
                     self.logger.info(log_obj["message"])
                 else:
                     self.logger.info(log_obj["message"])
@@ -382,8 +382,8 @@ class SharedLogger(logging.Logger):
                 plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
                 self.socketio_emit_func(plain_msg.strip())
                 # Also log to Python logger
-                if hasattr(self.logger, level.lower()):
-                    getattr(self.logger, level.lower())(plain_msg.strip())
+                if hasattr(self.logger, (level or "").lower()):
+                    getattr(self.logger, (level or "").lower())(plain_msg.strip())
                 else:
                     self.logger.info(plain_msg.strip())
         elif self.mode == "cli":

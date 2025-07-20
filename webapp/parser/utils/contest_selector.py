@@ -76,8 +76,8 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
                 break
 
     # --- Election type detection ---
-    known_types = [t.lower() for t in coordinator.get_election_types()]
-    ctype_norm = ctype.lower().replace("election", "").strip()
+    known_types = [(t or "").lower() for t in coordinator.get_election_types()]
+    ctype_norm = (ctype or "").lower().replace("election", "").strip()
     # Accept common election types even if not in known_types
     type_score = 0.0
     if ctype:
@@ -92,7 +92,7 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
 
     # --- Contest keywords: for office/position, not election type ---
 
-    title_score = 1.0 if any(kw in title.lower() for kw in CONTEST_KEYWORDS) else 0.0
+    title_score = 1.0 if any((kw or "") in (title or "").lower() for kw in CONTEST_KEYWORDS) else 0.0
 
     # --- ML/NER header score ---
     ml_score = coordinator.score_header(title, context)
@@ -219,18 +219,18 @@ def select_contest(
                 c["year"] = year_from_title
         # Fill type
         if not c.get("type_"):
-            title = c.get("title", "").lower()
+            title = (c.get("title") or "").lower()
             found_type_ = None
             for t in ELECTION_TYPES:
-                if t in title:
-                    found_type_ = t
+                if (t or "").lower() in title:
+                    found_type_ = (t or "").lower()
                     break
             if not found_type_:
                 # Try ML/NER
                 ents = coordinator.extract_entities(c.get("title", ""))
                 for ent, label in ents:
-                    if label == "EVENT" and ent.lower() in ELECTION_TYPES:
-                        found_type_ = ent.lower()
+                    if label == "EVENT" and (ent or "").lower() in [(et or "").lower() for et in ELECTION_TYPES]:
+                        found_type_ = (ent or "").lower()
                         break
             if found_type_:
                 c["type_"] = found_type_.capitalize()
@@ -266,15 +266,46 @@ def select_contest(
     for c in contests:
         skip_reason = None
         # Only filter out contests with a clear state mismatch or empty/generic title
-        if norm_state and normalize_state_name(c.get("state", "")) != norm_state:
+        # Accept both "NY" and "New York" as equivalent, and ignore case
+        contest_state = c.get("state", "")
+        if norm_state and normalize_state_name(contest_state) != norm_state:
             skip_reason = "state mismatch"
-        elif not c.get("title") or c.get("title", "").strip().lower() in ["", "results", "summary"]:
+        # Accept any non-empty, non-generic title
+        title = c.get("title")
+        title_norm = (title or "").strip().lower()
+        skip_reason = None
+
+        # Check for missing or generic title
+        if not title or not isinstance(title, str) or title_norm in ["", "results", "summary"]:
             skip_reason = "empty/generic title"
+            logger.debug(f"Skipping contest due to {skip_reason}: {c}")
+        # Check for missing year
+        elif not c.get("year"):
+            skip_reason = "missing year"
+            logger.debug(f"Skipping contest due to {skip_reason}: {c}")
+        # Check for missing type_
+        elif not c.get("type_"):
+            skip_reason = "missing type_"
+            logger.debug(f"Skipping contest due to {skip_reason}: {c}")
+        # Check for missing state
+        elif not c.get("state"):
+            skip_reason = "missing state"
+            logger.debug(f"Skipping contest due to {skip_reason}: {c}")
+        # Check for missing county
+        elif not c.get("county"):
+            skip_reason = "missing county"
+            logger.debug(f"Skipping contest due to {skip_reason}: {c}")
+
+        if skip_reason:
+            # Add to fallback if it has a non-empty title
+            if title and title_norm not in ["", "results", "summary"]:
+                fallback_contests.append(c)
+            continue
         # Do NOT filter by county, year, or noisy_patterns here
         if skip_reason:
-            logger.debug(f"Skipping contest '{c.get('title', '')}': {skip_reason}")
+            logger.debug(f"Skipping contest '{title or ''}': {skip_reason}")
             # Add to fallback if it has a title
-            if c.get("title"):
+            if title:
                 fallback_contests.append(c)
             continue
         filtered_contests.append(c)
@@ -294,8 +325,8 @@ def select_contest(
     unique_contests = []
     seen = set()
     for c in filtered_contests:
-        norm_title = normalize_contest_title(c.get("title", ""))
-        key = (c.get("year"), c.get("type_"), norm_title)
+        norm_title = normalize_contest_title(c.get("title", "") or "")
+        key = ((c.get("year") or ""), (c.get("type_") or ""), norm_title)
         if key not in seen:
             unique_contests.append(c)
             seen.add(key)

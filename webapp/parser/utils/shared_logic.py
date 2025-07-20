@@ -27,7 +27,7 @@ def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
     county_norm = normalize_county_name(county_name)
     # If state is provided, check only that state's counties
     if state:
-        state_norm = state.lower().replace(" ", "_")
+        state_norm = (state or "").lower().replace(" ", "_")
         counties = KNOWN_STATE_TO_COUNTY_MAP.get(state_norm, [])
         if county_norm in counties:
             return county_norm
@@ -58,7 +58,7 @@ def normalize_county_name(name):
     """
     if not name:
         return None
-    name = name.lower().replace("_", " ").replace("-", " ").strip()
+    name = (name or "").lower().replace("_", " ").replace("-", " ").strip()
     # Remove 'county' suffix if present
     name = re.sub(r"\s+county$", "", name)
     name = re.sub(r"\s+", " ", name)
@@ -93,7 +93,7 @@ def normalize_state_name(name):
     """
     if not name:
         return None
-    name = name.strip().lower().replace(" ", "_")
+    name = (name or "").strip().lower().replace(" ", "_")
     # Try abbreviation lookup first
     if name in STATE_ABBR:
         return STATE_ABBR[name]
@@ -126,7 +126,7 @@ def infer_state_county_from_url(url: str):
     Robustly infer state and county from a URL using regex, mappings, and context library.
     Returns (state, county) or (None, None) if not found.
     """
-    url = url.lower()
+    url = (url or "").lower()
     url_norm = url.replace("-", "_").replace(" ", "_")
     state_map = STATE_MODULE_MAP
     county_map = KNOWN_STATE_TO_COUNTY_MAP
@@ -238,11 +238,11 @@ def coordinator_feedback(domain, scrolls, step, incomplete=False):
     logger.info(f"[COORDINATOR] Scroll pattern for {domain}: {scrolls} scrolls, step {step}, incomplete={incomplete}")
 
 def normalize_text(text):
-    return re.sub(r"\s+", " ", text.strip().lower())
+    return re.sub(r"\s+", " ", (text or "").strip().lower())
 
 def match_any(label, keywords):
     label = normalize_text(label)
-    return any(k.lower() in label for k in keywords)
+    return any((k or "").lower() in label for k in keywords)
 
 def build_csv_headers(rows):
     headers = set()
@@ -356,8 +356,8 @@ def keyphrase_match(label, keyphrase, min_words=2, fuzzy_cutoff=0.8):
     Returns True if the label matches the keyphrase as a whole (regex or fuzzy),
     or if at least min_words from the keyphrase are present in the label.
     """
-    label_norm = label.lower().strip()
-    keyphrase_norm = keyphrase.lower().strip()
+    label_norm = (label or "").lower().strip()
+    keyphrase_norm = (keyphrase or "").lower().strip()
     # 1. Try full phrase regex (allowing whitespace, punctuation, : or \n at end)
     pattern = re.sub(r"\s+", r"\\s+", re.escape(keyphrase_norm)) + r"[\s:]*$"
     if re.search(pattern, label_norm):
@@ -464,7 +464,7 @@ def infer_contest_fields(
     if (not year or not type_) and title:
         try:
             from ..utils.html_scanner import extract_year_and_type
-            y, t, _ = extract_year_and_type(title)
+            y, t, _, last_updated = extract_year_and_type(title, url=None)
             if not year and y:
                 year = y
                 inference_path.append("year:extract_year_and_type")

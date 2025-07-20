@@ -798,7 +798,57 @@ class ContextCoordinator(object):
         except Exception as e:
             logger.error(f"[organize_context_advanced] Failed: {e}", exc_info=True)
             return {"error": str(e)}
+        
+    def get_feedback_pattern_kb(self, log_path=None, deduplicate=True, min_fields=("pattern_id", "label", "html")) -> list:
+        """
+        Load and return feedback pattern KB entries from the feedback log.
+        - log_path: Optional path override (defaults to segment_feedback_log.jsonl in LOG_DIR)
+        - deduplicate: If True, deduplicate by pattern_id or segment_hash
+        - min_fields: Tuple of required fields for a valid entry
+        Returns a list of dicts, each representing a feedback KB entry.
+        """
+        import orjson
+        import os
 
+        if log_path is None:
+            log_path = os.path.join(LOG_DIR, "segment_feedback_log.jsonl")
+        entries = []
+        seen = set()
+        if not os.path.exists(log_path):
+            logger.info(f"[get_feedback_pattern_kb] Feedback log not found: {log_path}")
+            return []
+        with open(log_path, "rb") as f:
+            for line in f:
+                try:
+                    entry = orjson.loads(line)
+                    # Defensive: must be a dict and have required fields
+                    if not isinstance(entry, dict):
+                        continue
+                    if not all(field in entry and entry[field] for field in min_fields):
+                        continue
+                    # Defensive: deduplicate by pattern_id or segment_hash if requested
+                    dedup_key = entry.get("pattern_id") or entry.get("segment_hash")
+                    if deduplicate and dedup_key:
+                        if dedup_key in seen:
+                            continue
+                        seen.add(dedup_key)
+                    # Defensive: ensure embedding is a list (not np.ndarray or None)
+                    emb = entry.get("embedding")
+                    if emb is not None and not isinstance(emb, list):
+                        try:
+                            entry["embedding"] = list(emb)
+                        except Exception:
+                            entry["embedding"] = []
+                    # Defensive: ensure html is a string
+                    if not isinstance(entry.get("html", ""), str):
+                        entry["html"] = str(entry.get("html", ""))
+                    entries.append(entry)
+                except Exception as e:
+                    logger.warning(f"[get_feedback_pattern_kb] Skipping corrupt line: {e}")
+                    continue
+        logger.info(f"[get_feedback_pattern_kb] Loaded {len(entries)} feedback KB entries from log.")
+        return entries
+    
     def auto_label_segment(
         self,
         segment,
@@ -807,7 +857,7 @@ class ContextCoordinator(object):
         pattern_kb=None,
         model=None,
         ml_threshold=0.7
-    ):
+    ) -> str:
         """
         ML-driven DOM segment labeling using all available context, cache, DOM grouping, and heuristics.
         Uses context library, DOM parts, pattern KB, and semantic model for robust labeling.
@@ -900,8 +950,29 @@ class ContextCoordinator(object):
 
     # --- Feedback, Learning, and Correction ---
     def submit_user_feedback(self, field_type, field_name, correct_value, context) -> Dict[str, Any]:
-        self.organizer.submit_user_feedback(field_type, field_name, correct_value, context)
-        self._enrich_contests_with_nlp()
+        """
+        Submit user feedback for a field extraction/correction.
+        Robust: checks for method existence, logs errors, and returns updated organized context.
+        """
+        try:
+            if hasattr(self.organizer, "submit_user_feedback"):
+                self.organizer.submit_user_feedback(field_type, field_name, correct_value, context)
+            else:
+                logger.warning("[submit_user_feedback] ContextOrganizer has no submit_user_feedback method.")
+            self._enrich_contests_with_nlp()
+            # Optionally log the feedback event
+            self.log_field_selection(
+                field_type=field_type,
+                field_name=field_name,
+                extracted_value=correct_value,
+                method="user_feedback",
+                score=1.0,
+                result="user_feedback",
+                context=context,
+                user_feedback=correct_value
+            )
+        except Exception as e:
+            logger.error(f"[submit_user_feedback] Failed to submit feedback: {e}", exc_info=True)
         return self.organized
     
     def correct_and_update_contest(self, contest_id, correction_data) -> None:

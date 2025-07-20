@@ -5,9 +5,10 @@ Advanced context organizer for election HTML parsing and data integrity.
 Handles data formatting, ML anomaly detection, cache-aware learning, clustering, and robust DB.
 Delegates NLP/semantic logic to the context_coordinator and spacy_utils modules.
 """
-
+import re
 from datetime import datetime, timezone
 import os
+from networkx import nodes
 import orjson
 from collections import defaultdict
 import types
@@ -31,17 +32,18 @@ from ..bots.librarian import (
 from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
-from ..utils.html_scanner import load_context_cache_from_disk, save_context_cache_to_disk
+from ..utils.html_scanner import load_context_cache_from_disk
 from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from rich.table import Table
 import matplotlib.pyplot as plt
 from collections import Counter
+from difflib import get_close_matches
 logger = SharedLogger()
 console = RichConsoleProxy()
 
 from ..config import (
     CONTEXT_LIBRARY_PATH, CONTEXT_DB_PATH, 
-    CACHE_DIR
+    CACHE_DIR, LOG_DIR
 )
 
 PROCESSED_URLS_CACHE = os.path.join(CACHE_DIR, "processed_urls.json")
@@ -131,9 +133,9 @@ class ContextOrganizer(object):
         self.db_path = CONTEXT_DB_PATH
         self.context_library_path = CONTEXT_LIBRARY_PATH
         self.library = load_context_library() if use_library else self._default_library()
-        logger.debug("DEBUG: type(self.library) =", type(self.library))
+        logger.debug(f"DEBUG: type(self.library) = {type(self.library)}")
         if not isinstance(self.library, dict):
-            logger.error("ERROR: self.library is not a dict! It is:", type(self.library))
+            logger.error(f"ERROR: self.library is not a dict! It is: {type(self.library)}")
             raise ValueError("Loaded context library is not a dict!")
         self.organized = None
         self.processed_urls = load_processed_urls()
@@ -232,13 +234,13 @@ class ContextOrganizer(object):
         contests,
         context_library,
         logs=None,
-        min_confidence=0.8,
+        min_confidence=0.85,
         embedding_model=None,
-        db_service=None,
+        db_service: 'ElectionDataService' = None,
         parent_context=None,
     ) -> tuple:
         """
-        Try to fix missing state/county/year/type_ using all available context:
+        Fix missing state/county/year/type_ using all available context:
         - Flattened raw field
         - Context library
         - Database (if available)
@@ -278,7 +280,7 @@ class ContextOrganizer(object):
                 continue
             title = lib_c.get("title") or lib_c.get("label")
             if title:
-                key = title.lower()
+                key = (title or "").lower()
                 if lib_c.get("state"):
                     title_to_state[key] = lib_c["state"]
                 if lib_c.get("county"):
@@ -306,7 +308,6 @@ class ContextOrganizer(object):
                 lib_embeddings = embedding_model.encode(lib_titles)
             except Exception:
                 lib_embeddings = None
-        min_confidence = 0.85
 
         # Helper: update both contest and its raw field
         def update_field(c, field, value, reason):
@@ -324,7 +325,7 @@ class ContextOrganizer(object):
 
         # Helper: get from DB
         def get_from_db(title, field):
-            if db_service:
+            if db_service and title:
                 db_contests = db_service.get_contests_by_advanced_filter(filters={"title": title}, limit=1)
                 if db_contests and db_contests[0].get(field):
                     return db_contests[0][field]
@@ -332,13 +333,13 @@ class ContextOrganizer(object):
 
         # Try to fix each contest
         fixed_hashes = set()
-        for idx, c in enumerate(contests):
+        for c in contests:
             c_hash = contest_hash(c)
             if c_hash in fixed_hashes:
                 continue
             fixed = False
             reasons = []
-            title = (c.get("title") or "").lower()
+            title = (c.get("title") or "").strip().lower()
             raw_flat = flatten_raw_field(c.get("raw", {}))
 
             # --- Fix each field in robust order ---
@@ -351,47 +352,46 @@ class ContextOrganizer(object):
                 if c.get(field) or field in c["_fixed_fields"]:
                     continue
 
-                # 1. Direct field (already checked above)
-                # 2. Flattened raw field
+                # 1. Flattened raw field
                 if raw_flat.get(field):
-                    update_field(c, field, raw_flat[field], f"filled {field} from flattened raw")
-                    reasons.append(f"filled {field} from flattened raw")
+                    update_field(c, field, raw_flat[field], f"flattened raw")
+                    reasons.append(f"flattened raw")
                     fixed = True
                     continue
 
-                # 3. Context library
+                # 2. Context library
                 if title in lookup:
-                    update_field(c, field, lookup[title], f"filled {field} from context_library")
-                    reasons.append(f"filled {field} from context_library")
+                    update_field(c, field, lookup[title], f"context_library")
+                    reasons.append(f"context_library")
                     fixed = True
                     continue
 
-                # 4. Database
+                # 3. Database
                 db_val = get_from_db(c.get("title"), field)
                 if db_val:
-                    update_field(c, field, db_val, f"filled {field} from database")
-                    reasons.append(f"filled {field} from database")
+                    update_field(c, field, db_val, f"database")
+                    reasons.append(f"database")
                     fixed = True
                     continue
 
-                # 5. Majority vote
+                # 4. Majority vote
                 vals = [x.get(field) for x in contests if x.get(field)]
                 if vals:
                     most_common = max(set(vals), key=vals.count)
-                    update_field(c, field, most_common, f"filled {field} from majority vote")
-                    reasons.append(f"filled {field} from majority vote")
+                    update_field(c, field, most_common, f"majority vote")
+                    reasons.append(f"majority vote")
                     fixed = True
                     continue
 
-                # 6. Fuzzy match
+                # 5. Fuzzy match
                 matches = get_close_matches(title, list(lookup.keys()), n=1, cutoff=0.8)
                 if matches:
-                    update_field(c, field, lookup[matches[0]], f"filled {field} from fuzzy match: {matches[0]}")
-                    reasons.append(f"filled {field} from fuzzy match: {matches[0]}")
+                    update_field(c, field, lookup[matches[0]], f"fuzzy match: {matches[0]}")
+                    reasons.append(f"fuzzy match: {matches[0]}")
                     fixed = True
                     continue
 
-                # 7. ML similarity
+                # 6. ML similarity
                 if embedding_model and lib_embeddings is not None and lib_list:
                     try:
                         query_emb = embedding_model.encode([c.get("title") or ""])[0]
@@ -403,10 +403,10 @@ class ContextOrganizer(object):
                         if best_score > min_confidence and lib_vals[best_idx]:
                             update_field(
                                 c, field, lib_vals[best_idx],
-                                f"filled {field} from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
+                                f"ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
                             )
                             reasons.append(
-                                f"filled {field} from ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
+                                f"ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
                             )
                             fixed = True
                             continue
@@ -417,25 +417,25 @@ class ContextOrganizer(object):
                     except Exception as e:
                         reasons.append(f"ML similarity failed: {e}")
 
-                # 8. Parent context
+                # 7. Parent context
                 parent_val = get_from_parent(field)
                 if parent_val:
-                    update_field(c, field, parent_val, f"filled {field} from parent context")
-                    reasons.append(f"filled {field} from parent context")
+                    update_field(c, field, parent_val, f"parent context")
+                    reasons.append(f"parent context")
                     fixed = True
                     continue
 
-                # 9. Fallback: extract_year_and_type (only for year/type_)
+                # 8. Fallback: extract_year_and_type (only for year/type_)
                 if field in ("year", "type_"):
-                    y, t, _ = extract_year_and_type(c.get("title", ""))
+                    y, t, _, last_updated = extract_year_and_type(c.get("title", ""), url=c.get("source_url", ""))
                     if field == "year" and y:
-                        update_field(c, "year", y, "filled year from extract_year_and_type")
-                        reasons.append("filled year from extract_year_and_type")
+                        update_field(c, "year", y, "extract_year_and_type")
+                        reasons.append("extract_year_and_type")
                         fixed = True
                         continue
                     if field == "type_" and t:
-                        update_field(c, "type_", t, "filled type_ from extract_year_and_type")
-                        reasons.append("filled type_ from extract_year_and_type")
+                        update_field(c, "type_", t, "extract_year_and_type")
+                        reasons.append("extract_year_and_type")
                         fixed = True
                         continue
 
@@ -538,9 +538,6 @@ class ContextOrganizer(object):
         Log field extraction/correction attempts for ML/feedback.
         Ensures log file is always inside the log/ directory and filename is sanitized.
         """
-        import re, os, orjson
-        from datetime import datetime, timezone
-        from ..config import LOG_DIR
         def _sanitize_log_filename(name: str) -> str:
             return re.sub(r'[^a-zA-Z0-9_\-]', '_', name)
         safe_field_type = _sanitize_log_filename(field_type)
@@ -603,13 +600,21 @@ class ContextOrganizer(object):
         if not self.organized:
             return {}
         return {
-            "selectors": self.organized.get("metadata", {}).get("selectors", {}),
+            "selectors": self.organized.get("selectors", {}),
             "contests": self.organized.get("contests", []),
+            "noisy_patterns": self.organized.get("noisy_patterns", []),
             "buttons": self.organized.get("buttons", {}),
             "panels": self.organized.get("panels", {}),
             "tables": self.organized.get("tables", {}),
-        }
-    
+            "candidate_panels": self.organized.get("candidate_panels", {}),
+            "location_panels": self.organized.get("location_panels", {}),
+            "headings": self.organized.get("headings", {}),
+            "ballot_types": self.organized.get("ballot_types", {}),
+            "results_timestamps": self.organized.get("results_timestamps", {}),
+            "party_labels": self.organized.get("party_labels", {}),
+            "vote_methods": self.organized.get("vote_methods", {}),
+            "metadata": self.organized.get("metadata", {}),
+        }  
     def organize_context(
         self,
         raw_context,
@@ -629,25 +634,26 @@ class ContextOrganizer(object):
     ) -> dict:
         """
         Organizes the context for a parsed HTML page, including DOM structure, contests, panels, buttons, tables, and ML features.
-        Now includes dynamic state/county detection, verbose logging, and returns a detailed result object.
+        Ensures all contests have title, year, type_, state, county using all available context, title parsing, and fallback logic.
         Enhanced: robust keyword-based grouping, use_library/cache integration, and diagnostics.
-        """ 
+        """
 
-        logger.debug("DEBUG: raw_context keys:", list(raw_context.keys()))
+        logger.debug("DEBUG: raw_context keys: %s", list(raw_context.keys()))
         debug = self.debug if debug is None else debug
         fuzzy_cutoff = self.fuzzy_cutoff if fuzzy_cutoff is None else fuzzy_cutoff
         embedding_model = embedding_model if embedding_model is not None else self.embedding_model_obj
         plot_anomalies = plot_anomalies if plot_anomalies is not None else self.plot_anomalies
-        logger.info(
-            "\n[CONTEXT ORGANIZER] Pipeline configuration:\n"
-            f"  • Embedding model: { self._describe_embedding_model(embedding_model) }\n"
-            f"  • Plot anomalies:  { plot_anomalies }\n"
-        )
         log = []
         summary = {"attempts": [], "final": None, "error": None}
 
+        logger.info(
+            "\n[CONTEXT ORGANIZER] Pipeline configuration:\n"
+            f"  • Embedding model: {self._describe_embedding_model(embedding_model)}\n"
+            f"  • Plot anomalies:  {plot_anomalies}\n"
+        )
+
         # --- Use/merge context library if provided ---
-        context_library = self.library.copy() if hasattr(self, 'library') else {}     
+        context_library = self.library.copy() if hasattr(self, 'library') else {}
         if use_library:
             context_library.update(use_library)
             log.append("[LIBRARY] Merged use_library into context_library.")
@@ -752,7 +758,7 @@ class ContextOrganizer(object):
         vote_methods = dedupe(vote_methods, ["vote_method_text", "segment_hash"])
 
         # --- Robust contest organization using all available keywords ---
-        contests = []
+        contests_out = []
         contest_titles = set()
         for c in raw_context.get("contests", []):
             title = c.get("title") or c.get("label") or c
@@ -769,7 +775,7 @@ class ContextOrganizer(object):
                     embedding_model=embedding_model,
                     log=log
                 )
-                contests.append({
+                contests_out.append({
                     "title": title,
                     "year": year,
                     "type_": type_,
@@ -778,21 +784,55 @@ class ContextOrganizer(object):
                     "raw": flatten_raw_field(c)
                 })
         for c in context_library.get("contests", []):
-            if not isinstance(c, dict) or not c.get("title") or not c.get("label"):
+            if not isinstance(c, dict) or not c.get("title"):
                 continue
             norm_title = normalize_label(c.get("title", c.get("label", str(c))))
-            if norm_title not in contest_titles and norm_title not in [normalize_label(c.get("title", "")) for c in contests]:
-                contests.append(c)
+            if norm_title not in contest_titles and norm_title not in [normalize_label(c2.get("title", "")) for c2 in contests_out]:
+                contests_out.append(c)
                 contest_titles.add(norm_title)
+        contests = contests_out
 
-        # --- Diagnostics: Contest stats ---
-        if contests:
-            avg_len = sum(len(str(c.get("title", ""))) for c in contests) / len(contests)
-            logger.info(f"[CONTEST] {len(contests)} contests after validation, avg title length: {avg_len:.1f}")
-        else:
-            logger.warning("[CONTEST] No valid contests after validation.")
+        # --- Ensure all contests have required fields: title, year, type_, state, county ---
+        from ..utils.html_scanner import extract_year_and_type
+        state_context = raw_context.get("state")
+        county_context = raw_context.get("county")
+        years = [c.get("year") for c in contests if c.get("year")]
+        types = [c.get("type_") for c in contests if c.get("type_")]
+        unique_years = set(y for y in years if y)
+        unique_types = set(t for t in types if t)
 
-        # --- Downstream data quality: filter for required fields (relaxed) ---
+        for c in contests:
+            # Fill state/county from context if missing
+            if not c.get("state") and state_context:
+                c["state"] = state_context
+            if not c.get("county") and county_context:
+                c["county"] = county_context
+            # Fill year/type_ from unique values or title
+            if not c.get("year"):
+                if len(unique_years) == 1:
+                    c["year"] = list(unique_years)[0]
+                else:
+                    y, t, _, last_updated = extract_year_and_type(c.get("title", ""), url=raw_context.get("url", ""))
+                    if y:
+                        c["year"] = y
+            if not c.get("type_"):
+                if len(unique_types) == 1:
+                    c["type_"] = list(unique_types)[0]
+                else:
+                    y, t, _, last_updated = extract_year_and_type(c.get("title", ""), url=raw_context.get("url", ""))
+                    if t:
+                        c["type_"] = t
+            # Fallback: try to infer from raw field
+            if not c.get("state") and isinstance(c.get("raw"), dict):
+                c["state"] = c["raw"].get("state")
+            if not c.get("county") and isinstance(c.get("raw"), dict):
+                c["county"] = c["raw"].get("county")
+            if not c.get("year") and isinstance(c.get("raw"), dict):
+                c["year"] = c["raw"].get("year")
+            if not c.get("type_") and isinstance(c.get("raw"), dict):
+                c["type_"] = c["raw"].get("type_")
+
+        # --- Filter out contests missing title (required) ---
         filtered_out = []
         filtered_contests = []
         for c in contests:
@@ -807,37 +847,12 @@ class ContextOrganizer(object):
         contests = filtered_contests
         if not contests:
             logger.warning("[CONTEST] No contests with required fields for downstream output.")
-        years = [c.get("year") for c in contests if c.get("year")]
-        types = [c.get("type_") for c in contests if c.get("type_")]
-        unique_years = set(y for y in years if y)
-        unique_types = set(t for t in types if t)
 
-        for c in contests:
-            if not c.get("year") and unique_years:
-                if len(unique_years) == 1:
-                    c["year"] = list(unique_years)[0]
-                elif "title" in c:
-                    from ..utils.html_scanner import extract_year_and_type
-                    y, t, _ = extract_year_and_type(c["title"])
-                    if y:
-                        c["year"] = y
-                    if t and not c.get("type_"):
-                        c["type_"] = t
-            if not c.get("type_") and unique_types:
-                if len(unique_types) == 1:
-                    c["type_"] = list(unique_types)[0]
-                elif "title" in c:
-                    from ..utils.html_scanner import extract_year_and_type
-                    y, t, _ = extract_year_and_type(c["title"])
-                    if t:
-                        c["type_"] = t
         # --- Panels: relaxed filtering, only require panel_text ---
-        panels = {}
-        # Build a lookup for context_library panels if available
+        panels_dict = {}
         lib_panels = context_library.get("panels", [])
         if not isinstance(lib_panels, list):
             lib_panels = []
-        # Helper to normalize and match panel labels
         def find_panel_by_title(title):
             norm_title = normalize_label(title)
             # 1. panel_features
@@ -872,9 +887,8 @@ class ContextOrganizer(object):
         for c in contests:
             panel = find_panel_by_title(c["title"])
             if panel and panel.get("panel_text"):
-                panels[c["title"]] = panel
+                panels_dict[c["title"]] = panel
 
-        # --- Optionally, add unmatched panels (not linked to a contest) ---
         raw_panels = raw_context.get("panels", {})
         if isinstance(raw_panels, dict):
             raw_panels_list = list(raw_panels.values())
@@ -888,9 +902,8 @@ class ContextOrganizer(object):
             if not p.get("panel_text"):
                 continue
             label = p.get("label", p.get("panel_text", ""))
-            # Only add if not already present (by label)
-            if label not in panels:
-                panels[label] = p
+            if label not in panels_dict:
+                panels_dict[label] = p
 
         # --- Tables: relaxed filtering, only require table_text ---
         tables_by_contest = defaultdict(list)
@@ -907,10 +920,11 @@ class ContextOrganizer(object):
             if not tbl.get("table_text"):
                 continue
             for c in contests:
-                if c["title"].lower() in tbl.get("label", "").lower():
+                if (c.get("title") or "").lower() in (tbl.get("label") or "").lower():
                     tables_by_contest[c["title"]].append(tbl)
             if not any(tbl in v for v in tables_by_contest.values()):
                 tables_by_contest["__unmatched__"].append(tbl)
+
         # --- Buttons: relaxed filtering, only require label ---
         buttons_by_contest = defaultdict(list)
         raw_buttons = button_features or raw_context.get("buttons", [])
@@ -928,10 +942,10 @@ class ContextOrganizer(object):
                 continue
             matched = False
             for c in contests:
-                if c["title"].lower() in btn.get("label", "").lower():
+                if (c.get("title") or "").lower() in (btn.get("label") or "").lower():
                     buttons_by_contest[c["title"]].append(btn)
                     matched = True
-                elif "election" in btn.get("label", "").lower() and "election" in c["title"].lower():
+                elif "election" in (btn.get("label") or "").lower() and "election" in (c.get("title") or "").lower():
                     buttons_by_contest[c["title"]].append(btn)
                     matched = True
             if not matched:
@@ -939,7 +953,7 @@ class ContextOrganizer(object):
         for btn in unmatched_buttons:
             buttons_by_contest["__unmatched__"].append(btn)
 
-        # --- Grouping by keywords ---
+        # --- Grouping by keywords with specific label fields for each type ---
         keyword_sets = {
             "location": LOCATION_KEYWORDS,
             "candidate": CANDIDATE_KEYWORDS,
@@ -950,39 +964,109 @@ class ContextOrganizer(object):
             "total": TOTAL_KEYWORDS,
             "footer": MISC_FOOTER_KEYWORDS
         }
-        def group_by_keywords(items, label_field="label") -> dict:
+        def group_by_keywords(items, label_fields=None, keyword_sets=None, fuzzy_cutoff=0.85) -> dict:
+            if label_fields is None:
+                label_fields = ["label", "button_text", "panel_text", "table_text", "candidate_panel_text",
+                                "location_panel_text", "heading_text", "ballot_types_text", "timestamp_text",
+                                "party_label_text", "vote_method_text"]
+            if keyword_sets is None:
+                raise ValueError("keyword_sets must be provided")
             groups = {k: [] for k in keyword_sets}
+            seen = {k: set() for k in keyword_sets}
+            def normalize(text):
+                return re.sub(r"[^\w\s]", "", (text or "").lower()).strip()
             for item in items:
                 if not isinstance(item, dict):
                     continue
-                label = item.get(label_field, "").lower()
+                label = ""
+                for field in label_fields:
+                    label = item.get(field, "")
+                    if label:
+                        break
+                label_norm = normalize(label)
+                tokens = set(label_norm.split())
                 for group, keywords in keyword_sets.items():
-                    if any(kw in label for kw in keywords):
-                        groups[group].append(item)
+                    matched = False
+                    for kw in keywords:
+                        kw_norm = normalize(kw)
+                        if kw_norm in label_norm or any(kw_norm in t for t in tokens):
+                            matched = True
+                            break
+                        if get_close_matches(kw_norm, [label_norm], n=1, cutoff=fuzzy_cutoff):
+                            matched = True
+                            break
+                    if matched:
+                        dedup_key = item.get("segment_hash", label_norm)
+                        if dedup_key not in seen[group]:
+                            groups[group].append(item)
+                            seen[group].add(dedup_key)
             return groups
 
-        panel_items = panels.values() if isinstance(panels, dict) else panels
-        panels = ensure_dict(group_by_keywords([p for p in panel_items if p], label_field="label"))
-        buttons = ensure_dict(group_by_keywords(all_buttons, label_field="label"))
-        tables = ensure_dict(group_by_keywords(all_tables, label_field="label"))
-        candidate_panels = ensure_dict(group_by_keywords(candidate_panels, label_field="label"))
-        location_panels = ensure_dict(group_by_keywords(location_panels, label_field="label"))
-        headings = ensure_dict(group_by_keywords(headings, label_field="label"))
-        ballot_types = ensure_dict(group_by_keywords(ballot_types, label_field="label"))
-        results_timestamps = ensure_dict(group_by_keywords(results_timestamps, label_field="label"))
-        party_labels = ensure_dict(group_by_keywords(party_labels, label_field="label"))
-        vote_methods = ensure_dict(group_by_keywords(vote_methods, label_field="label"))
-        log.append(f"[KEYWORDS] Panel groups: {{k: len(v) for k,v in panels.items()}}")
-        log.append(f"[KEYWORDS] Button groups: {{k: len(v) for k,v in buttons.items()}}")
-        log.append(f"[KEYWORDS] Table groups: {{k: len(v) for k,v in tables.items()}}")
-        log.append(f"[KEYWORDS] Candidate panel groups: {{k: len(v) for k,v in candidate_panels.items()}}")
-        log.append(f"[KEYWORDS] Location panel groups: {{k: len(v) for k,v in location_panels.items()}}")
-        log.append(f"[KEYWORDS] Heading groups: {{k: len(v) for k,v in headings.items()}}")
-        log.append(f"[KEYWORDS] Ballot type groups: {{k: len(v) for k,v in ballot_types.items()}}")
-        log.append(f"[KEYWORDS] Results timestamp groups: {{k: len(v) for k,v in results_timestamps.items()}}")
-        log.append(f"[KEYWORDS] Party label groups: {{k: len(v) for k,v in party_labels.items()}}")
-        log.append(f"[KEYWORDS] Vote method groups: {{k: len(v) for k,v in vote_methods.items()}}")
-        
+        # --- Use specific label fields for each group ---
+        panels = ensure_dict(group_by_keywords(
+            [p for p in panels_dict.values() if p],
+            label_fields=["panel_text"],
+            keyword_sets=keyword_sets
+        ))
+        buttons = ensure_dict(group_by_keywords(
+            all_buttons,
+            label_fields=["button_text", "label"],
+            keyword_sets=keyword_sets
+        ))
+        tables = ensure_dict(group_by_keywords(
+            all_tables,
+            label_fields=["table_text"],
+            keyword_sets=keyword_sets
+        ))
+        candidate_panels = ensure_dict(group_by_keywords(
+            candidate_panels,
+            label_fields=["candidate_panel_text"],
+            keyword_sets=keyword_sets
+        ))
+        location_panels = ensure_dict(group_by_keywords(
+            location_panels,
+            label_fields=["location_panel_text"],
+            keyword_sets=keyword_sets
+        ))
+        headings = ensure_dict(group_by_keywords(
+            headings,
+            label_fields=["heading_text"],
+            keyword_sets=keyword_sets
+        ))
+        ballot_types = ensure_dict(group_by_keywords(
+            ballot_types,
+            label_fields=["ballot_types_text"],
+            keyword_sets=keyword_sets
+        ))
+        results_timestamps = ensure_dict(group_by_keywords(
+            results_timestamps,
+            label_fields=["timestamp_text"],
+            keyword_sets=keyword_sets
+        ))
+        party_labels = ensure_dict(group_by_keywords(
+            party_labels,
+            label_fields=["party_label_text"],
+            keyword_sets=keyword_sets
+        ))
+        vote_methods = ensure_dict(group_by_keywords(
+            vote_methods,
+            label_fields=["vote_method_text"],
+            keyword_sets=keyword_sets
+        ))
+
+        # --- Logging group sizes for diagnostics ---
+        log.append(f"[KEYWORDS] Panel groups: { {k: len(v) for k,v in panels.items()} }")
+        log.append(f"[KEYWORDS] Button groups (by button_text): { {k: len(v) for k,v in buttons.items()} }")
+        log.append(f"[KEYWORDS] Table groups: { {k: len(v) for k,v in tables.items()} }")
+        log.append(f"[KEYWORDS] Candidate panel groups: { {k: len(v) for k,v in candidate_panels.items()} }")
+        log.append(f"[KEYWORDS] Location panel groups: { {k: len(v) for k,v in location_panels.items()} }")
+        log.append(f"[KEYWORDS] Heading groups: { {k: len(v) for k,v in headings.items()} }")
+        log.append(f"[KEYWORDS] Ballot type groups: { {k: len(v) for k,v in ballot_types.items()} }")
+        log.append(f"[KEYWORDS] Results timestamp groups: { {k: len(v) for k,v in results_timestamps.items()} }")
+        log.append(f"[KEYWORDS] Party label groups: { {k: len(v) for k,v in party_labels.items()} }")
+        log.append(f"[KEYWORDS] Vote method groups: { {k: len(v) for k,v in vote_methods.items()} }")
+
+        # --- ML anomaly detection and integrity checks ---
         anomalies, clusters = [], []
         if enable_ml and len(contests) > 0:
             try:
@@ -1039,6 +1123,7 @@ class ContextOrganizer(object):
             "results_timestamps": results_timestamps,
             "party_labels": party_labels,
             "vote_methods": vote_methods,
+            "noisy_patterns": raw_context.get("noisy_patterns", []),
             "metadata": {
                 "state": raw_context.get("state"),
                 "county": raw_context.get("county"),
@@ -1050,7 +1135,7 @@ class ContextOrganizer(object):
                 "environment": scan_environment(),
             },
             "dom_tree": dom_tree,
-            "dom_parts": dom_parts,        
+            "dom_parts": dom_parts,
             "anomalies": [contests[i] for i in anomalies] if anomalies else [],
             "clusters": clusters.tolist() if hasattr(clusters, "tolist") else clusters,
             "integrity_issues": integrity_issues,
@@ -1166,16 +1251,16 @@ class ContextOrganizer(object):
         panels = []
         nodes = dom_tree["nodes"]
         for node in nodes:
-            if node["tag"] in ("section", "div", "fieldset", "panel"):
+            if (node.get("tag") or "") in ("section", "div", "fieldset", "panel"):
                 # Find heading among children
                 heading = None
                 for child_idx in node["children"]:
                     child = nodes[child_idx]
-                    if child["tag"] in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                    if (child.get("tag") or "") in ("h1", "h2", "h3", "h4", "h5", "h6"):
                         heading = child["html"]
                         break
                 # Find tables among children
-                tables = [nodes[cidx] for cidx in node["children"] if nodes[cidx]["tag"] == "table"]
+                tables = [nodes[cidx] for cidx in node["children"] if (nodes[cidx].get("tag") or "") == "table"]
                 if heading and tables:
                     panels.append((heading, tables))
         return panels
@@ -1232,10 +1317,10 @@ class ContextOrganizer(object):
         Adds 'direct_parent' field for each node.
         """
         nodes = dom_tree["nodes"]
-        head_nodes = [n for n in nodes if n["tag"].lower() == "head"]
-        body_nodes = [n for n in nodes if n["tag"].lower() == "body"]
-        wrappers = [n for n in nodes if n["tag"].lower() in ("div", "section", "form")]
-        tables = [n for n in nodes if n["tag"].lower() == "table"]
+        head_nodes = [n for n in nodes if (n.get("tag") or "").lower() == "head"]
+        body_nodes = [n for n in nodes if (n.get("tag") or "").lower() == "body"]
+        wrappers = [n for n in nodes if (n.get("tag") or "").lower() in ("div", "section", "form")]
+        tables = [n for n in nodes if (n.get("tag") or "").lower() == "table"]
         buttons = [n for n in nodes if n.get("is_button")]
         clickable = [n for n in nodes if n.get("is_clickable")]
         for n in nodes:
@@ -1250,6 +1335,72 @@ class ContextOrganizer(object):
             "all_nodes": nodes,
             "roots": dom_tree["roots"]
         }
+
+    def submit_user_feedback(self, field_type, field_name, correct_value, context):
+        """
+        Store or process user feedback for a field extraction/correction.
+        logs, deduplicates, persists to disk, and can update context library.
+        """
+        import orjson
+        import os
+        from datetime import datetime, timezone
+        from ..config import LOG_DIR
+
+        # Defensive: ensure feedback list exists
+        if not hasattr(self, "user_feedback") or not isinstance(self.user_feedback, list):
+            self.user_feedback = []
+
+        # Defensive: sanitize and flatten context
+        def safe_context(ctx):
+            try:
+                if isinstance(ctx, dict):
+                    return {k: str(v)[:500] for k, v in ctx.items()}
+                return str(ctx)[:500]
+            except Exception:
+                return str(ctx)[:500]
+
+        feedback_entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "field_type": str(field_type)[:100],
+            "field_name": str(field_name)[:100],
+            "correct_value": str(correct_value)[:1000],
+            "context": safe_context(context),
+        }
+
+        # Deduplicate: avoid duplicate feedback for same field/context in this session
+        dedup_key = (
+            feedback_entry["field_type"],
+            feedback_entry["field_name"],
+            feedback_entry["correct_value"],
+            str(feedback_entry["context"])
+        )
+        if not hasattr(self, "_feedback_seen"):
+            self._feedback_seen = set()
+        if dedup_key in self._feedback_seen:
+            logger.info(f"[ContextOrganizer] Duplicate feedback skipped: {feedback_entry}")
+            return
+        self._feedback_seen.add(dedup_key)
+        self.user_feedback.append(feedback_entry)
+
+        # Persist to disk robustly
+        try:
+            os.makedirs(LOG_DIR, exist_ok=True)
+            log_path = os.path.join(LOG_DIR, "user_feedback_log.jsonl")
+            with open(log_path, "ab") as f:
+                f.write(orjson.dumps(feedback_entry) + b"\n")
+        except Exception as e:
+            logger.error(f"[ContextOrganizer] Failed to persist user feedback: {e}")
+
+        # Optionally: update context library (extend as needed)
+        try:
+            if hasattr(self, "library") and isinstance(self.library, dict):
+                if "user_feedback" not in self.library or not isinstance(self.library["user_feedback"], list):
+                    self.library["user_feedback"] = []
+                self.library["user_feedback"].append(feedback_entry)
+        except Exception as e:
+            logger.warning(f"[ContextOrganizer] Could not update context library with feedback: {e}")
+
+        logger.info(f"[ContextOrganizer] User feedback submitted: {feedback_entry}")
 
     def append_to_context_library(self, organized, path=None, merge_lists=True, deduplicate=True):
         """

@@ -212,7 +212,7 @@ def save_embeddings_batch(hash_emb_list):
                 preview = ", ".join(str(h) for h in hashes[:3])
                 if len(hashes) > 3:
                     preview += ", ..."
-                console.log(
+                console.print(
                     f"[green][EMBEDDING CACHE] Saved/updated {len(records)} embeddings in batch: [{preview}][/green]",
                     highlight=False,
                     end="\r"
