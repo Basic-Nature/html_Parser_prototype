@@ -3,6 +3,7 @@ from ..utils.shared_logger import SharedLogger
 from ..utils.shared_logic import normalize_state_name, normalize_county_name
 from ..utils.user_prompt import UserPrompt, PromptCancelled
 from collections import defaultdict
+from difflib import get_close_matches
 from ..bots.librarian import (
     ELECTION_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP
     )
@@ -44,6 +45,71 @@ def extract_year_from_title(title) -> Optional[int]:
                     min_distance = dist
                     best_year = y
     return best_year if best_year else max(years)
+
+def infer_election_type(title, context, contest, all_contests, coordinator) -> Optional[str]:
+    """
+    Dynamically infer the election type for a contest using:
+    - Regex and fuzzy matching on the title
+    - Context clues (year, known election dates, context type)
+    - ML/NER entity extraction
+    - Most common type among all contests for the same year/county
+    """
+    if not title:
+        return None
+    title_lower = title.lower()
+    # 1. Regex for common election types
+    regex_types = re.findall(r"\b(general|primary|special|runoff|municipal|presidential|school|bond|proposition|referendum)\b", title_lower)
+    if regex_types:
+        return regex_types[0].capitalize()
+    # 2. Fuzzy match against ELECTION_TYPES
+    close = get_close_matches(title_lower, [(t or "").lower() for t in ELECTION_TYPES], n=1, cutoff=0.8)
+    if close:
+        return close[0].capitalize()
+    # 3. Use ML/NER
+    if coordinator:
+        ents = coordinator.extract_entities(title)
+        for ent, label in ents:
+            if label == "EVENT" and (ent or "").lower() in [(et or "").lower() for et in ELECTION_TYPES]:
+                return ent.capitalize()
+    # 4. Context clues: if context has a type, use it
+    if context and context.get("type_"):
+        return context["type_"].capitalize()
+    # 5. If contest has a date, and it matches a known general/primary election date, infer type
+    # (You can expand this with a lookup table of known election dates if available)
+    # 6. Most common type among all contests for this year/county
+    year = contest.get("year")
+    county = contest.get("county")
+    type_counts = defaultdict(int)
+    for c in all_contests:
+        if c.get("year") == year and c.get("county") == county and c.get("type_"):
+            type_counts[c["type_"].lower()] += 1
+    if type_counts:
+        most_common = max(type_counts.items(), key=lambda x: x[1])[0]
+        return most_common.capitalize()
+    return None
+
+def fuzzy_county_match(contest_county, norm_county, known_county_to_precincts) -> bool:
+    """Return True if contest_county matches norm_county or any known precinct, using fuzzy matching."""
+    contest_county_norm = normalize_county_name(contest_county)
+    if not norm_county:
+        return True
+    if contest_county_norm == norm_county:
+        return True
+    # Fuzzy match against parent county and precincts
+    all_names = [normalize_county_name(norm_county)]
+    for parent_county, precincts in known_county_to_precincts.items():
+        if normalize_county_name(parent_county) == norm_county:
+            all_names += [normalize_county_name(d) for d in precincts]
+    matches = get_close_matches(contest_county_norm, all_names, n=1, cutoff=0.85)
+    if matches:
+        logger.info(f"[FUZZY COUNTY MATCH] '{contest_county}' matched to '{matches[0]}' (target: '{norm_county}')")
+        return True
+    # If partial match, log for user review
+    partials = [name for name in all_names if contest_county_norm in name or name in contest_county_norm]
+    if partials:
+        logger.info(f"[PARTIAL COUNTY MATCH] '{contest_county}' partially matched to '{partials[0]}' (target: '{norm_county}')")
+        return True
+    return False
 
 def normalize_race_name(name) -> str:
     import re
@@ -217,15 +283,17 @@ def select_contest(
             year_from_title = extract_year_from_title(c.get("title", ""))
             if year_from_title:
                 c["year"] = year_from_title
-        # Fill type
+        # Fill type_
         if not c.get("type_"):
-            title = (c.get("title") or "").lower()
-            found_type_ = None
-            for t in ELECTION_TYPES:
-                if (t or "").lower() in title:
-                    found_type_ = (t or "").lower()
-                    break
-            if not found_type_:
+            inferred_type = infer_election_type(
+                c.get("title", ""),
+                context,
+                c,
+                contests,
+                coordinator
+            )
+            if inferred_type:
+                c["type_"] = inferred_type
                 # Try ML/NER
                 ents = coordinator.extract_entities(c.get("title", ""))
                 for ent, label in ents:
@@ -247,75 +315,62 @@ def select_contest(
     logger.debug(f"[DEBUG] noisy_patterns: {noisy_patterns}")
     logger.debug(f"[DEBUG] contests before filtering: {contests}")
 
-    # Helper for county matching
-    def county_matches(contest_county):
-        contest_county_norm = normalize_county_name(contest_county)
-        if not norm_county:
-            return True
-        if contest_county_norm == norm_county:
-            return True
-        for parent_county, precincts in known_county_to_precincts.items():
-            if normalize_county_name(parent_county) == norm_county:
-                if contest_county_norm in [normalize_county_name(d) for d in precincts]:
-                    return True
-        return False
-
     # --- Filter contests ---
     filtered_contests = []
     fallback_contests = []
     for c in contests:
         skip_reason = None
-        # Only filter out contests with a clear state mismatch or empty/generic title
-        # Accept both "NY" and "New York" as equivalent, and ignore case
         contest_state = c.get("state", "")
-        if norm_state and normalize_state_name(contest_state) != norm_state:
-            skip_reason = "state mismatch"
-        # Accept any non-empty, non-generic title
         title = c.get("title")
         title_norm = (title or "").strip().lower()
-        skip_reason = None
 
-        # Check for missing or generic title
+        # Skip noisy/generic patterns
         if not title or not isinstance(title, str) or title_norm in ["", "results", "summary"]:
             skip_reason = "empty/generic title"
-            logger.debug(f"Skipping contest due to {skip_reason}: {c}")
-        # Check for missing year
+        elif any(pat in title_norm for pat in ["unofficial results", "summary", "results by election district"]):
+            skip_reason = "noisy pattern"
         elif not c.get("year"):
             skip_reason = "missing year"
-            logger.debug(f"Skipping contest due to {skip_reason}: {c}")
-        # Check for missing type_
         elif not c.get("type_"):
             skip_reason = "missing type_"
-            logger.debug(f"Skipping contest due to {skip_reason}: {c}")
-        # Check for missing state
         elif not c.get("state"):
             skip_reason = "missing state"
-            logger.debug(f"Skipping contest due to {skip_reason}: {c}")
-        # Check for missing county
         elif not c.get("county"):
             skip_reason = "missing county"
-            logger.debug(f"Skipping contest due to {skip_reason}: {c}")
+        elif not fuzzy_county_match(c.get("county", ""), norm_county, known_county_to_precincts):
+            skip_reason = "county mismatch"
+        elif norm_state and normalize_state_name(contest_state) != norm_state:
+            skip_reason = "state mismatch"
 
         if skip_reason:
-            # Add to fallback if it has a non-empty title
+            logger.debug(f"[DEBUG] Skipping contest due to {skip_reason}: {c}")
             if title and title_norm not in ["", "results", "summary"]:
-                fallback_contests.append(c)
-            continue
-        # Do NOT filter by county, year, or noisy_patterns here
-        if skip_reason:
-            logger.debug(f"Skipping contest '{title or ''}': {skip_reason}")
-            # Add to fallback if it has a title
-            if title:
                 fallback_contests.append(c)
             continue
         filtered_contests.append(c)
 
-    logger.debug(f"[DEBUG] Filtered contests: {filtered_contests}")
-    logger.debug(f"[DEBUG] Number of filtered contests: {len(filtered_contests)}")
-    # PATCH: If no valid contests, fallback to any contest with a title
+    # If ambiguous county matches, prompt user
     if not filtered_contests and fallback_contests:
-        logger.warning("[yellow]No contests passed strict filtering. Falling back to any contest with a title.[/yellow]")
-        filtered_contests = fallback_contests
+        ambiguous_counties = set(c.get("county", "") for c in fallback_contests)
+        if len(ambiguous_counties) > 1:
+            logger.warning(f"[COUNTY AMBIGUITY] Multiple possible counties found: {ambiguous_counties}")
+            try:
+                choice = prompt.prompt_input(
+                    f"[PROMPT] Multiple counties found: {ambiguous_counties}. Enter county to use or 'all': ",
+                    default="all",
+                    validator=lambda x: x == "all" or x in ambiguous_counties,
+                    allow_cancel=True,
+                    header="COUNTY SELECTION"
+                ).strip().lower()
+                if choice and choice != "all":
+                    filtered_contests = [c for c in fallback_contests if normalize_county_name(c.get("county", "")) == normalize_county_name(choice)]
+                else:
+                    filtered_contests = fallback_contests
+            except PromptCancelled:
+                logger.warning("[yellow]County selection cancelled by user.[/yellow]")
+                return None
+        else:
+            filtered_contests = fallback_contests
 
     if not filtered_contests:
         logger.warning("[yellow]No valid contests detected after filtering. Skipping.[/yellow]")

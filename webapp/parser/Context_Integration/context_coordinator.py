@@ -50,7 +50,7 @@ from .Integrity_check import (
 from .context_organizer import ContextOrganizer, clean_for_json
 from ..services.election_data_services import ElectionDataService
 import inspect
-from typing import Optional, Any, List, Dict, Tuple
+from typing import Optional, Any, List, Dict, Tuple, Callable
 logger = SharedLogger()
 def _sanitize_log_filename(name: str) -> str:
     # Only allow alphanumeric, underscore, and dash
@@ -84,17 +84,18 @@ def merge_and_rank_candidates(
             seen.add(key)
             all_candidates.append(cand)
 
+    contest = context.get("contest", {})
+    contest_title = contest.get("title", "") if contest else ""
     context_str = " ".join([
-        str(context.get("contest_title", "")),
+        contest_title,
         str(context.get("year", "")),
-        str(context.get("election_types", "")),
+        str(context.get("type_", "")),
         str(context.get("county", "")),
         str(context.get("state", "")),
     ]).strip()
 
     expected_class = context.get("expected_class", "")
     expected_tag = context.get("expected_tag", "")
-    contest_title = context.get("contest_title", "")
 
     for cand in all_candidates:
         if not isinstance(cand, dict):
@@ -651,27 +652,27 @@ class ContextCoordinator(object):
                         confirmed_by_user = tbl.get("confirmed_by_user", False)
                         try:
                             self.save_table_structure_to_db(
-                                contest_title, headers, context, ml_confidence, confirmed_by_user
+                                contest, headers, context, ml_confidence, confirmed_by_user
                             )
                         except Exception as e:
-                            logger.error(f"[update_db_with_context] Failed to save table structure for {contest_title}: {e}")
+                            logger.error(f"[update_db_with_context] Failed to save table structure for {contest.get('title', '')}: {e}")
 
             # --- Update panels ---
             if update_panels and "panels" in library:
-                for contest_title, panel in library["panels"].items():
+                for contest, panel in library["panels"].items():
                     try:
-                        self.data_service.upsert_panel(contest_title, panel)
+                        self.data_service.upsert_panel(contest, panel)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert panel for {contest_title}: {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert panel for {contest.get('title', '')}: {e}")
 
             # --- Update buttons ---
             if update_buttons and "buttons" in library:
-                for contest_title, buttons in library["buttons"].items():
+                for contest, buttons in library["buttons"].items():
                     for btn in buttons:
                         try:
-                            self.data_service.upsert_button(contest_title, btn)
+                            self.data_service.upsert_button(contest, btn)
                         except Exception as e:
-                            logger.error(f"[update_db_with_context] Failed to upsert button for {contest_title}: {e}")
+                            logger.error(f"[update_db_with_context] Failed to upsert button for {contest.get('title', '')}: {e}")
 
             # --- Update candidates ---
             if update_candidates and "candidates" in library:
@@ -765,14 +766,14 @@ class ContextCoordinator(object):
 
         except Exception as e:
             logger.error(f"[update_db_with_context] Failed to update DB: {e}")
-            
-    def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False) -> Dict[str, Any]:
-        from .context_organizer import save_table_structure_to_db
-        return save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
 
-    def get_table_structure_from_db(self, contest_title, context=None) -> Optional[List[Dict[str, Any]]]:
+    def save_table_structure_to_db(self, contest: Dict[str, Any], headers: Dict[str, Any], context: Dict[str, Any], ml_confidence: Optional[float] = None, confirmed_by_user: bool = False) -> Dict[str, Any]:
+        from .context_organizer import save_table_structure_to_db
+        return save_table_structure_to_db(contest, headers, context, ml_confidence, confirmed_by_user)
+
+    def get_table_structure_from_db(self, contest: Dict[str, Any], context: Dict[str, Any] = None) -> Optional[List[Dict[str, Any]]]:
         from .context_organizer import get_table_structure_from_db
-        return get_table_structure_from_db(contest_title, context)
+        return get_table_structure_from_db(contest, context)
 
     def organize_and_enrich(self, raw_context, **kwargs) -> Dict[str, Any]:
         """
@@ -1630,7 +1631,7 @@ class ContextCoordinator(object):
             return True
         return clean_for_json([c for c in contests if match(c)])
 
-    def get_buttons(self, contest_title=None, keyword=None, url=None) -> List[Dict[str, Any]]:
+    def get_buttons(self, contest: Dict[str, Any], keyword: str = None, url: str = None) -> List[Dict[str, Any]]:
         """
         Return all buttons, or those for a specific contest, or matching a keyword/URL.
         First, check the button selection log for a successful match.
@@ -1647,8 +1648,8 @@ class ContextCoordinator(object):
                         continue
                     if not isinstance(entry, dict):
                         continue
-                    # Check for a successful result for this contest_title/keyword/url
-                    if contest_title and entry.get("contest_title") == contest_title and entry.get("result", "").startswith("pass"):
+                    # Check for a successful result for this contest/keyword/url
+                    if contest and entry.get("contest") == contest.get("title") and entry.get("result", "").startswith("pass"):
                         # Reconstruct a button dict from the log entry
                         button = {
                             "label": entry.get("button_label"),
@@ -1674,8 +1675,8 @@ class ContextCoordinator(object):
             return []
         buttons_dict = self.organized.get("buttons", {})
         results = []
-        if contest_title:
-            results = buttons_dict.get(contest_title, [])
+        if contest:
+            results = buttons_dict.get(contest.get("title"), [])
             if results:
                 return clean_for_json(results)
         if keyword:
@@ -1728,13 +1729,13 @@ class ContextCoordinator(object):
     def get_best_button_advanced(
         self,
         page,
-        contest_title,
-        keywords,
-        context=None,
-        fuzzy_thresholds=None,
-        prompt_user_for_button=None,
-        confirm_button_callback=None,
-        learning_mode=True
+        contest: dict = None,
+        keywords: list[str] = None,
+        context: dict = None,
+        fuzzy_thresholds: list[float] = None,
+        prompt_user_for_button: bool = None,
+        confirm_button_callback: Callable[[Dict[str, Any]], None] = None,
+        learning_mode: bool = True
     ) -> Tuple[Optional[Dict[str, Any]], int]:
         """
         Advanced button selection: combines memory, DOM, semantic similarity, adaptive threshold, and feedback.
@@ -1745,7 +1746,7 @@ class ContextCoordinator(object):
         model = self._semantic_model
         context = context or {}
         context.update({
-            "contest_title": contest_title,
+            "contest": contest,
             "year": context.get("year", ""),
             "election_types": context.get("election_types", ""),
             "county": context.get("county", ""),
@@ -1754,7 +1755,7 @@ class ContextCoordinator(object):
 
         # --- 1. Learning mode: check log/DB for confirmed button ---
         if learning_mode:
-            learned_btn = self._get_confirmed_button_from_log(contest_title, keywords, context)
+            learned_btn = self._get_confirmed_button_from_log(contest, keywords, context)
             if isinstance(learned_btn, dict) and learned_btn.get("selector") not in self.clicked_button_selectors:
                 selector_html = learned_btn.get("selector", "")
                 dom_candidates = []
@@ -1794,7 +1795,7 @@ class ContextCoordinator(object):
 
         # --- 2. Gather candidates from memory/log ---
         memory_candidates = []
-        logged_buttons = self.get_buttons(contest_title=contest_title)
+        logged_buttons = self.get_buttons(contest=contest, keyword=keywords, url=context.get("url", ""))
         if logged_buttons:
             for btn in logged_buttons:
                 btn = btn.copy()
@@ -1835,7 +1836,7 @@ class ContextCoordinator(object):
                     "element_handle": btn,
                 }
                 dom_candidates.append(candidate)
-                self._log_button_memory(candidate, contest_title, "scanned")
+                self._log_button_memory(candidate, contest, "scanned")
             except Exception:
                 pass
 
@@ -1861,12 +1862,12 @@ class ContextCoordinator(object):
                             confirmed = confirm_button_callback(cand)
                         if confirmed:
                             logger.info(f"[bold green][Coordinator] Confirmed button: '{cand.get('label')}' (score={cand.get('combined_score', 0):.2f})[/bold green]")
-                            self._log_button_memory(cand, contest_title, f"confirmed_pass_{cand.get('combined_score', 0):.2f}")
+                            self._log_button_memory(cand, contest, f"confirmed_pass_{cand.get('combined_score', 0):.2f}")
                             if not isinstance(cand, dict):
                                 logger.error(f"[red][ERROR] Candidate is not a dict: {cand}[/red]")
                                 continue
                             if learning_mode:
-                                self._log_confirmed_button_for_learning(cand, contest_title, context)
+                                self._log_confirmed_button_for_learning(cand, contest, context)
                             self.clicked_button_selectors.add(cand.get("selector"))
                             try:
                                 cand["element_handle"].click()
@@ -1891,15 +1892,15 @@ class ContextCoordinator(object):
             chosen_btn, chosen_idx = prompt_user_for_button(page, all_candidates, context.get("toggle_name", ""))
             if chosen_btn and chosen_idx is not None:
                 chosen_btn["context"] = context
-                self._log_button_memory(chosen_btn, contest_title, "manual_correction")
+                self._log_button_memory(chosen_btn, contest, "manual_correction")
                 if learning_mode:
-                    self._log_confirmed_button_for_learning(chosen_btn, contest_title, context)
+                    self._log_confirmed_button_for_learning(chosen_btn, contest, context)
                 return chosen_btn, chosen_idx
 
         logger.error(f"[red][ERROR] No suitable button could be clicked for '{context.get('toggle_name', '')}'.[/red]")
         return None, None
 
-    def _log_confirmed_button_for_learning(self, button, contest_title, context) -> None:
+    def _log_confirmed_button_for_learning(self, button: dict = None, contest: dict = None, context: dict = None) -> None:
         """
         Log confirmed button for learning mode (auto-apply next time).
         """
@@ -1907,7 +1908,7 @@ class ContextCoordinator(object):
         if not isinstance(button, dict):
             return
         log_entry = {
-            "contest_title": contest_title,
+            "contest": contest,
             "button_label": button.get("label"),
             "selector": button.get("selector"),
             "context": context,
@@ -1918,7 +1919,7 @@ class ContextCoordinator(object):
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _get_confirmed_button_from_log(self, contest_title, keywords, context) -> Optional[Dict[str, Any]]:
+    def _get_confirmed_button_from_log(self, contest: dict = None, keywords: list[str] = None, context: dict = None) -> Optional[Dict[str, Any]]:
         """
         Retrieve a previously confirmed button from the learning log.
         """
@@ -1933,7 +1934,7 @@ class ContextCoordinator(object):
                     continue
                 if not isinstance(entry, dict):
                     continue
-                if entry.get("contest_title") == contest_title and entry.get("result") == "learning_confirmed":
+                if entry.get("contest") == contest and entry.get("result") == "learning_confirmed":
                     return {
                         "label": entry.get("button_label"),
                         "selector": entry.get("selector"),
@@ -1942,7 +1943,7 @@ class ContextCoordinator(object):
                     }
         return None
 
-    def _log_button_memory(self, button, contest_title, result) -> None:
+    def _log_button_memory(self, button: dict = None, contest: dict = None, result: str = None) -> None:
         """
         Log button selection attempts for future ML or rule improvements.
         """
@@ -1950,7 +1951,7 @@ class ContextCoordinator(object):
         if not isinstance(button, dict):
             return
         log_entry = {
-            "contest_title": contest_title,
+            "contest": contest,
             "button_label": button.get("label"),
             "selector": button.get("selector"),
             "result": result
@@ -1961,7 +1962,7 @@ class ContextCoordinator(object):
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     # --- Table structure learning/lookup ---
-    def get_table_structure(self, contest_title, context=None, learning_mode=True) -> Optional[list[str]]:
+    def get_table_structure(self, contest: dict = None, context: dict = None, learning_mode: bool = True) -> Optional[list[str]]:
         """
         Retrieve or learn the expected table structure for a contest.
         """
@@ -1976,17 +1977,17 @@ class ContextCoordinator(object):
                         continue
                     if not isinstance(entry, dict):
                         continue
-                    if entry.get("contest_title") == contest_title and entry.get("result") == "learning_confirmed":
+                    if entry.get("contest") == contest and entry.get("result") == "learning_confirmed":
                         return clean_for_json(entry.get("headers"), [])
         # 2. Fallback: return None (caller should trigger extraction and confirmation)
         return None
 
-    def log_table_structure(self, contest_title, headers, context=None) -> None:
+    def log_table_structure(self, contest: dict = None, headers: list[str] = None, context: dict = None) -> None:
         """
         Log confirmed table structure for learning mode.
         """
         log_entry = {
-            "contest_title": contest_title,
+            "contest": contest,
             "headers": headers,
             "context": context,
             "result": "learning_confirmed"
@@ -2017,30 +2018,31 @@ class ContextCoordinator(object):
         """
         self.learning_mode = False
 
-    def get_panel(self, contest_title) -> dict:
+    def get_panel(self, contest: dict = None) -> dict:
         if not self.organized:
             return None
         panels = self.organized.get("panels", {})
         if not isinstance(panels, dict):
             return None
-        return clean_for_json(panels.get(contest_title))
+        return clean_for_json(panels.get(contest))
 
-    def get_tables(self, contest_title) -> list[dict]:
+    def get_tables(self, contest: dict = None) -> list[dict]:
         if not self.organized:
             return []
         tables = self.organized.get("tables", {})
         if not isinstance(tables, dict):
             return []
-        return clean_for_json(tables.get(contest_title, []))
+        return clean_for_json(tables.get(contest.get("title") if contest else "", []))
 
-    def get_candidates(self, contest_title=None) -> list[str]:
+    def get_candidates(self, contest: dict = None) -> list[str]:
         """
         Extract candidate names from contest entities or table headers.
         """
         candidates = set()
-        contests = self.get_contests() if contest_title is None else [
-            c for c in self.get_contests() if isinstance(c, dict) and c.get("title") == contest_title
-        ]
+        if contest is None:
+            contests = self.get_contests()
+        else:
+            contests = [contest]
         for c in contests:
             if not isinstance(c, dict):
                 continue
@@ -2048,7 +2050,7 @@ class ContextCoordinator(object):
                 if label in {"PERSON", "CANDIDATE"}:
                     candidates.add(ent)
             # Optionally: parse table headers for candidate names
-            for tbl in self.get_tables(c.get("title", "")):
+            for tbl in self.get_tables(c):
                 if not isinstance(tbl, dict):
                     continue
                 headers = tbl.get("headers", [])
@@ -2107,11 +2109,11 @@ class ContextCoordinator(object):
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_buttons_access(self, contest_title, keyword, url) -> None:
+    def _log_get_buttons_access(self, contest: Dict[str, Any], keyword: str, url: str) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_buttons",
-            "contest_title": contest_title,
+            "contest": contest,
             "keyword": keyword,
             "url": url,
         }
@@ -2121,11 +2123,11 @@ class ContextCoordinator(object):
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_best_button_access(self, contest_title, keywords, class_hint, url) -> None:
+    def _log_get_best_button_access(self, contest: Dict[str, Any], keywords: List[str], class_hint: str, url: str) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_best_button",
-            "contest_title": contest_title,
+            "contest": contest,
             "keywords": keywords,
             "class_hint": class_hint,
             "url": url,
@@ -2135,33 +2137,33 @@ class ContextCoordinator(object):
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_panel_access(self, contest_title) -> None:
+    def _log_get_panel_access(self, contest: Dict[str, Any]) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_panel",
-            "contest_title": contest_title,
+            "contest": contest,
         }
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_panel_access_log.jsonl")
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_tables_access(self, contest_title) -> None:
+    def _log_get_tables_access(self, contest: Dict[str, Any]) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_tables",
-            "contest_title": contest_title,
+            "contest": contest,
         }
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_tables_access_log.jsonl")
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _log_get_candidates_access(self, contest_title) -> None:
+    def _log_get_candidates_access(self, contest: Dict[str, Any]) -> None:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "method": "get_candidates",
-            "contest_title": contest_title,
+            "contest": contest,
         }
         os.makedirs(LOG_DIR, exist_ok=True)
         log_path = os.path.join(LOG_DIR, "get_candidates_access_log.jsonl")

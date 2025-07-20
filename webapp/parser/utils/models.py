@@ -130,6 +130,7 @@ class Contest(Base):
     office_id = Column(Integer, ForeignKey("offices.id"))
     office = relationship("Office", back_populates="contests")
     results = relationship("Result", back_populates="contest")
+    buttons = relationship("Button", back_populates="contest", cascade="all, delete-orphan")
     metastats = Column(JSONB, default=dict)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
@@ -170,6 +171,19 @@ class Panel(Base):
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     metastats = Column(JSONB, default=dict)
+
+class Button(Base):
+    __tablename__ = "buttons"
+    id = Column(Integer, primary_key=True)
+    label = Column(String, nullable=False)
+    selector = Column(String, nullable=True)
+    contest_id = Column(Integer, ForeignKey("contests.id"), nullable=True)
+    is_visible = Column(Boolean, default=True)
+    is_clickable = Column(Boolean, default=True)
+    source = Column(String, nullable=True)
+    metastats = Column(JSONB, nullable=True)
+
+    contest = relationship("Contest", back_populates="buttons")
 
 class CandidatePanel(Base):
     """

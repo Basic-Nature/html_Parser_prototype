@@ -18,7 +18,29 @@ from ..utils.db_utils import (
     select_table_structures_by_title, clean_for_json, get_or_create_state,
     get_or_create_county, get_or_create_party, check_missing_tables
 )
-from ..utils.models import Base, Contest, State, County, Party, TableStructure, Panel, CandidatePanel, LocationPanel, Heading, BallotType, ResultsTimestamp, PartyLabel, VoteMethod
+from ..utils.models import (
+    Base, Contest, State, County, Party, 
+    TableStructure, Panel, CandidatePanel, LocationPanel, 
+    Heading, BallotType, ResultsTimestamp, PartyLabel, VoteMethod,
+    Candidate, Office, District, Result, Button
+)
+
+def _get_contest_id(session, contest):
+    """Helper to get contest_id from a contest dict or id."""
+    if isinstance(contest, dict):
+        if contest.get("id"):
+            return contest["id"]
+        # Try to find by title/year/type/state/county if id missing
+        filters = {k: contest.get(k) for k in ("title", "year", "type_")}
+        q = session.query(Contest)
+        for k, v in filters.items():
+            if v:
+                q = q.filter(getattr(Contest, k) == v)
+        obj = q.first()
+        return obj.id if obj else None
+    elif isinstance(contest, int):
+        return contest
+    return None
 
 class ElectionDataService(object):
     """
@@ -177,6 +199,254 @@ class ElectionDataService(object):
         """
         with get_session() as session:
             upsert_contest(session, contest_dict, auto_create_related=auto_create_related)
+            session.commit()
+
+    def upsert_panel(self, contest, panel):
+        """Insert or update a panel for a contest."""
+        with get_session() as session:
+            contest_id = _get_contest_id(session, contest)
+            obj = session.query(Panel).filter_by(
+                panel_text=panel.get("panel_text"),
+                contest_id=contest_id
+            ).first()
+            if obj:
+                obj.panel_html = panel.get("panel_html")
+                obj.segment_hash = panel.get("segment_hash")
+                obj.metastats = clean_for_json(panel)
+            else:
+                obj = Panel(
+                    panel_text=panel.get("panel_text"),
+                    panel_html=panel.get("panel_html"),
+                    segment_hash=panel.get("segment_hash"),
+                    contest_id=contest_id,
+                    metastats=clean_for_json(panel)
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_button(self, contest, button):
+        """Insert or update a button for a contest."""
+        with get_session() as session:
+            contest_id = _get_contest_id(session, contest)
+            obj = session.query(Button).filter_by(
+                label=button.get("label"),
+                selector=button.get("selector"),
+                contest_id=contest_id
+            ).first()
+            if obj:
+                obj.is_visible = button.get("is_visible", True)
+                obj.is_clickable = button.get("is_clickable", True)
+                obj.source = button.get("source")
+                obj.metastats = clean_for_json(button)
+            else:
+                obj = Button(
+                    label=button.get("label"),
+                    selector=button.get("selector"),
+                    contest_id=contest_id,
+                    is_visible=button.get("is_visible", True),
+                    is_clickable=button.get("is_clickable", True),
+                    source=button.get("source"),
+                    metastats=clean_for_json(button)
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_candidate(self, candidate):
+        """Insert or update a candidate."""
+        with get_session() as session:
+            obj = session.query(Candidate).filter_by(
+                name=candidate.get("name"),
+                office_id=candidate.get("office_id"),
+                district_id=candidate.get("district_id"),
+            ).first()
+            if obj:
+                obj.party_id = candidate.get("party_id")
+                obj.metastats = clean_for_json(candidate)
+            else:
+                obj = Candidate(
+                    name=candidate.get("name"),
+                    party_id=candidate.get("party_id"),
+                    office_id=candidate.get("office_id"),
+                    district_id=candidate.get("district_id"),
+                    metastats=clean_for_json(candidate)
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_party(self, party):
+        """Insert or update a party."""
+        with get_session() as session:
+            obj = session.query(Party).filter_by(name=party.get("name")).first()
+            if obj:
+                obj.abbreviation = party.get("abbreviation")
+            else:
+                obj = Party(
+                    name=party.get("name"),
+                    abbreviation=party.get("abbreviation")
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_office(self, office):
+        """Insert or update an office."""
+        from ..utils.models import OfficeLevelEnum
+        with get_session() as session:
+            obj = session.query(Office).filter_by(name=office.get("name")).first()
+            if obj:
+                obj.level = OfficeLevelEnum(office.get("level")) if office.get("level") else obj.level
+            else:
+                obj = Office(
+                    name=office.get("name"),
+                    level=OfficeLevelEnum(office.get("level")) if office.get("level") else None
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_district(self, district):
+        """Insert or update a district."""
+        with get_session() as session:
+            obj = session.query(District).filter_by(
+                name=district.get("name"),
+                state_id=district.get("state_id"),
+                county_id=district.get("county_id")
+            ).first()
+            if obj:
+                obj.type_ = district.get("type_")
+            else:
+                obj = District(
+                    name=district.get("name"),
+                    type_=district.get("type_"),
+                    state_id=district.get("state_id"),
+                    county_id=district.get("county_id")
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_result(self, result):
+        """Insert or update an election result."""
+        with get_session() as session:
+            obj = session.query(Result).filter_by(
+                candidate_id=result.get("candidate_id"),
+                contest_id=result.get("contest_id")
+            ).first()
+            if obj:
+                obj.votes = result.get("votes")
+                obj.percent = result.get("percent")
+                obj.is_winner = result.get("is_winner")
+                obj.is_incumbent = result.get("is_incumbent")
+                obj.vote_method = result.get("vote_method")
+                obj.metastats = clean_for_json(result)
+            else:
+                obj = Result(
+                    candidate_id=result.get("candidate_id"),
+                    contest_id=result.get("contest_id"),
+                    votes=result.get("votes"),
+                    percent=result.get("percent"),
+                    is_winner=result.get("is_winner"),
+                    is_incumbent=result.get("is_incumbent"),
+                    vote_method=result.get("vote_method"),
+                    metastats=clean_for_json(result)
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_entity(self, entity):
+        """Insert or update a generic entity."""
+        from ..utils.models import Entity
+        with get_session() as session:
+            obj = session.query(Entity).filter_by(
+                entity_type=entity.get("entity_type"),
+                value=entity.get("value")
+            ).first()
+            if obj:
+                obj.metastats = clean_for_json(entity)
+            else:
+                obj = Entity(
+                    entity_type=entity.get("entity_type"),
+                    value=entity.get("value"),
+                    metastats=clean_for_json(entity)
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_table_structure(self, table_structure):
+        """Insert or update a table structure."""
+        from ..utils.models import TableStructure
+        with get_session() as session:
+            obj = session.query(TableStructure).filter_by(
+                contest_title=table_structure.get("contest_title")
+            ).first()
+            if obj:
+                obj.headers = table_structure.get("headers")
+                obj.context = table_structure.get("context")
+                obj.ml_confidence = table_structure.get("ml_confidence")
+                obj.confirmed_by_user = table_structure.get("confirmed_by_user", False)
+            else:
+                obj = TableStructure(
+                    contest_title=table_structure.get("contest_title"),
+                    headers=table_structure.get("headers"),
+                    context=table_structure.get("context"),
+                    ml_confidence=table_structure.get("ml_confidence"),
+                    confirmed_by_user=table_structure.get("confirmed_by_user", False)
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_batch_metadata(self, batch_metadata):
+        """Insert or update batch metadata."""
+        from ..utils.models import BatchMetadata
+        with get_session() as session:
+            obj = session.query(BatchMetadata).filter_by(
+                batch_id=batch_metadata.get("batch_id")
+            ).first()
+            if obj:
+                obj.source = batch_metadata.get("source")
+                obj.status = batch_metadata.get("status")
+                obj.metastats = clean_for_json(batch_metadata)
+            else:
+                obj = BatchMetadata(
+                    batch_id=batch_metadata.get("batch_id"),
+                    source=batch_metadata.get("source"),
+                    status=batch_metadata.get("status"),
+                    metastats=clean_for_json(batch_metadata)
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_alert(self, alert):
+        """Insert or update an alert."""
+        from ..utils.models import Alert
+        with get_session() as session:
+            obj = session.query(Alert).filter_by(
+                level=alert.get("level"),
+                message=alert.get("message")
+            ).first()
+            if obj:
+                obj.context = alert.get("context")
+            else:
+                obj = Alert(
+                    level=alert.get("level"),
+                    message=alert.get("message"),
+                    context=alert.get("context")
+                )
+                session.add(obj)
+            session.commit()
+
+    def upsert_embedding(self, embedding):
+        """Insert or update an embedding."""
+        from ..utils.models import EmbeddingCache
+        with get_session() as session:
+            obj = session.query(EmbeddingCache).filter_by(
+                segment_hash=embedding.get("segment_hash")
+            ).first()
+            if obj:
+                obj.embedding = embedding.get("embedding")
+            else:
+                obj = EmbeddingCache(
+                    segment_hash=embedding.get("segment_hash"),
+                    embedding=embedding.get("embedding")
+                )
+                session.add(obj)
             session.commit()
 
     def get_full_contest(self, contest_id: int) -> Optional[dict]:

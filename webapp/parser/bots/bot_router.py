@@ -7,7 +7,7 @@ import errno
 from datetime import datetime
 from sqlalchemy import inspect
 from pathlib import Path
-from ..utils.shared_logger import SharedLogger, RichConsoleProxy, summarize_logs
+from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..bots.librarian import load_context_library
 from ..utils.models import Base
 from ..utils.db_utils import get_engine
