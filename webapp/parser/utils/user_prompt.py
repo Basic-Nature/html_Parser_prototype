@@ -1,6 +1,7 @@
 import time
 import threading
 import datetime
+from datetime import timezone
 import os
 import re
 import orjson
@@ -26,9 +27,31 @@ class PromptCancelled(Exception):
 
 class PromptSession(ContextManager):
     """Session object for webapp prompt responses."""
-    def __init__(self):
+    def __init__(self, session_id: Optional[str] = None, context: Optional[dict] = None, expiry_seconds: int = 600):
         self.event = threading.Event()
         self.response = None
+        self.session_id = session_id
+        self.context = context or {}
+        self.created_at = datetime.datetime.now(timezone.utc)
+        self.expiry_seconds = expiry_seconds
+
+    def __enter__(self) -> 'PromptSession':
+        # Reset state for new session
+        self.response = None
+        self.event.clear()
+        self.created_at = datetime.datetime.now(timezone.utc)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        # Always set the event to unblock any waiting threads
+        self.event.set()
+        # Optionally log exceptions for debugging
+        if exc_type is not None:
+            import traceback
+            print(f"[PromptSession] Exception in context: {exc_type.__name__}: {exc_val}")
+            traceback.print_tb(exc_tb)
+        # Return False to propagate exceptions
+        return False
 
     def wait_for_response(self, timeout: Optional[float] = None) -> Any:
         """Wait for a response with optional timeout."""
@@ -39,6 +62,10 @@ class PromptSession(ContextManager):
         """Set the response and notify waiting thread."""
         self.response = response
         self.event.set()
+
+    def is_expired(self) -> bool:
+        """Check if the session has expired."""
+        return (datetime.datetime.now(timezone.utc) - self.created_at).total_seconds() > self.expiry_seconds        
 
 class UserPrompt(ContextManager):
     """
@@ -64,6 +91,60 @@ class UserPrompt(ContextManager):
         self.socketio_emit_func = socketio_emit_func
         self.prompt_sessions: Dict[str, PromptSession] = {}
         self.file_path = file_path
+        
+    def __enter__(self) -> 'UserPrompt':
+        """
+        Enter the UserPrompt context.
+        Sets up resources for CLI or webapp mode, manages session state,
+        and prepares for advanced/nested prompt handling.
+        """
+        logger.info(f"[UserPrompt] Entering context at {datetime.datetime.now(timezone.utc).isoformat()} (mode={self.mode})")
+
+        # Ensure prompt_sessions is always a dict
+        if not hasattr(self, "prompt_sessions") or self.prompt_sessions is None:
+            self.prompt_sessions = {}
+
+        # Track nested prompt contexts (for advanced use)
+        if not hasattr(self, "_context_stack"):
+            self._context_stack = []
+        self._context_stack.append({
+            "timestamp": datetime.datetime.now(timezone.utc).isoformat(),
+            "mode": self.mode,
+            "file_path": self.file_path,
+            "socketio_emit_func": bool(self.socketio_emit_func),
+        })
+
+        # CLI mode: prepare file logging if needed
+        if self.mode == "cli":
+            if self.file_path and not hasattr(self, "_file_handle"):
+                try:
+                    self._file_handle = open(self.file_path, "ab")
+                    logger.info(f"[UserPrompt] Opened log file: {self.file_path}")
+                except Exception as e:
+                    logger.error(f"[UserPrompt] Failed to open log file: {e}")
+                    self._file_handle = None
+
+        # Webapp mode: ensure socketio emit function is set
+        if self.mode == "webapp":
+            if not self.socketio_emit_func:
+                logger.warning("[UserPrompt] Webapp mode active but no socketio_emit_func set!")
+            # Optionally, preload webapp-specific settings here
+
+        # Optionally, preload environment variables or settings
+        # (already handled at module import with dotenv)
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        # Cleanup logic (e.g., clear prompt sessions)
+        self.prompt_sessions.clear()
+        # Optionally log exceptions for debugging
+        if exc_type is not None:
+            import traceback
+            logger.error(f"[UserPrompt] Exception in context: {exc_type.__name__}: {exc_val}")
+            traceback.print_tb(exc_tb)
+        # Return False to propagate exceptions
+        return False
 
     def set_mode(self, mode: Optional[str] = None) -> None:
         """Set the prompt mode (cli/webapp)."""
@@ -77,11 +158,59 @@ class UserPrompt(ContextManager):
         """Set the file path for prompt logging."""
         self.file_path = file_path
 
-    def get_prompt_session(self, session_id: str) -> PromptSession:
-        """Get or create a prompt session by session_id."""
-        if session_id not in self.prompt_sessions:
-            self.prompt_sessions[session_id] = PromptSession()
+    def get_prompt_session(self, session_id: str, context: Optional[dict] = None) -> PromptSession:
+        """
+        Get or create a prompt session by session_id, with optional context.
+        Expired sessions are replaced.
+        """
+        session = self.prompt_sessions.get(session_id)
+        if session is None or session.is_expired():
+            self.prompt_sessions[session_id] = PromptSession(session_id, context)
         return self.prompt_sessions[session_id]
+
+    def cleanup_sessions(self) -> None:
+        """
+        Remove all sessions that are done or expired.
+        """
+        now = datetime.datetime.now(timezone.utc)
+        to_remove = [
+            sid for sid, sess in self.prompt_sessions.items()
+            if sess.event.is_set() or sess.is_expired()
+        ]
+        for sid in to_remove:
+            logger.info(f"[UserPrompt] Cleaning up session: {sid}")
+            del self.prompt_sessions[sid]
+
+    def _emit_cli_prompt(self, message: str, default: Optional[str] = None) -> str:
+        """
+        Centralized CLI prompt logic with consistent logging.
+        """
+        logger.info(f"[CLI Prompt] {message}")
+        try:
+            resp = input(message)
+            return resp if resp else default
+        except EOFError:
+            logger.warning("[CLI Prompt] EOFError encountered.")
+            return default
+
+    def _emit_webapp_prompt(self, message: str, session_id: str, context: Optional[dict] = None, status: str = "prompt", error: Optional[str] = None) -> None:
+        """
+        Centralized webapp prompt logic.
+        Emits structured JSON messages for prompt, status, or error.
+        """
+        payload = {
+            "type": status,
+            "session_id": session_id,
+            "message": message,
+            "context": context or {},
+            "timestamp": datetime.datetime.now(timezone.utc).isoformat(),
+        }
+        if error:
+            payload["error"] = error
+        if self.socketio_emit_func:
+            self.socketio_emit_func(orjson.dumps(payload).decode("utf-8"))
+        else:
+            logger.warning("[Webapp Prompt] socketio_emit_func not set.")
 
     def clear_prompt_session(self, session_id: str) -> None:
         """Clear a prompt session by session_id."""
@@ -167,31 +296,50 @@ class UserPrompt(ContextManager):
         session_id: Optional[str] = None,
         timeout: Optional[float] = None,
         default: Optional[str] = None,
-        context: Any = None,
+        context: Any = None
     ) -> Any:
         """
         Unified prompt function for CLI and webapp.
         - In CLI: uses input()
         - In webapp: emits prompt to SocketIO and waits for response
+        Emits errors/status to frontend in webapp mode.
         """
+        self.cleanup_sessions()  # Clean up expired/done sessions before prompting
+
         if self.mode == "webapp" and self.socketio_emit_func and session_id:
-            self.socketio_emit_func(message)
-            prompt_session = self.get_prompt_session(session_id)
-            response = prompt_session.wait_for_response(timeout)
-            self.clear_prompt_session(session_id)
-            if response is None and default is not None:
-                return default
-            self._log_to_file(message, context)
-            return response
-        else:
             try:
-                resp = input(message)
-                if not resp and default is not None:
+                self._emit_webapp_prompt(message, session_id, context)
+                prompt_session = self.get_prompt_session(session_id, context)
+                response = prompt_session.wait_for_response(timeout)
+                if response is None:
+                    self._emit_webapp_prompt(
+                        f"Prompt timed out or cancelled. Using default: {default}",
+                        session_id,
+                        context,
+                        status="status",
+                        error="timeout_or_cancel"
+                    )
                     return default
-                self._log_to_file(message, context)
-                return resp
-            except EOFError:
+                self._emit_webapp_prompt(
+                    f"Prompt response received: {response}",
+                    session_id,
+                    context,
+                    status="status"
+                )
+                self.clear_prompt_session(session_id)
+                return response
+            except Exception as e:
+                logger.error(f"[Webapp Prompt] Exception: {e}")
+                self._emit_webapp_prompt(
+                    f"Prompt error: {e}",
+                    session_id,
+                    context,
+                    status="error",
+                    error=str(e)
+                )
                 return default
+        else:
+            return self._emit_cli_prompt(message, default)
 
     def prompt_input(
         self,
