@@ -1,6 +1,7 @@
 from .html_election_parser import main
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+import orjson
 from .utils.shared_logger import SharedLogger
 from .utils.user_prompt import UserPrompt
 prompt = UserPrompt()
@@ -62,8 +63,12 @@ def process_urls_for_web(
         def prompt_func(message):
             return prompt.prompt_user(message, session_id=session_id, timeout=300)
         def output_func(msg):
-            if isinstance(msg, list):
-                msg = "\n".join(str(item) for item in msg)
+            # Defensive: always stringify non-string messages
+            if not isinstance(msg, (str, bytes)):
+                try:
+                    msg = orjson.dumps(msg, option=orjson.OPT_INDENT_2).decode("utf-8")
+                except Exception:
+                    msg = str(msg)
             logger.info(msg, context={"session_id": session_id})
     else:  # CLI mode
         def prompt_func(message):

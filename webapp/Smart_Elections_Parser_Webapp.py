@@ -168,7 +168,7 @@ def log_parser_status(msg, session_id=None, rich=False):
     if logger.mode == "webapp":
         # In webapp, always send as JSON for frontend rendering
         status_msg = f"{msg} (session_id={session_id})" if session_id else msg
-        logger.info({"level": "INFO", "message": status_msg})
+        logger.info(status_msg)
     elif rich:
         # In CLI, use rich panel for status
         console.panel(f"{msg}\nSession: {session_id}", title="Parser Status")

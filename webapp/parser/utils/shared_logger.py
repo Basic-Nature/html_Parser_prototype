@@ -11,7 +11,6 @@ from rich.panel import Panel
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
 from rich.json import JSON
 import orjson
-import json
 from contextlib import contextmanager
 from io import StringIO
 
@@ -287,9 +286,9 @@ class SharedLogger(logging.Logger):
         """Format context for output."""
         if context is None:
             return ""
-        if isinstance(context, dict) or isinstance(context, list):
+        if isinstance(context, (dict, list)):
             try:
-                return json.dumps(context, indent=2, ensure_ascii=False)
+                return orjson.dumps(context, option=orjson.OPT_INDENT_2).decode("utf-8")
             except Exception:
                 return str(context)
         return str(context)
@@ -356,6 +355,13 @@ class SharedLogger(logging.Logger):
         """
         if self.suppress_rich_logs or not self._should_emit(level):
             return
+
+        # Defensive: ensure msg is always a string
+        if not isinstance(msg, (str, bytes)):
+            try:
+                msg = orjson.dumps(msg, option=orjson.OPT_INDENT_2).decode("utf-8")
+            except Exception:
+                msg = str(msg)
 
         context_str = self._format_context(context)
         # Compose message for panel or plain output
