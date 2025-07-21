@@ -3,7 +3,7 @@ from webapp.parser.postgres_service_control import start_postgres_service, stop_
 
 _service_started = start_postgres_service()
 
-def stop_if_started():
+def stop_if_started() -> None:
     if _service_started:
         stop_postgres_service()
 
