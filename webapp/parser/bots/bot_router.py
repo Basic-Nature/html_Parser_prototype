@@ -362,30 +362,30 @@ class BotPipeline:
 
             # 5. Optimized orchestration for manual correction (scan_misaligned_ner already handled misalignments)
             has_entries = self.has_new_entries(LOG_DIR, CACHE_DIR)
-            if has_entries:
-                extra_args = []
-                # Dynamically add arguments based on pipeline state and env
-                if os.getenv("INTEGRITY_CHECK", "false").lower() == "true":
-                    extra_args.append("--integrity")
-                if os.getenv("LLM_API_KEY"):
-                    extra_args.extend([
-                        "--llm-api-key", os.getenv("LLM_API_KEY"),
-                        "--llm-provider", os.getenv("LLM_PROVIDER", "openai"),
-                        "--llm-model", os.getenv("LLM_MODEL", "gpt-4-turbo")
-                    ])
-                if os.getenv("EXPORT_AUDIT_LOG"):
-                    extra_args.extend(["--export-audit-log", os.getenv("EXPORT_AUDIT_LOG")])
-                if os.getenv("FLUSH_CACHE", "false").lower() == "true":
-                    extra_args.append("--flush-cache")
-                if os.getenv("CACHE_EXPIRE_DAYS"):
-                    extra_args.extend(["--cache-expire-days", os.getenv("CACHE_EXPIRE_DAYS")])
-                # Always run in auto mode for end-of-pipeline
-                logger.info("[PIPELINE] Running manual_correction_bot in auto mode for context correction.")
-                self.run_manual_correction(mode="auto", extra_args=extra_args)
+            if not has_entries:
+                logger.info("[PIPELINE] No new entries for manual correction, but running manual_correction_bot anyway (may update existing entries).")
             else:
-                logger.info("[PIPELINE] No new entries for manual correction. Skipping manual_correction_bot.")
-                self.results['manual_correction'] = 'skipped'
-                return
+                logger.info("[PIPELINE] New entries detected for manual correction. Running manual_correction_bot.")
+
+            extra_args = []
+            # Dynamically add arguments based on pipeline state and env
+            if os.getenv("INTEGRITY_CHECK", "false").lower() == "true":
+                extra_args.append("--integrity")
+            if os.getenv("LLM_API_KEY"):
+                extra_args.extend([
+                    "--llm-api-key", os.getenv("LLM_API_KEY"),
+                    "--llm-provider", os.getenv("LLM_PROVIDER", "openai"),
+                    "--llm-model", os.getenv("LLM_MODEL", "gpt-4-turbo")
+                ])
+            if os.getenv("EXPORT_AUDIT_LOG"):
+                extra_args.extend(["--export-audit-log", os.getenv("EXPORT_AUDIT_LOG")])
+            if os.getenv("FLUSH_CACHE", "false").lower() == "true":
+                extra_args.append("--flush-cache")
+            if os.getenv("CACHE_EXPIRE_DAYS"):
+                extra_args.extend(["--cache-expire-days", os.getenv("CACHE_EXPIRE_DAYS")])
+            # Always run in auto mode for end-of-pipeline
+            logger.info("[PIPELINE] Running manual_correction_bot in auto mode for context correction.")
+            self.run_manual_correction(mode="auto", extra_args=extra_args)
 
             # 6. Retrain models (only if previous steps succeeded)
             retrain_success = self.retrain_models()
