@@ -9,8 +9,9 @@ import inspect
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
 from typing import Any, Callable, Dict, List, Optional, Union, Generator, ContextManager
 from contextlib import contextmanager
-from ..utils.shared_logger import SharedLogger
+from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 logger = SharedLogger()
+console = RichConsoleProxy()
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -233,6 +234,34 @@ class UserPrompt(ContextManager):
             raise ValueError(f"Unknown prompt type: {prompt_type}")
         return method(*args, **kwargs)
 
+    def _emit_prompt(self, message: str, session_id: Optional[str] = None, context: Optional[dict] = None, status: str = "prompt", error: Optional[str] = None) -> None:
+        """
+        Emit a prompt or status message in both CLI and webapp modes.
+        """
+        payload = {
+            "type": status,
+            "session_id": session_id,
+            "message": message,
+            "context": context or {},
+            "timestamp": datetime.datetime.now(timezone.utc).isoformat(),
+        }
+        if error:
+            payload["error"] = error
+
+        # Always log the structured payload
+        logger.info(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode("utf-8"))
+
+        if self.mode == "webapp" and self.socketio_emit_func and session_id:
+            self.socketio_emit_func(orjson.dumps(payload).decode("utf-8"))
+        else:
+            # For CLI, print a user-friendly message
+            if status == "error":
+                console.print(f"[ERROR] {message}")
+            elif status == "status":
+                console.print(f"[STATUS] {message}")
+            else:
+                console.print(message)
+
     def _should_emit(self, level: str = "INFO") -> bool:
         """
         Check if a message at the given level should be emitted, based on SharedLogger's current log level.
@@ -304,15 +333,14 @@ class UserPrompt(ContextManager):
         - In webapp: emits prompt to SocketIO and waits for response
         Emits errors/status to frontend in webapp mode.
         """
-        self.cleanup_sessions()  # Clean up expired/done sessions before prompting
-
+        self.cleanup_sessions()
         if self.mode == "webapp" and self.socketio_emit_func and session_id:
             try:
-                self._emit_webapp_prompt(message, session_id, context)
+                self._emit_prompt(message, session_id, context)
                 prompt_session = self.get_prompt_session(session_id, context)
                 response = prompt_session.wait_for_response(timeout)
                 if response is None:
-                    self._emit_webapp_prompt(
+                    self._emit_prompt(
                         f"Prompt timed out or cancelled. Using default: {default}",
                         session_id,
                         context,
@@ -320,7 +348,7 @@ class UserPrompt(ContextManager):
                         error="timeout_or_cancel"
                     )
                     return default
-                self._emit_webapp_prompt(
+                self._emit_prompt(
                     f"Prompt response received: {response}",
                     session_id,
                     context,
@@ -330,7 +358,7 @@ class UserPrompt(ContextManager):
                 return response
             except Exception as e:
                 logger.error(f"[Webapp Prompt] Exception: {e}")
-                self._emit_webapp_prompt(
+                self._emit_prompt(
                     f"Prompt error: {e}",
                     session_id,
                     context,
@@ -339,6 +367,7 @@ class UserPrompt(ContextManager):
                 )
                 return default
         else:
+            self._emit_prompt(message, session_id, context)
             return self._emit_cli_prompt(message, default)
 
     def prompt_input(
