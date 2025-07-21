@@ -8,7 +8,7 @@ import time
 from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..utils.user_prompt import UserPrompt
 from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Generator, Any
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
@@ -50,7 +50,7 @@ def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
     # If no match, return normalized input
     return county_norm
 
-def normalize_county_name(name):
+def normalize_county_name(name) -> Optional[str]:
     """
     Normalize county names for comparison.
     Handles embedded county names, removes 'county' suffix, underscores, dashes, and extra spaces.
@@ -70,14 +70,14 @@ def normalize_county_name(name):
     name = re.sub(r"^[^a-z]+|[^a-z]+$", "", name)
     return name
 
-def flatten_raw_field(contest):
+def flatten_raw_field(contest) -> dict:
     """
     Recursively flatten the 'raw' field in a contest dict so that only the base/original raw data is kept.
     """
-    if not isinstance(contest, dict):
+    if not isinstance(contest, dict) or "raw" not in contest:
         return contest
     base = dict(contest)
-    while isinstance(base.get("raw"), dict):
+    while isinstance(base.get("raw"), dict) and "raw" in base["raw"]:
         # Go deeper until 'raw' is not a dict
         base = base["raw"]
     # Remove any nested 'raw' from the base
@@ -85,7 +85,7 @@ def flatten_raw_field(contest):
         base = {k: v for k, v in base.items() if k != "raw"}
     return base
 
-def normalize_state_name(name):
+def normalize_state_name(name) -> Optional[str]:
     """
     Normalize state names and abbreviations to snake_case full state name.
     Handles abbreviations, full names, snake_case, and embedded state names in longer strings.
@@ -121,7 +121,7 @@ def normalize_state_name(name):
             return full_name
     return name
 
-def infer_state_county_from_url(url: str):
+def infer_state_county_from_url(url: str) -> tuple:
     """
     Robustly infer state and county from a URL using regex, mappings, and context library.
     Returns (state, county) or (None, None) if not found.
@@ -202,15 +202,15 @@ def infer_state_county_from_url(url: str):
 
     return state, county
 
-def get_county_precincts(county_name):
+def get_county_precincts(county_name) -> Optional[list]:
     county_norm = normalize_county_name(county_name)
     return KNOWN_COUNTY_TO_PRECINCTS_MAP.get(county_norm)
 
-def get_state_counties(state_name):
+def get_state_counties(state_name) -> Optional[list]:
     state_norm = normalize_state_name(state_name)
     return KNOWN_STATE_TO_COUNTY_MAP.get(state_norm)
 
-def scan_environment():
+def scan_environment() -> dict:
     return {
         "os": platform.system(),
         "os_version": platform.version(),
@@ -218,13 +218,13 @@ def scan_environment():
         "cwd": os.getcwd()
     }
 
-def get_title_embedding_features(contests, model_name="all-MiniLM-L6-v2"):
+def get_title_embedding_features(contests, model_name="all-MiniLM-L6-v2") -> Any:
     from ..utils.model_registry import ModelRegistry
     model = ModelRegistry.get_sentence_transformer(model_name)
     titles = [c.get("title", "") for c in contests]
     return model.encode(titles, show_progress_bar=False)
 
-def show_progress_bar(task_desc, total, update_iter):
+def show_progress_bar(task_desc, total, update_iter) -> Generator[Any, Any, Any]:
     """
     Show a progress bar for any iterable, compatible with CLI and webapp (SocketIO) modes.
     Yields each item from update_iter.
@@ -234,17 +234,17 @@ def show_progress_bar(task_desc, total, update_iter):
             update_progress(idx + 1)
             yield n
 
-def coordinator_feedback(domain, scrolls, step, incomplete=False):
+def coordinator_feedback(domain, scrolls, step, incomplete=False) -> None:
     logger.info(f"[COORDINATOR] Scroll pattern for {domain}: {scrolls} scrolls, step {step}, incomplete={incomplete}")
 
-def normalize_text(text):
+def normalize_text(text) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
 
-def match_any(label, keywords):
+def match_any(label, keywords) -> bool:
     label = normalize_text(label)
     return any((k or "").lower() in label for k in keywords)
 
-def build_csv_headers(rows):
+def build_csv_headers(rows) -> list[str]:
     headers = set()
     for row in rows:
         headers.update(row.keys())
@@ -258,9 +258,8 @@ def autoscroll_until_stable(
     max_total_time=10000,
     wait_for_selector=None,
     domain=None,
-    logger=None,
     coordinator_feedback=None,
-):
+) -> bool:
     """
     Continuously scrolls a Playwright page until its scroll height and visible content stabilize
     for at least 5 consecutive measurements, or until max_total_time is reached.
@@ -269,7 +268,6 @@ def autoscroll_until_stable(
     Does NOT use or save any cached scroll pattern.
     """
 
-    logger = logger or globals().get("logger", None)
     start_time = time.time()
     page.evaluate("window.scrollTo(0, 0)")
     page.wait_for_timeout(delay_ms)
@@ -281,7 +279,7 @@ def autoscroll_until_stable(
     max_scrolls = max_total_time // delay_ms
     domain = domain or (page.url.split("/")[2] if "://" in page.url else page.url.split("/")[0])
 
-    def get_main_text():
+    def get_main_text() -> str:
         try:
             main_div = page.query_selector("main, .main-content, #main-content, body")
             return main_div.inner_text() if main_div else page.inner_text()
@@ -334,7 +332,7 @@ def autoscroll_until_stable(
             coordinator_feedback(domain, scroll_attempts, step, incomplete=True)
         return False
 
-def scan_buttons_with_progress(buttons, scan_callback=None):
+def scan_buttons_with_progress(buttons, scan_callback=None) -> None:
     """
     Scan a list of buttons with a single-line progress bar or emits progress via SocketIO in webapp mode.
     Optionally, provide a scan_callback(button, idx) for custom logic.
@@ -351,7 +349,7 @@ def scan_buttons_with_progress(buttons, scan_callback=None):
             if scan_callback:
                 scan_callback(btn, idx)
 
-def keyphrase_match(label, keyphrase, min_words=2, fuzzy_cutoff=0.8):
+def keyphrase_match(label, keyphrase, min_words=2, fuzzy_cutoff=0.8) -> bool:
     """
     Returns True if the label matches the keyphrase as a whole (regex or fuzzy),
     or if at least min_words from the keyphrase are present in the label.
@@ -378,7 +376,7 @@ def infer_contest_fields(
     db_service=None,
     embedding_model=None,
     log=None
-):
+) -> tuple:
     """
     Infer missing fields for a contest using (in order):
     1. Direct field on contest

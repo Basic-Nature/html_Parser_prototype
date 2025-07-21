@@ -66,17 +66,17 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "Fal
 # SocketIO event for real-time updates
 
 # --- Utility functions for Data management ---
-def add_url():
+def add_url() -> None:
     url = input("Enter new URL to add: ").strip()
     if url:
         with open(URLS_FILE, "a", encoding="utf-8") as f:
             f.write(url + "\n")
         logger.info(f"[ADDED] {url}")
         
-def allowed_file(filename):
+def allowed_file(filename) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def append_history(data):
+def append_history(data) -> None:
     snapshot = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "data": data
@@ -84,7 +84,7 @@ def append_history(data):
     with open(HISTORY_FILE, "ab") as f:
         f.write(orjson.dumps(snapshot, option=orjson.OPT_INDENT_2) + b"\n")
 
-def edit_hint():
+def edit_hint() -> str:
     frag = request.form.get("fragment", "").strip()
     path = request.form.get("module_path", "").strip()
     overrides = load_overrides()
@@ -97,7 +97,7 @@ def edit_hint():
         flash("Invalid fragment or path.", "danger")
     return redirect(url_for("url_hints"))
 
-def get_url_list():
+def get_url_list() -> list[str]:
     # Load URLs from file
     if not os.path.exists(URLS_FILE):
         return []
@@ -105,7 +105,7 @@ def get_url_list():
         urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
     return urls
 
-def list_urls():
+def list_urls() -> list[str]:
     if not os.path.exists(URLS_FILE):
         logger.info("[INFO] No urls.txt found.")
         return []
@@ -116,13 +116,13 @@ def list_urls():
         logger.info(f"{i}. {url}")
     return urls
 
-def load_overrides():
+def load_overrides() -> dict:
     if os.path.exists(HINT_FILE):
         with open(HINT_FILE, "rb") as f:
             return orjson.loads(f.read())
     return {}
 
-def postgres_service_status(service_name=None):
+def postgres_service_status(service_name=None) -> str:
     if service_name is None:
         service_name = POSTGRES_SERVICE_NAME
     try:
@@ -137,11 +137,11 @@ def postgres_service_status(service_name=None):
         logger.error(f"[ERROR] Could not check service status: {e}")
         return "error"
 
-def save_overrides(data):
+def save_overrides(data) -> None:
     with open(HINT_FILE, "wb") as f:
         f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2))
 
-def validate_module_path(path):
+def validate_module_path(path) -> tuple[bool, str | None]:
     try:
         importlib.import_module(path)
         return True, None
@@ -157,7 +157,7 @@ def validate_module_path(path):
             pass
         return False, "Module not found"
     
-def log_parser_status(msg, session_id=None, rich=False):
+def log_parser_status(msg, session_id=None, rich=False) -> None:
     """
     Log parser status to both logger and console as appropriate.
     - msg: The message to log.
@@ -179,11 +179,11 @@ def log_parser_status(msg, session_id=None, rich=False):
             
 # --- Routes ---
 @app.route("/")
-def index():
+def index() -> str:
     return render_template("index.html")
 
 @socketio.on('connect')
-def handle_connect():
+def handle_connect() -> None:
     # Set logging mode to webapp for this session
     logger.set_mode("webapp")
     # Set logger format to JSON for this session
@@ -194,7 +194,7 @@ def handle_connect():
     session_id = session.get('sid') if 'sid' in session else request.sid
 
     # Set the global logger's emit function to route logs to this client's SocketIO room
-    def emit_to_socketio(line):
+    def emit_to_socketio(line) -> None:
         socketio.emit('parser_output', line, room=session_id)
     logger.set_socketio_emit_func(emit_to_socketio)
 
@@ -206,7 +206,7 @@ def handle_connect():
     logger.info("Client connected")
 
 @app.route("/delete-hint/<frag>", methods=["POST"])
-def delete_hint_route(frag):
+def delete_hint_route(frag) -> None:
     overrides = load_overrides()
     if frag in overrides:
         overrides.pop(frag)
@@ -218,7 +218,7 @@ def delete_hint_route(frag):
     return redirect(url_for("url_hints"))
 
 @socketio.on('disconnect')
-def handle_disconnect(sid):
+def handle_disconnect(sid) -> None:
     # Use the sid provided by Socket.IO
     cancel_processing(sid)
     logger.info(f"Client disconnected (sid={sid})")
@@ -226,7 +226,7 @@ def handle_disconnect(sid):
     emit('parser_output', '{"level":"INFO","message":"🚪 Disconnected from server.","color":"#eb4f43"}', room=sid)
     
 @app.route("/edit-hint", methods=["POST"])
-def edit_hint_route():
+def edit_hint_route() -> None:
     frag = request.form.get("fragment", "").strip()
     path = request.form.get("module_path", "").strip()
     overrides = load_overrides()
@@ -240,12 +240,12 @@ def edit_hint_route():
     return redirect(url_for("url_hints"))
 
 @app.route("/data_framework", methods=["GET", "POST"])
-def data_framework():
+def data_framework() -> str:
     # add logic here currently returning a placeholder
     return render_template("data_framework.html")
 
 @app.route("/delete/input/<filename>", methods=["POST"])
-def delete_input_file(filename):
+def delete_input_file(filename) -> str:
     file_path = os.path.join(INPUT_FOLDER, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -255,7 +255,7 @@ def delete_input_file(filename):
     return redirect(request.referrer or url_for("manage_data"))
 
 @app.route("/delete/output/<filename>", methods=["POST"])
-def delete_output_file(filename):
+def delete_output_file(filename) -> str:
     file_path = os.path.join(OUTPUT_FOLDER, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -265,7 +265,7 @@ def delete_output_file(filename):
     return redirect(request.referrer or url_for("manage_data"))
 
 @app.route("/delete/uploads/<filename>", methods=["POST"])
-def delete_upload_file(filename):
+def delete_upload_file(filename) -> str:
     file_path = os.path.join(UPLOAD_FOLDER, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -275,15 +275,15 @@ def delete_upload_file(filename):
     return redirect(request.referrer or url_for("manage_data"))
 
 @app.route("/download/input/<filename>")
-def download_input_file(filename):
+def download_input_file(filename) -> str:
     return send_from_directory(INPUT_FOLDER, filename, as_attachment=True)
 
 @app.route("/download/output/<filename>")
-def download_output_file(filename):
+def download_output_file(filename) -> str:
     return send_from_directory(OUTPUT_FOLDER, filename, as_attachment=True)    
 
 @app.route("/export-hints")
-def export_hints():
+def export_hints() -> str:
     overrides = load_overrides()
     output = StringIO()
     writer = csv.writer(output)
@@ -299,7 +299,7 @@ def export_hints():
     )
 
 @app.route("/history")
-def history():
+def history() -> str:
     # Read all snapshots from the history file
     snapshots = []
     if os.path.exists(HISTORY_FILE):
@@ -318,7 +318,7 @@ def history():
     return render_template("history.html", snapshots=indexed_snapshots)
 
 @app.route("/rollback/<int:index>", methods=["POST"])
-def rollback(index):
+def rollback(index) -> str:
     # Read all snapshots
     if not os.path.exists(HISTORY_FILE):
         flash("No history file found.", "danger")
@@ -340,7 +340,7 @@ def rollback(index):
     return redirect(url_for("history", restored=1))
 
 @app.route("/import-hints", methods=["POST"])
-def import_hints():
+def import_hints() -> str:
     file = request.files.get("csv_file")
     if not file:
         flash("No file uploaded.", "danger")
@@ -359,12 +359,12 @@ def import_hints():
     return redirect(url_for("url_hints"))
 
 @app.route("/input-files")
-def input_files():
+def input_files() -> str:
     files = os.listdir(INPUT_FOLDER)
     return render_template("file_list.html", files=files, folder="Input", download_url="download_input_file")
 
 @app.route("/manage-data", methods=["GET", "POST"])
-def manage_data():
+def manage_data() -> str:
     overrides = load_overrides()
     validations = {k: validate_module_path(v) for k, v in overrides.items()}
     uploaded_files = os.listdir(UPLOAD_FOLDER)
@@ -390,7 +390,7 @@ def manage_data():
     )
         
 @socketio.on('set_output_mode')
-def handle_set_output_mode(data):
+def handle_set_output_mode(data) -> None:
     """
     Allows the frontend to set the output mode at runtime.
     Example payload: {"mode": "live"} or {"mode": "batch"}
@@ -406,7 +406,7 @@ def handle_set_output_mode(data):
         emit('parser_output', '{"level":"ERROR","message":"Invalid output mode.","color":"#eb4f43"}', room=session_id)
         
 @socketio.on('parser_prompt_response')
-def handle_parser_prompt_response(data):
+def handle_parser_prompt_response(data) -> None:
     session_id = session.get('sid') if 'sid' in session else request.sid
     response = data.get('response')
     prompt_session = prompt.get_prompt_session(session_id)
@@ -415,17 +415,17 @@ def handle_parser_prompt_response(data):
     prompt.clear_prompt_session(session_id)
 
 @app.route("/output-files")
-def output_files():
+def output_files() -> str:
     files = os.listdir(OUTPUT_FOLDER)
     return render_template("file_list.html", files=files, folder="Output", download_url="download_output_file")
 
 @socketio.on('cancel_parser')
-def handle_cancel_parser():
+def handle_cancel_parser() -> None:
     session_id = session.get('sid') or request.sid
     cancel_processing(session_id)
 
 @socketio.on('parser_prompt')
-def handle_parser_prompt(data):
+def handle_parser_prompt(data) -> None:
     logger.info(f"Received prompt: {data}")
     session_id = session.get('sid') if 'sid' in session else request.sid
     # Start the parser pipeline in a thread, passing session_id for correct routing
@@ -433,18 +433,18 @@ def handle_parser_prompt(data):
     thread.start()
 
 @app.route("/run-parser")
-def run_parser_page():
+def run_parser_page() -> str:
     return render_template("run_parser.html")
 
 @socketio.on('data_framework')
-def handle_data_framework(data):
+def handle_data_framework(data) -> None:
     logger.info(f"Received data_framework event: {data}")
     session_id = session.get('sid') if 'sid' in session else request.sid
     output = postgres_service_status(POSTGRES_SERVICE_NAME)
     emit('parser_output', output, room=session_id)
 
 @socketio.on('run_parser')
-def handle_run_parser():
+def handle_run_parser() -> None:
     session_id = session.get('sid') if 'sid' in session else request.sid
     log_parser_status("Starting parser run...", session_id, rich=True)
     # Always pass None for urls to trigger interactive main() pipeline in webapp
@@ -452,7 +452,7 @@ def handle_run_parser():
     thread.start()
     
 @app.route("/undo-hints", methods=["POST"])
-def undo_hints():
+def undo_hints() -> str:
     if not os.path.exists(HISTORY_FILE):
         flash("No history to undo.", "warning")
         return redirect(url_for("url_hints"))
@@ -469,7 +469,7 @@ def undo_hints():
     return redirect(url_for("url_hints"))
 
 @app.route("/upload/input", methods=["POST"])
-def upload_to_input():
+def upload_to_input() -> str:
     file = request.files.get("file")
     if file and allowed_file(file.filename):
         filename = file.filename
@@ -480,7 +480,7 @@ def upload_to_input():
     return redirect(request.referrer or url_for("manage_data"))
 
 @app.route("/upload/output", methods=["POST"])
-def upload_to_output():
+def upload_to_output() -> str:
     file = request.files.get("file")
     if file and allowed_file(file.filename):
         filename = file.filename
@@ -491,7 +491,7 @@ def upload_to_output():
     return redirect(request.referrer or url_for("manage_data"))
 
 @app.route("/upload/uploads", methods=["POST"])
-def upload_to_uploads():
+def upload_to_uploads() -> str:
     file = request.files.get("file")
     if file and allowed_file(file.filename):
         filename = file.filename

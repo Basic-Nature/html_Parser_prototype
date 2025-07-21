@@ -1,10 +1,11 @@
-import sys
+import time
 import threading
 import datetime
 import os
 import re
-import json
+import orjson
 import inspect
+from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
 from typing import Any, Callable, Dict, List, Optional, Union, Generator, ContextManager
 from contextlib import contextmanager
 from ..utils.shared_logger import SharedLogger
@@ -23,7 +24,7 @@ class PromptCancelled(Exception):
     """Raised when the user cancels a prompt."""
     pass
 
-class PromptSession:
+class PromptSession(ContextManager):
     """Session object for webapp prompt responses."""
     def __init__(self):
         self.event = threading.Event()
@@ -39,7 +40,7 @@ class PromptSession:
         self.response = response
         self.event.set()
 
-class UserPrompt:
+class UserPrompt(ContextManager):
     """
     Unified user prompt handler for CLI and webapp modes.
     All prompt logic is encapsulated as methods.
@@ -55,7 +56,7 @@ class UserPrompt:
         mode: Optional[str] = None,
         socketio_emit_func: Optional[Callable[[str], None]] = None,
         file_path: Optional[str] = None,
-    ):
+    ) -> None:
         """
         Initialize the UserPrompt.
         """
@@ -104,17 +105,31 @@ class UserPrompt:
         return method(*args, **kwargs)
 
     def _should_emit(self, level: str = "INFO") -> bool:
-        """Stub for log level filtering (extend as needed)."""
-        # Could integrate with shared_logger's log level if desired
-        return True
+        """
+        Check if a message at the given level should be emitted, based on SharedLogger's current log level.
+        """
+        # Use the logger's level mapping and current level
+        logger_level = getattr(logger, "level", "INFO")
+        level_mapping = getattr(logger, "level_mapping", {
+            "TRACE": 5,
+            "DEBUG": 10,
+            "INFO": 20,
+            "WARNING": 30,
+            "ERROR": 40,
+            "CRITICAL": 50
+        })
+        # Normalize level names
+        level = level.upper()
+        logger_level = logger_level.upper() if isinstance(logger_level, str) else "INFO"
+        return level_mapping.get(level, 100) >= level_mapping.get(logger_level, 20)
 
     def _format_context(self, context: Any) -> str:
-        """Format context for output."""
+        """Format context for output using orjson."""
         if context is None:
             return ""
         if isinstance(context, dict):
             try:
-                return json.dumps(context, indent=2, ensure_ascii=False)
+                return orjson.dumps(context, option=orjson.OPT_INDENT_2).decode("utf-8")
             except Exception:
                 return str(context)
         return str(context)
@@ -134,7 +149,7 @@ class UserPrompt:
         return {}
 
     def _log_to_file(self, msg: str, context: Any = None) -> None:
-        """Log prompt interactions to a file if file_path is set."""
+        """Log prompt interactions to a file if file_path is set, using orjson."""
         if not self.file_path:
             return
         log_line = {
@@ -143,8 +158,8 @@ class UserPrompt:
             "context": self._format_context(context),
             **self._get_caller_info()
         }
-        with open(self.file_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_line, ensure_ascii=False) + "\n")
+        with open(self.file_path, "ab") as f:
+            f.write(orjson.dumps(log_line, option=orjson.OPT_APPEND_NEWLINE))
 
     def prompt_user(
         self,
@@ -474,6 +489,7 @@ class UserPrompt:
     ) -> Union[Dict[str, Any], None]:
         """
         Prompt user to select the correct button from candidates.
+        The `page` argument is accepted for compatibility with advanced feedback/callbacks.
         """
         logger.info(f"\n[FEEDBACK] Please select the correct button for '{toggle_name}':")
         for idx, btn in enumerate(candidates):
@@ -486,8 +502,18 @@ class UserPrompt:
                 f" | visible={btn.get('is_visible', False)}"
                 f" | enabled={btn.get('is_clickable', False)}"
             )
+        # Optionally, add page info to context for logging/debugging
+        if context is None:
+            context = {}
+        context = dict(context)  # shallow copy
+        context["page_info"] = str(page)  # or extract relevant info if needed
+
         try:
-            choice = self.prompt_input("Enter the number of the correct button (or -1 to skip): ", session_id=session_id, context=context)
+            choice = self.prompt_input(
+                "Enter the number of the correct button (or -1 to skip): ",
+                session_id=session_id,
+                context=context
+            )
             choice = int(choice)
             if 0 <= choice < len(candidates):
                 chosen_btn = candidates[choice]
@@ -533,12 +559,87 @@ class UserPrompt:
         return resp in {"y", "yes"}
 
     @contextmanager
-    def progress_bar(self, description: str = "Processing", total: int = 100) -> Generator[None, None, None]:
+    def progress_bar(
+        self,
+        description: str = "Processing",
+        total: int = 100,
+        emit_interval: float = 0.5,
+        progress_callback: Optional[Callable[[dict], None]] = None,
+    ) -> Generator[Any, None, None]:
         """
-        Context manager for a progress bar (stub for future extension).
+        Context manager for a progress bar.
+        In CLI mode: shows a live progress bar.
+        In webapp mode: emits progress updates via SocketIO as JSON.
+        Optionally, accepts a progress_callback for custom handling.
+        Usage:
+            with prompt.progress_bar("Processing", total=100) as update_progress:
+                for i in range(total):
+                    # ... your work ...
+                    update_progress(i + 1)
         """
-        # You can integrate with rich.progress here if desired
-        yield
+        if self.mode == "webapp" and self.socketio_emit_func:
+            last_emit = 0
+
+            def update_progress(completed: int, extra: Optional[dict] = None) -> None:
+                nonlocal last_emit
+                now = time.time()
+                should_emit = (now - last_emit >= emit_interval) or (completed == total)
+                if should_emit:
+                    percent = (completed / total) * 100 if total else 0
+                    payload = {
+                        "type": "progress",
+                        "description": description,
+                        "completed": completed,
+                        "total": total,
+                        "percent": percent,
+                        "timestamp": now,
+                    }
+                    # Robustly merge extra if it's a dict
+                    if isinstance(extra, dict):
+                        payload.update(extra)
+                    elif extra is not None:
+                        payload["extra"] = str(extra)
+                    msg = orjson.dumps(payload).decode("utf-8")
+                    self.socketio_emit_func(msg)
+                    if progress_callback:
+                        progress_callback(payload)
+                    last_emit = now
+            try:
+                yield update_progress
+            finally:
+                # Ensure 100% is emitted at the end
+                update_progress(total)
+        else:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(bar_width=40, style="bold blue"),
+                "[progress.percentage]{task.percentage:>3.0f}%",
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+                expand=True,
+                transient=True
+            ) as progress:
+                task_id = progress.add_task(description, total=total)
+                def update_progress(completed: int, extra: Optional[dict] = None):
+                    progress.update(task_id, completed=completed)
+                    # Optionally, handle extra/progress_callback in CLI mode as well
+                    if progress_callback:
+                        percent = (completed / total) * 100 if total else 0
+                        payload = {
+                            "type": "progress",
+                            "description": description,
+                            "completed": completed,
+                            "total": total,
+                            "percent": percent,
+                            "timestamp": time.time(),
+                        }
+                        if isinstance(extra, dict):
+                            payload.update(extra)
+                        elif extra is not None:
+                            payload["extra"] = str(extra)
+                        progress_callback(payload)
+                yield update_progress
 
 # Example usage:
 # prompt = UserPrompt()  # mode will be set from .env PROMPT_MODE or default to "cli"
