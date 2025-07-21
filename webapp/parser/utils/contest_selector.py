@@ -284,6 +284,7 @@ def select_contest(
             if year_from_title:
                 c["year"] = year_from_title
         # Fill type_
+        found_type_ = None
         if not c.get("type_"):
             inferred_type = infer_election_type(
                 c.get("title", ""),
@@ -295,13 +296,18 @@ def select_contest(
             if inferred_type:
                 c["type_"] = inferred_type
                 # Try ML/NER
-                ents = coordinator.extract_entities(c.get("title", ""))
+                ents = coordinator.extract_entities(c.get("title", "")) if coordinator else []
                 for ent, label in ents:
                     if label == "EVENT" and (ent or "").lower() in [(et or "").lower() for et in ELECTION_TYPES]:
                         found_type_ = (ent or "").lower()
                         break
-            if found_type_:
-                c["type_"] = found_type_.capitalize()
+        # PATCH: Only use found_type_ if set
+        if found_type_:
+            c["type_"] = found_type_.capitalize()
+        # PATCH: Fallback: if still missing, log and set to 'Unknown'
+        if not c.get("type_"):
+            logger.warning(f"[CONTEST SELECTOR] Could not infer type for contest: {c.get('title', '')}")
+            c["type_"] = "Unknown"
 
     context = {
         "state": norm_state,

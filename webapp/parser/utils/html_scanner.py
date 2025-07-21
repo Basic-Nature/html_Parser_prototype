@@ -650,6 +650,7 @@ def extract_tagged_segments_with_attrs(
     """
     Extract DOM segments with attributes and ML-driven semantic labels.
     Uses selectolax for DOM, leverages context, pattern KB, and coordinator for optimal labeling.
+    Ensures robust parent/child relationships, unique indices, and auditability for downstream use.
     """
     if coordinator is None:
         coordinator = ContextCoordinator()
@@ -673,13 +674,15 @@ def extract_tagged_segments_with_attrs(
 
     try:
         tree = HTMLParser(html)
+        # --- Robust index assignment ---
+        idx_counter = [0]
         def walk(node, parent_idx=None, heading_idx=None, panel_idx=None):
             tag = node.tag
             if not tag or (tag or "").lower() not in HTML_TAGS:
                 log_unknown_tag(tag, context_library)
                 for child in node.iter(include_text=True):
                     walk(child, parent_idx, heading_idx, panel_idx)
-                return
+                return None
             attrs = dict(node.attributes)
             if include_data_attrs:
                 attrs.update({k: v for k, v in node.attributes.items() if k.startswith("data-")})
@@ -688,17 +691,16 @@ def extract_tagged_segments_with_attrs(
             is_button = tag == "button" or (tag == "input" and (attrs.get("type", "") or "").lower() in ["button", "submit"])
             button_text = ""
             if is_button:
-                # Prefer aria-label, then value, then text content
                 button_text = attrs.get("aria-label") or attrs.get("value") or node.text(strip=True) or ""
             is_clickable = is_button or tag == "a" or "onclick" in attrs or "btn" in classes or "button" in classes
 
             this_heading_idx = heading_idx
             if tag.lower() in heading_tags:
-                this_heading_idx = len(segments)
+                this_heading_idx = idx_counter[0]
 
             this_panel_idx = panel_idx
             if tag.lower() in panel_tags:
-                this_panel_idx = len(segments)
+                this_panel_idx = idx_counter[0]
 
             seg = {
                 "tag": tag.lower(),
@@ -713,12 +715,13 @@ def extract_tagged_segments_with_attrs(
                 "children": [],
                 "start": getattr(node, "start", None),
                 "end": getattr(node, "end", None),
-                "_idx": len(segments),
+                "_idx": idx_counter[0],
                 "context_heading_idx": this_heading_idx,
                 "panel_ancestor_idx": this_panel_idx,
                 "panel_ancestor_heading": None,
             }
-            # Now safe to reference seg
+            idx_counter[0] += 1
+            # Attribute audit
             for k in attrs:
                 if any(pat.match(k) for pat in custom_attr_patterns):
                     seg["has_custom_attr"] = True
@@ -742,17 +745,24 @@ def extract_tagged_segments_with_attrs(
             if clean_text.strip() in {"&nbsp;", "&#160;"}:
                 return None
             if re.fullmatch(r"<[^>]+>", clean_text.strip()):
-                return None            
+                return None
             segments.append(seg)
             this_idx = seg["_idx"]
             for child in node.iter(include_text=True):
                 child_idx = walk(child, this_idx, this_heading_idx, this_panel_idx)
                 if child_idx is not None:
-                    (seg["children"]).append(child_idx)
+                    seg["children"].append(child_idx)
             return this_idx
 
         root = tree.body or tree.html or tree.root
         walk(root)
+
+        # --- Ensure unique _idx and parent/child consistency ---
+        idx_map = {seg["_idx"]: seg for seg in segments}
+        for seg in segments:
+            seg["children"] = [c for c in seg.get("children", []) if c in idx_map]
+            if seg.get("parent_idx") is not None and seg["parent_idx"] not in idx_map:
+                seg["parent_idx"] = None
 
         # --- Batch embedding for all segments ---
         seg_hashes = [segment_hash(seg.get("html", "")) for seg in segments]
@@ -809,10 +819,15 @@ def extract_tagged_segments_with_attrs(
             seg["ml_label"] = label
             seg["ml_confidence"] = 1.0 if label != "unknown" else 0.0
             seg["pattern_id"] = f"pattern_{hashlib.sha256(seg['html'].encode('utf-8')).hexdigest()[:10]}"
-            # --- Downstream actionable flags ---
             seg["is_actionable"] = label in ("results_table", "contest_title", "candidate_panel", "location_panel")
             seg["is_election_result"] = label == "results_table"
             seg["is_contest_title"] = label == "contest_title"
+
+        # --- Final audit/debug log ---
+        logger.debug(f"[DOM SEGMENTS] Extracted {len(segments)} segments. Example: {segments[0] if segments else 'None'}")
+        if not segments:
+            logger.warning("[DOM SEGMENTS] No DOM segments extracted. Check HTML input and parser logic.")
+
         return segments
 
     except Exception as e:
@@ -1674,7 +1689,19 @@ def scan_html_for_context(
 
     context_result["dom_parts"] = dom_parts
 
+    # --- Ensure dom_parts is not empty before passing to coordinator ---
+    if not dom_parts or not dom_parts.get("tagged_segments_with_attrs"):
+        logger.error("[DOM_PARTS] dom_parts is empty or missing tagged_segments_with_attrs. Downstream consumers will not function.")
+    else:
+        logger.debug(f"[DOM_PARTS] dom_parts keys: {list(dom_parts.keys())}, tagged_segments_with_attrs count: {len(dom_parts['tagged_segments_with_attrs'])}")
+
     if coordinator is not None:
-        coordinator.organize_and_enrich(context_result)
+        organized = coordinator.organize_and_enrich(context_result)
+        # --- Check organized structure after enrichment ---
+        if not organized or "dom_parts" not in organized or not organized["dom_parts"]:
+            logger.error("[DOM_PARTS] dom_parts missing after organize_and_enrich.")
+        else:
+            logger.debug(f"[DOM_PARTS] dom_parts successfully organized with keys: {list(organized['dom_parts'].keys())}")
+
     return context_result
 
