@@ -165,7 +165,7 @@ def process_format_override():
         logger.error("[red][ERROR] Manual parsing failed or returned no data.[/red]")
         return None
 
-def ai_analyze_results(headers, data, contest_title, metadata):
+def ai_analyze_results(headers, data, contest, metadata):
     if ENABLE_AI_ANALYSIS:
         try:
             anomalies = []  # Placeholder
@@ -177,7 +177,7 @@ def ai_analyze_results(headers, data, contest_title, metadata):
         except Exception as e:
             logger.error(f"[AI] Analysis failed: {e}")
 
-def stream_results(headers, data, contest_title, metadata):
+def stream_results(headers, data, contest, metadata):
     if ENABLE_REALTIME_STREAM:
         try:
             logger.info("[STREAM] Results streamed in real-time (stub).")
@@ -245,7 +245,7 @@ def orchestrate_url(target_url, processed_info, prompt_func, output_func, sessio
                 mark_url_processed(target_url, status="fail")
                 return
 
-            headers, data, contest_title, metadata = result
+            headers, data, contest, metadata = result
 
             # 7. Batch Mode: Hand off to coordinator if needed
             if context.get("batch_mode") and "selected_races" in context:
@@ -266,9 +266,9 @@ def orchestrate_url(target_url, processed_info, prompt_func, output_func, sessio
                 return
 
             # 8. Single result (non-batch)
-            if all([headers, data, contest_title, metadata]):
-                ai_analyze_results(headers, data, contest_title, metadata)
-                stream_results(headers, data, contest_title, metadata)
+            if all([headers, data, contest, metadata]):
+                ai_analyze_results(headers, data, contest, metadata)
+                stream_results(headers, data, contest, metadata)
                 output_file = metadata.get("output_file")
                 if output_file:
                     if os.path.exists(output_file):

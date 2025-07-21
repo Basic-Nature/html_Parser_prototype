@@ -210,10 +210,10 @@ def get_warehouse_results_by_batch(batch_id) -> List[WarehouseElectionResult]:
     with get_session() as session:
         return session.query(WarehouseElectionResult).filter_by(batch_id=batch_id).all()
 
-def create_table_structure(contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
+def create_table_structure(contest, headers, context, ml_confidence=None, confirmed_by_user=False):
     with get_session() as session:
         obj = TableStructure(
-            contest_title=contest_title,
+            contest=contest,
             headers=headers,
             context=context,
             ml_confidence=ml_confidence,
@@ -283,20 +283,20 @@ def update_table_structure_fields(table_id, fields: dict) -> int:
 
 def select_table_structures_by_title(title: str, limit: int = 10) -> List[TableStructure]:
     """
-    Use SQLAlchemy's select construct to fetch TableStructures by contest_title.
+    Use SQLAlchemy's select construct to fetch TableStructures by contest.
     """
     with get_session() as session:
-        stmt = select(TableStructure).where(TableStructure.contest_title == title).limit(limit)
+        stmt = select(TableStructure).where(TableStructure.contest == title).limit(limit)
         return session.execute(stmt).scalars().all()
     
-def save_table_structure_to_db(contest_title, headers, context, ml_confidence=None, confirmed_by_user=False) -> None:
+def save_table_structure_to_db(contest, headers, context, ml_confidence=None, confirmed_by_user=False) -> None:
     """
-    Upsert a table structure using SQLAlchemy ORM. Updates if contest_title exists, else inserts.
+    Upsert a table structure using SQLAlchemy ORM. Updates if contest exists, else inserts.
     """
     try:
         with get_session() as session:
             obj = session.execute(
-                select(TableStructure).where(TableStructure.contest_title == contest_title)
+                select(TableStructure).where(TableStructure.contest == contest)
             ).scalar_one_or_none()
             if obj:
                 obj.headers = clean_for_json(headers)
@@ -305,7 +305,7 @@ def save_table_structure_to_db(contest_title, headers, context, ml_confidence=No
                 obj.confirmed_by_user = confirmed_by_user
             else:
                 obj = TableStructure(
-                    contest_title=contest_title,
+                    contest=contest,
                     headers=clean_for_json(headers),
                     context=clean_for_json(context),
                     ml_confidence=ml_confidence,
@@ -317,14 +317,14 @@ def save_table_structure_to_db(contest_title, headers, context, ml_confidence=No
         logger.error(f"[DB][TableStructure] Error saving: {e}")
         raise
 
-def get_table_structure_from_db(contest_title, context=None) -> dict:
+def get_table_structure_from_db(contest, context=None) -> dict:
     """
-    Retrieve the best-matching table structure for a contest_title using SQLAlchemy ORM.
+    Retrieve the best-matching table structure for a contest using SQLAlchemy ORM.
     """
     try:
         with get_session() as session:
             row = session.execute(
-                select(TableStructure).where(TableStructure.contest_title == contest_title)
+                select(TableStructure).where(TableStructure.contest == contest)
                 .order_by(TableStructure.confirmed_by_user.desc(), TableStructure.ml_confidence.desc())
                 .limit(1)
             ).scalar_one_or_none()

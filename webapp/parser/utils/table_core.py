@@ -1888,7 +1888,7 @@ def force_fully_wide_format(headers, data, coordinator: "ContextCoordinator" = N
         location_col = "Location"
         for idx, row in enumerate(data):
             row[location_col] = (
-                context.get("contest_title", []) if context and context.get("contest_title", []) else f"Row {idx+1}"
+                context.get("contest", []) if context and context.get("contest", []) else f"Row {idx+1}"
             )
 
     # 2. Find candidate and party columns
@@ -2646,7 +2646,7 @@ def review_learned_table_structures(log_path=None):
                 continue
 
     for idx, entry in enumerate(entries):
-        logger.info(f"\n[{idx}] Contest: {entry.get('contest_title', [])}")
+        logger.info(f"\n[{idx}] Contest: {entry.get('contest', [])}")
         logger.info(f"    Headers: {entry.get('headers', [])}")
         logger.info(f"    Context: {entry.get('context', [])}")
         logger.info(f"    Result: {entry.get('result', [])}")
@@ -2701,7 +2701,7 @@ def get_cached_table_structure(domain, headers):
     sig = f"{domain}:{table_signature(headers)}"
     return cache.get(sig, [])
 
-def guess_contest_title(table_headers, known_titles):
+def guess_contest(table_headers, known_titles):
     """
     Try to match table headers to known contest titles using fuzzy matching.
     """

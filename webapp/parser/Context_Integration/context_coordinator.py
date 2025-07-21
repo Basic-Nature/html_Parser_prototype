@@ -85,9 +85,9 @@ def merge_and_rank_candidates(
             all_candidates.append(cand)
 
     contest = context.get("contest", {})
-    contest_title = contest.get("title", "") if contest else ""
+    contest = contest.get("title", "") if contest else ""
     context_str = " ".join([
-        contest_title,
+        contest,
         str(context.get("year", "")),
         str(context.get("type_", "")),
         str(context.get("county", "")),
@@ -102,7 +102,7 @@ def merge_and_rank_candidates(
             continue
         label = cand.get("label", "") or ""
         # Strong full-string match
-        full_match = int(label.strip().lower() == contest_title.strip().lower())
+        full_match = int(label.strip().lower() == contest.strip().lower())
         # Keyphrase-aware match
         keyphrase_score = 0.0
         for kw in (keywords or []):
@@ -119,8 +119,8 @@ def merge_and_rank_candidates(
         # Context proximity
         context_heading = cand.get("context_heading", "")
         context_proximity = 0.0
-        if context_heading and contest_title:
-            context_proximity = get_semantic_score(model, contest_title, context_heading)
+        if context_heading and contest:
+            context_proximity = get_semantic_score(model, contest, context_heading)
         # Hierarchy/class/tag bonus
         hierarchy_score = 0.0
         if expected_class and expected_class in cand.get("class", "") or expected_class in cand.get("class", "").lower():
@@ -644,7 +644,7 @@ class ContextCoordinator(object):
 
             # --- Update table structures (legacy and ML-inferred) ---
             if update_tables and "tables" in library:
-                for contest_title, tables in library["tables"].items():
+                for contest, tables in library["tables"].items():
                     for tbl in tables:
                         headers = tbl.get("headers") or tbl.get("columns") or []
                         context = tbl.get("context") or {}
@@ -728,7 +728,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_table_structure(ts)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert table_structure: {ts.get('contest_title', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert table_structure: {ts.get('contest', '')} - {e}")
 
             # --- Update batch_metadata ---
             if update_batch_metadata and "batch_metadata" in library:
@@ -1425,11 +1425,11 @@ class ContextCoordinator(object):
             return None
 
         def direct_button(_):
-            contest_title = extra.get("contest_title")
+            contest = extra.get("contest")
             keyword = extra.get("keyword")
             url = extra.get("url")
             candidates = []
-            buttons = self.get_buttons(contest_title=contest_title, keyword=keyword, url=url)
+            buttons = self.get_buttons(contest=contest, keyword=keyword, url=url)
             for btn in buttons:
                 if not isinstance(btn, dict):
                     continue
@@ -1459,7 +1459,7 @@ class ContextCoordinator(object):
 
         # For types that may use multiple sources (like buttons), try all
         if field_type == "buttons":
-            sources = [extra.get("contest_title") or "", extra.get("keyword") or "", extra.get("url") or ""]
+            sources = [extra.get("contest") or "", extra.get("keyword") or "", extra.get("url") or ""]
             found = []
             found_methods = []
             found_labels = []
@@ -1609,11 +1609,11 @@ class ContextCoordinator(object):
     def get_table_structures(self, filters=None, limit=100, confirmed_only=False) -> List[Dict[str, Any]]:
         return self.data_service.fetch_table_structures(filters=filters, limit=limit, confirmed_only=confirmed_only)
 
-    def get_table_structure(self, contest_title, context=None) -> Optional[Dict[str, Any]]:
-        return self.data_service.get_table_structure(contest_title, context)
+    def get_table_structure(self, contest, context=None) -> Optional[Dict[str, Any]]:
+        return self.data_service.get_table_structure(contest, context)
 
-    def save_table_structure(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False) -> bool:
-        return self.data_service.save_table_structure(contest_title, headers, context, ml_confidence, confirmed_by_user)
+    def save_table_structure(self, contest, headers, context, ml_confidence=None, confirmed_by_user=False) -> bool:
+        return self.data_service.save_table_structure(contest, headers, context, ml_confidence, confirmed_by_user)
 
     # --- Context/Contest Accessors ---
     def get_contests(self, filters=None) -> List[Dict[str, Any]]:

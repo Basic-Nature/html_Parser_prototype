@@ -38,7 +38,7 @@ def list_static_contests(page):
 
 # Attempts to match the user's contest input to available contest titles on the page.
 # Supports exact, partial, or indexed selection (e.g. '[2] United States Senator').
-def extract_visible_contest_title(contests, target_static_contest=None):
+def extract_visible_contest(contests, target_static_contest=None):
     all_titles = contests
     if target_static_contest:
         cleaned_input = target_static_contest.strip()
@@ -68,7 +68,7 @@ def extract_visible_contest_title(contests, target_static_contest=None):
 # 1. Clicking into the race's "View results" button.
 # 2. Enabling 'Vote Method' display.
 # 3. Autoscrolling until all precincts are visible.
-def interact_with_enhancedvoting_ui(page, contest_title):
+def interact_with_enhancedvoting_ui(page, contest):
     initial_delay = 20000
     print("[INFO] Waiting for page content to stabilize before scrolling...")
     page.wait_for_timeout(initial_delay)
@@ -76,8 +76,8 @@ def interact_with_enhancedvoting_ui(page, contest_title):
         page.wait_for_selector("text=View results by election district", timeout=10000)
         view_links = page.locator("a:has-text('View results by election district')")
         clicked = False
-        # Use only the first line of contest_title for matching
-        contest_main = contest_title.split("\n")[0].strip()
+        # Use only the first line of contest for matching
+        contest_main = contest.split("\n")[0].strip()
         for i in range(view_links.count()):
             candidate = view_links.nth(i)
             section_heading = candidate.locator("xpath=ancestor::p-panel[1]//h1")
@@ -88,7 +88,7 @@ def interact_with_enhancedvoting_ui(page, contest_title):
                 print(f"[INFO] Clicked contest-specific 'View results' for: {contest_main}")
                 break
         if not clicked:
-            print(f"[ERROR] Could not find matching 'View results' link for contest: {contest_title}. Please verify your selection.")
+            print(f"[ERROR] Could not find matching 'View results' link for contest: {contest}. Please verify your selection.")
             return
         page.wait_for_timeout(1500)
         print("[INFO] Searching for global 'Vote Method' button")
@@ -239,15 +239,15 @@ def main(url):
     print("[INPUT] Please type part of the contest name or index you'd like to extract:")
     target_static_contest = input("> ").strip()
 
-    contest_title = extract_visible_contest_title(static_races, target_static_contest)
-    print(f"[INFO] Extracting contest: {contest_title}")
+    contest = extract_visible_contest(static_races, target_static_contest)
+    print(f"[INFO] Extracting contest: {contest}")
 
-    interact_with_enhancedvoting_ui(page, contest_title)
+    interact_with_enhancedvoting_ui(page, contest)
 
     headers, structured_data, dynamic_precinct_label = extract_table_data(page)
     if structured_data:
         if validate_data(structured_data, headers):
-            write_to_csv(contest_title, headers, structured_data, dynamic_precinct_label)
+            write_to_csv(contest, headers, structured_data, dynamic_precinct_label)
         else:
             print("[WARNING] Data validation failed.")
     else:

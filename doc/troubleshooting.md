@@ -47,7 +47,7 @@
 
 - **Possible Cause**: No data returned from handler, or handler returned wrong tuple structure.
 - **Fix**:
-  - Confirm handler returns a `(headers, data, contest_title, metadata)` tuple.
+  - Confirm handler returns a `(headers, data, contest, metadata)` tuple.
   - Ensure `metadata` includes at least `state` and `race` to build the output path.
   - Check logs for `[WARN] No output file path returned from parser.`
 

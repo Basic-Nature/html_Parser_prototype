@@ -87,7 +87,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             logger.info(f"[cyan][INFO] Processing contest: {user_selected_title}[/cyan]")
 
             # --- Button toggles for this contest ---
-            contest_title_for_button = user_selected_title if user_selected_title else None
+            contest_for_button = user_selected_title if user_selected_title else None
 
             # --- Toggle "View results by election district" ---
             election_district_keywords = [
@@ -99,7 +99,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             logger.debug(f"[DEBUG] About to toggle first button: {toggle_name}")
             btn, idx = coordinator.get_best_button_advanced(
                 page=page,
-                contest_title=contest_title_for_button,
+                contest=contest_for_button,
                 keywords=election_district_keywords,
                 context={**html_context, "toggle_name": toggle_name},
                 confirm_button_callback=prompt.confirm_button_callback,
@@ -136,7 +136,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             logger.debug(f"[DEBUG] About to toggle second button: {toggle_name}")
             btn, idx = coordinator.get_best_button_advanced(
                 page=page,
-                contest_title=contest_title_for_button,
+                contest=contest_for_button,
                 keywords=vote_method_keywords,
                 context={**html_context, "toggle_name": toggle_name},
                 confirm_button_callback=prompt.confirm_button_callback,
@@ -197,7 +197,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             if not panels:
                 logger.debug("[yellow][DEBUG] No panels found, falling back to direct table scan.[/yellow]")
                 tables = page.locator("table")
-                contest_title = html_context.get("selected_race") or html_context.get("contest_title") or "Unknown Contest"
+                contest = html_context.get("selected_race") or html_context.get("contest") or "Unknown Contest"
                 all_panel_rows = []
                 all_panel_headers = set()
                 for i in range(tables.count()):
@@ -212,7 +212,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                         "panels": [],
                     }
                     headers, data, entity_info = build_dynamic_table(
-                        contest_title, None, None, coordinator, extraction_context
+                        contest, None, None, coordinator, extraction_context
                     )
                     if headers and data:
                         all_panel_rows.extend(data)
@@ -252,9 +252,9 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                         # Propagate contest and location fields
                         for field in ("selected_race", "state", "county", "year", "election_types"):
                             if field in html_context:
-                                extraction_context[field if field != "selected_race" else "contest_title"] = html_context[field]
+                                extraction_context[field if field != "selected_race" else "contest"] = html_context[field]
                         headers, data, entity_info = build_dynamic_table(
-                            extraction_context.get("contest_title", "Unknown Contest"),
+                            extraction_context.get("contest", "Unknown Contest"),
                             None,
                             None,
                             coordinator,
@@ -281,12 +281,12 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             # --- 10. Assemble headers and finalize output ---
             if not merged_data:
                 logger.error(f"[red][ERROR] No data could be parsed from ballot items or robust extraction.[/red]")
-                return None, None, contest_title, {"skipped": True}
+                return None, None, contest, {"skipped": True}
 
             metadata = {
                 "state": html_context.get("state", "NY"),
                 "county": html_context.get("county", "Rockland"),
-                "race": contest_title,
+                "race": contest,
                 "source": getattr(page, "url", "Unknown"),
                 "handler": "rockland",
             }
@@ -295,7 +295,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             if "election_types" in html_context:
                 metadata["election_types"] = html_context["election_types"]
 
-            result = finalize_election_output(merged_headers, merged_data, coordinator, contest_title, metadata["state"], metadata["county"], context=metadata)
+            result = finalize_election_output(merged_headers, merged_data, coordinator, contest, metadata["state"], metadata["county"], context=metadata)
             if isinstance(result, dict):
                 metadata.update(result)
-            return merged_headers, merged_data, contest_title, metadata
+            return merged_headers, merged_data, contest, metadata

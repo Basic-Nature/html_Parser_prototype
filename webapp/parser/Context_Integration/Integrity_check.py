@@ -134,7 +134,7 @@ def summarize_context_entities(contests):
             entity_counter[label] += 1
     return dict(entity_counter)
 
-def analyze_contest_titles(contests, expected_year=None, context_library_path=None):
+def analyze_contests(contests, expected_year=None, context_library_path=None):
     from ..utils.spacy_utils import flag_suspicious_contests
     integrity_issues = election_integrity_checks(contests)
     date_anomalies = find_date_anomalies(contests, expected_year=expected_year)
@@ -253,7 +253,7 @@ def print_auto_tune_result(contamination):
     else:
         console.print(Panel(f"Auto-tuned contamination: [bold green]{contamination:.4f}[/bold green]", title="IsolationForest Auto-Tune"))
 
-def print_analyze_contest_titles(results):
+def print_analyze_contests(results):
     print_issues_table(results["integrity_issues"], title="Integrity Issues")
     print_date_anomalies(results["date_anomalies"])
     print_ml_anomalies(results["ml_anomalies"], results.get("contests", []))
@@ -314,8 +314,8 @@ def detect_statistical_outliers(
 # --- Example Usage ---
 # After calling any processing function, call the corresponding print_* function for rich output.
 # For example:
-# results = analyze_contest_titles(contests)
-# print_analyze_contest_titles(results)
+# results = analyze_contests(contests)
+# print_analyze_contests(results)
 # entity_summary = summarize_context_entities(contests)
 # print_entity_summary(entity_summary)
 # issues = advanced_cross_field_validation(contests)
@@ -341,14 +341,14 @@ def print_integrity_summary(contests, expected_year=None, X=None):
     - X: optional, feature matrix for auto_tune_contamination
     """
     # Analyze contest titles (integrity, date, ML, suspicious)
-    results = analyze_contest_titles(contests, expected_year=expected_year)
+    results = analyze_contests(contests, expected_year=expected_year)
     # Add contests to results for ML anomaly printing
     results["contests"] = contests
 
     console.rule("[bold blue]Election Data Integrity Summary[/bold blue]")
 
     # Print integrity issues, date anomalies, ML anomalies, suspicious contests
-    print_analyze_contest_titles(results)
+    print_analyze_contests(results)
 
     # Print entity summary
     entity_summary = summarize_context_entities(contests)

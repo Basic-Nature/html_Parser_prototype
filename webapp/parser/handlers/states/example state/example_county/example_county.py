@@ -20,7 +20,7 @@ def parse(
     - Scans HTML for context and contests
     - Lets user select contest(s)
     - Parses each contest and outputs results
-    Returns (headers, data, contest_title, metadata) or a list of such tuples.
+    Returns (headers, data, contest, metadata) or a list of such tuples.
     """
     if html_context is None:
         html_context = {}
@@ -61,26 +61,26 @@ def parse(
     if isinstance(selected, list):
         results = []
         for contest in selected:
-            contest_title = contest.get("title") if isinstance(contest, dict) else contest
+            contest = contest.get("title") if isinstance(contest, dict) else contest
             html_context_copy = dict(html_context)
-            html_context_copy["selected_race"] = contest_title
+            html_context_copy["selected_race"] = contest
             result = parse_single_contest_dynamic(page, html_context_copy, state, county, coordinator)
             results.append(result)
         return results[0] if results else (None, None, None, {"skipped": True})
     else:
-        contest_title = selected.get("title") if isinstance(selected, dict) else selected
-        html_context["selected_race"] = contest_title
+        contest = selected.get("title") if isinstance(selected, dict) else selected
+        html_context["selected_race"] = contest
         return parse_single_contest_dynamic(page, html_context, state, county, coordinator)
 
 def parse_single_contest_dynamic(page, html_context, state, county, coordinator):
     """
     Parses a single contest (race) from the county page using dynamic, context/NLP-driven extraction.
     """
-    contest_title = html_context.get("selected_race")
-    logger.info(f"[cyan][INFO] Processing contest: {contest_title}[/cyan]")
+    contest = html_context.get("selected_race")
+    logger.info(f"[cyan][INFO] Processing contest: {contest}[/cyan]")
 
     # --- Use context/NLP to guide extraction ---
-    entities = coordinator.extract_entities(contest_title)
+    entities = coordinator.extract_entities(contest)
     locations = [ent for ent, label in entities if label in ("GPE", "LOC", "FAC", "ORG") or "district" in ent.lower()]
     expected_location = locations[0] if locations else None
 
@@ -124,29 +124,29 @@ def parse_single_contest_dynamic(page, html_context, state, county, coordinator)
         headers, data_rows = robust_table_extraction(page, html_context)
         if not headers or not data_rows:
             logger.error(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
-            return None, None, contest_title, {"skipped": True}
+            return None, None, contest, {"skipped": True}
 
     # --- Build dynamic table ---
     headers, data = build_dynamic_table(headers, data_rows, coordinator, html_context)
 
     if not data:
         logger.error("[red][ERROR] No contest data was parsed.[/red]")
-        return None, None, contest_title, {"skipped": True}
+        return None, None, contest, {"skipped": True}
 
     # --- Assemble headers and finalize output ---
     headers = sorted(set().union(*(row.keys() for row in data)))
     metadata = {
         "state": state or "Unknown",
         "county": county or "Unknown",
-        "race": contest_title or "Unknown",
+        "race": contest or "Unknown",
         "source": getattr(page, "url", "Unknown"),
         "handler": "example_county"
     }
-    result = finalize_election_output(headers, data, coordinator, contest_title, state, county)
+    result = finalize_election_output(headers, data, coordinator, contest, state, county)
     if isinstance(result, dict):
         if "csv_path" in result:
             metadata["output_file"] = result["csv_path"]
         if "metadata_path" in result:
             metadata["metadata_path"] = result["metadata_path"]
         metadata.update(result)
-    return headers, data, contest_title, metadata
+    return headers, data, contest, metadata

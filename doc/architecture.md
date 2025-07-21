@@ -31,13 +31,13 @@ This document provides a high-level overview of the architecture and responsibil
 
 - **`handlers/states/`**
   - Contains one file per U.S. state (e.g., `arizona.py`, `new_york.py`).
-  - Each state script must export a `parse(page, html_context)` method and return `(headers, data, contest_title, metadata)`.
+  - Each state script must export a `parse(page, html_context)` method and return `(headers, data, contest, metadata)`.
   - County-level handlers live in `handlers/states/<state>/county/`.
 
 - **`handlers/formats/`**
   - Generic format parsers: `pdf_handler.py`, `json_handler.py`, `csv_handler.py`, `html_handler.py`.
   - Used when no specialized state handler exists.
-  - Must also return `(headers, data, contest_title, metadata)`.
+  - Must also return `(headers, data, contest, metadata)`.
 
 - **`handlers/shared/`**
   - Shared logic, normalizers, and templates for use across handlers.
@@ -287,7 +287,7 @@ Contributions welcome! See `CONTRIBUTING.md` to get started.
 5. **Routing**:
    - If `state_router` detects a handler → delegate to `handlers/<state>.py`
    - Otherwise → delegate to `format_router`
-6. The **handler parses and returns**: headers, data, contest_title, metadata.
+6. The **handler parses and returns**: headers, data, contest, metadata.
 7. **Table extraction** is performed using `table_core.py` and `dynamic_table_extractor.py`, with ML/NLP scoring and patching.
 8. **Election integrity checks** are run via `Context_Integration/Integrity_check.py`.
 9. **CSV and metadata are saved** in `output/<state>/<county>/<race>/`.

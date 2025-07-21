@@ -989,13 +989,13 @@ def prompt_for_missing_fields(contest, suggestions):
 
 def highlight_anomalies(context_library, field_type, context_path=None, autofix=True):
     try:
-        from ..Context_Integration.Integrity_check import analyze_contest_titles, summarize_context_entities
+        from ..Context_Integration.Integrity_check import analyze_contests, summarize_context_entities
     except ImportError:
         logger.warning("Could not import integrity_check for anomaly highlighting.")
         return
     if field_type == "contests" and "contests" in context_library:
         contests = context_library["contests"]
-        results = analyze_contest_titles(contests)
+        results = analyze_contests(contests)
         fixed_count = 0
         nlp = None
         try:

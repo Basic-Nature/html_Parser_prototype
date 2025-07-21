@@ -7,7 +7,7 @@ def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, An
     """
     State-level handler for New York.
     Delegates to the correct county parser if available.
-    Returns standardized (headers, data, contest_title, metadata).
+    Returns standardized (headers, data, contest, metadata).
     """
     if html_context is None:
         html_context = {}
@@ -22,7 +22,7 @@ def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, An
     try:
         county_module = importlib.import_module(module_path)
         logger.info(f"[NY Handler] Routing to county parser: {module_path}")
-        # Expect county_module.parse to return (headers, data, contest_title, metadata)
+        # Expect county_module.parse to return (headers, data, contest, metadata)
         return county_module.parse(page, html_context)
     except ModuleNotFoundError:
         logger.warning(f"[NY Handler] No specific parser implemented for county: '{county}'. Please add it under {module_path}.py")

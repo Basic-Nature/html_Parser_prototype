@@ -15,25 +15,25 @@ logger = SharedLogger()
 
 MIGRATION_STATE_FILE = Path(CONTEXT_LIBRARY_DIR) / "migration_state.json"
 
-def table_structure_exists(session, contest_title: str, headers: str, context: str) -> bool:
+def table_structure_exists(session, contest: str, headers: str, context: str) -> bool:
     return session.query(TableStructure).filter_by(
-        contest_title=contest_title,
+        contest=contest,
         headers=headers,
         context=context
     ).first() is not None
 
-def create_table_structure(session, contest_title: str, headers: str, context: str, confirmed_by_user: bool = True):
+def create_table_structure(session, contest: str, headers: str, context: str, confirmed_by_user: bool = True):
     """
     Insert a new TableStructure row if not exists.
     """
     ts = TableStructure(
-        contest_title=contest_title,
+        contest=contest,
         headers=headers,
         context=context,
         confirmed_by_user=confirmed_by_user
     )
     session.add(ts)
-    console.table(f"[MIGRATE] Added TableStructure: {contest_title}")
+    console.table(f"[MIGRATE] Added TableStructure: {contest}")
 
 def migrate_table_structures_from_jsonl(jsonl_path: Path):
     console.panel(f"[MIGRATE] Migrating from {jsonl_path} ...")
@@ -50,11 +50,11 @@ def migrate_table_structures_from_jsonl(jsonl_path: Path):
                     console.log(f"{jsonl_path} line {idx}: Skipping non-dict entry: {entry}")
                     continue
                 if entry.get("result") == "learning_confirmed" or entry.get("confirmed_by_user", False):
-                    contest_title = entry.get("contest_title", "")
+                    contest = entry.get("contest", "")
                     headers = orjson.dumps(entry.get("headers", [])).decode()
                     context = orjson.dumps(entry.get("context", {})).decode()
-                    if not table_structure_exists(session, contest_title, headers, context):
-                        create_table_structure(session, contest_title, headers, context, True)
+                    if not table_structure_exists(session, contest, headers, context):
+                        create_table_structure(session, contest, headers, context, True)
                         count += 1
         session.commit()
     console.log(f"[MIGRATE] Inserted {count} new table structures from {jsonl_path}")
@@ -79,13 +79,13 @@ def migrate_table_structures_from_json(json_path: Path):
                 if not isinstance(entry, dict):
                     console.log(f"{json_path} entry {idx}: Skipping non-dict entry: {entry}")
                     continue
-                contest_title = entry.get("contest_title", "")
+                contest = entry.get("contest", "")
                 headers = orjson.dumps(entry.get("headers", [])).decode()
                 context = orjson.dumps(entry.get("context", {})).decode()
-                if not table_structure_exists(session, contest_title, headers, context):
+                if not table_structure_exists(session, contest, headers, context):
                     create_table_structure(
                         session,
-                        contest_title,
+                        contest,
                         headers,
                         context,
                         confirmed_by_user=entry.get("confirmed_by_user", True)

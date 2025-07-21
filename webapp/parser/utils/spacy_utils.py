@@ -154,7 +154,7 @@ def canonicalize_entity(entity: str) -> str:
     """
     return re.sub(r"\s+", " ", entity.strip().title())
 
-def validate_contest_title(title: str, known_states: Set[str], known_counties: Set[str]) -> Dict[str, Any]:
+def validate_contest(title: str, known_states: Set[str], known_counties: Set[str]) -> Dict[str, Any]:
     """
     Validates a contest title for integrity:
     - Checks for known state/county presence
@@ -196,7 +196,7 @@ def flag_suspicious_contests(contests, context_library_path=None):
     flagged = []
     for c in contests:
         title = c.get("title", "")
-        result = validate_contest_title(title, known_states, known_counties)
+        result = validate_contest(title, known_states, known_counties)
         if not result["valid"]:
             flagged.append({
                 "title": title,
@@ -224,7 +224,7 @@ def demo_analysis(text: str):
     logger.info("Similarity (sample vs itself):", similarity_score(text, text))
     # Election integrity check example
     known_states, known_counties = load_known_states_counties()
-    logger.info("Contest validation:", validate_contest_title(text, known_states, known_counties))
+    logger.info("Contest validation:", validate_contest(text, known_states, known_counties))
 
 if __name__ == "__main__":
     import sys

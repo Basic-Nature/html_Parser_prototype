@@ -158,18 +158,18 @@ def parse(page, html_context=None):
         for k, v in county_totals.items():
             logger.info(f"  {k}: {v}")
 
-    contest_title = "Arizona Statewide Results"
+    contest = "Arizona Statewide Results"
     headers_out = sorted([col for col in precinct_data[0] if col != "Precinct Name"] if precinct_data else [])
     if not precinct_data:
         logger.warning("[FALLBACK] No tables were parsed. Either no results are published yet or the structure has changed.")
         logger.warning("[FALLBACK] Please verify that the site has posted election data.")
 
         # Insert county-level totals as a dummy precinct row if any were found
-    contest_title = "Arizona Statewide Results"
+    contest = "Arizona Statewide Results"
     headers_out = sorted([col for col in precinct_data[0] if col != "Precinct Name"] if precinct_data else [])
     metadata = {
         "state": "AZ",
-        "race": contest_title or "Unknown",
+        "race": contest or "Unknown",
         "handler": "arizona",
         "source": getattr(page, "url", "Unknown")
     }
@@ -179,7 +179,7 @@ def parse(page, html_context=None):
     # Enrich metadata and finalize output
     organized = ContextOrganizer.organize_context(metadata)
     metadata = organized.get("metadata", metadata)
-    result = finalize_election_output(headers_out, precinct_data, contest_title, metadata)
-    contest_title = result.get("contest_title", contest_title)
+    result = finalize_election_output(headers_out, precinct_data, contest, metadata)
+    contest = result.get("contest", contest)
     metadata = result.get("metadata", metadata)
-    return headers_out, precinct_data, contest_title, metadata
+    return headers_out, precinct_data, contest, metadata

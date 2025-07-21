@@ -374,7 +374,7 @@ class ElectionDataService(object):
         from ..utils.models import TableStructure
         with get_session() as session:
             obj = session.query(TableStructure).filter_by(
-                contest_title=table_structure.get("contest_title")
+                contest=table_structure.get("contest")
             ).first()
             if obj:
                 obj.headers = table_structure.get("headers")
@@ -383,7 +383,7 @@ class ElectionDataService(object):
                 obj.confirmed_by_user = table_structure.get("confirmed_by_user", False)
             else:
                 obj = TableStructure(
-                    contest_title=table_structure.get("contest_title"),
+                    contest=table_structure.get("contest"),
                     headers=table_structure.get("headers"),
                     context=table_structure.get("context"),
                     ml_confidence=table_structure.get("ml_confidence"),
@@ -516,17 +516,17 @@ class ElectionDataService(object):
 
     # --- Table Structure Operations ---
 
-    def save_table_structure(self, contest_title: str, headers: Any, context: Any, ml_confidence: Optional[float] = None, confirmed_by_user: bool = False) -> None:
+    def save_table_structure(self, contest: str, headers: Any, context: Any, ml_confidence: Optional[float] = None, confirmed_by_user: bool = False) -> None:
         """
         Upsert a table structure for a contest.
         """
-        save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
+        save_table_structure_to_db(contest, headers, context, ml_confidence, confirmed_by_user)
 
-    def get_table_structure(self, contest_title: str, context: Any = None) -> Optional[dict]:
+    def get_table_structure(self, contest: str, context: Any = None) -> Optional[dict]:
         """
         Retrieve the best-matching table structure for a contest.
         """
-        return get_table_structure_from_db(contest_title, context)
+        return get_table_structure_from_db(contest, context)
 
     def fetch_table_structures(self, filters: Optional[dict] = None, limit: int = 100, order_by=None, confirmed_only: bool = False) -> List[TableStructure]:
         """
@@ -548,7 +548,7 @@ class ElectionDataService(object):
 
     def select_table_structures_by_title(self, title: str, limit: int = 10) -> List[TableStructure]:
         """
-        Fetch TableStructures by contest_title.
+        Fetch TableStructures by contest.
         """
         return select_table_structures_by_title(title, limit)
 

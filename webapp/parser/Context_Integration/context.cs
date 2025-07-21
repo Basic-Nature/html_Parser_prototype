@@ -25,7 +25,7 @@ class Program
                     batch_id UUID NOT NULL,
                     state TEXT,
                     county TEXT,
-                    contest_title TEXT,
+                    contest TEXT,
                     candidate TEXT,
                     party TEXT,
                     votes INTEGER,
@@ -39,13 +39,13 @@ class Program
                 }
 
                 // Example: Insert data
-                string insertSQL = @"INSERT INTO warehouse_election_results (batch_id, state, county, contest_title, candidate, party, votes, precinct, election_date) VALUES (@batch_id, @state, @county, @contest_title, @candidate, @party, @votes, @precinct, @election_date);";
+                string insertSQL = @"INSERT INTO warehouse_election_results (batch_id, state, county, contest, candidate, party, votes, precinct, election_date) VALUES (@batch_id, @state, @county, @contest, @candidate, @party, @votes, @precinct, @election_date);";
                 using (var command = new NpgsqlCommand(insertSQL, conn))
                 {
                     command.Parameters.AddWithValue("batch_id", Guid.NewGuid());
                     command.Parameters.AddWithValue("state", "NY");
                     command.Parameters.AddWithValue("county", "Rockland");
-                    command.Parameters.AddWithValue("contest_title", "Presidential Election");
+                    command.Parameters.AddWithValue("contest", "Presidential Election");
                     command.Parameters.AddWithValue("candidate", "Alice");
                     command.Parameters.AddWithValue("party", "Independent");
                     command.Parameters.AddWithValue("votes", 1234);

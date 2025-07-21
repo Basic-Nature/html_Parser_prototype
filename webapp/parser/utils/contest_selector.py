@@ -115,7 +115,7 @@ def normalize_race_name(name) -> str:
     import re
     return re.sub(r"\W+", "", (name or "").strip().lower()) if name else ""
 
-def normalize_contest_title(title: str) -> str:
+def normalize_contest(title: str) -> str:
     if not title:
         return ""
     title = re.sub(r'\s*[\r\n]*Vote for \d+\s*', '', title, flags=re.IGNORECASE)
@@ -228,10 +228,10 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
     logger.debug(f"norm_state: {context.get('state')}, norm_county: {context.get('county')}, year: {context.get('year')}")
     for c in selected:
         logger.debug(f"Contest: {(c or {}).get('title', '')}, state: {(c or {}).get('state', '')}, county: {(c or {}).get('county', '')}, year: {(c or {}).get('year', '')}")
-        coordinator.submit_user_feedback("contest", "contest_title", (c or {}).get("title", ""), context)
+        coordinator.submit_user_feedback("contest", "contest", (c or {}).get("title", ""), context)
     return selected
 
-def ensure_contest_title(contest) -> Dict[str, Any]:
+def ensure_contest(contest) -> Dict[str, Any]:
     """
     Ensures the contest dict has a non-empty 'title' key.
     Falls back to 'name', or stringifies the contest if needed.
@@ -386,7 +386,7 @@ def select_contest(
     unique_contests = []
     seen = set()
     for c in filtered_contests:
-        norm_title = normalize_contest_title((c or {}).get("title", "") or "")
+        norm_title = normalize_contest((c or {}).get("title", "") or "")
         key = (((c or {}).get("year") or ""), ((c or {}).get("type_") or ""), norm_title)
         if key not in seen:
             unique_contests.append(c)
@@ -431,7 +431,7 @@ def select_contest(
 
     # --- Auto-select if only one contest ---
     if len(verified_contests) == 1:
-        contest = ensure_contest_title(verified_contests[0])
+        contest = ensure_contest(verified_contests[0])
         logger.info(f"[green]Only one contest found. Auto-selecting: {contest['title']}[/green]")
         if log_func:
             log_func(f"[CONTEST] Auto-selected: {contest['title']}")
@@ -441,7 +441,7 @@ def select_contest(
     if non_interactive:
         if log_func:
             log_func(f"[CONTEST] Non-interactive mode: selecting all contests.")
-        return [ensure_contest_title(c) for c in verified_contests]
+        return [ensure_contest(c) for c in verified_contests]
 
     # --- Interactive prompt ---
     try:
@@ -471,7 +471,7 @@ def select_contest(
     if choice == "all":
         if log_func:
             log_func("[CONTEST] User selected all contests.")
-        return [ensure_contest_title(c) for c in verified_contests]
+        return [ensure_contest(c) for c in verified_contests]
 
     # --- Parse comma-separated indices ---
     indices = []
@@ -487,7 +487,7 @@ def select_contest(
             log_func("[CONTEST] No valid contest indices selected.")
         return None
 
-    selected = [ensure_contest_title(contest_indices[i]) for i in indices]
+    selected = [ensure_contest(contest_indices[i]) for i in indices]
     if log_func:
         log_func(f"[CONTEST] User selected contests: {[c.get('title', '') for c in selected]}")
     return selected

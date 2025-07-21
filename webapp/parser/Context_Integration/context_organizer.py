@@ -759,15 +759,15 @@ class ContextOrganizer(object):
 
         # --- Robust contest organization using all available keywords ---
         contests_out = []
-        contest_titles = set()
+        contests = set()
         for c in raw_context.get("contests", []):
             title = c.get("title") or c.get("label") or c
             if not title or len(str(title)) > 500:
                 logger.warning(f"[CONTEST] Skipping contest with suspiciously large or missing title: {str(title)[:100]}...")
                 continue
             norm_title = normalize_label(title)
-            if norm_title not in contest_titles:
-                contest_titles.add(norm_title)
+            if norm_title not in contests:
+                contests.add(norm_title)
                 year, type_, state, county = infer_contest_fields(
                     c,
                     context_library,
@@ -787,9 +787,9 @@ class ContextOrganizer(object):
             if not isinstance(c, dict) or not c.get("title"):
                 continue
             norm_title = normalize_label(c.get("title", c.get("label", str(c))))
-            if norm_title not in contest_titles and norm_title not in [normalize_label(c2.get("title", "")) for c2 in contests_out]:
+            if norm_title not in contests and norm_title not in [normalize_label(c2.get("title", "")) for c2 in contests_out]:
                 contests_out.append(c)
-                contest_titles.add(norm_title)
+                contests.add(norm_title)
         contests = contests_out
 
         # --- Ensure all contests have required fields: title, year, type_, state, county ---
@@ -1455,26 +1455,26 @@ class ContextOrganizer(object):
         except Exception as e:
             logger.error(f"[CONTEXT ORGANIZER] Failed to append to context library: {e}")
 
-    def save_table_structure_to_db(self, contest_title, headers, context, ml_confidence=None, confirmed_by_user=False):
+    def save_table_structure_to_db(self, contest, headers, context, ml_confidence=None, confirmed_by_user=False):
         """
         Save or update a table structure for a contest in the database.
         """
         try:
-            save_table_structure_to_db(contest_title, headers, context, ml_confidence, confirmed_by_user)
-            logger.info(f"[CONTEXT ORGANIZER] Saved table structure for contest: {contest_title}")
+            save_table_structure_to_db(contest, headers, context, ml_confidence, confirmed_by_user)
+            logger.info(f"[CONTEXT ORGANIZER] Saved table structure for contest: {contest}")
         except Exception as e:
             logger.error(f"[CONTEXT ORGANIZER] Failed to save table structure: {e}")
 
-    def get_table_structure_from_db(self, contest_title, context=None) -> dict:
+    def get_table_structure_from_db(self, contest, context=None) -> dict:
         """
         Retrieve a table structure for a contest from the database.
         """
         try:
-            result = get_table_structure_from_db(contest_title, context)
+            result = get_table_structure_from_db(contest, context)
             if result:
-                logger.info(f"[CONTEXT ORGANIZER] Loaded table structure for contest: {contest_title}")
+                logger.info(f"[CONTEXT ORGANIZER] Loaded table structure for contest: {contest}")
             else:
-                logger.warning(f"[CONTEXT ORGANIZER] No table structure found for contest: {contest_title}")
+                logger.warning(f"[CONTEXT ORGANIZER] No table structure found for contest: {contest}")
             return result
         except Exception as e:
             logger.error(f"[CONTEXT ORGANIZER] Failed to load table structure: {e}")

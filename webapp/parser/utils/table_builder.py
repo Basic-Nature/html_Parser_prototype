@@ -118,7 +118,7 @@ def build_dynamic_table(
             merged_headers, merged_data, context=context, coordinator=coordinator
         )
     except Exception as e:
-        logger.warning(f"[TABLE_BUILDER] NLP entity annotation failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+        logger.warning(f"[TABLE_BUILDER] NLP entity annotation failed: {e} | Context: {context.get('contest', 'Unknown')}")
         annotated_headers, annotated_data = merged_headers, merged_data
         entity_info = {}
     headers, data = harmonize_headers_and_data(annotated_headers, annotated_data)
@@ -129,7 +129,7 @@ def build_dynamic_table(
             wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
             headers, data = harmonize_headers_and_data(wide_headers, wide_data)
         except Exception as e:
-            logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e} | Context: {context.get('contest_title', 'Unknown')}")
+            logger.warning(f"[TABLE_BUILDER] Pivot to wide format failed: {e} | Context: {context.get('contest', 'Unknown')}")
 
     # --- 5. Optionally load from cache for debugging ---
     if debug:
@@ -141,16 +141,16 @@ def build_dynamic_table(
 
     # --- 6. User/ML confirmation and learning (if enabled) ---
     if learning_mode:
-        contest_title = context.get("contest_title", []) or "Unknown Contest"
+        contest = context.get("contest", []) or "Unknown Contest"
         feedback_loops = 0
         while feedback_loops < max_feedback_loops:
             if confirm_table_structure_callback:
                 headers_confirmed, data_confirmed = confirm_table_structure_callback(
-                    headers, data, domain, contest_title, coordinator
+                    headers, data, domain, contest, coordinator
                 )
             else:
                 headers_confirmed, data_confirmed = prompt_user_to_confirm_table_structure(
-                    headers, data, domain, contest_title, coordinator
+                    headers, data, domain, contest, coordinator
                 )
             # Save to cache after user confirmation if debug is enabled
             if debug:
@@ -244,7 +244,7 @@ def _load_table_builder_cache(domain, latest=True):
 # USER FEEDBACK, CONFIRMATION, AND LEARNING
 # ===================================================================
 
-def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title, coordinator):
+def prompt_user_to_confirm_table_structure(headers, data, domain, contest, coordinator):
     """
     Interactive CLI for user to confirm, correct, or reject table structure.
     Ensures 'Percent Reported' is always included if present in data or context.
@@ -280,7 +280,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     ml_scores = []
     nlp_suggestions = []
     for h in new_headers:
-        score = coordinator.score_header(h, {"contest_title": contest_title})
+        score = coordinator.score_header(h, {"contest": contest})
         ml_scores.append(score)
         ents = coordinator.extract_entities(h)
         if ents:
@@ -301,7 +301,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
                 alt[idx] = ent
                 new_headers[idx] = ent
         new_headers, data = harmonize_headers_and_data(new_headers, data)
-        ml_scores = [coordinator.score_header(h, {"contest_title": contest_title}) for h in new_headers]
+        ml_scores = [coordinator.score_header(h, {"contest": contest}) for h in new_headers]
         avg_score = sum(ml_scores) / len(ml_scores) if ml_scores else 0
 
     # Multiple structure candidates (if available)
@@ -319,7 +319,7 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
     while True:
         candidate_headers = structure_candidates[candidate_idx]
         # Show ML/NLP confidence and suggestions
-        logger.warning(f"\n[bold yellow][Table Builder] Candidate structure {candidate_idx+1}/{len(structure_candidates)} for '{contest_title}':[/bold yellow]")
+        logger.warning(f"\n[bold yellow][Table Builder] Candidate structure {candidate_idx+1}/{len(structure_candidates)} for '{contest}':[/bold yellow]")
         preview_table = Table(show_header=True, header_style="bold magenta")
         N = min(5, len(data))
         logger.info(f"[bold green]Column content preview (first {N} rows):[/bold green]")
@@ -370,9 +370,9 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
             denied_count = denied_structures[sig]
             with open(denied_structures_path, "wb") as f:
                 f.write(orjson.dumps(denied_structures, option=orjson.OPT_INDENT_2))
-            logger.info(f"[TABLE BUILDER] User declined to log table structure for '{contest_title}'. Denied {denied_count} times.")
+            logger.info(f"[TABLE BUILDER] User declined to log table structure for '{contest}'. Denied {denied_count} times.")
             if denied_count >= 3:
-                logger.warning(f"[TABLE BUILDER] Structure for '{contest_title}' denied {denied_count} times. Will not auto-apply in future.")
+                logger.warning(f"[TABLE BUILDER] Structure for '{contest}' denied {denied_count} times. Will not auto-apply in future.")
             retry = input("Would you like to retry correction? [y/N]: ").strip().lower()
             if retry in ("y", "yes"):
                 continue
@@ -390,8 +390,8 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
                     if 0 <= idx < len(candidate_headers):
                         logger.error(f"[red]Column '{candidate_headers[idx]}' marked as incorrect.[/red]")
                         col_name = candidate_headers[idx]
-                        removed_columns_log.setdefault(contest_title, {})
-                        removed_columns_log[contest_title][col_name] = removed_columns_log[contest_title].get(col_name, 0) + 1
+                        removed_columns_log.setdefault(contest, {})
+                        removed_columns_log[contest][col_name] = removed_columns_log[contest].get(col_name, 0) + 1
                 candidate_headers = [h for i, h in enumerate(candidate_headers) if i not in wrong_idxs]
                 data = [{h: row.get(h, "") for h in candidate_headers} for row in data]
                 columns_changed = True
@@ -460,12 +460,12 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest_title,
 
     # Save user-confirmed structure for future ML learning
     if should_log and hasattr(coordinator, "log_table_structure"):
-        coordinator.log_table_structure(contest_title, new_headers, context={"domain": domain})
+        coordinator.log_table_structure(contest, new_headers, context={"domain": domain})
         cache_table_structure(domain, new_headers, new_headers)
-        logger.info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest_title}'.")
+        logger.info(f"[TABLE BUILDER] Logged confirmed table structure for '{contest}'.")
         if hasattr(coordinator, "save_table_structure_to_db"):
             coordinator.save_table_structure_to_db(
-                contest_title=contest_title,
+                contest=contest,
                 headers=new_headers,
                 context={"domain": domain},
                 ml_confidence=avg_score if 'avg_score' in locals() else None,

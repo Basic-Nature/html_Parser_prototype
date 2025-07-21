@@ -190,7 +190,7 @@ def finalize_election_output(
     headers,
     data,
     coordinator,
-    contest_title,
+    contest,
     state,
     county,
     context=None,
@@ -206,15 +206,15 @@ def finalize_election_output(
     if context is None:
         context = {}
 
-    logger.info(f"[OUTPUT_UTILS] finalize_election_output called with contest_title: '{contest_title}'")
+    logger.info(f"[OUTPUT_UTILS] finalize_election_output called with contest: '{contest}'")
 
     meta = {
-        "contests": contest_title or "Unknown",
+        "contests": contest or "Unknown",
         "year": "Unknown",
         "state": state or "Unknown",
         "county": county or "Unknown"
     }
-    match = re.search(r"\b(19|20)\d{2}\b", contest_title or "")
+    match = re.search(r"\b(19|20)\d{2}\b", contest or "")
     if match:
         meta["year"] = match.group(0)
 
@@ -223,7 +223,7 @@ def finalize_election_output(
 
     # Defensive: ensure required fields
     if not enriched_meta.get("contests", []):
-        enriched_meta["contests"] = contest_title or "Unknown"
+        enriched_meta["contests"] = contest or "Unknown"
     if not enriched_meta.get("year", []) or not (str(enriched_meta["year"]).isdigit() and len(str(enriched_meta["year"])) == 4):
         enriched_meta["year"] = meta.get("year", "Unknown")
     if not enriched_meta.get("state", []):
@@ -259,7 +259,7 @@ def finalize_election_output(
     os.makedirs(output_path, exist_ok=True)
 
     timestamp = format_timestamp()
-    safe_title = safe_filename(contest_title or contests or "results").replace(" ", "_")
+    safe_title = safe_filename(contest or contests or "results").replace(" ", "_")
     filename_parts = [
         str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "",
         safe_filename(state).lower() if state else "",

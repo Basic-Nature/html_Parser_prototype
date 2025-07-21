@@ -174,7 +174,7 @@ def parse(page=None, coordinator=None, html_context=None, non_interactive=False,
     """
     Universal pipeline entry: Accepts a JSON file path (manual_file) from the format router,
     or prompts user to select a file from the input folder.
-    Returns: headers, data, contest_title, metadata
+    Returns: headers, data, contest, metadata
     """
     html_context = html_context or {}
     if html_context.get("skip_format") or html_context.get("manual_skip"):

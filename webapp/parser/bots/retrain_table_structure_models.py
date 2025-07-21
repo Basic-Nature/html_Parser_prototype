@@ -634,7 +634,7 @@ def get_all_confirmed_structures():
         result = []
         for row in rows:
             result.append({
-                "contest_title": row.contest_title,
+                "contest": row.contest,
                 "headers": orjson.loads(row.headers) if isinstance(row.headers, (str, bytes, bytearray)) else row.headers,
                 "context": orjson.loads(row.context) if isinstance(row.context, (str, bytes, bytearray)) else row.context,
                 "original_structure": getattr(row, "original_structure", {}),
@@ -676,10 +676,10 @@ def retrain_sentence_transformer(confirmed_structures, model_save_path=None, epo
     
     train_examples = []
     for struct in confirmed_structures:
-        contest_title = struct.get("contest_title", "")
+        contest = struct.get("contest", "")
         headers = struct.get("headers", [])
         for header in headers:
-            train_examples.append(InputExample(texts=[contest_title, header], label=1.0))
+            train_examples.append(InputExample(texts=[contest, header], label=1.0))
     if not train_examples:
         logger.warning("No training examples found. Aborting retraining.")
         return

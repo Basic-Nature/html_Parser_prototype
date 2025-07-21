@@ -135,21 +135,21 @@ def parse(page, html_context=None):
                 totals_row[headers[0]] = "Grand Total"
             data.append(totals_row)
 
-        contest_title = header_text or "Pennsylvania County Results"
+        contest = header_text or "Pennsylvania County Results"
         metadata = {
             "state": "PA",
             "county": html_context.get("county", "Unknown"),
             "handler": "pennsylvania",
-            "race": contest_title or "Unknown"
+            "race": contest or "Unknown"
         }
 
         from ....Context_Integration.context_organizer import ContextOrganizer
         organized = ContextOrganizer.organize_context(metadata)
         metadata = organized.get("metadata", metadata)
-        result = finalize_election_output(headers, data, contest_title, metadata)
-        contest_title = result.get("contest_title", contest_title)
+        result = finalize_election_output(headers, data, contest, metadata)
+        contest = result.get("contest", contest)
         metadata = result.get("metadata", metadata)
-        return headers, data, contest_title, metadata
+        return headers, data, contest, metadata
 
     except Exception as e:
         logger.error(f"[ERROR] Failed to read or write CSV: {e}")

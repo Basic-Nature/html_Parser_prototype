@@ -112,7 +112,7 @@ def parse_csv_election_results(csv_path, output_dir=None):
                 data.append(row)
 
         # Step: If multiple contests, prompt user to select one
-        contest_title = None
+        contest = None
         if contest_column:
             contests = sorted({row[contest_column].strip() for row in data if row.get(contest_column)})
             if len(contests) > 1:
@@ -124,7 +124,7 @@ def parse_csv_election_results(csv_path, output_dir=None):
                 if user_input.isdigit():
                     idx = int(user_input)
                     try:
-                        contest_title = contests[idx - 1]
+                        contest = contests[idx - 1]
                     except IndexError:
                         logger.error("[red]Invalid contest number.[/red]")
                         return None, None, None, {"error": "Invalid contest number"}
@@ -132,13 +132,13 @@ def parse_csv_election_results(csv_path, output_dir=None):
                     if user_input not in contests:
                         logger.error(f"[red][ERROR] Contest name '{user_input}' not found.[/red]")
                         return None, None, None, {"error": "Contest name not found"}
-                    contest_title = user_input
+                    contest = user_input
                 # Filter data to only selected contest
-                data = [row for row in data if row.get(contest_column, "").strip() == contest_title]
+                data = [row for row in data if row.get(contest_column, "").strip() == contest]
             elif contests:
-                contest_title = contests[0]
+                contest = contests[0]
         else:
-            contest_title = os.path.basename(csv_path).replace(".csv", "")
+            contest = os.path.basename(csv_path).replace(".csv", "")
 
     # Step: Normalize candidate/precinct columns and harmonize using librarian context
     candidate_cols = [col for col in headers if any(k in col.lower() for k in CANDIDATE_KEYWORDS)]
@@ -177,7 +177,7 @@ def parse_csv_election_results(csv_path, output_dir=None):
     if output_dir is None:
         output_dir = get_output_folder()
     os.makedirs(output_dir, exist_ok=True)
-    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in contest_title).replace(" ", "_")
+    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in contest).replace(" ", "_")
     output_csv = os.path.join(output_dir, f"{safe_title}_parsed.csv")
     output_meta = os.path.join(output_dir, f"{safe_title}_metadata.json")
 
@@ -190,7 +190,7 @@ def parse_csv_election_results(csv_path, output_dir=None):
 
     # === Write Metadata JSON ===
     metadata = {
-        "race": contest_title,
+        "race": contest,
         "input_file": os.path.basename(csv_path),
         "output_file": os.path.basename(output_csv),
         "headers": headers,
@@ -203,13 +203,13 @@ def parse_csv_election_results(csv_path, output_dir=None):
     logger.info(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(wide_data)}[/bold] rows to:\n  [cyan]{output_csv}[/cyan]")
     logger.info(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{output_meta}[/cyan]")
 
-    return headers, wide_data, contest_title, metadata
+    return headers, wide_data, contest, metadata
 
 def parse(page=None, coordinator=None, html_context=None, non_interactive=False, manual_file=None, **kwargs):
     """
     Universal pipeline entry: Accepts a CSV file path (manual_file) from the format router,
     or prompts user to select a file from the input folder.
-    Returns: headers, data, contest_title, metadata
+    Returns: headers, data, contest, metadata
     """
     html_context = html_context or {}
     if html_context.get("skip_format") or html_context.get("manual_skip"):

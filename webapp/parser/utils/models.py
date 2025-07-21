@@ -136,7 +136,7 @@ class Contest(Base):
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
     __table_args__ = (
         UniqueConstraint('title', 'year', 'type_', 'state_id', 'county_id', name='_contest_uc'),
-        Index('ix_contest_title_year', 'title', 'year'),
+        Index('ix_contest_year', 'title', 'year'),
     )
 
 class Result(Base):
@@ -327,7 +327,7 @@ class TableStructure(Base):
     """
     __tablename__ = 'table_structures'
     id = Column(Integer, primary_key=True)
-    contest_title = Column(String, nullable=False, index=True)
+    contest = Column(String, nullable=False, index=True)
     headers = Column(Text, nullable=False)
     context = Column(Text, nullable=False)
     confirmed_by_user = Column(Boolean, default=False)
@@ -335,7 +335,7 @@ class TableStructure(Base):
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     def __repr__(self):
-        return f"<TableStructure(id={self.id}, contest_title={self.contest_title})>"
+        return f"<TableStructure(id={self.id}, contest={self.contest})>"
 
 class BatchMetadata(Base):
     """
@@ -379,7 +379,7 @@ class WarehouseElectionResult(Base):
     batch_id = Column(UUID(as_uuid=True), ForeignKey('batch_metadata.batch_id'), nullable=False)
     state = Column(String)
     county = Column(String)
-    contest_title = Column(String)
+    contest = Column(String)
     candidate = Column(String)
     party = Column(String)
     votes = Column(Integer)
@@ -389,7 +389,7 @@ class WarehouseElectionResult(Base):
     metastats = Column(JSONB, default=dict)
 
     def __repr__(self):
-        return f"<WarehouseElectionResult(id={self.id}, contest_title={self.contest_title}, candidate={self.candidate})>"
+        return f"<WarehouseElectionResult(id={self.id}, contest={self.contest}, candidate={self.candidate})>"
 
 class EmbeddingCache(Base):
     """

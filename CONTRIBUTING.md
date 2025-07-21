@@ -220,12 +220,12 @@ python webapp/Smart_Elections_Parser_Webapp.py
 - **Required:** Export a `parse(page, html_context)` function that returns:
 
   ```python
-  return headers, data_rows, contest_title, metadata
+  return headers, data_rows, contest, metadata
   ```
 
   - `headers`: List of column headers
   - `data_rows`: List of row dicts or lists
-  - `contest_title`: String describing the contest/race
+  - `contest`: String describing the contest/race
   - `metadata`: Dict with at least `state`, `county`, and `race` (if available)
 
 - **Optional:** Export `list_available_contests(page)` if the site supports user contest selection.
@@ -242,13 +242,13 @@ def parse(page, html_context):
     # Optionally prompt user for contest if needed
     # contest = prompt_user_input("Select contest: ")
     headers, data = extract_table_data(page)
-    contest_title = "Some Contest"
+    contest = "Some Contest"
     metadata = {
         "state": html_context.get("state", "Unknown"),
         "county": html_context.get("county", "Unknown"),
-        "race": contest_title
+        "race": contest
     }
-    return headers, data, contest_title, metadata
+    return headers, data, contest, metadata
 ```
 
 ---
@@ -257,7 +257,7 @@ def parse(page, html_context):
 
 - Add a new file in `handlers/formats/` (e.g., `csv_handler.py`, `pdf_handler.py`).
 - Export a `parse(page, html_context)` or `parse(file_path, html_context)` function.
-- Return the same `(headers, data, contest_title, metadata)` tuple.
+- Return the same `(headers, data, contest, metadata)` tuple.
 - Register your handler in `utils/format_router.py`.
 
 ---
