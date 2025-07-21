@@ -2,9 +2,10 @@ from .html_election_parser import main
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import orjson
-from .utils.shared_logger import SharedLogger
+from .utils.shared_logger import SharedLogger, RichConsoleProxy
 from .utils.user_prompt import UserPrompt
 prompt = UserPrompt()
+console = RichConsoleProxy()
 logger = SharedLogger()
 # Global cancellation flag (could be improved for multi-user)
 
@@ -60,6 +61,9 @@ def process_urls_for_web(
 
     # Mode-aware prompt and output functions
     if mode == "webapp":
+        logger.set_mode("webapp")
+        logger.set_format("json")
+        prompt.set_mode("webapp")
         def prompt_func(message):
             return prompt.prompt_user(message, session_id=session_id, timeout=300)
         def output_func(msg):
@@ -70,11 +74,14 @@ def process_urls_for_web(
                 except Exception:
                     msg = str(msg)
             logger.info(msg, context={"session_id": session_id})
-    else:  # CLI mode
+    else:
+        logger.set_mode("cli")
+        logger.set_format("plain")
+        prompt.set_mode("cli")
         def prompt_func(message):
-            return input(message)
+            return console.input(message)
         def output_func(msg):
-            print(msg)
+            console.print(msg)
 
     try:
         if urls is None:
