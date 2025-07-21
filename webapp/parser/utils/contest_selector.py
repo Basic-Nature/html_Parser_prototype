@@ -23,7 +23,7 @@ def extract_year_from_title(title) -> Optional[int]:
     if not years:
         return None
     # Lowercase title for type search
-    title_lower = title.lower()
+    title_lower = (title or "").lower()
     # Find all valid types and their positions
     type_positions = []
     for t in ELECTION_TYPES:
@@ -56,36 +56,36 @@ def infer_election_type(title, context, contest, all_contests, coordinator) -> O
     """
     if not title:
         return None
-    title_lower = title.lower()
+    title_lower = (title or "").lower()
     # 1. Regex for common election types
     regex_types = re.findall(r"\b(general|primary|special|runoff|municipal|presidential|school|bond|proposition|referendum)\b", title_lower)
     if regex_types:
-        return regex_types[0].capitalize()
+        return (regex_types[0] or "").capitalize()
     # 2. Fuzzy match against ELECTION_TYPES
     close = get_close_matches(title_lower, [(t or "").lower() for t in ELECTION_TYPES], n=1, cutoff=0.8)
     if close:
         return close[0].capitalize()
     # 3. Use ML/NER
     if coordinator:
-        ents = coordinator.extract_entities(title)
+        ents = (coordinator or ContextCoordinator()).extract_entities(title)
         for ent, label in ents:
             if label == "EVENT" and (ent or "").lower() in [(et or "").lower() for et in ELECTION_TYPES]:
                 return ent.capitalize()
     # 4. Context clues: if context has a type, use it
-    if context and context.get("type_"):
-        return context["type_"].capitalize()
+    if context and (context or {}).get("type_"):
+        return (context["type_"] or "").capitalize()
     # 5. If contest has a date, and it matches a known general/primary election date, infer type
     # (You can expand this with a lookup table of known election dates if available)
     # 6. Most common type among all contests for this year/county
-    year = contest.get("year")
-    county = contest.get("county")
+    year = (contest or {}).get("year")
+    county = (contest or {}).get("county")
     type_counts = defaultdict(int)
     for c in all_contests:
-        if c.get("year") == year and c.get("county") == county and c.get("type_"):
-            type_counts[c["type_"].lower()] += 1
+        if (c or {}).get("year") == year and ((c or {}).get("county") or "").lower() == (county or "").lower() and ((c or {}).get("type_") or "").lower():
+            type_counts[(c["type_"] or "").lower()] += 1
     if type_counts:
         most_common = max(type_counts.items(), key=lambda x: x[1])[0]
-        return most_common.capitalize()
+        return (most_common or "").capitalize()
     return None
 
 def fuzzy_county_match(contest_county, norm_county, known_county_to_precincts) -> bool:
@@ -97,7 +97,7 @@ def fuzzy_county_match(contest_county, norm_county, known_county_to_precincts) -
         return True
     # Fuzzy match against parent county and precincts
     all_names = [normalize_county_name(norm_county)]
-    for parent_county, precincts in known_county_to_precincts.items():
+    for parent_county, precincts in (known_county_to_precincts or {}).items():
         if normalize_county_name(parent_county) == norm_county:
             all_names += [normalize_county_name(d) for d in precincts]
     matches = get_close_matches(contest_county_norm, all_names, n=1, cutoff=0.85)
@@ -113,7 +113,7 @@ def fuzzy_county_match(contest_county, norm_county, known_county_to_precincts) -
 
 def normalize_race_name(name) -> str:
     import re
-    return re.sub(r"\W+", "", name.strip().lower()) if name else ""
+    return re.sub(r"\W+", "", (name or "").strip().lower()) if name else ""
 
 def normalize_contest_title(title: str) -> str:
     if not title:
@@ -196,7 +196,7 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
     for (year, ctype), items in sorted(grouped.items()):
         logger.info(f"[bold cyan]Year: {year or 'Unknown'}, Type: {ctype or 'Unknown'}[/bold cyan]")
         for idx, c in items:
-            logger.info(f"  [{idx}] {c.get('title', '')}")
+            logger.info(f"  [{idx}] {(c or {}).get('title', '')}")
     try:
         choice = prompt.prompt_input(
             "[PROMPT] Enter contest indices (comma-separated), 'all', 'skip', or leave blank to skip: ",
@@ -227,8 +227,8 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
     # Log user feedback for ML improvement
     logger.debug(f"norm_state: {context.get('state')}, norm_county: {context.get('county')}, year: {context.get('year')}")
     for c in selected:
-        logger.debug(f"Contest: {c.get('title', '')}, state: {c.get('state', '')}, county: {c.get('county', '')}, year: {c.get('year', '')}")
-        coordinator.submit_user_feedback("contest", "contest_title", c.get("title", ""), context)
+        logger.debug(f"Contest: {(c or {}).get('title', '')}, state: {(c or {}).get('state', '')}, county: {(c or {}).get('county', '')}, year: {(c or {}).get('year', '')}")
+        coordinator.submit_user_feedback("contest", "contest_title", (c or {}).get("title", ""), context)
     return selected
 
 def ensure_contest_title(contest) -> Dict[str, Any]:
@@ -279,15 +279,15 @@ def select_contest(
     # --- Fill in missing year/type from title using ML/NER ---
     for c in contests:
         # Fill year
-        if not c.get("year"):
-            year_from_title = extract_year_from_title(c.get("title", ""))
+        if not (c or {}).get("year"):
+            year_from_title = extract_year_from_title((c or {}).get("title", ""))
             if year_from_title:
                 c["year"] = year_from_title
         # Fill type_
         found_type_ = None
-        if not c.get("type_"):
+        if not (c or {}).get("type_"):
             inferred_type = infer_election_type(
-                c.get("title", ""),
+                (c or {}).get("title", ""),
                 context,
                 c,
                 contests,
@@ -296,7 +296,7 @@ def select_contest(
             if inferred_type:
                 c["type_"] = inferred_type
                 # Try ML/NER
-                ents = coordinator.extract_entities(c.get("title", "")) if coordinator else []
+                ents = coordinator.extract_entities((c or {}).get("title", "")) if coordinator else []
                 for ent, label in ents:
                     if label == "EVENT" and (ent or "").lower() in [(et or "").lower() for et in ELECTION_TYPES]:
                         found_type_ = (ent or "").lower()
@@ -305,8 +305,8 @@ def select_contest(
         if found_type_:
             c["type_"] = found_type_.capitalize()
         # PATCH: Fallback: if still missing, log and set to 'Unknown'
-        if not c.get("type_"):
-            logger.warning(f"[CONTEST SELECTOR] Could not infer type for contest: {c.get('title', '')}")
+        if not (c or {}).get("type_"):
+            logger.warning(f"[CONTEST SELECTOR] Could not infer type for contest: {(c or {}).get('title', '')}")
             c["type_"] = "Unknown"
 
     context = {
@@ -326,8 +326,8 @@ def select_contest(
     fallback_contests = []
     for c in contests:
         skip_reason = None
-        contest_state = c.get("state", "")
-        title = c.get("title")
+        contest_state = (c or {}).get("state", "")
+        title = (c or {}).get("title", "")
         title_norm = (title or "").strip().lower()
 
         # Skip noisy/generic patterns
@@ -335,15 +335,15 @@ def select_contest(
             skip_reason = "empty/generic title"
         elif any(pat in title_norm for pat in ["unofficial results", "summary", "results by election district"]):
             skip_reason = "noisy pattern"
-        elif not c.get("year"):
+        elif not (c or {}).get("year"):
             skip_reason = "missing year"
-        elif not c.get("type_"):
+        elif not (c or {}).get("type_"):
             skip_reason = "missing type_"
-        elif not c.get("state"):
+        elif not (c or {}).get("state"):
             skip_reason = "missing state"
-        elif not c.get("county"):
+        elif not (c or {}).get("county"):
             skip_reason = "missing county"
-        elif not fuzzy_county_match(c.get("county", ""), norm_county, known_county_to_precincts):
+        elif not fuzzy_county_match((c or {}).get("county", ""), norm_county, known_county_to_precincts):
             skip_reason = "county mismatch"
         elif norm_state and normalize_state_name(contest_state) != norm_state:
             skip_reason = "state mismatch"
@@ -357,7 +357,7 @@ def select_contest(
 
     # If ambiguous county matches, prompt user
     if not filtered_contests and fallback_contests:
-        ambiguous_counties = set(c.get("county", "") for c in fallback_contests)
+        ambiguous_counties = set((c or {}).get("county", "") for c in fallback_contests)
         if len(ambiguous_counties) > 1:
             logger.warning(f"[COUNTY AMBIGUITY] Multiple possible counties found: {ambiguous_counties}")
             try:
@@ -369,7 +369,7 @@ def select_contest(
                     header="COUNTY SELECTION"
                 ).strip().lower()
                 if choice and choice != "all":
-                    filtered_contests = [c for c in fallback_contests if normalize_county_name(c.get("county", "")) == normalize_county_name(choice)]
+                    filtered_contests = [c for c in fallback_contests if normalize_county_name((c or {}).get("county", "")) == normalize_county_name(choice)]
                 else:
                     filtered_contests = fallback_contests
             except PromptCancelled:
@@ -386,8 +386,8 @@ def select_contest(
     unique_contests = []
     seen = set()
     for c in filtered_contests:
-        norm_title = normalize_contest_title(c.get("title", "") or "")
-        key = ((c.get("year") or ""), (c.get("type_") or ""), norm_title)
+        norm_title = normalize_contest_title((c or {}).get("title", "") or "")
+        key = (((c or {}).get("year") or ""), ((c or {}).get("type_") or ""), norm_title)
         if key not in seen:
             unique_contests.append(c)
             seen.add(key)
@@ -424,7 +424,7 @@ def select_contest(
             label = f"{year_val or 'Unknown'} {etype or 'Unknown'}"
         logger.info(f"[bold cyan]{label.strip()}[/bold cyan]")
         for c in contests_in_group:
-            logger.info(f"  [{idx}] {c.get('title', '')}")
+            logger.info(f"  [{idx}] {(c or {}).get('title', '')}")
             contest_indices.append(c)
             idx += 1
     logger.debug(f"[DEBUG] Number of contests displayed: {idx}")

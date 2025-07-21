@@ -5,10 +5,11 @@ import os
 import platform
 import re
 import time
+import numpy as np
 from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..utils.user_prompt import UserPrompt
 from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
-from typing import TYPE_CHECKING, Optional, Generator, Any
+from typing import TYPE_CHECKING, Optional, Generator, Any, Iterable
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
@@ -17,6 +18,216 @@ assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
 console = RichConsoleProxy()   
 prompt = UserPrompt()
 logger = SharedLogger()
+
+def safe_append_cached_segment(lib, seg_hash, user_label) -> None:
+    """
+    Safely append a segment to lib['cached_segments'].
+    Ensures lib is a dict, 'cached_segments' is a list, and avoids duplicates.
+    """
+    if not isinstance(lib, dict):
+        return
+    # Ensure 'cached_segments' exists and is a list
+    if "cached_segments" not in lib or not isinstance(lib["cached_segments"], list):
+        lib["cached_segments"] = []
+    # Avoid duplicate segment_hash
+    if any(s.get("segment_hash") == seg_hash for s in lib["cached_segments"] if isinstance(s, dict)):
+        return
+    lib["cached_segments"].append({
+        "segment_hash": seg_hash,
+        "ml_label": user_label,
+    })
+
+def safe_append(lst, value) -> None:
+    """
+    Safely append a value to a list. If lst is not a list, do nothing.
+    """
+    if isinstance(lst, list):
+        lst.append(value)
+
+def safe_update(dct, updates) -> None:
+    """
+    Safely update a dict with another dict. If dct is not a dict, do nothing.
+    """
+    if isinstance(dct, dict) and isinstance(updates, dict):
+        dct.update(updates)
+
+def safe_extend(lib: dict, key: str, values: Iterable[dict]) -> None:
+    """
+    Safely extend a list at lib[key] with values.
+    Ensures lib is a dict, lib[key] is a list, and values is an iterable (but not a string/bytes).
+    Filters out None and non-dict items for safety.
+    """
+    import collections.abc
+    if not isinstance(lib, dict):
+        return
+    if key not in lib or not isinstance(lib[key], list):
+        lib[key] = []
+    # Check values is an iterable but not a string/bytes
+    if values is None or isinstance(values, (str, bytes)):
+        return
+    try:
+        if not isinstance(values, collections.abc.Iterable):
+            return
+        filtered = [v for v in values if isinstance(v, dict)]
+        if filtered:
+            # Double-check type before extending, and use a helper if you want
+            def _safe_list_extend(lst, items) -> None:
+                if isinstance(lst, list) and isinstance(items, list):
+                    lst.extend(items)
+            try:
+                _safe_list_extend(lib[key], filtered)
+            except Exception as e:
+                logger.error(f"[safe_extend] Failed to extend list at key '{key}': {e}")
+    except Exception as e:
+        logger.error(f"[safe_extend] Exception during extend: {e}")
+
+def convert_ndarrays(obj) -> Any:
+    if isinstance(obj, dict):
+        return {k: convert_ndarrays(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_ndarrays(v) for v in obj]
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
+
+def _sanitize_log_filename(name: str) -> str:
+    return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
+
+def _normalize_html_for_hash(html: str, maxlen: int = 256) -> str:
+    html = re.sub(r'\s(_ngcontent-[^=]+|ng-version|ng-star-inserted|_nghost-[^=]+|_ngcontent-[^=]+|aria-checked|tabindex|style|data-[^=]+|id|class)="[^"]*"', '', html)
+    html = re.sub(r'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}', '', html)
+    html = re.sub(r'\d{1,2}/\d{1,2}/\d{2,4}', '', html)
+    html = re.sub(r'\d{1,2}:\d{2}(:\d{2})? ?(am|pm|AM|PM)?', '', html)
+    html = re.sub(r'\s+', ' ', html.strip())
+    return html[:maxlen]
+
+def clean_cache_inplace(cache) -> int:
+    if isinstance(cache, dict):
+        keys_to_remove = [k for k, v in cache.items() if not isinstance(v, dict)]
+        for k in keys_to_remove:
+            del cache[k]
+        return len(keys_to_remove)
+    elif isinstance(cache, list):
+        original_len = len(cache)
+        cache[:] = [v for v in cache if isinstance(v, dict)]
+        return original_len - len(cache)
+    return 0
+
+def _to_json_safe(obj) -> Any:
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, dict):
+        return {k: _to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_json_safe(v) for v in obj]
+    return obj
+
+def _keyword_in_text(text, keywords) -> bool:
+    """Check if any keyword is present in the text (case-insensitive, word-boundary)."""
+    text = (text or "").lower()
+    for kw in keywords:
+        if re.search(rf'\b{re.escape((kw or "").lower())}\b', text):
+            return True
+    return False
+
+def safe_lower(val) -> str:
+    try:
+        return val.lower() if isinstance(val, str) else str(val).lower()
+    except Exception:
+        return ""
+    
+def safe_encode(val, encoding="utf-8") -> bytes:
+    """Safely encode a string to bytes."""
+    if isinstance(val, bytes):
+        return val
+    if isinstance(val, str):
+        return val.encode(encoding, errors="replace")
+    return str(val).encode(encoding, errors="replace")
+    
+def safe_startswith(val, prefix) -> bool:
+    try:
+        return val.startswith(prefix) if isinstance(val, str) else False
+    except Exception:
+        return False
+
+def safe_add(container, item) -> bool:
+    """
+    Safely add an item to a set-like container.
+    Returns True if added, False otherwise.
+    """
+    def _safe_add_call(c: set, i: Any) -> bool:
+        try:
+            c.add(i)
+            return True
+        except Exception as e:
+            logger.error(f"[safe_add] .add() failed: {e}")
+            return False
+    if container is not None and hasattr(container, "add"):
+        return _safe_add_call(container, item)
+    return False
+
+def safe_items(obj) -> Iterable:
+    """
+    Safely get items from a dict-like object.
+    Returns an empty list if obj is not a dict or .items() fails.
+    """
+    def _safe_items_call(o: dict) -> Iterable:
+        try:
+            return o.items()
+        except Exception as e:
+            logger.error(f"[safe_items] .items() failed: {e}")
+            return []
+    if isinstance(obj, dict):
+        return _safe_items_call(obj)
+    # Try to convert to dict if possible
+    try:
+        return _safe_items_call(dict(obj))
+    except Exception:
+        return []
+
+def safe_model_encode(model, text: str | list[str], **kwargs: Any) -> Any:
+    """Safely encode text or list of text using a model, handling edge cases."""
+
+    def _safe_model_encode_call(val) -> Any:
+        """Helper to call model.encode with robust error handling."""
+        try:
+            return model.encode(val, **kwargs)
+        except Exception as e:
+            logger.error(f"[safe_model_encode] model.encode failed for input {repr(val)[:80]}: {e}")
+            return None
+
+    # If batch (list/tuple), pass through
+    if isinstance(text, (list, tuple)):
+        result = _safe_model_encode_call(text)
+        if result is not None:
+            return result
+        # Fallback: try to encode each item individually
+        try:
+            return [_safe_model_encode_call(t) for t in text]
+        except Exception as e2:
+            logger.error(f"[safe_model_encode] Batch encode fallback also failed: {e2}")
+            return [None for _ in text]
+    # If single string, try as string, then as [string]
+    if not isinstance(text, str):
+        text = str(text)
+    result = _safe_model_encode_call(text)
+    if result is not None:
+        return result
+    # Fallback: try as [string]
+    try:
+        batch_result = _safe_model_encode_call([text])
+        if batch_result is not None and isinstance(batch_result, (list, tuple)) and batch_result:
+            return batch_result[0]
+    except Exception as e2:
+        logger.error(f"[safe_model_encode] Batch fallback failed: {e2}")
+    # Extra safety: try to encode each character (very rare fallback)
+    try:
+        logger.error(f"[safe_model_encode] All string encode attempts failed. Trying per-char fallback.")
+        return [_safe_model_encode_call([c])[0] for c in text if isinstance(c, str)]
+    except Exception as e3:
+        logger.error(f"[safe_model_encode] All encode attempts failed: {e3}")
+        return None
 
 def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
     """
