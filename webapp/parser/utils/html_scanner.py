@@ -1330,6 +1330,7 @@ def scan_html_for_context(
     Main pipeline entry: Efficient, dynamic, and feedback-driven HTML scanner.
     Leverages ContextCoordinator for context, ML model, and feedback logs.
     """
+
     def extract_all_segment_html(html: str) -> List[str]:
         try:
             tree = HTMLParser(html)
@@ -1337,38 +1338,115 @@ def scan_html_for_context(
         except Exception:
             return []
 
-    def diagnostics_and_filter(data, field, max_title_len=500) -> List[Dict[str, Any]]:
-        if data:
-            avg_len = sum(len(str((d or {}).get(field[0] if isinstance(field, list) else field, ""))) for d in data) / len(data)
-            logger.info(f"[{field}] Extracted {len(data)} items, avg field length: {avg_len:.1f}")
-        else:
+    def diagnostics_and_filter(
+        data: List[dict],
+        field,
+        max_title_len: int = 500,
+        min_title_len: int = 2,
+        allow_duplicates: bool = False,
+        allow_empty: bool = False,
+        allow_numeric_only: bool = False,
+        allow_special_only: bool = False,
+        log_sample_count: int = 5,
+        dedupe_on: str = None,
+        custom_validator=None,
+        parallel: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Advanced diagnostics and filtering for extracted data.
+        - Handles single or multiple fields.
+        - Filters out empty, too short, too long, numeric-only, or special-char-only fields.
+        - Optionally deduplicates on a field.
+        - Allows custom validation logic.
+        - Logs detailed diagnostics and samples of filtered items.
+        - Optionally runs in parallel for large datasets.
+        """
+        if not isinstance(data, list):
+            logger.warning(f"[diagnostics_and_filter] Input data is not a list: {type(data)}")
+            return []
+
+        if not data:
             logger.warning(f"[{field}] No valid items extracted after validation.")
+            return []
+
+        def is_numeric_only(val):
+            return isinstance(val, str) and val.strip().isdigit()
+
+        def is_special_only(val):
+            return isinstance(val, str) and bool(re.fullmatch(r'[\W_]+', val.strip()))
+
+        def is_empty(val):
+            return val is None or (isinstance(val, str) and not val.strip())
+
+        def get_fields(d):
+            return field if isinstance(field, list) else [field]
 
         def filter_item(d):
-            fields = field if isinstance(field, list) else [field]
-            for f in fields:
+            skip_reason = None
+            for f in get_fields(d):
                 val = (d or {}).get(f, "")
-                if val is None or (isinstance(val, str) and len(val.strip()) == 0) or len(str(val)) > max_title_len:
-                    logger.warning(f"[FILTER] Skipping item due to missing or invalid '{f}': {d}")
-                    return (d, f"missing or invalid {f}")
-            return (d, None)
+                if is_empty(val):
+                    if not allow_empty:
+                        skip_reason = f"empty {f}"
+                        break
+                if isinstance(val, str) and len(val.strip()) < min_title_len:
+                    skip_reason = f"too short {f}"
+                    break
+                if isinstance(val, str) and len(val.strip()) > max_title_len:
+                    skip_reason = f"too long {f}"
+                    break
+                if is_numeric_only(val) and not allow_numeric_only:
+                    skip_reason = f"numeric only {f}"
+                    break
+                if is_special_only(val) and not allow_special_only:
+                    skip_reason = f"special chars only {f}"
+                    break
+                if custom_validator and not custom_validator(val, d):
+                    skip_reason = f"custom validator failed for {f}"
+                    break
+            # Dedupe
+            if not skip_reason and dedupe_on:
+                dedupe_val = (d or {}).get(dedupe_on)
+                if dedupe_val in seen:
+                    skip_reason = f"duplicate {dedupe_on}"
+                else:
+                    seen.add(dedupe_val)
+            return (d, skip_reason)
 
         filtered = []
         filtered_out = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            results = list(executor.map(filter_item, data))
+        seen = set()
+
+        # Parallel filtering for large datasets
+        if parallel and len(data) > 1000:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                results = list(executor.map(filter_item, data))
+        else:
+            results = [filter_item(d) for d in data]
+
         for d, reason in results:
             if reason is not None:
                 filtered_out.append((d, reason))
             else:
                 filtered.append(d)
 
+        # Logging
+        if filtered:
+            try:
+                avg_len = sum(
+                    len(str((d or {}).get(get_fields(d)[0], ""))) for d in filtered
+                ) / len(filtered)
+            except Exception:
+                avg_len = 0
+            logger.info(f"[{field}] Extracted {len(filtered)} items, avg field length: {avg_len:.1f}")
+        else:
+            logger.warning(f"[{field}] No items passed all filters.")
+
         if filtered_out:
-            logger.warning(f"[{field}] Filtered out {len(filtered_out)} items due to missing/invalid fields.")
-            for d, reason in filtered_out[:5]:
+            logger.warning(f"[{field}] Filtered out {len(filtered_out)} items due to validation.")
+            for d, reason in filtered_out[:log_sample_count]:
                 logger.warning(f"  [Filtered] {reason}: {str(d)[:100]}...")
-        if not filtered:
-            logger.warning(f"[{field}] No items with usable field(s) for downstream output.")
+
         return filtered
 
     def propagate_year_type(items, year, type_, year_field="year", type_field="type_") -> None:
@@ -1496,7 +1574,7 @@ def scan_html_for_context(
                         "segment_hash": seg["segment_hash"],
                     })
         contests = [c for c in contests if c.get("title")]
-        context_result["contests"] = contests
+        context_result["contests"] = diagnostics_and_filter(contests, ["title", "year", "type_"])
 
         # --- Panels ---
         panels = []
@@ -1508,7 +1586,7 @@ def scan_html_for_context(
                     "panel_html": seg.get("raw_html", seg.get("html", "")),
                     "segment_hash": seg.get("segment_hash"),
                 })
-        context_result["panels"] = panels
+        context_result["panels"] = diagnostics_and_filter(panels, "panel_text")
 
         # --- Tables ---
         tables = []
@@ -1522,7 +1600,7 @@ def scan_html_for_context(
                     "type_": None,
                     "segment_hash": seg.get("segment_hash"),
                 })
-        context_result["tables"] = tables
+        context_result["tables"] = diagnostics_and_filter(tables, "table_text")
 
         # --- Candidate Panels ---
         candidate_panels = []
@@ -1536,7 +1614,7 @@ def scan_html_for_context(
                     "type_": None,
                     "segment_hash": seg.get("segment_hash"),
                 })
-        context_result["candidate_panels"] = candidate_panels
+        context_result["candidate_panels"] = diagnostics_and_filter(candidate_panels, "candidate_panel_text")
 
         # --- Location Panels ---
         location_panels = []
@@ -1551,7 +1629,7 @@ def scan_html_for_context(
                     "segment_hash": seg.get("segment_hash"),
                     "county": context_result.get("county"),
                 })
-        context_result["location_panels"] = location_panels
+        context_result["location_panels"] = diagnostics_and_filter(location_panels, "location_panel_text")
 
         # --- Headings ---
         headings = []
@@ -1564,7 +1642,7 @@ def scan_html_for_context(
                     "segment_hash": seg.get("segment_hash"),
                     "heading_type": None,
                 })
-        context_result["headings"] = headings
+        context_result["headings"] = diagnostics_and_filter(headings, "heading_text")
 
         # --- Ballot Types ---
         ballot_types = []
@@ -1578,7 +1656,7 @@ def scan_html_for_context(
                     "type_": None,
                     "segment_hash": seg.get("segment_hash"),
                 })
-        context_result["ballot_types"] = ballot_types
+        context_result["ballot_types"] = diagnostics_and_filter(ballot_types, "ballot_types_text")
 
         # --- Results Timestamps ---
         results_timestamps = []
@@ -1590,7 +1668,7 @@ def scan_html_for_context(
                     "timestamp_html": seg.get("raw_html", seg.get("html", "")),
                     "segment_hash": seg.get("segment_hash"),
                 })
-        context_result["results_timestamps"] = results_timestamps
+        context_result["results_timestamps"] = diagnostics_and_filter(results_timestamps, "timestamp_text")
 
         # --- Party Labels ---
         party_labels = []
@@ -1602,7 +1680,7 @@ def scan_html_for_context(
                     "party_label_html": seg.get("raw_html", seg.get("html", "")),
                     "segment_hash": seg.get("segment_hash"),
                 })
-        context_result["party_labels"] = party_labels
+        context_result["party_labels"] = diagnostics_and_filter(party_labels, "party_label_text")
 
         # --- Vote Methods ---
         vote_methods = []
@@ -1614,13 +1692,27 @@ def scan_html_for_context(
                     "vote_method_html": seg.get("raw_html", seg.get("html", "")),
                     "segment_hash": seg.get("segment_hash"),
                 })
-        context_result["vote_methods"] = vote_methods
+        context_result["vote_methods"] = diagnostics_and_filter(vote_methods, "vote_method_text")
 
         # --- Propagate best year/type to all sections ---
         best_year = next((c.get("year") for c in contests if c.get("year")), None)
         best_type = next((c.get("type_") for c in contests if c.get("type_")), None)
         for section in ["tables", "candidate_panels", "location_panels", "ballot_types"]:
             propagate_year_type(context_result.get(section, []), best_year, best_type)
+
+        # Defensive: Ensure all lists are present and are lists, even if empty
+        for key in [
+            "contests", "panels", "tables", "candidate_panels", "location_panels",
+            "headings", "ballot_types", "results_timestamps", "party_labels", "vote_methods"
+        ]:
+            if key not in context_result or not isinstance(context_result[key], list):
+                context_result[key] = []
+
+        # Defensive: If any required section is empty, log a warning (for downstream [0] access)
+        required_sections = ["contests", "panels", "tables", "candidate_panels", "location_panels"]
+        for section in required_sections:
+            if not context_result.get(section):
+                logger.warning(f"[DOM_PARTS] No items found in '{section}'. Downstream code should check for empty lists before accessing [0].")
 
         # --- 4. ML-driven DOM pattern clustering and tagging ---
         pattern_matches = []
@@ -1789,6 +1881,16 @@ def scan_html_for_context(
         "error": context_result.get("error", None),
         "url": context_result.get("url", None),
     }
+    # Defensive: Ensure all dom_parts lists are lists, even if empty
+    for key in [
+        "contests", "panels", "tables", "candidate_panels", "location_panels",
+        "headings", "ballot_types", "results_timestamps", "party_labels", "vote_methods",
+        "pattern_kb_matches", "segments_needing_review", "selector_log",
+        "tagged_segments", "tagged_segments_with_attrs"
+    ]:
+        if key not in dom_parts or not isinstance(dom_parts[key], list):
+            dom_parts[key] = []
+
     if not validate_dom_parts(dom_parts):
         logger.error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
 

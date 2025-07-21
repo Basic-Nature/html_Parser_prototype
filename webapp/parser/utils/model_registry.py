@@ -28,6 +28,7 @@ try:
     import spacy
 except ImportError:
     spacy = None
+    Language = None
 logger = SharedLogger()
 _lock = threading.Lock()
 
@@ -113,7 +114,7 @@ class ContestFieldClassifier(nn.Module):
         return year_logits, state_logits, county_logits, type_logits
 
     @classmethod
-    def load_from_checkpoint(cls, path):
+    def load_from_checkpoint(cls, path) -> "ContestFieldClassifier":
         # Load vocab sizes dynamically
         model = cls(
             vocab_size=max(WORD2IDX.values(), default=1) + 1,
@@ -169,9 +170,57 @@ class ContestFieldClassifier(nn.Module):
             }
             return result
 
+class CandidateClassifier(nn.Module):
+    """
+    Predicts candidate from input text.
+    Returns predictions with confidence and explanations.
+    """
+    def __init__(self, vocab_size, embed_dim, num_candidates):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
+        self.encoder = nn.LSTM(embed_dim, embed_dim, batch_first=True, bidirectional=True)
+        self.candidate_head = nn.Linear(embed_dim * 2, num_candidates)
+
+    def forward(self, x):
+        emb = self.embedding(x)
+        _, (h_n, _) = self.encoder(emb)
+        h = torch.cat([h_n[0], h_n[1]], dim=-1)  # (batch, embed_dim*2)
+        candidate_logits = self.candidate_head(h)
+        return candidate_logits
+
+    @classmethod
+    def load_from_checkpoint(cls, path, vocab_size, embed_dim, num_candidates):
+        model = cls(vocab_size, embed_dim, num_candidates)
+        model.load_state_dict(torch.load(path, map_location="cpu"))
+        model.eval()
+        return model
+
+    def predict(self, text, tokenizer, idx2candidate):
+        """
+        Predict candidate from text.
+        Args:
+            text: str, input text
+            tokenizer: function, returns torch tensor of token indices
+            idx2candidate: dict, maps index to candidate string
+        Returns:
+            dict: {"value": ..., "confidence": ..., "explanation": ...}
+        """
+        x = tokenizer(text)
+        with torch.no_grad():
+            logits = self.forward(x)
+            probs = F.softmax(logits, dim=1).squeeze()
+            idx = int(probs.argmax())
+            value = idx2candidate.get(idx, None)
+            confidence = float(probs[idx])
+            explanation = f"Predicted candidate from text, top prob: {confidence:.2f}"
+            return {
+                "value": value,
+                "confidence": confidence,
+                "explanation": explanation
+            }
 # --- ModelRegistry Integration ---
 
-class ModelRegistry:
+class ModelRegistry(object):
     """
     Centralized registry for ML/NLP models.
     Supports:
@@ -236,7 +285,7 @@ class ModelRegistry:
                 raise
 
     @classmethod
-    def get_torch_contest_model(cls):
+    def get_torch_contest_model(cls) -> "ContestFieldClassifier":
         if cls._torch_contest_model is None:
             model_path = cls._model_paths["torch_contest"]
             if not os.path.exists(model_path):
@@ -250,7 +299,7 @@ class ModelRegistry:
     _torch_candidate_model = None
 
     @classmethod
-    def get_torch_candidate_model(cls):
+    def get_torch_candidate_model(cls) -> "CandidateClassifier":
         """
         Loads and caches the torch-based CandidateClassifier model.
         Dynamically builds vocab from librarian.py if available.
@@ -277,8 +326,7 @@ class ModelRegistry:
             return None
 
         try:
-            # You must define CandidateClassifier similar to ContestFieldClassifier
-            from .models import CandidateClassifier  # Adjust import as needed
+            logger.info(f"Loading CandidateClassifier from {model_path}")
             model = CandidateClassifier.load_from_checkpoint(
                 model_path,
                 vocab_size=max(CANDIDATE2IDX.values(), default=1) + 1,
@@ -294,11 +342,11 @@ class ModelRegistry:
             return None
 
     @classmethod
-    def get_loaded_models_info(cls):
+    def get_loaded_models_info(cls) -> dict:
         return dict(cls._loaded_info)
 
     @classmethod
-    def _get_device(cls):
+    def _get_device(cls) -> str:
         if torch is not None and torch.cuda.is_available():
             logger.info("Using CUDA for model loading.")
             return "cuda"
@@ -345,7 +393,7 @@ class ModelRegistry:
                 return None
 
     @classmethod
-    def get_custom_model(cls, key: str, loader_func: Callable, *args, **kwargs):
+    def get_custom_model(cls, key: str, loader_func: Callable, *args, **kwargs) -> Any:
         with _lock:
             if key not in cls._custom_models:
                 logger.info(f"Loading custom model: {key}")
@@ -358,7 +406,10 @@ class ModelRegistry:
             return cls._custom_models[key]
 
     @classmethod
-    def reload_model(cls, model_type, model_name=None):
+    def reload_model(cls, model_type, model_name=None) -> None:
+        """
+        Reloads the specified model type and name.
+        """
         with _lock:
             if model_type == "sentence_transformer":
                 key_prefix = f"sentence_transformer:{model_name or 'default'}"
@@ -376,7 +427,7 @@ class ModelRegistry:
             logger.info(f"Reloaded model(s) of type: {model_type}")
 
     @classmethod
-    def clear_cache(cls):
+    def clear_cache(cls) -> None:
         with _lock:
             cls._models.clear()
             cls._nlp_models.clear()
@@ -385,11 +436,11 @@ class ModelRegistry:
             logger.info("Model registry cache cleared.")
 
     @classmethod
-    def set_model_path(cls, model_type, path):
+    def set_model_path(cls, model_type, path) -> None:
         cls._model_paths[model_type] = path
 
     @classmethod
-    def get_model_name(cls, model):
+    def get_model_name(cls, model) -> str:
         if hasattr(model, 'model_name_or_path'):
             return getattr(model, 'model_name_or_path')
         if hasattr(model, 'modules') and hasattr(model.modules[0], 'model_name_or_path'):

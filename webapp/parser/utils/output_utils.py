@@ -52,15 +52,19 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
         if not year or not str(year).isdigit() or len(str(year)) != 4:
             if coordinator:
                 years = coordinator.get_years()
-                if years:
+                if years and len(years) > 0:
                     year = years[0]
             if not year and feedback_context:
                 year = feedback_context.get("year", "")
         if not contests or (contests or "").lower() == "unknown":
             if coordinator:
-                contests = coordinator.get_contests()
-                if contests:
-                    contests = contests[0].get("title", "")
+                contests_list = coordinator.get_contests()
+                if contests_list and isinstance(contests_list, list) and len(contests_list) > 0:
+                    first_contest = contests_list[0]
+                    if isinstance(first_contest, dict):
+                        contests = first_contest.get("title", "")
+                    else:
+                        contests = str(first_contest)
             if not contests and feedback_context:
                 contests = feedback_context.get("contests", "")
         if year and contests:
