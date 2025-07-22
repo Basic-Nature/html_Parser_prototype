@@ -13,7 +13,8 @@ from ..utils.shared_logger import SharedLogger
 from ..utils.shared_logic import (
     safe_append_cached_segment, safe_append, safe_update, safe_extend,
     convert_ndarrays, _sanitize_log_filename, _normalize_html_for_hash, clean_cache_inplace,
-    _keyword_in_text, safe_lower, safe_encode, safe_startswith, safe_add, safe_items, safe_model_encode
+    _keyword_in_text, safe_lower, safe_encode, safe_startswith, safe_add, safe_items, safe_model_encode,
+    safe_get_first
 )
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, 
@@ -51,14 +52,31 @@ embedding_cache_hits = set()
 embedding_cache_misses = set()
 
 def robust_orjson_loads(val) -> Any:
+    """Safely decodes JSON using orjson, handling both bytes and str inputs."""
+    if val is None:
+        return None
+    if not isinstance(val, (bytes, str)):
+        raise TypeError(f"Expected bytes or str, got {type(val)}")
+    if not val:
+        return None
+    if isinstance(val, str) and not val.isascii():
+        # If the string is not ASCII, encode it to bytes first
+        val = val.encode("utf-8")
+    if not isinstance(val, bytes):
+        raise TypeError(f"Expected bytes, got {type(val)}") 
     if isinstance(val, bytes):
         return orjson.loads(val)
     elif isinstance(val, str):
-        return orjson.loads(val.encode("utf-8"))
+        return orjson.loads(safe_encode(val, "utf-8"))
     else:
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
 def _get_label_cache_path() -> str:
+    """Returns the path to the label cache file, ensuring it is safe and does not exceed OS limits."""
+    if not _LABEL_CACHE_FILENAME:
+        raise ValueError("Label cache filename cannot be empty")
+    if not isinstance(_LABEL_CACHE_FILENAME, str):
+        raise TypeError("Label cache filename must be a string")
     path = safe_cache_path(_LABEL_CACHE_FILENAME)
     if os.name == "nt" and len(os.path.abspath(path)) >= 260:
         import tempfile
@@ -68,7 +86,14 @@ def _get_label_cache_path() -> str:
     return path
 
 def _load_label_cache() -> Dict[str, Any]:
+    """Loads the label cache from disk, or initializes it if it doesn't exist."""
     global _LABEL_CACHE
+    if _LABEL_CACHE is not None:
+        return _LABEL_CACHE
+    if not os.path.exists(CACHE_DIR):
+        os.makedirs(CACHE_DIR, exist_ok=True)
+    if not os.path.isdir(CACHE_DIR):
+        raise ValueError(f"Cache directory {CACHE_DIR} is not a directory")
     path = _get_label_cache_path()
     if os.path.exists(path):
         try:
@@ -81,18 +106,46 @@ def _load_label_cache() -> Dict[str, Any]:
     return _LABEL_CACHE
 
 def _save_label_cache() -> None:
+    """Saves the label cache to disk."""
     global _LABEL_CACHE
+    if _LABEL_CACHE is None:
+        _LABEL_CACHE = _load_label_cache()
+    if not isinstance(_LABEL_CACHE, dict):
+        raise ValueError("Label cache must be a dictionary")
     path = _get_label_cache_path()
     with open(path, "wb") as f:
         f.write(orjson.dumps(_LABEL_CACHE, option=orjson.OPT_INDENT_2))
 
 def cache_segment_label(seg_hash, label) -> None:
+    """Caches a segment label by its hash."""
+    global _LABEL_CACHE
+    if _LABEL_CACHE is None:
+        _LABEL_CACHE = _load_label_cache()
     with _LABEL_CACHE_LOCK:
-        cache = _load_label_cache()
-        cache[seg_hash] = {"label": label, "timestamp": int(time.time())}
+        _LABEL_CACHE[seg_hash] = {"label": label, "timestamp": int(time.time())}
         _save_label_cache()
 
 def get_cached_segment_label(seg_hash) -> Optional[List[str]]:
+    """Retrieves a cached segment label by its hash."""
+    global _LABEL_CACHE
+    if _LABEL_CACHE is None:
+        _LABEL_CACHE = _load_label_cache()
+    if not seg_hash:
+        raise ValueError("Segment hash cannot be empty")
+    if not isinstance(seg_hash, str):
+        raise TypeError("Segment hash must be a string")
+    if not re.match(r"^[a-f0-9]{64}$", seg_hash):
+        raise ValueError("Segment hash must be a valid SHA-256 hash")
+    if seg_hash in _LABEL_CACHE:
+        entry = _LABEL_CACHE[seg_hash]
+        if isinstance(entry, dict) and "label" in entry:
+            return entry["label"]
+    # If not found in cache, check the file
+    path = _get_label_cache_path()
+    if not os.path.exists(path):
+        return None
+    if not os.path.isfile(path):
+        raise ValueError(f"Cache path {path} is not a file")
     with _LABEL_CACHE_LOCK:
         cache = _load_label_cache()
         entry = cache.get(seg_hash, {})
@@ -101,6 +154,14 @@ def get_cached_segment_label(seg_hash) -> Optional[List[str]]:
         return None
 
 def safe_cache_path(filename: str) -> str:
+    """Generates a safe cache file path, ensuring it does not escape the cache directory."""
+    if not filename:
+        raise ValueError("Filename cannot be empty")
+    if not isinstance(filename, str):
+        raise TypeError("Filename must be a string")
+    if not re.match(r"^[\w\-. ]+$", filename):
+        raise ValueError("Filename contains unsafe characters")
+    # Sanitize filename to prevent directory traversal or unsafe characters
     filename = _sanitize_log_filename(filename)
     cache_folder = CACHE_DIR
     # Defensive: fallback to temp if path too long
@@ -119,26 +180,111 @@ def safe_cache_path(filename: str) -> str:
     return full_path
 
 def safe_log_path(filename: str) -> str:
+    """Generates a safe log file path, ensuring it does not escape the log directory."""
+    if not filename:
+        raise ValueError("Filename cannot be empty")
+    if not isinstance(filename, str):
+        raise TypeError("Filename must be a string")
+    if not re.match(r"^[\w\-. ]+$", filename):
+        raise ValueError("Filename contains unsafe characters")
+    # Sanitize filename to prevent directory traversal or unsafe characters
     filename = _sanitize_log_filename(filename)
+    if not filename.endswith(".log"):
+        filename += ".log"
     log_folder = LOG_DIR
+    # Defensive: fallback to temp if path too long
+    if os.name == "nt" and len(os.path.abspath(os.path.join(log_folder, filename))) >= 240:
+        import tempfile
+        temp_path = os.path.join(tempfile.gettempdir(), filename)
+        logger.warning(f"[LOG] Path too long for Windows, using temp path: {temp_path}")
+        # Ensure temp dir exists
+        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        return temp_path
     os.makedirs(log_folder, exist_ok=True)
+    # Ensure log dir exists
+    if not os.path.exists(log_folder):
+        os.makedirs(log_folder)
     full_path = os.path.join(log_folder, filename)
+    # Ensure the log path does not escape the log directory
     if not os.path.abspath(full_path).startswith(os.path.abspath(log_folder)):
         raise ValueError("Unsafe log path detected!")
     return full_path
 
-def is_trivial_segment(seg) -> bool:
+def is_trivial_segment(seg, diagnostics=False, logger_instance=None) -> bool:
+    """
+    Determines if a segment is trivial (should be ignored for semantic processing).
+    Checks for empty, whitespace, HTML entities, tags, icons, comments, scripts, styles,
+    numeric-only, special-char-only, and other non-informative content.
+    Optionally logs diagnostics for audit/debug.
+    """
+    logger_obj = logger_instance or logger
     html = (seg or {}).get("html", "")
     tag = (seg or {}).get("tag", "")
-    if not html or not (html or "").strip():
-        return True
-    if tag in {"br", "hr", "wbr"} and not (html or "").strip():
-        return True
-    if (html or "").strip() in {"&nbsp;", "&#160;"}:
-        return True
     classes = [(c or "").lower() for c in (seg or {}).get("classes", [])]
-    if tag == "span" and len(classes) > 0 and all("icon" in cls for cls in classes) and not re.sub(r"<[^>]+>", "", html).strip():
+    attrs = (seg or {}).get("attrs", {}) or {}
+
+    # Empty or whitespace-only HTML
+    if not html or not html.strip():
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] Empty or whitespace HTML for tag={tag}")
         return True
+
+    # HTML entities or just tags
+    html_stripped = html.strip()
+    if html_stripped in {"&nbsp;", "&#160;"}:
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] HTML entity only for tag={tag}")
+        return True
+    if re.fullmatch(r"<[^>]+>", html_stripped):
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] Just a tag for tag={tag}")
+        return True
+
+    # Known trivial tags
+    if tag in {"br", "hr", "wbr"} and not html_stripped:
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] Known trivial tag: {tag}")
+        return True
+
+    # Icon-only spans
+    if tag == "span" and classes and all("icon" in cls for cls in classes) and not re.sub(r"<[^>]+>", "", html).strip():
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] Icon-only span for tag={tag}, classes={classes}")
+        return True
+
+    # Comments, scripts, styles
+    if re.search(r"<!--.*?-->", html, re.DOTALL):
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] HTML comment detected for tag={tag}")
+        return True
+    if re.search(r"<script.*?>.*?</script>", html, re.DOTALL) or re.search(r"<style.*?>.*?</style>", html, re.DOTALL):
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] Script or style block detected for tag={tag}")
+        return True
+
+    # Numeric-only or special-char-only segments
+    text_content = re.sub(r"<[^>]+>", "", html_stripped)
+    if text_content.isdigit():
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] Numeric-only content for tag={tag}")
+        return True
+    if bool(re.fullmatch(r'[\W_]+', text_content)):
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] Special-char-only content for tag={tag}")
+        return True
+
+    # Trivial by attribute (e.g., aria-hidden, display:none)
+    if attrs.get("aria-hidden") == "true" or "display:none" in attrs.get("style", ""):
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] aria-hidden or display:none for tag={tag}")
+        return True
+
+    # Defensive: very short text (1 char or less)
+    if len(text_content.strip()) <= 1:
+        if diagnostics:
+            logger_obj.info(f"[TRIVIAL] Very short content for tag={tag}")
+        return True
+
     return False
 
 def segment_identity_hash(segment) -> str:
@@ -186,54 +332,104 @@ def embedding_cache_hash(segment, model_id) -> str:
     base = tag + orjson.dumps(attrs_sorted, option=orjson.OPT_SORT_KEYS).decode() + html_norm + str(model_id)
     return hashlib.sha256(safe_encode(base, "utf-8")).hexdigest()
 
-def get_segment_embedding(model, segment, cache=None, cache_hits=None, cache_misses=None) -> Optional[np.ndarray]:
+def get_segment_embedding(
+    model,
+    segment,
+    cache=None,
+    cache_hits=None,
+    cache_misses=None,
+    diagnostics=False,
+    logger_instance=None
+) -> Optional[np.ndarray]:
+    """
+    Robustly computes or retrieves the embedding for a segment.
+    - Uses cache if available.
+    - Logs cache hits/misses and errors.
+    - Handles trivial/empty segments.
+    - Optionally logs timing and diagnostics.
+    """
+    logger_obj = logger_instance or logger
     model_id = getattr(model, 'name_or_path', str(model))
     identity = embedding_cache_hash(segment, model_id)
-    emb = get_embedding_from_memory(identity)
     if cache is not None:
         clean_cache_inplace(cache)
+    if is_trivial_segment(segment):
+        if diagnostics:
+            logger_obj.info(f"[EMBED] Skipping trivial segment: {identity}")
+        return None
+    emb = get_embedding_from_memory(identity)
     if emb is not None:
         safe_add(cache_hits, str(identity))
+        if diagnostics:
+            logger_obj.info(f"[EMBED] Cache hit for {identity}")
         return emb
-    text = (segment or {}).get("html", "")
     tag = (segment or {}).get("tag", "")
     attrs = " ".join([f"{k}={v}" for k, v in safe_items((segment or {}).get("attrs", {}))])
-    full_text = f"{tag} {attrs} {text}"
+    html = (segment or {}).get("html", "")
     try:
+        tree = HTMLParser(html)
+        text = tree.body.text(separator=" ", strip=True) if tree.body else tree.text(separator=" ", strip=True)
+    except Exception:
+        text = ""
+    full_text = f"{tag} {attrs} {text}"
+    if not full_text.strip():
+        if diagnostics:
+            logger_obj.warning(f"[EMBED] Empty text for segment: {identity}")
+        return None
+    try:
+        import time
+        t0 = time.time()
         emb = safe_model_encode(model, full_text, convert_to_numpy=True, show_progress_bar=False)
         save_embedding(identity, emb)
         safe_add(cache_misses, str(identity))
+        if diagnostics:
+            logger_obj.info(f"[EMBED] Computed embedding for {identity} in {time.time()-t0:.3f}s")
         return emb
     except Exception as e:
         segment["embedding_error"] = str(e)
+        if diagnostics:
+            logger_obj.error(f"[EMBED] Error for {identity}: {e}")
         return None
 
-def batch_get_segment_embeddings(model, segments) -> List[Optional[np.ndarray]]:
+def batch_get_segment_embeddings(
+    model,
+    segments,
+    diagnostics=False,
+    logger_instance=None
+) -> List[Optional[np.ndarray]]:
+    """
+    Robust batch embedding retrieval/computation for segments.
+    - Uses cache where possible.
+    - Parallelizes computation for large batches.
+    - Logs progress and errors.
+    """
+    logger_obj = logger_instance or logger
     model_id = getattr(model, 'name_or_path', str(model))
     identities = [embedding_cache_hash(seg, model_id) if not is_trivial_segment(seg) else None for seg in segments]
     cached = [get_embedding_from_memory(identity) if identity else None for identity in identities]
     to_compute = [i for i, emb in enumerate(cached) if emb is None and identities[i] is not None]
     if isinstance(segments, list):
         segments[:] = [s for s in segments if isinstance(s, dict)]
-    if to_compute:
-        texts = []
-        idx_map = []
-        for idx in to_compute:
-            seg = segments[idx]
-            tag = (seg or {}).get("tag", "")
-            attrs = " ".join([f"{k}={v}" for k, v in safe_items((seg or {}).get("attrs", {}))])
-            html = (seg or {}).get("html", "")
-            try:
-                tree = HTMLParser(html)
-                text = tree.body.text(separator=" ", strip=True) if tree.body else tree.text(separator=" ", strip=True)
-            except Exception:
-                text = ""
-            if not text.strip():
-                continue
-            texts.append(f"{tag} {attrs} {text}")
-            idx_map.append(idx)
-        if texts:
-            # Parallelize encoding if large batch
+    texts = []
+    idx_map = []
+    for idx in to_compute:
+        seg = segments[idx]
+        tag = (seg or {}).get("tag", "")
+        attrs = " ".join([f"{k}={v}" for k, v in safe_items((seg or {}).get("attrs", {}))])
+        html = (seg or {}).get("html", "")
+        try:
+            tree = HTMLParser(html)
+            text = tree.body.text(separator=" ", strip=True) if tree.body else tree.text(separator=" ", strip=True)
+        except Exception:
+            text = ""
+        if not text.strip():
+            continue
+        texts.append(f"{tag} {attrs} {text}")
+        idx_map.append(idx)
+    if texts:
+        try:
+            import time
+            t0 = time.time()
             if len(texts) > 128:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     chunks = [texts[i:i+32] for i in range(0, len(texts), 32)]
@@ -244,6 +440,11 @@ def batch_get_segment_embeddings(model, segments) -> List[Optional[np.ndarray]]:
             for i, idx in enumerate(idx_map):
                 save_embedding(identities[idx], new_embs[i])
                 cached[idx] = new_embs[i]
+            if diagnostics:
+                logger_obj.info(f"[EMBED] Batch computed {len(texts)} embeddings in {time.time()-t0:.2f}s")
+        except Exception as e:
+            if diagnostics:
+                logger_obj.error(f"[EMBED] Batch embedding error: {e}")
     return [emb if identity else None for emb, identity in zip(cached, identities)]
 
 def deduplicate_pattern_kb(pattern_kb) -> List[Dict[str, Any]]:
@@ -273,7 +474,7 @@ def submit_segment_correction(segment_hash, new_label, context_library=None) -> 
     cache_segment_label(segment_hash, new_label)
     if context_library is not None:
         for seg in (context_library or {}).get("cached_segments", []):
-            if seg.get("segment_hash") == segment_hash:
+            if (seg or {}).get("segment_hash") == segment_hash:
                 seg["ml_label"] = new_label
                 break
 
@@ -295,7 +496,7 @@ def auto_label_segment(
         return cached_label
     # 2. Context cache
     if context_cache and seg_hash in context_cache:
-        label = context_cache[seg_hash].get("ml_label")
+        label = (context_cache[seg_hash] or {}).get("ml_label")
         if label:
             return label
     # 3. Context library
@@ -319,22 +520,55 @@ def auto_label_segment(
     # 6. Fallback: ML similarity
     if model and pattern_kb:
         try:
-            emb = get_segment_embedding(model, segment)
+            emb = get_segment_embedding(model, segment, diagnostics=True, logger_instance=logger)
             if emb is not None:
                 best_label = "unknown"
                 best_conf = 0.0
+                best_entry = None
                 for entry in pattern_kb:
                     kb_emb = np.array((entry or {}).get("embedding", []))
-                    if kb_emb.shape != emb.shape:
+                    if kb_emb.shape != emb.shape or kb_emb.size == 0:
                         continue
                     sim = float(np.dot(emb, kb_emb) / (np.linalg.norm(emb) * np.linalg.norm(kb_emb) + 1e-8))
                     if sim > best_conf:
                         best_conf = sim
                         best_label = (entry or {}).get("label", "unknown")
+                        best_entry = entry
                 if best_conf >= ml_threshold and best_label != "unknown":
+                    logger.info(f"[ML SIMILARITY] Segment matched with label '{best_label}' (sim={best_conf:.3f})")
+                    # Optionally attach similarity/confidence info to segment for audit
+                    segment["ml_similarity_confidence"] = best_conf
+                    segment["ml_similarity_label"] = best_label
+                    segment["ml_similarity_entry"] = best_entry
                     return best_label, "ml"
-        except Exception:
-            pass
+            else:
+                logger.warning(f"[ML SIMILARITY] No embedding computed for segment: {segment.get('segment_hash')}")
+        except Exception as e:
+            segment["embedding_error"] = str(e)
+            logger.error(f"[ML SIMILARITY] Error during embedding similarity: {e}")
+    # 6.5. Fallback: ML similarity with context library
+    if model and context_library and "cached_segments" in context_library:
+        try:
+            emb = get_segment_embedding(model, segment, diagnostics=True, logger_instance=logger)
+            if emb is not None:
+                best_label = "unknown"
+                best_conf = 0.0
+                for seg in (context_library or {}).get("cached_segments", []):
+                    kb_emb = np.array((seg or {}).get("embedding", []))
+                    if kb_emb.shape != emb.shape or kb_emb.size == 0:
+                        continue
+                    sim = float(np.dot(emb, kb_emb) / (np.linalg.norm(emb) * np.linalg.norm(kb_emb) + 1e-8))
+                    if sim > best_conf:
+                        best_conf = sim
+                        best_label = (seg or {}).get("ml_label", "unknown")
+                if best_conf >= ml_threshold and best_label != "unknown":
+                    logger.info(f"[ML SIMILARITY] Segment matched with label '{best_label}' (sim={best_conf:.3f})")
+                    return best_label, "ml_context_lib"
+            else:
+                logger.warning(f"[ML SIMILARITY] No embedding computed for segment: {segment.get('segment_hash')}")
+        except Exception as e:
+            segment["embedding_error"] = str(e)
+            logger.error(f"[ML SIMILARITY] Error during embedding similarity with context library: {e}")
     # 7. Heuristic fallback
     tag = ((segment or {}).get("tag") or "").lower()
     classes = [(c or "").lower() for c in ((segment or {}).get("classes", []) or [])]
@@ -366,6 +600,7 @@ def auto_label_segment(
         return "heading"
     # Panel detection
     if tag in PANEL_TAGS or PANEL_CLASSES & set(classes):
+        
         return "panel"
     # Timestamp detection
     if (
@@ -482,34 +717,90 @@ def _label_in(label, target) -> bool:
         return target in label
     return False
 
-def _extract_segments_by_label(segments, label_name, extra_fields=None) -> List[Dict[str, Any]]:
+def _extract_segments_by_label(
+    segments,
+    label_name,
+    extra_fields=None,
+    dedupe_on: str = "segment_hash",
+    min_text_len: int = 2,
+    max_text_len: int = 500,
+    allow_numeric_only: bool = False,
+    allow_special_only: bool = False,
+    custom_validator=None,
+    diagnostics: bool = False,
+    logger_instance=None,
+) -> List[Dict[str, Any]]:
     """
-    Extracts and cleans segments by label, returns list of dicts with clean text and extra fields.
-    Skips segments with empty, whitespace-only, or trivial text (e.g., only tags or &nbsp;).
+    Advanced extraction and cleaning of segments by label.
+    - Skips empty, whitespace-only, trivial, numeric-only, or special-char-only text.
+    - Supports deduplication, custom validators, and diagnostics.
+    - Logs filtered-out segments if logger provided.
     """
     results = []
+    filtered_out = []
+    seen = set()
+    logger_obj = logger_instance or logger
+
+    def is_numeric_only(val):
+        return isinstance(val, str) and val.strip().isdigit()
+
+    def is_special_only(val):
+        return isinstance(val, str) and bool(re.fullmatch(r'[\W_]+', val.strip()))
+
     for seg in segments:
         label = (seg or {}).get("ml_label")
-        if _label_in(label, label_name):
-            text = _extract_clean_text((seg or {}).get("html", ""))
-            # Skip if text is empty, whitespace, or just HTML tags/entities
-            if not text or not text.strip():
-                continue
-            # Skip if text is just &nbsp; or similar
-            if text.strip() in {"&nbsp;", "&#160;"}:
-                continue
-            # Skip if text is just a tag (e.g., "<br>")
-            if re.fullmatch(r"<[^>]+>", text.strip()):
-                continue
-            entry = {
-                "text": text,
-                "raw_html": (seg or {}).get("html", ""),
-                "segment_hash": (seg or {}).get("segment_hash"),
-            }
-            if extra_fields:
-                for field in extra_fields:
-                    entry[field] = (seg or {}).get(field)
-            results.append(entry)
+        if not _label_in(label, label_name):
+            continue
+        text = _extract_clean_text((seg or {}).get("html", ""))
+        raw_html = (seg or {}).get("html", "")
+        segment_hash = (seg or {}).get("segment_hash")
+        skip_reason = None
+
+        # Filtering logic
+        if not text or not text.strip():
+            skip_reason = "empty"
+        elif text.strip() in {"&nbsp;", "&#160;"}:
+            skip_reason = "html_entity"
+        elif re.fullmatch(r"<[^>]+>", text.strip()):
+            skip_reason = "just_tag"
+        elif len(text.strip()) < min_text_len:
+            skip_reason = "too_short"
+        elif len(text.strip()) > max_text_len:
+            skip_reason = "too_long"
+        elif is_numeric_only(text) and not allow_numeric_only:
+            skip_reason = "numeric_only"
+        elif is_special_only(text) and not allow_special_only:
+            skip_reason = "special_only"
+        elif custom_validator and not custom_validator(text, seg):
+            skip_reason = "custom_validator_failed"
+        elif dedupe_on and segment_hash in seen:
+            skip_reason = "duplicate"
+        else:
+            seen.add(segment_hash)
+
+        if skip_reason:
+            filtered_out.append({"segment": seg, "reason": skip_reason})
+            continue
+
+        entry = {
+            "text": text,
+            "raw_html": raw_html,
+            "segment_hash": segment_hash,
+        }
+        if extra_fields:
+            for field in extra_fields:
+                entry[field] = (seg or {}).get(field)
+        results.append(entry)
+
+    # Optional diagnostics logging
+    if diagnostics and filtered_out:
+        for item in filtered_out[:10]:
+            logger_obj.warning(
+                f"[SEGMENT FILTER] Skipped segment ({item['reason']}): {str(item['segment'])[:120]}..."
+            )
+        if len(filtered_out) > 10:
+            logger_obj.warning(f"[SEGMENT FILTER] {len(filtered_out)} segments filtered out (showing first 10).")
+
     return results
 
 def extract_year_and_type(text, url=None) -> tuple:
@@ -575,9 +866,9 @@ def extract_year_and_type(text, url=None) -> tuple:
     type_found = None
     if all_type_matches:
         types_only = [t for _, t in all_type_matches]
-        type_found = Counter(types_only).most_common(1)[0][0] if types_only else None
+        type_found = safe_get_first([t for t, _ in Counter(types_only).most_common(1)], "type_found", None, logger)
         if type_found is None:
-            type_found = sorted(all_type_matches, key=lambda x: x[0])[-1][1]
+            type_found = safe_get_first([x[1] for x in sorted(all_type_matches, key=lambda x: x[0])], "type_found_sorted", None, logger)
 
     cleaned = cleaned_text
     if all_years:
@@ -650,6 +941,7 @@ def extract_tagged_segments_with_attrs(
     Uses selectolax for DOM, leverages context, pattern KB, and coordinator for optimal labeling.
     Ensures robust parent/child relationships, unique indices, and auditability for downstream use.
     """
+    from ..Context_Integration.context_organizer import ContextOrganizer
     if coordinator is None:
         coordinator = ContextCoordinator()
     if context_cache is not None:
@@ -701,11 +993,11 @@ def extract_tagged_segments_with_attrs(
 
             this_heading_idx = heading_idx
             if tag.lower() in heading_tags:
-                this_heading_idx = idx_counter[0]
+                this_heading_idx = safe_get_first(idx_counter, "heading_idx", None, logger)
 
             this_panel_idx = panel_idx
             if tag.lower() in panel_tags:
-                this_panel_idx = idx_counter[0]
+                this_panel_idx = safe_get_first(idx_counter, "panel_idx", None, logger)
 
             seg = {
                 "tag": tag.lower(),
@@ -720,12 +1012,12 @@ def extract_tagged_segments_with_attrs(
                 "children": [],
                 "start": getattr(node, "start", None),
                 "end": getattr(node, "end", None),
-                "_idx": idx_counter[0],
+                "_idx": safe_get_first(idx_counter, "_idx", None, logger),
                 "context_heading_idx": this_heading_idx,
                 "panel_ancestor_idx": this_panel_idx,
                 "panel_ancestor_heading": None,
             }
-            idx_counter[0] += 1
+            idx_counter[0] = safe_get_first([idx_counter[0] + 1], "idx_counter_increment", idx_counter[0] + 1, logger)
             # Attribute audit
             for k in attrs:
                 if any(pat.match(k) for pat in custom_attr_patterns):
@@ -764,12 +1056,44 @@ def extract_tagged_segments_with_attrs(
         root = tree.body or tree.html or tree.root
         walk(root)
 
-        # --- Ensure unique _idx and parent/child consistency ---
+# --- Ensure unique _idx and parent/child consistency ---
         idx_map = {seg["_idx"]: seg for seg in segments}
         for seg in segments:
             seg["children"] = [c for c in seg.get("children", []) if c in idx_map]
             if seg.get("parent_idx") is not None and seg["parent_idx"] not in idx_map:
                 seg["parent_idx"] = None
+
+        # --- Advanced DOM enrichment, organization, and audit ---
+        organizer = ContextOrganizer()
+        dom_tree = organizer.build_dom_tree(segments)
+        # Attach dom_tree to segments for downstream use
+        for seg in segments:
+            seg["dom_node"] = dom_tree["nodes"][seg["_idx"]] if seg["_idx"] < len(dom_tree["nodes"]) else None
+
+        # Group nodes by label for fast lookup and context enrichment
+        label_groups = organizer.group_nodes_by_label(dom_tree["nodes"], label_field="ml_label")
+        for label, group in label_groups.items():
+            logger.info(f"[DOM LABEL GROUP] '{label}': {len(group)} nodes")
+
+        # Panels and tables association for context-aware extraction
+        panels_and_tables = organizer.get_panels_and_tables(dom_tree)
+        logger.info(f"[DOM PANELS/TABLES] {len(panels_and_tables)} panel/table groups extracted.")
+
+        # Attach enrichment to segments for downstream context
+        for seg in segments:
+            seg["panel_group"] = None
+            for panel in panels_and_tables:
+                if seg["_idx"] in panel.get("panel_indices", []) or seg["_idx"] in panel.get("table_indices", []):
+                    seg["panel_group"] = panel
+                    break
+
+        # Log HTML for first N nodes and their subtrees for audit/debug
+        N = min(5, len(dom_tree["nodes"]))
+        for i in range(N):
+            node_html = organizer.extract_html_by_idx(dom_tree["nodes"], i, html)
+            subtree_html = organizer.extract_subtree_html(dom_tree["nodes"], i, html)
+            logger.info(f"[DOM NODE HTML] Node {i}: {node_html[:120]}...")
+            logger.info(f"[DOM SUBTREE HTML] Node {i}: {subtree_html[:120]}...")
 
         # --- Batch embedding for all segments ---
         seg_hashes = [segment_hash(seg.get("html", "")) for seg in segments]
@@ -832,22 +1156,45 @@ def extract_tagged_segments_with_attrs(
             seg["is_actionable"] = label in ("results_table", "contest", "candidate_panel", "location_panel")
             seg["is_election_result"] = label == "results_table"
             seg["is_contest"] = label == "contest"
+            # Attach label group and panel/table context for downstream use
+            seg["label_group"] = label_groups.get(label, [])
+            seg["panel_table_context"] = seg.get("panel_group", {})
 
         # --- Final audit/debug log ---
-        logger.debug(f"[DOM SEGMENTS] Extracted {len(segments)} segments. Example: {segments[0] if segments else 'None'}")
+        logger.debug(f"[DOM SEGMENTS] Extracted {len(segments)} segments. Example: {safe_get_first(segments, 'segments', None, logger, default='None')}")
         if not segments:
             logger.warning("[DOM SEGMENTS] No DOM segments extracted. Check HTML input and parser logic.")
+
+        # Attach full DOM enrichment for downstream consumers
+        dom_enrichment = {
+            "dom_tree": dom_tree,
+            "label_groups": label_groups,
+            "panels_and_tables": panels_and_tables,
+            "node_html_samples": [organizer.extract_html_by_idx(dom_tree["nodes"], i, html) for i in range(N)],
+            "subtree_html_samples": [organizer.extract_subtree_html(dom_tree["nodes"], i, html) for i in range(N)],
+        }
+        for k, v in dom_enrichment.items():
+            # Attach to each segment for advanced context-aware downstream use
+            for seg in segments:
+                seg[f"dom_{k}"] = v
 
         return segments
 
     except Exception as e:
-        logger.error(f"[FALLBACK] selectolax failed: {e}", extra={
+        error_details = {
+            "error": str(e),
             "traceback": traceback.format_exc(),
-            "html_snippet": (html or "")[:200]
-        })
+            "html_snippet": (html or "")[:200],
+            "segments_extracted": len(segments),
+        }
+        logger.error(f"[FALLBACK] selectolax failed: {e}", extra=error_details)
         if not fallback_on_error:
             raise
-        return []
+        # Return a diagnostic object for downstream consumers
+        return [{
+            "error_info": error_details,
+            "segments": [],
+        }]
 
 def get_page_hash(page) -> str:
     """
@@ -1330,7 +1677,7 @@ def scan_html_for_context(
     Main pipeline entry: Efficient, dynamic, and feedback-driven HTML scanner.
     Leverages ContextCoordinator for context, ML model, and feedback logs.
     """
-
+    from ..Context_Integration.context_organizer import ContextOrganizer
     def extract_all_segment_html(html: str) -> List[str]:
         try:
             tree = HTMLParser(html)
@@ -1361,6 +1708,7 @@ def scan_html_for_context(
         - Logs detailed diagnostics and samples of filtered items.
         - Optionally runs in parallel for large datasets.
         """
+        
         if not isinstance(data, list):
             logger.warning(f"[diagnostics_and_filter] Input data is not a list: {type(data)}")
             return []
@@ -1434,7 +1782,7 @@ def scan_html_for_context(
         if filtered:
             try:
                 avg_len = sum(
-                    len(str((d or {}).get(get_fields(d)[0], ""))) for d in filtered
+                    len(str((d or {}).get(safe_get_first(get_fields(d), "get_fields", None, logger, default=""), ""))) for d in filtered
                 ) / len(filtered)
             except Exception:
                 avg_len = 0
@@ -1553,8 +1901,23 @@ def scan_html_for_context(
             model=model,
             coordinator=coordinator
         )
-        context_result["tagged_segments_with_attrs"] = segments_with_attrs
-        context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
+
+        if (
+            not segments_with_attrs
+            or (isinstance(segments_with_attrs, list) and "error_info" in segments_with_attrs[0])
+        ):
+            # Robust error/empty handling
+            error_info = segments_with_attrs[0].get("error_info", {}) if segments_with_attrs else {}
+            logger.error(f"[SEGMENT EXTRACTION ERROR] {error_info.get('error', 'Unknown error')}")
+            context_result["tagged_segments_with_attrs"] = []
+            context_result["tagged_segments"] = []
+            context_result["error"] = error_info.get("error", "Unknown error")
+            # Optionally: return early if you want to skip further processing
+            # return context_result
+        else:
+            # Proceed with normal segment processing
+            context_result["tagged_segments_with_attrs"] = segments_with_attrs
+            context_result["tagged_segments"] = [seg["html"] for seg in segments_with_attrs]
 
         # --- 3. Robust Contest Extraction ---
         contests = []
@@ -1562,7 +1925,7 @@ def scan_html_for_context(
             for possible in split_possible_contests(seg["text"]):
                 seg_year, seg_type, cleaned_title, _ = extract_year_and_type(possible, url=target_url)
                 if cleaned_title and not any(
-                    c["title"] == cleaned_title and c.get("year") == seg_year and c.get("type_") == seg_type
+                    c["title"] == cleaned_title and (c or {}).get("year") == seg_year and (c or {}).get("type_") == seg_type
                     for c in contests
                 ):
                     contests.append({
@@ -1658,6 +2021,21 @@ def scan_html_for_context(
                 })
         context_result["ballot_types"] = diagnostics_and_filter(ballot_types, "ballot_types_text")
 
+        election_types = []
+        for seg in _extract_segments_by_label(segments_with_attrs, "ballot_types"):
+            ballot_types_text = _extract_clean_text(seg.get("raw_html", seg.get("html", "")))
+            if ballot_types_text:
+                etype = None
+                if coordinator and hasattr(coordinator, "extract_field"):
+                    etype = coordinator.extract_field("election_types", text=ballot_types_text)
+                if etype:
+                    election_types.append(etype)
+        context_result["election_types"] = election_types
+
+        # Defensive: Ensure election_types is always a list
+        if "election_types" not in context_result or not isinstance(context_result["election_types"], list):
+            context_result["election_types"] = []
+
         # --- Results Timestamps ---
         results_timestamps = []
         for seg in _extract_segments_by_label(segments_with_attrs, "results_timestamp"):
@@ -1695,8 +2073,8 @@ def scan_html_for_context(
         context_result["vote_methods"] = diagnostics_and_filter(vote_methods, "vote_method_text")
 
         # --- Propagate best year/type to all sections ---
-        best_year = next((c.get("year") for c in contests if c.get("year")), None)
-        best_type = next((c.get("type_") for c in contests if c.get("type_")), None)
+        best_year = safe_get_first([(c or {}).get("year") for c in contests if (c or {}).get("year")], "best_year", None, logger)
+        best_type = safe_get_first([(c or {}).get("type_") for c in contests if (c or {}).get("type_")], "best_type", None, logger)
         for section in ["tables", "candidate_panels", "location_panels", "ballot_types"]:
             propagate_year_type(context_result.get(section, []), best_year, best_type)
 
@@ -1795,14 +2173,14 @@ def scan_html_for_context(
             if "semantic_tags" not in seg:
                 seg["semantic_tags"] = []
             if (seg or {}).get("ml_label") not in ("unknown", "ignore"):
-                safe_append((seg or {}).get("semantic_tags"), (seg or {}).get("ml_label"))
+                safe_append((seg or {}).get("semantic_tags"), (seg or {}).get("ml_label"), logger)
         context_result["selector_log"] = sorted(selector_log)
 
         safe_update(context_result.get("metadata"), {
             "source_url": page_url,
             "scrape_time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "pattern_kb_size": len(pattern_kb) if pattern_kb else 0,
-        })
+        }, logger)
 
         if debug:
             logger.debug("\n[orange][DEBUG] Extracted HTML segments with ML labels:[/orange]")
@@ -1825,7 +2203,8 @@ def scan_html_for_context(
                             "ml_label": (seg or {}).get("ml_label"),
                             "ml_confidence": (seg or {}).get("ml_confidence"),
                             "pattern_id": (seg or {}).get("pattern_id"),
-                        }
+                        },
+                        logger
                     )
             update_context_library(
                 CONTEXT_LIBRARY_PATH,
@@ -1891,16 +2270,57 @@ def scan_html_for_context(
         if key not in dom_parts or not isinstance(dom_parts[key], list):
             dom_parts[key] = []
 
-    if not validate_dom_parts(dom_parts):
+    # --- Advanced DOM validation and enrichment ---
+    valid = validate_dom_parts(dom_parts)
+    if not valid:
         logger.error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
 
     context_result["dom_parts"] = dom_parts
+
+    # --- Advanced DOM enrichment and organization for downstream consumers ---
+    organizer = ContextOrganizer()
+    segments = dom_parts.get("tagged_segments_with_attrs", [])
+    if segments:
+        dom_tree = organizer.build_dom_tree(segments)
+        context_result["dom_tree"] = dom_tree
+
+        # Group nodes by label for fast lookup and context enrichment
+        label_groups = organizer.group_nodes_by_label(dom_tree["nodes"], label_field="ml_label")
+        context_result["dom_label_groups"] = label_groups
+
+        # Panels and tables association for context-aware extraction
+        panels_and_tables = organizer.get_panels_and_tables(dom_tree)
+        context_result["dom_panels_and_tables"] = panels_and_tables
+
+        # Attach enrichment to each segment for downstream context
+        for seg in segments:
+            seg["dom_node"] = dom_tree["nodes"][seg["_idx"]] if seg["_idx"] < len(dom_tree["nodes"]) else None
+            seg["label_group"] = label_groups.get(seg.get("ml_label"), [])
+            seg["panel_group"] = None
+            for panel in panels_and_tables:
+                if seg["_idx"] in panel.get("panel_indices", []) or seg["_idx"] in panel.get("table_indices", []):
+                    seg["panel_group"] = panel
+                    break
+
+        # Add HTML samples for review/debug
+        N = min(5, len(dom_tree["nodes"]))
+        context_result["dom_node_html_samples"] = [
+            organizer.extract_html_by_idx(dom_tree["nodes"], i, context_result.get("raw_html", ""))
+            for i in range(N)
+        ]
+        context_result["dom_subtree_html_samples"] = [
+            organizer.extract_subtree_html(dom_tree["nodes"], i, context_result.get("raw_html", ""))
+            for i in range(N)
+        ]
+
+        logger.info(f"[DOM ENRICHMENT] Added dom_tree, label_groups, panels_and_tables, and HTML samples to context_result.")
 
     if not dom_parts or not dom_parts.get("tagged_segments_with_attrs"):
         logger.error("[DOM_PARTS] dom_parts is empty or missing tagged_segments_with_attrs. Downstream consumers will not function.")
     else:
         logger.debug(f"[DOM_PARTS] dom_parts keys: {list(dom_parts.keys())}, tagged_segments_with_attrs count: {len(dom_parts['tagged_segments_with_attrs'])}")
 
+    # --- Coordinator-driven organization and enrichment ---
     if coordinator is not None:
         organized = coordinator.organize_and_enrich(context_result)
         if not organized or "dom_parts" not in organized or not organized["dom_parts"]:
@@ -1910,5 +2330,14 @@ def scan_html_for_context(
             if isinstance(organized, dict) and "dom_parts" in organized and isinstance(organized["dom_parts"], dict):
                 dom_parts_keys = list(organized["dom_parts"].keys())
             logger.debug(f"[DOM_PARTS] dom_parts successfully organized with keys: {dom_parts_keys}")
+
+    # --- Advanced debug logging for DOM review ---
+    if debug and "dom_tree" in context_result:
+        dom_tree = context_result["dom_tree"]
+        for idx, node in enumerate(dom_tree["nodes"][:5]):
+            html_snippet = organizer.extract_html_by_idx(dom_tree["nodes"], idx, context_result.get("raw_html", ""))
+            logger.info(f"[DOM DEBUG] Node {idx} HTML: {html_snippet[:100]}")
+            subtree_html = organizer.extract_subtree_html(dom_tree["nodes"], idx, context_result.get("raw_html", ""))
+            logger.info(f"[DOM DEBUG] Subtree HTML for node {idx}: {subtree_html[:200]}")
 
     return context_result

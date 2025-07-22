@@ -1,15 +1,18 @@
 # shared_logic.py - Common parsing utilities for context-integrated pipeline
-
+from __future__ import annotations
 import difflib
 import os
 import platform
 import re
 import time
 import numpy as np
+import inspect
 from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..utils.user_prompt import UserPrompt
+from playwright.sync_api import Page, Locator, ElementHandle
+from sentence_transformers import SentenceTransformer
 from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
-from typing import TYPE_CHECKING, Optional, Generator, Any, Iterable
+from typing import TYPE_CHECKING, Optional, Generator, Any, Iterable, Union, Iterable, Collection
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
@@ -36,20 +39,54 @@ def safe_append_cached_segment(lib, seg_hash, user_label) -> None:
         "segment_hash": seg_hash,
         "ml_label": user_label,
     })
-
-def safe_append(lst, value) -> None:
+def safe_append(lst, value, logger: SharedLogger, deduplicate=False) -> bool:
     """
-    Safely append a value to a list. If lst is not a list, do nothing.
+    Safely append a value to a list.
+    - If lst is not a list, does nothing and logs a warning.
+    - Optionally deduplicates (does not append if value already exists).
+    - Returns True if appended, False otherwise.
+    - Logs errors if append fails.
     """
-    if isinstance(lst, list):
+    if not isinstance(lst, list):
+        if logger:
+            logger.warning(f"[safe_append] Target is not a list: {type(lst)}")
+        return False
+    try:
+        if deduplicate and value in lst:
+            if logger:
+                logger.info(f"[safe_append] Value already exists in list, skipping append.")
+            return False
         lst.append(value)
+        return True
+    except Exception as e:
+        if logger:
+            logger.error(f"[safe_append] Error appending value: {e}")
+        return False
 
-def safe_update(dct, updates) -> None:
+def safe_update(dct, updates, logger: SharedLogger) -> None:
     """
-    Safely update a dict with another dict. If dct is not a dict, do nothing.
+    Safely update a dict with another dict.
+    - Only updates if both are dicts.
+    - Handles nested dicts recursively.
+    - Logs errors if update fails.
     """
-    if isinstance(dct, dict) and isinstance(updates, dict):
-        dct.update(updates)
+    if not isinstance(dct, dict):
+        if logger:
+            logger.warning(f"[safe_update] Target is not a dict: {type(dct)}")
+        return
+    if not isinstance(updates, dict):
+        if logger:
+            logger.warning(f"[safe_update] Updates is not a dict: {type(updates)}")
+        return
+    try:
+        for k, v in updates.items():
+            if isinstance(v, dict) and isinstance(dct.get(k), dict):
+                safe_update(dct[k], v, logger)
+            else:
+                dct[k] = v
+    except Exception as e:
+        if logger:
+            logger.error(f"[safe_update] Error updating dict: {e}")
 
 def safe_extend(lib: dict, key: str, values: Iterable[dict]) -> None:
     """
@@ -186,48 +223,271 @@ def safe_items(obj) -> Iterable:
     except Exception:
         return []
 
-def safe_model_encode(model, text: str | list[str], **kwargs: Any) -> Any:
-    """Safely encode text or list of text using a model, handling edge cases."""
+def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwargs: Any) -> Any:
+    """
+    Safely encode text or list of text using a model, handling edge cases.
+    Returns: np.ndarray or list[np.ndarray] or None
+    IDE-friendly: always returns consistent types, logs errors, and handles batch/single input.
+    """
+    def _normalize_text(val: Union[str, list[str]]) -> Union[str, list[str]]:
+        # Accept str, bytes, or list/tuple of str/bytes
+        if isinstance(val, (str, bytes)):
+            return str(val)
+        if isinstance(val, (list, tuple)):
+            return [str(v) if not isinstance(v, str) else v for v in val]
+        return str(val)
 
-    def _safe_model_encode_call(val) -> Any:
-        """Helper to call model.encode with robust error handling."""
+    def _safe_model_encode_call(val: Union[str, list[str]]) -> Any:
         try:
             return model.encode(val, **kwargs)
         except Exception as e:
             logger.error(f"[safe_model_encode] model.encode failed for input {repr(val)[:80]}: {e}")
             return None
 
-    # If batch (list/tuple), pass through
+    # Handle None input
+    if text is None:
+        logger.error("[safe_model_encode] Input text is None.")
+        return None
+
+    # Handle batch input
     if isinstance(text, (list, tuple)):
-        result = _safe_model_encode_call(text)
+        norm_text = _normalize_text(text)
+        result = _safe_model_encode_call(norm_text)
         if result is not None:
             return result
-        # Fallback: try to encode each item individually
+        # Fallback: encode each item individually
         try:
-            return [_safe_model_encode_call(t) for t in text]
+            return [_safe_model_encode_call(_normalize_text(t)) for t in text]
         except Exception as e2:
             logger.error(f"[safe_model_encode] Batch encode fallback also failed: {e2}")
             return [None for _ in text]
-    # If single string, try as string, then as [string]
-    if not isinstance(text, str):
-        text = str(text)
-    result = _safe_model_encode_call(text)
+
+    # Handle single string input
+    norm_text = _normalize_text(text)
+    result = _safe_model_encode_call(norm_text)
     if result is not None:
         return result
+
     # Fallback: try as [string]
     try:
-        batch_result = _safe_model_encode_call([text])
-        if batch_result is not None and isinstance(batch_result, (list, tuple)) and batch_result:
-            return batch_result[0]
+        batch_result = _safe_model_encode_call([norm_text])
+        if batch_result is not None and isinstance(batch_result, (list, tuple, np.ndarray)) and len(batch_result) > 0:
+            return safe_get_first(batch_result, "batch_result", None, logger)
     except Exception as e2:
         logger.error(f"[safe_model_encode] Batch fallback failed: {e2}")
-    # Extra safety: try to encode each character (very rare fallback)
+
+    # Extra safety: try to encode each character (rare fallback)
     try:
         logger.error(f"[safe_model_encode] All string encode attempts failed. Trying per-char fallback.")
-        return [_safe_model_encode_call([c])[0] for c in text if isinstance(c, str)]
+        return [safe_get_first(_safe_model_encode_call([c]), "char_encode", None, logger) for c in norm_text if isinstance(c, str)]
     except Exception as e3:
         logger.error(f"[safe_model_encode] All encode attempts failed: {e3}")
         return None
+
+def safe_get_first(lst, label, url, logger: SharedLogger, default=None, allow_nonlist=False):
+    """
+    Safely get the first item from a list-like object.
+    - Handles empty lists, None, non-list types, and index errors.
+    - Optionally returns a default value if not found.
+    - Optionally allows non-list types (returns the value itself if not a list and allow_nonlist=True).
+    - Logs detailed context for debugging.
+    """
+    if lst is None:
+        logger.error(f"[DOM_PARTS] '{label}' is None for URL: {url}")
+        return default
+    if isinstance(lst, list):
+        if not lst:
+            logger.error(f"[DOM_PARTS] Empty list for '{label}' at URL: {url}")
+            return default
+        try:
+            return lst[0]
+        except Exception as e:
+            logger.error(f"[DOM_PARTS] Exception accessing first item of '{label}' for URL: {url}: {e}")
+            return default
+    if allow_nonlist:
+        logger.warning(f"[DOM_PARTS] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
+        return lst
+    logger.error(f"[DOM_PARTS] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
+    return default
+
+def safe_is_visible(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
+    """Safely call .is_visible on a Playwright element handle or locator."""
+    try:
+        if hasattr(obj, "is_visible"):
+            return obj.is_visible()
+        return False
+    except Exception as e:
+        if logger: logger.error(f"[safe_is_visible] Error: {e}")
+        return False
+
+def safe_is_enabled(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
+    """Safely call .is_enabled on a Playwright element handle or locator."""
+    try:
+        if hasattr(obj, "is_enabled"):
+            return obj.is_enabled()
+        return False
+    except Exception as e:
+        if logger: logger.error(f"[safe_is_enabled] Error: {e}")
+        return False
+
+def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, coordinator: Optional["ContextCoordinator"] = None, logger: SharedLogger = None, **kwargs: Any) -> Any:
+    """
+    Safely call handler.parse, injecting coordinator if supported.
+    Handles missing parse method, non-callable, and exceptions.
+    """
+    try:
+        if handler is None:
+            if logger: logger.error("[safe_parse] Handler is None.")
+            return None
+        parse_method = getattr(handler, "parse", None)
+        if not callable(parse_method):
+            if logger: logger.error("[safe_parse] Handler has no callable 'parse' method.")
+            return None
+        sig = inspect.signature(parse_method)
+        if 'coordinator' in sig.parameters:
+            return parse_method(*args, coordinator, **kwargs)
+        else:
+            return parse_method(*args, **kwargs)
+    except Exception as e:
+        if logger: logger.error(f"[safe_parse] Error calling handler.parse: {e}")
+        return None
+
+def safe_startswith(obj: Union[str, bytes], prefix: Union[str, bytes], logger: SharedLogger = None) -> bool:
+    """Safely call .startswith on a string-like object."""
+    try:
+        if isinstance(obj, (str, bytes)):
+            return obj.startswith(prefix)
+        return False
+    except Exception as e:
+        if logger: logger.error(f"[safe_startswith] Error: {e}")
+        return False
+
+def safe_endswith(obj: Union[str, bytes], suffix: Union[str, bytes], logger: SharedLogger = None) -> bool:
+    """Safely call .endswith on a string-like object."""
+    try:
+        if isinstance(obj, (str, bytes)):
+            return obj.endswith(suffix)
+        return False
+    except Exception as e:
+        if logger: logger.error(f"[safe_endswith] Error: {e}")
+        return False
+
+def safe_locator(page: Page, selector: str, logger: SharedLogger = None) -> Optional[Locator]:
+    """Safely call .locator on a Playwright page."""
+    try:
+        if hasattr(page, "locator"):
+            return page.locator(selector)
+        return None
+    except Exception as e:
+        if logger: logger.error(f"[safe_locator] Error: {e}")
+        return None
+
+def safe_count(obj: Union[Locator, Collection], logger: SharedLogger = None) -> int:
+    """Safely call .count() on a locator or collection."""
+    try:
+        if hasattr(obj, "count"):
+            return obj.count()
+        if hasattr(obj, "__len__"):
+            return len(obj)
+        return 0
+    except Exception as e:
+        if logger: logger.error(f"[safe_count] Error: {e}")
+        return 0
+
+def safe_evaluate(obj: Union[Locator, ElementHandle], script: str, logger: SharedLogger = None) -> Any:
+    """Safely call .evaluate on a Playwright element handle."""
+    try:
+        if hasattr(obj, "evaluate"):
+            return obj.evaluate(script)
+        return None
+    except Exception as e:
+        if logger: logger.error(f"[safe_evaluate] Error: {e}")
+        return None
+
+def safe_is_visible(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
+    """Safely call .is_visible on a Playwright element handle."""
+    try:
+        if hasattr(obj, "is_visible"):
+            return obj.is_visible()
+        return False
+    except Exception as e:
+        if logger: logger.error(f"[safe_is_visible] Error: {e}")
+        return False
+
+def safe_is_enabled(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
+    """Safely call .is_enabled on a Playwright element handle."""
+    try:
+        if hasattr(obj, "is_enabled"):
+            return obj.is_enabled()
+        return False
+    except Exception as e:
+        if logger: logger.error(f"[safe_is_enabled] Error: {e}")
+        return False
+
+def safe_click(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
+    """Safely call .click on a Playwright element handle."""
+    try:
+        if hasattr(obj, "click"):
+            obj.click()
+            return True
+        return False
+    except Exception as e:
+        if logger: logger.error(f"[safe_click] Error: {e}")
+        return False
+
+def safe_wait_for_timeout(page: Page, ms: int, logger: SharedLogger = None) -> bool:
+    """Safely call .wait_for_timeout on a Playwright page."""
+    try:
+        if hasattr(page, "wait_for_timeout"):
+            page.wait_for_timeout(ms)
+            return True
+        return False
+    except Exception as e:
+        if logger: logger.error(f"[safe_wait_for_timeout] Error: {e}")
+        return False
+
+def safe_get_attribute(obj: Union[Locator, ElementHandle], attr: str, logger: SharedLogger = None) -> Optional[str]:
+    """Safely call .get_attribute on a Playwright element handle."""
+    try:
+        if hasattr(obj, "get_attribute"):
+            return obj.get_attribute(attr)
+        return None
+    except Exception as e:
+        if logger: logger.error(f"[safe_get_attribute] Error: {e}")
+        return None
+
+def safe_inner_text(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> str:
+    """Safely call .inner_text on a Playwright element handle."""
+    try:
+        if hasattr(obj, "inner_text"):
+            return obj.inner_text()
+        return ""
+    except Exception as e:
+        if logger: logger.error(f"[safe_inner_text] Error: {e}")
+        return ""
+
+def safe_nth(obj: Union[Locator, ElementHandle], index: int, logger: SharedLogger = None) -> Optional[Union[Locator, ElementHandle]]:
+    """Safely call .nth on a Playwright locator."""
+    try:
+        if hasattr(obj, "nth"):
+            return obj.nth(index)
+        # Fallback for lists
+        if isinstance(obj, (list, tuple)) and 0 <= index < len(obj):
+            return obj[index]
+        return None
+    except Exception as e:
+        if logger: logger.error(f"[safe_nth] Error: {e}")
+        return None
+
+def safe_isupper(obj, logger: SharedLogger = None):
+    """Safely call .isupper() on a string-like object."""
+    try:
+        if isinstance(obj, str):
+            return obj.isupper()
+        return False
+    except Exception as e:
+        if logger: logger.error(f"[safe_isupper] Error: {e}")
+        return False
 
 def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
     """
@@ -246,7 +506,7 @@ def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
         import difflib
         matches = difflib.get_close_matches(county_norm, counties, n=1, cutoff=0.8)
         if matches:
-            return matches[0]
+            return safe_get_first(matches, "county_match", None, logger)
     else:
         # Search all counties
         for counties in KNOWN_STATE_TO_COUNTY_MAP.values():
@@ -257,7 +517,7 @@ def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
         import difflib
         matches = difflib.get_close_matches(county_norm, all_counties, n=1, cutoff=0.8)
         if matches:
-            return matches[0]
+            return safe_get_first(matches, "county_match", None, logger)
     # If no match, return normalized input
     return county_norm
 
@@ -375,7 +635,7 @@ def infer_state_county_from_url(url: str) -> tuple:
         for part in url_parts:
             matches = difflib.get_close_matches(part, all_states, n=1, cutoff=0.8)
             if matches:
-                match = matches[0]
+                match = safe_get_first(matches, "state_match", None, logger)
                 # If match is an abbreviation, convert to full name
                 state = STATE_ABBR.get(match, match)
                 break
@@ -397,7 +657,9 @@ def infer_state_county_from_url(url: str) -> tuple:
             else:
                 matches = difflib.get_close_matches(county_candidate, counties_norm, n=1, cutoff=0.7)
                 if matches:
-                    county = counties[counties_norm.index(matches[0])]
+                    match = safe_get_first(matches, "county_match", None, logger)
+                    if match in counties_norm:
+                        county = counties[counties_norm.index(match)]
         # Try to match county names directly in URL
         if not county:
             for i, c_norm in enumerate(counties_norm):
@@ -488,7 +750,9 @@ def autoscroll_until_stable(
     last_texts = []
     scroll_attempts = 0
     max_scrolls = max_total_time // delay_ms
-    domain = domain or (page.url.split("/")[2] if "://" in page.url else page.url.split("/")[0])
+    domain = domain or (safe_get_first(page.url.split("/"), "domain_split", None, logger, default="") if "://" not in page.url else safe_get_first(page.url.split("/"), "domain_split", None, logger, default=""))
+    if "://" in page.url and len(page.url.split("/")) > 2:
+        domain = page.url.split("/")[2]
 
     def get_main_text() -> str:
         try:
@@ -509,8 +773,8 @@ def autoscroll_until_stable(
             # Check if the last N heights and texts are all the same
             if (
                 len(last_heights) == max_stable_frames
-                and all(h == last_heights[0] for h in last_heights)
-                and all(t == last_texts[0] for t in last_texts)
+                and all(h == safe_get_first(last_heights, "last_heights", None, logger) for h in last_heights)
+                and all(t == safe_get_first(last_texts, "last_texts", None, logger) for t in last_texts)
             ):
                 stable += 1
             else:
@@ -632,7 +896,7 @@ def infer_contest_fields(
                 filters={"title": title}, limit=1
             )
             if db_contests:
-                db_c = db_contests[0]
+                db_c = safe_get_first(db_contests, "db_contests", None, logger)
                 if not year and db_c.get("year"):
                     year = db_c["year"]
                     inference_path.append("year:db")

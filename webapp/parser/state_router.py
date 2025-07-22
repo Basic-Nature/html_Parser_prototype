@@ -14,7 +14,7 @@ from .config import BASE_DIR
 from .bots.librarian import STATE_MODULE_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
 import difflib
 import time
-from .utils.shared_logic import normalize_state_name, normalize_county_name
+from .utils.shared_logic import normalize_state_name, normalize_county_name, safe_append, safe_get_first
 import orjson
 logger = SharedLogger()
 console = RichConsoleProxy()
@@ -62,7 +62,7 @@ def list_available_counties(state_key: str, suppress_warning: bool = False) -> l
             counties.append(normalize_county_name(fname))
     return sorted(counties)
 
-def import_handler(module_or_file_path: str):
+def import_handler(module_or_file_path: str) -> Optional[Any]:
     """
     Import a handler module by either dotted module path (preferred)
     or filesystem path (ending in .py). Returns the module if found, else None.
@@ -106,7 +106,7 @@ def import_handler(module_or_file_path: str):
         logger.error(f"[HTML Handler] Unexpected error importing handler: {e}\n{traceback.format_exc()}")
         return None
 
-def prompt_for_handler_fallback(available_states, available_counties_by_state, last_error=None, max_attempts=3):
+def prompt_for_handler_fallback(available_states, available_counties_by_state, last_error=None, max_attempts=3) -> Tuple[Optional[str], Optional[str]]:
     """
     Prompt the user for manual state/county selection with robust fallback.
     Shows last error, allows cancel, and limits attempts.
@@ -126,7 +126,7 @@ def prompt_for_handler_fallback(available_states, available_counties_by_state, l
             logger.info(f"State '{state}' not found. Try again.")
             attempts += 1
             continue
-        counties = available_counties_by_state.get(state, [])
+        counties = (available_counties_by_state or {}).get(state, [])
         logger.info("Available counties:", ", ".join(counties))
         county = input("Enter county (or leave blank to skip county): ").strip().lower()
         if county == "cancel":
@@ -140,7 +140,7 @@ def prompt_for_handler_fallback(available_states, available_counties_by_state, l
     logger.warning("Too many failed attempts. Exiting fallback.")
     return None, None
 
-def preload_handler_map(restrict_to_states=None):
+def preload_handler_map(restrict_to_states=None) -> None:
     """
     Scan and cache all available state/county handlers.
     If restrict_to_states is provided, only scan those states.
@@ -158,7 +158,7 @@ def preload_handler_map(restrict_to_states=None):
     HANDLER_MAP["last_loaded"] = time.time()
     logger.info(f"[Router] Handler map preloaded: {len(states)} states, {sum(len(c) for c in counties_by_state.values())} counties.")
 
-def reload_handler_map():
+def reload_handler_map() -> None:
     """
     Reload the handler map cache.
     """
@@ -192,13 +192,13 @@ def scan_url_for_state_county(url: str, available_states: List[str], available_c
     if not state_match:
         matches = fuzzy_match_handler(url_lower, available_states)
         if matches:
-            state_match = matches[0]
+            state_match = safe_get_first(matches, "url_fuzzy_state_match", url, logger)
             log_entries.append(f"[URL Scan] Fuzzy matched state '{state_match}' in URL.")
     if state_match and not county_match:
         counties = available_counties_by_state.get(state_match, [])
         matches = fuzzy_match_handler(url_lower, counties)
         if matches:
-            county_match = matches[0]
+            county_match = safe_get_first(matches, "fuzzy_county_match", None, logger)
             log_entries.append(f"[URL Scan] Fuzzy matched county '{county_match}' in URL.")
     return state_match, county_match, log_entries
 
@@ -239,16 +239,19 @@ def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, 
         if fuzzy and state:
             matches = difflib.get_close_matches(norm_state, handlers.keys(), n=3, cutoff=FUZZY_MATCH_THRESHOLD)
             if matches:
-                counties = handlers.get(matches[0], [])
+                matched_state = safe_get_first(matches, "fuzzy_state_match", None, logger)
+                counties = handlers.get(matched_state, [])
                 if debug:
-                    logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
+                    matched_state = safe_get_first(matches, "fuzzy_state_match", None, logger)
+                    logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matched_state}'")
         return sorted(set(counties))
     if fuzzy and state:
         matches = difflib.get_close_matches(norm_state, handlers.keys(), n=3, cutoff=FUZZY_MATCH_THRESHOLD)
         if matches:
+            matched_state = safe_get_first(matches, "fuzzy_state_match", None, logger)
             if debug:
-                logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matches[0]}'")
-            return {matches[0]: handlers[matches[0]]}
+                logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matched_state}'")
+            return {matched_state: handlers.get(matched_state, [])}
     return handlers
 
 def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool = False, fuzzy_cutoff: float = None, non_interactive=False) -> Any:
@@ -301,7 +304,7 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
         valid_state = normalize_state_name(url_state)
         if url_county:
             valid_county = normalize_county_name(url_county)
-        summary["attempts"].append(f"URL scan: state={valid_state}, county={valid_county}")
+        safe_append(summary["attempts"], f"URL scan: state={valid_state}, county={valid_county}", logger)
     # 2. Else use context detection
     if not valid_state and state:
         normalized_state = normalize_state_name(state)
@@ -310,8 +313,8 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
         else:
             matches = fuzzy_match_handler(normalized_state, available_states, cutoff=fuzzy_cutoff, debug=debug)
             if matches:
-                valid_state = matches[0]
-                summary["attempts"].append(f"Fuzzy matched state '{normalized_state}' to '{valid_state}'")
+                valid_state = safe_get_first(matches, "fuzzy_state_match", url, logger)
+                safe_append(summary["attempts"], f"Fuzzy matched state '{normalized_state}' to '{valid_state}'", logger)
     if debug:
         logger.info(f"[Router] Available states (filesystem): {available_states}")
         logger.info(f"[Router] Counties for state '{valid_state}': {available_counties_by_state.get(valid_state, [])}")               
@@ -331,7 +334,7 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
             if not valid_county:
                 matches = fuzzy_match_handler(normalized_county, counties, cutoff=fuzzy_cutoff, debug=debug)
                 if matches:
-                    valid_county = matches[0]
+                    valid_county = safe_get_first(matches, "fuzzy_county_match", url, logger)
                     log.append(f"'{county}' not found. Fuzzy matched to '{valid_county}'.")
     # Step 5: Update context with validated values for downstream use
     if valid_state:

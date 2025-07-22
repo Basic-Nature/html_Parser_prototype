@@ -5,7 +5,7 @@ from .....utils.table_builder import build_dynamic_table
 from .....utils.table_core import harmonize_headers_and_data
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import SharedLogger
-from .....utils.shared_logic import autoscroll_until_stable
+from .....utils.shared_logic import autoscroll_until_stable, safe_is_visible, safe_is_enabled, safe_click
 from .....utils.user_prompt import UserPrompt
 from .....utils.html_scanner import scan_html_for_context
 logger = SharedLogger()
@@ -19,7 +19,7 @@ BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type
 context_cache = {}
 accepted_buttons_cache = {}
 
-def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, non_interactive=False, **kwargs):
+def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, non_interactive=False, **kwargs) -> tuple:
     """
     Rockland County handler: all logic in one place.
     - Scans HTML for context and contests
@@ -45,11 +45,11 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     county = context_result.get("county") or "Rockland"
     year = context_result.get("year")
     for contest in context_result.get("contests", []):
-        if contest.get("state") is None:
+        if (contest or {}).get("state") is None:
             contest["state"] = state
-        if contest.get("county") is None:
+        if (contest or {}).get("county") is None:
             contest["county"] = county
-        if contest.get("year") is None and year is not None:
+        if (contest or {}).get("year") is None and year is not None:
             contest["year"] = year
     context_result = clean_for_json(context_result)
     result = coordinator.organize_and_enrich(context_result)
@@ -82,12 +82,12 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     if isinstance(selected, list):
         results = []
         for contest in selected:
-            user_selected_title = contest.get("title") if isinstance(contest, dict) else contest
-            html_context["selected_race"] = user_selected_title
-            logger.info(f"[cyan][INFO] Processing contest: {user_selected_title}[/cyan]")
+            user_selected_contest = contest if isinstance(contest, dict) else {"title": contest}
+            html_context["selected_race"] = user_selected_contest.get("title")
+            logger.info(f"[cyan][INFO] Processing contest: {user_selected_contest.get('title')}[/cyan]")
 
             # --- Button toggles for this contest ---
-            contest_for_button = user_selected_title if user_selected_title else None
+            contest_for_button = user_selected_contest
 
             # --- Toggle "View results by election district" ---
             election_district_keywords = [
@@ -97,7 +97,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             ]
             toggle_name = "View results by election district"
             logger.debug(f"[DEBUG] About to toggle first button: {toggle_name}")
-            btn, idx = coordinator.get_best_button_advanced(
+            btn1, idx1 = coordinator.get_best_button_advanced(
                 page=page,
                 contest=contest_for_button,
                 keywords=election_district_keywords,
@@ -106,23 +106,23 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 prompt_user_for_button=prompt.prompt_user_for_button,
                 learning_mode=True,
             )
-            if btn and "element_handle" in btn:
-                element = btn["element_handle"]
+            if btn1 and "element_handle" in btn1:
+                element = btn1["element_handle"]
                 # Only click if not already clicked by coordinator (learning mode)
-                if btn.get("selector") not in coordinator.clicked_button_selectors:
-                    if element.is_visible() and element.is_enabled():
+                if btn1.get("selector") not in coordinator.clicked_button_selectors:
+                    if safe_is_visible(element, logger) and safe_is_enabled(element, logger):
                         try:
-                            logger.debug(f"[blue][DEBUG] Clicking button: '{btn.get('label', '')}' for toggle '{toggle_name}'")
-                            element.click(timeout=5000)
+                            logger.debug(f"[blue][DEBUG] Clicking button: '{btn1.get('label', '')}' for toggle '{toggle_name}'")
+                            safe_click(element, logger)
                             page.wait_for_timeout(3000)
                             logger.debug(f"[green][DEBUG] Button click for '{toggle_name}' completed.[/green]")
-                            coordinator.clicked_button_selectors.add(btn.get("selector"))
+                            coordinator.clicked_button_selectors.add(btn1.get("selector"))
                         except Exception as e:
-                            logger.error(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+                            logger.error(f"[red][ERROR] Failed to click button '{btn1.get('label', '')}': {e}[/red]")
                     else:
-                        logger.warning(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
+                        logger.warning(f"[yellow][WARNING] Button '{btn1.get('label', '')}' is not clickable (visible={safe_is_visible(element, logger)}, enabled={safe_is_enabled(element, logger)})[/yellow]")
                 else:
-                    logger.debug(f"[yellow][DEBUG] Button '{btn.get('label', '')}' was already clicked by learning mode.[/yellow]")
+                    logger.debug(f"[yellow][DEBUG] Button '{btn1.get('label', '')}' was already clicked by learning mode.[/yellow]")
             else:
                 logger.error(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
 
@@ -132,37 +132,37 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             vote_method_keywords = [
                 "vote method", "Vote Method", "Vote method", "Method"
             ]
-            toggle_name = "Vote Method"
+            toggle_name2 = "Vote Method"
             logger.debug(f"[DEBUG] About to toggle second button: {toggle_name}")
-            btn, idx = coordinator.get_best_button_advanced(
+            btn2, idx2 = coordinator.get_best_button_advanced(
                 page=page,
                 contest=contest_for_button,
                 keywords=vote_method_keywords,
-                context={**html_context, "toggle_name": toggle_name},
+                context={**html_context, "toggle_name": toggle_name2},
                 confirm_button_callback=prompt.confirm_button_callback,
                 prompt_user_for_button=prompt.prompt_user_for_button,
                 learning_mode=True,
             )
-            if btn and "element_handle" in btn:
-                element = btn["element_handle"]
+            if btn2 and "element_handle" in btn2:
+                element = btn2["element_handle"]
                 # Only click if not already clicked by coordinator (learning mode)
-                if btn.get("selector") not in coordinator.clicked_button_selectors:
-                    if element.is_visible() and element.is_enabled():
+                if btn2.get("selector") not in coordinator.clicked_button_selectors:
+                    if safe_is_visible(element, logger) and safe_is_enabled(element, logger):
                         try:
-                            logger.debug(f"[blue][DEBUG] Clicking button: '{btn.get('label', '')}' for toggle '{toggle_name}'")
-                            element.click(timeout=5000)
+                            logger.debug(f"[blue][DEBUG] Clicking button: '{btn2.get('label', '')}' for toggle '{toggle_name2}'")
+                            safe_click(element, logger)
                             page.wait_for_timeout(3000)
-                            logger.debug(f"[green][DEBUG] Button click for '{toggle_name}' completed.[/green]")
-                            coordinator.clicked_button_selectors.add(btn.get("selector"))
+                            logger.debug(f"[green][DEBUG] Button click for '{toggle_name2}' completed.[/green]")
+                            coordinator.clicked_button_selectors.add(btn2.get("selector"))
                         except Exception as e:
-                            logger.error(f"[red][ERROR] Failed to click button '{btn.get('label', '')}': {e}[/red]")
+                            logger.error(f"[red][ERROR] Failed to click button '{btn2.get('label', '')}': {e}[/red]")
                     else:
-                        logger.warning(f"[yellow][WARNING] Button '{btn.get('label', '')}' is not clickable (visible={element.is_visible()}, enabled={element.is_enabled()})[/yellow]")
+                        logger.warning(f"[yellow][WARNING] Button '{btn2.get('label', '')}' is not clickable (visible={safe_is_visible(element, logger)}, enabled={safe_is_enabled(element, logger)})[/yellow]")
                 else:
-                    logger.debug(f"[yellow][DEBUG] Button '{btn.get('label', '')}' was already clicked by learning mode.[/yellow]")
+                    logger.debug(f"[yellow][DEBUG] Button '{btn2.get('label', '')}' was already clicked by learning mode.[/yellow]")
             else:
-                logger.error(f"[red][ERROR] No suitable '{toggle_name}' button could be clicked.[/red]")
-            logger.debug(f"[DEBUG] Finished toggle second button: {toggle_name}")
+                logger.error(f"[red][ERROR] No suitable '{toggle_name2}' button could be clicked.[/red]")
+            logger.debug(f"[DEBUG] Finished toggle second button: {toggle_name2}")
 
             # --- Only autoscroll once, after all toggles ---
             autoscroll_until_stable(page)
@@ -189,8 +189,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 from collections import defaultdict
                 panels_by_heading = defaultdict(list)
                 for seg in context_result["tagged_segments_with_attrs"]:
-                    if seg.get("ml_label") == "panel":
-                        panels_by_heading[seg.get("panel_heading", "Unknown")].append(seg)
+                    if (seg or {}).get("ml_label") == "panel":
+                        panels_by_heading[(seg or {}).get("panel_heading", "Unknown")].append(seg)
                 panels = [{"panel_heading": k, "tables": v} for k, v in panels_by_heading.items()]
 
             logger.debug(f"[DEBUG] Found {len(panels)} panels after context/NLP pipeline.")
@@ -211,7 +211,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                         "segments": segments,
                         "panels": [],
                     }
-                    headers, data, entity_info = build_dynamic_table(
+                    headers, data, _ = build_dynamic_table(
                         contest, None, None, coordinator, extraction_context
                     )
                     if headers and data:
@@ -233,11 +233,11 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                     }
                     for table in panel.get("tables", []):
                         table_fields = {
-                            "table_idx": table.get("table_idx"),
-                            "table_html": table.get("table_html"),
-                            "ml_panel_score": table.get("ml_panel_score"),
+                            "table_idx": (table or {}).get("table_idx"),
+                            "table_html": (table or {}).get("table_html"),
+                            "ml_panel_score": (table or {}).get("ml_panel_score"),
                         }
-                        table_html = table.get("table_html")
+                        table_html = (table or {}).get("table_html")
                         if not table_html:
                             continue
                         extraction_context = {
@@ -253,7 +253,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                         for field in ("selected_race", "state", "county", "year", "election_types"):
                             if field in html_context:
                                 extraction_context[field if field != "selected_race" else "contest"] = html_context[field]
-                        headers, data, entity_info = build_dynamic_table(
+                        headers, data, _ = build_dynamic_table(
                             extraction_context.get("contest", "Unknown Contest"),
                             None,
                             None,
@@ -298,4 +298,18 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             result = finalize_election_output(merged_headers, merged_data, coordinator, contest, metadata["state"], metadata["county"], context=metadata)
             if isinstance(result, dict):
                 metadata.update(result)
+            results.append({
+                "contest": user_selected_contest,
+                "button_election_district": {
+                    "button": btn1,
+                    "index": idx1
+                },
+                "button_vote_method": {
+                    "button": btn2,
+                    "index": idx2
+                },
+                "headers": merged_headers,
+                "data": merged_data,
+                "metadata": metadata
+            })
             return merged_headers, merged_data, contest, metadata

@@ -2,21 +2,23 @@ import csv
 import orjson
 import os
 from datetime import datetime
+from typing import Optional
 from ..utils.shared_logger import SharedLogger
+from ..utils.shared_logic import safe_get_first, safe_items
 from ..config import CONTEXT_DB_PATH, BASE_DIR, LOG_DIR
 logger = SharedLogger()
 
 CACHE_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
 
-def get_project_root():
+def get_project_root() -> str:
     # Returns the parent directory of webapp (the project root)
     return os.path.dirname(BASE_DIR)
 
-def get_output_root():
+def get_output_root() -> str:
     # Output folder at the project root
     return os.path.join(get_project_root(), "output")
 
-def safe_join(base, *paths):
+def safe_join(base: str, *paths: str) -> str:
     """
     Safely join paths and ensure the result is inside base.
     Prevents path traversal and path-injection.
@@ -27,7 +29,7 @@ def safe_join(base, *paths):
         raise ValueError("Unsafe path detected.")
     return path
 
-def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_context=None):
+def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_context=None) -> str:
     """
     Build output path using organized context metadata.
     If any key info is missing, use feedback loop (ML/NER/user prompt) to resolve.
@@ -37,13 +39,13 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
         coordinator = ContextCoordinator()
     parts = []
     # Use coordinator to try to fill missing info if available
-    state = metadata.get("state", "") or (coordinator.get_states()[0] if coordinator and coordinator.get_states() else "")
-    county = metadata.get("county", "") or (coordinator.get_districts()[0] if coordinator and coordinator.get_districts() else "")
-    year = metadata.get("year", "")
-    contests = metadata.get("contests", "")
-    election_types = metadata.get("election_types", "")
+    state = (metadata or {}).get("state", "") or (safe_get_first(coordinator.get_states(), "state", None, logger, default="") if coordinator and coordinator.get_states() else "")
+    county = (metadata or {}).get("county", "") or (safe_get_first(coordinator.get_precincts(), "county", None, logger, default="") if coordinator and coordinator.get_precincts() else "")
+    year = (metadata or {}).get("year", "")
+    contests = (metadata or {}).get("contests", "")
+    election_types = (metadata or {}).get("election_types", "")
 
-    def safe_filename(s):
+    def safe_filename(s: str) -> str:
         return "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
 
     # Feedback loop for missing/unknown info
@@ -53,20 +55,20 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
             if coordinator:
                 years = coordinator.get_years()
                 if years and len(years) > 0:
-                    year = years[0]
+                    year = safe_get_first(years, "year", None, logger)
             if not year and feedback_context:
-                year = feedback_context.get("year", "")
+                year = (feedback_context or {}).get("year", "")
         if not contests or (contests or "").lower() == "unknown":
             if coordinator:
                 contests_list = coordinator.get_contests()
                 if contests_list and isinstance(contests_list, list) and len(contests_list) > 0:
-                    first_contest = contests_list[0]
+                    first_contest = safe_get_first(contests_list, "contests", None, logger)
                     if isinstance(first_contest, dict):
                         contests = first_contest.get("title", "")
                     else:
                         contests = str(first_contest)
             if not contests and feedback_context:
-                contests = feedback_context.get("contests", "")
+                contests = (feedback_context or {}).get("contests", "")
         if year and contests:
             break
 
@@ -106,10 +108,10 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
     os.makedirs(path, exist_ok=True)
     return path
 
-def format_timestamp(fmt="%Y%m%d_%H%M%S"):
+def format_timestamp(fmt="%Y%m%d_%H%M%S") -> str:
     return datetime.now().strftime(fmt)
 
-def update_output_cache(metadata, output_path, cache_file=CACHE_FILE):
+def update_output_cache(metadata, output_path, cache_file=CACHE_FILE) -> None:
     """
     Append output metadata to a cache file for fast lookup and deduplication.
     """
@@ -121,7 +123,7 @@ def update_output_cache(metadata, output_path, cache_file=CACHE_FILE):
     with open(cache_file, "a", encoding="utf-8") as f:
         f.write(orjson.dumps(cache_entry) + b"\n")
 
-def check_existing_output(metadata, cache_file=CACHE_FILE):
+def check_existing_output(metadata, cache_file=CACHE_FILE) -> Optional[dict]:
     """
     Check if output for this context already exists in the cache.
     Handles both JSONL (one JSON object per line) and JSON array formats.
@@ -153,17 +155,17 @@ def check_existing_output(metadata, cache_file=CACHE_FILE):
                     logger.debug(f"[DEBUG] Failed to parse line as JSON: {line!r}")
                     continue
         for entry in entries:
-            meta = entry.get("metadata", {})
+            meta = (entry or {}).get("metadata", {})
             if (
-                meta.get("state", "Unknown") == metadata.get("state", "Unknown") and
-                meta.get("county", "Unknown") == metadata.get("county", "Unknown") and
-                meta.get("year", "Unknown") == metadata.get("year", "Unknown") and
-                meta.get("contests", "Unknown") == metadata.get("contests", "Unknown")
+                (meta or {}).get("state", "Unknown") == (metadata or {}).get("state", "Unknown") and
+                (meta or {}).get("county", "Unknown") == (metadata or {}).get("county", "Unknown") and
+                (meta or {}).get("year", "Unknown") == (metadata or {}).get("year", "Unknown") and
+                (meta or {}).get("contests", "Unknown") == (metadata or {}).get("contests", "Unknown")
             ):
                 return entry
     return None
 
-def convert_sets_to_lists(obj):
+def convert_sets_to_lists(obj) -> dict:
     if isinstance(obj, dict):
         return {k: convert_sets_to_lists(v) for k, v in obj.items()}
     elif isinstance(obj, set):
@@ -173,13 +175,13 @@ def convert_sets_to_lists(obj):
     else:
         return obj
 
-def deep_merge_dicts(dest, src):
+def deep_merge_dicts(dest, src) -> dict:
     """
     Recursively merge src into dest.
     - If a key exists in both and both values are dicts, merge them recursively.
     - Otherwise, src overwrites dest.
     """
-    for k, v in src.items():
+    for k, v in safe_items(src):
         if (
             k in dest
             and isinstance(dest[k], dict)
@@ -199,7 +201,7 @@ def finalize_election_output(
     county,
     context=None,
     enable_user_feedback=False
-):
+) -> dict:
     """
     Finalize and write election output to CSV and metadata JSON.
     Output is always placed in a subfolder of the project root (parent of webapp).
@@ -223,29 +225,29 @@ def finalize_election_output(
         meta["year"] = match.group(0)
 
     organized = ContextOrganizer.organize_context(meta)
-    enriched_meta = organized.get("metadata", meta)
+    enriched_meta = (organized or {}).get("metadata", meta)
 
     # Defensive: ensure required fields
-    if not enriched_meta.get("contests", []):
+    if not (enriched_meta or {}).get("contests", []):
         enriched_meta["contests"] = contest or "Unknown"
-    if not enriched_meta.get("year", []) or not (str(enriched_meta["year"]).isdigit() and len(str(enriched_meta["year"])) == 4):
+    if not (enriched_meta or {}).get("year", []) or not (str(enriched_meta["year"]).isdigit() and len(str(enriched_meta["year"])) == 4):
         enriched_meta["year"] = meta.get("year", "Unknown")
-    if not enriched_meta.get("state", []):
+    if not (enriched_meta or {}).get("state", []):
         enriched_meta["state"] = state or "Unknown"
-    if not enriched_meta.get("county", []):
+    if not (enriched_meta or {}).get("county", []):
         enriched_meta["county"] = county or "Unknown"
     organizer = ContextOrganizer()
     organizer.append_to_context_library({"metadata": enriched_meta})
 
     # Build output path safely under output folder at project root
-    def safe_filename(s):
+    def safe_filename(s) -> str:
         return "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
 
-    year = enriched_meta.get("year", "")
-    state = enriched_meta.get("state", "")
-    county = enriched_meta.get("county", "")
-    election_types = enriched_meta.get("election_types", "")
-    contests = enriched_meta.get("contests", "")
+    year = (enriched_meta or {}).get("year", "")
+    state = (enriched_meta or {}).get("state", "")
+    county = (enriched_meta or {}).get("county", "")
+    election_types = (enriched_meta or {}).get("election_types", "")
+    contests = (enriched_meta or {}).get("contests", "")
 
     parts = [
         safe_filename(state).lower() if state else "",

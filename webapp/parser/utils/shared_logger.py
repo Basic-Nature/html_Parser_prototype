@@ -4,7 +4,7 @@ import time
 import logging
 import inspect
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, Generator, ContextManager, Tuple
+from typing import Any, Callable, Dict, List, Optional, Generator, Tuple
 from rich import print as rprint
 from rich.console import Console, RenderableType
 from rich.panel import Panel
@@ -473,7 +473,7 @@ class SharedLogger(logging.Logger):
                 transient=True
             ) as progress:
                 task_id = progress.add_task(description, total=total)
-                def update_progress(completed: int, extra: Optional[dict] = None):
+                def update_progress(completed: int, extra: Optional[dict] = None) -> None:
                     progress.update(task_id, completed=completed)
                 yield update_progress
 

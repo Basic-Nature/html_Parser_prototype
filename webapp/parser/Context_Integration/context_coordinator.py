@@ -18,7 +18,10 @@ from ..utils.shared_logger import SharedLogger
 import difflib
 from ..utils.shared_logic import (
     scan_buttons_with_progress, keyphrase_match,
-    normalize_state_name, normalize_county_name
+    normalize_state_name, normalize_county_name, safe_get_first,
+    safe_model_encode, safe_locator, safe_nth, safe_inner_text, safe_get_attribute,
+    safe_evaluate, safe_is_visible, safe_is_enabled, safe_click,
+    safe_wait_for_timeout, safe_count, safe_startswith, safe_isupper
 )
 from ..bots.librarian import ( 
     PARTY_KEYWORDS,
@@ -52,6 +55,7 @@ from ..services.election_data_services import ElectionDataService
 import inspect
 from typing import Optional, Any, List, Dict, Tuple, Callable
 logger = SharedLogger()
+
 def _sanitize_log_filename(name: str) -> str:
     # Only allow alphanumeric, underscore, and dash
     return re.sub(r'[^a-zA-Z0-9_\-]', '_', name) 
@@ -59,13 +63,34 @@ def _sanitize_log_filename(name: str) -> str:
 def get_semantic_score(model, text1, text2) -> float:
     """
     Compute semantic similarity between two strings using SentenceTransformer.
+    Handles tensor/list conversion and logs errors gracefully.
     """
     if not text1 or not text2:
         return 0.0
-    emb1 = model.encode(text1, convert_to_tensor=False, show_progress_bar=False)
-    emb2 = model.encode(text2, convert_to_tensor=False, show_progress_bar=False)
-    from sentence_transformers import util
-    return float(util.pytorch_cos_sim(emb1, emb2)[0][0])
+    try:
+        emb1 = safe_model_encode(model, text1, convert_to_tensor=True, show_progress_bar=False)
+        emb2 = safe_model_encode(model, text2, convert_to_tensor=True, show_progress_bar=False)
+        from sentence_transformers import util
+        # util.pytorch_cos_sim returns a tensor; extract scalar value safely
+        cos_sim = util.pytorch_cos_sim(emb1, emb2)
+        if hasattr(cos_sim, "item"):
+            # Single value tensor
+            return float(cos_sim.item())
+        elif hasattr(cos_sim, "numpy"):
+            arr = cos_sim.numpy()
+            if arr.size > 0:
+                return float(arr.flatten()[0])
+            else:
+                return 0.0
+        elif isinstance(cos_sim, (list, tuple, np.ndarray)):
+            # Defensive: handle list/array
+            return float(cos_sim[0][0]) if cos_sim and cos_sim[0] else 0.0
+        else:
+            logger.error(f"[get_semantic_score] Unexpected cos_sim type: {type(cos_sim)}")
+            return 0.0
+    except Exception as e:
+        logger.error(f"[get_semantic_score] Error: {e}")
+        return 0.0
 
 def merge_and_rank_candidates(
     memory_candidates, dom_candidates, context, keywords, model,
@@ -84,18 +109,18 @@ def merge_and_rank_candidates(
             seen.add(key)
             all_candidates.append(cand)
 
-    contest = context.get("contest", {})
-    contest = contest.get("title", "") if contest else ""
+    contest = (context or {}).get("contest", {})
+    contest = (context or {}).get("title", "") if contest else ""
     context_str = " ".join([
         contest,
-        str(context.get("year", "")),
-        str(context.get("type_", "")),
-        str(context.get("county", "")),
-        str(context.get("state", "")),
+        str((context or {}).get("year", "")),
+        str((context or {}).get("type_", "")),
+        str((context or {}).get("county", "")),
+        str((context or {}).get("state", "")),
     ]).strip()
 
-    expected_class = context.get("expected_class", "")
-    expected_tag = context.get("expected_tag", "")
+    expected_class = (context or {}).get("expected_class", "")
+    expected_tag = (context or {}).get("expected_tag", "")
 
     for cand in all_candidates:
         if not isinstance(cand, dict):
@@ -111,7 +136,7 @@ def merge_and_rank_candidates(
                 break
         # Fuzzy/semantic as fallback
         fuzzy_scores = [
-            difflib.SequenceMatcher(None, kw.lower(), label.lower()).ratio()
+            difflib.SequenceMatcher(None, (kw or "").lower(), label.lower()).ratio()
             for kw in (keywords or [])
         ]
         fuzzy_score = max(fuzzy_scores) if fuzzy_scores else 0.0
@@ -123,9 +148,9 @@ def merge_and_rank_candidates(
             context_proximity = get_semantic_score(model, contest, context_heading)
         # Hierarchy/class/tag bonus
         hierarchy_score = 0.0
-        if expected_class and expected_class in cand.get("class", "") or expected_class in cand.get("class", "").lower():
+        if expected_class and expected_class in cand.get("class", "") or expected_class in (cand.get("class", "") or "").lower():
             hierarchy_score += 0.5
-        if expected_tag and expected_tag == cand.get("tag", "") or expected_tag in cand.get("tag", "").lower():
+        if expected_tag and expected_tag == cand.get("tag", "") or expected_tag in (cand.get("tag", "") or "").lower():
             hierarchy_score += 0.5
         if full_match:
             hierarchy_score += 1.0
@@ -152,14 +177,6 @@ def merge_and_rank_candidates(
         reverse=True
     )
     return all_candidates
-
-def call_handler_with_coordinator(handler, *args, coordinator=None, **kwargs) -> Any:
-
-    sig = inspect.signature(handler.parse)
-    if 'coordinator' in sig.parameters:
-        return handler.parse(*args, coordinator, **kwargs)
-    else:
-        return handler.parse(*args, **kwargs)
 
 def dynamic_state_county_detection(context, html, debug=False) -> tuple:
     """
@@ -230,7 +247,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                 import difflib
                 match = difflib.get_close_matches(state, known_states, n=1, cutoff=0.8)
                 if match:
-                    state = match[0]
+                    state = safe_get_first(match, "state_match", None, logger)
                     detection_log.append(f"State '{state}' fuzzy-matched from context.")
                 else:
                     detection_log.append(f"State '{state}' found in context, but not recognized.")
@@ -239,7 +256,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
     # --- 2. Try to extract county from URL ---
     url = context.get("url", "") if isinstance(context, dict) else ""
     if not county and url:
-        url_lower = url.lower()
+        url_lower = (url or "").lower()
         # Exact match
         for c in all_counties:
             if c in url_lower:
@@ -264,7 +281,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             url_tokens = re.split(r"[\W_]+", url_lower)
             matches = difflib.get_close_matches(" ".join(url_tokens), all_counties, n=1, cutoff=0.7)
             if matches:
-                county = matches[0]
+                county = safe_get_first(matches, "county_match", None, logger)
                 detection_log.append(f"County '{county}' fuzzy-matched from URL tokens.")
             else:
                 matches = difflib.get_close_matches(" ".join(url_tokens), all_precincts, n=1, cutoff=0.7)
@@ -272,9 +289,10 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                     for c, precincts in county_to_precinct.items():
                         if not isinstance(precincts, list):
                             continue
-                        if matches[0] in {normalize_county_name(x) for x in precincts}:
+                        match_val = safe_get_first(matches, "precinct_match", None, logger)
+                        if match_val in {normalize_county_name(x) for x in precincts}:
                             county = normalize_county_name(c)
-                            detection_log.append(f"precinct '{matches[0]}' fuzzy-matched from URL tokens, mapped to county '{county}'")
+                            detection_log.append(f"precinct '{match_val}' fuzzy-matched from URL tokens, mapped to county '{county}'")
                             break
 
     # --- 3. Try to extract county from contest titles ---
@@ -284,7 +302,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if not isinstance(contest, dict):
                 continue
             title = contest.get("title", "")
-            title_lower = title.lower()
+            title_lower = (title or "").lower()
             for c in all_counties:
                 if re.search(rf"\b{re.escape(c)}\b", title_lower):
                     county = c
@@ -338,7 +356,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
 
     # --- 6. Try to extract state from URL ---
     if not state and url:
-        url_lower = url.lower()
+        url_lower = (url or "").lower()
         for s in known_states:
             if s in url_lower:
                 state = s
@@ -349,7 +367,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             url_tokens = re.split(r"[\W_]+", url_lower)
             matches = difflib.get_close_matches(" ".join(url_tokens), list(known_states), n=1, cutoff=0.7)
             if matches:
-                state = matches[0]
+                state = safe_get_first(matches, "state_match", None, logger)
                 detection_log.append(f"State '{state}' fuzzy-matched from URL tokens.")
 
     # --- 7. Try to extract state from contest titles ---
@@ -358,7 +376,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if not isinstance(contest, dict):
                 continue
             title = contest.get("title", "")
-            title_lower = title.lower()
+            title_lower = (title or "").lower()
             for s in known_states:
                 if s in title_lower:
                     state = s
@@ -410,11 +428,11 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                 tokens = re.split(r"[\W_]+", url_and_html)
                 matches = difflib.get_close_matches(" ".join(tokens), available_counties, n=1, cutoff=0.7)
                 if matches:
-                    normalized_county = matches[0]
+                    normalized_county = safe_get_first(matches, "county_handler_match", None, logger)
                     detection_log.append(f"County '{normalized_county}' fuzzy-matched to available handler from URL/HTML context.")
             # If only one county handler is available, use it as a fallback
             if not normalized_county and len(available_counties) == 1:
-                normalized_county = available_counties[0]
+                normalized_county = safe_get_first(available_counties, "only_county_handler", None, logger)
                 detection_log.append(f"Only one county handler available ('{normalized_county}'); using as fallback.")
             elif not normalized_county:
                 detection_log.append("No matching county handler found in URL/HTML; will use state handler.")
@@ -592,7 +610,7 @@ class ContextCoordinator(object):
         """
         for method, func in strategies:
             result = func(text)
-            if result and result[0]:
+            if result and safe_get_first(result, "strategy_result", None, logger):
                 return result + (method,)
         return (None, 0.0, "fail", "none")
 
@@ -640,39 +658,39 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_contest(contest)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert contest: {contest.get('title', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert contest: {(contest or {}).get('title', '')} - {e}")
 
             # --- Update table structures (legacy and ML-inferred) ---
             if update_tables and "tables" in library:
-                for contest, tables in library["tables"].items():
+                for contest, tables in (library["tables"] or {}).items():
                     for tbl in tables:
-                        headers = tbl.get("headers") or tbl.get("columns") or []
-                        context = tbl.get("context") or {}
-                        ml_confidence = tbl.get("ml_confidence")
-                        confirmed_by_user = tbl.get("confirmed_by_user", False)
+                        headers = (tbl or {}).get("headers") or (tbl or {}).get("columns") or []
+                        context = (tbl or {}).get("context") or {}
+                        ml_confidence = (tbl or {}).get("ml_confidence")
+                        confirmed_by_user = (tbl or {}).get("confirmed_by_user", False)
                         try:
                             self.save_table_structure_to_db(
                                 contest, headers, context, ml_confidence, confirmed_by_user
                             )
                         except Exception as e:
-                            logger.error(f"[update_db_with_context] Failed to save table structure for {contest.get('title', '')}: {e}")
+                            logger.error(f"[update_db_with_context] Failed to save table structure for {(contest or {}).get('title', '')}: {e}")
 
             # --- Update panels ---
             if update_panels and "panels" in library:
-                for contest, panel in library["panels"].items():
+                for contest, panel in (library["panels"] or {}).items():
                     try:
                         self.data_service.upsert_panel(contest, panel)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert panel for {contest.get('title', '')}: {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert panel for {(contest or {}).get('title', '')}: {e}")
 
             # --- Update buttons ---
             if update_buttons and "buttons" in library:
-                for contest, buttons in library["buttons"].items():
+                for contest, buttons in (library["buttons"] or {}).items():
                     for btn in buttons:
                         try:
                             self.data_service.upsert_button(contest, btn)
                         except Exception as e:
-                            logger.error(f"[update_db_with_context] Failed to upsert button for {contest.get('title', '')}: {e}")
+                            logger.error(f"[update_db_with_context] Failed to upsert button for {(contest or {}).get('title', '')}: {e}")
 
             # --- Update candidates ---
             if update_candidates and "candidates" in library:
@@ -680,7 +698,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_candidate(candidate)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert candidate: {candidate.get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert candidate: {(candidate or {}).get('name', '')} - {e}")
 
             # --- Update parties ---
             if update_parties and "parties" in library:
@@ -688,7 +706,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_party(party)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert party: {party.get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert party: {(party or {}).get('name', '')} - {e}")
 
             # --- Update offices ---
             if update_offices and "offices" in library:
@@ -696,7 +714,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_office(office)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert office: {office.get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert office: {(office or {}).get('name', '')} - {e}")
 
             # --- Update districts ---
             if update_districts and "districts" in library:
@@ -704,7 +722,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_district(district)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert district: {district.get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert district: {(district or {}).get('name', '')} - {e}")
 
             # --- Update results ---
             if update_results and "results" in library:
@@ -712,7 +730,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_result(result)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert result: {result.get('id', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert result: {(result or {}).get('id', '')} - {e}")
 
             # --- Update entities (generic/misc entities) ---
             if update_entities and "entities" in library:
@@ -720,7 +738,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_entity(entity)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert entity: {entity.get('value', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert entity: {(entity or {}).get('value', '')} - {e}")
 
             # --- Update table_structures (ML-inferred/user-confirmed) ---
             if update_table_structures and "table_structures" in library:
@@ -728,7 +746,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_table_structure(ts)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert table_structure: {ts.get('contest', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert table_structure: {(ts or {}).get('contest', '')} - {e}")
 
             # --- Update batch_metadata ---
             if update_batch_metadata and "batch_metadata" in library:
@@ -736,7 +754,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_batch_metadata(batch)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert batch_metadata: {batch.get('batch_id', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert batch_metadata: {(batch or {}).get('batch_id', '')} - {e}")
 
             # --- Update alerts ---
             if update_alerts and "alerts" in library:
@@ -744,7 +762,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_alert(alert)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert alert: {alert.get('id', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert alert: {(alert or {}).get('id', '')} - {e}")
 
             # --- Update embeddings (ML segment cache) ---
             if update_embeddings and "embeddings" in library:
@@ -752,7 +770,7 @@ class ContextCoordinator(object):
                     try:
                         self.data_service.upsert_embedding(emb)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert embedding: {emb.get('segment_hash', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert embedding: {(emb or {}).get('segment_hash', '')} - {e}")
 
             # --- Save the full library as a backup/atomic write ---
             if enhanced:
@@ -776,12 +794,16 @@ class ContextCoordinator(object):
         return get_table_structure_from_db(contest, context)
 
     def organize_and_enrich(self, raw_context, **kwargs) -> Dict[str, Any]:
-        """
-        Organize raw context (from HTML/DOM or DB), deduplicate, cluster, and enrich with NLP.
-        """
         self.last_raw_context = raw_context
         result = self.organizer.organize_context(raw_context, **kwargs)
-        self.organized = result["organized"]
+        # Defensive: handle error dict or None
+        if result is None:
+            self.organized = {}
+            return self.organized
+        if isinstance(result, dict) and "organized" in result:
+            self.organized = result["organized"] if result["organized"] is not None else {}
+        else:
+            self.organized = result if isinstance(result, dict) else {}
         self._enrich_contests_with_nlp()
         return self.organized
 
@@ -870,11 +892,11 @@ class ContextCoordinator(object):
         model = model or getattr(self, "_semantic_model", None)
 
         # 1. Try cache/context library for a direct match
-        segment_hash = segment.get("segment_hash")
+        segment_hash = (segment or {}).get("segment_hash")
         if context_library and segment_hash:
             cached_segments = context_library.get("cached_segments", [])
             for entry in cached_segments:
-                if entry.get("segment_hash") == segment_hash and entry.get("ml_label"):
+                if (entry or {}).get("segment_hash") == segment_hash and (entry or {}).get("ml_label"):
                     return entry["ml_label"]
 
         # 2. Try pattern KB for embedding similarity
@@ -885,13 +907,13 @@ class ContextCoordinator(object):
                 best_score = 0
                 best_label = None
                 for pat in pattern_kb:
-                    pat_emb = pat.get("embedding")
+                    pat_emb = (pat or {}).get("embedding")
                     if pat_emb is not None:
                         # Cosine similarity
                         score = float(np.dot(seg_emb, pat_emb) / (np.linalg.norm(seg_emb) * np.linalg.norm(pat_emb)))
                         if score > best_score and score >= ml_threshold:
                             best_score = score
-                            best_label = pat.get("label")
+                            best_label = (pat or {}).get("label")
                 if best_label:
                     return best_label
 
@@ -901,22 +923,22 @@ class ContextCoordinator(object):
             all_nodes = dom_parts["all_nodes"]
             # Use the same normalization/hash as above
             for node in all_nodes:
-                if node.get("html") == segment.get("html") and node.get("ml_label") and node.get("ml_confidence", 0) >= ml_threshold:
+                if (node or {}).get("html") == (segment or {}).get("html") and (node or {}).get("ml_label") and (node or {}).get("ml_confidence", 0) >= ml_threshold:
                     return node["ml_label"]
             # Try grouping by label field
             grouped = self.group_dom_nodes_by_label(label_field="ml_label")
             for label, nodes in grouped.items():
                 for node in nodes:
-                    if node.get("html") == segment.get("html"):
+                    if node.get("html") == (segment or {}).get("html"):
                         return label
 
         # 4. Try merge_and_rank_candidates if segment is a candidate-like dict
         if "label" in segment or "selector" in segment:
             # Use merge_and_rank_candidates for robust scoring
             candidates = [segment]
-            ranked = merge_and_rank_candidates([], candidates, {}, [segment.get("label", "")], model)
-            if ranked and ranked[0].get("combined_score", 0) >= ml_threshold:
-                return ranked[0]["label"]
+            ranked = merge_and_rank_candidates([], candidates, {}, [(segment or {}).get("label", "")], model)
+            if ranked and safe_get_first(ranked, "ranked_candidate", None, logger) and safe_get_first(ranked, "ranked_candidate", None, logger).get("combined_score", 0) >= ml_threshold:
+                return safe_get_first(ranked, "ranked_candidate_label", None, logger).get("label")
 
         # 5. Fallback: use extract_field for heuristics
         if "html" in segment:
@@ -939,7 +961,7 @@ class ContextCoordinator(object):
             elif ContextCoordinator._dom_parts_warning_count % 10 == 0:
                 logger.warning(f"[group_dom_nodes_by_label] No organized DOM parts. (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
             return {}
-        nodes = self.organized["dom_parts"].get("all_nodes", [])
+        nodes = (self.organized["dom_parts"] or {}).get("all_nodes", [])
         if not nodes:
             logger.warning("[group_dom_nodes_by_label] No DOM nodes found.")
             return {}
@@ -1201,7 +1223,7 @@ class ContextCoordinator(object):
             else:
                 filtered = entities
             if first_only:
-                return filtered[0] if filtered else None
+                return safe_get_first(filtered, "entity_filtered", None, logger) if filtered else None
             return filtered
         except Exception as e:
             logger.error(f"[ContextCoordinator.extract_entities] Error: {e}")
@@ -1226,7 +1248,7 @@ class ContextCoordinator(object):
             else:
                 filtered = locations
             if first_only:
-                return filtered[0] if filtered else None
+                return safe_get_first(filtered, "locations_filtered", None, logger) if filtered else None
             return filtered
         except Exception as e:
             logger.error(f"[ContextCoordinator.extract_locations] Error: {e}")
@@ -1251,7 +1273,7 @@ class ContextCoordinator(object):
             else:
                 filtered = dates
             if first_only:
-                return filtered[0] if filtered else None
+                return safe_get_first(filtered, "dates_filtered", None, logger) if filtered else None
             return filtered
         except Exception as e:
             logger.error(f"[ContextCoordinator.extract_dates] Error: {e}")
@@ -1291,14 +1313,14 @@ class ContextCoordinator(object):
             for ent, label in entities:
                 best = process.extractOne(ent, known_parties)
                 if best and best[1] > 80:
-                    return (best[0], label, best[1] / 100.0, "spacy_ner_fuzzy", "pass")
+                    return (safe_get_first(best, "fuzzy_best_entity", None, logger), label, best[1] / 100.0, "spacy_ner_fuzzy", "pass")
             return None
 
         def fuzzy_party(text):
             known_parties = PARTY_KEYWORDS
             best = process.extractOne(text, known_parties)
             if best and best[1] > 80:
-                return (best[0], None, best[1] / 100.0, "fuzzy", "pass")
+                return (safe_get_first(best, "fuzzy_best_entity", None, logger), None, best[1] / 100.0, "fuzzy", "pass")
             return None
 
         def regex_panel(text):
@@ -1533,23 +1555,159 @@ class ContextCoordinator(object):
         """
         for method, func in strategies:
             result = func(text)
-            if result and result[0]:
+            if result and safe_get_first(result, "strategy_result", None, logger):
                 # Ensure result is a 5-tuple: (value, label, score, method, result)
                 if len(result) == 5:
                     # Overwrite method to ensure consistency
-                    return (result[0], result[1], result[2], method, result[4])
+                    return (
+                        safe_get_first(result, "value", None, logger, default=None),
+                        safe_get_first(result, "label", None, logger, default=None),
+                        safe_get_first(result, "score", None, logger, default=None),
+                        method,
+                        safe_get_first(result, "result", None, logger, default=None)
+                    )
                 elif len(result) == 4:
                     # Insert None as label, force method
-                    return (result[0], None, result[1], method, result[3])
+                    return (
+                        safe_get_first(result, "value", None, logger, default=None),
+                        None,
+                        safe_get_first(result, "score", None, logger, default=None),
+                        method,
+                        safe_get_first(result, "result", None, logger, default=None)
+                    )
                 elif len(result) == 3:
-                    return (result[0], None, result[1], method, result[2])
+                    return (
+                        safe_get_first(result, "value", None, logger, default=None),
+                        None,
+                        safe_get_first(result, "score", None, logger, default=None),
+                        method,
+                        safe_get_first(result, "result", None, logger, default=None)
+                    )
                 elif len(result) == 2:
-                    return (result[0], None, result[1], method, "pass")
+                    return (
+                        safe_get_first(result, "value", None, logger, default=None),
+                        None,
+                        safe_get_first(result, "score", None, logger, default=None),
+                        method,
+                        "pass"
+                    )
                 elif len(result) == 1:
-                    return (result[0], None, 1.0, method, "pass")
+                    return (
+                        safe_get_first(result, "value", None, logger, default=None),
+                        None,
+                        1.0,
+                        method,
+                        "pass"
+                    )
                 else:
-                    return (result[0], None, 1.0, method, "pass")
+                    return (
+                        safe_get_first(result, "value", None, logger, default=None),
+                        None,
+                        1.0,
+                        method,
+                        "pass"
+                    )
         return (None, None, 0.0, "fail", "none")
+
+    def score_header_ml(self, title: str, context: dict = None) -> float:
+        """
+        ML-driven scoring for table headers.
+        Uses semantic similarity, keyword matching, entity detection, and context features.
+        Returns a float score between 0.0 and 1.0.
+        """
+        try:
+            context = context or {}
+            model = getattr(self, "_semantic_model", None)
+            known_headers = set(context.get("known_headers", []))
+            contest_title = (context.get("contest", {}) or {}).get("title", "") if isinstance(context.get("contest"), dict) else ""
+            # 1. Semantic similarity to known headers
+            sim_scores = []
+            if model and known_headers:
+                for h in known_headers:
+                    sim = get_semantic_score(model, title, h)
+                    sim_scores.append(sim)
+                max_sim = max(sim_scores) if sim_scores else 0.0
+            else:
+                max_sim = 0.0
+            # 2. Fuzzy match to known headers
+            fuzzy_scores = [difflib.SequenceMatcher(None, (h or "").lower(), (title or "").lower()).ratio() for h in known_headers]
+            max_fuzzy = max(fuzzy_scores) if fuzzy_scores else 0.0
+            # 3. Entity detection
+            ents = self.extract_entities(title)
+            entity_boost = 0.0
+            for ent, label in ents:
+                if label in {"PERSON", "CANDIDATE", "ORG", "NORP", "GPE", "LOC"}:
+                    entity_boost = 0.2
+                    break
+            # 4. Contextual match to contest title
+            context_sim = get_semantic_score(model, title, contest_title) if model and contest_title else 0.0
+            # 5. Length and capitalization heuristic
+            length_score = min(len(title) / 20.0, 0.2) if isinstance(title, str) else 0.0
+            cap_score = 0.1 if isinstance(title, str) and len(title) > 2 and safe_isupper(safe_get_first(title, "title_first_char", "", logger), logger) else 0.0
+            # 6. Aggregate score
+            score = (
+                0.4 * max_sim +
+                0.2 * max_fuzzy +
+                0.1 * context_sim +
+                entity_boost +
+                length_score +
+                cap_score
+            )
+            # Clamp between 0.0 and 1.0
+            return max(0.0, min(score, 1.0))
+        except Exception as e:
+            logger.error(f"[score_header_ml] Error scoring header '{title}': {e}")
+            return 0.5
+
+    def score_entry(self, title: str, context: dict = None) -> float:
+        """
+        ML-driven scoring for any entry (header, label, etc.).
+        Uses semantic similarity, fuzzy matching, entity detection, and context features.
+        Returns a float score between 0.0 and 1.0.
+        """
+        try:
+            context = context or {}
+            model = getattr(self, "_semantic_model", None)
+            # 1. Semantic similarity to contest title and known labels
+            contest_title = (context.get("contest", {}) or {}).get("title", "") if isinstance(context.get("contest"), dict) else ""
+            known_labels = set(context.get("known_labels", []))
+            sim_scores = []
+            if model and known_labels:
+                for lbl in known_labels:
+                    sim = get_semantic_score(model, title, lbl)
+                    sim_scores.append(sim)
+                max_sim = max(sim_scores) if sim_scores else 0.0
+            else:
+                max_sim = 0.0
+            # 2. Fuzzy match to known labels
+            fuzzy_scores = [difflib.SequenceMatcher(None, (lbl or "").lower(), (title or "").lower()).ratio() for lbl in known_labels]
+            max_fuzzy = max(fuzzy_scores) if fuzzy_scores else 0.0
+            # 3. Entity detection
+            ents = self.extract_entities(title)
+            entity_boost = 0.0
+            for ent, label in ents:
+                if label in {"PERSON", "CANDIDATE", "ORG", "NORP", "GPE", "LOC"}:
+                    entity_boost = 0.2
+                    break
+            # 4. Contextual match to contest title
+            context_sim = get_semantic_score(model, title, contest_title) if model and contest_title else 0.0
+            # 5. Length and capitalization heuristic
+            length_score = min(len(title) / 20.0, 0.2) if isinstance(title, str) else 0.0
+            cap_score = 0.1 if isinstance(title, str) and len(title) > 2 and safe_isupper(safe_get_first(title, "title_first_char", "", logger), logger) else 0.0
+            # 6. Aggregate score
+            score = (
+                0.4 * max_sim +
+                0.2 * max_fuzzy +
+                0.1 * context_sim +
+                entity_boost +
+                length_score +
+                cap_score
+            )
+            # Clamp between 0.0 and 1.0
+            return max(0.0, min(score, 1.0))
+        except Exception as e:
+            logger.error(f"[score_entry] Error scoring entry '{title}': {e}")
+            return 0.5
 
     def score_header(self, title, context=None) -> float:
         """
@@ -1576,10 +1734,10 @@ class ContextCoordinator(object):
             known_headers = set()
             if context and isinstance(context, dict):
                 known_headers = set(context.get("known_headers", []))
-            if known_headers and title.lower() in (h.lower() for h in known_headers):
+            if known_headers and (title or "").lower() in ((h or "").lower() for h in known_headers):
                 return 0.9
             # Fallback: score by length and capitalization
-            if isinstance(title, str) and len(title) > 2 and title[0].isupper():
+            if isinstance(title, str) and len(title) > 2 and safe_isupper(safe_get_first(title, "title_first_char", "", logger), logger):
                 return 0.6
             # Default fallback
             return 0.5
@@ -1619,11 +1777,11 @@ class ContextCoordinator(object):
     def get_contests(self, filters=None) -> List[Dict[str, Any]]:
         if not self.organized:
             return []
-        contests = self.organized.get("contests", [])
+        contests = (self.organized or {}).get("contests", [])
         if not filters:
             return clean_for_json(contests)
         def match(c):
-            for k, v in filters.items():
+            for k, v in (filters or {}).items():
                 if not isinstance(c, dict):
                     return False
                 if str(c.get(k, "")).lower() != str(v).lower():
@@ -1649,7 +1807,7 @@ class ContextCoordinator(object):
                     if not isinstance(entry, dict):
                         continue
                     # Check for a successful result for this contest/keyword/url
-                    if contest and entry.get("contest") == contest.get("title") and entry.get("result", "").startswith("pass"):
+                    if contest and entry.get("contest") == contest.get("title") and safe_startswith(entry.get("result", ""), "pass", logger):
                         # Reconstruct a button dict from the log entry
                         button = {
                             "label": entry.get("button_label"),
@@ -1657,13 +1815,13 @@ class ContextCoordinator(object):
                             # Optionally add more fields if you log them
                         }
                         return clean_for_json([button])
-                    if keyword and keyword.lower() in (entry.get("button_label") or "").lower() and entry.get("result", "").startswith("pass"):
+                    if keyword and keyword.lower() in (entry.get("button_label") or "").lower() and safe_startswith(entry.get("result", ""), "pass", logger):
                         button = {
                             "label": entry.get("button_label"),
                             "selector": entry.get("selector"),
                         }
                         return clean_for_json([button])
-                    if url and url in (entry.get("selector") or "") and entry.get("result", "").startswith("pass"):
+                    if url and url in (entry.get("selector") or "") and safe_startswith(entry.get("result", ""), "pass", logger):
                         button = {
                             "label": entry.get("button_label"),
                             "selector": entry.get("selector"),
@@ -1673,10 +1831,10 @@ class ContextCoordinator(object):
         # 2. Fallback to existing logic
         if not self.organized:
             return []
-        buttons_dict = self.organized.get("buttons", {})
+        buttons_dict = (self.organized or {}).get("buttons", {})
         results = []
         if contest:
-            results = buttons_dict.get(contest.get("title"), [])
+            results = (buttons_dict or {}).get(contest.get("title"), [])
             if results:
                 return clean_for_json(results)
         if keyword:
@@ -1686,7 +1844,7 @@ class ContextCoordinator(object):
                 for btn in btn_list:
                     if not isinstance(btn, dict):
                         continue
-                    if keyword in btn.get("label", "").lower() or keyword in btn.get("selector", "").lower():
+                    if keyword in (btn.get("label", "") or "").lower() or keyword in (btn.get("selector", "") or "").lower():
                         results.append(btn)
             if results:
                 return clean_for_json(results)
@@ -1741,6 +1899,26 @@ class ContextCoordinator(object):
         Advanced button selection: combines memory, DOM, semantic similarity, adaptive threshold, and feedback.
         Now supports confirmation, exclusion of rejected buttons, and learning mode (auto-apply corrections from log/DB).
         """
+        # --- Protection: ensure contest is a dict ---
+        if contest is not None and not isinstance(contest, dict):
+            contest = {"title": str(contest)}
+            logger.warning(f"[get_best_button_advanced] Contest argument was not a dict. Converted to: {contest}")
+        # --- Protection: ensure keywords is a list ---
+        if keywords is not None and not isinstance(keywords, list):
+            keywords = [str(keywords)]
+            logger.warning(f"[get_best_button_advanced] Keywords argument was not a list. Converted to: {keywords}")
+        # --- Protection: ensure context is a dict ---
+        if context is not None and not isinstance(context, dict):
+            context = {"url": str(context)}
+            logger.warning(f"[get_best_button_advanced] Context argument was not a dict. Converted to: {context}")
+        # --- Initialize defaults ---
+        if not isinstance(self.clicked_button_selectors, set):
+            self.clicked_button_selectors = set()
+        if not hasattr(self, "_semantic_model"):
+            self._semantic_model = None
+        if not isinstance(self._semantic_model, object):
+            logger.warning("[get_best_button_advanced] _semantic_model is not set or is not an object. Using None.")
+            self._semantic_model = None
         if fuzzy_thresholds is None:
             fuzzy_thresholds = [0.95, 0.9, 0.85, 0.8, 0.7, 0.6, 0.5]
         model = self._semantic_model
@@ -1748,7 +1926,8 @@ class ContextCoordinator(object):
         context.update({
             "contest": contest,
             "year": context.get("year", ""),
-            "election_types": context.get("election_types", ""),
+            "type_": contest.get("type_") if isinstance(contest, dict) else "",
+            "election_types": contest.get("election_types") if isinstance(contest, dict) else [],
             "county": context.get("county", ""),
             "state": context.get("state", "")
         })
@@ -1764,17 +1943,18 @@ class ContextCoordinator(object):
                     "button, a[href], [role='button'], input[type='button'], input[type='submit'], "
                     "[tabindex]:not([tabindex='-1'])"
                 )
-                button_features = page.locator(BUTTON_SELECTORS)
-                for i in range(button_features.count()):
-                    btn = button_features.nth(i)
+                button_features = safe_locator(page, BUTTON_SELECTORS, logger)
+                for i in range(safe_count(button_features, logger)):
+                    btn = safe_nth(button_features, i, logger)
                     try:
-                        btn_html = btn.evaluate("el => el.outerHTML")
+                        btn_html = safe_evaluate(btn, "el => el.outerHTML", logger)
                         if btn_html == selector_html:
                             learned_btn["element_handle"] = btn
-                            learned_btn["is_visible"] = btn.is_visible()
-                            learned_btn["is_clickable"] = btn.is_enabled()
+                            learned_btn["is_visible"] = safe_is_visible(btn, logger)
+                            learned_btn["is_clickable"] = safe_is_enabled(btn, logger)
                             break
-                    except Exception:
+                    except Exception as e:
+                        if logger: logger.error(f"[get_best_button_advanced] Error scanning learned button: {e}")
                         continue
                 if (
                     isinstance(learned_btn, dict)
@@ -1784,12 +1964,12 @@ class ContextCoordinator(object):
                 ):
                     logger.info(f"[green][LEARNING] Auto-applying learned button: {learned_btn.get('label')}[/green]")
                     try:
-                        learned_btn["element_handle"].click()
-                        page.wait_for_timeout(1500)
+                        safe_click(learned_btn.get("element_handle"), logger)
+                        safe_wait_for_timeout(page, 1500, logger)
                         self.clicked_button_selectors.add(learned_btn.get("selector"))
                         return learned_btn, 0
-                    except Exception:
-                        logger.error("[red][ERROR] Failed to click learned button element.[/red]")
+                    except Exception as e:
+                        logger.error("[LEARNING] Failed to click learned button element.", exc_info=True)
                 else:
                     logger.error("[red][ERROR] No element_handle found for the learned button candidate.[/red]")
 
@@ -1809,21 +1989,22 @@ class ContextCoordinator(object):
             "button, a[href], [role='button'], input[type='button'], input[type='submit'], "
             "[tabindex]:not([tabindex='-1'])"
         )
-        button_features = page.locator(BUTTON_SELECTORS)
+        button_features = safe_locator(page, BUTTON_SELECTORS, logger)
 
         def scan_btn(btn, i) -> None:
             try:
                 # Robust label extraction
-                label = btn.inner_text() or ""
+                label = safe_inner_text(btn, logger) or ""
                 if not label:
                     # Try aria-label or value attribute
-                    label = btn.get_attribute("aria-label") or btn.get_attribute("value") or ""
-                class_name = btn.get_attribute("class") or ""
-                role = btn.get_attribute("role") or ""
-                tag = btn.evaluate("el => el.tagName").lower()
-                is_visible = btn.is_visible()
-                is_enabled = btn.is_enabled()
-                selector = btn.evaluate("el => el.outerHTML") if btn else ""
+                    label = safe_get_attribute(btn, "aria-label", logger) or safe_get_attribute(btn, "value", logger) or ""
+                class_name = safe_get_attribute(btn, "class", logger) or ""
+                role = safe_get_attribute(btn, "role", logger) or ""
+                tag = safe_evaluate(btn, "el => el.tagName", logger)
+                tag = tag.lower() if isinstance(tag, str) else ""
+                is_visible = safe_is_visible(btn, logger)
+                is_enabled = safe_is_enabled(btn, logger)
+                selector = safe_evaluate(btn, "el => el.outerHTML", logger) if btn else ""
                 candidate = {
                     "label": label.strip(),
                     "class": class_name,
@@ -1837,10 +2018,13 @@ class ContextCoordinator(object):
                 }
                 dom_candidates.append(candidate)
                 self._log_button_memory(candidate, contest, "scanned")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"[scan_btn] Error: {e}")
 
-        scan_buttons_with_progress([button_features.nth(i) for i in range(button_features.count())], scan_callback=scan_btn)
+        scan_buttons_with_progress(
+            [safe_nth(button_features, i, logger) for i in range(safe_count(button_features, logger))],
+            scan_callback=scan_btn
+        )
 
         # --- 4. Merge, deduplicate, and rank all candidates ---
         all_candidates = merge_and_rank_candidates(memory_candidates, dom_candidates, context, keywords, model)
@@ -1870,10 +2054,10 @@ class ContextCoordinator(object):
                                 self._log_confirmed_button_for_learning(cand, contest, context)
                             self.clicked_button_selectors.add(cand.get("selector"))
                             try:
-                                cand["element_handle"].click()
-                                page.wait_for_timeout(1500)
-                            except Exception:
-                                pass
+                                safe_click(cand.get("element_handle"), logger)
+                                safe_wait_for_timeout(page, 1500, logger)
+                            except Exception as e:
+                                logger.error(f"[get_best_button_advanced] Click/wait error: {e}")
                             return cand, idx
                         else:
                             excluded_labels.add(cand.get("label"))
@@ -2021,7 +2205,7 @@ class ContextCoordinator(object):
     def get_panel(self, contest: dict = None) -> dict:
         if not self.organized:
             return None
-        panels = self.organized.get("panels", {})
+        panels = (self.organized or {}).get("panels", {})
         if not isinstance(panels, dict):
             return None
         return clean_for_json(panels.get(contest))
@@ -2029,7 +2213,7 @@ class ContextCoordinator(object):
     def get_tables(self, contest: dict = None) -> list[dict]:
         if not self.organized:
             return []
-        tables = self.organized.get("tables", {})
+        tables = (self.organized or {}).get("tables", {})
         if not isinstance(tables, dict):
             return []
         return clean_for_json(tables.get(contest.get("title") if contest else "", []))
@@ -2242,8 +2426,8 @@ class ContextCoordinator(object):
             if not isinstance(c, dict):
                 continue
             features.append([
-                le_state.transform([c.get("state", "unknown")])[0],
-                le_county.transform([c.get("county", "unknown")])[0],
+                safe_get_first(le_state.transform([c.get("state", "unknown")]), "le_state_transform", None, logger, default=0),
+                safe_get_first(le_county.transform([c.get("county", "unknown")]), "le_county_transform", None, logger, default=0),
                 int(c.get("year", 0)) if str(c.get("year", "0")).isdigit() else 0,
                 len(str(c.get("title", ""))),
             ])
