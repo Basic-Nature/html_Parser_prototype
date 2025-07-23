@@ -772,6 +772,7 @@ class ContextOrganizer(object):
         Enhanced: robust keyword-based grouping, use_library/cache integration, and diagnostics.
         Handles edge cases to avoid list index out of range errors.
         """
+        
         logger.debug("DEBUG: raw_context keys: %s", list((raw_context or {}).keys()))
         debug = self.debug if debug is None else debug
         fuzzy_cutoff = self.fuzzy_cutoff if fuzzy_cutoff is None else fuzzy_cutoff
@@ -785,7 +786,7 @@ class ContextOrganizer(object):
             f"  • Embedding model: {self._describe_embedding_model(embedding_model)}\n"
             f"  • Plot anomalies:  {plot_anomalies}\n"
         )
-
+        organized = None
         try:
             # --- Use/merge context library if provided ---
             context_library = self.library.copy() if hasattr(self, 'library') else {}
