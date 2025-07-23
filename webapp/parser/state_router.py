@@ -142,7 +142,8 @@ def prompt_for_handler_fallback(
             attempts += 1
             continue
 
-        counties = (available_counties_by_state or {}).get(state, [])
+        available_counties_dict = available_counties_by_state if isinstance(available_counties_by_state, dict) else {}
+        counties = available_counties_dict.get(state, [])
         county = None
         if counties:
             # Prompt for county

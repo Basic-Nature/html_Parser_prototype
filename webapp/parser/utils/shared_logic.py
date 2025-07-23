@@ -247,8 +247,9 @@ def _sync_type_and_election_types(obj, fallback_types=None, fallback_type=None):
     Ensures obj['type_'] and obj['election_types'] are consistent.
     Uses fallback_types and fallback_type if needed.
     """
-    etypes = (obj or {}).get("election_types")
-    t = (obj or {}).get("type_")
+    obj_dict = obj if isinstance(obj, dict) else {}
+    etypes = obj_dict.get("election_types")
+    t = obj_dict.get("type_")
     # Normalize election_types to list
     if not isinstance(etypes, list):
         etypes = [etypes] if etypes else []
@@ -264,8 +265,8 @@ def _sync_type_and_election_types(obj, fallback_types=None, fallback_type=None):
     # If mismatch, prefer first election_types
     if etypes and t and t != etypes[0]:
         t = etypes[0]
-    obj["election_types"] = etypes
-    obj["type_"] = t
+    obj_dict["election_types"] = etypes
+    obj_dict["type_"] = t
 
 def _keyword_in_text(text, keywords) -> bool:
     """Check if any keyword is present in the text (case-insensitive, word-boundary)."""
@@ -812,7 +813,10 @@ def scan_environment() -> dict:
 def get_title_embedding_features(contests, model_name="all-MiniLM-L6-v2") -> Any:
     from ..utils.model_registry import ModelRegistry
     model = ModelRegistry.get_sentence_transformer(model_name)
-    titles = [(c or {}).get("title", "") for c in contests]
+    titles = []
+    for c in contests:
+        c_dict = c if isinstance(c, dict) else {}
+        titles.append(c_dict.get("title", ""))
     return model.encode(titles, show_progress_bar=False)
 
 def show_progress_bar(task_desc, total, update_iter) -> Generator[Any, Any, Any]:
@@ -997,29 +1001,33 @@ def infer_contest_fields(
             db_service = ElectionDataService
         except ImportError:
             db_service = None
-    title = contest.get("title") or contest.get("label") or ""
+
+    contest_dict = contest if isinstance(contest, dict) else {}
+    title = contest_dict.get("title") or contest_dict.get("label") or ""
     norm_title = normalize_label(title)
-    year = contest.get("year")
-    type_ = contest.get("type_")
-    state = contest.get("state")
-    county = contest.get("county")
+    year = contest_dict.get("year")
+    type_ = contest_dict.get("type_")
+    state = contest_dict.get("state")
+    county = contest_dict.get("county")
     inference_path = []
 
     # 1. Context library lookup
-    for c in context_library.get("contests", []):
-        c_title = (c or {}).get("title") or (c or {}).get("label") or ""
+    context_contests = context_library.get("contests", []) if isinstance(context_library, dict) else []
+    for c in context_contests:
+        c_dict = c if isinstance(c, dict) else {}
+        c_title = c_dict.get("title") or c_dict.get("label") or ""
         if normalize_label(c_title) == norm_title:
-            if not year and (c or {}).get("year"):
-                year = (c or {}).get("year")
+            if not year and c_dict.get("year"):
+                year = c_dict.get("year")
                 inference_path.append("year:context_library")
-            if not type_ and (c or {}).get("type_"):
-                type_ = (c or {}).get("type_")
+            if not type_ and c_dict.get("type_"):
+                type_ = c_dict.get("type_")
                 inference_path.append("type_:context_library")
-            if not state and (c or {}).get("state"):
-                state = (c or {}).get("state")
+            if not state and c_dict.get("state"):
+                state = c_dict.get("state")
                 inference_path.append("state:context_library")
-            if not county and (c or {}).get("county"):
-                county = (c or {}).get("county")
+            if not county and c_dict.get("county"):
+                county = c_dict.get("county")
                 inference_path.append("county:context_library")
             if year and type_ and state and county:
                 break
@@ -1030,19 +1038,21 @@ def infer_contest_fields(
             db_contests = db_service.get_contests_by_advanced_filter(
                 filters={"title": title}, limit=1
             )
-            if db_contests:
-                db_c = safe_get_first(db_contests, "db_contests", None, logger)
-                if not year and (db_c or {}).get("year"):
-                    year = (db_c or {}).get("year")
+            db_c = None
+            if db_contests and isinstance(db_contests, list):
+                db_c = db_contests[0] if db_contests and isinstance(db_contests[0], dict) else {}
+            if db_c:
+                if not year and db_c.get("year"):
+                    year = db_c.get("year")
                     inference_path.append("year:db")
-                if not type_ and (db_c or {}).get("type_"):
-                    type_ = (db_c or {}).get("type_")
+                if not type_ and db_c.get("type_"):
+                    type_ = db_c.get("type_")
                     inference_path.append("type_:db")
-                if not state and (db_c or {}).get("state"):
-                    state = (db_c or {}).get("state")
+                if not state and db_c.get("state"):
+                    state = db_c.get("state")
                     inference_path.append("state:db")
-                if not county and (db_c or {}).get("county"):
-                    county = (db_c or {}).get("county")
+                if not county and db_c.get("county"):
+                    county = db_c.get("county")
                     inference_path.append("county:db")
         except Exception as e:
             if log is not None:
@@ -1052,17 +1062,23 @@ def infer_contest_fields(
     if embedding_model and (not year or not type_ or not state or not county):
         try:
             pred = safe_predict(embedding_model, title, logger)
-            if not year and ((pred or {}).get("year", {}) or {}).get("value"):
-                year = ((pred or {}).get("year", {}) or {}).get("value")
+            pred_dict = pred if isinstance(pred, dict) else {}
+            def get_pred_value(field):
+                field_dict = pred_dict.get(field, {})
+                if isinstance(field_dict, dict):
+                    return field_dict.get("value")
+                return None
+            if not year and get_pred_value("year"):
+                year = get_pred_value("year")
                 inference_path.append("year:ml")
-            if not type_ and ((pred or {}).get("type_", {}) or {}).get("value"):
-                type_ = ((pred or {}).get("type_", {}) or {}).get("value")
+            if not type_ and get_pred_value("type_"):
+                type_ = get_pred_value("type_")
                 inference_path.append("type_:ml")
-            if not state and ((pred or {}).get("state", {}) or {}).get("value"):
-                state = ((pred or {}).get("state", {}) or {}).get("value")
+            if not state and get_pred_value("state"):
+                state = get_pred_value("state")
                 inference_path.append("state:ml")
-            if not county and ((pred or {}).get("county", {}) or {}).get("value"):
-                county = ((pred or {}).get("county", {}) or {}).get("value")
+            if not county and get_pred_value("county"):
+                county = get_pred_value("county")
                 inference_path.append("county:ml")
         except Exception as e:
             if log is not None:
@@ -1088,10 +1104,10 @@ def infer_contest_fields(
         safe_append(log, f"[infer_contest_fields] {title} → {inference_path}", logger)
 
     # --- PATCH: Ensure type_ and election_types are synced ---
-    contest["year"] = year
-    contest["type_"] = type_
-    contest["state"] = state
-    contest["county"] = county
-    _sync_type_and_election_types(contest)
+    contest_dict["year"] = year
+    contest_dict["type_"] = type_
+    contest_dict["state"] = state
+    contest_dict["county"] = county
+    _sync_type_and_election_types(contest_dict)
 
     return year, type_, state, county

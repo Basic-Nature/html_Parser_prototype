@@ -102,32 +102,34 @@ def merge_and_rank_candidates(
     seen = set()
     all_candidates = []
     for cand in memory_candidates + dom_candidates:
-        if not isinstance(cand, dict) or not cand.get("label"):
+        cand_dict = cand if isinstance(cand, dict) else {}
+        if not cand_dict.get("label"):
             continue
-        key = (cand.get("label", ""), cand.get("selector", ""))
+        key = (cand_dict.get("label", ""), cand_dict.get("selector", ""))
         if key not in seen:
             seen.add(key)
-            all_candidates.append(cand)
+            all_candidates.append(cand_dict)
 
-    contest = (context or {}).get("contest", {})
-    contest = (context or {}).get("title", "") if contest else ""
+    context_dict = context if isinstance(context, dict) else {}
+    contest_obj = context_dict.get("contest", {})
+    contest_title = contest_obj.get("title", "") if isinstance(contest_obj, dict) else str(contest_obj)
     context_str = " ".join([
-        contest,
-        str((context or {}).get("year", "")),
-        str((context or {}).get("type_", "")),
-        str((context or {}).get("county", "")),
-        str((context or {}).get("state", "")),
+        contest_title,
+        str(context_dict.get("year", "")),
+        str(context_dict.get("type_", "")),
+        str(context_dict.get("county", "")),
+        str(context_dict.get("state", "")),
     ]).strip()
 
-    expected_class = (context or {}).get("expected_class", "")
-    expected_tag = (context or {}).get("expected_tag", "")
+    expected_class = context_dict.get("expected_class", "")
+    expected_tag = context_dict.get("expected_tag", "")
 
     for cand in all_candidates:
         if not isinstance(cand, dict):
             continue
         label = cand.get("label", "") or ""
         # Strong full-string match
-        full_match = int(label.strip().lower() == contest.strip().lower())
+        full_match = int(label.strip().lower() == contest_title.strip().lower())
         # Keyphrase-aware match
         keyphrase_score = 0.0
         for kw in (keywords or []):
@@ -144,8 +146,8 @@ def merge_and_rank_candidates(
         # Context proximity
         context_heading = cand.get("context_heading", "")
         context_proximity = 0.0
-        if context_heading and contest:
-            context_proximity = get_semantic_score(model, contest, context_heading)
+        if context_heading and contest_title:
+            context_proximity = get_semantic_score(model, contest_title, context_heading)
         # Hierarchy/class/tag bonus
         hierarchy_score = 0.0
         if expected_class and expected_class in cand.get("class", "") or expected_class in (cand.get("class", "") or "").lower():
@@ -619,26 +621,26 @@ class ContextCoordinator(object):
         return dct.get(key, default) if isinstance(dct, dict) else default
 
     def update_db_with_context(
-        self,
-        library: dict,
-        db_path: str = None,
-        enhanced: bool = True,
-        update_tables: bool = True,
-        update_contests: bool = True,
-        update_panels: bool = True,
-        update_buttons: bool = True,
-        update_candidates: bool = True,
-        update_parties: bool = True,
-        update_offices: bool = True,
-        update_districts: bool = True,
-        update_results: bool = True,
-        update_entities: bool = True,
-        update_table_structures: bool = True,
-        update_batch_metadata: bool = True,
-        update_alerts: bool = True,
-        update_embeddings: bool = True,
-        log_success: bool = True
-    ) -> None:
+            self,
+            library: dict,
+            db_path: str = None,
+            enhanced: bool = True,
+            update_tables: bool = True,
+            update_contests: bool = True,
+            update_panels: bool = True,
+            update_buttons: bool = True,
+            update_candidates: bool = True,
+            update_parties: bool = True,
+            update_offices: bool = True,
+            update_districts: bool = True,
+            update_results: bool = True,
+            update_entities: bool = True,
+            update_table_structures: bool = True,
+            update_batch_metadata: bool = True,
+            update_alerts: bool = True,
+            update_embeddings: bool = True,
+            log_success: bool = True
+        ) -> None:
         """
         Robustly update the database with the provided context library.
         Supports batch updates for contests, table structures, panels, buttons, candidates, parties, offices, districts, results, entities, batch metadata, alerts, and embeddings.
@@ -655,122 +657,144 @@ class ContextCoordinator(object):
             # --- Update contests ---
             if update_contests and "contests" in library:
                 for contest in library["contests"]:
+                    contest_dict = contest if isinstance(contest, dict) else {}
                     try:
-                        self.data_service.upsert_contest(contest)
+                        self.data_service.upsert_contest(contest_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert contest: {(contest or {}).get('title', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert contest: {contest_dict.get('title', '')} - {e}")
 
             # --- Update table structures (legacy and ML-inferred) ---
             if update_tables and "tables" in library:
-                for contest, tables in (library["tables"] or {}).items():
+                tables_dict = library["tables"] if isinstance(library.get("tables"), dict) else {}
+                for contest, tables in tables_dict.items():
                     for tbl in tables:
-                        headers = (tbl or {}).get("headers") or (tbl or {}).get("columns") or []
-                        context = (tbl or {}).get("context") or {}
-                        ml_confidence = (tbl or {}).get("ml_confidence")
-                        confirmed_by_user = (tbl or {}).get("confirmed_by_user", False)
+                        tbl_dict = tbl if isinstance(tbl, dict) else {}
+                        headers = tbl_dict.get("headers") or tbl_dict.get("columns") or []
+                        context = tbl_dict.get("context") or {}
+                        ml_confidence = tbl_dict.get("ml_confidence")
+                        confirmed_by_user = tbl_dict.get("confirmed_by_user", False)
                         try:
                             self.save_table_structure_to_db(
                                 contest, headers, context, ml_confidence, confirmed_by_user
                             )
                         except Exception as e:
-                            logger.error(f"[update_db_with_context] Failed to save table structure for {(contest or {}).get('title', '')}: {e}")
+                            contest_title = contest.get("title", "") if isinstance(contest, dict) else str(contest)
+                            logger.error(f"[update_db_with_context] Failed to save table structure for {contest_title}: {e}")
 
             # --- Update panels ---
             if update_panels and "panels" in library:
-                for contest, panel in (library["panels"] or {}).items():
+                panels_dict = library["panels"] if isinstance(library.get("panels"), dict) else {}
+                for contest, panel in panels_dict.items():
+                    contest_dict = contest if isinstance(contest, dict) else contest
+                    panel_dict = panel if isinstance(panel, dict) else panel
                     try:
-                        self.data_service.upsert_panel(contest, panel)
+                        self.data_service.upsert_panel(contest_dict, panel_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert panel for {(contest or {}).get('title', '')}: {e}")
+                        contest_title = contest_dict.get("title", "") if isinstance(contest_dict, dict) else str(contest_dict)
+                        logger.error(f"[update_db_with_context] Failed to upsert panel for {contest_title}: {e}")
 
             # --- Update buttons ---
             if update_buttons and "buttons" in library:
-                for contest, buttons in (library["buttons"] or {}).items():
+                buttons_dict = library["buttons"] if isinstance(library.get("buttons"), dict) else {}
+                for contest, buttons in buttons_dict.items():
+                    contest_dict = contest if isinstance(contest, dict) else contest
                     for btn in buttons:
+                        btn_dict = btn if isinstance(btn, dict) else btn
                         try:
-                            self.data_service.upsert_button(contest, btn)
+                            self.data_service.upsert_button(contest_dict, btn_dict)
                         except Exception as e:
-                            logger.error(f"[update_db_with_context] Failed to upsert button for {(contest or {}).get('title', '')}: {e}")
+                            contest_title = contest_dict.get("title", "") if isinstance(contest_dict, dict) else str(contest_dict)
+                            logger.error(f"[update_db_with_context] Failed to upsert button for {contest_title}: {e}")
 
             # --- Update candidates ---
             if update_candidates and "candidates" in library:
                 for candidate in library["candidates"]:
+                    candidate_dict = candidate if isinstance(candidate, dict) else {}
                     try:
-                        self.data_service.upsert_candidate(candidate)
+                        self.data_service.upsert_candidate(candidate_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert candidate: {(candidate or {}).get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert candidate: {candidate_dict.get('name', '')} - {e}")
 
             # --- Update parties ---
             if update_parties and "parties" in library:
                 for party in library["parties"]:
+                    party_dict = party if isinstance(party, dict) else {}
                     try:
-                        self.data_service.upsert_party(party)
+                        self.data_service.upsert_party(party_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert party: {(party or {}).get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert party: {party_dict.get('name', '')} - {e}")
 
             # --- Update offices ---
             if update_offices and "offices" in library:
                 for office in library["offices"]:
+                    office_dict = office if isinstance(office, dict) else {}
                     try:
-                        self.data_service.upsert_office(office)
+                        self.data_service.upsert_office(office_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert office: {(office or {}).get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert office: {office_dict.get('name', '')} - {e}")
 
             # --- Update districts ---
             if update_districts and "districts" in library:
                 for district in library["districts"]:
+                    district_dict = district if isinstance(district, dict) else {}
                     try:
-                        self.data_service.upsert_district(district)
+                        self.data_service.upsert_district(district_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert district: {(district or {}).get('name', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert district: {district_dict.get('name', '')} - {e}")
 
             # --- Update results ---
             if update_results and "results" in library:
                 for result in library["results"]:
+                    result_dict = result if isinstance(result, dict) else {}
                     try:
-                        self.data_service.upsert_result(result)
+                        self.data_service.upsert_result(result_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert result: {(result or {}).get('id', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert result: {result_dict.get('id', '')} - {e}")
 
             # --- Update entities (generic/misc entities) ---
             if update_entities and "entities" in library:
                 for entity in library["entities"]:
+                    entity_dict = entity if isinstance(entity, dict) else {}
                     try:
-                        self.data_service.upsert_entity(entity)
+                        self.data_service.upsert_entity(entity_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert entity: {(entity or {}).get('value', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert entity: {entity_dict.get('value', '')} - {e}")
 
             # --- Update table_structures (ML-inferred/user-confirmed) ---
             if update_table_structures and "table_structures" in library:
                 for ts in library["table_structures"]:
+                    ts_dict = ts if isinstance(ts, dict) else {}
                     try:
-                        self.data_service.upsert_table_structure(ts)
+                        self.data_service.upsert_table_structure(ts_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert table_structure: {(ts or {}).get('contest', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert table_structure: {ts_dict.get('contest', '')} - {e}")
 
             # --- Update batch_metadata ---
             if update_batch_metadata and "batch_metadata" in library:
                 for batch in library["batch_metadata"]:
+                    batch_dict = batch if isinstance(batch, dict) else {}
                     try:
-                        self.data_service.upsert_batch_metadata(batch)
+                        self.data_service.upsert_batch_metadata(batch_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert batch_metadata: {(batch or {}).get('batch_id', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert batch_metadata: {batch_dict.get('batch_id', '')} - {e}")
 
             # --- Update alerts ---
             if update_alerts and "alerts" in library:
                 for alert in library["alerts"]:
+                    alert_dict = alert if isinstance(alert, dict) else {}
                     try:
-                        self.data_service.upsert_alert(alert)
+                        self.data_service.upsert_alert(alert_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert alert: {(alert or {}).get('id', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert alert: {alert_dict.get('id', '')} - {e}")
 
             # --- Update embeddings (ML segment cache) ---
             if update_embeddings and "embeddings" in library:
                 for emb in library["embeddings"]:
+                    emb_dict = emb if isinstance(emb, dict) else {}
                     try:
-                        self.data_service.upsert_embedding(emb)
+                        self.data_service.upsert_embedding(emb_dict)
                     except Exception as e:
-                        logger.error(f"[update_db_with_context] Failed to upsert embedding: {(emb or {}).get('segment_hash', '')} - {e}")
+                        logger.error(f"[update_db_with_context] Failed to upsert embedding: {emb_dict.get('segment_hash', '')} - {e}")
 
             # --- Save the full library as a backup/atomic write ---
             if enhanced:
@@ -885,68 +909,64 @@ class ContextCoordinator(object):
         ML-driven DOM segment labeling using all available context, cache, DOM grouping, and heuristics.
         Uses context library, DOM parts, pattern KB, and semantic model for robust labeling.
         """
-        # Use coordinator's own resources if not provided
         context_library = context_library or getattr(self, "library", None)
         context_cache = context_cache or getattr(self, "context_cache", None)
         pattern_kb = pattern_kb or getattr(self, "pattern_kb", None)
         model = model or getattr(self, "_semantic_model", None)
 
-        # 1. Try cache/context library for a direct match
-        segment_hash = (segment or {}).get("segment_hash")
+        segment_dict = segment if isinstance(segment, dict) else {}
+        segment_hash = segment_dict.get("segment_hash")
         if context_library and segment_hash:
-            cached_segments = context_library.get("cached_segments", [])
+            cached_segments = context_library.get("cached_segments", []) if isinstance(context_library, dict) else []
             for entry in cached_segments:
-                if (entry or {}).get("segment_hash") == segment_hash and (entry or {}).get("ml_label"):
-                    return entry["ml_label"]
+                entry_dict = entry if isinstance(entry, dict) else {}
+                if entry_dict.get("segment_hash") == segment_hash and entry_dict.get("ml_label"):
+                    return entry_dict["ml_label"]
 
-        # 2. Try pattern KB for embedding similarity
-        if pattern_kb and model and "html" in segment:
+        if pattern_kb and model and "html" in segment_dict:
             from ..utils.html_scanner import get_segment_embedding
-            seg_emb = get_segment_embedding(model, segment)
+            seg_emb = get_segment_embedding(model, segment_dict)
             if seg_emb is not None:
                 best_score = 0
                 best_label = None
                 for pat in pattern_kb:
-                    pat_emb = (pat or {}).get("embedding")
+                    pat_dict = pat if isinstance(pat, dict) else {}
+                    pat_emb = pat_dict.get("embedding")
                     if pat_emb is not None:
-                        # Cosine similarity
                         score = float(np.dot(seg_emb, pat_emb) / (np.linalg.norm(seg_emb) * np.linalg.norm(pat_emb)))
                         if score > best_score and score >= ml_threshold:
                             best_score = score
-                            best_label = (pat or {}).get("label")
+                            best_label = pat_dict.get("label")
                 if best_label:
                     return best_label
 
-        # 3. Try DOM grouping by label
         dom_parts = self.get_dom_parts()
         if dom_parts and "all_nodes" in dom_parts:
             all_nodes = dom_parts["all_nodes"]
-            # Use the same normalization/hash as above
             for node in all_nodes:
-                if (node or {}).get("html") == (segment or {}).get("html") and (node or {}).get("ml_label") and (node or {}).get("ml_confidence", 0) >= ml_threshold:
-                    return node["ml_label"]
-            # Try grouping by label field
+                node_dict = node if isinstance(node, dict) else {}
+                if node_dict.get("html") == segment_dict.get("html") and node_dict.get("ml_label") and node_dict.get("ml_confidence", 0) >= ml_threshold:
+                    return node_dict["ml_label"]
             grouped = self.group_dom_nodes_by_label(label_field="ml_label")
             for label, nodes in grouped.items():
                 for node in nodes:
-                    if node.get("html") == (segment or {}).get("html"):
+                    node_dict = node if isinstance(node, dict) else {}
+                    if node_dict.get("html") == segment_dict.get("html"):
                         return label
 
-        # 4. Try merge_and_rank_candidates if segment is a candidate-like dict
-        if "label" in segment or "selector" in segment:
-            # Use merge_and_rank_candidates for robust scoring
-            candidates = [segment]
-            ranked = merge_and_rank_candidates([], candidates, {}, [(segment or {}).get("label", "")], model)
-            if ranked and safe_get_first(ranked, "ranked_candidate", None, logger) and safe_get_first(ranked, "ranked_candidate", None, logger).get("combined_score", 0) >= ml_threshold:
-                return safe_get_first(ranked, "ranked_candidate_label", None, logger).get("label")
+        if "label" in segment_dict or "selector" in segment_dict:
+            candidates = [segment_dict]
+            ranked = merge_and_rank_candidates([], candidates, {}, [segment_dict.get("label", "")], model)
+            if ranked:
+                ranked_candidate = safe_get_first(ranked, "ranked_candidate", None, logger)
+                if ranked_candidate and ranked_candidate.get("combined_score", 0) >= ml_threshold:
+                    return ranked_candidate.get("label")
 
-        # 5. Fallback: use extract_field for heuristics
-        if "html" in segment:
-            label = self.extract_field("panel", text=segment["html"])
+        if "html" in segment_dict:
+            label = self.extract_field("panel", text=segment_dict.get("html"))
             if label:
                 return label
 
-        # 6. Final fallback: unknown
         return "unknown"
 
     def group_dom_nodes_by_label(self, label_field="ml_label") -> Dict[str, List[Dict[str, Any]]]:
@@ -961,7 +981,8 @@ class ContextCoordinator(object):
             elif ContextCoordinator._dom_parts_warning_count % 10 == 0:
                 logger.warning(f"[group_dom_nodes_by_label] No organized DOM parts. (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
             return {}
-        nodes = (self.organized["dom_parts"] or {}).get("all_nodes", [])
+        dom_parts = self.organized.get("dom_parts", {}) if isinstance(self.organized, dict) else {}
+        nodes = dom_parts.get("all_nodes", [])
         if not nodes:
             logger.warning("[group_dom_nodes_by_label] No DOM nodes found.")
             return {}
@@ -1663,11 +1684,12 @@ class ContextCoordinator(object):
         Returns a float score between 0.0 and 1.0.
         """
         try:
-            context = context or {}
+            context_dict = context if isinstance(context, dict) else {}
             model = getattr(self, "_semantic_model", None)
-            known_headers = set(context.get("known_headers", []))
-            known_labels = set(context.get("known_labels", []))
-            contest_title = (context.get("contest", {}) or {}).get("title", "") if isinstance(context.get("contest"), dict) else ""
+            known_headers = set(context_dict.get("known_headers", []))
+            known_labels = set(context_dict.get("known_labels", []))
+            contest_obj = context_dict.get("contest", {})
+            contest_title = contest_obj.get("title", "") if isinstance(contest_obj, dict) else str(contest_obj)
             # 1. Semantic similarity to known headers
             sim_scores = []
             if model and known_headers:
@@ -1723,11 +1745,12 @@ class ContextCoordinator(object):
         Returns a float score between 0.0 and 1.0.
         """
         try:
-            context = context or {}
+            context_dict = context if isinstance(context, dict) else {}
             model = getattr(self, "_semantic_model", None)
             # 1. Semantic similarity to contest title and known labels
-            contest_title = (context.get("contest", {}) or {}).get("title", "") if isinstance(context.get("contest"), dict) else ""
-            known_labels = set(context.get("known_labels", []))
+            contest_obj = context_dict.get("contest", {})
+            contest_title = contest_obj.get("title", "") if isinstance(contest_obj, dict) else str(contest_obj)
+            known_labels = set(context_dict.get("known_labels", []))
             sim_scores = []
             if model and known_labels:
                 for lbl in known_labels:
@@ -1776,9 +1799,9 @@ class ContextCoordinator(object):
         try:
             # Use ML model if available
             if hasattr(self, "score_entry"):
-                return float(self.score_entry(title, context or {}))
+                return float(self.score_entry(title, context if isinstance(context, dict) else {}))
             if hasattr(self, "score_header_ml"):
-                return float(self.score_header_ml(title, context or {}))
+                return float(self.score_header_ml(title, context if isinstance(context, dict) else {}))
             # Use NLP entity type as a weak signal
             if hasattr(self, "extract_entities"):
                 ents = self.extract_entities(title)
@@ -1845,7 +1868,7 @@ class ContextCoordinator(object):
         """
         try:
             # Defensive: Only pass valid filters
-            valid_filters = {k: v for k, v in (filters or {}).items() if v is not None and v != ""}
+            valid_filters = {k: v for k, v in filters.items() if v is not None and v != ""} if isinstance(filters, dict) else {}
             contests = self.data_service.get_contests_by_advanced_filter(valid_filters, limit=limit)
             seen_ids = set()
             enriched = []
@@ -1866,10 +1889,11 @@ class ContextCoordinator(object):
                     type_issues.append({"contest": c.get("title"), "issue": "Missing type or election_types"})
                 enriched.append(c)
             def match(c):
+                c_dict = c if isinstance(c, dict) else {}
                 if not valid_filters:
                     return True
                 for k, v in valid_filters.items():
-                    val = str((c or {}).get(k, "")).lower()
+                    val = str(c_dict.get(k, "")).lower()
                     tgt = str(v).lower()
                     if fuzzy:
                         if difflib.SequenceMatcher(None, val, tgt).ratio() < 0.7:
@@ -1971,13 +1995,12 @@ class ContextCoordinator(object):
             seen = set()
             enriched = []
             for ts in structures:
-                if not isinstance(ts, dict):
-                    continue
+                ts_dict = ts if isinstance(ts, dict) else {}
                 if enrich:
-                    score, best_entity = self.score_header_ml((ts or {}).get("title", ""), (ts or {}).get("context", {}))
+                    score, best_entity = self.score_header_ml(ts_dict.get("title", ""), ts_dict.get("context", {}))
                     ts["score"] = score
                     ts["best_entity"] = best_entity
-                dedup_key = (ts or {}).get("id") or (ts or {}).get("title")
+                dedup_key = ts_dict.get("id") or ts_dict.get("title")
                 if deduplicate and dedup_key in seen:
                     continue
                 seen.add(dedup_key)
