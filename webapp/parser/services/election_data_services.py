@@ -81,7 +81,7 @@ def get_table_columns(obj: Any) -> List[Column]:
     Handles missing __table__ or columns attributes gracefully.
     """
     table: Table = getattr(obj, "__table__", None)
-    if table and hasattr(table, "columns"):
+    if table is not None and hasattr(table, "columns"):
         return list(table.columns)
     return []
 
@@ -96,7 +96,7 @@ def iter_row_columns(row: Any) -> Iterator[Column]:
     Iterate over columns of an ORM row's table.
     """
     table = get_row_table(row)
-    if table and hasattr(table, "columns"):
+    if table is not None and hasattr(table, "columns"):
         return iter(table.columns)
     return iter([])
 
@@ -105,7 +105,7 @@ def row_to_dict(row: DictConvertible) -> Dict[str, Any]:
     Convert an ORM row object to a dict, using __table__.columns for robust access.
     """
     table: Table = getattr(row, "__table__", None)
-    if table and hasattr(table, "columns"):
+    if table is not None and hasattr(table, "columns"):
         return {col.name: getattr(row, col.name) for col in table.columns}
     # Fallback: try as_dict if available
     if hasattr(row, "as_dict"):
@@ -829,7 +829,7 @@ class ElectionDataService(object):
         """
         tables = get_metadata_tables()
         table = tables.get(table_name)
-        if not table or not hasattr(table, "columns"):
+        if table is None or not hasattr(table, "columns"):
             return None
         columns = [getattr(col, "name", None) for col in getattr(table, "columns", []) if hasattr(col, "name")]
         table_args = str(getattr(table, "table_args", ""))
@@ -841,7 +841,7 @@ class ElectionDataService(object):
         """
         tables = get_metadata_tables()
         table = tables.get(table_name)
-        if not table or not hasattr(table, "columns"):
+        if table is None or not hasattr(table, "columns"):
             return None
         columns = list(getattr(table, "columns", []))
         column_info = {}
