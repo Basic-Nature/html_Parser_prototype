@@ -6,7 +6,6 @@ not DB details.
 
 All methods are annotated and include docstrings for clarity.
 """
-import difflib
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, DeclarativeMeta
@@ -117,7 +116,6 @@ def _get_contest_id(session: Session, contest: Union[dict, int]) -> Optional[int
     if isinstance(contest, dict):
         if contest.get("id"):
             return contest["id"]
-        # Try to find by title/year/type/state/county if id missing
         filters = {k: contest.get(k) for k in ("title", "year", "type_")}
         q = session.query(Contest)
         for k, v in filters.items():
@@ -127,6 +125,8 @@ def _get_contest_id(session: Session, contest: Union[dict, int]) -> Optional[int
         return obj.id if obj else None
     elif isinstance(contest, int):
         return contest
+    # Defensive: handle string or other types gracefully
+    logger.error(f"_get_contest_id: Unexpected contest type: {type(contest)} value={contest}", exc_info=True)
     return None
 
 def columns_to_names(columns: List[Column]) -> List[str]:
@@ -446,19 +446,20 @@ class ElectionDataService(object):
         """Insert or update a panel for a contest."""
         with get_session() as session:
             contest_id = _get_contest_id(session, contest)
+            panel_dict = panel if isinstance(panel, dict) else {}
             obj = session.query(Panel).filter_by(
-                panel_text=(panel or {}).get("panel_text"),
+                panel_text=panel_dict.get("panel_text"),
                 contest_id=contest_id
             ).first()
             if obj:
-                obj.panel_html = (panel or {}).get("panel_html")
-                obj.segment_hash = (panel or {}).get("segment_hash")
+                obj.panel_html = panel_dict.get("panel_html")
+                obj.segment_hash = panel_dict.get("segment_hash")
                 obj.metastats = clean_for_json(panel)
             else:
                 obj = Panel(
-                    panel_text=(panel or {}).get("panel_text"),
-                    panel_html=(panel or {}).get("panel_html"),
-                    segment_hash=(panel or {}).get("segment_hash"),
+                    panel_text=panel_dict.get("panel_text"),
+                    panel_html=panel_dict.get("panel_html"),
+                    segment_hash=panel_dict.get("segment_hash"),
                     contest_id=contest_id,
                     metastats=clean_for_json(panel)
                 )
@@ -469,24 +470,25 @@ class ElectionDataService(object):
         """Insert or update a button for a contest."""
         with get_session() as session:
             contest_id = _get_contest_id(session, contest)
+            button_dict = button if isinstance(button, dict) else {}
             obj = session.query(Button).filter_by(
-                label=(button or {}).get("label"),
-                selector=(button or {}).get("selector"),
+                label=button_dict.get("label"),
+                selector=button_dict.get("selector"),
                 contest_id=contest_id
             ).first()
             if obj:
-                obj.is_visible = (button or {}).get("is_visible", True)
-                obj.is_clickable = (button or {}).get("is_clickable", True)
-                obj.source = (button or {}).get("source")
+                obj.is_visible = button_dict.get("is_visible", True)
+                obj.is_clickable = button_dict.get("is_clickable", True)
+                obj.source = button_dict.get("source")
                 obj.metastats = clean_for_json(button)
             else:
                 obj = Button(
-                    label=(button or {}).get("label"),
-                    selector=(button or {}).get("selector"),
+                    label=button_dict.get("label"),
+                    selector=button_dict.get("selector"),
                     contest_id=contest_id,
-                    is_visible=(button or {}).get("is_visible", True),
-                    is_clickable=(button or {}).get("is_clickable", True),
-                    source=(button or {}).get("source"),
+                    is_visible=button_dict.get("is_visible", True),
+                    is_clickable=button_dict.get("is_clickable", True),
+                    source=button_dict.get("source"),
                     metastats=clean_for_json(button)
                 )
                 session.add(obj)
@@ -495,20 +497,21 @@ class ElectionDataService(object):
     def upsert_candidate(self, candidate):
         """Insert or update a candidate."""
         with get_session() as session:
+            candidate_dict = candidate if isinstance(candidate, dict) else {}
             obj = session.query(Candidate).filter_by(
-                name=(candidate or {}).get("name"),
-                office_id=(candidate or {}).get("office_id"),
-                district_id=(candidate or {}).get("district_id"),
+                name=candidate_dict.get("name"),
+                office_id=candidate_dict.get("office_id"),
+                district_id=candidate_dict.get("district_id"),
             ).first()
             if obj:
-                obj.party_id = (candidate or {}).get("party_id")
+                obj.party_id = candidate_dict.get("party_id")
                 obj.metastats = clean_for_json(candidate)
             else:
                 obj = Candidate(
-                    name=(candidate or {}).get("name"),
-                    party_id=(candidate or {}).get("party_id"),
-                    office_id=(candidate or {}).get("office_id"),
-                    district_id=(candidate or {}).get("district_id"),
+                    name=candidate_dict.get("name"),
+                    party_id=candidate_dict.get("party_id"),
+                    office_id=candidate_dict.get("office_id"),
+                    district_id=candidate_dict.get("district_id"),
                     metastats=clean_for_json(candidate)
                 )
                 session.add(obj)
@@ -517,13 +520,14 @@ class ElectionDataService(object):
     def upsert_party(self, party):
         """Insert or update a party."""
         with get_session() as session:
-            obj = session.query(Party).filter_by(name=(party or {}).get("name")).first()
+            party_dict = party if isinstance(party, dict) else {}
+            obj = session.query(Party).filter_by(name=party_dict.get("name")).first()
             if obj:
-                obj.abbreviation = (party or {}).get("abbreviation")
+                obj.abbreviation = party_dict.get("abbreviation")
             else:
                 obj = Party(
-                    name=(party or {}).get("name"),
-                    abbreviation=(party or {}).get("abbreviation")
+                    name=party_dict.get("name"),
+                    abbreviation=party_dict.get("abbreviation")
                 )
                 session.add(obj)
             session.commit()
@@ -532,13 +536,14 @@ class ElectionDataService(object):
         """Insert or update an office."""
         from ..utils.models import OfficeLevelEnum
         with get_session() as session:
-            obj = session.query(Office).filter_by(name=(office or {}).get("name")).first()
+            office_dict = office if isinstance(office, dict) else {}
+            obj = session.query(Office).filter_by(name=office_dict.get("name")).first()
             if obj:
-                obj.level = OfficeLevelEnum((office or {}).get("level")) if (office or {}).get("level") else obj.level
+                obj.level = OfficeLevelEnum(office_dict.get("level")) if office_dict.get("level") else obj.level
             else:
                 obj = Office(
-                    name=(office or {}).get("name"),
-                    level=OfficeLevelEnum((office or {}).get("level")) if (office or {}).get("level") else None
+                    name=office_dict.get("name"),
+                    level=OfficeLevelEnum(office_dict.get("level")) if office_dict.get("level") else None
                 )
                 session.add(obj)
             session.commit()
@@ -546,19 +551,20 @@ class ElectionDataService(object):
     def upsert_district(self, district):
         """Insert or update a district."""
         with get_session() as session:
+            district_dict = district if isinstance(district, dict) else {}
             obj = session.query(District).filter_by(
-                name=(district or {}).get("name"),
-                state_id=(district or {}).get("state_id"),
-                county_id=(district or {}).get("county_id")
+                name=district_dict.get("name"),
+                state_id=district_dict.get("state_id"),
+                county_id=district_dict.get("county_id")
             ).first()
             if obj:
-                obj.type_ = (district or {}).get("type_")
+                obj.type_ = district_dict.get("type_")
             else:
                 obj = District(
-                    name=(district or {}).get("name"),
-                    type_=(district or {}).get("type_"),
-                    state_id=(district or {}).get("state_id"),
-                    county_id=(district or {}).get("county_id")
+                    name=district_dict.get("name"),
+                    type_=district_dict.get("type_"),
+                    state_id=district_dict.get("state_id"),
+                    county_id=district_dict.get("county_id")
                 )
                 session.add(obj)
             session.commit()
@@ -566,26 +572,27 @@ class ElectionDataService(object):
     def upsert_result(self, result):
         """Insert or update an election result."""
         with get_session() as session:
+            result_dict = result if isinstance(result, dict) else {}
             obj = session.query(Result).filter_by(
-                candidate_id=(result or {}).get("candidate_id"),
-                contest_id=(result or {}).get("contest_id")
+                candidate_id=result_dict.get("candidate_id"),
+                contest_id=result_dict.get("contest_id")
             ).first()
             if obj:
-                obj.votes = (result or {}).get("votes")
-                obj.percent = (result or {}).get("percent")
-                obj.is_winner = (result or {}).get("is_winner")
-                obj.is_incumbent = (result or {}).get("is_incumbent")
-                obj.vote_method = (result or {}).get("vote_method")
+                obj.votes = result_dict.get("votes")
+                obj.percent = result_dict.get("percent")
+                obj.is_winner = result_dict.get("is_winner")
+                obj.is_incumbent = result_dict.get("is_incumbent")
+                obj.vote_method = result_dict.get("vote_method")
                 obj.metastats = clean_for_json(result)
             else:
                 obj = Result(
-                    candidate_id=(result or {}).get("candidate_id"),
-                    contest_id=(result or {}).get("contest_id"),
-                    votes=(result or {}).get("votes"),
-                    percent=(result or {}).get("percent"),
-                    is_winner=(result or {}).get("is_winner"),
-                    is_incumbent=(result or {}).get("is_incumbent"),
-                    vote_method=(result or {}).get("vote_method"),
+                    candidate_id=result_dict.get("candidate_id"),
+                    contest_id=result_dict.get("contest_id"),
+                    votes=result_dict.get("votes"),
+                    percent=result_dict.get("percent"),
+                    is_winner=result_dict.get("is_winner"),
+                    is_incumbent=result_dict.get("is_incumbent"),
+                    vote_method=result_dict.get("vote_method"),
                     metastats=clean_for_json(result)
                 )
                 session.add(obj)
@@ -595,16 +602,17 @@ class ElectionDataService(object):
         """Insert or update a generic entity."""
         from ..utils.models import Entity
         with get_session() as session:
+            entity_dict = entity if isinstance(entity, dict) else {}
             obj = session.query(Entity).filter_by(
-                entity_type=(entity or {}).get("entity_type"),
-                value=(entity or {}).get("value")
+                entity_type=entity_dict.get("entity_type"),
+                value=entity_dict.get("value")
             ).first()
             if obj:
                 obj.metastats = clean_for_json(entity)
             else:
                 obj = Entity(
-                    entity_type=(entity or {}).get("entity_type"),
-                    value=(entity or {}).get("value"),
+                    entity_type=entity_dict.get("entity_type"),
+                    value=entity_dict.get("value"),
                     metastats=clean_for_json(entity)
                 )
                 session.add(obj)
@@ -614,21 +622,22 @@ class ElectionDataService(object):
         """Insert or update a table structure."""
         from ..utils.models import TableStructure
         with get_session() as session:
+            ts_dict = table_structure if isinstance(table_structure, dict) else {}
             obj = session.query(TableStructure).filter_by(
-                contest=(table_structure or {}).get("contest")
+                contest=ts_dict.get("contest")
             ).first()
             if obj:
-                obj.headers = (table_structure or {}).get("headers")
-                obj.context = (table_structure or {}).get("context")
-                obj.ml_confidence = (table_structure or {}).get("ml_confidence")
-                obj.confirmed_by_user = (table_structure or {}).get("confirmed_by_user", False)
+                obj.headers = ts_dict.get("headers")
+                obj.context = ts_dict.get("context")
+                obj.ml_confidence = ts_dict.get("ml_confidence")
+                obj.confirmed_by_user = ts_dict.get("confirmed_by_user", False)
             else:
                 obj = TableStructure(
-                    contest=(table_structure or {}).get("contest"),
-                    headers=(table_structure or {}).get("headers"),
-                    context=(table_structure or {}).get("context"),
-                    ml_confidence=(table_structure or {}).get("ml_confidence"),
-                    confirmed_by_user=(table_structure or {}).get("confirmed_by_user", False)
+                    contest=ts_dict.get("contest"),
+                    headers=ts_dict.get("headers"),
+                    context=ts_dict.get("context"),
+                    ml_confidence=ts_dict.get("ml_confidence"),
+                    confirmed_by_user=ts_dict.get("confirmed_by_user", False)
                 )
                 session.add(obj)
             session.commit()
@@ -637,18 +646,19 @@ class ElectionDataService(object):
         """Insert or update batch metadata."""
         from ..utils.models import BatchMetadata
         with get_session() as session:
+            bm_dict = batch_metadata if isinstance(batch_metadata, dict) else {}
             obj = session.query(BatchMetadata).filter_by(
-                batch_id=(batch_metadata or {}).get("batch_id")
+                batch_id=bm_dict.get("batch_id")
             ).first()
             if obj:
-                obj.source = (batch_metadata or {}).get("source")
-                obj.status = (batch_metadata or {}).get("status")
+                obj.source = bm_dict.get("source")
+                obj.status = bm_dict.get("status")
                 obj.metastats = clean_for_json(batch_metadata)
             else:
                 obj = BatchMetadata(
-                    batch_id=(batch_metadata or {}).get("batch_id"),
-                    source=(batch_metadata or {}).get("source"),
-                    status=(batch_metadata or {}).get("status"),
+                    batch_id=bm_dict.get("batch_id"),
+                    source=bm_dict.get("source"),
+                    status=bm_dict.get("status"),
                     metastats=clean_for_json(batch_metadata)
                 )
                 session.add(obj)
@@ -658,17 +668,18 @@ class ElectionDataService(object):
         """Insert or update an alert."""
         from ..utils.models import Alert
         with get_session() as session:
+            alert_dict = alert if isinstance(alert, dict) else {}
             obj = session.query(Alert).filter_by(
-                level=(alert or {}).get("level"),
-                message=(alert or {}).get("message")
+                level=alert_dict.get("level"),
+                message=alert_dict.get("message")
             ).first()
             if obj:
-                obj.context = (alert or {}).get("context")
+                obj.context = alert_dict.get("context")
             else:
                 obj = Alert(
-                    level=(alert or {}).get("level"),
-                    message=(alert or {}).get("message"),
-                    context=(alert or {}).get("context")
+                    level=alert_dict.get("level"),
+                    message=alert_dict.get("message"),
+                    context=alert_dict.get("context")
                 )
                 session.add(obj)
             session.commit()
@@ -677,15 +688,16 @@ class ElectionDataService(object):
         """Insert or update an embedding."""
         from ..utils.models import EmbeddingCache
         with get_session() as session:
+            emb_dict = embedding if isinstance(embedding, dict) else {}
             obj = session.query(EmbeddingCache).filter_by(
-                segment_hash=(embedding or {}).get("segment_hash")
+                segment_hash=emb_dict.get("segment_hash")
             ).first()
             if obj:
-                obj.embedding = (embedding or {}).get("embedding")
+                obj.embedding = emb_dict.get("embedding")
             else:
                 obj = EmbeddingCache(
-                    segment_hash=(embedding or {}).get("segment_hash"),
-                    embedding=(embedding or {}).get("embedding")
+                    segment_hash=emb_dict.get("segment_hash"),
+                    embedding=emb_dict.get("embedding")
                 )
                 session.add(obj)
             session.commit()
