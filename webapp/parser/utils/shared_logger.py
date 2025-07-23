@@ -3,6 +3,7 @@ import re
 import time
 import logging
 import inspect
+import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Generator, Tuple
 from rich import print as rprint
@@ -310,32 +311,39 @@ class SharedLogger(logging.Logger):
                 }
         return {}
 
-    def trace(self, msg: str, context: Any = None) -> None:
+    def trace(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
         """Log a trace message."""
+        msg = self._append_traceback(msg, exc_info)
         self._log("TRACE", msg, context, color="cyan")
 
-    def debug(self, msg: str, context: Any = None) -> None:
+    def debug(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
         """Log a debug message."""
+        msg = self._append_traceback(msg, exc_info)
         self._log("DEBUG", msg, context, color="blue")
 
-    def info(self, msg: str, context: Any = None) -> None:
+    def info(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
         """Log an info message."""
+        msg = self._append_traceback(msg, exc_info)
         self._log("INFO", msg, context, color="green")
 
-    def warning(self, msg: str, context: Any = None) -> None:
+    def warning(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
         """Log a warning message."""
+        msg = self._append_traceback(msg, exc_info)
         self._log("WARNING", msg, context, color="yellow")
 
-    def error(self, msg: str, context: Any = None) -> None:
-        """Log an error message."""
+    def error(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
+        """Log an error message. Accepts exc_info for traceback compatibility."""
+        msg = self._append_traceback(msg, exc_info)
         self._log("ERROR", msg, context, color="red")
 
-    def critical(self, msg: str, context: Any = None) -> None:
+    def critical(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
         """Log a critical message."""
+        msg = self._append_traceback(msg, exc_info)
         self._log("CRITICAL", msg, context, color="magenta")
 
-    def alert(self, msg: str, context: Any = None, alert_type: str = "info") -> None:
+    def alert(self, msg: str, context: Any = None, alert_type: str = "info", exc_info: Any = None) -> None:
         """Log an alert message with a specific alert type."""
+        msg = self._append_traceback(msg, exc_info)
         style = {
             "info": "cyan",
             "warning": "yellow",
@@ -347,6 +355,20 @@ class SharedLogger(logging.Logger):
         if context:
             panel_msg += f"\n[dim]{self._format_context(context)}[/dim]"
         self._log(label, panel_msg, context, color=style)
+
+    def _append_traceback(self, msg: str, exc_info: Any = None) -> str:
+        """Helper to append traceback info to message if exc_info is provided."""
+        if exc_info:
+            if exc_info is True:
+                tb_str = traceback.format_exc()
+            elif isinstance(exc_info, BaseException):
+                tb_str = "".join(traceback.format_exception(type(exc_info), exc_info, exc_info.__traceback__))
+            elif isinstance(exc_info, tuple):
+                tb_str = "".join(traceback.format_exception(*exc_info))
+            else:
+                tb_str = str(exc_info)
+            msg = f"{msg}\nTraceback:\n{tb_str}"
+        return msg
 
     def _log(self, level: str, msg: str, context: Any = None, color: str = "white") -> None:
         """
