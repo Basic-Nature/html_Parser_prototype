@@ -21,7 +21,8 @@ from ..utils.shared_logic import (
     normalize_state_name, normalize_county_name, safe_get_first,
     safe_model_encode, safe_locator, safe_nth, safe_inner_text, safe_get_attribute,
     safe_evaluate, safe_is_visible, safe_is_enabled, safe_click,
-    safe_wait_for_timeout, safe_count, safe_startswith, safe_isupper
+    safe_wait_for_timeout, safe_count, safe_startswith, safe_isupper,
+    _sync_type_and_election_types
 )
 from ..bots.librarian import ( 
     PARTY_KEYWORDS,
@@ -52,7 +53,6 @@ from .Integrity_check import (
 )
 from .context_organizer import ContextOrganizer, clean_for_json
 from ..services.election_data_services import ElectionDataService
-import inspect
 from typing import Optional, Any, List, Dict, Tuple, Callable
 logger = SharedLogger()
 
@@ -998,20 +998,35 @@ class ContextCoordinator(object):
             logger.error(f"[submit_user_feedback] Failed to submit feedback: {e}", exc_info=True)
         return self.organized
     
-    def correct_and_update_contest(self, contest_id, correction_data) -> None:
-        self.data_service.update_contest_in_db({"id": contest_id, **correction_data})
-        self.organized = None
-        self.organize_and_enrich(self.last_raw_context)
-        self.organizer.log_field_selection(
-            field_type="contest",
-            field_name="correction",
-            extracted_value=correction_data,
-            method="manual",
-            score=1.0,
-            result="manual_pass",
-            context={"contest_id": contest_id},
-            user_feedback=None
-        )
+    def correct_and_update_contest(self, contest_id, correction_data, validate_types=True, log_changes=True) -> None:
+        """
+        Advanced contest correction:
+        - Syncs and validates types.
+        - Logs changes and type corrections.
+        - Optionally validates and reports type consistency.
+        """
+        contest = {"id": contest_id, **correction_data}
+        _sync_type_and_election_types(contest)
+        if validate_types:
+            if not contest.get("type_") or not contest.get("election_types"):
+                logger.warning(f"[correct_and_update_contest] Contest {contest_id} missing type/election_types after sync.")
+        try:
+            self.data_service.update_contest_in_db(contest)
+            self.organized = None
+            self.organize_and_enrich(self.last_raw_context)
+            if log_changes:
+                self.organizer.log_field_selection(
+                    field_type="contest",
+                    field_name="correction",
+                    extracted_value=correction_data,
+                    method="manual",
+                    score=1.0,
+                    result="manual_pass",
+                    context={"contest_id": contest_id, "type_": contest.get("type_"), "election_types": contest.get("election_types")},
+                    user_feedback=None
+                )
+        except Exception as e:
+            logger.error(f"[correct_and_update_contest] Failed to update contest: {e}", exc_info=True)
 
     def print_contest_summary(self) -> None:
         """
@@ -1143,19 +1158,51 @@ class ContextCoordinator(object):
             "county_to_state": self.organized.get("county_to_state", {}),
         }
 
-    def _enrich_contests_with_nlp(self) -> None:
+    def _enrich_contests_with_nlp(self, batch=True, sync_types=True, log_enrichment=True) -> None:
         """
-        Add NLP-derived fields (entities, locations, dates) to each contest.
-        """ 
+        Advanced enrichment:
+        - Batch processes contests for efficiency if batch=True.
+        - Syncs types and logs enrichment.
+        - Handles errors gracefully.
+        """
         if not self.organized or "contests" not in self.organized:
             return
-        for c in self.organized["contests"]:
-            if not isinstance(c, dict):
-                continue
-            title = c.get("title", "")
-            c["entities"] = extract_entities(title)
-            c["locations"] = extract_locations(title)
-            c["dates"] = extract_dates(title)
+        contests = self.organized["contests"]
+        if batch:
+            # Batch process all contests at once for NLP extraction
+            titles = [c.get("title", "") if isinstance(c, dict) else "" for c in contests]
+            try:
+                all_entities = [extract_entities(title) for title in titles]
+                all_locations = [extract_locations(title) for title in titles]
+                all_dates = [extract_dates(title) for title in titles]
+                for idx, c in enumerate(contests):
+                    if not isinstance(c, dict):
+                        continue
+                    c["entities"] = all_entities[idx]
+                    c["locations"] = all_locations[idx]
+                    c["dates"] = all_dates[idx]
+                    if sync_types:
+                        _sync_type_and_election_types(c)
+                    if log_enrichment and idx < 5:
+                        logger.info(f"[enrich_contests_with_nlp] Enriched contest: {c.get('title', '')}")
+            except Exception as e:
+                logger.error(f"[enrich_contests_with_nlp] Batch error: {e}", exc_info=True)
+        else:
+            # Process contests one by one
+            for idx, c in enumerate(contests):
+                if not isinstance(c, dict):
+                    continue
+                try:
+                    title = c.get("title", "")
+                    c["entities"] = extract_entities(title)
+                    c["locations"] = extract_locations(title)
+                    c["dates"] = extract_dates(title)
+                    if sync_types:
+                        _sync_type_and_election_types(c)
+                    if log_enrichment and idx < 5:
+                        logger.info(f"[enrich_contests_with_nlp] Enriched contest: {title}")
+                except Exception as e:
+                    logger.error(f"[enrich_contests_with_nlp] Error enriching contest '{c.get('title', '')}': {e}", exc_info=True)
 
     def fuzzy_score(self, a, b) -> float:
         """
@@ -1619,6 +1666,7 @@ class ContextCoordinator(object):
             context = context or {}
             model = getattr(self, "_semantic_model", None)
             known_headers = set(context.get("known_headers", []))
+            known_labels = set(context.get("known_labels", []))
             contest_title = (context.get("contest", {}) or {}).get("title", "") if isinstance(context.get("contest"), dict) else ""
             # 1. Semantic similarity to known headers
             sim_scores = []
@@ -1635,9 +1683,18 @@ class ContextCoordinator(object):
             # 3. Entity detection
             ents = self.extract_entities(title)
             entity_boost = 0.0
+            best_entity = None
             for ent, label in ents:
                 if label in {"PERSON", "CANDIDATE", "ORG", "NORP", "GPE", "LOC"}:
                     entity_boost = 0.2
+                    best_entity = ent
+                    # Optionally: use semantic similarity to contest title or known labels
+                    if model and contest_title:
+                        entity_boost += 0.1 * get_semantic_score(model, ent, contest_title)
+                    # Optionally: use fuzzy match to known labels
+                    if known_labels:
+                        fuzzy_scores = [difflib.SequenceMatcher(None, (lbl or "").lower(), (ent or "").lower()).ratio() for lbl in known_labels]
+                        entity_boost += 0.05 * max(fuzzy_scores) if fuzzy_scores else 0.0
                     break
             # 4. Contextual match to contest title
             context_sim = get_semantic_score(model, title, contest_title) if model and contest_title else 0.0
@@ -1654,7 +1711,7 @@ class ContextCoordinator(object):
                 cap_score
             )
             # Clamp between 0.0 and 1.0
-            return max(0.0, min(score, 1.0))
+            return max(0.0, min(score, 1.0)), best_entity
         except Exception as e:
             logger.error(f"[score_header_ml] Error scoring header '{title}': {e}")
             return 0.5
@@ -1746,48 +1803,270 @@ class ContextCoordinator(object):
             return 0.5
     
     # --- DB/Service Delegation ---
-    def get_full_contest(self, contest_id) -> Optional[Dict[str, Any]]:
-        return self.data_service.get_full_contest(contest_id)
+    def get_full_contest(self, contest_id, enrich=True, validate_types=True, log_access=True) -> Optional[Dict[str, Any]]:
+        """
+        Advanced full contest accessor:
+        - Enriches with NLP and type sync.
+        - Validates type consistency.
+        - Logs access and issues.
+        """
+        contest = self.data_service.get_full_contest(contest_id)
+        if isinstance(contest, dict):
+            try:
+                _sync_type_and_election_types(contest)
+                if enrich:
+                    contest["entities"] = self.extract_entities(contest.get("title", ""))
+                    contest["locations"] = self.extract_locations(contest.get("title", ""))
+                    contest["dates"] = self.extract_dates(contest.get("title", ""))
+                if validate_types and (not contest.get("type_") or not contest.get("election_types")):
+                    logger.warning(f"[get_full_contest] Contest {contest_id} missing type/election_types after sync.")
+                if log_access:
+                    logger.info(f"[get_full_contest] Accessed contest {contest_id}: {contest.get('title', '')}")
+            except Exception as e:
+                logger.error(f"[get_full_contest] Error enriching contest: {e}", exc_info=True)
+        return contest
 
-    def get_all_full_contests(self, filters=None, limit=100) -> List[Dict[str, Any]]:
-        return self.data_service.get_all_full_contests(filters=filters, limit=limit)
+    def get_all_full_contests(self, filters=None, limit=100, enrich=True, deduplicate=True, fuzzy=False, semantic=False, return_summary=False) -> List[Dict[str, Any]]:
+        """
+        Advanced accessor for all contests:
+        - Enriches with NLP and type sync.
+        - Deduplicates and validates.
+        - Supports flexible filtering (exact, fuzzy, semantic).
+        - Optionally returns summary of type issues.
+        """
+        try:
+            contests = self.data_service.get_all_full_contests(filters=filters, limit=limit)
+            seen_ids = set()
+            enriched = []
+            type_issues = []
+            for c in contests:
+                if not isinstance(c, dict):
+                    continue
+                _sync_type_and_election_types(c)
+                if enrich:
+                    c["entities"] = self.extract_entities(c.get("title", ""))
+                    c["locations"] = self.extract_locations(c.get("title", ""))
+                    c["dates"] = self.extract_dates(c.get("title", ""))
+                dedup_key = c.get("id") or c.get("title")
+                if deduplicate and dedup_key in seen_ids:
+                    continue
+                seen_ids.add(dedup_key)
+                if not c.get("type_") or not c.get("election_types"):
+                    type_issues.append({"contest": c.get("title"), "issue": "Missing type or election_types"})
+                enriched.append(c)
+            def match(c):
+                if not filters:
+                    return True
+                for k, v in (filters or {}).items():
+                    val = str((c or {}).get(k, "")).lower()
+                    tgt = str(v).lower()
+                    if fuzzy:
+                        if difflib.SequenceMatcher(None, val, tgt).ratio() < 0.7:
+                            return False
+                    elif semantic and hasattr(self, "_semantic_model"):
+                        score = get_semantic_score(self._semantic_model, val, tgt)
+                        if score < 0.7:
+                            return False
+                    else:
+                        if tgt not in val:
+                            return False
+                return True
+            filtered = [c for c in enriched if match(c)]
+            if return_summary:
+                return {"contests": clean_for_json(filtered), "type_issues": type_issues}
+            return clean_for_json(filtered)
+        except Exception as e:
+            logger.error(f"[get_all_full_contests] Error: {e}", exc_info=True)
+            return []
 
-    def list_tables(self) -> List[str]:
-        return self.data_service.list_tables()
+    def list_tables(self, validate=True) -> List[str]:
+        """
+        List all tables, optionally validating existence and schema.
+        """
+        try:
+            tables = self.data_service.list_tables()
+            if validate:
+                valid_tables = []
+                for tbl in tables:
+                    meta = self.get_table_metadata(tbl)
+                    if meta and meta.get("columns"):
+                        valid_tables.append(tbl)
+                    else:
+                        logger.warning(f"[list_tables] Table '{tbl}' missing metadata or columns.")
+                return valid_tables
+            return tables
+        except Exception as e:
+            logger.error(f"[list_tables] Error: {e}", exc_info=True)
+            return []
 
-    def describe_table(self, table_name) -> Optional[Dict[str, Any]]:
-        return self.data_service.describe_table(table_name)
+    def describe_table(self, table_name, enrich=True) -> Optional[Dict[str, Any]]:
+        """
+        Describe a table, optionally enriching with schema and sample data.
+        """
+        try:
+            desc = self.data_service.describe_table(table_name)
+            if enrich and desc:
+                meta = self.get_table_metadata(table_name)
+                if meta:
+                    desc["metadata"] = meta
+                # Optionally add sample rows
+                if hasattr(self.data_service, "get_sample_rows"):
+                    desc["sample_rows"] = self.data_service.get_sample_rows(table_name, limit=5)
+            return desc
+        except Exception as e:
+            logger.error(f"[describe_table] Error: {e}", exc_info=True)
+            return None
 
-    def get_table_metadata(self, table_name) -> Optional[Dict[str, Any]]:
-        return self.data_service.get_table_metadata(table_name)
+    def get_table_metadata(self, table_name, validate=True) -> Optional[Dict[str, Any]]:
+        """
+        Get table metadata, optionally validating schema.
+        """
+        try:
+            meta = self.data_service.get_table_metadata(table_name)
+            if validate and meta and not meta.get("columns"):
+                logger.warning(f"[get_table_metadata] Table '{table_name}' missing columns.")
+            return meta
+        except Exception as e:
+            logger.error(f"[get_table_metadata] Error: {e}", exc_info=True)
+            return None
 
-    def check_missing_tables(self) -> List[str]:
-        return self.data_service.check_missing_tables()
+    def check_missing_tables(self, expected_tables=None) -> List[str]:
+        """
+        Check for missing tables against an expected list.
+        """
+        try:
+            existing = set(self.data_service.list_tables())
+            missing = []
+            if expected_tables:
+                missing = [tbl for tbl in expected_tables if tbl not in existing]
+            else:
+                missing = self.data_service.check_missing_tables()
+            if missing:
+                logger.warning(f"[check_missing_tables] Missing tables: {missing}")
+            return missing
+        except Exception as e:
+            logger.error(f"[check_missing_tables] Error: {e}", exc_info=True)
+            return []
 
-    def get_table_structures(self, filters=None, limit=100, confirmed_only=False) -> List[Dict[str, Any]]:
-        return self.data_service.fetch_table_structures(filters=filters, limit=limit, confirmed_only=confirmed_only)
+    def get_table_structures(self, filters=None, limit=100, confirmed_only=False, enrich=True, deduplicate=True) -> List[Dict[str, Any]]:
+        """
+        Advanced accessor for table structures:
+        - Enriches with NLP and validation.
+        - Deduplicates and supports flexible filtering.
+        Returns a list of enriched table structure dicts, each including score and best_entity.
+        """
+        try:
+            structures = self.data_service.fetch_table_structures(filters=filters, limit=limit, confirmed_only=confirmed_only)
+            seen = set()
+            enriched = []
+            for ts in structures:
+                if not isinstance(ts, dict):
+                    continue
+                if enrich:
+                    score, best_entity = self.score_header_ml((ts or {}).get("title", ""), (ts or {}).get("context", {}))
+                    ts["score"] = score
+                    ts["best_entity"] = best_entity
+                dedup_key = (ts or {}).get("id") or (ts or {}).get("title")
+                if deduplicate and dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                enriched.append(ts)
+            return clean_for_json(enriched)
+        except Exception as e:
+            logger.error(f"[get_table_structures] Error: {e}", exc_info=True)
+            return []
 
-    def get_table_structure(self, contest, context=None) -> Optional[Dict[str, Any]]:
-        return self.data_service.get_table_structure(contest, context)
+    def get_table_structure(self, contest, context=None, enrich=True) -> Optional[Dict[str, Any]]:
+        """
+        Get table structure for a contest, optionally enriching with ML/NLP.
+        Returns the enriched table structure dict, including score and best_entity.
+        """
+        try:
+            ts = self.data_service.get_table_structure(contest, context)
+            if enrich and ts and isinstance(ts, dict):
+                score, best_entity = self.score_header_ml(ts.get("title", ""), ts.get("context", {}))
+                ts["score"] = score
+                ts["best_entity"] = best_entity
+            return clean_for_json(ts)
+        except Exception as e:
+            logger.error(f"[get_table_structure] Error: {e}", exc_info=True)
+            return None
 
-    def save_table_structure(self, contest, headers, context, ml_confidence=None, confirmed_by_user=False) -> bool:
-        return self.data_service.save_table_structure(contest, headers, context, ml_confidence, confirmed_by_user)
+    def save_table_structure(self, contest, headers, context, ml_confidence=None, confirmed_by_user=False, validate=True) -> bool:
+        """
+        Save table structure with validation and logging.
+        """
+        try:
+            if validate and not headers:
+                logger.error("[save_table_structure] No headers provided.")
+                return False
+            result = self.data_service.save_table_structure(contest, headers, context, ml_confidence, confirmed_by_user)
+            if result:
+                logger.info(f"[save_table_structure] Saved structure for contest: {contest}")
+            else:
+                logger.warning(f"[save_table_structure] Failed to save structure for contest: {contest}")
+            return result
+        except Exception as e:
+            logger.error(f"[save_table_structure] Error: {e}", exc_info=True)
+            return False
 
     # --- Context/Contest Accessors ---
-    def get_contests(self, filters=None) -> List[Dict[str, Any]]:
+    def get_contests(self, filters=None, enrich=True, deduplicate=True, fuzzy=False, semantic=False, return_summary=False) -> List[Dict[str, Any]]:
+        """
+        Advanced contest accessor:
+        - Enriches contests with NLP, type sync, and deduplication.
+        - Supports flexible filtering: exact, partial, fuzzy, semantic.
+        - Optionally returns a summary of type consistency issues.
+        """
         if not self.organized:
             return []
         contests = (self.organized or {}).get("contests", [])
-        if not filters:
-            return clean_for_json(contests)
+        seen_ids = set()
+        enriched = []
+        type_issues = []
+        for c in contests:
+            if not isinstance(c, dict):
+                continue
+            try:
+                _sync_type_and_election_types(c)
+                if enrich:
+                    c["entities"] = self.extract_entities(c.get("title", ""))
+                    c["locations"] = self.extract_locations(c.get("title", ""))
+                    c["dates"] = self.extract_dates(c.get("title", ""))
+                # Deduplicate by contest id or title
+                dedup_key = c.get("id") or c.get("title")
+                if deduplicate and dedup_key in seen_ids:
+                    continue
+                seen_ids.add(dedup_key)
+                # Validate type consistency
+                if not c.get("type_") or not c.get("election_types"):
+                    type_issues.append({"contest": c.get("title"), "issue": "Missing type or election_types"})
+                enriched.append(c)
+            except Exception as e:
+                logger.error(f"[get_contests] Error enriching contest: {e}", exc_info=True)
+                continue
+        # Advanced filtering
         def match(c):
+            if not filters:
+                return True
             for k, v in (filters or {}).items():
-                if not isinstance(c, dict):
-                    return False
-                if str(c.get(k, "")).lower() != str(v).lower():
-                    return False
+                val = str((c or {}).get(k, "")).lower()
+                tgt = str(v).lower()
+                if fuzzy:
+                    if difflib.SequenceMatcher(None, val, tgt).ratio() < 0.7:
+                        return False
+                elif semantic and hasattr(self, "_semantic_model"):
+                    score = get_semantic_score(self._semantic_model, val, tgt)
+                    if score < 0.7:
+                        return False
+                else:
+                    if tgt not in val:
+                        return False
             return True
-        return clean_for_json([c for c in contests if match(c)])
+        filtered = [c for c in enriched if match(c)]
+        if return_summary:
+            return {"contests": clean_for_json(filtered), "type_issues": type_issues}
+        return clean_for_json(filtered)
 
     def get_buttons(self, contest: Dict[str, Any], keyword: str = None, url: str = None) -> List[Dict[str, Any]]:
         """

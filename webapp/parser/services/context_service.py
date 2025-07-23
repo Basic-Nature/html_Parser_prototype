@@ -1,20 +1,211 @@
 import os
 import json
 import hashlib
-import time
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Callable
 from ..bots.librarian import (
     load_context_library,
     KNOWN_STATE_TO_COUNTY_MAP,
+    KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    STATE_ABBR,
+    CONTEST_KEYWORDS,
+    PARTY_KEYWORDS,
+    CANDIDATE_KEYWORDS,
+    ELECTION_TYPES,
     # Add more normalization/alias utilities as needed
 )
-from ..utils.shared_logic import normalize_state_name, resolve_county_alias
+from ..utils.shared_logic import (
+    PredictionResult, safe_append,
+    normalize_state_name, normalize_county_name, resolve_county_alias
+)
 from ..utils.shared_logger import SharedLogger
+from ..services.election_data_services import ElectionDataService
+from ..utils.spacy_utils import extract_entities, extract_dates, extract_locations
 from ..utils.user_prompt import UserPrompt
 
 logger = SharedLogger()
 AUDIT_LOG = "context_audit_log.jsonl"
+
+class ContextBasedPredictor:
+    def __init__(self, vocab_dir: str):
+        self.context_service = ContextService(vocab_dir)
+        self.db_service = ElectionDataService()
+        self.state_to_county_map = KNOWN_STATE_TO_COUNTY_MAP
+        # Optionally load ML/NLP models here (e.g., SentenceTransformer)
+        try:
+            from ..utils.model_registry import ModelRegistry
+            self.embedding_model = ModelRegistry.get_sentence_transformer("all-MiniLM-L6-v2")
+        except Exception:
+            self.embedding_model = None
+
+    def predict(self, text: str) -> PredictionResult:
+        result: PredictionResult = {}
+        text_norm = text.lower().strip() if text else ""
+
+        # --- NLP Entity Extraction ---
+        entities = extract_entities(text)
+        dates = extract_dates(text)
+        locations = extract_locations(text)
+
+        # --- State ---
+        state = self.context_service.normalize_state(text)
+        if not state:
+            state = next((normalize_state_name(ent) for ent, label in locations if label in {"GPE", "LOC"}), None)
+        if state:
+            result["state"] = state
+            result["state_abbr"] = next((abbr for abbr, s in STATE_ABBR.items() if s == state), None)
+
+        # --- County (with validation using KNOWN_STATE_TO_COUNTY_MAP) ---
+        county = resolve_county_alias(text, state)
+        if not county:
+            county = next((normalize_county_name(ent) for ent, label in locations if label in {"GPE", "LOC"}), None)
+        if county and state:
+            valid_counties = self.state_to_county_map.get(state, [])
+            if valid_counties and county not in valid_counties:
+                # Fuzzy match or fallback to best match
+                import difflib
+                matches = difflib.get_close_matches(county, valid_counties, n=1, cutoff=0.7)
+                if matches:
+                    county = matches[0]
+        if county:
+            result["county"] = county
+
+        # --- Precinct ---
+        precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP.get(county, [])
+        if precincts:
+            for p in precincts:
+                if p in text_norm:
+                    result["precinct"] = p
+                    break
+
+        # --- Year ---
+        year_match = re.search(r"\b(20\d{2})\b", text_norm)
+        if year_match:
+            result["year"] = int(year_match.group(1))
+        else:
+            year_from_nlp = next((int(ent) for ent, label in dates if re.match(r"\b(20\d{2})\b", ent)), None)
+            if year_from_nlp:
+                result["year"] = year_from_nlp
+
+        # --- Election Type ---
+        result["election_types"] = [etype for etype in ELECTION_TYPES if etype in text_norm]
+        if result["election_types"]:
+            result["type_"] = result["election_types"][0]
+        else:
+            etype_nlp = next((etype for etype in ELECTION_TYPES for ent, label in entities if etype in ent.lower()), None)
+            if etype_nlp:
+                result["type_"] = etype_nlp
+                result["election_types"] = [etype_nlp]
+
+        # --- Office ---
+        office = next((kw for kw in CONTEST_KEYWORDS if kw in text_norm), None)
+        if not office:
+            office = next((ent for ent, label in entities if label in {"ORG", "NORP"}), None)
+        if office:
+            result["office"] = office
+
+        # --- Party ---
+        party = next((kw for kw in PARTY_KEYWORDS if kw in text_norm), None)
+        if not party:
+            party = next((ent for ent, label in entities if label == "NORP"), None)
+        if party:
+            result["party"] = party
+
+        # --- Candidate ---
+        candidate = next((kw for kw in CANDIDATE_KEYWORDS if kw in text_norm), None)
+        if not candidate:
+            candidate = next((ent for ent, label in entities if label in {"PERSON", "CANDIDATE"}), None)
+        if candidate:
+            result["candidate"] = candidate
+
+        # --- Ballot Type ---
+        ballot_type_match = re.search(r"(absentee|mail|early voting|provisional|affidavit|election day)", text_norm)
+        if ballot_type_match:
+            result["ballot_type"] = ballot_type_match.group(1)
+
+        # --- Vote Method ---
+        vote_method_match = re.search(r"(in-person|mail|drop box|online|provisional)", text_norm)
+        if vote_method_match:
+            result["vote_method"] = vote_method_match.group(1)
+
+        # --- Timestamp ---
+        timestamp_match = re.search(r"\b(20\d{2}-\d{2}-\d{2}[ t]\d{2}:\d{2}:\d{2})\b", text)
+        if timestamp_match:
+            result["timestamp"] = timestamp_match.group(1)
+        else:
+            timestamp_nlp = next((ent for ent, label in dates if re.match(r"\b(20\d{2}-\d{2}-\d{2}[ t]\d{2}:\d{2}:\d{2})\b", ent)), None)
+            if timestamp_nlp:
+                result["timestamp"] = timestamp_nlp
+
+        # --- Source URL (if present in text) ---
+        url_match = re.search(r"https?://[^\s]+", text)
+        if url_match:
+            result["source_url"] = url_match.group(0)
+
+        # --- DB Lookup for enrichment ---
+        db_contests = self.db_service.get_contests_by_advanced_filter(
+            filters={"title": text}, limit=1
+        )
+        if db_contests:
+            db_c = db_contests[0]
+            for k in self._get_confidence_keys():
+                if not result.get(k) and db_c.get(k):
+                    result[k] = db_c[k]
+            # Optionally enrich with more fields from DB
+            for k in ["district", "office_level", "county_fips", "precinct"]:
+                if db_c.get(k):
+                    result[k] = db_c[k]
+
+        # --- ML Embedding Similarity (if available) ---
+        if self.embedding_model:
+            try:
+                emb = self.embedding_model.encode([text], show_progress_bar=False)
+                result["extra_embedding"] = emb.tolist() if hasattr(emb, "tolist") else emb
+            except Exception as e:
+                logger.error(f"[ContextBasedPredictor] Embedding failed: {e}")
+
+        # --- Confidence ---
+        result["confidence"] = self._estimate_confidence(result)
+
+        # --- Extra ---
+        result["extra"] = {
+            "raw_text": text,
+            "entities": entities,
+            "dates": dates,
+            "locations": locations,
+            "context_version": self.context_service.get_version(),
+            "db_enriched": bool(db_contests),
+        }
+        return result
+
+    async def apredict(self, text: str) -> PredictionResult:
+        import asyncio
+        await asyncio.sleep(0.01)
+        return self.predict(text)
+
+    def _get_confidence_keys(self) -> List[str]:
+        # Dynamically build the list from context or librarian
+        context_fields = [
+            "state", "county", "year", "type_", "office", "party", "candidate",
+            "district", "office_level", "county_fips", "precinct"
+        ]
+        # Extend with any additional fields defined in context library
+        extra_fields = self.context_service.get_all("fields")
+        for field in extra_fields:
+            if field not in context_fields:
+                context_fields.append(field)
+        return context_fields
+
+    def _estimate_confidence(self, result: PredictionResult) -> float:
+        keys = self._get_confidence_keys()
+        found = sum(1 for k in keys if result.get(k))
+        base = 0.5 + 0.5 * (found / len(keys))
+        if result.get("extra", {}).get("db_enriched"):
+            base += 0.1
+        if "extra_embedding" in result:
+            base += 0.05
+        return round(min(base, 1.0), 2)
 
 class ContextService:
     """
@@ -117,11 +308,11 @@ class ContextService:
         """
         logger.info(f"[ContextService] Event: {event_type} | Data: {data}")
         if event_type == "new_entity":
-            entity_type = data.get("entity_type")
-            value = data.get("value")
+            entity_type = (data or {}).get("entity_type")
+            value = (data or {}).get("value")
             if entity_type and value:
                 if value not in self.context.setdefault(entity_type, []):
-                    self.context[entity_type].append(value)
+                    safe_append(self.context[entity_type], value, logger, deduplicate=True)
                     self.invalidate_cache()
                     self.export_vocab(entity_type)
                     logger.info(f"[ContextService] Added new {entity_type}: {value}")
@@ -154,7 +345,7 @@ class ContextService:
                 for line in f:
                     try:
                         entry = json.loads(line)
-                        if entry.get("event") == "unknown_token":
+                        if (entry or {}).get("event") == "unknown_token":
                             unknowns.append(entry)
                     except Exception:
                         continue
@@ -170,8 +361,8 @@ class ContextService:
             return
         logger.info(f"[ContextService] Reviewing {len(unknowns)} unknowns.")
         for entry in unknowns:
-            entity_type = entry["data"].get("entity_type")
-            value = entry["data"].get("value")
+            entity_type = (entry["data"] or {}).get("entity_type")
+            value = (entry["data"] or {}).get("value")
             logger.info(f"Unknown {entity_type}: '{value}'")
             if self.prompt.prompt_yes_no(f"Add '{value}' to {entity_type}?", default="n"):
                 self.update_from_event("new_entity", {"entity_type": entity_type, "value": value})

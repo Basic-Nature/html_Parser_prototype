@@ -1,6 +1,6 @@
 import re
 from ..utils.shared_logger import SharedLogger
-from ..utils.shared_logic import normalize_state_name, normalize_county_name
+from ..utils.shared_logic import normalize_state_name, normalize_county_name, _sync_type_and_election_types
 from ..utils.user_prompt import UserPrompt, PromptCancelled
 from collections import defaultdict
 from difflib import get_close_matches
@@ -215,7 +215,7 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
         logger.warning("[yellow]No contest selected. Skipping.[/yellow]")
         return []
     if choice == "all":
-        return contests
+        return [_sync_type_and_election_types(c) or c for c in contests]
     indices = []
     for part in choice.split(","):
         part = part.strip()
@@ -223,7 +223,7 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
             idx = int(part)
             if 0 <= idx < len(contests):
                 indices.append(idx)
-    selected = [contests[i] for i in indices]
+    selected = [_sync_type_and_election_types(contests[i]) or contests[i] for i in indices]
     # Log user feedback for ML improvement
     logger.debug(f"norm_state: {context.get('state')}, norm_county: {context.get('county')}, year: {context.get('year')}")
     for c in selected:
@@ -301,13 +301,14 @@ def select_contest(
                     if label == "EVENT" and (ent or "").lower() in [(et or "").lower() for et in ELECTION_TYPES]:
                         found_type_ = (ent or "").lower()
                         break
-        # PATCH: Only use found_type_ if set
+        # Only use found_type_ if set
         if found_type_:
             c["type_"] = found_type_.capitalize()
-        # PATCH: Fallback: if still missing, log and set to 'Unknown'
+        # Fallback: if still missing, log and set to 'Unknown'
         if not (c or {}).get("type_"):
             logger.warning(f"[CONTEST SELECTOR] Could not infer type for contest: {(c or {}).get('title', '')}")
             c["type_"] = "Unknown"
+        _sync_type_and_election_types(c)
 
     context = {
         "state": norm_state,
@@ -412,16 +413,21 @@ def select_contest(
     # --- Group by (year, type) for display ---
     grouped = defaultdict(list)
     for c in verified_contests:
-        grouped[(c.get("year"), c.get("type_"))].append(c)
+        grouped[(c.get("year"), c.get("type_"), tuple(c.get("election_types", [])) if c.get("election_types") else ())].append(c)
 
     # --- Dynamic titling for selection prompt ---
     idx = 0
     contest_indices = []
-    for (year_val, etype), contests_in_group in sorted(grouped.items()):
+    for (year_val, etype, etypes), contests_in_group in sorted(grouped.items()):
+        etypes_str = ", ".join(etypes) if etypes else ""
         if len(grouped) > 1:
             label = f"{state or 'Unknown State'} {county or ''} {year_val or 'Unknown'} {etype or 'Unknown'}"
+            if etypes_str:
+                label += f" [{etypes_str}]"
         else:
             label = f"{year_val or 'Unknown'} {etype or 'Unknown'}"
+            if etypes_str:
+                label += f" [{etypes_str}]"
         logger.info(f"[bold cyan]{label.strip()}[/bold cyan]")
         for c in contests_in_group:
             logger.info(f"  [{idx}] {(c or {}).get('title', '')}")
@@ -471,7 +477,7 @@ def select_contest(
     if choice == "all":
         if log_func:
             log_func("[CONTEST] User selected all contests.")
-        return [ensure_contest(c) for c in verified_contests]
+        return [ensure_contest(_sync_type_and_election_types(c) or c) for c in verified_contests]
 
     # --- Parse comma-separated indices ---
     indices = []
@@ -487,7 +493,7 @@ def select_contest(
             log_func("[CONTEST] No valid contest indices selected.")
         return None
 
-    selected = [ensure_contest(contest_indices[i]) for i in indices]
+    selected = [ensure_contest(_sync_type_and_election_types(contest_indices[i]) or contest_indices[i]) for i in indices]
     if log_func:
         log_func(f"[CONTEST] User selected contests: {[c.get('title', '') for c in selected]}")
     return selected

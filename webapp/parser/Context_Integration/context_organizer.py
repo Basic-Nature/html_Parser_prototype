@@ -27,7 +27,7 @@ from ..utils.db_utils import (
 from ..services.election_data_services import ElectionDataService
 from ..utils.shared_logic import (
     safe_model_encode, scan_environment, flatten_raw_field, flatten_raw_field, infer_contest_fields, safe_get_first,
-    flatten_raw_field, safe_add, safe_items, safe_update
+    flatten_raw_field, safe_add, safe_items, safe_update, _sync_type_and_election_types
 )
 from ..bots.librarian import (
     load_context_library, update_context_library, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, 
@@ -586,7 +586,9 @@ class ContextOrganizer(object):
         """
         Return a contest with all related data (state, county, office, candidates, results).
         """
-        return self.data_service.get_full_contest(contest_id)
+        contest = self.data_service.get_full_contest(contest_id)
+        _sync_type_and_election_types(contest)
+        return contest
 
     def get_all_full_contests(self, filters=None, limit=100) -> list[dict]:
         """
@@ -1224,6 +1226,22 @@ class ContextOrganizer(object):
                 min_confidence=0.8,
                 embedding_model=embedding_model if embedding_model is not None else self.embedding_model_obj
             )
+            # --- Sync type_ and election_types for all contests ---
+            for contest in contests:
+                _sync_type_and_election_types(contest)
+
+            # Get best contest type/election_types for fallback
+            best_contest = contests[0] if contests else {}
+            best_type = best_contest.get("type_")
+            best_election_types = best_contest.get("election_types", [])
+
+            # Sync other sections
+            for section in [tables, candidate_panels, location_panels, ballot_types]:
+                for item in section:
+                    _sync_type_and_election_types(item, fallback_types=best_election_types, fallback_type=best_type)
+
+            # Sync top-level organized dict
+            _sync_type_and_election_types(organized, fallback_types=best_election_types, fallback_type=best_type)
             if fix_log:
                 logger.info("[bold green]Auto-fixes applied:[/bold green]")
                 for entry in fix_log:
@@ -1276,6 +1294,7 @@ class ContextOrganizer(object):
                 if (c or {}).get("year") and (c or {}).get("type_") and str((c or {}).get("year")).isdigit()
             ]
             metadata = organized["metadata"]
+            _sync_type_and_election_types(metadata, fallback_types=best_election_types, fallback_type=best_type)
             if valid_years:
                 metadata["year"] = safe_get_first(valid_years, "valid_years", url, logger, default="Unknown")
             else:

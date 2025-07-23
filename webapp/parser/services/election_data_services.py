@@ -6,8 +6,11 @@ not DB details.
 
 All methods are annotated and include docstrings for clarity.
 """
-
-from typing import Optional, List, Any
+from sqlalchemy import inspect
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, DeclarativeMeta
+from sqlalchemy.sql.schema import Table, Column
+from typing import Optional, List, Any, Union, Dict, Type, Iterator, Protocol
 from ..utils.db_utils import (
     get_session, upsert_contest, fetch_contest_full,
     get_table_structure_from_db, save_table_structure_to_db,
@@ -16,7 +19,7 @@ from ..utils.db_utils import (
     create_warehouse_election_result, get_warehouse_results_by_batch,
     fetch_table_structures, search_table_structures, update_table_structure_fields,
     select_table_structures_by_title, clean_for_json, get_or_create_state,
-    get_or_create_county, get_or_create_party, check_missing_tables
+    get_or_create_county, get_or_create_party, check_missing_tables, get_engine, SessionLocal
 )
 from ..utils.models import (
     Base, Contest, State, County, Party, 
@@ -24,8 +27,91 @@ from ..utils.models import (
     Heading, BallotType, ResultsTimestamp, PartyLabel, VoteMethod,
     Candidate, Office, District, Result, Button
 )
+from ..utils.shared_logger import SharedLogger
+logger = SharedLogger()
 
-def _get_contest_id(session, contest):
+class DictConvertible(Protocol):
+    def as_dict(self) -> Dict[str, Any]:
+        """
+        Return a dict of column names and their values for this ORM instance.
+        Uses utility functions for robust access.
+        """
+        columns = get_table_columns(self)  # Safely get columns
+        if columns:
+            names = columns_to_names(columns)  # Safely get column names
+            return {name: getattr(self, name, None) for name in names}
+        # Fallback: try __dict__ if no columns found
+        if hasattr(self, "__dict__"):
+            # Exclude private attributes and SQLAlchemy internals
+            return {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
+        # Last resort: return empty dict
+        return {}
+
+def get_decl_class_registry(base: DeclarativeMeta) -> Iterator[Type[Any]]:
+    """
+    Safely yield ORM classes from SQLAlchemy Base._decl_class_registry.
+    """
+    registry = getattr(base, "_decl_class_registry", None)
+    if registry and hasattr(registry, "values"):
+        for cls in (registry or {}).values():
+            if isinstance(cls, type):
+                yield cls
+
+def iter_orm_classes(base: DeclarativeMeta) -> Iterator[Type[Any]]:
+    """
+    Iterate over ORM classes registered in the SQLAlchemy Base.
+    """
+    for cls in get_decl_class_registry(base):
+        if isinstance(cls, type) and hasattr(cls, "__tablename__"):
+            yield cls
+
+def get_orm_class_by_tablename(base: DeclarativeMeta, table_name: str) -> Optional[Type[Any]]:
+    """
+    Return the ORM class for a given table name.
+    """
+    for cls in iter_orm_classes(base):
+        if getattr(cls, "__tablename__", None) == table_name:
+            return cls
+    return None
+
+def get_table_columns(obj: Any) -> List[Column]:
+    """
+    Robustly return a list of SQLAlchemy Column objects from an ORM row or class.
+    Handles missing __table__ or columns attributes gracefully.
+    """
+    table: Table = getattr(obj, "__table__", None)
+    if table and hasattr(table, "columns"):
+        return list(table.columns)
+    return []
+
+def get_row_table(row: Any) -> Optional[Table]:
+    """
+    Get the SQLAlchemy Table object from an ORM row.
+    """
+    return getattr(row, "__table__", None)
+
+def iter_row_columns(row: Any) -> Iterator[Column]:
+    """
+    Iterate over columns of an ORM row's table.
+    """
+    table = get_row_table(row)
+    if table and hasattr(table, "columns"):
+        return iter(table.columns)
+    return iter([])
+
+def row_to_dict(row: DictConvertible) -> Dict[str, Any]:
+    """
+    Convert an ORM row object to a dict, using __table__.columns for robust access.
+    """
+    table: Table = getattr(row, "__table__", None)
+    if table and hasattr(table, "columns"):
+        return {col.name: getattr(row, col.name) for col in table.columns}
+    # Fallback: try as_dict if available
+    if hasattr(row, "as_dict"):
+        return row.as_dict()
+    return dict(row)
+
+def _get_contest_id(session: Session, contest: Union[dict, int]) -> Optional[int]:
     """Helper to get contest_id from a contest dict or id."""
     if isinstance(contest, dict):
         if contest.get("id"):
@@ -42,10 +128,64 @@ def _get_contest_id(session, contest):
         return contest
     return None
 
+def columns_to_names(columns: List[Column]) -> List[str]:
+    """
+    Get column names from a list of SQLAlchemy Column objects.
+    """
+    return [col.name for col in columns]
+
+def get_metadata_tables() -> Dict[str, Any]:
+    """
+    Safely get the tables dict from SQLAlchemy Base metadata.
+    Returns an empty dict if not available.
+    """
+    metadata = getattr(Base, "metadata", None)
+    if not metadata or not hasattr(metadata, "tables"):
+        return {}
+    tables = getattr(metadata, "tables", {})
+    if not isinstance(tables, dict):
+        return {}
+    return tables
+
 class ElectionDataService(object):
     """
     Service layer for all election-related DB operations.
     """
+    def __init__(self) -> None:
+        """
+        Initialize the service.
+        This can be extended to accept configuration or dependencies if needed.
+        """
+        pass
+
+    def get_sample_rows(self, table_name: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Robustly fetch sample rows from a table using SQLAlchemy ORM.
+        Handles missing tables, unknown columns, and returns clean dicts.
+        """
+        engine: Engine = get_engine()
+        inspector = inspect(engine)
+        table_names: List[str] = inspector.get_table_names()
+        if table_name not in table_names:
+            return []
+
+        orm_class: Optional[Type[Any]] = get_orm_class_by_tablename(Base, table_name)
+        if orm_class is None:
+            return []
+
+        session = SessionLocal()
+        try:
+            rows: List[Any] = session.query(orm_class).limit(limit).all()
+            result: List[Dict[str, Any]] = []
+            for row in rows:
+                row_dict: Dict[str, Any] = row_to_dict(row)
+                result.append(clean_for_json(row_dict))
+            return result
+        except Exception as e:
+            logger.error(f"[get_sample_rows] Error fetching rows for table '{table_name}': {e}")
+            return []
+        finally:
+            session.close()
 
     def get_all_panels(self, limit=100) -> list:
         """Fetch all panels from the DB as list of dicts."""
@@ -206,18 +346,18 @@ class ElectionDataService(object):
         with get_session() as session:
             contest_id = _get_contest_id(session, contest)
             obj = session.query(Panel).filter_by(
-                panel_text=panel.get("panel_text"),
+                panel_text=(panel or {}).get("panel_text"),
                 contest_id=contest_id
             ).first()
             if obj:
-                obj.panel_html = panel.get("panel_html")
-                obj.segment_hash = panel.get("segment_hash")
+                obj.panel_html = (panel or {}).get("panel_html")
+                obj.segment_hash = (panel or {}).get("segment_hash")
                 obj.metastats = clean_for_json(panel)
             else:
                 obj = Panel(
-                    panel_text=panel.get("panel_text"),
-                    panel_html=panel.get("panel_html"),
-                    segment_hash=panel.get("segment_hash"),
+                    panel_text=(panel or {}).get("panel_text"),
+                    panel_html=(panel or {}).get("panel_html"),
+                    segment_hash=(panel or {}).get("segment_hash"),
                     contest_id=contest_id,
                     metastats=clean_for_json(panel)
                 )
@@ -229,23 +369,23 @@ class ElectionDataService(object):
         with get_session() as session:
             contest_id = _get_contest_id(session, contest)
             obj = session.query(Button).filter_by(
-                label=button.get("label"),
-                selector=button.get("selector"),
+                label=(button or {}).get("label"),
+                selector=(button or {}).get("selector"),
                 contest_id=contest_id
             ).first()
             if obj:
-                obj.is_visible = button.get("is_visible", True)
-                obj.is_clickable = button.get("is_clickable", True)
-                obj.source = button.get("source")
+                obj.is_visible = (button or {}).get("is_visible", True)
+                obj.is_clickable = (button or {}).get("is_clickable", True)
+                obj.source = (button or {}).get("source")
                 obj.metastats = clean_for_json(button)
             else:
                 obj = Button(
-                    label=button.get("label"),
-                    selector=button.get("selector"),
+                    label=(button or {}).get("label"),
+                    selector=(button or {}).get("selector"),
                     contest_id=contest_id,
-                    is_visible=button.get("is_visible", True),
-                    is_clickable=button.get("is_clickable", True),
-                    source=button.get("source"),
+                    is_visible=(button or {}).get("is_visible", True),
+                    is_clickable=(button or {}).get("is_clickable", True),
+                    source=(button or {}).get("source"),
                     metastats=clean_for_json(button)
                 )
                 session.add(obj)
@@ -255,19 +395,19 @@ class ElectionDataService(object):
         """Insert or update a candidate."""
         with get_session() as session:
             obj = session.query(Candidate).filter_by(
-                name=candidate.get("name"),
-                office_id=candidate.get("office_id"),
-                district_id=candidate.get("district_id"),
+                name=(candidate or {}).get("name"),
+                office_id=(candidate or {}).get("office_id"),
+                district_id=(candidate or {}).get("district_id"),
             ).first()
             if obj:
-                obj.party_id = candidate.get("party_id")
+                obj.party_id = (candidate or {}).get("party_id")
                 obj.metastats = clean_for_json(candidate)
             else:
                 obj = Candidate(
-                    name=candidate.get("name"),
-                    party_id=candidate.get("party_id"),
-                    office_id=candidate.get("office_id"),
-                    district_id=candidate.get("district_id"),
+                    name=(candidate or {}).get("name"),
+                    party_id=(candidate or {}).get("party_id"),
+                    office_id=(candidate or {}).get("office_id"),
+                    district_id=(candidate or {}).get("district_id"),
                     metastats=clean_for_json(candidate)
                 )
                 session.add(obj)
@@ -276,13 +416,13 @@ class ElectionDataService(object):
     def upsert_party(self, party):
         """Insert or update a party."""
         with get_session() as session:
-            obj = session.query(Party).filter_by(name=party.get("name")).first()
+            obj = session.query(Party).filter_by(name=(party or {}).get("name")).first()
             if obj:
-                obj.abbreviation = party.get("abbreviation")
+                obj.abbreviation = (party or {}).get("abbreviation")
             else:
                 obj = Party(
-                    name=party.get("name"),
-                    abbreviation=party.get("abbreviation")
+                    name=(party or {}).get("name"),
+                    abbreviation=(party or {}).get("abbreviation")
                 )
                 session.add(obj)
             session.commit()
@@ -291,13 +431,13 @@ class ElectionDataService(object):
         """Insert or update an office."""
         from ..utils.models import OfficeLevelEnum
         with get_session() as session:
-            obj = session.query(Office).filter_by(name=office.get("name")).first()
+            obj = session.query(Office).filter_by(name=(office or {}).get("name")).first()
             if obj:
-                obj.level = OfficeLevelEnum(office.get("level")) if office.get("level") else obj.level
+                obj.level = OfficeLevelEnum((office or {}).get("level")) if (office or {}).get("level") else obj.level
             else:
                 obj = Office(
-                    name=office.get("name"),
-                    level=OfficeLevelEnum(office.get("level")) if office.get("level") else None
+                    name=(office or {}).get("name"),
+                    level=OfficeLevelEnum((office or {}).get("level")) if (office or {}).get("level") else None
                 )
                 session.add(obj)
             session.commit()
@@ -306,18 +446,18 @@ class ElectionDataService(object):
         """Insert or update a district."""
         with get_session() as session:
             obj = session.query(District).filter_by(
-                name=district.get("name"),
-                state_id=district.get("state_id"),
-                county_id=district.get("county_id")
+                name=(district or {}).get("name"),
+                state_id=(district or {}).get("state_id"),
+                county_id=(district or {}).get("county_id")
             ).first()
             if obj:
-                obj.type_ = district.get("type_")
+                obj.type_ = (district or {}).get("type_")
             else:
                 obj = District(
-                    name=district.get("name"),
-                    type_=district.get("type_"),
-                    state_id=district.get("state_id"),
-                    county_id=district.get("county_id")
+                    name=(district or {}).get("name"),
+                    type_=(district or {}).get("type_"),
+                    state_id=(district or {}).get("state_id"),
+                    county_id=(district or {}).get("county_id")
                 )
                 session.add(obj)
             session.commit()
@@ -326,25 +466,25 @@ class ElectionDataService(object):
         """Insert or update an election result."""
         with get_session() as session:
             obj = session.query(Result).filter_by(
-                candidate_id=result.get("candidate_id"),
-                contest_id=result.get("contest_id")
+                candidate_id=(result or {}).get("candidate_id"),
+                contest_id=(result or {}).get("contest_id")
             ).first()
             if obj:
-                obj.votes = result.get("votes")
-                obj.percent = result.get("percent")
-                obj.is_winner = result.get("is_winner")
-                obj.is_incumbent = result.get("is_incumbent")
-                obj.vote_method = result.get("vote_method")
+                obj.votes = (result or {}).get("votes")
+                obj.percent = (result or {}).get("percent")
+                obj.is_winner = (result or {}).get("is_winner")
+                obj.is_incumbent = (result or {}).get("is_incumbent")
+                obj.vote_method = (result or {}).get("vote_method")
                 obj.metastats = clean_for_json(result)
             else:
                 obj = Result(
-                    candidate_id=result.get("candidate_id"),
-                    contest_id=result.get("contest_id"),
-                    votes=result.get("votes"),
-                    percent=result.get("percent"),
-                    is_winner=result.get("is_winner"),
-                    is_incumbent=result.get("is_incumbent"),
-                    vote_method=result.get("vote_method"),
+                    candidate_id=(result or {}).get("candidate_id"),
+                    contest_id=(result or {}).get("contest_id"),
+                    votes=(result or {}).get("votes"),
+                    percent=(result or {}).get("percent"),
+                    is_winner=(result or {}).get("is_winner"),
+                    is_incumbent=(result or {}).get("is_incumbent"),
+                    vote_method=(result or {}).get("vote_method"),
                     metastats=clean_for_json(result)
                 )
                 session.add(obj)
@@ -355,15 +495,15 @@ class ElectionDataService(object):
         from ..utils.models import Entity
         with get_session() as session:
             obj = session.query(Entity).filter_by(
-                entity_type=entity.get("entity_type"),
-                value=entity.get("value")
+                entity_type=(entity or {}).get("entity_type"),
+                value=(entity or {}).get("value")
             ).first()
             if obj:
                 obj.metastats = clean_for_json(entity)
             else:
                 obj = Entity(
-                    entity_type=entity.get("entity_type"),
-                    value=entity.get("value"),
+                    entity_type=(entity or {}).get("entity_type"),
+                    value=(entity or {}).get("value"),
                     metastats=clean_for_json(entity)
                 )
                 session.add(obj)
@@ -374,20 +514,20 @@ class ElectionDataService(object):
         from ..utils.models import TableStructure
         with get_session() as session:
             obj = session.query(TableStructure).filter_by(
-                contest=table_structure.get("contest")
+                contest=(table_structure or {}).get("contest")
             ).first()
             if obj:
-                obj.headers = table_structure.get("headers")
-                obj.context = table_structure.get("context")
-                obj.ml_confidence = table_structure.get("ml_confidence")
-                obj.confirmed_by_user = table_structure.get("confirmed_by_user", False)
+                obj.headers = (table_structure or {}).get("headers")
+                obj.context = (table_structure or {}).get("context")
+                obj.ml_confidence = (table_structure or {}).get("ml_confidence")
+                obj.confirmed_by_user = (table_structure or {}).get("confirmed_by_user", False)
             else:
                 obj = TableStructure(
-                    contest=table_structure.get("contest"),
-                    headers=table_structure.get("headers"),
-                    context=table_structure.get("context"),
-                    ml_confidence=table_structure.get("ml_confidence"),
-                    confirmed_by_user=table_structure.get("confirmed_by_user", False)
+                    contest=(table_structure or {}).get("contest"),
+                    headers=(table_structure or {}).get("headers"),
+                    context=(table_structure or {}).get("context"),
+                    ml_confidence=(table_structure or {}).get("ml_confidence"),
+                    confirmed_by_user=(table_structure or {}).get("confirmed_by_user", False)
                 )
                 session.add(obj)
             session.commit()
@@ -397,17 +537,17 @@ class ElectionDataService(object):
         from ..utils.models import BatchMetadata
         with get_session() as session:
             obj = session.query(BatchMetadata).filter_by(
-                batch_id=batch_metadata.get("batch_id")
+                batch_id=(batch_metadata or {}).get("batch_id")
             ).first()
             if obj:
-                obj.source = batch_metadata.get("source")
-                obj.status = batch_metadata.get("status")
+                obj.source = (batch_metadata or {}).get("source")
+                obj.status = (batch_metadata or {}).get("status")
                 obj.metastats = clean_for_json(batch_metadata)
             else:
                 obj = BatchMetadata(
-                    batch_id=batch_metadata.get("batch_id"),
-                    source=batch_metadata.get("source"),
-                    status=batch_metadata.get("status"),
+                    batch_id=(batch_metadata or {}).get("batch_id"),
+                    source=(batch_metadata or {}).get("source"),
+                    status=(batch_metadata or {}).get("status"),
                     metastats=clean_for_json(batch_metadata)
                 )
                 session.add(obj)
@@ -418,16 +558,16 @@ class ElectionDataService(object):
         from ..utils.models import Alert
         with get_session() as session:
             obj = session.query(Alert).filter_by(
-                level=alert.get("level"),
-                message=alert.get("message")
+                level=(alert or {}).get("level"),
+                message=(alert or {}).get("message")
             ).first()
             if obj:
-                obj.context = alert.get("context")
+                obj.context = (alert or {}).get("context")
             else:
                 obj = Alert(
-                    level=alert.get("level"),
-                    message=alert.get("message"),
-                    context=alert.get("context")
+                    level=(alert or {}).get("level"),
+                    message=(alert or {}).get("message"),
+                    context=(alert or {}).get("context")
                 )
                 session.add(obj)
             session.commit()
@@ -437,14 +577,14 @@ class ElectionDataService(object):
         from ..utils.models import EmbeddingCache
         with get_session() as session:
             obj = session.query(EmbeddingCache).filter_by(
-                segment_hash=embedding.get("segment_hash")
+                segment_hash=(embedding or {}).get("segment_hash")
             ).first()
             if obj:
-                obj.embedding = embedding.get("embedding")
+                obj.embedding = (embedding or {}).get("embedding")
             else:
                 obj = EmbeddingCache(
-                    segment_hash=embedding.get("segment_hash"),
-                    embedding=embedding.get("embedding")
+                    segment_hash=(embedding or {}).get("segment_hash"),
+                    embedding=(embedding or {}).get("embedding")
                 )
                 session.add(obj)
             session.commit()
@@ -485,7 +625,16 @@ class ElectionDataService(object):
                 return [dict(zip(columns, row)) for row in query.all()]
             else:
                 # Return as dicts (all fields)
-                return [row.as_dict() if hasattr(row, "as_dict") else {c.name: getattr(row, c.name) for c in Contest.__table__.columns} for row in query.all()]
+                contest_columns = get_table_columns(Contest)  # List[Column]
+                column_names = columns_to_names(contest_columns)   # List[str]
+                results = []
+                for row in query.all():
+                    if hasattr(row, "as_dict"):
+                        results.append(row_to_dict(row))
+                    else:
+                        # Build dict from column names and row values
+                        results.append({name: getattr(row, name, None) for name in column_names})
+                return results
 
     def get_all_full_contests(self, filters: Optional[dict] = None, limit: int = 100) -> List[dict]:
         """
@@ -500,8 +649,6 @@ class ElectionDataService(object):
         Update an existing contest in the database by ID.
         contest_update must include the 'id' field.
         """
-        from ..utils.db_utils import get_session
-        from ..utils.models import Contest
         contest_id = contest_update.get("id")
         if not contest_id:
             raise ValueError("contest_update must include 'id'")
@@ -625,31 +772,40 @@ class ElectionDataService(object):
 
     def list_tables(self) -> List[str]:
         """
-        List all table names in the current DB schema.
+        List all table names in the current DB schema, with robust annotation safeguards.
         """
-        return list(Base.metadata.tables.keys())
+        tables = get_metadata_tables()
+        return list(tables.keys())
 
     def describe_table(self, table_name: str) -> Optional[dict]:
         """
-        Return columns and relationships for a given table.
+        Return columns and relationships for a given table, with robust annotation safeguards.
         """
-        table = Base.metadata.tables.get(table_name)
-        if not table:
+        tables = get_metadata_tables()
+        table = tables.get(table_name)
+        if not table or not hasattr(table, "columns"):
             return None
-        columns = [col.name for col in table.columns]
-        return {
-            "columns": columns,
-            "table_args": str(table.table_args),
-        }
+        columns = [getattr(col, "name", None) for col in getattr(table, "columns", []) if hasattr(col, "name")]
+        table_args = str(getattr(table, "table_args", ""))
+        return {"columns": columns, "table_args": table_args}
 
     def get_table_metadata(self, table_name: str) -> Optional[dict]:
         """
-        Return column names and types for a given table.
+        Return column names and types for a given table, with robust guards.
         """
-        table = Base.metadata.tables.get(table_name)
-        if not table:
+        tables = get_metadata_tables()
+        table = tables.get(table_name)
+        if not table or not hasattr(table, "columns"):
             return None
-        return {col.name: str(col.type) for col in table.columns}
+        columns = list(getattr(table, "columns", []))
+        column_info = {}
+        for col in columns:
+            col_name = getattr(col, "name", None)
+            col_type = getattr(col, "type", None)
+            if col_name is not None and col_type is not None:
+                column_info[col_name] = str(col_type)
+        table_args = str(getattr(table, "table_args", ""))
+        return {"columns": column_info, "table_args": table_args}
 
     def check_missing_tables(self) -> List[str]:
         """

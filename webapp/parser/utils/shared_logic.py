@@ -12,7 +12,11 @@ from ..utils.user_prompt import UserPrompt
 from playwright.sync_api import Page, Locator, ElementHandle
 from sentence_transformers import SentenceTransformer
 from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
-from typing import TYPE_CHECKING, Optional, Generator, Any, Iterable, Union, Iterable, Collection
+from typing import (
+    TYPE_CHECKING, Optional, Generator, Any, Iterable, Dict, 
+    Union, Iterable, Collection, Protocol, Awaitable, TypedDict,
+    List
+)
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
@@ -21,6 +25,53 @@ assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
 console = RichConsoleProxy()   
 prompt = UserPrompt()
 logger = SharedLogger()
+
+class PredictionResult(TypedDict, total=False):
+    year: Optional[int]
+    type_: Optional[str]
+    election_types: Optional[List[str]]
+    state: Optional[str]
+    state_abbr: Optional[str]
+    county: Optional[str]
+    county_fips: Optional[str]
+    district: Optional[str]
+    office: Optional[str]
+    office_level: Optional[str]
+    party: Optional[str]
+    candidate: Optional[str]
+    precinct: Optional[str]
+    ballot_type: Optional[str]
+    vote_method: Optional[str]
+    timestamp: Optional[str]
+    source_url: Optional[str]
+    confidence: Optional[float]
+    extra: Optional[Dict[str, Any]]
+    # Add more fields as needed
+
+class Predictable(Protocol):
+    def predict(self, text: str) -> Union[PredictionResult, Dict[str, Any]]:
+        """
+        Predicts structured contest metadata from input text.
+        Args:
+            text (str): The contest label or description.
+        Returns:
+            PredictionResult: Dict-like object with keys such as 'year', 'type_', 'state', 'county'.
+        Raises:
+            Exception: If prediction fails.
+        """
+        ...
+
+    # Optionally support async models
+    def apredict(self, text: str) -> Awaitable[Union[PredictionResult, Dict[str, Any]]]:
+        """
+        Asynchronously predicts structured contest metadata from input text.
+        Args:
+            text (str): The contest label or description.
+        Returns:
+            Awaitable[PredictionResult]: Awaitable dict-like object with keys such as 'year', 'type_', 'state', 'county'.
+        Raises:
+            Exception: If prediction fails.
+        """
 
 def safe_append_cached_segment(lib, seg_hash, user_label) -> None:
     """
@@ -62,6 +113,15 @@ def safe_append(lst, value, logger: SharedLogger, deduplicate=False) -> bool:
         if logger:
             logger.error(f"[safe_append] Error appending value: {e}")
         return False
+
+def safe_url(page) -> str:
+    """Safely get the URL from a Playwright page object."""
+    try:
+        url = getattr(page, "url", "")
+        return str(url) if isinstance(url, str) else ""
+    except Exception as e:
+        logger.error(f"[safe_url] Error accessing page.url: {e}")
+        return ""
 
 def safe_update(dct, updates, logger: SharedLogger) -> None:
     """
@@ -160,6 +220,31 @@ def _to_json_safe(obj) -> Any:
         return [_to_json_safe(v) for v in obj]
     return obj
 
+def _sync_type_and_election_types(obj, fallback_types=None, fallback_type=None):
+    """
+    Ensures obj['type_'] and obj['election_types'] are consistent.
+    Uses fallback_types and fallback_type if needed.
+    """
+    etypes = (obj or {}).get("election_types")
+    t = (obj or {}).get("type_")
+    # Normalize election_types to list
+    if not isinstance(etypes, list):
+        etypes = [etypes] if etypes else []
+    # If missing, use type_ or fallback
+    if not etypes:
+        if t:
+            etypes = [t]
+        elif fallback_types:
+            etypes = fallback_types
+    # If type_ missing, use first election_types or fallback
+    if not t:
+        t = etypes[0] if etypes else fallback_type
+    # If mismatch, prefer first election_types
+    if etypes and t and t != etypes[0]:
+        t = etypes[0]
+    obj["election_types"] = etypes
+    obj["type_"] = t
+
 def _keyword_in_text(text, keywords) -> bool:
     """Check if any keyword is present in the text (case-insensitive, word-boundary)."""
     text = (text or "").lower()
@@ -203,6 +288,17 @@ def safe_add(container, item) -> bool:
     if container is not None and hasattr(container, "add"):
         return _safe_add_call(container, item)
     return False
+
+def safe_predict(model: Predictable, text: str, logger: SharedLogger = None) -> Any:
+    try:
+        if hasattr(model, "predict") and callable(model.predict):
+            return model.predict(text)
+        else:
+            logger.error("[safe_predict] Model has no callable 'predict' method.")
+            return None
+    except Exception as e:
+        logger.error(f"[safe_predict] Error during predict: {e}")
+        return None
 
 def safe_items(obj) -> Iterable:
     """
@@ -694,7 +790,7 @@ def scan_environment() -> dict:
 def get_title_embedding_features(contests, model_name="all-MiniLM-L6-v2") -> Any:
     from ..utils.model_registry import ModelRegistry
     model = ModelRegistry.get_sentence_transformer(model_name)
-    titles = [c.get("title", "") for c in contests]
+    titles = [(c or {}).get("title", "") for c in contests]
     return model.encode(titles, show_progress_bar=False)
 
 def show_progress_bar(task_desc, total, update_iter) -> Generator[Any, Any, Any]:
@@ -720,7 +816,8 @@ def match_any(label, keywords) -> bool:
 def build_csv_headers(rows) -> list[str]:
     headers = set()
     for row in rows:
-        headers.update(row.keys())
+        for k, _ in safe_items(row):
+            headers.add(k)
     return sorted(headers)
 
 def autoscroll_until_stable(
@@ -742,28 +839,38 @@ def autoscroll_until_stable(
     """
 
     start_time = time.time()
-    page.evaluate("window.scrollTo(0, 0)")
-    page.wait_for_timeout(delay_ms)
+    safe_evaluate(page, "window.scrollTo(0, 0)", logger)
+    safe_wait_for_timeout(page, delay_ms, logger)
 
     stable = 0
     last_heights = []
     last_texts = []
     scroll_attempts = 0
     max_scrolls = max_total_time // delay_ms
-    domain = domain or (safe_get_first(page.url.split("/"), "domain_split", None, logger, default="") if "://" not in page.url else safe_get_first(page.url.split("/"), "domain_split", None, logger, default=""))
-    if "://" in page.url and len(page.url.split("/")) > 2:
-        domain = page.url.split("/")[2]
+    url_str = safe_url(page)
+    domain = domain or (
+        safe_get_first(url_str.split("/"), "domain_split", None, logger, default="")
+        if not ("://" in url_str) else
+        safe_get_first(url_str.split("/"), "domain_split", None, logger, default="")
+    )
+    if "://" in url_str and len(url_str.split("/")) > 2:
+        domain = safe_get_first(url_str.split("/"), "domain_split", None, logger, default="", allow_nonlist=True)
+        if isinstance(domain, list) and len(domain) > 2:
+            domain = domain[2]
 
     def get_main_text() -> str:
         try:
-            main_div = page.query_selector("main, .main-content, #main-content, body")
-            return main_div.inner_text() if main_div else page.inner_text()
+            main_div = safe_locator(page, "main, .main-content, #main-content, body", logger)
+            if main_div:
+                return safe_inner_text(main_div, logger)
+            else:
+                return safe_inner_text(page, logger)
         except Exception:
             return ""
 
     with logger.progress_bar("[cyan]Scrolling page...", total=max_scrolls) as update_progress:
         while stable < max_stable_frames and scroll_attempts < max_scrolls:
-            current_height = page.evaluate("() => document.body.scrollHeight")
+            current_height = safe_evaluate(page, "document.body.scrollHeight", logger)
             current_text = get_main_text()
             last_heights.append(current_height)
             last_texts.append(current_text)
@@ -779,12 +886,12 @@ def autoscroll_until_stable(
                 stable += 1
             else:
                 stable = 0
-            page.evaluate(f"window.scrollBy(0, {step})")
-            page.wait_for_timeout(delay_ms)
+            safe_evaluate(page, f"window.scrollBy(0, {step})", logger)
+            safe_wait_for_timeout(page, delay_ms, logger)
             scroll_attempts += 1
             update_progress(scroll_attempts)
-            if wait_for_selector and page.query_selector(wait_for_selector):
-                logger and logger.info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
+            if wait_for_selector and safe_locator(page, wait_for_selector, logger):
+                logger.info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
                 break
             elapsed = (time.time() - start_time) * 1000
             if elapsed > max_total_time * 0.8 and scroll_attempts % 10 == 0:
@@ -817,7 +924,7 @@ def scan_buttons_with_progress(buttons, scan_callback=None) -> None:
         for idx, btn in enumerate(buttons):
             label = ""
             try:
-                label = btn.inner_text()[:60]
+                label = safe_inner_text(btn, logger)[:60]
             except Exception:
                 label = str(btn)[:60]
             update_progress(idx + 1, extra={"label": label})
@@ -862,6 +969,12 @@ def infer_contest_fields(
     Logs the inference path if log is provided.
     """
     from ..utils.db_utils import normalize_label
+    if db_service is None:
+        try:
+            from ..services.election_data_services import ElectionDataService
+            db_service = ElectionDataService
+        except ImportError:
+            db_service = None
     title = contest.get("title") or contest.get("label") or ""
     norm_title = normalize_label(title)
     year = contest.get("year")
@@ -872,19 +985,19 @@ def infer_contest_fields(
 
     # 1. Context library lookup
     for c in context_library.get("contests", []):
-        c_title = c.get("title") or c.get("label") or ""
+        c_title = (c or {}).get("title") or (c or {}).get("label") or ""
         if normalize_label(c_title) == norm_title:
-            if not year and c.get("year"):
-                year = c["year"]
+            if not year and (c or {}).get("year"):
+                year = (c or {}).get("year")
                 inference_path.append("year:context_library")
-            if not type_ and c.get("type_"):
-                type_ = c["type_"]
+            if not type_ and (c or {}).get("type_"):
+                type_ = (c or {}).get("type_")
                 inference_path.append("type_:context_library")
-            if not state and c.get("state"):
-                state = c["state"]
+            if not state and (c or {}).get("state"):
+                state = (c or {}).get("state")
                 inference_path.append("state:context_library")
-            if not county and c.get("county"):
-                county = c["county"]
+            if not county and (c or {}).get("county"):
+                county = (c or {}).get("county")
                 inference_path.append("county:context_library")
             if year and type_ and state and county:
                 break
@@ -897,47 +1010,47 @@ def infer_contest_fields(
             )
             if db_contests:
                 db_c = safe_get_first(db_contests, "db_contests", None, logger)
-                if not year and db_c.get("year"):
-                    year = db_c["year"]
+                if not year and (db_c or {}).get("year"):
+                    year = (db_c or {}).get("year")
                     inference_path.append("year:db")
-                if not type_ and db_c.get("type_"):
-                    type_ = db_c["type_"]
+                if not type_ and (db_c or {}).get("type_"):
+                    type_ = (db_c or {}).get("type_")
                     inference_path.append("type_:db")
-                if not state and db_c.get("state"):
-                    state = db_c["state"]
+                if not state and (db_c or {}).get("state"):
+                    state = (db_c or {}).get("state")
                     inference_path.append("state:db")
-                if not county and db_c.get("county"):
-                    county = db_c["county"]
+                if not county and (db_c or {}).get("county"):
+                    county = (db_c or {}).get("county")
                     inference_path.append("county:db")
         except Exception as e:
             if log is not None:
-                log.append(f"[infer_contest_fields] DB lookup failed: {e}")
+                safe_append(log, f"[infer_contest_fields] DB lookup failed: {e}", logger)
 
     # 3. ML/NLP model (if available)
     if embedding_model and (not year or not type_ or not state or not county):
         try:
-            pred = embedding_model.predict(title)
-            if not year and pred.get("year", {}).get("value"):
-                year = pred["year"]["value"]
+            pred = safe_predict(embedding_model, title, logger)
+            if not year and ((pred or {}).get("year", {}) or {}).get("value"):
+                year = ((pred or {}).get("year", {}) or {}).get("value")
                 inference_path.append("year:ml")
-            if not type_ and pred.get("type_", {}).get("value"):
-                type_ = pred["type_"]["value"]
+            if not type_ and ((pred or {}).get("type_", {}) or {}).get("value"):
+                type_ = ((pred or {}).get("type_", {}) or {}).get("value")
                 inference_path.append("type_:ml")
-            if not state and pred.get("state", {}).get("value"):
-                state = pred["state"]["value"]
+            if not state and ((pred or {}).get("state", {}) or {}).get("value"):
+                state = ((pred or {}).get("state", {}) or {}).get("value")
                 inference_path.append("state:ml")
-            if not county and pred.get("county", {}).get("value"):
-                county = pred["county"]["value"]
+            if not county and ((pred or {}).get("county", {}) or {}).get("value"):
+                county = ((pred or {}).get("county", {}) or {}).get("value")
                 inference_path.append("county:ml")
         except Exception as e:
             if log is not None:
-                log.append(f"[infer_contest_fields] ML/NLP model failed: {e}")
+                safe_append(log, f"[infer_contest_fields] ML/NLP model failed: {e}", logger)
 
     # 4. Fallback: extract_year_and_type (only if still missing)
     if (not year or not type_) and title:
         try:
             from ..utils.html_scanner import extract_year_and_type
-            y, t, _, last_updated = extract_year_and_type(title, url=None)
+            y, t, _, _ = extract_year_and_type(title, url=None)
             if not year and y:
                 year = y
                 inference_path.append("year:extract_year_and_type")
@@ -946,10 +1059,17 @@ def infer_contest_fields(
                 inference_path.append("type_:extract_year_and_type")
         except Exception as e:
             if log is not None:
-                log.append(f"[infer_contest_fields] extract_year_and_type failed: {e}")
+                safe_append(log, f"[infer_contest_fields] extract_year_and_type failed: {e}", logger)
 
     # Log the inference path if requested
     if log is not None:
-        log.append(f"[infer_contest_fields] {title} → {inference_path}")
+        safe_append(log, f"[infer_contest_fields] {title} → {inference_path}", logger)
+
+    # --- PATCH: Ensure type_ and election_types are synced ---
+    contest["year"] = year
+    contest["type_"] = type_
+    contest["state"] = state
+    contest["county"] = county
+    _sync_type_and_election_types(contest)
 
     return year, type_, state, county

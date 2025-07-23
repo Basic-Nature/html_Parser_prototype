@@ -14,7 +14,7 @@ from ..utils.shared_logic import (
     safe_append_cached_segment, safe_append, safe_update, safe_extend,
     convert_ndarrays, _sanitize_log_filename, _normalize_html_for_hash, clean_cache_inplace,
     _keyword_in_text, safe_lower, safe_encode, safe_startswith, safe_add, safe_items, safe_model_encode,
-    safe_get_first
+    safe_get_first, _sync_type_and_election_types
 )
 from ..bots.librarian import (
     HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, 
@@ -2339,5 +2339,22 @@ def scan_html_for_context(
             logger.info(f"[DOM DEBUG] Node {idx} HTML: {html_snippet[:100]}")
             subtree_html = organizer.extract_subtree_html(dom_tree["nodes"], idx, context_result.get("raw_html", ""))
             logger.info(f"[DOM DEBUG] Subtree HTML for node {idx}: {subtree_html[:200]}")
+
+    # Sync contests
+    for contest in context_result.get("contests", []):
+        _sync_type_and_election_types(contest)
+
+    # Get best contest type/election_types for fallback
+    best_contest = context_result.get("contests", [{}])[0] if context_result.get("contests") else {}
+    best_type = best_contest.get("type_")
+    best_election_types = best_contest.get("election_types", [])
+
+    # Sync other sections
+    for section in ["tables", "candidate_panels", "location_panels", "ballot_types"]:
+        for item in context_result.get(section, []):
+            _sync_type_and_election_types(item, fallback_types=best_election_types, fallback_type=best_type)
+
+    # Sync top-level context_result
+    _sync_type_and_election_types(context_result, fallback_types=best_election_types, fallback_type=best_type)
 
     return context_result

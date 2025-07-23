@@ -9,6 +9,7 @@ import os
 import importlib
 from typing import Optional, Dict, Any, List, Tuple
 from .utils.shared_logger import SharedLogger, RichConsoleProxy
+from .utils.user_prompt import UserPrompt, PromptCancelled
 import traceback
 from .config import BASE_DIR
 from .bots.librarian import STATE_MODULE_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
@@ -106,37 +107,62 @@ def import_handler(module_or_file_path: str) -> Optional[Any]:
         logger.error(f"[HTML Handler] Unexpected error importing handler: {e}\n{traceback.format_exc()}")
         return None
 
-def prompt_for_handler_fallback(available_states, available_counties_by_state, last_error=None, max_attempts=3) -> Tuple[Optional[str], Optional[str]]:
+def prompt_for_handler_fallback(
+    available_states,
+    available_counties_by_state,
+    last_error=None,
+    max_attempts=3
+) -> Tuple[Optional[str], Optional[str]]:
     """
     Prompt the user for manual state/county selection with robust fallback.
+    Uses UserPrompt for CLI/webapp compatibility.
     Shows last error, allows cancel, and limits attempts.
     """
+    prompt = UserPrompt()
     attempts = 0
-    state = None
-    county = None
     while attempts < max_attempts:
         if last_error:
             logger.error(f"\n[ERROR] Last import failed: {last_error}\n")
-        logger.info("Available states:", ", ".join(available_states))
-        state = input("Enter state (or leave blank to cancel): ").strip().lower()
-        if state == "cancel" or not state:
+        # Prompt for state
+        try:
+            state = prompt.prompt_choice(
+                "Select a state (or type 'cancel' to abort):",
+                options=available_states,
+                allow_cancel=True,
+                header="STATE SELECTION"
+            )
+        except PromptCancelled:
+            logger.warning("Aborted by user.")
+            return None, None
+        if not state:
             logger.warning("Aborted by user.")
             return None, None
         if state not in available_states:
-            logger.info(f"State '{state}' not found. Try again.")
+            logger.warning(f"State '{state}' not found. Please try again.")
             attempts += 1
             continue
+
         counties = (available_counties_by_state or {}).get(state, [])
-        logger.info("Available counties:", ", ".join(counties))
-        county = input("Enter county (or leave blank to skip county): ").strip().lower()
-        if county == "cancel":
-            logger.warning("Aborted by user.")
-            return None, None
-        if county and county not in counties:
-            logger.info(f"County '{county}' not found for state '{state}'. Try again.")
-            attempts += 1
-            continue
+        county = None
+        if counties:
+            # Prompt for county
+            try:
+                county = prompt.prompt_choice(
+                    f"Select a county for '{state}' (or type 'cancel' to skip):",
+                    options=counties,
+                    allow_cancel=True,
+                    header="COUNTY SELECTION"
+                )
+            except PromptCancelled:
+                logger.warning("Aborted by user.")
+                return None, None
+            if county and county not in counties:
+                logger.warning(f"County '{county}' not found for state '{state}'. Please try again.")
+                attempts += 1
+                continue
+        # Success: return state and county (or None if skipped)
         return state, county if county else None
+
     logger.warning("Too many failed attempts. Exiting fallback.")
     return None, None
 
