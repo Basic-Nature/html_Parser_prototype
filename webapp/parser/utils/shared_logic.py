@@ -15,7 +15,7 @@ from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY
 from typing import (
     TYPE_CHECKING, Optional, Generator, Any, Iterable, Dict, 
     Union, Iterable, Collection, Protocol, Awaitable, TypedDict,
-    List
+    List, Callable
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -90,6 +90,28 @@ def safe_append_cached_segment(lib, seg_hash, user_label) -> None:
         "segment_hash": seg_hash,
         "ml_label": user_label,
     })
+
+def safe_db_call(callable_fn: Callable, *args: Any, default=None, logger: SharedLogger = None, **kwargs) -> Any:
+    """
+    Safely call a DB function, logging any exceptions and returning a safe default.
+    Args:
+        callable_fn: The function to call.
+        *args, **kwargs: Arguments for the function.
+        default: Value to return on error (default: None).
+        logger: Optional logger instance.
+    Returns:
+        Result of callable_fn or default on error.
+    """
+    try:
+        return callable_fn(*args, **kwargs)
+    except Exception as e:
+        func_name = getattr(callable_fn, "__name__", str(callable_fn))
+        if logger:
+            logger.error(f"[DB] Exception in {func_name}: {e}", exc_info=True)
+        else:
+            print(f"[DB] Exception in {func_name}: {e}")
+        return default
+    
 def safe_append(lst, value, logger: SharedLogger, deduplicate=False) -> bool:
     """
     Safely append a value to a list.

@@ -6,6 +6,7 @@ not DB details.
 
 All methods are annotated and include docstrings for clarity.
 """
+import difflib
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, DeclarativeMeta
@@ -158,6 +159,69 @@ class ElectionDataService(object):
         """
         pass
 
+    def get_full_contest(self, contest_id: int) -> Optional[dict]:
+        """
+        Fetch a contest with all related data (state, county, office, candidates, results).
+        """
+        try:
+            with get_session() as session:
+                return fetch_contest_full(session, {"id": contest_id})
+        except Exception as e:
+            logger.error(f"[get_full_contest] Error fetching contest_id={contest_id}: {e}", exc_info=True)
+            return None
+
+    def get_contests_by_advanced_filter(
+        self,
+        filters: Optional[dict] = None,
+        columns: Optional[list] = None,
+        limit: int = 100
+    ) -> List[dict]:
+        """
+        Fetch contests with advanced filters and optional column selection.
+        Args:
+            filters: dict of field:value pairs to filter on (AND logic).
+            columns: list of column names to return (if None, returns all fields).
+            limit: max number of results.
+        Returns:
+            List of dicts, each representing a contest.
+        """
+        try:
+            with get_session() as session:
+                query = session.query(Contest)
+                # Defensive: Only apply filters if they are valid and not None/empty
+                for k, v in (filters or {}).items():
+                    if hasattr(Contest, k) and v is not None and v != "":
+                        query = query.filter(getattr(Contest, k) == v)
+                query = query.limit(limit)
+                # Select columns if specified
+                if columns:
+                    query = query.with_entities(*[getattr(Contest, col) for col in columns])
+                    # Return as dicts with column names
+                    return [dict(zip(columns, row)) for row in query.all()]
+                else:
+                    # Return as dicts (all fields)
+                    contest_columns = get_table_columns(Contest)  # List[Column]
+                    column_names = columns_to_names(contest_columns)   # List[str]
+                    results = []
+                    for row in query.all():
+                        if hasattr(row, "as_dict"):
+                            results.append(row_to_dict(row))
+                        else:
+                            # Build dict from column names and row values
+                            results.append({name: getattr(row, name, None) for name in column_names})
+                    return results
+        except Exception as e:
+            logger.error(f"[get_contests_by_advanced_filter] Error: {e}", exc_info=True)
+            return []
+
+    def get_all_full_contests(self, filters: Optional[dict] = None, limit: int = 100) -> List[dict]:
+        """
+        Fetch all contests with related data, optionally filtered.
+        """
+        contests = self.get_contests_by_advanced_filter(filters, limit=limit)
+        with get_session() as session:
+            return [fetch_contest_full(session, c) for c in contests]
+
     def get_sample_rows(self, table_name: str, limit: int = 5) -> List[Dict[str, Any]]:
         """
         Robustly fetch sample rows from a table using SQLAlchemy ORM.
@@ -189,28 +253,33 @@ class ElectionDataService(object):
 
     def get_all_panels(self, limit=100) -> list:
         """Fetch all panels from the DB as list of dicts."""
-        with get_session() as session:
-            # If you have a Panel table:
-            if hasattr(session, "query") and hasattr(Panel, "panel_text"):
-                panels = session.query(Panel).order_by(Panel.id.desc()).limit(limit).all()
-                return [
-                    {
-                        "panel_text": p.panel_text,
-                        "panel_html": getattr(p, "panel_html", None),
-                        "segment_hash": getattr(p, "segment_hash", None),
-                    }
-                    for p in panels
-                ]
-            # Fallback: Try TableStructure or Contest if Panel table doesn't exist
+        try:
+            with get_session() as session:
+                # If you have a Panel table:
+                if hasattr(session, "query") and hasattr(Panel, "panel_text"):
+                    panels = session.query(Panel).order_by(Panel.id.desc()).limit(limit).all()
+                    return [
+                        {
+                            "panel_text": p.panel_text,
+                            "panel_html": getattr(p, "panel_html", None),
+                            "segment_hash": getattr(p, "segment_hash", None),
+                        }
+                        for p in panels
+                    ]
+                # Fallback: Try TableStructure or Contest if Panel table doesn't exist
+                return []
+        except Exception as e:
+            logger.error(f"[get_all_panels] Error fetching panels: {e}", exc_info=True)
             return []
 
     def get_all_tables(self, limit=100) -> list:
         """Fetch all tables from the DB as list of dicts."""
-        with get_session() as session:
-            tables = session.query(TableStructure).order_by(TableStructure.id.desc()).limit(limit).all()
-            return [
-                {
-                    "table_text": getattr(t, "table_text", None),
+        try:
+            with get_session() as session:
+                tables = session.query(TableStructure).order_by(TableStructure.id.desc()).limit(limit).all()
+                return [
+                    {
+                        "table_text": getattr(t, "table_text", None),
                     "table_html": getattr(t, "table_html", None),
                     "year": getattr(t, "year", None),
                     "type_": getattr(t, "type_", None),
@@ -218,117 +287,149 @@ class ElectionDataService(object):
                 }
                 for t in tables
             ]
+            return []
+        except Exception as e:
+            logger.error(f"[get_all_tables] Error fetching tables: {e}", exc_info=True)
+            return []
 
     def get_all_candidate_panels(self, limit=100) -> list:
         """Fetch all candidate panels from the DB as list of dicts."""
-        with get_session() as session:
-            if hasattr(session, "query") and hasattr(CandidatePanel, "candidate_panel_text"):
-                panels = session.query(CandidatePanel).order_by(CandidatePanel.id.desc()).limit(limit).all()
-                return [
-                    {
-                        "candidate_panel_text": p.candidate_panel_text,
-                        "candidate_panel_html": getattr(p, "candidate_panel_html", None),
-                        "year": getattr(p, "year", None),
-                        "type_": getattr(p, "type_", None),
-                        "segment_hash": getattr(p, "segment_hash", None),
-                    }
-                    for p in panels
-                ]
+        try:
+            with get_session() as session:
+                if hasattr(session, "query") and hasattr(CandidatePanel, "candidate_panel_text"):
+                    panels = session.query(CandidatePanel).order_by(CandidatePanel.id.desc()).limit(limit).all()
+                    return [
+                        {
+                            "candidate_panel_text": p.candidate_panel_text,
+                            "candidate_panel_html": getattr(p, "candidate_panel_html", None),
+                            "year": getattr(p, "year", None),
+                            "type_": getattr(p, "type_", None),
+                            "segment_hash": getattr(p, "segment_hash", None),
+                        }
+                        for p in panels
+                    ]
+                return []
+        except Exception as e:
+            logger.error(f"[get_all_candidate_panels] Error fetching candidate panels: {e}", exc_info=True)
             return []
 
     def get_all_location_panels(self, limit=100) -> list:
         """Fetch all location panels from the DB as list of dicts."""
-        with get_session() as session:
-            if hasattr(session, "query") and hasattr(LocationPanel, "location_panel_text"):
-                panels = session.query(LocationPanel).order_by(LocationPanel.id.desc()).limit(limit).all()
-                return [
-                    {
-                        "location_panel_text": p.location_panel_text,
-                        "location_panel_html": getattr(p, "location_panel_html", None),
-                        "year": getattr(p, "year", None),
-                        "type_": getattr(p, "type_", None),
-                        "segment_hash": getattr(p, "segment_hash", None),
-                    }
-                    for p in panels
-                ]
+        try:
+            with get_session() as session:
+                if hasattr(session, "query") and hasattr(LocationPanel, "location_panel_text"):
+                    panels = session.query(LocationPanel).order_by(LocationPanel.id.desc()).limit(limit).all()
+                    return [
+                        {
+                            "location_panel_text": p.location_panel_text,
+                            "location_panel_html": getattr(p, "location_panel_html", None),
+                            "year": getattr(p, "year", None),
+                            "type_": getattr(p, "type_", None),
+                            "segment_hash": getattr(p, "segment_hash", None),
+                        }
+                        for p in panels
+                    ]
+                return []
+        except Exception as e:
+            logger.error(f"[get_all_location_panels] Error fetching location panels: {e}", exc_info=True)
             return []
 
     def get_all_headings(self, limit=100) -> list:
         """Fetch all headings from the DB as list of dicts."""
-        with get_session() as session:
-            if hasattr(session, "query") and hasattr(Heading, "heading_text"):
-                headings = session.query(Heading).order_by(Heading.id.desc()).limit(limit).all()
-                return [
-                    {
-                        "heading_text": h.heading_text,
-                        "heading_html": getattr(h, "heading_html", None),
-                        "segment_hash": getattr(h, "segment_hash", None),
-                        "heading_type": getattr(h, "heading_type", None),
-                    }
-                    for h in headings
-                ]
+        try:
+            with get_session() as session:
+                if hasattr(session, "query") and hasattr(Heading, "heading_text"):
+                    headings = session.query(Heading).order_by(Heading.id.desc()).limit(limit).all()
+                    return [
+                        {
+                            "heading_text": h.heading_text,
+                            "heading_html": getattr(h, "heading_html", None),
+                            "segment_hash": getattr(h, "segment_hash", None),
+                            "heading_type": getattr(h, "heading_type", None),
+                        }
+                        for h in headings
+                    ]
+                return []
+        except Exception as e:
+            logger.error(f"[get_all_headings] Error fetching headings: {e}", exc_info=True)
             return []
 
     def get_all_ballot_types(self, limit=100) -> list:
         """Fetch all ballot types from the DB as list of dicts."""
-        with get_session() as session:
-            if hasattr(session, "query") and hasattr(BallotType, "ballot_types_text"):
-                ballot_types = session.query(BallotType).order_by(BallotType.id.desc()).limit(limit).all()
-                return [
-                    {
-                        "ballot_types_text": b.ballot_types_text,
-                        "ballot_types_html": getattr(b, "ballot_types_html", None),
-                        "year": getattr(b, "year", None),
-                        "type_": getattr(b, "type_", None),
-                        "segment_hash": getattr(b, "segment_hash", None),
-                    }
-                    for b in ballot_types
-                ]
+        try:
+            with get_session() as session:
+                if hasattr(session, "query") and hasattr(BallotType, "ballot_types_text"):
+                    ballot_types = session.query(BallotType).order_by(BallotType.id.desc()).limit(limit).all()
+                    return [
+                        {
+                            "ballot_types_text": b.ballot_types_text,
+                            "ballot_types_html": getattr(b, "ballot_types_html", None),
+                            "year": getattr(b, "year", None),
+                            "type_": getattr(b, "type_", None),
+                            "segment_hash": getattr(b, "segment_hash", None),
+                        }
+                        for b in ballot_types
+                    ]
+                return []
+        except Exception as e:
+            logger.error(f"[get_all_ballot_types] Error fetching ballot types: {e}", exc_info=True)
             return []
 
     def get_all_results_timestamps(self, limit=100) -> list:
         """Fetch all results timestamps from the DB as list of dicts."""
-        with get_session() as session:
-            if hasattr(session, "query") and hasattr(ResultsTimestamp, "timestamp_text"):
-                timestamps = session.query(ResultsTimestamp).order_by(ResultsTimestamp.id.desc()).limit(limit).all()
-                return [
-                    {
-                        "timestamp_text": t.timestamp_text,
-                        "timestamp_html": getattr(t, "timestamp_html", None),
-                        "segment_hash": getattr(t, "segment_hash", None),
-                    }
-                    for t in timestamps
-                ]
+        try:
+            with get_session() as session:
+                if hasattr(session, "query") and hasattr(ResultsTimestamp, "timestamp_text"):
+                    timestamps = session.query(ResultsTimestamp).order_by(ResultsTimestamp.id.desc()).limit(limit).all()
+                    return [
+                        {
+                            "timestamp_text": t.timestamp_text,
+                            "timestamp_html": getattr(t, "timestamp_html", None),
+                            "segment_hash": getattr(t, "segment_hash", None),
+                        }
+                        for t in timestamps
+                    ]
+                return []
+        except Exception as e:
+            logger.error(f"[get_all_results_timestamps] Error fetching results timestamps: {e}", exc_info=True)
             return []
 
     def get_all_party_labels(self, limit=100) -> list:
         """Fetch all party labels from the DB as list of dicts."""
-        with get_session() as session:
-            if hasattr(session, "query") and hasattr(PartyLabel, "party_label_text"):
-                party_labels = session.query(PartyLabel).order_by(PartyLabel.id.desc()).limit(limit).all()
-                return [
-                    {
-                        "party_label_text": p.party_label_text,
-                        "party_label_html": getattr(p, "party_label_html", None),
-                        "segment_hash": getattr(p, "segment_hash", None),
-                    }
-                    for p in party_labels
-                ]
+        try:
+            with get_session() as session:
+                if hasattr(session, "query") and hasattr(PartyLabel, "party_label_text"):
+                    party_labels = session.query(PartyLabel).order_by(PartyLabel.id.desc()).limit(limit).all()
+                    return [
+                        {
+                            "party_label_text": p.party_label_text,
+                            "party_label_html": getattr(p, "party_label_html", None),
+                            "segment_hash": getattr(p, "segment_hash", None),
+                        }
+                        for p in party_labels
+                    ]
+                return []
+        except Exception as e:
+            logger.error(f"[get_all_party_labels] Error fetching party labels: {e}", exc_info=True)
             return []
 
     def get_all_vote_methods(self, limit=100) -> list:
         """Fetch all vote methods from the DB as list of dicts."""
-        with get_session() as session:
-            if hasattr(session, "query") and hasattr(VoteMethod, "vote_method_text"):
-                vote_methods = session.query(VoteMethod).order_by(VoteMethod.id.desc()).limit(limit).all()
-                return [
-                    {
-                        "vote_method_text": v.vote_method_text,
-                        "vote_method_html": getattr(v, "vote_method_html", None),
-                        "segment_hash": getattr(v, "segment_hash", None),
-                    }
-                    for v in vote_methods
-                ]
+        try:
+            with get_session() as session:
+                if hasattr(session, "query") and hasattr(VoteMethod, "vote_method_text"):
+                    vote_methods = session.query(VoteMethod).order_by(VoteMethod.id.desc()).limit(limit).all()
+                    return [
+                        {
+                            "vote_method_text": v.vote_method_text,
+                            "vote_method_html": getattr(v, "vote_method_html", None),
+                            "segment_hash": getattr(v, "segment_hash", None),
+                        }
+                        for v in vote_methods
+                    ]
+                return []
+        except Exception as e:
+            logger.error(f"[get_all_vote_methods] Error fetching vote methods: {e}", exc_info=True)
             return []
 
     # --- Contest Operations ---
@@ -588,61 +689,6 @@ class ElectionDataService(object):
                 )
                 session.add(obj)
             session.commit()
-
-    def get_full_contest(self, contest_id: int) -> Optional[dict]:
-        """
-        Fetch a contest with all related data (state, county, office, candidates, results).
-        """
-        with get_session() as session:
-            return fetch_contest_full(session, {"id": contest_id})
-
-    def get_contests_by_advanced_filter(
-        self,
-        filters: Optional[dict] = None,
-        columns: Optional[list] = None,
-        limit: int = 100
-    ) -> List[dict]:
-        """
-        Fetch contests with advanced filters and optional column selection.
-        Args:
-            filters: dict of field:value pairs to filter on (AND logic).
-            columns: list of column names to return (if None, returns all fields).
-            limit: max number of results.
-        Returns:
-            List of dicts, each representing a contest.
-        """
-        with get_session() as session:
-            query = session.query(Contest)
-            # Apply filters
-            for k, v in (filters or {}).items():
-                if hasattr(Contest, k):
-                    query = query.filter(getattr(Contest, k) == v)
-            query = query.limit(limit)
-            # Select columns if specified
-            if columns:
-                query = query.with_entities(*[getattr(Contest, col) for col in columns])
-                # Return as dicts with column names
-                return [dict(zip(columns, row)) for row in query.all()]
-            else:
-                # Return as dicts (all fields)
-                contest_columns = get_table_columns(Contest)  # List[Column]
-                column_names = columns_to_names(contest_columns)   # List[str]
-                results = []
-                for row in query.all():
-                    if hasattr(row, "as_dict"):
-                        results.append(row_to_dict(row))
-                    else:
-                        # Build dict from column names and row values
-                        results.append({name: getattr(row, name, None) for name in column_names})
-                return results
-
-    def get_all_full_contests(self, filters: Optional[dict] = None, limit: int = 100) -> List[dict]:
-        """
-        Fetch all contests with related data, optionally filtered.
-        """
-        contests = self.get_contests_by_advanced_filter(filters, limit=limit)
-        with get_session() as session:
-            return [fetch_contest_full(session, c) for c in contests]
 
     def update_contest_in_db(self, contest_update: dict) -> None:
         """

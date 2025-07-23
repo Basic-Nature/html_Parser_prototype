@@ -1826,7 +1826,16 @@ class ContextCoordinator(object):
                 logger.error(f"[get_full_contest] Error enriching contest: {e}", exc_info=True)
         return contest
 
-    def get_all_full_contests(self, filters=None, limit=100, enrich=True, deduplicate=True, fuzzy=False, semantic=False, return_summary=False) -> List[Dict[str, Any]]:
+    def get_all_full_contests(
+        self,
+        filters: Optional[dict] = None,
+        limit: int = 100,
+        enrich: bool = True,
+        deduplicate: bool = True,
+        fuzzy: bool = False,
+        semantic: bool = False,
+        return_summary: bool = False
+    ) -> List[dict]:
         """
         Advanced accessor for all contests:
         - Enriches with NLP and type sync.
@@ -1835,7 +1844,9 @@ class ContextCoordinator(object):
         - Optionally returns summary of type issues.
         """
         try:
-            contests = self.data_service.get_all_full_contests(filters=filters, limit=limit)
+            # Defensive: Only pass valid filters
+            valid_filters = {k: v for k, v in (filters or {}).items() if v is not None and v != ""}
+            contests = self.data_service.get_contests_by_advanced_filter(valid_filters, limit=limit)
             seen_ids = set()
             enriched = []
             type_issues = []
@@ -1855,9 +1866,9 @@ class ContextCoordinator(object):
                     type_issues.append({"contest": c.get("title"), "issue": "Missing type or election_types"})
                 enriched.append(c)
             def match(c):
-                if not filters:
+                if not valid_filters:
                     return True
-                for k, v in (filters or {}).items():
+                for k, v in valid_filters.items():
                     val = str((c or {}).get(k, "")).lower()
                     tgt = str(v).lower()
                     if fuzzy:

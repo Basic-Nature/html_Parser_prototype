@@ -27,7 +27,7 @@ from ..utils.db_utils import (
 from ..services.election_data_services import ElectionDataService
 from ..utils.shared_logic import (
     safe_model_encode, scan_environment, flatten_raw_field, flatten_raw_field, infer_contest_fields, safe_get_first,
-    flatten_raw_field, safe_add, safe_items, safe_update, _sync_type_and_election_types
+    flatten_raw_field, safe_add, safe_items, safe_update, _sync_type_and_election_types, safe_db_call
 )
 from ..bots.librarian import (
     load_context_library, update_context_library, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, 
@@ -125,10 +125,11 @@ def repair_dom_segments(segments) -> list:
         seg["children"] = [c for c in seg["children"] if (idx_map.get(c, {}) or {}).get("parent_idx") == seg["_idx"]]
     return segments
 
-def _defensive_dom_check(dom_parts, url, logger: SharedLogger) -> dict:
+def _defensive_dom_check(dom_parts, url, logger: SharedLogger, log_errors=True) -> dict:
     """
     Efficiently checks for missing/empty lists in dom_parts for all major field types.
     Returns a dict of errors found.
+    If log_errors is False, does not log errors (just returns the dict).
     """
     errors = {}
     field_types = [
@@ -140,7 +141,8 @@ def _defensive_dom_check(dom_parts, url, logger: SharedLogger) -> dict:
         items = (dom_parts or {}).get(field, [])
         if not items or not isinstance(items, list) or safe_get_first(items, field, url, logger) is None:
             errors[field] = f"No {field} found for {url}"
-            logger.error(errors[field])
+            if log_errors:
+                logger.error(errors[field])
     return errors
 
 class ContextOrganizer(object):
@@ -761,7 +763,8 @@ class ContextOrganizer(object):
         plot_anomalies=None,
         plot_clusters_flag=True,
         debug=None,
-        fuzzy_cutoff=None
+        fuzzy_cutoff=None,
+        suppress_dom_errors=False,
     ) -> dict:
         """
         Organizes the context for a parsed HTML page, including DOM structure, contests, panels, buttons, tables, and ML features.
@@ -831,7 +834,7 @@ class ContextOrganizer(object):
             # --- Defensive: check for missing/empty lists in dom_parts ---
             url = (raw_context or {}).get("url", "")
             context = {}
-            dom_errors = _defensive_dom_check(dom_parts, url, logger)
+            dom_errors = _defensive_dom_check(dom_parts, url, logger, log_errors=not suppress_dom_errors)
             if dom_errors:
                 context['dom_errors'] = dom_errors
 
@@ -855,43 +858,43 @@ class ContextOrganizer(object):
                 return val if isinstance(val, list) else []
 
             # --- Organize contests, panels, tables, etc. (original logic unchanged) ---
-            db_contests = safe_list(self.data_service.get_all_full_contests(limit=500))
+            db_contests = safe_db_call(self.data_service.get_all_full_contests, limit=500, default=[], logger=logger)
             contests = safe_list((raw_context or {}).get("contests", [])) + db_contests
             contests = dedupe(contests, ["title", "year", "type_"])
 
-            db_panels = safe_list(self.data_service.get_all_panels(limit=500))
+            db_panels = safe_db_call(self.data_service.get_all_panels, limit=500, default=[], logger=logger)
             panels = safe_list((raw_context or {}).get("panels", [])) + db_panels
             panels = dedupe(panels, ["panel_text", "segment_hash"])
 
-            db_tables = safe_list(self.data_service.get_all_tables(limit=500))
+            db_tables = safe_db_call(self.data_service.get_all_tables, limit=500, default=[], logger=logger)
             tables = safe_list((raw_context or {}).get("tables", [])) + db_tables
             tables = dedupe(tables, ["table_text", "segment_hash"])
 
-            db_candidate_panels = safe_list(self.data_service.get_all_candidate_panels(limit=500))
+            db_candidate_panels = safe_db_call(self.data_service.get_all_candidate_panels, limit=500, default=[], logger=logger)
             candidate_panels = safe_list((raw_context or {}).get("candidate_panels", [])) + db_candidate_panels
             candidate_panels = dedupe(candidate_panels, ["candidate_panel_text", "segment_hash"])
 
-            db_location_panels = safe_list(self.data_service.get_all_location_panels(limit=500))
+            db_location_panels = safe_db_call(self.data_service.get_all_location_panels, limit=500, default=[], logger=logger)
             location_panels = safe_list((raw_context or {}).get("location_panels", [])) + db_location_panels
             location_panels = dedupe(location_panels, ["location_panel_text", "segment_hash"])
 
-            db_headings = safe_list(self.data_service.get_all_headings(limit=500))
+            db_headings = safe_db_call(self.data_service.get_all_headings, limit=500, default=[], logger=logger)
             headings = safe_list((raw_context or {}).get("headings", [])) + db_headings
             headings = dedupe(headings, ["heading_text", "segment_hash"])
 
-            db_ballot_types = safe_list(self.data_service.get_all_ballot_types(limit=500))
+            db_ballot_types = safe_db_call(self.data_service.get_all_ballot_types, limit=500, default=[], logger=logger)
             ballot_types = safe_list((raw_context or {}).get("ballot_types", [])) + db_ballot_types
             ballot_types = dedupe(ballot_types, ["ballot_types_text", "segment_hash"])
 
-            db_results_timestamps = safe_list(self.data_service.get_all_results_timestamps(limit=500))
+            db_results_timestamps = safe_db_call(self.data_service.get_all_results_timestamps, limit=500, default=[], logger=logger)
             results_timestamps = safe_list((raw_context or {}).get("results_timestamps", [])) + db_results_timestamps
             results_timestamps = dedupe(results_timestamps, ["timestamp_text", "segment_hash"])
 
-            db_party_labels = safe_list(self.data_service.get_all_party_labels(limit=500))
+            db_party_labels = safe_db_call(self.data_service.get_all_party_labels, limit=500, default=[], logger=logger)
             party_labels = safe_list((raw_context or {}).get("party_labels", [])) + db_party_labels
             party_labels = dedupe(party_labels, ["party_label_text", "segment_hash"])
 
-            db_vote_methods = safe_list(self.data_service.get_all_vote_methods(limit=500))
+            db_vote_methods = safe_db_call(self.data_service.get_all_vote_methods, limit=500, default=[], logger=logger)
             vote_methods = safe_list((raw_context or {}).get("vote_methods", [])) + db_vote_methods
             vote_methods = dedupe(vote_methods, ["vote_method_text", "segment_hash"])
 
