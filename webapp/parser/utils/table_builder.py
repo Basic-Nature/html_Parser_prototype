@@ -9,11 +9,10 @@ import os
 import orjson
 import time
 from rich.table import Table
-from ..bots.librarian import (
-    LOCATION_KEYWORDS,
+from ..Context_Integration.Context_Library.constants import (
     PERCENT_KEYWORDS,  
 )
-from typing import List, Dict, Tuple, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Tuple, Any, TYPE_CHECKING
 from ..utils.shared_logger import SharedLogger
 from ..config import BASE_DIR, CACHE_DIR
 logger = SharedLogger()

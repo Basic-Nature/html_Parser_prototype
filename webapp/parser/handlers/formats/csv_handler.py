@@ -8,7 +8,7 @@ import orjson
 from dotenv import load_dotenv
 from ...config import BASE_DIR
 from ...utils.shared_logger import SharedLogger
-from ...bots.librarian import (
+from ...Context_Integration.Context_Library.constants import (
     LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
 )

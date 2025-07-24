@@ -7,7 +7,7 @@ import os
 import csv
 from collections import defaultdict
 from ...config import BASE_DIR
-from ...bots.librarian import (
+from ...Context_Integration.Context_Library.constants import (
     LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
 )

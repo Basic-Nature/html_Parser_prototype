@@ -5,7 +5,7 @@ from .....utils.table_builder import build_dynamic_table
 from .....utils.table_core import harmonize_headers_and_data
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import SharedLogger
-from .....utils.shared_logic import autoscroll_until_stable, safe_is_visible, safe_is_enabled, safe_click
+from .....utils.shared_logic import autoscroll_until_stable, safe_is_visible, safe_is_enabled, safe_click, safe_get
 from .....utils.user_prompt import UserPrompt
 from .....utils.html_scanner import scan_html_for_context
 logger = SharedLogger()
@@ -44,12 +44,12 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     state = context_result.get("state") or "NY"
     county = context_result.get("county") or "Rockland"
     year = context_result.get("year")
-    for contest in context_result.get("contests", []):
-        if (contest or {}).get("state") is None:
+    for contest in safe_get(context_result, "contests", []):
+        if safe_get(contest, "state", None) is None:
             contest["state"] = state
-        if (contest or {}).get("county") is None:
+        if safe_get(contest, "county", None) is None:
             contest["county"] = county
-        if (contest or {}).get("year") is None and year is not None:
+        if safe_get(contest, "year", None) is None and year is not None:
             contest["year"] = year
     context_result = clean_for_json(context_result)
     result = coordinator.organize_and_enrich(context_result)
@@ -188,9 +188,9 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             if not panels and "tagged_segments_with_attrs" in context_result:
                 from collections import defaultdict
                 panels_by_heading = defaultdict(list)
-                for seg in context_result["tagged_segments_with_attrs"]:
-                    if (seg or {}).get("ml_label") == "panel":
-                        panels_by_heading[(seg or {}).get("panel_heading", "Unknown")].append(seg)
+                for seg in safe_get(context_result, "tagged_segments_with_attrs", []):
+                    if safe_get(seg, "ml_label", None) == "panel":
+                        panels_by_heading[safe_get(seg, "panel_heading", "Unknown")].append(seg)
                 panels = [{"panel_heading": k, "tables": v} for k, v in panels_by_heading.items()]
 
             logger.debug(f"[DEBUG] Found {len(panels)} panels after context/NLP pipeline.")
@@ -231,13 +231,13 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                         "association_log": panel.get("association_log"),
                         "panel_ml_label": panel.get("panel_tag"),
                     }
-                    for table in panel.get("tables", []):
+                    for table in safe_get(panel, "tables", []):
                         table_fields = {
-                            "table_idx": (table or {}).get("table_idx"),
-                            "table_html": (table or {}).get("table_html"),
-                            "ml_panel_score": (table or {}).get("ml_panel_score"),
+                            "table_idx": safe_get(table, "table_idx"),
+                            "table_html": safe_get(table, "table_html"),
+                            "ml_panel_score": safe_get(table, "ml_panel_score"),
                         }
-                        table_html = (table or {}).get("table_html")
+                        table_html = safe_get(table, "table_html")
                         if not table_html:
                             continue
                         extraction_context = {

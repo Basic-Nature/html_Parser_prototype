@@ -13,7 +13,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     import orjson
     import os
     import importlib
-    from ...bots.librarian import KNOWN_COUNTY_TO_PRECINCTS_MAP
+    from ...Context_Integration.Context_Library.constants import KNOWN_COUNTY_TO_PRECINCTS_MAP
     logger = SharedLogger()
     prompt = UserPrompt()
     

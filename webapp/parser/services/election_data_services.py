@@ -11,6 +11,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, DeclarativeMeta
 from sqlalchemy.sql.schema import Table, Column
 from typing import Optional, List, Any, Union, Dict, Type, Iterator, Protocol
+from ..utils.shared_logic import safe_items, safe_values
 from ..utils.db_utils import (
     get_session, upsert_contest, fetch_contest_full,
     get_table_structure_from_db, save_table_structure_to_db,
@@ -52,10 +53,9 @@ def get_decl_class_registry(base: DeclarativeMeta) -> Iterator[Type[Any]]:
     Safely yield ORM classes from SQLAlchemy Base._decl_class_registry.
     """
     registry = getattr(base, "_decl_class_registry", None)
-    if registry and hasattr(registry, "values"):
-        for cls in (registry or {}).values():
-            if isinstance(cls, type):
-                yield cls
+    for cls in safe_values(registry):
+        if isinstance(cls, type):
+            yield cls
 
 def iter_orm_classes(base: DeclarativeMeta) -> Iterator[Type[Any]]:
     """
@@ -189,7 +189,7 @@ class ElectionDataService(object):
             with get_session() as session:
                 query = session.query(Contest)
                 # Defensive: Only apply filters if they are valid and not None/empty
-                for k, v in (filters or {}).items():
+                for k, v in safe_items(filters):
                     if hasattr(Contest, k) and v is not None and v != "":
                         query = query.filter(getattr(Contest, k) == v)
                 query = query.limit(limit)

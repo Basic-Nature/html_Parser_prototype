@@ -11,11 +11,13 @@ from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..utils.user_prompt import UserPrompt
 from playwright.sync_api import Page, Locator, ElementHandle
 from sentence_transformers import SentenceTransformer
-from ..bots.librarian import STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
+from ..Context_Integration.Context_Library.constants import (
+    STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
+)
 from typing import (
     TYPE_CHECKING, Optional, Generator, Any, Iterable, Dict, 
     Union, Iterable, Collection, Protocol, Awaitable, TypedDict,
-    List, Callable
+    List, Callable, Mapping
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -82,6 +84,33 @@ class Predictable(Protocol):
             Exception: If prediction fails.
         """
 
+def safe_merge_defaults(existing, defaults):
+    """
+    Recursively merge defaults into existing dict, only setting missing keys.
+    Uses safe_get for robust access.
+    Returns True if any changes were made.
+    """
+    changed = False
+    for k, v in defaults.items():
+        if safe_get(existing, k, None) is None:
+            existing[k] = v
+            changed = True
+        elif isinstance(v, dict) and isinstance(existing[k], dict):
+            if safe_merge_defaults(existing[k], v):
+                changed = True
+    return changed
+
+def safe_setdefault(d: dict, key, default):
+    """
+    Robust setdefault: returns d[key] if present, else sets d[key]=default and returns default.
+    Handles None and missing keys safely.
+    """
+    val = safe_get(d, key, None)
+    if val is None:
+        d[key] = default
+        return default
+    return val
+
 def safe_isdigit(val: Any) -> bool:
     """Safely check if val is a string and isdigit()."""
     try:
@@ -97,6 +126,18 @@ def safe_get(dct: dict, key: str, default: Any = None) -> Any:
     except Exception:
         pass
     return default
+
+def safe_values(obj: Mapping[Any, Any]) -> list:
+    """
+    Safely get .values() from a dict-like object.
+    Returns an empty list if obj is not a dict or .values() fails.
+    """
+    try:
+        if hasattr(obj, "values") and callable(obj.values):
+            return list(obj.values())
+    except Exception as e:
+        logger.error(f"[safe_values] .values() failed: {e}")
+    return []
 
 def safe_is_set(event_like: EventLike) -> bool:
     """

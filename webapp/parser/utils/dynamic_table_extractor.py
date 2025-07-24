@@ -18,21 +18,21 @@ import os
 import re
 import orjson
 import unicodedata
-from ..bots.librarian import (
+from ..Context_Integration.Context_Library.constants import (
     CANDIDATE_KEYWORDS,
     HEADING_TAGS,
     BALLOT_TYPES,
     EXTRA_HEADING_TAGS,
-    PARTY_KEYWORDS
+    PARTY_KEYWORDS,
+    TOTAL_KEYWORDS,
+    LOCATION_KEYWORDS,
+    MISC_FOOTER_KEYWORDS,
 )
 from typing import List, Dict
 from ..utils.shared_logger import SharedLogger
 from ..config import BASE_DIR
 from typing import TYPE_CHECKING
-from ..utils.table_core import (
-    TOTAL_KEYWORDS,
-    LOCATION_KEYWORDS,
-    MISC_FOOTER_KEYWORDS,
+from ..utils.table_core import ( 
     extract_rows_and_headers_from_dom,
     extract_with_patterns,
     guess_headers_from_row,

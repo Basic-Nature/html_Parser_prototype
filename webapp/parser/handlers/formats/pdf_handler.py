@@ -8,9 +8,9 @@ import csv
 from concurrent.futures import ThreadPoolExecutor
 from ...config import BASE_DIR
 from ...utils.shared_logger import SharedLogger
-from ...bots.librarian import (
+from ...Context_Integration.Context_Library.constants import (
     LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
-    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
+    MISC_FOOTER_KEYWORDS
 )
 from ...utils.table_core import harmonize_headers_and_data
 import orjson

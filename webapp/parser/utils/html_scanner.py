@@ -16,14 +16,20 @@ from ..utils.shared_logic import (
     _keyword_in_text, safe_lower, safe_encode, safe_startswith, safe_add, safe_items, safe_model_encode,
     safe_get_first, _sync_type_and_election_types
 )
-from ..bots.librarian import (
-    HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, 
-    CANDIDATE_KEYWORDS, BALLOT_TYPES, update_context_library, load_context_library,
-    log_unknown_tag, log_unknown_attr, get_canonical_segment_label, cache_segment_label, get_cached_segment_label, 
+from ..Context_Integration.Context_Library.constants import (
+    STATE_ABBR, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    ELECTION_TYPES, BALLOT_TYPES, PARTY_KEYWORDS, CONTEST_KEYWORDS,
+    CANDIDATE_KEYWORDS, BALLOT_TYPES, ELECTION_TYPES,
+    HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, EXTRA_HEADING_TAGS,
     ALWAYS_IGNORE_TAGS, ALWAYS_IGNORE_CLASSES, ALWAYS_IGNORE_IDS, ICON_CLASSES, ICON_TAGS, BUTTON_CLASSES,
     HEADING_CLASSES, PANEL_CLASSES, TIMESTAMP_CLASSES, STRUCTURAL_TAGS, TIMESTAMP_ID_PATTERNS, TIMESTAMP_ATTRS,
-    CONTEST_KEYWORDS, PARTY_KEYWORDS, MISC_FOOTER_KEYWORDS, ELECTION_TYPES, UPDATE_PANEL_KEYWORDS, VIEW_BY_PHRASES,
-    TOTAL_KEYWORDS, PERCENT_KEYWORDS, ROOT_CONTAINER_TAGS,
+    MISC_FOOTER_KEYWORDS, UPDATE_PANEL_KEYWORDS, VIEW_BY_PHRASES, CANONICAL_SEGMENT_LABELS,
+    TOTAL_KEYWORDS, PERCENT_KEYWORDS, ROOT_CONTAINER_TAGS, LOCATION_ABBREVIATIONS
+)
+from ..bots.librarian import (
+    
+    update_context_library, load_context_library, log_unknown_tag, log_unknown_attr, 
+    get_canonical_segment_label, cache_segment_label, get_cached_segment_label,    
 )
 from ..utils.embedding_cache import (
     save_embedding, get_embedding_from_memory, load_embeddings_batch, save_embeddings_batch
@@ -1443,10 +1449,7 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
     - Returns True if valid, False otherwise.
     """
     import datetime
-    from ..bots.librarian import (
-        KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, ELECTION_TYPES, BALLOT_TYPES, PARTY_KEYWORDS,
-        LOCATION_KEYWORDS, STATE_ABBR, LOCATION_ABBREVIATIONS, CANONICAL_SEGMENT_LABELS, PANEL_TAGS, HEADING_TAGS, EXTRA_HEADING_TAGS
-    )
+
     MAX_WARNINGS = 20
     warning_count = 0
     valid = True

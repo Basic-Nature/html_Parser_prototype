@@ -1,10 +1,13 @@
 import re
 from ..utils.shared_logger import SharedLogger
-from ..utils.shared_logic import normalize_state_name, normalize_county_name, _sync_type_and_election_types
+from ..utils.shared_logic import (
+    normalize_state_name, normalize_county_name, _sync_type_and_election_types,
+    safe_get, safe_items
+)
 from ..utils.user_prompt import UserPrompt, PromptCancelled
 from collections import defaultdict
 from difflib import get_close_matches
-from ..bots.librarian import (
+from ..Context_Integration.Context_Library.constants import (
     ELECTION_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP
     )
 
@@ -72,17 +75,17 @@ def infer_election_type(title, context, contest, all_contests, coordinator) -> O
             if label == "EVENT" and (ent or "").lower() in [(et or "").lower() for et in ELECTION_TYPES]:
                 return ent.capitalize()
     # 4. Context clues: if context has a type, use it
-    if context and (context or {}).get("type_"):
-        return (context["type_"] or "").capitalize()
+    if context and safe_get(context, "type_"):
+        return (safe_get(context, "type_") or "").capitalize()
     # 5. If contest has a date, and it matches a known general/primary election date, infer type
     # (You can expand this with a lookup table of known election dates if available)
     # 6. Most common type among all contests for this year/county
-    year = (contest or {}).get("year")
-    county = (contest or {}).get("county")
+    year = safe_get(contest, "year")
+    county = safe_get(contest, "county")
     type_counts = defaultdict(int)
     for c in all_contests:
-        if (c or {}).get("year") == year and ((c or {}).get("county") or "").lower() == (county or "").lower() and ((c or {}).get("type_") or "").lower():
-            type_counts[(c["type_"] or "").lower()] += 1
+        if safe_get(c, "year") == year and (safe_get(c, "county") or "").lower() == (county or "").lower() and (safe_get(c, "type_") or "").lower():
+            type_counts[(safe_get(c, "type_") or "").lower()] += 1
     if type_counts:
         most_common = max(type_counts.items(), key=lambda x: x[1])[0]
         return (most_common or "").capitalize()
@@ -97,7 +100,7 @@ def fuzzy_county_match(contest_county, norm_county, known_county_to_precincts) -
         return True
     # Fuzzy match against parent county and precincts
     all_names = [normalize_county_name(norm_county)]
-    for parent_county, precincts in (known_county_to_precincts or {}).items():
+    for parent_county, precincts in safe_items(known_county_to_precincts or {}):
         if normalize_county_name(parent_county) == norm_county:
             all_names += [normalize_county_name(d) for d in precincts]
     matches = get_close_matches(contest_county_norm, all_names, n=1, cutoff=0.85)
@@ -191,12 +194,12 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
     logger.warning("[yellow]Unable to confidently identify valid contests after feedback loop. Please clarify selection.[/yellow]")
     grouped = defaultdict(list)
     for idx, c in enumerate(contests):
-        grouped[(c.get('year', ''), c.get('type_', ''))].append((idx, c))
+        grouped[(safe_get(c, 'year', ''), safe_get(c, 'type_', ''))].append((idx, c))
 
     for (year, ctype), items in sorted(grouped.items()):
         logger.info(f"[bold cyan]Year: {year or 'Unknown'}, Type: {ctype or 'Unknown'}[/bold cyan]")
         for idx, c in items:
-            logger.info(f"  [{idx}] {(c or {}).get('title', '')}")
+            logger.info(f"  [{idx}] {safe_get(c, 'title', '')}")
     try:
         choice = prompt.prompt_input(
             "[PROMPT] Enter contest indices (comma-separated), 'all', 'skip', or leave blank to skip: ",
@@ -225,10 +228,10 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
                 indices.append(idx)
     selected = [_sync_type_and_election_types(contests[i]) or contests[i] for i in indices]
     # Log user feedback for ML improvement
-    logger.debug(f"norm_state: {context.get('state')}, norm_county: {context.get('county')}, year: {context.get('year')}")
+    logger.debug(f"norm_state: {safe_get(context, 'state')}, norm_county: {safe_get(context, 'county')}, year: {safe_get(context, 'year')}")
     for c in selected:
-        logger.debug(f"Contest: {(c or {}).get('title', '')}, state: {(c or {}).get('state', '')}, county: {(c or {}).get('county', '')}, year: {(c or {}).get('year', '')}")
-        coordinator.submit_user_feedback("contest", "contest", (c or {}).get("title", ""), context)
+        logger.debug(f"Contest: {safe_get(c, 'title', '')}, state: {safe_get(c, 'state', '')}, county: {safe_get(c, 'county', '')}, year: {safe_get(c, 'year', '')}")
+        coordinator.submit_user_feedback("contest", "contest", safe_get(c, "title", ""), context)
     return selected
 
 def ensure_contest(contest) -> Dict[str, Any]:
@@ -256,6 +259,7 @@ def select_contest(
     state=None,
     county=None,
     year=None,
+    session_id=None,
     prompt_message="[PROMPT] Enter contest indices (comma-separated), 'all', or leave blank to skip: ",
     allow_multiple=True,
     non_interactive=False,
@@ -272,22 +276,22 @@ def select_contest(
     norm_state = normalize_state_name(state)
     norm_county = normalize_county_name(county)
     selector_data = coordinator.get_for_selector()
-    contests = selector_data.get("contests", [])
-    noisy_patterns = selector_data.get("noisy_patterns", [])
+    contests = safe_get(selector_data, "contests", [])
+    noisy_patterns = safe_get(selector_data, "noisy_patterns", [])
     known_county_to_precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP
 
     # --- Fill in missing year/type from title using ML/NER ---
     for c in contests:
         # Fill year
-        if not (c or {}).get("year"):
-            year_from_title = extract_year_from_title((c or {}).get("title", ""))
+        if not safe_get(c, "year"):
+            year_from_title = extract_year_from_title(safe_get(c, "title", ""))
             if year_from_title:
                 c["year"] = year_from_title
         # Fill type_
         found_type_ = None
-        if not (c or {}).get("type_"):
+        if not safe_get(c, "type_"):
             inferred_type = infer_election_type(
-                (c or {}).get("title", ""),
+                safe_get(c, "title", ""),
                 context,
                 c,
                 contests,
@@ -296,7 +300,7 @@ def select_contest(
             if inferred_type:
                 c["type_"] = inferred_type
                 # Try ML/NER
-                ents = coordinator.extract_entities((c or {}).get("title", "")) if coordinator else []
+                ents = coordinator.extract_entities(safe_get(c, "title", "")) if coordinator else []
                 for ent, label in ents:
                     if label == "EVENT" and (ent or "").lower() in [(et or "").lower() for et in ELECTION_TYPES]:
                         found_type_ = (ent or "").lower()
@@ -305,19 +309,23 @@ def select_contest(
         if found_type_:
             c["type_"] = found_type_.capitalize()
         # Fallback: if still missing, log and set to 'Unknown'
-        if not (c or {}).get("type_"):
-            logger.warning(f"[CONTEST SELECTOR] Could not infer type for contest: {(c or {}).get('title', '')}")
+        if not safe_get(c, "type_"):
+            logger.warning(f"[CONTEST SELECTOR] Could not infer type for contest: {safe_get(c, 'title', '')}")
             c["type_"] = "Unknown"
         _sync_type_and_election_types(c)
+        # Attach session_id if provided
+        if session_id is not None:
+            c["session_id"] = session_id
 
     context = {
         "state": norm_state,
         "county": norm_county,
         "year": year,
         "contests": contests,
-        "url": getattr(coordinator, "last_url", None) if hasattr(coordinator, "last_url") else None
+        "url": getattr(coordinator, "last_url", None) if hasattr(coordinator, "last_url") else None,
+        "session_id": session_id
     }
-    logger.debug(f"DEBUG: selector_data['contests']: {selector_data.get('contests', None)}")
+    logger.debug(f"DEBUG: selector_data['contests']: {safe_get(selector_data, 'contests', None)}")
     logger.debug(f"[DEBUG] norm_state: {norm_state}, norm_county: {norm_county}, year: {year}")
     logger.debug(f"[DEBUG] noisy_patterns: {noisy_patterns}")
     logger.debug(f"[DEBUG] contests before filtering: {contests}")
@@ -327,8 +335,8 @@ def select_contest(
     fallback_contests = []
     for c in contests:
         skip_reason = None
-        contest_state = (c or {}).get("state", "")
-        title = (c or {}).get("title", "")
+        contest_state = safe_get(c, "state", "")
+        title = safe_get(c, "title", "")
         title_norm = (title or "").strip().lower()
 
         # Skip noisy/generic patterns
@@ -336,15 +344,15 @@ def select_contest(
             skip_reason = "empty/generic title"
         elif any(pat in title_norm for pat in ["unofficial results", "summary", "results by election district"]):
             skip_reason = "noisy pattern"
-        elif not (c or {}).get("year"):
+        elif not safe_get(c, "year"):
             skip_reason = "missing year"
-        elif not (c or {}).get("type_"):
+        elif not safe_get(c, "type_"):
             skip_reason = "missing type_"
-        elif not (c or {}).get("state"):
+        elif not safe_get(c, "state"):
             skip_reason = "missing state"
-        elif not (c or {}).get("county"):
+        elif not safe_get(c, "county"):
             skip_reason = "missing county"
-        elif not fuzzy_county_match((c or {}).get("county", ""), norm_county, known_county_to_precincts):
+        elif not fuzzy_county_match(safe_get(c, "county", ""), norm_county, known_county_to_precincts):
             skip_reason = "county mismatch"
         elif norm_state and normalize_state_name(contest_state) != norm_state:
             skip_reason = "state mismatch"
@@ -358,7 +366,7 @@ def select_contest(
 
     # If ambiguous county matches, prompt user
     if not filtered_contests and fallback_contests:
-        ambiguous_counties = set((c or {}).get("county", "") for c in fallback_contests)
+        ambiguous_counties = set(safe_get(c, "county", "") for c in fallback_contests)
         if len(ambiguous_counties) > 1:
             logger.warning(f"[COUNTY AMBIGUITY] Multiple possible counties found: {ambiguous_counties}")
             try:
@@ -370,7 +378,7 @@ def select_contest(
                     header="COUNTY SELECTION"
                 ).strip().lower()
                 if choice and choice != "all":
-                    filtered_contests = [c for c in fallback_contests if normalize_county_name((c or {}).get("county", "")) == normalize_county_name(choice)]
+                    filtered_contests = [c for c in fallback_contests if normalize_county_name(safe_get(c, "county", "")) == normalize_county_name(choice)]
                 else:
                     filtered_contests = fallback_contests
             except PromptCancelled:
@@ -387,8 +395,8 @@ def select_contest(
     unique_contests = []
     seen = set()
     for c in filtered_contests:
-        norm_title = normalize_contest((c or {}).get("title", "") or "")
-        key = (((c or {}).get("year") or ""), ((c or {}).get("type_") or ""), norm_title)
+        norm_title = normalize_contest(safe_get(c, "title", "") or "")
+        key = (safe_get(c, "year", ""), safe_get(c, "type_", ""), norm_title)
         if key not in seen:
             unique_contests.append(c)
             seen.add(key)
@@ -413,7 +421,13 @@ def select_contest(
     # --- Group by (year, type) for display ---
     grouped = defaultdict(list)
     for c in verified_contests:
-        grouped[(c.get("year"), c.get("type_"), tuple(c.get("election_types", [])) if c.get("election_types") else ())].append(c)
+        grouped[
+            (
+                safe_get(c, "year"),
+                safe_get(c, "type_"),
+                tuple(safe_get(c, "election_types", [])) if safe_get(c, "election_types") else ()
+            )
+        ].append(c)
 
     # --- Dynamic titling for selection prompt ---
     idx = 0
@@ -430,7 +444,7 @@ def select_contest(
                 label += f" [{etypes_str}]"
         logger.info(f"[bold cyan]{label.strip()}[/bold cyan]")
         for c in contests_in_group:
-            logger.info(f"  [{idx}] {(c or {}).get('title', '')}")
+            logger.info(f"  [{idx}] {safe_get(c, 'title', '')}")
             contest_indices.append(c)
             idx += 1
     logger.debug(f"[DEBUG] Number of contests displayed: {idx}")
@@ -438,25 +452,40 @@ def select_contest(
     # --- Auto-select if only one contest ---
     if len(verified_contests) == 1:
         contest = ensure_contest(verified_contests[0])
-        logger.info(f"[green]Only one contest found. Auto-selecting: {contest['title']}[/green]")
+        logger.info(f"[green]Only one contest found. Auto-selecting: {safe_get(contest, 'title', '')}[/green]")
         if log_func:
-            log_func(f"[CONTEST] Auto-selected: {contest['title']}")
+            log_func(f"[CONTEST] Auto-selected: {safe_get(contest, 'title', '')}")
         return [contest]
 
     # --- Non-interactive mode: select all ---
     if non_interactive:
+        # For webapp GUI, return empty and let frontend/API handle selection.
+        if getattr(logger, "mode", None) == "webapp":
+            if log_func:
+                log_func("[CONTEST] Non-interactive mode (webapp): awaiting selection from frontend/API.")
+            return []
+        # For CLI, select all contests automatically.
         if log_func:
-            log_func(f"[CONTEST] Non-interactive mode: selecting all contests.")
-        return [ensure_contest(c) for c in verified_contests]
+            log_func(f"[CONTEST] Non-interactive mode (CLI): selecting all contests.")
+        selected = [ensure_contest(c) for c in verified_contests]
+        # Attach session_id to selected contests if provided
+        if session_id is not None:
+            for c in selected:
+                c["session_id"] = session_id
+        return selected
 
     # --- Interactive prompt ---
     try:
         choice = prompt.prompt_input(
             prompt_message,
             default="all",
-            validator=lambda x: x == "all" or all(
-                p.strip().isdigit() and 0 <= int(p.strip()) < len(contest_indices)
-                for p in x.split(",") if p.strip()
+            validator=lambda x: (
+                x == "all"
+                or (allow_multiple and all(
+                    p.strip().isdigit() and 0 <= int(p.strip()) < len(contest_indices)
+                    for p in x.split(",") if p.strip()
+                ))
+                or (not allow_multiple and x.strip().isdigit() and 0 <= int(x.strip()) < len(contest_indices))
             ),
             allow_cancel=True,
             header="CONTEST SELECTION",
@@ -477,24 +506,33 @@ def select_contest(
     if choice == "all":
         if log_func:
             log_func("[CONTEST] User selected all contests.")
-        return [ensure_contest(_sync_type_and_election_types(c) or c) for c in verified_contests]
+        selected = [ensure_contest(_sync_type_and_election_types(c) or c) for c in verified_contests]
+    else:
+        indices = []
+        if allow_multiple:
+            for part in choice.split(","):
+                part = part.strip()
+                if part.isdigit():
+                    idx = int(part)
+                    if 0 <= idx < len(contest_indices):
+                        indices.append(idx)
+        else:
+            if choice.isdigit():
+                idx = int(choice)
+                if 0 <= idx < len(contest_indices):
+                    indices.append(idx)
+        if not indices:
+            logger.warning("[yellow]No valid contest indices selected. Skipping.[/yellow]")
+            if log_func:
+                log_func("[CONTEST] No valid contest indices selected.")
+            return None
+        selected = [ensure_contest(_sync_type_and_election_types(contest_indices[i]) or contest_indices[i]) for i in indices]
 
-    # --- Parse comma-separated indices ---
-    indices = []
-    for part in choice.split(","):
-        part = part.strip()
-        if part.isdigit():
-            idx = int(part)
-            if 0 <= idx < len(contest_indices):
-                indices.append(idx)
-    if not indices:
-        logger.warning("[yellow]No valid contest indices selected. Skipping.[/yellow]")
-        if log_func:
-            log_func("[CONTEST] No valid contest indices selected.")
-        return None
+    # Attach session_id to selected contests if provided
+    if session_id is not None:
+        for c in selected:
+            c["session_id"] = session_id
 
-    selected = [ensure_contest(_sync_type_and_election_types(contest_indices[i]) or contest_indices[i]) for i in indices]
     if log_func:
-        log_func(f"[CONTEST] User selected contests: {[c.get('title', '') for c in selected]}")
+        log_func(f"[CONTEST] User selected contests: {[safe_get(c, 'title', '') for c in selected]}")
     return selected
-

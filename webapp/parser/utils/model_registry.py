@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from ..utils.shared_logger import SharedLogger
 from ..config import MODEL_DIR, PROJECT_ROOT, VOCAB_DIR
-
+from ..bots.librarian import load_context_library
 try:
     from sentence_transformers import SentenceTransformer
 except ImportError:
@@ -309,7 +309,6 @@ class ModelRegistry(object):
 
         # --- Dynamic vocab loading from librarian.py ---
         try:
-            from ..bots.librarian import load_context_library
             context = load_context_library()
             candidate_vocab = context.get("candidate_keywords", [])
             CANDIDATE2IDX = {c: i+1 for i, c in enumerate(sorted(set(candidate_vocab)))}

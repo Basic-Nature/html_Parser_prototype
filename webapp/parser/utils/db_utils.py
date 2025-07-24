@@ -118,7 +118,7 @@ def fetch_contests_by_filter(filters: Optional[dict] = None, limit: int = 100, s
                 "type_": row.type_,
                 "state": row.state,
                 "county": row.county,
-                **(row.metadata or {})
+                **(row.metadata if isinstance(row.metadata, dict) else {})
             }
             contests.append(contest)
         return contests

@@ -29,9 +29,13 @@ from ..utils.shared_logic import (
     safe_model_encode, scan_environment, flatten_raw_field, flatten_raw_field, infer_contest_fields, safe_get_first,
     flatten_raw_field, safe_add, safe_items, safe_update, _sync_type_and_election_types, safe_db_call
 )
+from .Context_Library.constants import (
+    CONTEST_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS,
+    PERCENT_KEYWORDS, TOTAL_KEYWORDS, MISC_FOOTER_KEYWORDS, LOCATION_KEYWORDS,
+)
 from ..bots.librarian import (
-    load_context_library, update_context_library, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, 
-    CONTEST_KEYWORDS, PERCENT_KEYWORDS, TOTAL_KEYWORDS, MISC_FOOTER_KEYWORDS
+    load_context_library, update_context_library,   
+    
 )
 from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks

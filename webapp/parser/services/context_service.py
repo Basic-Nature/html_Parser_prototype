@@ -4,19 +4,16 @@ import hashlib
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Callable
+from ..Context_Integration.Context_Library.constants import (
+    STATE_ABBR, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    PARTY_KEYWORDS, CANDIDATE_KEYWORDS, ELECTION_TYPES, CONTEST_KEYWORDS
+)
 from ..bots.librarian import (
-    load_context_library,
-    KNOWN_STATE_TO_COUNTY_MAP,
-    KNOWN_COUNTY_TO_PRECINCTS_MAP,
-    STATE_ABBR,
-    CONTEST_KEYWORDS,
-    PARTY_KEYWORDS,
-    CANDIDATE_KEYWORDS,
-    ELECTION_TYPES,
+    load_context_library
     # Add more normalization/alias utilities as needed
 )
 from ..utils.shared_logic import (
-    PredictionResult, safe_append,
+    PredictionResult, safe_append, safe_get,
     normalize_state_name, normalize_county_name, resolve_county_alias
 )
 from ..utils.shared_logger import SharedLogger
@@ -308,8 +305,8 @@ class ContextService:
         """
         logger.info(f"[ContextService] Event: {event_type} | Data: {data}")
         if event_type == "new_entity":
-            entity_type = (data or {}).get("entity_type")
-            value = (data or {}).get("value")
+            entity_type = safe_get(data, "entity_type")
+            value = safe_get(data, "value")
             if entity_type and value:
                 if value not in self.context.setdefault(entity_type, []):
                     safe_append(self.context[entity_type], value, logger, deduplicate=True)
@@ -345,7 +342,7 @@ class ContextService:
                 for line in f:
                     try:
                         entry = json.loads(line)
-                        if (entry or {}).get("event") == "unknown_token":
+                        if safe_get(entry, "event") == "unknown_token":
                             unknowns.append(entry)
                     except Exception:
                         continue
@@ -361,8 +358,10 @@ class ContextService:
             return
         logger.info(f"[ContextService] Reviewing {len(unknowns)} unknowns.")
         for entry in unknowns:
-            entity_type = (entry["data"] or {}).get("entity_type")
-            value = (entry["data"] or {}).get("value")
+            entity_type = safe_get(entry, "data", {})
+            value = safe_get(entry, "data", {})
+            entity_type = safe_get(entity_type, "entity_type")
+            value = safe_get(value, "value")
             logger.info(f"Unknown {entity_type}: '{value}'")
             if self.prompt.prompt_yes_no(f"Add '{value}' to {entity_type}?", default="n"):
                 self.update_from_event("new_entity", {"entity_type": entity_type, "value": value})

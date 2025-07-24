@@ -22,19 +22,14 @@ from ..utils.shared_logic import (
     safe_model_encode, safe_locator, safe_nth, safe_inner_text, safe_get_attribute,
     safe_evaluate, safe_is_visible, safe_is_enabled, safe_click,
     safe_wait_for_timeout, safe_count, safe_startswith, safe_isupper,
-    _sync_type_and_election_types
+    _sync_type_and_election_types, safe_get, safe_items, safe_lower
 )
-from ..bots.librarian import ( 
-    PARTY_KEYWORDS,
-    LOCATION_KEYWORDS,
-    STATE_MODULE_MAP,
-    KNOWN_STATE_TO_COUNTY_MAP,
-    KNOWN_COUNTY_TO_PRECINCTS_MAP,
-    ELECTION_TYPES,
-    TABLE_TAGS,
-    PANEL_TAGS,
-    STATE_TAGS,
-    BUTTON_TAGS, atomic_write_json 
+from .Context_Library.constants import (
+    STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, PARTY_KEYWORDS,
+    ELECTION_TYPES, STATE_ABBR, LOCATION_KEYWORDS, TABLE_TAGS, PANEL_TAGS, STATE_TAGS, BUTTON_TAGS,
+)
+from ..bots.librarian import (    
+    atomic_write_json 
 )
 from sklearn.preprocessing import LabelEncoder
 import subprocess
@@ -237,7 +232,6 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if not mapped_state:
                 # Try abbreviation
                 abbr = state.lower()
-                from ..bots.librarian import STATE_ABBR
                 mapped_state = STATE_ABBR.get(abbr)
                 if mapped_state:
                     detection_log.append(f"State '{state}' mapped from abbreviation to '{mapped_state}'.")
@@ -2052,9 +2046,7 @@ class ContextCoordinator(object):
         - Supports flexible filtering: exact, partial, fuzzy, semantic.
         - Optionally returns a summary of type consistency issues.
         """
-        if not self.organized:
-            return []
-        contests = (self.organized or {}).get("contests", [])
+        contests = safe_get(self.organized, "contests", [])
         seen_ids = set()
         enriched = []
         type_issues = []
@@ -2067,25 +2059,22 @@ class ContextCoordinator(object):
                     c["entities"] = self.extract_entities(c.get("title", ""))
                     c["locations"] = self.extract_locations(c.get("title", ""))
                     c["dates"] = self.extract_dates(c.get("title", ""))
-                # Deduplicate by contest id or title
                 dedup_key = c.get("id") or c.get("title")
                 if deduplicate and dedup_key in seen_ids:
                     continue
                 seen_ids.add(dedup_key)
-                # Validate type consistency
                 if not c.get("type_") or not c.get("election_types"):
                     type_issues.append({"contest": c.get("title"), "issue": "Missing type or election_types"})
                 enriched.append(c)
             except Exception as e:
                 logger.error(f"[get_contests] Error enriching contest: {e}", exc_info=True)
                 continue
-        # Advanced filtering
         def match(c):
             if not filters:
                 return True
-            for k, v in (filters or {}).items():
-                val = str((c or {}).get(k, "")).lower()
-                tgt = str(v).lower()
+            for k, v in safe_items(filters):
+                val = safe_lower(safe_get(c, k, ""))
+                tgt = safe_lower(v)
                 if fuzzy:
                     if difflib.SequenceMatcher(None, val, tgt).ratio() < 0.7:
                         return False
@@ -2144,10 +2133,10 @@ class ContextCoordinator(object):
         # 2. Fallback to existing logic
         if not self.organized:
             return []
-        buttons_dict = (self.organized or {}).get("buttons", {})
+        buttons_dict = safe_get(self.organized, "buttons", {})
         results = []
         if contest:
-            results = (buttons_dict or {}).get(contest.get("title"), [])
+            results = safe_get(buttons_dict, safe_get(contest, "title", ""), [])
             if results:
                 return clean_for_json(results)
         if keyword:
@@ -2157,7 +2146,7 @@ class ContextCoordinator(object):
                 for btn in btn_list:
                     if not isinstance(btn, dict):
                         continue
-                    if keyword in (btn.get("label", "") or "").lower() or keyword in (btn.get("selector", "") or "").lower():
+                    if keyword in safe_lower(safe_get(btn, "label", "")) or keyword in safe_lower(safe_get(btn, "selector", "")):
                         results.append(btn)
             if results:
                 return clean_for_json(results)
@@ -2166,7 +2155,7 @@ class ContextCoordinator(object):
                 for btn in btn_list:
                     if not isinstance(btn, dict):
                         continue
-                    if url in btn.get("selector", ""):
+                    if url in safe_get(btn, "selector", ""):
                         results.append(btn)
             if results:
                 return clean_for_json(results)
@@ -2518,18 +2507,19 @@ class ContextCoordinator(object):
     def get_panel(self, contest: dict = None) -> dict:
         if not self.organized:
             return None
-        panels = (self.organized or {}).get("panels", {})
+        panels = safe_get(self.organized, "panels", {})
         if not isinstance(panels, dict):
             return None
-        return clean_for_json(panels.get(contest))
+        return clean_for_json(safe_get(panels, contest, None))
 
     def get_tables(self, contest: dict = None) -> list[dict]:
         if not self.organized:
             return []
-        tables = (self.organized or {}).get("tables", {})
+        tables = safe_get(self.organized, "tables", {})
         if not isinstance(tables, dict):
             return []
-        return clean_for_json(tables.get(contest.get("title") if contest else "", []))
+        contest_title = safe_get(contest, "title", "") if contest else ""
+        return clean_for_json(safe_get(tables, contest_title, []))
 
     def get_candidates(self, contest: dict = None) -> list[str]:
         """

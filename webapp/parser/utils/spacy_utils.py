@@ -9,7 +9,9 @@ from collections import Counter
 from typing import List, Tuple, Dict, Any, Set
 import re
 from ..config import PROJECT_ROOT
-from ..bots.librarian import KNOWN_STATE_TO_COUNTY_MAP
+from ..Context_Integration.Context_Library.constants import (
+    KNOWN_STATE_TO_COUNTY_MAP
+)
 import os
 import orjson
 from ..utils.shared_logger import SharedLogger
@@ -108,7 +110,7 @@ def extract_urls(text: str) -> List[str]:
 
 def load_known_states_counties() -> Tuple[Set[str], Set[str]]:
     """
-    Loads known states and counties from the canonical mapping in librarian.py.
+    Loads known states and counties from the canonical mapping in constants.py.
     Returns (states_set, counties_set).
     """
     states = set(KNOWN_STATE_TO_COUNTY_MAP.keys())

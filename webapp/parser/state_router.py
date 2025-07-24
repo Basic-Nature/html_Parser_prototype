@@ -12,7 +12,9 @@ from .utils.shared_logger import SharedLogger, RichConsoleProxy
 from .utils.user_prompt import UserPrompt, PromptCancelled
 import traceback
 from .config import BASE_DIR
-from .bots.librarian import STATE_MODULE_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
+from .Context_Integration.Context_Library.constants import (
+    STATE_MODULE_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP,
+)
 import difflib
 import time
 from .utils.shared_logic import normalize_state_name, normalize_county_name, safe_append, safe_get_first

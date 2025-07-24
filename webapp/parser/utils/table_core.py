@@ -32,19 +32,15 @@ from bs4 import BeautifulSoup
 import hashlib
 from ..utils.shared_logger import SharedLogger
 from ..utils.ml_table_detector import detect_tables_ml
-from ..config import CACHE_DIR, PROJECT_ROOT, LOG_DIR
+from ..config import CACHE_DIR, LOG_DIR
 from difflib import get_close_matches
+from ..Context_Integration.Context_Library.constants import (
+    PARTY_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES_SORT_ORDER, 
+    CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES,
+    KNOWN_COUNTY_TO_PRECINCTS_MAP, TOTAL_KEYWORDS, LOCATION_ABBREVIATIONS,
+    LOCATION_KEYWORDS, PERCENT_KEYWORDS, MISC_FOOTER_KEYWORDS,
+)
 from ..bots.librarian import (
-    LOCATION_KEYWORDS,
-    PERCENT_KEYWORDS,
-    BALLOT_TYPES,
-    BALLOT_TYPES_SORT_ORDER,
-    CANDIDATE_KEYWORDS,
-    TOTAL_KEYWORDS,
-    MISC_FOOTER_KEYWORDS,
-    PARTY_KEYWORDS,
-    LOCATION_ABBREVIATIONS,
-    KNOWN_COUNTY_TO_PRECINCTS_MAP,
     normalize_segment_text
 )
 if TYPE_CHECKING:
