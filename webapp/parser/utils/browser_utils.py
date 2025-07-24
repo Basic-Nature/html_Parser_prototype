@@ -8,108 +8,269 @@
 import os
 import random
 import time
-from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
+from typing import Protocol, Optional, Tuple, Callable
+from flask import Response
+from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, BrowserType, ElementHandle
+from selenium.webdriver.remote.webdriver import WebDriver
 from ..utils.shared_logger import SharedLogger
+from ..utils.shared_logic import safe_lower
 from ..config import CONTEXT_LIBRARY_PATH
 logger = SharedLogger()
+
 # Load user agents and captcha indicators from context library
 if os.path.exists(CONTEXT_LIBRARY_PATH):
     import orjson
     with open(CONTEXT_LIBRARY_PATH, "rb") as f:
         CONTEXT_LIBRARY = orjson.loads(f.read())
-    USER_AGENTS = CONTEXT_LIBRARY.get("user_agents", [])
-    CLOUDFLARE_CAPTCHA_INDICATORS = CONTEXT_LIBRARY.get("cloudflare_captcha_indicators", [])
+
+    def get_list(context: dict, key: str) -> list:
+        value = context.get(key, [])
+        if isinstance(value, list):
+            return value
+        # Try to coerce from stringified list or other types
+        if isinstance(value, str):
+            try:
+                import ast
+                parsed = ast.literal_eval(value)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception:
+                pass
+        return []
+
+    USER_AGENTS = get_list(CONTEXT_LIBRARY, "user_agents")
+    CLOUDFLARE_CAPTCHA_INDICATORS = get_list(CONTEXT_LIBRARY, "cloudflare_captcha_indicators")
 else:
     logger.error("[browser_utils] context_library.json not found. User agent rotation will be limited.")
     USER_AGENTS = []
     CLOUDFLARE_CAPTCHA_INDICATORS = []
 
-def get_random_user_agent():
+class Closable(Protocol):
+    def close(self) -> None:
+        """Method to close the object, typically a browser or context."""
+        ...
+
+def safe_query_selector_all(page: Page, selector: str, session_id: Optional[str] = None) -> list[ElementHandle]:
+    try:
+        if hasattr(page, "query_selector_all") and callable(page.query_selector_all):
+            return page.query_selector_all(selector)
+        else:
+            logger.error(f"[SAFE] page does not support query_selector_all. (Session: {session_id})")
+            return []
+    except Exception as e:
+        logger.error(f"[SAFE] Exception during query_selector_all: {e} (Session: {session_id})")
+        return []
+
+def safe_context_library(page, session_id=None):
+    try:
+        if hasattr(page, "context_library"):
+            lib = getattr(page, "context_library")
+            if isinstance(lib, dict):
+                return lib
+        return {}
+    except Exception as e:
+        logger.error(f"[SAFE] Exception accessing context_library: {e} (Session: {session_id})")
+        return {}
+
+def safe_context_result(page: Page, session_id: Optional[str] = None) -> dict:
+    try:
+        if hasattr(page, "context_result"):
+            result = getattr(page, "context_result")
+            if isinstance(result, dict):
+                return result
+        return {}
+    except Exception as e:
+        logger.error(f"[SAFE] Exception accessing context_result: {e} (Session: {session_id})")
+        return {}
+
+def safe_chromium(playwright: sync_playwright, session_id: Optional[str] = None) -> Optional[BrowserType]:
+    try:
+        browser_type = getattr(playwright, "chromium", None)
+        if browser_type is None:
+            logger.error(f"[SAFE] Playwright has no 'chromium' attribute. (Session: {session_id})")
+        return browser_type
+    except Exception as e:
+        logger.error(f"[SAFE] Exception accessing 'chromium': {e} (Session: {session_id})")
+        return None
+
+def safe_launch(browser_type: Optional[BrowserType], headless: bool = True, args: Optional[list] = None, session_id: Optional[str] = None) -> Optional[Browser]:
+    try:
+        if browser_type is None:
+            logger.error(f"[SAFE] browser_type is None, cannot launch. (Session: {session_id})")
+            return None
+        return browser_type.launch(headless=headless, args=args or [])
+    except Exception as e:
+        logger.error(f"[SAFE] Exception during browser launch: {e} (Session: {session_id})")
+        return None
+
+def safe_new_context(browser: Browser, user_agent: Optional[str] = None, viewport: Optional[dict] = None, locale: Optional[str] = None, session_id: Optional[str] = None) -> Optional[BrowserContext]:
+    try:
+        if browser is None:
+            logger.error(f"[SAFE] browser is None, cannot create context. (Session: {session_id})")
+            return None
+        return browser.new_context(user_agent=user_agent, viewport=viewport, locale=locale)
+    except Exception as e:
+        logger.error(f"[SAFE] Exception during new_context: {e} (Session: {session_id})")
+        return None
+
+def safe_new_page(context: BrowserContext, session_id: Optional[str] = None) -> Optional[Page]:
+    try:
+        if context is None:
+            logger.error(f"[SAFE] context is None, cannot create new page. (Session: {session_id})")
+            return None
+        return context.new_page()
+    except Exception as e:
+        logger.error(f"[SAFE] Exception during new_page: {e} (Session: {session_id})")
+        return None
+
+def safe_goto(page: Page, url: str, timeout: int = 60000, session_id: Optional[str] = None) -> Optional[Response]:
+    try:
+        if page is None:
+            logger.error(f"[SAFE] page is None, cannot goto URL. (Session: {session_id})")
+            return None
+        return page.goto(url, timeout=timeout)
+    except Exception as e:
+        logger.error(f"[SAFE] Exception during page.goto: {e} (Session: {session_id})")
+        return None
+
+def safe_content(page: Page, session_id: Optional[str] = None) -> str:
+    try:
+        if page is None:
+            logger.error(f"[SAFE] page is None, cannot get content. (Session: {session_id})")
+            return ""
+        return page.content()
+    except Exception as e:
+        logger.error(f"[SAFE] Exception during page.content: {e} (Session: {session_id})")
+        return ""
+
+def get_random_user_agent() -> str:
     if USER_AGENTS:
         return random.choice(USER_AGENTS)
     return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
-def launch_minimized_playwright_browser(playwright, target_url, wait_seconds=7):
+def launch_minimized_playwright_browser(playwright: sync_playwright, target_url: str, wait_seconds: int = 7, session_id=None) -> Tuple[Optional[Browser], Optional[BrowserContext], Optional[Page], str]:
     user_agent = get_random_user_agent()
-    browser_type = playwright.chromium
-    browser = browser_type.launch(headless=False, args=["--window-position=0,1000", "--window-size=1280,800"])
-    context = browser.new_context(user_agent=user_agent, viewport={"width": 1280, "height": 800}, locale="en-US")
-    page = context.new_page()
-    page.goto(target_url, timeout=60000)
-    logger.info(f"[BROWSER] Playwright launched (minimized) with User-Agent: {user_agent}")
-    logger.info(f"[BROWSER] Waiting {wait_seconds} seconds for page to load...")
+    browser_type = safe_chromium(playwright, session_id=session_id)
+    browser = safe_launch(browser_type, headless=False, args=["--window-position=0,1000", "--window-size=1280,800"], session_id=session_id)
+    context = safe_new_context(browser, user_agent=user_agent, viewport={"width": 1280, "height": 800}, locale="en-US", session_id=session_id)
+    page = safe_new_page(context, session_id=session_id)
+    safe_goto(page, target_url, timeout=60000, session_id=session_id)
+    logger.info(f"[BROWSER] Playwright launched (minimized) with User-Agent: {user_agent} (Session: {session_id})")
+    logger.info(f"[BROWSER] Waiting {wait_seconds} seconds for page to load... (Session: {session_id})")
     time.sleep(wait_seconds)
     return browser, context, page, user_agent
 
-def detect_cloudflare_captcha(page):
+def detect_cloudflare_captcha(page: Page) -> bool:
     html = page.content().lower()
     for indicator in CLOUDFLARE_CAPTCHA_INDICATORS:
-        if indicator.lower() in html:
+        if safe_lower(indicator) in html:
             logger.warning(f"[CAPTCHA] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
             return True
     return False
 
-def relaunch_maximized_for_captcha(playwright, target_url, user_agent, timeout=300):
-    browser_type = playwright.chromium
-    browser = browser_type.launch(headless=False, args=["--start-maximized"])
-    context = browser.new_context(user_agent=user_agent, viewport={"width": 1920, "height": 1080}, locale="en-US")
-    page = context.new_page()
-    page.goto(target_url, timeout=60000)
-    logger.info("[CAPTCHA] Relaunched browser in maximized mode for manual CAPTCHA resolution.")
+def relaunch_maximized_for_captcha(playwright: sync_playwright, target_url: str, user_agent: str, timeout: int = 300, session_id=None) -> Tuple[Optional[Browser], Optional[BrowserContext], Optional[Page]]:
+    browser_type = safe_chromium(playwright, session_id=session_id)
+    browser = safe_launch(browser_type, headless=False, args=["--start-maximized"], session_id=session_id)
+    context = safe_new_context(browser, user_agent=user_agent, viewport={"width": 1920, "height": 1080}, locale="en-US", session_id=session_id)
+    page = safe_new_page(context, session_id=session_id)
+    safe_goto(page, target_url, timeout=60000, session_id=session_id)
+    logger.info(f"[CAPTCHA] Relaunched browser in maximized mode for manual CAPTCHA resolution. (Session: {session_id})")
     start_time = time.time()
     while time.time() - start_time < timeout:
-        html = page.content().lower()
-        if not any(indicator.lower() in html for indicator in CLOUDFLARE_CAPTCHA_INDICATORS):
-            logger.info("[CAPTCHA] CAPTCHA appears to be cleared by user.")
+        html = safe_content(page, session_id=session_id).lower()
+        if not any(safe_lower(indicator) in html for indicator in CLOUDFLARE_CAPTCHA_INDICATORS):
+            logger.info(f"[CAPTCHA] CAPTCHA appears to be cleared by user. (Session: {session_id})")
             return browser, context, page
-        logger.info("[CAPTCHA] Waiting for user to solve CAPTCHA...")
+        logger.info(f"[CAPTCHA] Waiting for user to solve CAPTCHA... (Session: {session_id})")
         time.sleep(5)
-    logger.error("[CAPTCHA] Timeout waiting for user to solve CAPTCHA.")
+    logger.error(f"[CAPTCHA] Timeout waiting for user to solve CAPTCHA. (Session: {session_id})")
     return None, None, None
 
-def prompt_user_for_selenium_retry():
+def prompt_user_for_selenium_retry() -> bool:
     logger.warning("[yellow][CAPTCHA] CAPTCHA could not be solved or a persistent loading screen was detected.[/yellow]")
     user_input = input("Would you like to retry in Selenium stealth mode? (y/n): ").strip().lower()
     return user_input == "y"
 
-def launch_selenium_stealth(target_url, user_agent):
+def launch_selenium_stealth(target_url: str, user_agent: str) -> WebDriver:
     from ..utils.seleniumbase_launcher import launch_browser as sb_launch
     _, _, driver = sb_launch(user_agent=user_agent, headless=True)
     driver.get(target_url)
     logger.info("[BROWSER] SeleniumBase launched in stealth mode.")
     return driver
 
-def browser_pipeline(playwright, target_url, cache_exit_callback=None, non_interactive=False):
+def safe_browser_close(
+    browser: Optional[Closable], 
+    output_func: Optional[Callable[[str], None]] = None, 
+    session_id: Optional[str] = None
+) -> None:
+    """
+    Safely close a Playwright browser instance with robust type and error checks.
+    """
+    if browser is not None:
+        browser_type = type(browser).__name__
+        try:
+            if hasattr(browser, "close") and callable(browser.close):
+                browser.close()
+            else:
+                if output_func:
+                    output_func(f"[WARN] Browser object of type '{browser_type}' does not support close(). (Session: {session_id})")
+        except Exception as e:
+            if output_func:
+                output_func(f"[WARN] Exception during browser close: {e} (Session: {session_id})")
+
+def browser_pipeline(playwright, target_url, cache_exit_callback=None, non_interactive=False, session_id=None):
     """
     Main browser utility for html_election_parser.
     Returns (browser, context, page, user_agent) or None if session should exit.
+    Handles CAPTCHA detection, user intervention, and Selenium fallback.
     """
     # Step 1: Launch minimized Playwright browser and load page
     browser, context, page, user_agent = launch_minimized_playwright_browser(playwright, target_url)
     # Step 2: Detect CAPTCHA
     if not detect_cloudflare_captcha(page):
-        logger.info("[CAPTCHA] No CAPTCHA detected. Continuing pipeline.")
+        logger.info(f"[CAPTCHA] No CAPTCHA detected. Continuing pipeline. (Session: {session_id})")
         return browser, context, page, user_agent
 
     # Step 3: CAPTCHA detected, relaunch maximized for user intervention
-    browser.close()
+    safe_browser_close(browser, session_id=session_id)
     browser, context, page = relaunch_maximized_for_captcha(playwright, target_url, user_agent)
     if browser and not detect_cloudflare_captcha(page):
-        logger.info("[CAPTCHA] CAPTCHA cleared after user intervention. Continuing pipeline.")
+        logger.info(f"[CAPTCHA] CAPTCHA cleared after user intervention. Continuing pipeline. (Session: {session_id})")
         return browser, context, page, user_agent
 
     # Step 4: If still CAPTCHA or loading, prompt for Selenium retry
-    if prompt_user_for_selenium_retry():
-        driver = launch_selenium_stealth(target_url, user_agent)
-        # Re-run CAPTCHA detection in Selenium (pseudo-code, adapt as needed)
-        # If solved, return driver; else, exit
-        # For now, just exit after retry
-        logger.info("[CAPTCHA] Selenium retry complete. Exiting session.")
+    # Use non_interactive to skip manual prompt if needed
+    retry_selenium = False
+    if non_interactive:
+        logger.warning(f"[CAPTCHA] Non-interactive mode: skipping Selenium retry prompt. (Session: {session_id})")
+    else:
+        retry_selenium = prompt_user_for_selenium_retry()
+
+    if retry_selenium:
+        from ..utils.seleniumbase_launcher import launch_browser, close_driver
+        _, _, driver = launch_browser(user_agent=user_agent, headless=True)
+        if driver:
+            try:
+                driver.get(target_url)
+                logger.info(f"[CAPTCHA] SeleniumBase launched in stealth mode. (Session: {session_id})")
+                # Check for CAPTCHA indicators in SeleniumBase page source
+                html = driver.page_source.lower()
+                if not any(safe_lower(indicator) in html for indicator in CLOUDFLARE_CAPTCHA_INDICATORS):
+                    logger.info(f"[CAPTCHA] CAPTCHA cleared in SeleniumBase. (Session: {session_id})")
+                    # Optionally, you could return the driver here if you support SeleniumBase downstream
+                    close_driver(driver)
+                    return None, None, None, user_agent
+                else:
+                    logger.warning(f"[CAPTCHA] CAPTCHA still present after SeleniumBase retry. (Session: {session_id})")
+            except Exception as e:
+                logger.error(f"[CAPTCHA] Exception during SeleniumBase retry: {e} (Session: {session_id})")
+            finally:
+                close_driver(driver)
         if cache_exit_callback:
-            cache_exit_callback(target_url, status="captcha_failed")
+            cache_exit_callback(target_url, status="captcha_failed", session_id=session_id)
         return None, None, None, user_agent
     else:
-        logger.info("[CAPTCHA] User chose to exit gracefully. Exiting session.")
+        logger.info(f"[CAPTCHA] User chose to exit gracefully. Exiting session. (Session: {session_id})")
         if cache_exit_callback:
-            cache_exit_callback(target_url, status="captcha_exit")
+            cache_exit_callback(target_url, status="captcha_exit", session_id=session_id)
         return None, None, None, user_agent

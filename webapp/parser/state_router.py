@@ -111,34 +111,46 @@ def prompt_for_handler_fallback(
     available_states,
     available_counties_by_state,
     last_error=None,
-    max_attempts=3
+    max_attempts=3,
+    session_id=None,
+    non_interactive=False
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Prompt the user for manual state/county selection with robust fallback.
     Uses UserPrompt for CLI/webapp compatibility.
     Shows last error, allows cancel, and limits attempts.
+    Supports session_id and non_interactive for logging and automation.
     """
     prompt = UserPrompt()
     attempts = 0
+
+    # Non-interactive mode: auto-select first available state/county
+    if non_interactive:
+        state = available_states[0] if available_states else None
+        counties = available_counties_by_state.get(state, []) if state else []
+        county = counties[0] if counties else None
+        logger.info(f"[Fallback][Session:{session_id}] Non-interactive mode: auto-selecting state={state}, county={county}")
+        return state, county
+
     while attempts < max_attempts:
         if last_error:
-            logger.error(f"\n[ERROR] Last import failed: {last_error}\n")
+            logger.error(f"\n[ERROR][Session:{session_id}] Last import failed: {last_error}\n")
         # Prompt for state
         try:
             state = prompt.prompt_choice(
-                "Select a state (or type 'cancel' to abort):",
+                f"Select a state (or type 'cancel' to abort): [Session:{session_id}]",
                 options=available_states,
                 allow_cancel=True,
-                header="STATE SELECTION"
+                header=f"STATE SELECTION [Session:{session_id}]"
             )
         except PromptCancelled:
-            logger.warning("Aborted by user.")
+            logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
             return None, None
         if not state:
-            logger.warning("Aborted by user.")
+            logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
             return None, None
         if state not in available_states:
-            logger.warning(f"State '{state}' not found. Please try again.")
+            logger.warning(f"[Fallback][Session:{session_id}] State '{state}' not found. Please try again.")
             attempts += 1
             continue
 
@@ -149,22 +161,23 @@ def prompt_for_handler_fallback(
             # Prompt for county
             try:
                 county = prompt.prompt_choice(
-                    f"Select a county for '{state}' (or type 'cancel' to skip):",
+                    f"Select a county for '{state}' (or type 'cancel' to skip): [Session:{session_id}]",
                     options=counties,
                     allow_cancel=True,
-                    header="COUNTY SELECTION"
+                    header=f"COUNTY SELECTION [Session:{session_id}]"
                 )
             except PromptCancelled:
-                logger.warning("Aborted by user.")
+                logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
                 return None, None
             if county and county not in counties:
-                logger.warning(f"County '{county}' not found for state '{state}'. Please try again.")
+                logger.warning(f"[Fallback][Session:{session_id}] County '{county}' not found for state '{state}'. Please try again.")
                 attempts += 1
                 continue
         # Success: return state and county (or None if skipped)
+        logger.info(f"[Fallback][Session:{session_id}] Selected state={state}, county={county}")
         return state, county if county else None
 
-    logger.warning("Too many failed attempts. Exiting fallback.")
+    logger.warning(f"[Fallback][Session:{session_id}] Too many failed attempts. Exiting fallback.")
     return None, None
 
 def preload_handler_map(restrict_to_states=None) -> None:
@@ -243,10 +256,19 @@ def fuzzy_match_handler(query: str, choices: list, n=3, cutoff=None, debug=False
         logger.info(f"[Router][Fuzzy] Query '{query}' matches: {matches} (cutoff={cutoff})")
     return matches
 
-def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, debug=False):
+def list_available_handlers(
+    level=None,
+    state=None,
+    fuzzy=False,
+    refresh=False,
+    debug=False,
+    session_id=None,
+    non_interactive=False
+):
     """
     List available handlers dynamically, with options for level (state/county), fuzzy matching, refresh, and diagnostics.
     Returns sorted, deduplicated results. Normalizes input for robust lookup.
+    Supports session_id and non_interactive for logging and automation.
     """
     if refresh:
         preload_handler_map()
@@ -255,7 +277,7 @@ def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, 
     counties_by_state = HANDLER_MAP["counties_by_state"] if HANDLER_MAP["counties_by_state"] else {normalize_state_name(s): list_available_counties(s) for s in states}
     norm_state = normalize_state_name(state) if state else None
     if debug:
-        logger.info(f"[list_available_handlers] level={level}, state={state}, fuzzy={fuzzy}, refresh={refresh}")
+        logger.info(f"[list_available_handlers][Session:{session_id}] level={level}, state={state}, fuzzy={fuzzy}, refresh={refresh}, non_interactive={non_interactive}")
     for s in states:
         counties = counties_by_state.get(s, [])
         handlers[s] = sorted(set(counties))
@@ -269,19 +291,25 @@ def list_available_handlers(level=None, state=None, fuzzy=False, refresh=False, 
                 matched_state = safe_get_first(matches, "fuzzy_state_match", None, logger)
                 counties = handlers.get(matched_state, [])
                 if debug:
-                    matched_state = safe_get_first(matches, "fuzzy_state_match", None, logger)
-                    logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matched_state}'")
+                    logger.info(f"[list_available_handlers][Session:{session_id}] Fuzzy matched state '{state}' to '{matched_state}'")
         return sorted(set(counties))
     if fuzzy and state:
         matches = difflib.get_close_matches(norm_state, handlers.keys(), n=3, cutoff=FUZZY_MATCH_THRESHOLD)
         if matches:
             matched_state = safe_get_first(matches, "fuzzy_state_match", None, logger)
             if debug:
-                logger.info(f"[list_available_handlers] Fuzzy matched state '{state}' to '{matched_state}'")
+                logger.info(f"[list_available_handlers][Session:{session_id}] Fuzzy matched state '{state}' to '{matched_state}'")
             return {matched_state: handlers.get(matched_state, [])}
     return handlers
 
-def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool = False, fuzzy_cutoff: float = None, non_interactive=False) -> Any:
+def get_handler(
+    context: Dict[str, Any],
+    url: Optional[str] = None,
+    debug: bool = False,
+    fuzzy_cutoff: float = None,
+    non_interactive: bool = False,
+    session_id: Optional[str] = None
+) -> Any:
     """
     Dynamically resolves and returns the best handler module for the given context.
     Uses context_coordinator's dynamic_state_county_detection as the primary source.
@@ -290,7 +318,7 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
     from .Context_Integration.context_coordinator import ContextCoordinator, dynamic_state_county_detection
     if not HANDLER_MAP["states"] or not HANDLER_MAP["counties_by_state"]:
         preload_handler_map()
-    summary = {"attempts": [], "final": None, "error": None}
+    summary = {"attempts": [], "final": None, "error": None, "session_id": session_id, "non_interactive": non_interactive}
     log = []
     # Use preloaded handler map
     available_states = [normalize_state_name(s) for s in HANDLER_MAP["states"]]
@@ -300,28 +328,28 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
     }
     librarian_states = [normalize_state_name(s) for s in STATE_MODULE_MAP.keys()] if STATE_MODULE_MAP else []
     if debug:
-        logger.info(f"[Router] Available states (filesystem): {available_states}")
-        logger.info(f"[Router] Available states (context library): {librarian_states}")
+        logger.info(f"[Router][Session:{session_id}] Available states (filesystem): {available_states}")
+        logger.info(f"[Router][Session:{session_id}] Available states (context library): {librarian_states}")
         for s in available_states:
-            logger.info(f"[Router] Counties for state '{s}': {available_counties_by_state[s]}")
+            logger.info(f"[Router][Session:{session_id}] Counties for state '{s}': {available_counties_by_state[s]}")
     # Step 1: Scan URL for clues first
     url_state, url_county, url_log = scan_url_for_state_county(url or context.get('url', ''), available_states, available_counties_by_state)
     for entry in url_log:
         log.append(entry)
         if debug:
-            logger.info(entry)
+            logger.info(f"[Router][Session:{session_id}] {entry}")
     # Step 2: Enrich context using the coordinator (NLP, ML, etc.)
-    coordinator = ContextCoordinator(use_library=True, enable_ml=False, alert_monitor=False)
-    enriched = coordinator.organize_and_enrich(context, suppress_dom_errors=True)
+    coordinator = ContextCoordinator(use_library=True, enable_ml=False, alert_monitor=False, session_id=session_id)
+    enriched = coordinator.organize_and_enrich(context, suppress_dom_errors=True, session_id=session_id, non_interactive=non_interactive)
     html = context.get("raw_html", "") or (enriched.get("raw_html") if enriched else "")
     # Step 3: Use dynamic_state_county_detection for best guess (context, html)
     county, state, handler_path, detection_log = dynamic_state_county_detection(
-        context, html, debug=True
+        context, html, debug=True, session_id=session_id, non_interactive=non_interactive
     )
     for log_entry in detection_log:
-        log.append(f"[Context Detection] {log_entry}")
+        log.append(f"[Context Detection][Session:{session_id}] {log_entry}")
         if debug:
-            logger.info(f"[Router] [Context Detection] {log_entry}")
+            logger.info(f"[Router][Session:{session_id}] [Context Detection] {log_entry}")
     # Step 4: Decide on state/county using priority: URL > context > context library > filesystem
     valid_state = None
     valid_county = None
@@ -343,8 +371,8 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
                 valid_state = safe_get_first(matches, "fuzzy_state_match", url, logger)
                 safe_append(summary["attempts"], f"Fuzzy matched state '{normalized_state}' to '{valid_state}'", logger)
     if debug:
-        logger.info(f"[Router] Available states (filesystem): {available_states}")
-        logger.info(f"[Router] Counties for state '{valid_state}': {available_counties_by_state.get(valid_state, [])}")               
+        logger.info(f"[Router][Session:{session_id}] Available states (filesystem): {available_states}")
+        logger.info(f"[Router][Session:{session_id}] Counties for state '{valid_state}': {available_counties_by_state.get(valid_state, [])}")               
     if valid_state and not valid_county and county:
         normalized_county = normalize_county_name(county)
         counties = available_counties_by_state.get(valid_state, [])
@@ -368,8 +396,10 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
         context["state"] = valid_state
     if valid_county:
         context["county"] = valid_county
-    summary["final"] = {"state": valid_state, "county": valid_county}
-    log.append(f"Final resolved state: {valid_state}, county: {valid_county}")
+    context["session_id"] = session_id
+    context["non_interactive"] = non_interactive
+    summary["final"] = {"state": valid_state, "county": valid_county, "session_id": session_id, "non_interactive": non_interactive}
+    log.append(f"Final resolved state: {valid_state}, county: {valid_county}, session_id: {session_id}, non_interactive: {non_interactive}")
     # Step 6: Attempt to import the handler module
     handler = None
     error = None
@@ -395,15 +425,36 @@ def get_handler(context: Dict[str, Any], url: Optional[str] = None, debug: bool 
         else:
             log.append(f"Could not import fallback state handler or missing 'parse': {fallback_path}")
             handler = None
+    # Fallback: prompt user for manual selection if still not found
     if not handler:
         error = {
             "message": "No suitable handler found for context.",
             "attempted_paths": attempted_paths,
             "final_state": valid_state,
             "final_county": valid_county,
+            "session_id": session_id,
+            "non_interactive": non_interactive,
             "log": log
         }
         log.append("No suitable handler found for context.")
+        # Prompt for fallback selection
+        state, county = prompt_for_handler_fallback(
+            available_states,
+            available_counties_by_state,
+            last_error=error["message"],
+            max_attempts=3,
+            session_id=session_id,
+            non_interactive=non_interactive
+        )
+        if state:
+            handler_path = f"webapp.parser.handlers.states.{state}.county.{county}" if county else f"webapp.parser.handlers.states.{state}"
+            log.append(f"[Fallback][Session:{session_id}] Attempting to import handler: {handler_path}")
+            handler = import_handler(handler_path)
+            if handler and hasattr(handler, "parse"):
+                log.append(f"[Fallback][Session:{session_id}] Routed to handler: {handler_path}")
+            else:
+                log.append(f"[Fallback][Session:{session_id}] Could not import handler or missing 'parse': {handler_path}")
+                handler = None
     summary["log"] = log
     summary["error"] = error
     return {"handler": handler, "summary": summary}

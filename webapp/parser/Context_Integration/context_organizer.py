@@ -82,13 +82,14 @@ def remove_functions(obj) -> dict:
         return obj
 
 def contest_hash(c) -> int:
-    # Defensive: convert election_types to tuple for hashing, handle None
-    election_types = tuple((c or {}).get("election_types") or [])
+    # Defensive: convert election_types to tuple for hashing, handle None and non-dict
+    c_dict = c if isinstance(c, dict) else {}
+    election_types = tuple(c_dict.get("election_types") or [])
     return hash((
-        (c or {}).get("title"),
-        (c or {}).get("year"),
-        (c or {}).get("county"),
-        (c or {}).get("type_"),
+        c_dict.get("title"),
+        c_dict.get("year"),
+        c_dict.get("county"),
+        c_dict.get("type_"),
         election_types
     ))
 
@@ -98,31 +99,60 @@ def repair_dom_segments(segments) -> list:
     Ensures all children point to the correct parent and all indices are valid.
     Returns the repaired segments.
     """
-    idx_map = {(seg or {}).get("_idx", i): seg for i, seg in enumerate(segments)}
+    idx_map = {}
+    for i, seg in enumerate(segments):
+        if isinstance(seg, dict):
+            idx = seg.get("_idx", i)
+            idx_map[idx] = seg
+
     # Pass 1: Normalize children and parent_idx
     for seg in segments:
-        seg["children"] = [
-            c if isinstance(c, int) and c in idx_map
-            else getattr(c, "_idx", None) if hasattr(c, "_idx") and getattr(c, "_idx", None) in idx_map
-            else None
-            for c in (seg or {}).get("children", [])
-        ]
-        seg["children"] = [c for c in seg["children"] if c is not None]
-        if isinstance((seg or {}).get("parent_idx"), dict):
-            seg["parent_idx"] = ((seg or {}).get("parent_idx", {}) or {}).get("_idx")
-        elif not (isinstance((seg or {}).get("parent_idx"), int) or (seg or {}).get("parent_idx") is None):
+        if not isinstance(seg, dict):
+            continue
+        children = seg.get("children", [])
+        normalized_children = []
+        for c in children:
+            if isinstance(c, int) and c in idx_map:
+                normalized_children.append(c)
+            elif hasattr(c, "_idx"):
+                c_idx = getattr(c, "_idx", None)
+                if isinstance(c_idx, int) and c_idx in idx_map:
+                    normalized_children.append(c_idx)
+            # else skip
+        seg["children"] = [c for c in normalized_children if c is not None]
+
+        parent_idx = seg.get("parent_idx")
+        if isinstance(parent_idx, dict):
+            seg["parent_idx"] = parent_idx.get("_idx")
+        elif not (isinstance(parent_idx, int) or parent_idx is None):
             seg["parent_idx"] = None
-        if (seg or {}).get("parent_idx") not in idx_map and (seg or {}).get("parent_idx") is not None:
+        parent_idx = seg.get("parent_idx")
+        if parent_idx not in idx_map and parent_idx is not None:
             seg["parent_idx"] = None
+
     # Pass 2: Enforce bidirectional consistency
     for seg in segments:
-        for child_idx in list(seg["children"]):
+        if not isinstance(seg, dict):
+            continue
+        for child_idx in list(seg.get("children", [])):
             child = idx_map.get(child_idx)
-            if child is not None and (child or {}).get("parent_idx") != seg["_idx"]:
-                child["parent_idx"] = seg["_idx"]
+            if isinstance(child, dict) and child.get("parent_idx") != seg.get("_idx"):
+                child["parent_idx"] = seg.get("_idx")
+
     # Pass 3: Remove children that do not point back to parent
     for seg in segments:
-        seg["children"] = [c for c in seg["children"] if (idx_map.get(c, {}) or {}).get("parent_idx") == seg["_idx"]]
+        if not isinstance(seg, dict):
+            continue
+        seg_idx = seg.get("_idx") if isinstance(seg, dict) else None
+        valid_children = []
+        for c in seg.get("children", []):
+            child_node = idx_map.get(c)
+            if not isinstance(child_node, dict):
+                continue
+            parent_idx_val = child_node.get("parent_idx") if isinstance(child_node, dict) else None
+            if parent_idx_val == seg_idx:
+                valid_children.append(c)
+        seg["children"] = valid_children
     return segments
 
 def _defensive_dom_check(dom_parts, url, logger: SharedLogger, log_errors=True) -> dict:
@@ -137,9 +167,10 @@ def _defensive_dom_check(dom_parts, url, logger: SharedLogger, log_errors=True) 
         'location_panels', 'headings', 'ballot_types', 'results_timestamps',
         'party_labels', 'vote_methods'
     ]
+    dom_parts_dict = dom_parts if isinstance(dom_parts, dict) else {}
     for field in field_types:
-        items = (dom_parts or {}).get(field, [])
-        if not items or not isinstance(items, list) or safe_get_first(items, field, url, logger) is None:
+        items = dom_parts_dict.get(field, [])
+        if not isinstance(items, list) or not items or safe_get_first(items, field, url, logger) is None:
             errors[field] = f"No {field} found for {url}"
             if log_errors:
                 logger.error(errors[field])
@@ -168,6 +199,9 @@ class ContextOrganizer(object):
         self.db_path = CONTEXT_DB_PATH
         self.context_library_path = CONTEXT_LIBRARY_PATH
         self.library = load_context_library() if use_library else self._default_library()
+        if not isinstance(self.library, dict):
+            logger.error(f"ERROR: self.library is not a dict! It is: {type(self.library)}")
+            raise ValueError("Loaded context library is not a dict!")
         logger.debug(f"DEBUG: type(self.library) = {type(self.library)}")
         if not isinstance(self.library, dict):
             logger.error(f"ERROR: self.library is not a dict! It is: {type(self.library)}")
@@ -243,26 +277,35 @@ class ContextOrganizer(object):
         table.add_column("County")
         table.add_column("Year")
         for c in contests:
-            table.add_row(
-                str((c or {}).get("title", "")),
-                str((c or {}).get("state", "")),
-                str((c or {}).get("county", "")),
-                str((c or {}).get("year", ""))
-            )
+            if not isinstance(c, dict):
+                title = state = county = year = ""
+            else:
+                title = str(c.get("title", ""))
+                state = str(c.get("state", ""))
+                county = str(c.get("county", ""))
+                year = str(c.get("year", ""))
+            table.add_row(title, state, county, year)
         console.print(table)
 
     @staticmethod
     def plot_contest_distribution(contests) -> None:
-        state_county = [((c or {}).get("state", "Unknown"), (c or {}).get("county", "Unknown")) for c in contests]
+        state_county = [
+            (
+                c.get("state", "Unknown") if isinstance(c, dict) else "Unknown",
+                c.get("county", "Unknown") if isinstance(c, dict) else "Unknown"
+            )
+            for c in contests
+        ]
         counter = Counter(state_county)
-        labels, values = zip(*counter.items())
-        label_strs = [f"{s}\n{c}" for s,c in labels]
-        plt.figure(figsize=(10,5))
-        plt.bar(label_strs, values)
-        plt.xticks(rotation=90)
-        plt.title("Contest Count by State/County")
-        plt.tight_layout()
-        plt.show()
+        if counter:
+            labels, values = zip(*counter.items())
+            label_strs = [f"{s}\n{c}" for s, c in labels]
+            plt.figure(figsize=(10, 5))
+            plt.bar(label_strs, values)
+            plt.xticks(rotation=90)
+            plt.title("Contest Count by State/County")
+            plt.tight_layout()
+            plt.show()
         
     @staticmethod
     def suggest_and_apply_fixes(
@@ -276,14 +319,6 @@ class ContextOrganizer(object):
     ) -> tuple:
         """
         Fix missing state/county/year/type_/election_types using all available context:
-        - Flattened raw field
-        - Context library
-        - Database (if available)
-        - Majority vote
-        - Fuzzy match
-        - ML similarity
-        - Parent context
-        - Fallback: extract_year_and_type
         Returns: (fixed_contests, fix_log)
         Ensures _fixed_fields is always a set internally, but converts to list before serialization.
         Handles edge cases for empty lists and index errors.
@@ -291,12 +326,14 @@ class ContextOrganizer(object):
         from ..utils.html_scanner import extract_year_and_type
 
         fix_log = []
-        logs = logs if logs is not None else []
+        logs = logs if isinstance(logs, list) else []
 
         # Ensure _fixed_fields is a set for all contests and flatten raw
         for c in contests:
+            if not isinstance(c, dict):
+                continue
             if "_fixed_fields" not in c or not isinstance(c["_fixed_fields"], set):
-                c["_fixed_fields"] = set((c or {}).get("_fixed_fields", []))
+                c["_fixed_fields"] = set(c.get("_fixed_fields", []))
             # Always flatten raw to avoid infinite nesting
             if "raw" in c and isinstance(c["raw"], dict):
                 c["raw"] = flatten_raw_field(c["raw"])
@@ -309,12 +346,13 @@ class ContextOrganizer(object):
         title_to_year = {}
         title_to_type_ = {}
         title_to_election_types = {}
-        for lib_c in (context_library or {}).get("contests", []):
+        contests_lib = context_library.get("contests", []) if isinstance(context_library, dict) else []
+        for lib_c in contests_lib:
             if not isinstance(lib_c, dict):
                 continue
             title = lib_c.get("title") or lib_c.get("label")
-            if title:
-                key = (title or "").lower()
+            key = title.lower() if isinstance(title, str) else ""
+            if key:
                 if lib_c.get("state"):
                     title_to_state[key] = lib_c["state"]
                 if lib_c.get("county"):
@@ -328,17 +366,17 @@ class ContextOrganizer(object):
 
         # --- ML Embedding Preparation ---
         lib_titles, lib_states, lib_counties, lib_years, lib_types = [], [], [], [], []
-        for lib_c in (context_library or {}).get("contests", []):
+        for lib_c in contests_lib:
             if not isinstance(lib_c, dict):
                 continue
             title = lib_c.get("title") or lib_c.get("label")
-            if title and (lib_c.get("state") or lib_c.get("county")):
+            if isinstance(title, str) and (lib_c.get("state") or lib_c.get("county")):
                 lib_titles.append(title)
                 lib_states.append(lib_c.get("state"))
                 lib_counties.append(lib_c.get("county"))
                 lib_years.append(lib_c.get("year"))
                 lib_types.append(lib_c.get("type_"))
-                
+
         lib_embeddings = None
         if embedding_model and lib_titles:
             try:
@@ -348,13 +386,16 @@ class ContextOrganizer(object):
 
         # Helper: update both contest and its raw field
         def update_field(c, field, value, reason):
+            if not isinstance(c, dict):
+                return
             c[field] = value
-            if isinstance((c or {}).get("raw"), dict):
-                c["raw"][field] = value
+            raw = c.get("raw")
+            if isinstance(raw, dict):
+                raw[field] = value
             if "_fixed_fields" not in c or not isinstance(c["_fixed_fields"], set):
-                c["_fixed_fields"] = set((c or {}).get("_fixed_fields", []))
+                c["_fixed_fields"] = set(c.get("_fixed_fields", []))
             safe_add(c["_fixed_fields"], field)
-            logs.append(f"[FIX] {(c or {}).get('title','?')} - {field}: {value} ({reason})")
+            logs.append(f"[FIX] {c.get('title','?')} - {field}: {value} ({reason})")
 
         # Helper: get from parent context
         def get_from_parent(field):
@@ -364,25 +405,29 @@ class ContextOrganizer(object):
 
         # Helper: get from DB
         def get_from_db(title, field, url=None):
-            if db_service and title:
+            if db_service and isinstance(title, str):
                 db_contests = db_service.get_contests_by_advanced_filter(filters={"title": title}, limit=1)
                 if db_contests and isinstance(db_contests, list) and len(db_contests) > 0:
                     db_contest = safe_get_first(db_contests, "db_contests", url, logger)
-                    db_val = db_contest.get(field) if db_contest else None
-                    if db_val:
-                        return db_val
+                    if isinstance(db_contest, dict):
+                        db_val = db_contest.get(field)
+                        if db_val:
+                            return db_val
             return None
 
         # Try to fix each contest
         fixed_hashes = set()
         for c in contests:
+            if not isinstance(c, dict):
+                continue
             c_hash = contest_hash(c)
             if c_hash in fixed_hashes:
                 continue
             fixed = False
             reasons = []
-            title = ((c or {}).get("title") or "").strip().lower()
-            raw_flat = flatten_raw_field((c or {}).get("raw", {}))
+            title_val = c.get("title")
+            title = title_val.strip().lower() if isinstance(title_val, str) else ""
+            raw_flat = flatten_raw_field(c.get("raw", {})) if isinstance(c.get("raw", {}), dict) else {}
 
             # --- Fix each field in robust order ---
             for field, lookup, lib_list, lib_vals in [
@@ -391,47 +436,48 @@ class ContextOrganizer(object):
                 ("year", title_to_year, lib_years, lib_years),
                 ("type_", title_to_type_, lib_types, lib_types),
             ]:
-                if (c or {}).get(field) or field in (c or {}).get("_fixed_fields", []):
+                if c.get(field) or field in c.get("_fixed_fields", []):
                     continue
 
                 # 1. Flattened raw field
-                if raw_flat.get(field):
-                    update_field(c, field, raw_flat[field], f"flattened raw")
-                    reasons.append(f"flattened raw")
+                if isinstance(raw_flat, dict) and raw_flat.get(field):
+                    update_field(c, field, raw_flat[field], "flattened raw")
+                    reasons.append("flattened raw")
                     fixed = True
                     continue
 
                 # 2. Context library
                 if title in lookup:
-                    update_field(c, field, lookup[title], f"context_library")
-                    reasons.append(f"context_library")
+                    update_field(c, field, lookup[title], "context_library")
+                    reasons.append("context_library")
                     fixed = True
                     continue
 
                 # 3. Database
-                db_val = get_from_db((c or {}).get("title"), field, url=(c or {}).get("source_url"))
+                db_val = get_from_db(c.get("title"), field, url=c.get("source_url"))
                 if db_val:
-                    update_field(c, field, db_val, f"database")
-                    reasons.append(f"database")
+                    update_field(c, field, db_val, "database")
+                    reasons.append("database")
                     fixed = True
                     continue
 
                 # 4. Majority vote
-                vals = [(x or {}).get(field) for x in contests if (x or {}).get(field)]
+                vals = [x.get(field) for x in contests if isinstance(x, dict) and x.get(field)]
                 if vals:
                     try:
                         most_common = max(set(vals), key=vals.count)
-                        update_field(c, field, most_common, f"majority vote")
-                        reasons.append(f"majority vote")
+                        update_field(c, field, most_common, "majority vote")
+                        reasons.append("majority vote")
                         fixed = True
                         continue
                     except Exception:
                         pass
 
                 # 5. Fuzzy match
-                matches = get_close_matches(title, list(lookup.keys()), n=1, cutoff=0.8)
+                lookup_keys = list(lookup.keys())
+                matches = get_close_matches(title, lookup_keys, n=1, cutoff=0.8) if isinstance(title, str) else []
                 if matches:
-                    url = (c or {}).get("source_url", "")
+                    url = c.get("source_url", "")
                     match_key = safe_get_first(matches, "matches", url, logger)
                     if match_key in lookup:
                         update_field(c, field, lookup[match_key], f"fuzzy match: {match_key}")
@@ -440,50 +486,58 @@ class ContextOrganizer(object):
                         continue
 
                 # 6. ML similarity
-                if embedding_model and lib_embeddings is not None and lib_list and len(lib_list) == len(lib_titles):
+                if (
+                    embedding_model and lib_embeddings is not None
+                    and lib_list and isinstance(lib_list, list)
+                    and len(lib_list) == len(lib_titles)
+                ):
                     try:
-                        query_embs = safe_model_encode(embedding_model, [((c or {}).get("title") or "")])
+                        query_title = c.get("title")
+                        query_embs = safe_model_encode(embedding_model, [query_title if isinstance(query_title, str) else ""])
                         if query_embs is not None and len(query_embs) > 0:
-                            query_emb = safe_get_first(query_embs, "query_embs", url, logger)
-                        sims = np.dot(lib_embeddings, query_emb) / (
-                            np.linalg.norm(lib_embeddings, axis=1) * np.linalg.norm(query_emb) + 1e-8
-                        )
-                        if len(sims) == 0:
-                            continue
-                        best_idx = int(np.argmax(sims))
-                        best_score = sims[best_idx]
-                        if (
-                            best_idx < len(lib_vals)
-                            and best_score > min_confidence
-                            and lib_vals[best_idx]
-                        ):
-                            update_field(
-                                c, field, lib_vals[best_idx],
-                                f"ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
-                            )
-                            reasons.append(
-                                f"ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
-                            )
-                            fixed = True
-                            continue
-                        else:
-                            reasons.append(
-                                f"ML similarity for {field} below threshold ({best_score:.2f} < {min_confidence})"
-                            )
+                            query_emb = safe_get_first(query_embs, "query_embs", c.get("source_url", ""), logger)
+                            if query_emb is not None:
+                                sims = np.dot(lib_embeddings, query_emb) / (
+                                    np.linalg.norm(lib_embeddings, axis=1) * np.linalg.norm(query_emb) + 1e-8
+                                )
+                                if len(sims) == 0:
+                                    continue
+                                best_idx = int(np.argmax(sims))
+                                best_score = sims[best_idx]
+                                if (
+                                    best_idx < len(lib_vals)
+                                    and best_score > min_confidence
+                                    and lib_vals[best_idx]
+                                ):
+                                    update_field(
+                                        c, field, lib_vals[best_idx],
+                                        f"ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
+                                    )
+                                    reasons.append(
+                                        f"ML similarity: {lib_titles[best_idx]} (sim={best_score:.2f})"
+                                    )
+                                    fixed = True
+                                    continue
+                                else:
+                                    reasons.append(
+                                        f"ML similarity for {field} below threshold ({best_score:.2f} < {min_confidence})"
+                                    )
                     except Exception as e:
                         reasons.append(f"ML similarity failed: {e}")
 
                 # 7. Parent context
                 parent_val = get_from_parent(field)
                 if parent_val:
-                    update_field(c, field, parent_val, f"parent context")
-                    reasons.append(f"parent context")
+                    update_field(c, field, parent_val, "parent context")
+                    reasons.append("parent context")
                     fixed = True
                     continue
 
                 # 8. Fallback: extract_year_and_type (only for year/type_)
                 if field in ("year", "type_"):
-                    y, t, _, _ = extract_year_and_type((c or {}).get("title", ""), url=(c or {}).get("source_url", ""))
+                    title_for_extract = c.get("title", "")
+                    url_for_extract = c.get("source_url", "")
+                    y, t, _, _ = extract_year_and_type(title_for_extract if isinstance(title_for_extract, str) else "", url=url_for_extract if isinstance(url_for_extract, str) else "")
                     if field == "year" and y:
                         update_field(c, "year", y, "extract_year_and_type")
                         reasons.append("extract_year_and_type")
@@ -496,12 +550,11 @@ class ContextOrganizer(object):
                         continue
 
             # --- Fix election_types as a list ---
-            # Defensive: always ensure election_types is a list
-            election_types = (c or {}).get("election_types")
+            election_types = c.get("election_types") if isinstance(c, dict) else []
             if not isinstance(election_types, list):
                 election_types = [election_types] if election_types else []
             # 1. Flattened raw field
-            raw_election_types = raw_flat.get("election_types")
+            raw_election_types = raw_flat.get("election_types") if isinstance(raw_flat, dict) else None
             if raw_election_types:
                 if isinstance(raw_election_types, list):
                     election_types = raw_election_types
@@ -522,7 +575,7 @@ class ContextOrganizer(object):
                 fixed = True
             # 3. Database
             if not election_types:
-                db_val = get_from_db((c or {}).get("title"), "election_types", url=(c or {}).get("source_url"))
+                db_val = get_from_db(c.get("title"), "election_types", url=c.get("source_url"))
                 if db_val:
                     if isinstance(db_val, list):
                         election_types = db_val
@@ -535,13 +588,14 @@ class ContextOrganizer(object):
             if not election_types:
                 vals = []
                 for x in contests:
-                    et = (x or {}).get("election_types")
+                    if not isinstance(x, dict):
+                        continue
+                    et = x.get("election_types")
                     if isinstance(et, list):
                         vals.extend(et)
                     elif et:
                         vals.append(et)
                 if vals:
-                    # Most common election type(s)
                     counter = Counter(vals)
                     most_common = [etype for etype, count in counter.items() if count == max(counter.values())]
                     election_types = most_common
@@ -565,11 +619,13 @@ class ContextOrganizer(object):
             c["election_types"] = election_types
 
             if fixed and reasons:
-                fix_log.append({"title": (c or {}).get("title"), "fixes": reasons})
+                fix_log.append({"title": c.get("title") if isinstance(c, dict) else None, "fixes": reasons})
                 fixed_hashes.add(c_hash)
 
         # Convert _fixed_fields sets to lists for downstream serialization safety
         for c in contests:
+            if not isinstance(c, dict):
+                continue
             if "_fixed_fields" in c and isinstance(c["_fixed_fields"], set):
                 c["_fixed_fields"] = list(c["_fixed_fields"])
             # Defensive: ensure election_types is always a list
@@ -697,14 +753,17 @@ class ContextOrganizer(object):
         """
         Return a summary of contests and metadata for state routing logic.
         """
-        if not self.organized or "contests" not in self.organized:
+        if not isinstance(self.organized, dict) or "contests" not in self.organized or not isinstance(self.organized.get("contests"), list):
             return {}
+        contests = self.organized.get("contests", [])
+        states = list({c.get("state") for c in contests if isinstance(c, dict) and c.get("state")})
+        counties = list({c.get("county") for c in contests if isinstance(c, dict) and c.get("county")})
         return {
-            "states": list({(c or {}).get("state") for c in self.organized["contests"] if (c or {}).get("state")}),
-            "counties": list({(c or {}).get("county") for c in self.organized["contests"] if (c or {}).get("county")}),
-            "contests": self.organized["contests"],
-            "metadata": self.organized.get("metadata", {}),
-            "election_types": self.organized.get("election_types", []),
+            "states": states,
+            "counties": counties,
+            "contests": contests,
+            "metadata": self.organized.get("metadata", {}) if isinstance(self.organized, dict) else {},
+            "election_types": self.organized.get("election_types", []) if isinstance(self.organized, dict) else [],
         }
 
     def get_for_html_handler(self) -> dict:
@@ -717,37 +776,38 @@ class ContextOrganizer(object):
         """
         Return all table structures and related context for table builder logic.
         """
-        if not self.organized:
+        if not isinstance(self.organized, dict):
             return {}
         return {
-            "tables": self.organized.get("tables", {}),
-            "contests": self.organized.get("contests", []),
-            "metadata": self.organized.get("metadata", {})
+            "tables": self.organized.get("tables", {}) if isinstance(self.organized, dict) else {},
+            "contests": self.organized.get("contests", []) if isinstance(self.organized, dict) else [],
+            "metadata": self.organized.get("metadata", {}) if isinstance(self.organized, dict) else {},
         }
 
     def get_for_selector(self) -> dict:
         """
         Return all selectors and related context for selector logic.
         """
-        if not self.organized:
+        if not isinstance(self.organized, dict):
             return {}
         return {
-            "selectors": self.organized.get("selectors", {}),
-            "contests": self.organized.get("contests", []),
-            "election_types": self.organized.get("election_types", []),
-            "noisy_patterns": self.organized.get("noisy_patterns", []),
-            "buttons": self.organized.get("buttons", {}),
-            "panels": self.organized.get("panels", {}),
-            "tables": self.organized.get("tables", {}),
-            "candidate_panels": self.organized.get("candidate_panels", {}),
-            "location_panels": self.organized.get("location_panels", {}),
-            "headings": self.organized.get("headings", {}),
-            "ballot_types": self.organized.get("ballot_types", {}),
-            "results_timestamps": self.organized.get("results_timestamps", {}),
-            "party_labels": self.organized.get("party_labels", {}),
-            "vote_methods": self.organized.get("vote_methods", {}),
-            "metadata": self.organized.get("metadata", {}),
+            "selectors": self.organized.get("selectors", {}) if isinstance(self.organized, dict) else {},
+            "contests": self.organized.get("contests", []) if isinstance(self.organized, dict) else [],
+            "election_types": self.organized.get("election_types", []) if isinstance(self.organized, dict) else [],
+            "noisy_patterns": self.organized.get("noisy_patterns", []) if isinstance(self.organized, dict) else [],
+            "buttons": self.organized.get("buttons", {}) if isinstance(self.organized, dict) else {},
+            "panels": self.organized.get("panels", {}) if isinstance(self.organized, dict) else {},
+            "tables": self.organized.get("tables", {}) if isinstance(self.organized, dict) else {},
+            "candidate_panels": self.organized.get("candidate_panels", {}) if isinstance(self.organized, dict) else {},
+            "location_panels": self.organized.get("location_panels", {}) if isinstance(self.organized, dict) else {},
+            "headings": self.organized.get("headings", {}) if isinstance(self.organized, dict) else {},
+            "ballot_types": self.organized.get("ballot_types", {}) if isinstance(self.organized, dict) else {},
+            "results_timestamps": self.organized.get("results_timestamps", {}) if isinstance(self.organized, dict) else {},
+            "party_labels": self.organized.get("party_labels", {}) if isinstance(self.organized, dict) else {},
+            "vote_methods": self.organized.get("vote_methods", {}) if isinstance(self.organized, dict) else {},
+            "metadata": self.organized.get("metadata", {}) if isinstance(self.organized, dict) else {},
         }  
+        
     def organize_context(
         self,
         raw_context,
@@ -773,7 +833,11 @@ class ContextOrganizer(object):
         Handles edge cases to avoid list index out of range errors.
         """
         
-        logger.debug("DEBUG: raw_context keys: %s", list((raw_context or {}).keys()))
+        # Defensive logging of raw_context keys
+        if isinstance(raw_context, dict):
+            logger.debug("DEBUG: raw_context keys: %s", list(raw_context.keys()))
+        else:
+            logger.debug("DEBUG: raw_context is not a dict, type: %s", type(raw_context))
         debug = self.debug if debug is None else debug
         fuzzy_cutoff = self.fuzzy_cutoff if fuzzy_cutoff is None else fuzzy_cutoff
         embedding_model = embedding_model if embedding_model is not None else self.embedding_model_obj
@@ -798,11 +862,11 @@ class ContextOrganizer(object):
                 if hasattr(self, '_context_cache'):
                     self._context_cache.update(cache)
                 else:
-                    self._context_cache = (cache or {}).copy()
-                log.append(f"[CACHE] Using provided cache with {len(cache)} entries.")
+                    self._context_cache = cache.copy() if isinstance(cache, dict) else dict(cache) if isinstance(cache, list) else {}
+                log.append(f"[CACHE] Using provided cache with {len(cache) if hasattr(cache, '__len__') else 0} entries.")
 
-            tagged_segments = (raw_context or {}).get("tagged_segments_with_attrs", [])
-            url_value = (raw_context or {}).get("url", "")
+            tagged_segments = raw_context.get("tagged_segments_with_attrs", []) if isinstance(raw_context, dict) else []
+            url_value = raw_context.get("url", "") if isinstance(raw_context, dict) else ""
 
             # --- Virtual root handling: _idx=0, all real roots point to it as parent ---
             virtual_root = {
@@ -820,12 +884,14 @@ class ContextOrganizer(object):
                 "_idx": 0
             }
             for seg in tagged_segments:
-                seg["_idx"] = (seg or {}).get("_idx", 0) + 1
-                if (seg or {}).get("parent_idx") is None:
+                if not isinstance(seg, dict):
+                    continue
+                seg["_idx"] = seg.get("_idx", 0) + 1
+                if seg.get("parent_idx") is None:
                     seg["parent_idx"] = 0
-                elif isinstance(seg["parent_idx"], int):
+                elif isinstance(seg.get("parent_idx"), int):
                     seg["parent_idx"] += 1
-                seg["children"] = [c + 1 if isinstance(c, int) else c for c in (seg or {}).get("children", [])]
+                seg["children"] = [c + 1 if isinstance(c, int) else c for c in seg.get("children", [])]
             tagged_segments = [virtual_root] + tagged_segments
             tagged_segments = repair_dom_segments(tagged_segments)
             dom_tree = self.build_dom_tree(tagged_segments)
@@ -833,7 +899,7 @@ class ContextOrganizer(object):
             dom_parts = self.expose_dom_parts(dom_tree)
 
             # --- Defensive: check for missing/empty lists in dom_parts ---
-            url = (raw_context or {}).get("url", "")
+            url = raw_context.get("url", "") if isinstance(raw_context, dict) else ""
             context = {}
             dom_errors = _defensive_dom_check(dom_parts, url, logger, log_errors=not suppress_dom_errors)
             if dom_errors:
@@ -849,8 +915,10 @@ class ContextOrganizer(object):
                 seen = set()
                 deduped = []
                 for item in items:
-                    key = tuple((item or {}).get(f) for f in key_fields)
-                    if key not in seen and any((item or {}).get(f) for f in key_fields):
+                    if not isinstance(item, dict):
+                        continue
+                    key = tuple(item.get(f) for f in key_fields)
+                    if key not in seen and any(item.get(f) for f in key_fields):
                         deduped.append(item)
                         seen.add(key)
                 return deduped
@@ -860,50 +928,53 @@ class ContextOrganizer(object):
 
             # --- Organize contests, panels, tables, etc. (original logic unchanged) ---
             db_contests = safe_db_call(self.data_service.get_all_full_contests, limit=500, default=[], logger=logger)
-            contests = safe_list((raw_context or {}).get("contests", [])) + db_contests
+            contests = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("contests", [])) + db_contests
             contests = dedupe(contests, ["title", "year", "type_"])
 
             db_panels = safe_db_call(self.data_service.get_all_panels, limit=500, default=[], logger=logger)
-            panels = safe_list((raw_context or {}).get("panels", [])) + db_panels
+            panels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("panels", [])) + db_panels
             panels = dedupe(panels, ["panel_text", "segment_hash"])
 
             db_tables = safe_db_call(self.data_service.get_all_tables, limit=500, default=[], logger=logger)
-            tables = safe_list((raw_context or {}).get("tables", [])) + db_tables
+            tables = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("tables", [])) + db_tables
             tables = dedupe(tables, ["table_text", "segment_hash"])
 
             db_candidate_panels = safe_db_call(self.data_service.get_all_candidate_panels, limit=500, default=[], logger=logger)
-            candidate_panels = safe_list((raw_context or {}).get("candidate_panels", [])) + db_candidate_panels
+            candidate_panels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("candidate_panels", [])) + db_candidate_panels
             candidate_panels = dedupe(candidate_panels, ["candidate_panel_text", "segment_hash"])
 
             db_location_panels = safe_db_call(self.data_service.get_all_location_panels, limit=500, default=[], logger=logger)
-            location_panels = safe_list((raw_context or {}).get("location_panels", [])) + db_location_panels
+            location_panels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("location_panels", [])) + db_location_panels
             location_panels = dedupe(location_panels, ["location_panel_text", "segment_hash"])
 
             db_headings = safe_db_call(self.data_service.get_all_headings, limit=500, default=[], logger=logger)
-            headings = safe_list((raw_context or {}).get("headings", [])) + db_headings
+            headings = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("headings", [])) + db_headings
             headings = dedupe(headings, ["heading_text", "segment_hash"])
 
             db_ballot_types = safe_db_call(self.data_service.get_all_ballot_types, limit=500, default=[], logger=logger)
-            ballot_types = safe_list((raw_context or {}).get("ballot_types", [])) + db_ballot_types
+            ballot_types = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("ballot_types", [])) + db_ballot_types
             ballot_types = dedupe(ballot_types, ["ballot_types_text", "segment_hash"])
 
             db_results_timestamps = safe_db_call(self.data_service.get_all_results_timestamps, limit=500, default=[], logger=logger)
-            results_timestamps = safe_list((raw_context or {}).get("results_timestamps", [])) + db_results_timestamps
+            results_timestamps = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("results_timestamps", [])) + db_results_timestamps
             results_timestamps = dedupe(results_timestamps, ["timestamp_text", "segment_hash"])
 
             db_party_labels = safe_db_call(self.data_service.get_all_party_labels, limit=500, default=[], logger=logger)
-            party_labels = safe_list((raw_context or {}).get("party_labels", [])) + db_party_labels
+            party_labels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("party_labels", [])) + db_party_labels
             party_labels = dedupe(party_labels, ["party_label_text", "segment_hash"])
 
             db_vote_methods = safe_db_call(self.data_service.get_all_vote_methods, limit=500, default=[], logger=logger)
-            vote_methods = safe_list((raw_context or {}).get("vote_methods", [])) + db_vote_methods
+            vote_methods = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("vote_methods", [])) + db_vote_methods
             vote_methods = dedupe(vote_methods, ["vote_method_text", "segment_hash"])
 
             # --- Robust contest organization using all available keywords ---
             contests_out = []
             contests_seen = set()
-            for c in safe_list((raw_context or {}).get("contests", [])):
-                title = (c or {}).get("title") or (c or {}).get("label") or c
+            raw_contests = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("contests", []))
+            for c in raw_contests:
+                if not isinstance(c, dict) or not c.get("title"):
+                    continue
+                title = c.get("title") or c.get("label") or ""
                 if not title or len(str(title)) > 500:
                     logger.warning(f"[CONTEST] Skipping contest with suspiciously large or missing title: {str(title)[:100]}...")
                     continue
@@ -921,64 +992,79 @@ class ContextOrganizer(object):
                         "title": title,
                         "year": year,
                         "type_": type_,
-                        "state": state or (c or {}).get("state", (raw_context or {}).get("state")),
-                        "county": county or (c or {}).get("county", (raw_context or {}).get("county")),
+                        "state": state or (c.get("state") if isinstance(c, dict) else None) or (raw_context.get("state") if isinstance(raw_context, dict) else None),
+                        "county": county or (c.get("county") if isinstance(c, dict) else None) or (raw_context.get("county") if isinstance(raw_context, dict) else None),
                         "raw": flatten_raw_field(c)
                     })
             for c in safe_list(context_library.get("contests", [])):
                 if not isinstance(c, dict) or not c.get("title"):
                     continue
                 norm_title = normalize_label(c.get("title", c.get("label", str(c))))
-                if norm_title not in contests_seen and norm_title not in [normalize_label((c2 or {}).get("title", "")) for c2 in contests_out]:
+                if norm_title not in contests_seen and all(
+                    norm_title != normalize_label(c2.get("title", "")) if isinstance(c2, dict) else True
+                    for c2 in contests_out
+                ):
                     contests_out.append(c)
                     contests_seen.add(norm_title)
             contests = contests_out
 
-            # --- Ensure all contests have required fields: title, year, type_, state, county ---
             from ..utils.html_scanner import extract_year_and_type
-            state_context = (raw_context or {}).get("state")
-            county_context = (raw_context or {}).get("county")
-            years = [(c or {}).get("year") for c in contests if (c or {}).get("year")]
-            types = [(c or {}).get("type_") for c in contests if (c or {}).get("type_")]
+            if isinstance(raw_context, dict):
+                state_context = raw_context.get("state")
+                county_context = raw_context.get("county")
+            else:
+                state_context = None
+                county_context = None
+            years = [c.get("year") for c in contests if isinstance(c, dict) and c.get("year")]
+            types = [c.get("type_") for c in contests if isinstance(c, dict) and c.get("type_")]
             unique_years = set(y for y in years if y)
             unique_types = set(t for t in types if t)
 
             for c in contests:
+                if not isinstance(c, dict):
+                    continue
+
                 # Fill state/county from context if missing
-                if not (c or {}).get("state") and state_context:
+                if not c.get("state") and state_context:
                     c["state"] = state_context
-                if not (c or {}).get("county") and county_context:
+                if not c.get("county") and county_context:
                     c["county"] = county_context
-                # Fill year/type_ from unique values or title
-                if not (c or {}).get("year"):
+
+                # Extract year/type once per contest if needed
+                title_val = c.get("title", "")
+                url_val = raw_context.get("url", "") if isinstance(raw_context, dict) else ""
+                y, t, _, _ = extract_year_and_type(title_val if isinstance(title_val, str) else "", url=url_val if isinstance(url_val, str) else "")
+
+                # Fill year
+                if not c.get("year"):
                     if len(unique_years) == 1:
                         c["year"] = safe_get_first(list(unique_years), "unique_years", url, logger)
-                    else:
-                        y, t, _, _ = extract_year_and_type((c or {}).get("title", ""), url=(raw_context or {}).get("url", ""))
-                        if y:
-                            c["year"] = y
-                if not (c or {}).get("type_"):
+                    elif y:
+                        c["year"] = y
+
+                # Fill type_
+                if not c.get("type_"):
                     if len(unique_types) == 1:
                         c["type_"] = safe_get_first(list(unique_types), "unique_types", url, logger)
-                    else:
-                        y, t, _, _ = extract_year_and_type((c or {}).get("title", ""), url=(raw_context or {}).get("url", ""))
-                        if t:
-                            c["type_"] = t
-                # Fallback: try to infer from raw field
-                if not (c or {}).get("state") and isinstance((c or {}).get("raw"), dict):
-                    c["state"] = (c["raw"] or {}).get("state")
-                if not (c or {}).get("county") and isinstance((c or {}).get("raw"), dict):
-                    c["county"] = (c["raw"] or {}).get("county")
-                if not (c or {}).get("year") and isinstance((c or {}).get("raw"), dict):
-                    c["year"] = (c["raw"] or {}).get("year")
-                if not (c or {}).get("type_") and isinstance((c or {}).get("raw"), dict):
-                    c["type_"] = (c["raw"] or {}).get("type_")
+                    elif t:
+                        c["type_"] = t
 
+                # Fallback: try to infer from raw field
+                raw_field = c.get("raw")
+                if isinstance(raw_field, dict):
+                    if not c.get("state") and raw_field.get("state"):
+                        c["state"] = raw_field.get("state")
+                    if not c.get("county") and raw_field.get("county"):
+                        c["county"] = raw_field.get("county")
+                    if not c.get("year") and raw_field.get("year"):
+                        c["year"] = raw_field.get("year")
+                    if not c.get("type_") and raw_field.get("type_"):
+                        c["type_"] = raw_field.get("type_")
             # --- Filter out contests missing title (required) ---
             filtered_out = []
             filtered_contests = []
             for c in contests:
-                if not (c or {}).get("title"):
+                if not (isinstance(c, dict) and c.get("title")):
                     filtered_out.append((c, "missing title"))
                     continue
                 filtered_contests.append(c)
@@ -1002,8 +1088,8 @@ class ContextOrganizer(object):
                             continue
                         if normalize_label(p.get("label", p.get("panel_text", ""))) == norm_title:
                             return p
-                # 2. raw_context panels
-                raw_panels = (raw_context or {}).get("panels", {})
+                # Defensive extraction of raw_panels
+                raw_panels = raw_context.get("panels", {}) if isinstance(raw_context, dict) else {}
                 if isinstance(raw_panels, dict):
                     for k, p in raw_panels.items():
                         if not isinstance(p, dict):
@@ -1029,14 +1115,19 @@ class ContextOrganizer(object):
                 if panel and panel.get("panel_text"):
                     panels_dict[c["title"]] = panel
 
-            raw_panels = (raw_context or {}).get("panels", {})
+            # Defensive extraction of raw_panels
+            raw_panels = raw_context.get("panels", {}) if isinstance(raw_context, dict) else {}
+
+            # Defensive conversion to list for iteration
             if isinstance(raw_panels, dict):
                 raw_panels_list = list(raw_panels.values())
             elif isinstance(raw_panels, list):
                 raw_panels_list = raw_panels
             else:
                 raw_panels_list = []
-            for p in (panel_features or []) + raw_panels_list + lib_panels:
+
+            # Defensive iteration over panels
+            for p in (panel_features if isinstance(panel_features, list) else []) + raw_panels_list + (lib_panels if isinstance(lib_panels, list) else []):
                 if not isinstance(p, dict):
                     continue
                 if not p.get("panel_text"):
@@ -1047,7 +1138,7 @@ class ContextOrganizer(object):
 
             # --- Tables: relaxed filtering, only require table_text ---
             tables_by_contest = defaultdict(list)
-            raw_tables = safe_list((raw_context or {}).get("tables", []))
+            raw_tables = safe_list(raw_context.get("tables", []) if isinstance(raw_context, dict) else [])
             lib_tables = safe_list(context_library.get("tables", []))
             all_tables = raw_tables + lib_tables
             for tbl in all_tables:
@@ -1056,29 +1147,49 @@ class ContextOrganizer(object):
                 if not tbl.get("table_text"):
                     continue
                 for c in contests:
-                    if ((c or {}).get("title") or "").lower() in (tbl.get("label") or "").lower():
-                        tables_by_contest[c["title"]].append(tbl)
-                if not any(tbl in v for v in tables_by_contest.values()):
-                    tables_by_contest["__unmatched__"].append(tbl)
+                    if (
+                        isinstance(c, dict) and isinstance(tbl, dict)
+                        and isinstance(c.get("title"), str) and isinstance(tbl.get("label"), str)
+                    ):
+                        c_title = c.get("title")
+                        tbl_label = tbl.get("label")
+                        # Only proceed if both are non-empty strings and .lower() is safe
+                        if (
+                            isinstance(c_title, str) and isinstance(tbl_label, str)
+                            and c_title and tbl_label
+                            and c_title.lower() in tbl_label.lower()
+                        ):
+                            tables_by_contest[c["title"]].append(tbl)
+                    if not any(tbl in v for v in tables_by_contest.values()):
+                        tables_by_contest["__unmatched__"].append(tbl)
 
             # --- Buttons: relaxed filtering, only require label ---
             buttons_by_contest = defaultdict(list)
-            raw_buttons = safe_list(button_features) or safe_list((raw_context or {}).get("buttons", []))
+            raw_buttons = safe_list(button_features) if isinstance(button_features, list) else safe_list(raw_context.get("buttons", []) if isinstance(raw_context, dict) else [])
             lib_buttons = safe_list(context_library.get("buttons", []))
             all_buttons = raw_buttons + lib_buttons
             unmatched_buttons = []
             for btn in all_buttons:
                 if not isinstance(btn, dict):
                     continue
-                if not btn.get("label"):
+                label = btn.get("label")
+                if not isinstance(label, str) or not label:
                     continue
                 matched = False
                 for c in contests:
-                    if ((c or {}).get("title") or "").lower() in (btn.get("label") or "").lower():
-                        buttons_by_contest[c["title"]].append(btn)
+                    if not isinstance(c, dict):
+                        continue
+                    title = c.get("title")
+                    if not isinstance(title, str) or not title:
+                        continue
+                    # Safeguard .lower() calls
+                    label_lower = label.lower() if isinstance(label, str) else ""
+                    title_lower = title.lower() if isinstance(title, str) else ""
+                    if title_lower and label_lower and title_lower in label_lower:
+                        buttons_by_contest[title].append(btn)
                         matched = True
-                    elif "election" in (btn.get("label") or "").lower() and "election" in ((c or {}).get("title") or "").lower():
-                        buttons_by_contest[c["title"]].append(btn)
+                    elif "election" in label_lower and "election" in title_lower:
+                        buttons_by_contest[title].append(btn)
                         matched = True
                 if not matched:
                     unmatched_buttons.append(btn)
@@ -1213,7 +1324,7 @@ class ContextOrganizer(object):
                         for idx in anomalies:
                             if idx < len(contests):
                                 contest = contests[idx]
-                                title = (contest or {}).get('title', str(contest))
+                                title = contest.get('title', str(contest)) if isinstance(contest, dict) else str(contest)
                                 logger.info(f"[bold magenta][ML][/bold magenta] Context anomaly detected: [bold yellow]{title}[/bold yellow]\n  [dim]Context:[/dim] {contest}")
                             else:
                                 logger.warning(f"[ML] Anomaly index {idx} out of range for contests list of length {len(contests)}")
@@ -1274,16 +1385,16 @@ class ContextOrganizer(object):
                 "results_timestamps": results_timestamps,
                 "party_labels": party_labels,
                 "vote_methods": vote_methods,
-                "election_types": (raw_context or {}).get("election_types", []),
-                "noisy_patterns": (raw_context or {}).get("noisy_patterns", []),
+                "election_types": raw_context.get("election_types", []) if isinstance(raw_context, dict) else [],
+                "noisy_patterns": raw_context.get("noisy_patterns", []) if isinstance(raw_context, dict) else [],
                 "metadata": {
-                    "state": (raw_context or {}).get("state"),
-                    "county": (raw_context or {}).get("county"),
-                    "source_url": (raw_context or {}).get("url"),
-                    "election_types": (raw_context or {}).get("election_types"),
-                    "scrape_time": (raw_context or {}).get("scrape_time"),
+                    "state": raw_context.get("state") if isinstance(raw_context, dict) else None,
+                    "county": raw_context.get("county") if isinstance(raw_context, dict) else None,
+                    "source_url": raw_context.get("url") if isinstance(raw_context, dict) else None,
+                    "election_types": raw_context.get("election_types") if isinstance(raw_context, dict) else [],
+                    "scrape_time": raw_context.get("scrape_time") if isinstance(raw_context, dict) else None,
                     "year": None,
-                    "race": (raw_context or {}).get("race"),
+                    "race": raw_context.get("race") if isinstance(raw_context, dict) else None,
                     "environment": scan_environment(),
                 },
                 "dom_tree": dom_tree,
@@ -1293,9 +1404,8 @@ class ContextOrganizer(object):
                 "integrity_issues": integrity_issues,
             }
             valid_years = [
-                (c or {}).get("year")
-                for c in contests
-                if (c or {}).get("year") and (c or {}).get("type_") and str((c or {}).get("year")).isdigit()
+                c.get("year") for c in contests
+                if isinstance(c, dict) and c.get("year") and c.get("type_") and str(c.get("year")).isdigit()
             ]
             metadata = organized["metadata"]
             _sync_type_and_election_types(metadata, fallback_types=best_election_types, fallback_type=best_type)
@@ -1322,12 +1432,12 @@ class ContextOrganizer(object):
 
             # --- Dynamic state/county detection if missing ---
             missing_location = any(
-                not (c or {}).get("state") or not (c or {}).get("county")
+                not (c.get("state") if isinstance(c, dict) else None) or not (c.get("county") if isinstance(c, dict) else None)
                 for c in contests
             )
             if missing_location:
                 from .context_coordinator import dynamic_state_county_detection
-                html = (raw_context or {}).get("raw_html", "")
+                html = raw_context.get("raw_html", "") if isinstance(raw_context, dict) else ""
                 county, state, handler_path, detection_log = dynamic_state_county_detection(
                     raw_context, html, debug=True
                 )
@@ -1347,8 +1457,11 @@ class ContextOrganizer(object):
             self.organized = organized
         except IndexError as e:
             logger.error(f"[ERROR] Exception while processing {url}: {e}")
-            context['dom_parts_keys'] = list((dom_parts or {}).keys())
-            context['dom_parts_lengths'] = {k: len(v) if isinstance(v, list) else None for k, v in (dom_parts or {}).items()}
+            context['dom_parts_keys'] = list(dom_parts.keys()) if isinstance(dom_parts, dict) else []
+            context['dom_parts_lengths'] = {
+                k: len(v) if isinstance(v, list) else None
+                for k, v in dom_parts.items()
+            } if isinstance(dom_parts, dict) else {}
             summary['error'] = context['error']
             log.append(f"[EXCEPTION] {context['error']}")
             return {
@@ -1372,22 +1485,28 @@ class ContextOrganizer(object):
                 node = dict(seg)
                 node.setdefault("children", [])
                 node.setdefault("parent_idx", None)
-                node.setdefault("_idx", (seg or {}).get("_idx"))
+                node.setdefault("_idx", seg.get("_idx") if isinstance(seg, dict) else None)
                 node.setdefault("start", None)
                 node.setdefault("end", None)
                 nodes.append(node)
                 idx_map[node["_idx"]] = node
 
-            # Parent/child consistency check
+            # Defensive parent/child consistency check and tree building
             for node in nodes:
-                for child_idx in (node or {}).get("children", []):
+                children = node.get("children", []) if isinstance(node, dict) else []
+                for child_idx in children:
+                    parent_idx_val = None
+                    child_node = idx_map.get(child_idx)
+                    if isinstance(child_node, dict):
+                        parent_idx_val = child_node.get("parent_idx")
+                    node_idx_val = node.get("_idx") if isinstance(node, dict) else None
                     if (
                         child_idx not in idx_map
-                        or (idx_map[child_idx] or {}).get("parent_idx") != (node or {}).get("_idx")
+                        or parent_idx_val != node_idx_val
                     ):
                         indicator = get_loading_indicator()
                         console.print(
-                            f"{indicator} Inconsistent parent/child: node {(node or {}).get('_idx')} child {child_idx}",
+                            f"{indicator} Inconsistent parent/child: node {node.get('_idx') if isinstance(node, dict) else None} child {child_idx}",
                             highlight=False,
                             end="\r"
                         )
@@ -1395,23 +1514,23 @@ class ContextOrganizer(object):
             # Defensive: ensure no cycles and all indices valid
             valid_indices = set(idx_map.keys())
             for node in nodes:
-                node["children"] = [c for c in (node or {}).get("children", []) if c in valid_indices and c != (node or {}).get("_idx")]
-                if (node or {}).get("parent_idx") not in valid_indices and (node or {}).get("parent_idx") is not None:
+                children = node.get("children", []) if isinstance(node, dict) else []
+                node["children"] = [c for c in children if c in valid_indices and c != (node.get("_idx") if isinstance(node, dict) else None)]
+                parent_idx = node.get("parent_idx") if isinstance(node, dict) else None
+                if parent_idx not in valid_indices and parent_idx is not None:
                     node["parent_idx"] = None
 
             # Defensive: ensure roots are truly root nodes
-            roots = [node for node in nodes if (node or {}).get("parent_idx") is None]
+            roots = [node for node in nodes if (node.get("parent_idx") if isinstance(node, dict) else None) is None]
             if not roots:
-                # Fallback: treat node with _idx==0 as root if present
-                root_node = next((n for n in nodes if (n or {}).get("_idx") == 0), None)
+                root_node = next((n for n in nodes if (n.get("_idx") if isinstance(n, dict) else None) == 0), None)
                 if root_node:
                     roots = [root_node]
                 else:
-                    # Fallback: treat first node as root
                     roots = [nodes[0]] if nodes else []
 
             dom_tree = {
-                "roots": [(node or {}).get("_idx") for node in roots if (node or {}).get("_idx") is not None],
+                "roots": [node.get("_idx") if isinstance(node, dict) else None for node in roots if (node.get("_idx") if isinstance(node, dict) else None) is not None],
                 "nodes": nodes
             }
             return dom_tree
@@ -1425,20 +1544,32 @@ class ContextOrganizer(object):
         Returns dicts for head, body, wrappers, tables, buttons, clickable, and all nodes.
         Adds 'direct_parent' field for each node.
         """
-        nodes = dom_tree["nodes"]
-        idx_map = {n["_idx"]: n for n in nodes}
+        nodes = dom_tree.get("nodes", []) if isinstance(dom_tree, dict) else []
+        idx_map = {n.get("_idx"): n for n in nodes if isinstance(n, dict) and n.get("_idx") is not None}
         for n in nodes:
-            parent_idx = (n or {}).get("parent_idx")
-            n["direct_parent"] = idx_map[parent_idx]["tag"] if parent_idx is not None and parent_idx in idx_map else None
+            if not isinstance(n, dict):
+                continue
+            parent_idx = n.get("parent_idx")
+            direct_parent_tag = None
+            if parent_idx is not None and parent_idx in idx_map:
+                parent_node = idx_map[parent_idx]
+                if isinstance(parent_node, dict):
+                    direct_parent_tag = parent_node.get("tag")
+            n["direct_parent"] = direct_parent_tag
+
+        def safe_tag(node):
+            tag = node.get("tag") if isinstance(node, dict) else None
+            return tag.lower() if isinstance(tag, str) else ""
+
         return {
-            "head_nodes": [n for n in nodes if ((n or {}).get("tag") or "").lower() == "head"],
-            "body_nodes": [n for n in nodes if ((n or {}).get("tag") or "").lower() == "body"],
-            "wrappers": [n for n in nodes if ((n or {}).get("tag") or "").lower() in ("div", "section", "form")],
-            "tables": [n for n in nodes if ((n or {}).get("tag") or "").lower() == "table"],
-            "buttons": [n for n in nodes if (n or {}).get("is_button")],
-            "clickable": [n for n in nodes if (n or {}).get("is_clickable")],
+            "head_nodes": [n for n in nodes if safe_tag(n) == "head"],
+            "body_nodes": [n for n in nodes if safe_tag(n) == "body"],
+            "wrappers": [n for n in nodes if safe_tag(n) in ("div", "section", "form")],
+            "tables": [n for n in nodes if safe_tag(n) == "table"],
+            "buttons": [n for n in nodes if isinstance(n, dict) and n.get("is_button")],
+            "clickable": [n for n in nodes if isinstance(n, dict) and n.get("is_clickable")],
             "all_nodes": nodes,
-            "roots": dom_tree["roots"]
+            "roots": dom_tree.get("roots", []) if isinstance(dom_tree, dict) else []
         }
 
     def extract_html_by_idx(self, nodes, idx, full_html) -> str:
@@ -1450,15 +1581,17 @@ class ContextOrganizer(object):
             if not isinstance(nodes, list) or not isinstance(idx, int) or idx < 0 or idx >= len(nodes):
                 return ""
             node = nodes[idx]
-            start = (node or {}).get("start")
-            end = (node or {}).get("end")
+            if not isinstance(node, dict):
+                return ""
+            start = node.get("start")
+            end = node.get("end")
             if (
                 start is not None and end is not None
                 and isinstance(start, int) and isinstance(end, int)
                 and 0 <= start < end <= len(full_html)
             ):
                 return full_html[start:end]
-            html = (node or {}).get("html", "")
+            html = node.get("html", "")
             return html if isinstance(html, str) else str(html)
         except Exception as e:
             logger.error(f"[extract_html_by_idx] Error: {e}")
@@ -1473,18 +1606,32 @@ class ContextOrganizer(object):
             if not isinstance(nodes, list) or not isinstance(idx, int) or idx < 0 or idx >= len(nodes):
                 return ""
             node = nodes[idx]
+            if not isinstance(node, dict):
+                return ""
             visited = set()
             indices = [idx]
-            stack = list((node or {}).get("children", []))
+            stack = list(node.get("children", []))
             while stack:
                 child_idx = stack.pop()
                 if not isinstance(child_idx, int) or child_idx < 0 or child_idx >= len(nodes) or child_idx in visited:
                     continue
                 visited.add(child_idx)
                 indices.append(child_idx)
-                stack.extend((nodes[child_idx] or {}).get("children", []))
-            starts = [(nodes[i] or {}).get("start") for i in indices if (nodes[i] or {}).get("start") is not None]
-            ends = [(nodes[i] or {}).get("end") for i in indices if (nodes[i] or {}).get("end") is not None]
+                child_node = nodes[child_idx]
+                if isinstance(child_node, dict):
+                    stack.extend(child_node.get("children", []))
+            starts = [
+                node.get("start")
+                for i in indices
+                for node in [nodes[i]]  # single-item list for scoping
+                if isinstance(node, dict) and "start" in node and node.get("start") is not None
+            ]
+            ends = [
+                node.get("end")
+                for i in indices
+                for node in [nodes[i]]
+                if isinstance(node, dict) and "end" in node and node.get("end") is not None
+            ]
             if starts and ends:
                 min_start = min(starts)
                 max_end = max(ends)
@@ -1493,7 +1640,7 @@ class ContextOrganizer(object):
                     and 0 <= min_start < max_end <= len(full_html)
                 ):
                     return full_html[min_start:max_end]
-            html = (node or {}).get("html", "")
+            html = node.get("html", "")
             return html if isinstance(html, str) else str(html)
         except Exception as e:
             logger.error(f"[extract_subtree_html] Error: {e}")
@@ -1508,7 +1655,9 @@ class ContextOrganizer(object):
         groups = defaultdict(list)
         try:
             for node in nodes:
-                label = (node or {}).get(label_field)
+                if not isinstance(node, dict):
+                    continue
+                label = node.get(label_field)
                 if isinstance(label, list):
                     for l in label:
                         if l is not None:
@@ -1524,20 +1673,50 @@ class ContextOrganizer(object):
         Returns a list of (panel_heading, [tables]) for each panel/section in the DOM.
         """
         panels = []
-        nodes = dom_tree["nodes"]
+        nodes = dom_tree.get("nodes", []) if isinstance(dom_tree, dict) else []
         for node in nodes:
-            if ((node or {}).get("tag") or "") in ("section", "div", "fieldset", "panel"):
-                # Find heading among children
-                heading = None
-                for child_idx in node["children"]:
-                    child = nodes[child_idx]
-                    if ((child or {}).get("tag") or "") in ("h1", "h2", "h3", "h4", "h5", "h6"):
-                        heading = child["html"]
-                        break
-                # Find tables among children
-                tables = [nodes[cidx] for cidx in node["children"] if ((nodes[cidx] or {}).get("tag") or "") == "table"]
-                if heading and tables:
-                    panels.append((heading, tables))
+            if not isinstance(node, dict):
+                continue
+            tag = node.get("tag")
+            if not isinstance(tag, str) or tag not in ("section", "div", "fieldset", "panel"):
+                continue
+
+            # Find heading among children
+            heading = None
+            children = node.get("children", [])
+            for child_idx in children:
+                if not isinstance(child_idx, int) or child_idx < 0 or child_idx >= len(nodes):
+                    continue
+                child = nodes[child_idx]
+                if not isinstance(child, dict):
+                    continue
+                child_tag = child.get("tag")
+                if isinstance(child_tag, str) and child_tag.lower() in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                    heading = child.get("html")
+                    break
+
+            # Find tables among children with advanced type and value checks
+            tables = []
+            for cidx in children:
+                if not isinstance(cidx, int) or cidx < 0 or cidx >= len(nodes):
+                    continue
+                table_node = nodes[cidx]
+                if not isinstance(table_node, dict):
+                    continue
+                tag_val = table_node.get("tag")
+                # Advanced tag checks
+                if (
+                    isinstance(tag_val, str)
+                    and tag_val is not None
+                    and tag_val.strip() != ""
+                ):
+                    tag_stripped = tag_val.strip()
+                    tag_lower = tag_stripped.lower() if isinstance(tag_stripped, str) else ""
+                    if tag_lower == "table":
+                        tables.append(table_node)
+
+            if heading and tables:
+                panels.append((heading, tables))
         return panels
 
     def submit_user_feedback(self, field_type, field_name, correct_value, context) -> None:

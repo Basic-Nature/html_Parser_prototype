@@ -1187,7 +1187,7 @@ def extract_tagged_segments_with_attrs(
             "html_snippet": (html or "")[:200],
             "segments_extracted": len(segments),
         }
-        logger.error(f"[FALLBACK] selectolax failed: {e}", extra=error_details)
+        logger.error(f"[FALLBACK] selectolax failed: {e}\nDetails: {error_details}")
         if not fallback_on_error:
             raise
         # Return a diagnostic object for downstream consumers

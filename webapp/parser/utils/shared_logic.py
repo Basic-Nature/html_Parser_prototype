@@ -48,6 +48,15 @@ class PredictionResult(TypedDict, total=False):
     extra: Optional[Dict[str, Any]]
     # Add more fields as needed
 
+class EventLike(Protocol):
+    def is_set(self) -> bool:
+        """
+        Checks if the event is set.
+        Returns:
+            bool: True if set, False otherwise.
+        """
+        ...
+
 class Predictable(Protocol):
     def predict(self, text: str) -> Union[PredictionResult, Dict[str, Any]]:
         """
@@ -72,6 +81,34 @@ class Predictable(Protocol):
         Raises:
             Exception: If prediction fails.
         """
+
+def safe_isdigit(val: Any) -> bool:
+    """Safely check if val is a string and isdigit()."""
+    try:
+        return isinstance(val, str) and val.isdigit()
+    except Exception:
+        return False
+
+def safe_get(dct: dict, key: str, default: Any = None) -> Any:
+    """Safely get a value from a dict-like object."""
+    try:
+        if isinstance(dct, dict):
+            return dct.get(key, default)
+    except Exception:
+        pass
+    return default
+
+def safe_is_set(event_like: EventLike) -> bool:
+    """
+    Safely check if an object has a callable is_set() method and call it.
+    Returns False if not supported or any error occurs.
+    """
+    try:
+        if hasattr(event_like, "is_set") and callable(event_like.is_set):
+            return event_like.is_set()
+    except Exception:
+        pass
+    return False
 
 def safe_append_cached_segment(lib, seg_hash, user_label) -> None:
     """
