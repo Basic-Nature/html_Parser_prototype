@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from typing import Optional
 from ..utils.shared_logger import SharedLogger
-from ..utils.shared_logic import safe_get_first, safe_items
+from ..utils.shared_logic import safe_get_first, safe_items, safe_get
 from ..config import CONTEXT_DB_PATH, BASE_DIR, LOG_DIR
 logger = SharedLogger()
 
@@ -39,11 +39,11 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
         coordinator = ContextCoordinator()
     parts = []
     # Use coordinator to try to fill missing info if available
-    state = (metadata or {}).get("state", "") or (safe_get_first(coordinator.get_states(), "state", None, logger, default="") if coordinator and coordinator.get_states() else "")
-    county = (metadata or {}).get("county", "") or (safe_get_first(coordinator.get_precincts(), "county", None, logger, default="") if coordinator and coordinator.get_precincts() else "")
-    year = (metadata or {}).get("year", "")
-    contests = (metadata or {}).get("contests", "")
-    election_types = (metadata or {}).get("election_types", "")
+    state = safe_get(metadata, "state", "") or (safe_get_first(coordinator.get_states(), "state", None, logger, default="") if coordinator and coordinator.get_states() else "")
+    county = safe_get(metadata, "county", "") or (safe_get_first(coordinator.get_precincts(), "county", None, logger, default="") if coordinator and coordinator.get_precincts() else "")
+    year = safe_get(metadata, "year", "")
+    contests = safe_get(metadata, "contests", "")
+    election_types = safe_get(metadata, "election_types", "")
 
     def safe_filename(s: str) -> str:
         return "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
@@ -57,18 +57,18 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
                 if years and len(years) > 0:
                     year = safe_get_first(years, "year", None, logger)
             if not year and feedback_context:
-                year = (feedback_context or {}).get("year", "")
+                year = safe_get(feedback_context, "year", "")
         if not contests or (contests or "").lower() == "unknown":
             if coordinator:
                 contests_list = coordinator.get_contests()
                 if contests_list and isinstance(contests_list, list) and len(contests_list) > 0:
                     first_contest = safe_get_first(contests_list, "contests", None, logger)
                     if isinstance(first_contest, dict):
-                        contests = first_contest.get("title", "")
+                        contests = safe_get(first_contest, "title", "")
                     else:
                         contests = str(first_contest)
             if not contests and feedback_context:
-                contests = (feedback_context or {}).get("contests", "")
+                contests = safe_get(feedback_context, "contests", "")
         if year and contests:
             break
 
@@ -137,7 +137,7 @@ def check_existing_output(metadata, cache_file=CACHE_FILE) -> Optional[dict]:
         entries = []
         # Try JSON array first
         try:
-            if content.startswith("["):
+            if content.startswith(b"["):
                 arr = orjson.loads(content)
                 if isinstance(arr, list):
                     entries = arr
@@ -155,12 +155,12 @@ def check_existing_output(metadata, cache_file=CACHE_FILE) -> Optional[dict]:
                     logger.debug(f"[DEBUG] Failed to parse line as JSON: {line!r}")
                     continue
         for entry in entries:
-            meta = (entry or {}).get("metadata", {})
+            meta = safe_get(entry, "metadata", {})
             if (
-                (meta or {}).get("state", "Unknown") == (metadata or {}).get("state", "Unknown") and
-                (meta or {}).get("county", "Unknown") == (metadata or {}).get("county", "Unknown") and
-                (meta or {}).get("year", "Unknown") == (metadata or {}).get("year", "Unknown") and
-                (meta or {}).get("contests", "Unknown") == (metadata or {}).get("contests", "Unknown")
+                safe_get(meta, "state", "Unknown") == safe_get(metadata, "state", "Unknown") and
+                safe_get(meta, "county", "Unknown") == safe_get(metadata, "county", "Unknown") and
+                safe_get(meta, "year", "Unknown") == safe_get(metadata, "year", "Unknown") and
+                safe_get(meta, "contests", "Unknown") == safe_get(metadata, "contests", "Unknown")
             ):
                 return entry
     return None
@@ -200,11 +200,13 @@ def finalize_election_output(
     state,
     county,
     context=None,
-    enable_user_feedback=False
+    enable_user_feedback=False,
+    session_id=None
 ) -> dict:
     """
     Finalize and write election output to CSV and metadata JSON.
     Output is always placed in a subfolder of the project root (parent of webapp).
+    Handles path-injection risks and robustly includes coordinator/session_id.
     """
     from ..Context_Integration.context_organizer import ContextOrganizer
     import re
@@ -225,29 +227,38 @@ def finalize_election_output(
         meta["year"] = match.group(0)
 
     organized = ContextOrganizer.organize_context(meta)
-    enriched_meta = (organized or {}).get("metadata", meta)
+    enriched_meta = safe_get(organized, "metadata", meta)
 
     # Defensive: ensure required fields
-    if not (enriched_meta or {}).get("contests", []):
+    if not safe_get(enriched_meta, "contests", []):
         enriched_meta["contests"] = contest or "Unknown"
-    if not (enriched_meta or {}).get("year", []) or not (str(enriched_meta["year"]).isdigit() and len(str(enriched_meta["year"])) == 4):
-        enriched_meta["year"] = meta.get("year", "Unknown")
-    if not (enriched_meta or {}).get("state", []):
+    if not safe_get(enriched_meta, "year", []) or not (str(safe_get(enriched_meta, "year", "")).isdigit() and len(str(safe_get(enriched_meta, "year", ""))) == 4):
+        enriched_meta["year"] = safe_get(meta, "year", "Unknown")
+    if not safe_get(enriched_meta, "state", []):
         enriched_meta["state"] = state or "Unknown"
-    if not (enriched_meta or {}).get("county", []):
+    if not safe_get(enriched_meta, "county", []):
         enriched_meta["county"] = county or "Unknown"
+    if session_id is not None:
+        enriched_meta["session_id"] = session_id
+    if coordinator is not None:
+        enriched_meta["coordinator"] = str(type(coordinator).__name__)
+
     organizer = ContextOrganizer()
     organizer.append_to_context_library({"metadata": enriched_meta})
 
-    # Build output path safely under output folder at project root
-    def safe_filename(s) -> str:
-        return "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
+    # --- Path-injection mitigation: sanitize all path parts and validate ---
+    def safe_filename(s: str) -> str:
+        # Only allow alphanumeric, space, underscore, dash
+        sanitized = "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
+        # Remove dangerous patterns
+        sanitized = sanitized.replace("..", "_").replace("/", "_").replace("\\", "_")
+        return sanitized
 
-    year = (enriched_meta or {}).get("year", "")
-    state = (enriched_meta or {}).get("state", "")
-    county = (enriched_meta or {}).get("county", "")
-    election_types = (enriched_meta or {}).get("election_types", "")
-    contests = (enriched_meta or {}).get("contests", "")
+    year = safe_get(enriched_meta, "year", "")
+    state = safe_get(enriched_meta, "state", "")
+    county = safe_get(enriched_meta, "county", "")
+    election_types = safe_get(enriched_meta, "election_types", "")
+    contests = safe_get(enriched_meta, "contests", "")
 
     parts = [
         safe_filename(state).lower() if state else "",
@@ -257,11 +268,18 @@ def finalize_election_output(
         safe_filename(contests).replace(" ", "_") if contests else "unknown_contests",
         "parsed"
     ]
-    parts = [p for p in parts if p]
+    # Remove any empty or dangerous parts
+    parts = [p for p in parts if p and p != "." and p != ".."]
+
     output_root = get_output_root()
     output_path = safe_join(output_root, *parts)
 
-    # Ensure output_path is inside output_root
+    # Ensure output_path is inside output_root (redundant with safe_join, but double-check)
+    abs_output_root = os.path.abspath(output_root)
+    abs_output_path = os.path.abspath(output_path)
+    if not abs_output_path.startswith(abs_output_root):
+        raise ValueError("Unsafe output path detected.")
+
     os.makedirs(output_path, exist_ok=True)
 
     timestamp = format_timestamp()
@@ -275,7 +293,13 @@ def finalize_election_output(
         "results",
         timestamp
     ]
-    filename = "_".join([p for p in filename_parts if p]).replace("__", "_") + ".csv"
+    filename = "_".join([p for p in filename_parts if p and p != "." and p != ".."]).replace("__", "_") + ".csv"
+    # Path-injection mitigation for filename
+    filename = safe_filename(filename)
+    # Final filename validation
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise ValueError("Unsafe filename detected.")
+
     filepath = safe_join(output_path, filename)
 
     # --- Write CSV ---
@@ -296,6 +320,10 @@ def finalize_election_output(
     metadata_out["row_count"] = len(data)
     if county:
         metadata_out["batch_manifest"] = county
+    if session_id is not None:
+        metadata_out["session_id"] = session_id
+    if coordinator is not None:
+        metadata_out["coordinator"] = str(type(coordinator).__name__)
 
     # --- Deep merge in any extra context/meta ---
     if context:
@@ -322,7 +350,6 @@ def finalize_election_output(
     if enable_user_feedback or os.environ.get("ENABLE_USER_FEEDBACK", "false").lower() == "true":
         feedback_log_path = safe_join(LOG_DIR, "user_feedback_log.jsonl")
         os.makedirs(LOG_DIR, exist_ok=True)
-        # Only one log file is needed; remove global_feedback_log_path duplication
         feedback = input("\n[Feedback] Would you like to provide feedback or corrections for this output? (Leave blank to skip):\n> ").strip()
         if feedback:
             feedback_entry = {
