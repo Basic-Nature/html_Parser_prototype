@@ -974,6 +974,13 @@ def extract_tagged_segments_with_attrs(
 
         def walk(node, parent_idx=None, heading_idx=None, panel_idx=None, **kwargs):
             kwargs.pop('session_id', None)
+            kwargs.pop('non_interactive', None)
+            kwargs.pop('debug', None)
+            kwargs.pop('allow_duplicates', None)
+            kwargs.pop('ml_threshold', None)
+            kwargs.pop('coordinator', None)
+            kwargs.pop('model_name', None)
+            kwargs.pop('use_finetuned', None)
             tag = getattr(node, "tag", None)
             tag_lower = safe_lower(tag or "")
             if not tag or tag_lower not in HTML_TAGS:
@@ -1264,13 +1271,19 @@ def load_context_cache_from_disk(filename=None) -> Dict[str, Any]:
 def save_context_cache_to_disk(context_cache, path=CONTEXT_CACHE_PATH) -> None:
     """
     Saves the entire context cache as a single JSON object (dict of dicts).
-    Always overwrites the file.
+    Always overwrites the file. Handles serialization and file errors gracefully.
     """
     logger.debug(f"[DEBUG] Saving context cache to: {path}")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    context_cache = convert_ndarrays(context_cache)
-    with open(path, "wb") as f:
-        f.write(orjson.dumps(context_cache, option=orjson.OPT_INDENT_2))
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        context_cache = convert_ndarrays(context_cache)
+        with open(path, "wb") as f:
+            try:
+                f.write(orjson.dumps(context_cache, option=orjson.OPT_INDENT_2))
+            except Exception as e:
+                logger.error(f"[ERROR] Failed to serialize context cache: {e}")
+    except Exception as e:
+        logger.error(f"[ERROR] Failed to save context cache to disk at {path}: {e}")
 
 def add_context_entry(page_hash: str, context: dict, path=CONTEXT_CACHE_PATH) -> None:
     """
@@ -1697,7 +1710,7 @@ def scan_html_for_context(
     non_interactive=False,
     session_id=None,
     allow_duplicates=False,
-    ml_threshold: float = 0.85  # Add default value for ml_threshold
+    ml_threshold: float = 0.85
 ) -> Dict[str, Any]:
     """
     Main pipeline entry: Efficient, dynamic, and feedback-driven HTML scanner.
@@ -1708,6 +1721,7 @@ def scan_html_for_context(
     if coordinator is None:
         from ..Context_Integration.context_coordinator import ContextCoordinator
         coordinator = ContextCoordinator()
+
     def extract_all_segment_html(html: str) -> List[str]:
         try:
             tree = HTMLParser(html)
@@ -1732,16 +1746,6 @@ def scan_html_for_context(
         coordinator=None,
         non_interactive=False
     ) -> List[Dict[str, Any]]:
-        """
-        Advanced diagnostics and filtering for extracted data.
-        - Handles single or multiple fields.
-        - Filters out empty, too short, too long, numeric-only, or special-char-only fields.
-        - Optionally deduplicates on a field.
-        - Allows custom validation logic.
-        - Logs detailed diagnostics and samples of filtered items.
-        - Optionally runs in parallel for large datasets.
-        - Robustly uses session_id, coordinator, and non_interactive for segment prompting.
-        """
         if not isinstance(data, list):
             logger.warning(f"[diagnostics_and_filter] Input data is not a list: {type(data)}")
             return []
@@ -1789,7 +1793,6 @@ def scan_html_for_context(
                 if custom_validator and not custom_validator(val, d):
                     skip_reason = f"custom validator failed for {f}"
                     break
-            # Dedupe logic
             if not skip_reason and dedupe_on and not allow_duplicates:
                 dedupe_val = safe_get(d, dedupe_on, None)
                 if dedupe_val in seen:
@@ -1798,7 +1801,6 @@ def scan_html_for_context(
                     seen.add(dedupe_val)
             return (d, skip_reason)
 
-        # Parallel filtering for large datasets
         if parallel and len(data) > 1000:
             with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
                 results = list(executor.map(filter_item, data))
@@ -1811,7 +1813,6 @@ def scan_html_for_context(
             else:
                 filtered.append(d)
 
-        # Logging
         if filtered:
             try:
                 avg_len = sum(
@@ -1828,7 +1829,6 @@ def scan_html_for_context(
             for d, reason in filtered_out[:log_sample_count]:
                 logger.warning(f"  [Filtered] {reason}: {str(d)[:100]}...")
 
-        # Segment prompting (if coordinator and session_id are provided and not non_interactive)
         if coordinator and hasattr(coordinator, "segment_prompt") and session_id and not non_interactive:
             for d, reason in filtered_out:
                 if coordinator is None:
@@ -1853,6 +1853,10 @@ def scan_html_for_context(
     if html is None:
         logger.warning("[SCAN_HTML] Page content is None, using empty string.")
         html = ""
+
+    # Save the raw HTML for downstream use, but do not save it in the cache until the end
+    raw_html = html
+
     segment_htmls = extract_all_segment_html(html)
     segment_hashes = [segment_hash(h) for h in segment_htmls]
     fast_path_hits = [
@@ -1881,7 +1885,7 @@ def scan_html_for_context(
         page_url = target_url
 
     context_result = {
-        "raw_html": "",
+        "raw_html": None,  # Will be set at the end
         "tagged_segments": [],
         "tagged_segments_with_attrs": [],
         "metadata": {},
@@ -1894,12 +1898,6 @@ def scan_html_for_context(
         "coordinator": str(type(coordinator).__name__) if coordinator else None,
         "non_interactive": non_interactive,
     }
-    if context_cache is not None:
-        page_hash = get_page_hash(page)
-        context_result.setdefault("page_hash", page_hash)
-        context_result.setdefault("timestamp", time.strftime("%Y-%m-%d %H:%M:%S"))
-        context_cache[page_hash] = context_result
-        save_context_cache_to_disk(context_cache)
 
     try:
         # --- 1. Get context library, pattern KB, and ML model from coordinator if available ---
@@ -1945,6 +1943,8 @@ def scan_html_for_context(
             debug=debug
         )
 
+        logger.info(f"[EXTRACTION] Extracted {len(segments_with_attrs) if isinstance(segments_with_attrs, list) else 0} segments with attributes.")
+
         if (
             not segments_with_attrs
             or (isinstance(segments_with_attrs, list) and "error_info" in segments_with_attrs[0])
@@ -1955,6 +1955,7 @@ def scan_html_for_context(
             context_result["tagged_segments"] = []
             context_result["error"] = safe_get(error_info, "error", "Unknown error")
         else:
+            # Only keep the HTML for extracted segments, not the whole page
             context_result["tagged_segments_with_attrs"] = segments_with_attrs
             context_result["tagged_segments"] = [safe_get(seg, "html", "") for seg in segments_with_attrs]
 
@@ -2085,7 +2086,6 @@ def scan_html_for_context(
                     election_types.append(etype)
         context_result["election_types"] = election_types
 
-        # Defensive: Ensure election_types is always a list
         if "election_types" not in context_result or not isinstance(context_result["election_types"], list):
             context_result["election_types"] = []
 
@@ -2139,7 +2139,6 @@ def scan_html_for_context(
                         item["year"] = year
                     if "type_" not in item or item["type_"] is None:
                         item["type_"] = type_
-                    # Ensure type_ and election_types are synced
                     _sync_type_and_election_types(item, fallback_types=[type_] if type_ else None, fallback_type=type_)
 
         best_year = safe_get_first([safe_get(c, "year", None) for c in contests if safe_get(c, "year", None)], "best_year", None, logger)
@@ -2147,7 +2146,6 @@ def scan_html_for_context(
         for section in ["tables", "candidate_panels", "location_panels", "ballot_types"]:
             propagate_year_type(context_result.get(section, []), best_year, best_type)
 
-        # Defensive: Ensure all lists are present and are lists, even if empty
         for key in [
             "contests", "panels", "tables", "candidate_panels", "location_panels",
             "headings", "ballot_types", "results_timestamps", "party_labels", "vote_methods"
@@ -2155,7 +2153,6 @@ def scan_html_for_context(
             if key not in context_result or not isinstance(context_result[key], list):
                 context_result[key] = []
 
-        # Defensive: If any required section is empty, log a warning (for downstream [0] access)
         required_sections = ["contests", "panels", "tables", "candidate_panels", "location_panels"]
         for section in required_sections:
             if not context_result.get(section):
@@ -2322,15 +2319,26 @@ def scan_html_for_context(
         logger.error(f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}")
         context_result["error"] = f"[SCAN ERROR] HTML parsing failed: {e}\n{tb}"
 
+    # --- Only now save to the cache, after extraction is complete ---
+    context_result["raw_html"] = raw_html  # Save the raw HTML for downstream use
     if context_cache is not None:
+        context_result.setdefault("page_hash", page_hash)
+        context_result.setdefault("timestamp", time.strftime("%Y-%m-%d %H:%M:%S"))
         context_cache[page_hash] = context_result
-        save_context_cache_to_disk(context_cache)
+        logger.debug(f"[CACHE] Saving context cache for page_hash={page_hash} with {len(context_result.get('tagged_segments_with_attrs', []))} segments.")
+        try:
+            save_context_cache_to_disk(context_cache)
+        except Exception as e:
+            logger.error(f"[ERROR] Exception during save_context_cache_to_disk: {e}")
+            raise
+
     if embedding_cache_hits and not embedding_cache_misses:
         logger.info(f"[bold green][CACHE] All segment embeddings loaded from cache.[/bold green]")
     elif embedding_cache_hits:
         logger.warning(f"[yellow][CACHE] {len(embedding_cache_hits)} embeddings loaded from cache, {len(embedding_cache_misses)} computed.[/yellow]")
     logger.info(f"[PROFILE] scan_html_for_context completed in {time.time() - start_time:.2f} seconds.")
 
+    # --- DOM Parts and downstream enrichment ---
     dom_parts = {
         "contests": safe_get(context_result, "contests", []),
         "panels": safe_get(context_result, "panels", []),
@@ -2355,7 +2363,6 @@ def scan_html_for_context(
         "coordinator": str(type(coordinator).__name__) if coordinator else None,
         "non_interactive": non_interactive,
     }
-    # Defensive: Ensure all dom_parts lists are lists, even if empty
     for key in [
         "contests", "panels", "tables", "candidate_panels", "location_panels",
         "headings", "ballot_types", "results_timestamps", "party_labels", "vote_methods",
@@ -2365,29 +2372,21 @@ def scan_html_for_context(
         if key not in dom_parts or not isinstance(dom_parts[key], list):
             dom_parts[key] = []
 
-    # --- Advanced DOM validation and enrichment ---
     valid = validate_dom_parts(dom_parts)
     if not valid:
         logger.error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
 
     context_result["dom_parts"] = dom_parts
 
-    # --- Advanced DOM enrichment and organization for downstream consumers ---
     organizer = ContextOrganizer()
     segments = dom_parts.get("tagged_segments_with_attrs", [])
     if segments:
         dom_tree = organizer.build_dom_tree(segments)
         context_result["dom_tree"] = dom_tree
-
-        # Group nodes by label for fast lookup and context enrichment
         label_groups = organizer.group_nodes_by_label(dom_tree["nodes"], label_field="ml_label")
         context_result["dom_label_groups"] = label_groups
-
-        # Panels and tables association for context-aware extraction
         panels_and_tables = organizer.get_panels_and_tables(dom_tree)
         context_result["dom_panels_and_tables"] = panels_and_tables
-
-        # Attach enrichment to each segment for downstream context
         for seg in segments:
             seg["dom_node"] = dom_tree["nodes"][seg["_idx"]] if seg["_idx"] < len(dom_tree["nodes"]) else None
             seg["label_group"] = label_groups.get(safe_get(seg, "ml_label", ""), [])
@@ -2396,8 +2395,6 @@ def scan_html_for_context(
                 if seg["_idx"] in safe_get(panel, "panel_indices", []) or seg["_idx"] in safe_get(panel, "table_indices", []):
                     seg["panel_group"] = panel
                     break
-
-        # Add HTML samples for review/debug
         N = min(5, len(dom_tree["nodes"]))
         context_result["dom_node_html_samples"] = [
             organizer.extract_html_by_idx(dom_tree["nodes"], i, safe_get(context_result, "raw_html", ""))
@@ -2407,7 +2404,6 @@ def scan_html_for_context(
             organizer.extract_subtree_html(dom_tree["nodes"], i, safe_get(context_result, "raw_html", ""))
             for i in range(N)
         ]
-
         logger.info(f"[DOM ENRICHMENT] Added dom_tree, label_groups, panels_and_tables, and HTML samples to context_result.")
 
     if not dom_parts or not dom_parts.get("tagged_segments_with_attrs"):
@@ -2415,7 +2411,6 @@ def scan_html_for_context(
     else:
         logger.debug(f"[DOM_PARTS] dom_parts keys: {list(dom_parts.keys())}, tagged_segments_with_attrs count: {len(dom_parts['tagged_segments_with_attrs'])}")
 
-    # --- Coordinator-driven organization and enrichment ---
     if coordinator is not None:
         organized = coordinator.organize_and_enrich(context_result)
         if not organized or "dom_parts" not in organized or not organized["dom_parts"]:
@@ -2426,7 +2421,6 @@ def scan_html_for_context(
                 dom_parts_keys = list(organized["dom_parts"].keys())
             logger.debug(f"[DOM_PARTS] dom_parts successfully organized with keys: {dom_parts_keys}")
 
-    # --- Advanced debug logging for DOM review ---
     if debug and "dom_tree" in context_result:
         dom_tree = context_result["dom_tree"]
         nodes = safe_get(dom_tree, "nodes", [])
@@ -2440,21 +2434,17 @@ def scan_html_for_context(
             subtree_html = organizer.extract_subtree_html(nodes, idx, safe_get(context_result, "raw_html", ""))
             logger.info(f"[DOM DEBUG] Subtree HTML for node {idx}: {subtree_html[:200]}")
 
-    # Sync contests
     for contest in safe_get(context_result, "contests", []):
         _sync_type_and_election_types(contest)
 
-    # Get best contest type/election_types for fallback
     best_contest = safe_get(context_result, "contests", [{}])[0] if safe_get(context_result, "contests", []) else {}
     best_type = safe_get(best_contest, "type_", None)
     best_election_types = safe_get(best_contest, "election_types", [])
 
-    # Sync other sections
     for section in ["tables", "candidate_panels", "location_panels", "ballot_types"]:
         for item in safe_get(context_result, section, []):
             _sync_type_and_election_types(item, fallback_types=best_election_types, fallback_type=best_type)
 
-    # Sync top-level context_result
     _sync_type_and_election_types(context_result, fallback_types=best_election_types, fallback_type=best_type)
-
+    logger.debug("[DEBUG] scan_html_for_context is about to return")
     return context_result

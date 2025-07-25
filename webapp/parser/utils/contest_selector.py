@@ -8,7 +8,8 @@ from ..utils.user_prompt import UserPrompt, PromptCancelled
 from collections import defaultdict
 from difflib import get_close_matches
 from ..Context_Integration.Context_Library.constants import (
-    ELECTION_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP
+    ELECTION_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    ELECTION_TYPE_REGEX_MAP, OFFICE_KEYWORDS
     )
 
 logger = SharedLogger()
@@ -50,8 +51,9 @@ def extract_year_from_title(title) -> Optional[int]:
 
 def infer_election_type(title, context, contest, all_contests, coordinator) -> Optional[str]:
     """
-    Dynamically infer the election type for a contest using:
-    - Regex and fuzzy matching on the title
+    Robustly infer the election type for a contest using:
+    - Regex and keyword matching on the title
+    - Fuzzy matching against known types
     - Context clues (year, known election dates, context type)
     - ML/NER entity extraction
     - Most common type among all contests for the same year/county
@@ -59,29 +61,35 @@ def infer_election_type(title, context, contest, all_contests, coordinator) -> O
     if not title:
         return None
     title_lower = safe_lower(title)
-    # 1. Regex for common election types
-    regex_types = re.findall(
-        r"\b(general|primary|special|runoff|municipal|presidential|school|bond|proposition|referendum)\b",
-        title_lower
-    )
-    if regex_types:
-        return safe_capitalize(regex_types[0] or "")
-    # 2. Fuzzy match against ELECTION_TYPES
+
+    # --- 1. Robust regex/keyword matching for common types ---
+    for pattern, forced_type in ELECTION_TYPE_REGEX_MAP:
+        if re.search(pattern, title_lower):
+            if forced_type:
+                return forced_type
+            match = re.search(pattern, title_lower)
+            if match and match.lastindex is not None:
+                return safe_capitalize(match.group(1))
+            elif match:
+                return safe_capitalize(match.group(0))
+
+    # --- 2. Fuzzy match against ELECTION_TYPES ---
     close = get_close_matches(title_lower, [safe_lower(t or "") for t in ELECTION_TYPES], n=1, cutoff=0.8)
     if close:
         return safe_capitalize(close[0])
-    # 3. Use ML/NER
+
+    # --- 3. ML/NER entity extraction ---
     if coordinator:
         ents = (coordinator or ContextCoordinator()).extract_entities(title)
         for ent, label in ents:
             if label == "EVENT" and safe_lower(ent or "") in [safe_lower(et or "") for et in ELECTION_TYPES]:
                 return safe_capitalize(ent)
-    # 4. Context clues: if context has a type, use it
+
+    # --- 4. Context clues: if context has a type, use it ---
     if context and safe_get(context, "type_"):
         return safe_capitalize(safe_get(context, "type_") or "")
-    # 5. If contest has a date, and it matches a known general/primary election date, infer type
-    # (You can expand this with a lookup table of known election dates if available)
-    # 6. Most common type among all contests for this year/county
+
+    # --- 5. Most common type among all contests for this year/county ---
     year = safe_get(contest, "year")
     county = safe_get(contest, "county")
     type_counts = defaultdict(int)
@@ -95,6 +103,12 @@ def infer_election_type(title, context, contest, all_contests, coordinator) -> O
     if type_counts:
         most_common = max(type_counts.items(), key=lambda x: x[1])[0]
         return safe_capitalize(most_common or "")
+
+    # --- 6. Fallback: try to infer from common office/role keywords ---
+    for kw, typ in OFFICE_KEYWORDS:
+        if kw in title_lower:
+            return typ
+
     return None
 
 def fuzzy_county_match(contest_county, norm_county, known_county_to_precincts) -> bool:
@@ -177,6 +191,10 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     if score < threshold:
         logger.debug(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type_: {ctype}")
         logger.info(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, total={score:.2f}")
+    score = 0.25 * year_score + 0.15 * type_score + 0.45 * title_score + 0.15 * ml_score
+    # If year and title are strong, allow type_ to be unknown
+    if year_score == 1.0 and title_score == 1.0 and score >= 0.55:
+        return True
     return score >= threshold
 
 def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "ContextCoordinator", context: dict, max_loops: int = 3, threshold: float = 0.85) -> List[Dict[str, Any]]:
@@ -189,12 +207,22 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
     for loop in range(max_loops):
         verified = []
         for c in contests:
-            if ml_verify_contest(c, coordinator, context, threshold=threshold):
-                verified.append(c)
+            # Lower threshold on last loop
+            if loop == max_loops - 1:
+                if ml_verify_contest(c, coordinator, context, threshold=0.5):
+                    verified.append(c)
+            else:
+                if ml_verify_contest(c, coordinator, context, threshold=threshold):
+                    verified.append(c)
         if verified:
             logger.info(f"[CONTEST SELECTOR] Feedback loop {loop+1}: {len(verified)} contests passed ML/NER verification.")
             return verified
         logger.warning(f"[CONTEST SELECTOR] Feedback loop {loop+1}: No contests passed ML/NER verification. Retrying...")
+    # Fallback: select contests with strong title match
+    fallback_verified = [c for c in contests if safe_get(c, "title") and len(safe_get(c, "title")) > 10]
+    if fallback_verified:
+        logger.info("[CONTEST SELECTOR] Fallback: selecting contests by title only.")
+        return fallback_verified
     # If still ambiguous, prompt user for clarification
     logger.warning("[yellow]Unable to confidently identify valid contests after feedback loop. Please clarify selection.[/yellow]")
     grouped = defaultdict(list)
@@ -405,7 +433,23 @@ def select_contest(
         if key not in seen:
             unique_contests.append(c)
             seen.add(key)
-    filtered_contests = unique_contests
+    unique_contests = []
+    seen = set()
+    for c in filtered_contests:
+        norm_title = normalize_contest(safe_get(c, "title", "") or "")
+        key = (safe_get(c, "year", ""), safe_get(c, "type_", ""), norm_title)
+        if key not in seen:
+            unique_contests.append(c)
+            seen.add(key)
+    # --- Deduplicate and sort by year, type, title ---
+    filtered_contests = sorted(
+        unique_contests,
+        key=lambda c: (
+            safe_get(c, "year", ""),
+            safe_get(c, "type_", ""),
+            safe_lower(safe_get(c, "title", ""))
+        )
+    )
 
     if not filtered_contests:
         logger.warning("[yellow]No valid contests detected after deduplication. Skipping.[/yellow]")

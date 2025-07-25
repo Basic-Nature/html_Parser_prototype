@@ -602,17 +602,6 @@ class ContextCoordinator(object):
         with open(log_path, "ab") as f:
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
-    def _extract_with_strategies(self, text, strategies) -> tuple:
-        """
-        Try a list of (method, function) strategies on text, returning the first successful result.
-        Each function should return (value, score, method, result) or None.
-        """
-        for method, func in strategies:
-            result = func(text)
-            if result and safe_get_first(result, "strategy_result", None, logger):
-                return result + (method,)
-        return (None, 0.0, "fail", "none")
-
     def _safe_get(self, dct, key, default=None) -> Optional[Any]:
         """Safely get a key from a dict, returning default if not a dict or key missing."""
         return dct.get(key, default) if isinstance(dct, dict) else default
@@ -1663,58 +1652,19 @@ class ContextCoordinator(object):
         """
         for method, func in strategies:
             result = func(text)
-            if result and safe_get_first(result, "strategy_result", None, logger):
-                # Ensure result is a 5-tuple: (value, label, score, method, result)
-                if len(result) == 5:
-                    # Overwrite method to ensure consistency
-                    return (
-                        safe_get_first(result, "value", None, logger, default=None),
-                        safe_get_first(result, "label", None, logger, default=None),
-                        safe_get_first(result, "score", None, logger, default=None),
-                        method,
-                        safe_get_first(result, "result", None, logger, default=None)
-                    )
-                elif len(result) == 4:
-                    # Insert None as label, force method
-                    return (
-                        safe_get_first(result, "value", None, logger, default=None),
-                        None,
-                        safe_get_first(result, "score", None, logger, default=None),
-                        method,
-                        safe_get_first(result, "result", None, logger, default=None)
-                    )
-                elif len(result) == 3:
-                    return (
-                        safe_get_first(result, "value", None, logger, default=None),
-                        None,
-                        safe_get_first(result, "score", None, logger, default=None),
-                        method,
-                        safe_get_first(result, "result", None, logger, default=None)
-                    )
-                elif len(result) == 2:
-                    return (
-                        safe_get_first(result, "value", None, logger, default=None),
-                        None,
-                        safe_get_first(result, "score", None, logger, default=None),
-                        method,
-                        "pass"
-                    )
-                elif len(result) == 1:
-                    return (
-                        safe_get_first(result, "value", None, logger, default=None),
-                        None,
-                        1.0,
-                        method,
-                        "pass"
-                    )
-                else:
-                    return (
-                        safe_get_first(result, "value", None, logger, default=None),
-                        None,
-                        1.0,
-                        method,
-                        "pass"
-                    )
+            if result and isinstance(result, (tuple, list)) and len(result) > 0:
+                # Unpack by position, fill missing fields with defaults
+                value = result[0] if len(result) > 0 else None
+                label = result[1] if len(result) > 1 else None
+                score = result[2] if len(result) > 2 else 1.0
+                result_val = result[4] if len(result) > 4 else (result[3] if len(result) > 3 else "pass")
+                return (
+                    value,
+                    label,
+                    score,
+                    method,
+                    result_val
+                )
         return (None, None, 0.0, "fail", "none")
 
     def score_header_ml(self, title: str, context: dict = None) -> float:
