@@ -34,6 +34,17 @@ def get_log_level() -> str:
     """Get log level from environment or default to INFO."""
     return os.environ.get("LOG_LEVEL", "INFO").upper()
 
+def safe_getvalue(file_obj: StringIO) -> str:
+    """
+    Safely call .getvalue() on a file-like object.
+    Returns the string value or an empty string if an error occurs.
+    """
+    try:
+        return file_obj.getvalue()
+    except Exception as e:
+        logging.error(f"Error getting value from StringIO: {e}")
+        return ""
+
 class RichConsoleProxy(Console):
     """
     Proxy class to provide a Console-like API using SharedLogger.
@@ -80,10 +91,9 @@ class RichConsoleProxy(Console):
         """
         Render a rich object (Table, Panel, Progress, etc.) to plain text for webapp streaming.
         """
-        # Use a temporary Console to capture output as string
         temp_console = Console(file=StringIO(), force_terminal=True, color_system=None, width=100)
         temp_console.print(obj)
-        output = temp_console.file.getvalue()
+        output = safe_getvalue(temp_console.file)
         return output
 
     def rule(self, title: str = "", **kwargs) -> None:
