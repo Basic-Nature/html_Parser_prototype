@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from typing import Optional
 from ..utils.shared_logger import SharedLogger
-from ..utils.shared_logic import safe_get_first, safe_items, safe_get
+from ..utils.shared_logic import safe_get_first, safe_items, safe_get, safe_lower
 from ..config import CONTEXT_DB_PATH, BASE_DIR, LOG_DIR
 logger = SharedLogger()
 
@@ -33,33 +33,48 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
     """
     Build output path using organized context metadata.
     If any key info is missing, use feedback loop (ML/NER/user prompt) to resolve.
+    Safeguards all string operations and path parts.
     """
     if coordinator is None:
-        from ..Context_Integration.context_coordinator import ContextCoordinator
-        coordinator = ContextCoordinator()
+        try:
+            from ..Context_Integration.context_coordinator import ContextCoordinator
+            coordinator = ContextCoordinator()
+        except Exception as e:
+            logger.warning(f"[OUTPUT_UTILS] Could not initialize coordinator: {e}")
+            coordinator = None
+
     parts = []
     # Use coordinator to try to fill missing info if available
-    state = safe_get(metadata, "state", "") or (safe_get_first(coordinator.get_states(), "state", None, logger, default="") if coordinator and coordinator.get_states() else "")
-    county = safe_get(metadata, "county", "") or (safe_get_first(coordinator.get_precincts(), "county", None, logger, default="") if coordinator and coordinator.get_precincts() else "")
+    state = safe_get(metadata, "state", "") or (
+        safe_get_first(getattr(coordinator, "get_states", lambda: [])(), "state", None, logger, default="") if coordinator and hasattr(coordinator, "get_states") and coordinator.get_states() else ""
+    )
+    county = safe_get(metadata, "county", "") or (
+        safe_get_first(getattr(coordinator, "get_precincts", lambda: [])(), "county", None, logger, default="") if coordinator and hasattr(coordinator, "get_precincts") and coordinator.get_precincts() else ""
+    )
     year = safe_get(metadata, "year", "")
     contests = safe_get(metadata, "contests", "")
     election_types = safe_get(metadata, "election_types", "")
 
     def safe_filename(s: str) -> str:
-        return "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
+        try:
+            sanitized = "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
+            sanitized = sanitized.replace("..", "_").replace("/", "_").replace("\\", "_")
+            return sanitized
+        except Exception:
+            return "Unknown"
 
     # Feedback loop for missing/unknown info
     max_loops = 3
     for _ in range(max_loops):
         if not year or not str(year).isdigit() or len(str(year)) != 4:
-            if coordinator:
+            if coordinator and hasattr(coordinator, "get_years"):
                 years = coordinator.get_years()
                 if years and len(years) > 0:
                     year = safe_get_first(years, "year", None, logger)
             if not year and feedback_context:
                 year = safe_get(feedback_context, "year", "")
-        if not contests or (contests or "").lower() == "unknown":
-            if coordinator:
+        if not contests or safe_lower(contests) == "unknown":
+            if coordinator and hasattr(coordinator, "get_contests"):
                 contests_list = coordinator.get_contests()
                 if contests_list and isinstance(contests_list, list) and len(contests_list) > 0:
                     first_contest = safe_get_first(contests_list, "contests", None, logger)
@@ -83,17 +98,17 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
     county_safe = safe_filename(county)
     state_safe = safe_filename(state)
     if contests:
-        parts.append((contests_safe or "").lower())
+        parts.append(safe_lower(contests_safe or ""))
     if state:
-        parts.append((state_safe or "").lower())
+        parts.append(safe_lower(state_safe or ""))
     if county:
-        parts.append((county_safe or "").lower())
+        parts.append(safe_lower(county_safe or ""))
     if year and str(year).isdigit() and len(str(year)) == 4:
         parts.append(str(year))
     else:
         parts.append("Unknown")
     if election_types:
-        parts.append(safe_filename(election_types).lower())
+        parts.append(safe_lower(safe_filename(election_types)))
     if contests:
         safe_contests = "".join([c if c.isalnum() or c in " _-" else "_" for c in str(contests)])
         parts.append(safe_contests.replace(" ", "_"))
@@ -104,8 +119,12 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
 
     # Always use output folder at project root
     output_root = get_output_root()
-    path = safe_join(output_root, *parts)
-    os.makedirs(path, exist_ok=True)
+    try:
+        path = safe_join(output_root, *parts)
+        os.makedirs(path, exist_ok=True)
+    except Exception as e:
+        logger.error(f"[OUTPUT_UTILS] Failed to create output path: {e}")
+        path = output_root
     return path
 
 def format_timestamp(fmt="%Y%m%d_%H%M%S") -> str:
@@ -114,14 +133,23 @@ def format_timestamp(fmt="%Y%m%d_%H%M%S") -> str:
 def update_output_cache(metadata, output_path, cache_file=CACHE_FILE) -> None:
     """
     Append output metadata to a cache file for fast lookup and deduplication.
+    Robustly handles orjson serialization and file writing.
     """
     cache_entry = {
         "timestamp": format_timestamp(),
         "output_path": output_path,
         "metadata": metadata,
     }
-    with open(cache_file, "a", encoding="utf-8") as f:
-        f.write(orjson.dumps(cache_entry) + b"\n")
+    try:
+        serialized = orjson.dumps(cache_entry)
+    except Exception as e:
+        logger.error(f"[OUTPUT_UTILS] Failed to serialize cache entry: {e}")
+        serialized = str(cache_entry).encode("utf-8")
+    try:
+        with open(cache_file, "ab") as f:
+            f.write(serialized + b"\n")
+    except Exception as e:
+        logger.error(f"[OUTPUT_UTILS] Failed to write to cache file: {e}")
 
 def check_existing_output(metadata, cache_file=CACHE_FILE) -> Optional[dict]:
     """

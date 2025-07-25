@@ -1,64 +1,72 @@
-# handlers/states/pennsylvania/pennsylvania.py
-# ==============================================================
-# Handler for Pennsylvania election result pages that provide
-# downloadable CSV files (e.g., county-level reporting portals).
-# ==============================================================
-
 import os
 from pathlib import Path
 import csv
 from ....utils.shared_logger import SharedLogger
-
+from ....utils.shared_logic import (
+    safe_get, safe_lower, safe_strip, safe_isdigit, 
+    safe_click, safe_wait_for_timeout, safe_inner_text, safe_replace
+)
+from ....utils.browser_utils import safe_query_selector_all
 from ....utils.output_utils import finalize_election_output
 from ....config import CONTEXT_DB_PATH, BASE_DIR
+
 logger = SharedLogger()
 
-# Use BASE_DIR and INPUT_DIR for robust path handling
-
-INPUT_DIR = os.path.join(BASE_DIR, "input")
-OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+INPUT_DIR = Path(os.path.join(BASE_DIR, "input"))
+OUTPUT_DIR = Path(os.path.join(BASE_DIR, "output"))
 
 def apply_navigation_steps(page, config):
-    steps = config.get("nav_actions", [])
+    steps = safe_get(config, "nav_actions", [])
     for step in steps:
         try:
-            if step["type_"] == "click":
-                el = page.query_selector(step["selector"])
+            step_type = safe_get(step, "type_", "")
+            selector = safe_get(step, "selector", "")
+            delay = safe_get(step, "delay", 1000)
+            seconds = safe_get(step, "seconds", 1)
+            if step_type == "click":
+                el = safe_query_selector_all(page, selector)
+                el = el[0] if el else None
                 if el:
-                    logger.info(f"[NAV] Clicking {step['selector']}")
-                    el.click()
-                    page.wait_for_timeout(step.get("delay", 1000))
-            elif step["type_"] == "wait":
-                logger.info(f"[NAV] Waiting {step['seconds']}s")
-                page.wait_for_timeout(step["seconds"] * 1000)
+                    logger.info(f"[NAV] Clicking {selector}")
+                    safe_click(el, logger)
+                    safe_wait_for_timeout(page, delay, logger)
+            elif step_type == "wait":
+                logger.info(f"[NAV] Waiting {seconds}s")
+                safe_wait_for_timeout(page, seconds * 1000, logger)
         except Exception as e:
             logger.warning(f"[NAV] Step failed: {step} — {e}")
 
 def parse(page, html_context=None):
-    html_context = html_context or {}
-    config = html_context.get("config", {})
+    html_context = html_context if isinstance(html_context, dict) else {}
+    config = safe_get(html_context, "config", {})
     logger.info("[PA Handler] Contest routing active — using shared contest context with state-level extraction.")
 
     # STEP 1: Navigation (if needed)
     apply_navigation_steps(page, config)
 
-    header_text = html_context.get("selected_race", "Unknown")
+    header_text = safe_get(html_context, "selected_race", "Unknown")
     logger.warning(f"[bold yellow]Detected election:[/bold yellow] {header_text}")
-    resp = input("Do you want to continue parsing this election's contests? (y/n): ").strip().lower()
+    resp = safe_lower(safe_strip(input("Do you want to continue parsing this election's contests? (y/n): ")))
     if resp != "y":
         logger.info("[cyan]Election skipped. Exploring other available elections...[/cyan]")
         try:
-            elections_toggle = page.query_selector("a[aria-label='Elections']")
+            # Update to use safe_query_selector_all for elections_toggle
+            elections_toggle = safe_query_selector_all(page, "a[aria-label='Elections']")
+            elections_toggle = elections_toggle[0] if elections_toggle else None
             if elections_toggle:
-                elections_toggle.click()
-                page.wait_for_timeout(1000)
-                race_links = page.query_selector_all("ul.dropdown-menu li a")
+                safe_click(elections_toggle, logger)
+                safe_wait_for_timeout(page, 1000, logger)
+                race_links = safe_query_selector_all(page, "ul.dropdown-menu li a")
                 for i, link in enumerate(race_links):
-                    label = link.inner_text().strip()
+                    label = safe_strip(safe_inner_text(link, logger))
                     logger.info(f"[{i}] {label}")
-                choice = input("Select an election to load by index: ").strip()
-                race_links[int(choice)].click()
-                page.wait_for_timeout(3000)
+                choice = safe_strip(input("Select an election to load by index: "))
+                if safe_isdigit(choice):
+                    idx = int(choice)
+                    safe_click(race_links[idx], logger)
+                    safe_wait_for_timeout(page, 3000, logger)
+                else:
+                    logger.warning("[PA] Invalid index input for election selection.")
             else:
                 logger.warning("[PA] Elections dropdown not found.")
         except Exception as e:
@@ -68,13 +76,14 @@ def parse(page, html_context=None):
     apply_navigation_steps(page, config)
 
     # Click into County Breakdown view if flagged by scanner
-    if config.get("requires_county_click"):
+    if safe_get(config, "requires_county_click", False):
         try:
             logger.info("[PA] Clicking County Breakdown link based on scanner signal...")
-            county_link = page.query_selector("a:has-text('County Breakdown')")
+            county_link = safe_query_selector_all(page, "a:has-text('County Breakdown')")
+            county_link = county_link[0] if county_link else None
             if county_link:
-                county_link.click()
-                page.wait_for_timeout(4000)
+                safe_click(county_link, logger)
+                safe_wait_for_timeout(page, 4000, logger)
                 logger.info("[PA] County-level view loaded.")
             else:
                 logger.warning("[PA] County Breakdown link not found.")
@@ -82,7 +91,12 @@ def parse(page, html_context=None):
             logger.warning(f"[PA] Failed to click County Breakdown link: {e}")
 
     # Look for a CSV file in the input directory
-    csv_files = [f for f in os.listdir(INPUT_DIR) if f.lower().endswith(".csv")]
+    try:
+        csv_files = [f for f in os.listdir(INPUT_DIR) if safe_lower(f).endswith(".csv")]
+    except Exception as e:
+        logger.error(f"[ERROR] Could not list input directory: {e}")
+        return [], [], "Pennsylvania (CSV not found)", {}
+
     if not csv_files:
         logger.error(f"[ERROR] No CSV files found in input directory: {INPUT_DIR}")
         return [], [], "Pennsylvania (CSV not found)", {}
@@ -93,7 +107,14 @@ def parse(page, html_context=None):
         for i, fname in enumerate(csv_files):
             logger.info(f"  [bold cyan][{i}][/bold cyan] {fname}")
         try:
-            idx = int(input("Select CSV file index: ").strip())
+            idx_input = safe_strip(input("Select CSV file index: "))
+            if not safe_isdigit(idx_input):
+                logger.error("[ERROR] Invalid selection (not a digit).")
+                return [], [], "Pennsylvania (CSV selection error)", {}
+            idx = int(idx_input)
+            if idx < 0 or idx >= len(csv_files):
+                logger.error("[ERROR] Index out of range.")
+                return [], [], "Pennsylvania (CSV selection error)", {}
             csv_path = INPUT_DIR / csv_files[idx]
         except Exception:
             logger.error("[ERROR] Invalid selection.")
@@ -119,12 +140,32 @@ def parse(page, html_context=None):
                 data.append(row)
 
             # Compute a grand total row for numeric columns
-            numeric_columns = [h for h in headers if all(row.get(h, '').replace(',', '').replace('.', '').isdigit() for row in data)]
+            numeric_columns = [
+                h for h in headers
+                if all(
+                    safe_isdigit(
+                        safe_strip(
+                            safe_lower(
+                                safe_replace(
+                                    safe_replace(
+                                        safe_get(row, h, ''), ',', ''
+                                    ), '.', ''
+                                )
+                            )
+                        )
+                    ) for row in data
+                )
+            ]
             totals = {h: 0 for h in numeric_columns}
             for row in data:
                 for h in numeric_columns:
                     try:
-                        totals[h] += int(row.get(h, "0").replace(",", "").strip())
+                        val = safe_strip(
+                            safe_lower(
+                                safe_replace(safe_get(row, h, "0"), ",", "")
+                            )
+                        )
+                        totals[h] += int(val) if safe_isdigit(val) else 0
                     except Exception:
                         continue
 
@@ -135,20 +176,20 @@ def parse(page, html_context=None):
                 totals_row[headers[0]] = "Grand Total"
             data.append(totals_row)
 
-        contest = header_text or "Pennsylvania County Results"
+        contest = header_text if header_text else "Pennsylvania County Results"
         metadata = {
             "state": "PA",
-            "county": html_context.get("county", "Unknown"),
+            "county": safe_get(html_context, "county", "Unknown"),
             "handler": "pennsylvania",
-            "race": contest or "Unknown"
+            "race": contest if contest else "Unknown"
         }
 
         from ....Context_Integration.context_organizer import ContextOrganizer
         organized = ContextOrganizer.organize_context(metadata)
-        metadata = organized.get("metadata", metadata)
+        metadata = safe_get(organized, "metadata", metadata)
         result = finalize_election_output(headers, data, contest, metadata)
-        contest = result.get("contest", contest)
-        metadata = result.get("metadata", metadata)
+        contest = safe_get(result, "contest", contest)
+        metadata = safe_get(result, "metadata", metadata)
         return headers, data, contest, metadata
 
     except Exception as e:

@@ -2,7 +2,7 @@ import re
 from ..utils.shared_logger import SharedLogger
 from ..utils.shared_logic import (
     normalize_state_name, normalize_county_name, _sync_type_and_election_types,
-    safe_get, safe_items
+    safe_get, safe_items, safe_lower, safe_split, safe_capitalize, safe_strip
 )
 from ..utils.user_prompt import UserPrompt, PromptCancelled
 from collections import defaultdict
@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
 def extract_year_from_title(title) -> Optional[int]:
-    import re
     if not title:
         return None
     # Find all years
@@ -26,7 +25,7 @@ def extract_year_from_title(title) -> Optional[int]:
     if not years:
         return None
     # Lowercase title for type search
-    title_lower = (title or "").lower()
+    title_lower = safe_lower(title)
     # Find all valid types and their positions
     type_positions = []
     for t in ELECTION_TYPES:
@@ -59,24 +58,27 @@ def infer_election_type(title, context, contest, all_contests, coordinator) -> O
     """
     if not title:
         return None
-    title_lower = (title or "").lower()
+    title_lower = safe_lower(title)
     # 1. Regex for common election types
-    regex_types = re.findall(r"\b(general|primary|special|runoff|municipal|presidential|school|bond|proposition|referendum)\b", title_lower)
+    regex_types = re.findall(
+        r"\b(general|primary|special|runoff|municipal|presidential|school|bond|proposition|referendum)\b",
+        title_lower
+    )
     if regex_types:
-        return (regex_types[0] or "").capitalize()
+        return safe_capitalize(regex_types[0] or "")
     # 2. Fuzzy match against ELECTION_TYPES
-    close = get_close_matches(title_lower, [(t or "").lower() for t in ELECTION_TYPES], n=1, cutoff=0.8)
+    close = get_close_matches(title_lower, [safe_lower(t or "") for t in ELECTION_TYPES], n=1, cutoff=0.8)
     if close:
-        return close[0].capitalize()
+        return safe_capitalize(close[0])
     # 3. Use ML/NER
     if coordinator:
         ents = (coordinator or ContextCoordinator()).extract_entities(title)
         for ent, label in ents:
-            if label == "EVENT" and (ent or "").lower() in [(et or "").lower() for et in ELECTION_TYPES]:
-                return ent.capitalize()
+            if label == "EVENT" and safe_lower(ent or "") in [safe_lower(et or "") for et in ELECTION_TYPES]:
+                return safe_capitalize(ent)
     # 4. Context clues: if context has a type, use it
     if context and safe_get(context, "type_"):
-        return (safe_get(context, "type_") or "").capitalize()
+        return safe_capitalize(safe_get(context, "type_") or "")
     # 5. If contest has a date, and it matches a known general/primary election date, infer type
     # (You can expand this with a lookup table of known election dates if available)
     # 6. Most common type among all contests for this year/county
@@ -84,11 +86,15 @@ def infer_election_type(title, context, contest, all_contests, coordinator) -> O
     county = safe_get(contest, "county")
     type_counts = defaultdict(int)
     for c in all_contests:
-        if safe_get(c, "year") == year and (safe_get(c, "county") or "").lower() == (county or "").lower() and (safe_get(c, "type_") or "").lower():
-            type_counts[(safe_get(c, "type_") or "").lower()] += 1
+        if (
+            safe_get(c, "year") == year and
+            safe_lower(safe_get(c, "county") or "") == safe_lower(county or "") and
+            safe_lower(safe_get(c, "type_") or "")
+        ):
+            type_counts[safe_lower(safe_get(c, "type_") or "")] += 1
     if type_counts:
         most_common = max(type_counts.items(), key=lambda x: x[1])[0]
-        return (most_common or "").capitalize()
+        return safe_capitalize(most_common or "")
     return None
 
 def fuzzy_county_match(contest_county, norm_county, known_county_to_precincts) -> bool:
@@ -115,8 +121,8 @@ def fuzzy_county_match(contest_county, norm_county, known_county_to_precincts) -
     return False
 
 def normalize_race_name(name) -> str:
-    import re
-    return re.sub(r"\W+", "", (name or "").strip().lower()) if name else ""
+    # Use safe_lower and safe_strip for robust handling
+    return re.sub(r"\W+", "", safe_lower(safe_strip(name))) if name else ""
 
 def normalize_contest(title: str) -> str:
     if not title:
@@ -131,9 +137,9 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     """
     if coordinator is None:
         coordinator = ContextCoordinator()
-    title = contest.get("title", "")
-    year = contest.get("year", "")
-    ctype = contest.get("type_", "")
+    title = safe_strip(contest.get("title", ""))
+    year = safe_strip(contest.get("year", ""))
+    ctype = safe_strip(contest.get("type_", ""))
     year_score = 0.0
     if year and re.match(r"^(19|20)\d{2}$", str(year)):
         year_score = 1.0
@@ -145,23 +151,22 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
                 break
 
     # --- Election type detection ---
-    known_types = [(t or "").lower() for t in coordinator.get_election_types()]
-    ctype_norm = (ctype or "").lower().replace("election", "").strip()
+    known_types = [safe_lower(t or "") for t in coordinator.get_election_types()]
+    ctype_norm = safe_lower(ctype).replace("election", "").strip()
     # Accept common election types even if not in known_types
     type_score = 0.0
     if ctype:
         if any(t in ctype_norm for t in known_types):
             type_score = 1.0
-        elif any(v in ctype_norm for v in ELECTION_TYPES):
+        elif any(safe_lower(v) in ctype_norm for v in ELECTION_TYPES):
             type_score = 1.0
         else:
             # Partial match (e.g., "general" in "general election")
-            if any(v in ctype_norm for v in ["general", "primary", "presidential", "special", "runoff"]):
+            if any(safe_lower(v) in ctype_norm for v in ["general", "primary", "presidential", "special", "runoff"]):
                 type_score = 0.8
 
     # --- Contest keywords: for office/position, not election type ---
-
-    title_score = 1.0 if any((kw or "") in (title or "").lower() for kw in CONTEST_KEYWORDS) else 0.0
+    title_score = 1.0 if any(safe_lower(kw or "") in safe_lower(title or "") for kw in CONTEST_KEYWORDS) else 0.0
 
     # --- ML/NER header score ---
     ml_score = coordinator.score_header(title, context)
@@ -302,8 +307,8 @@ def select_contest(
                 # Try ML/NER
                 ents = coordinator.extract_entities(safe_get(c, "title", "")) if coordinator else []
                 for ent, label in ents:
-                    if label == "EVENT" and (ent or "").lower() in [(et or "").lower() for et in ELECTION_TYPES]:
-                        found_type_ = (ent or "").lower()
+                    if label == "EVENT" and safe_lower(ent) in [safe_lower(et) for et in ELECTION_TYPES]:
+                        found_type_ = safe_lower(ent)
                         break
         # Only use found_type_ if set
         if found_type_:
@@ -337,7 +342,7 @@ def select_contest(
         skip_reason = None
         contest_state = safe_get(c, "state", "")
         title = safe_get(c, "title", "")
-        title_norm = (title or "").strip().lower()
+        title_norm = safe_lower(title).strip() if isinstance(title, str) else ""
 
         # Skip noisy/generic patterns
         if not title or not isinstance(title, str) or title_norm in ["", "results", "summary"]:
@@ -483,7 +488,7 @@ def select_contest(
                 x == "all"
                 or (allow_multiple and all(
                     p.strip().isdigit() and 0 <= int(p.strip()) < len(contest_indices)
-                    for p in x.split(",") if p.strip()
+                    for p in safe_split(x, ",") if p.strip()
                 ))
                 or (not allow_multiple and x.strip().isdigit() and 0 <= int(x.strip()) < len(contest_indices))
             ),

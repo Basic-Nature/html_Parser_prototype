@@ -33,7 +33,11 @@ def parse(
         page=page,
         coordinator=coordinator,
         debug=False,
-        non_interactive=non_interactive)
+        non_interactive=non_interactive,
+        session_id=getattr(coordinator, "session_id", None),
+        allow_duplicates=getattr(coordinator, "allow_duplicates", False)
+    )
+    
     html_context.update(context_result)
     state = html_context.get("state", "EX")
     county = html_context.get("county", "Example County")

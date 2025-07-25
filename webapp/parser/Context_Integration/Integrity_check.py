@@ -15,13 +15,17 @@ from pathlib import Path
 from ..utils.shared_logger import RichConsoleProxy
 from typing import List, Dict, Any, Tuple, Optional
 from ..utils.spacy_utils import extract_dates
-from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
+from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH, POSTGRES_URL
 from ..utils import db_utils
 from sqlalchemy.orm import Session
 
 
 from sqlalchemy import select
 from ..utils.db_utils import get_session
+from ..utils.shared_logic import (
+    safe_get, safe_items, safe_encode, safe_tolist,
+    safe_execute, safe_all
+)
 from ..utils.models import Alert
 # --- Rich imports for CLI output ---
 from rich.table import Table
@@ -39,7 +43,7 @@ _ensure_alerts_table()
 def find_date_anomalies(contests, expected_year=None):
     anomalies = []
     for c in contests:
-        dates = extract_dates(c.get("title", ""))
+        dates = extract_dates(safe_get(c, "title", ""))
         if expected_year and not any(str(expected_year) in d for d in dates):
             anomalies.append(c)
     return anomalies
@@ -57,25 +61,27 @@ def detect_anomalies_with_ml(
     le_state = LabelEncoder()
     le_county = LabelEncoder()
     le_type = LabelEncoder()
-    states = [c.get("state", "unknown") for c in contexts]
-    counties = [c.get("county", "unknown") for c in contexts]
-    types = [c.get("type_", "unknown") for c in contexts]
+    states = [safe_get(c, "state", "unknown") for c in contexts]
+    counties = [safe_get(c, "county", "unknown") for c in contexts]
+    types = [safe_get(c, "type_", "unknown") for c in contexts]
     le_state.fit(states)
     le_county.fit(counties)
     le_type.fit(types)
     for c in contexts:
         # Optionally add embedding features
         emb = []
-        if embedding_model and c.get("title"):
-            emb = embedding_model.encode([c["title"]])[0].tolist()
+        title = safe_get(c, "title", "")
+        if embedding_model and title:
+            emb_encoded = safe_encode(title) if hasattr(embedding_model, "encode") else embedding_model.encode([title])
+            emb = safe_tolist(emb_encoded[0] if isinstance(emb_encoded, (list, tuple)) and emb_encoded else emb_encoded)
         features.append([
-            le_state.transform([c.get("state", "unknown")])[0],
-            le_county.transform([c.get("county", "unknown")])[0],
-            le_type.transform([c.get("type_", "unknown")])[0],
-            int(c.get("year", 0)) if str(c.get("year", "0")).isdigit() else 0,
-            len(str(c.get("title", ""))),
-            len(str(c.get("candidate", ""))) if c.get("candidate") else 0,
-            len(str(c.get("party", ""))) if c.get("party") else 0,
+            le_state.transform([safe_get(c, "state", "unknown")])[0],
+            le_county.transform([safe_get(c, "county", "unknown")])[0],
+            le_type.transform([safe_get(c, "type_", "unknown")])[0],
+            int(safe_get(c, "year", 0)) if str(safe_get(c, "year", "0")).isdigit() else 0,
+            len(str(safe_get(c, "title", ""))),
+            len(str(safe_get(c, "candidate", ""))) if safe_get(c, "candidate") else 0,
+            len(str(safe_get(c, "party", ""))) if safe_get(c, "party") else 0,
             # ...add more features as needed...
             *emb
         ])
@@ -123,18 +129,18 @@ def advanced_cross_field_validation(contests: List[Dict[str, Any]]) -> List[Tupl
             issues.append(("negative_votes", c))
     return issues
 
-def summarize_context_entities(contests):
+def summarize_context_entities(contests) -> Dict[str, int]:
     from collections import Counter
     from ..utils.spacy_utils import extract_entities
     entity_counter = Counter()
     for c in contests:
-        title = c.get("title", "")
+        title = safe_get(c, "title", "")
         entities = extract_entities(title)
         for _, label in entities:
             entity_counter[label] += 1
     return dict(entity_counter)
 
-def analyze_contests(contests, expected_year=None, context_library_path=None):
+def analyze_contests(contests, expected_year=None, context_library_path=None) -> Dict[str, Any]:
     from ..utils.spacy_utils import flag_suspicious_contests
     integrity_issues = election_integrity_checks(contests)
     date_anomalies = find_date_anomalies(contests, expected_year=expected_year)
@@ -171,7 +177,7 @@ def auto_tune_contamination(
 
 # --- Rich Output Functions for CLI ---
 
-def print_issues_table(issues, title="Issues"):
+def print_issues_table(issues, title="Issues") -> None:
     if not issues:
         console.print(f"[bold green]No {title.lower()} found.[/bold green]")
         return
@@ -184,22 +190,22 @@ def print_issues_table(issues, title="Issues"):
     for issue_type, contest in issues:
         table.add_row(
             issue_type,
-            contest.get("title", ""),
-            str(contest.get("year", "")),
-            contest.get("state", ""),
-            contest.get("county", "")
+            safe_get(contest, "title", ""),
+            str(safe_get(contest, "year", "")),
+            safe_get(contest, "state", ""),
+            safe_get(contest, "county", "")
         )
     console.print(table)
 
-def print_entity_summary(entity_summary):
+def print_entity_summary(entity_summary) -> None:
     table = Table(title="Entity Label Summary")
     table.add_column("Entity Label", style="cyan")
     table.add_column("Count", style="magenta")
-    for label, count in entity_summary.items():
+    for label, count in safe_items(entity_summary):
         table.add_row(label, str(count))
     console.print(table)
 
-def print_ml_anomalies(anomaly_indices, contests, X=None, feature_names=None):
+def print_ml_anomalies(anomaly_indices, contests, X=None, feature_names=None) -> None:
     if not anomaly_indices:
         console.print("[bold green]No ML anomalies detected.[/bold green]")
         return
@@ -216,10 +222,10 @@ def print_ml_anomalies(anomaly_indices, contests, X=None, feature_names=None):
         c = contests[idx]
         row = [
             str(idx),
-            c.get("title", ""),
-            str(c.get("year", "")),
-            c.get("state", ""),
-            c.get("county", "")
+            safe_get(c, "title", ""),
+            str(safe_get(c, "year", "")),
+            safe_get(c, "state", ""),
+            safe_get(c, "county", "")
         ]
         if X is not None and feature_names is not None:
             # Show deviation from median for each feature
@@ -229,7 +235,7 @@ def print_ml_anomalies(anomaly_indices, contests, X=None, feature_names=None):
         table.add_row(*row)
     console.print(table)
 
-def print_date_anomalies(date_anomalies):
+def print_date_anomalies(date_anomalies) -> None:
     if not date_anomalies:
         console.print("[bold green]No date anomalies found.[/bold green]")
         return
@@ -240,45 +246,72 @@ def print_date_anomalies(date_anomalies):
     table.add_column("County", style="blue")
     for contest in date_anomalies:
         table.add_row(
-            contest.get("title", ""),
-            str(contest.get("year", "")),
-            contest.get("state", ""),
-            contest.get("county", "")
+            safe_get(contest, "title", ""),
+            str(safe_get(contest, "year", "")),
+            safe_get(contest, "state", ""),
+            safe_get(contest, "county", "")
         )
     console.print(table)
 
-def print_auto_tune_result(contamination):
+def print_auto_tune_result(contamination) -> None:
     if contamination is None:
         console.print(Panel("Auto-tuned contamination: [bold yellow]N/A[/bold yellow]", title="IsolationForest Auto-Tune"))
     else:
         console.print(Panel(f"Auto-tuned contamination: [bold green]{contamination:.4f}[/bold green]", title="IsolationForest Auto-Tune"))
 
-def print_analyze_contests(results):
-    print_issues_table(results["integrity_issues"], title="Integrity Issues")
-    print_date_anomalies(results["date_anomalies"])
-    print_ml_anomalies(results["ml_anomalies"], results.get("contests", []))
-    if results.get("flagged_suspicious"):
-        console.print(Panel(f"[yellow]{len(results['flagged_suspicious'])} suspicious contests flagged[/yellow]: {results['flagged_suspicious']}", title="Suspicious Contests"))
+def print_analyze_contests(results) -> None:
+    print_issues_table(safe_get(results, "integrity_issues", []), title="Integrity Issues")
+    print_date_anomalies(safe_get(results, "date_anomalies", []))
+    print_ml_anomalies(safe_get(results, "ml_anomalies", []), safe_get(results, "contests", []))
+    flagged = safe_get(results, "flagged_suspicious", [])
+    if flagged:
+        console.print(Panel(f"[yellow]{len(flagged)} suspicious contests flagged[/yellow]: {flagged}", title="Suspicious Contests"))
     else:
         console.print("[bold green]No suspicious contests flagged.[/bold green]")
 
 # --- Real-Time Monitoring (unchanged) ---
 
-def monitor_db_for_alerts(db_path: str = None, poll_interval: int = 10):
+def monitor_db_for_alerts(db_path: str = None, poll_interval: int = 10) -> None:
     """
     Monitor the alerts table in PostgreSQL for new alerts in real time using SQLAlchemy.
+    Adds type checking for .id, .scalars().all(), and .execute.
     """
+    if db_path is None:
+        db_path = POSTGRES_URL  # Use robust config value
+
     last_alert_id = 0
     def monitor():
         nonlocal last_alert_id
         while True:
             try:
-                with get_session() as session:
+                with get_session(db_path) as session:
                     stmt = select(Alert).where(Alert.id > last_alert_id).order_by(Alert.id.asc())
-                    rows = session.execute(stmt).scalars().all()
-                    for row in rows:
-                        last_alert_id = row.id
-                        console.print(f"[REAL-TIME ALERT][{row.level}] {row.msg} | Context: {row.context} | ALERT_TYPE: {row.level}")
+                    result = safe_execute(session, stmt)
+                    if result is None:
+                        console.print("[MONITOR] Session object missing or failed 'execute' method.")
+                        time.sleep(poll_interval)
+                        continue
+                    scalars = getattr(result, "scalars", None)
+                    if not callable(scalars):
+                        console.print("[MONITOR] Result object missing 'scalars' method.")
+                        time.sleep(poll_interval)
+                        continue
+                    rows = scalars()
+                    alerts = safe_all(rows)
+                    if alerts is None:
+                        console.print("[MONITOR] Scalars object missing or failed 'all' method.")
+                        time.sleep(poll_interval)
+                        continue
+                    for row in alerts:
+                        row_id = getattr(row, "id", None)
+                        if not isinstance(row_id, int):
+                            console.print(f"[MONITOR] Alert row missing valid 'id': {row}")
+                            continue
+                        last_alert_id = row_id
+                        msg = getattr(row, "msg", "")
+                        context = getattr(row, "context", "")
+                        level = getattr(row, "level", "")
+                        console.print(f"[REAL-TIME ALERT][{level}] {msg} | Context: {context} | ALERT_TYPE: {level}")
             except Exception as e:
                 console.print(f"[MONITOR] Error in real-time alert monitor: {e}")
             time.sleep(poll_interval)
@@ -287,7 +320,7 @@ def monitor_db_for_alerts(db_path: str = None, poll_interval: int = 10):
 
 # --- Utility: Audit Logging (unchanged) ---
 
-def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str = None):
+def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str = None) -> None:
     from ..Context_Integration.context_organizer import clean_for_json
     if log_path:
         log_path = db_utils._safe_db_path(log_path)
@@ -333,7 +366,7 @@ def detect_statistical_outliers(
 """
 
 
-def print_integrity_summary(contests, expected_year=None, X=None):
+def print_integrity_summary(contests, expected_year=None, X=None) -> None:
     """
     Print a full integrity summary using rich tables and panels.
     - contests: list of contest dicts

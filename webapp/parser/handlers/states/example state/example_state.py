@@ -3,6 +3,9 @@ from playwright.sync_api import Page
 from typing import Optional, Tuple, Any, List, Dict
 
 from ....utils.shared_logger import SharedLogger
+from ....utils.shared_logic import (
+    safe_get, safe_lower, safe_strip, safe_parse
+)
 from ....utils.output_utils import finalize_election_output
 from ....utils.contest_selector import select_contest
 from ....utils.table_builder import build_dynamic_table
@@ -29,13 +32,21 @@ def parse(
         html_context = {}
 
     # --- 1. Try to delegate to a county handler if county is specified ---
-    county = (html_context.get("county") or "").strip().lower().replace(" ", "_")
+    raw_county = safe_get(html_context, "county", "")
+    county = safe_lower(safe_strip(raw_county)).replace(" ", "_")
     if county:
         module_path = f"webapp.parser.handlers.states.example.county.{county}"
         try:
             county_module = importlib.import_module(module_path)
             logger.info(f"[Example Handler] Routing to county parser: {module_path}")
-            return county_module.parse(page, coordinator=coordinator, html_context=html_context, non_interactive=non_interactive)
+            return safe_parse(
+                county_module,
+                page,
+                coordinator=coordinator,
+                html_context=html_context,
+                non_interactive=non_interactive,
+                logger=logger
+            )
         except ModuleNotFoundError:
             logger.warning(f"[Example Handler] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
         except Exception as e:
@@ -51,8 +62,11 @@ def parse(
         page=page,
         coordinator=coordinator,
         debug=False,
-        non_interactive=non_interactive
+        non_interactive=non_interactive,
+        session_id=getattr(coordinator, "session_id", None),
+        allow_duplicates=getattr(coordinator, "allow_duplicates", False)
     )
+    
     html_context.update(context_result)
     state = html_context.get("state", "Example")
     county = html_context.get("county", None)

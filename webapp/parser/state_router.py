@@ -17,7 +17,9 @@ from .Context_Integration.Context_Library.constants import (
 )
 import difflib
 import time
-from .utils.shared_logic import normalize_state_name, normalize_county_name, safe_append, safe_get_first
+from .utils.shared_logic import (
+    normalize_state_name, normalize_county_name, safe_append, safe_get_first, safe_lower
+)
 import orjson
 logger = SharedLogger()
 console = RichConsoleProxy()
@@ -216,7 +218,7 @@ def scan_url_for_state_county(url: str, available_states: List[str], available_c
     if not url:
         log_entries.append("[URL Scan] No URL provided.")
         return None, None, log_entries
-    url_lower = (url or "").lower()
+    url_lower = safe_lower(url)
     state_match = None
     for state in available_states:
         if state in url_lower:

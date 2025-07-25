@@ -14,6 +14,7 @@ from rich.json import JSON
 import orjson
 from contextlib import contextmanager
 from io import StringIO
+from ..utils.shared_logic import safe_lower
 
 try:
     from dotenv import load_dotenv
@@ -402,16 +403,18 @@ class SharedLogger(logging.Logger):
                 }
                 self.socketio_emit_func(orjson.dumps(log_obj).decode("utf-8"))
                 # Also log to Python logger
-                if hasattr(self.logger, (level or "").lower()):
-                    self.logger.info(log_obj["message"])
+                log_method = getattr(self.logger, safe_lower(level), None)
+                if callable(log_method):
+                    log_method(log_obj["message"])
                 else:
                     self.logger.info(log_obj["message"])
             else:
                 plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
                 self.socketio_emit_func(plain_msg.strip())
                 # Also log to Python logger
-                if hasattr(self.logger, (level or "").lower()):
-                    getattr(self.logger, (level or "").lower())(plain_msg.strip())
+                log_method = getattr(self.logger, safe_lower(level), None)
+                if callable(log_method):
+                    log_method(plain_msg.strip())
                 else:
                     self.logger.info(plain_msg.strip())
         elif self.mode == "cli":

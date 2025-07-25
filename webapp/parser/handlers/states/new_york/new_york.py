@@ -2,6 +2,9 @@ import importlib
 from playwright.sync_api import Page
 from typing import Optional, Tuple, Any
 from ....utils.shared_logger import SharedLogger
+from ....utils.shared_logic import (
+    safe_get, safe_lower, safe_strip, safe_parse
+)
 logger = SharedLogger()
 def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, Any, dict]:
     """
@@ -12,7 +15,8 @@ def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, An
     if html_context is None:
         html_context = {}
 
-    county = (html_context.get("county") or "").strip().lower().replace(" ", "_")
+    raw_county = safe_get(html_context, "county", "")
+    county = safe_lower(safe_strip(raw_county)).replace(" ", "_")
     if not county:
         logger.warning("[NY Handler] No county specified in html_context.")
         return None, None, None, {"error": "No county specified for NY handler."}
@@ -23,7 +27,12 @@ def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, An
         county_module = importlib.import_module(module_path)
         logger.info(f"[NY Handler] Routing to county parser: {module_path}")
         # Expect county_module.parse to return (headers, data, contest, metadata)
-        return county_module.parse(page, html_context)
+        return safe_parse(
+            county_module,
+            page,
+            html_context=html_context,
+            logger=logger
+        )
     except ModuleNotFoundError:
         logger.warning(f"[NY Handler] No specific parser implemented for county: '{county}'. Please add it under {module_path}.py")
         return None, None, None, {"error": f"No handler found for NY county: '{county}'"}

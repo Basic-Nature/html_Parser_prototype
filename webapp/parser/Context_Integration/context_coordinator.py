@@ -98,33 +98,33 @@ def merge_and_rank_candidates(
     all_candidates = []
     for cand in memory_candidates + dom_candidates:
         cand_dict = cand if isinstance(cand, dict) else {}
-        if not cand_dict.get("label"):
+        if not safe_get(cand_dict, "label"):
             continue
-        key = (cand_dict.get("label", ""), cand_dict.get("selector", ""))
+        key = (safe_get(cand_dict, "label", ""), safe_get(cand_dict, "selector", ""))
         if key not in seen:
             seen.add(key)
             all_candidates.append(cand_dict)
 
     context_dict = context if isinstance(context, dict) else {}
-    contest_obj = context_dict.get("contest", {})
-    contest_title = contest_obj.get("title", "") if isinstance(contest_obj, dict) else str(contest_obj)
+    contest_obj = safe_get(context_dict, "contest", {})
+    contest_title = safe_get(contest_obj, "title", "") if isinstance(contest_obj, dict) else str(contest_obj)
     context_str = " ".join([
         contest_title,
-        str(context_dict.get("year", "")),
-        str(context_dict.get("type_", "")),
-        str(context_dict.get("county", "")),
-        str(context_dict.get("state", "")),
+        str(safe_get(context_dict, "year", "")),
+        str(safe_get(context_dict, "type_", "")),
+        str(safe_get(context_dict, "county", "")),
+        str(safe_get(context_dict, "state", "")),
     ]).strip()
 
-    expected_class = context_dict.get("expected_class", "")
-    expected_tag = context_dict.get("expected_tag", "")
+    expected_class = safe_get(context_dict, "expected_class", "")
+    expected_tag = safe_get(context_dict, "expected_tag", "")
 
     for cand in all_candidates:
         if not isinstance(cand, dict):
             continue
-        label = cand.get("label", "") or ""
+        label = safe_get(cand, "label", "") or ""
         # Strong full-string match
-        full_match = int(label.strip().lower() == contest_title.strip().lower())
+        full_match = int(safe_lower(label.strip()) == safe_lower(contest_title.strip()))
         # Keyphrase-aware match
         keyphrase_score = 0.0
         for kw in (keywords or []):
@@ -133,21 +133,23 @@ def merge_and_rank_candidates(
                 break
         # Fuzzy/semantic as fallback
         fuzzy_scores = [
-            difflib.SequenceMatcher(None, (kw or "").lower(), label.lower()).ratio()
+            difflib.SequenceMatcher(None, safe_lower(kw), safe_lower(label)).ratio()
             for kw in (keywords or [])
         ]
         fuzzy_score = max(fuzzy_scores) if fuzzy_scores else 0.0
         semantic_score = get_semantic_score(model, context_str, label)
         # Context proximity
-        context_heading = cand.get("context_heading", "")
+        context_heading = safe_get(cand, "context_heading", "")
         context_proximity = 0.0
         if context_heading and contest_title:
             context_proximity = get_semantic_score(model, contest_title, context_heading)
         # Hierarchy/class/tag bonus
         hierarchy_score = 0.0
-        if expected_class and expected_class in cand.get("class", "") or expected_class in (cand.get("class", "") or "").lower():
+        cand_class = safe_get(cand, "class", "")
+        cand_tag = safe_get(cand, "tag", "")
+        if expected_class and (expected_class in cand_class or expected_class in safe_lower(cand_class)):
             hierarchy_score += 0.5
-        if expected_tag and expected_tag == cand.get("tag", "") or expected_tag in (cand.get("tag", "") or "").lower():
+        if expected_tag and (expected_tag == cand_tag or expected_tag in safe_lower(cand_tag)):
             hierarchy_score += 0.5
         if full_match:
             hierarchy_score += 1.0
@@ -167,9 +169,9 @@ def merge_and_rank_candidates(
     all_candidates = [c for c in all_candidates if isinstance(c, dict)]
     all_candidates.sort(
         key=lambda c: (
-            c.get("combined_score", 0),
-            c.get("is_visible", False),
-            c.get("is_clickable", False)
+            safe_get(c, "combined_score", 0),
+            safe_get(c, "is_visible", False),
+            safe_get(c, "is_clickable", False)
         ),
         reverse=True
     )
@@ -195,8 +197,8 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
     # --- 1. Try context fields directly (normalize and validate) ---
     if not isinstance(context, dict) or not context:
         context = {}
-    raw_county = context.get("county")
-    raw_state = context.get("state")
+    raw_county = safe_get(context, "county", None)
+    raw_state = safe_get(context, "state", None)
     county = normalize_county_name(raw_county) if raw_county else None
     state = normalize_state_name(raw_state) if raw_state else None
 
@@ -231,7 +233,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             mapped_state = state_module_map.get(state)
             if not mapped_state:
                 # Try abbreviation
-                abbr = state.lower()
+                abbr = safe_lower(state)
                 mapped_state = STATE_ABBR.get(abbr)
                 if mapped_state:
                     detection_log.append(f"State '{state}' mapped from abbreviation to '{mapped_state}'.")
@@ -250,9 +252,9 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                     state = None
 
     # --- 2. Try to extract county from URL ---
-    url = context.get("url", "") if isinstance(context, dict) else ""
+    url = safe_get(context, "url", "")
     if not county and url:
-        url_lower = (url or "").lower()
+        url_lower = safe_lower(url)
         # Exact match
         for c in all_counties:
             if c in url_lower:
@@ -292,13 +294,13 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                             break
 
     # --- 3. Try to extract county from contest titles ---
-    contests = context.get("contests", []) if isinstance(context, dict) else []
+    contests = safe_get(context, "contests", [])
     if not county and contests:
         for contest in contests:
             if not isinstance(contest, dict):
                 continue
-            title = contest.get("title", "")
-            title_lower = (title or "").lower()
+            title = safe_get(contest, "title", "")
+            title_lower = safe_lower(title)
             for c in all_counties:
                 if re.search(rf"\b{re.escape(c)}\b", title_lower):
                     county = c
@@ -352,7 +354,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
 
     # --- 6. Try to extract state from URL ---
     if not state and url:
-        url_lower = (url or "").lower()
+        url_lower = safe_lower(url)
         for s in known_states:
             if s in url_lower:
                 state = s
@@ -371,8 +373,8 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
         for contest in contests:
             if not isinstance(contest, dict):
                 continue
-            title = contest.get("title", "")
-            title_lower = (title or "").lower()
+            title = safe_get(contest, "title", "")
+            title_lower = safe_lower(title)
             for s in known_states:
                 if s in title_lower:
                     state = s
@@ -412,7 +414,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                     county_name = fname[:-3]
                     available_counties.append(county_name)
             detection_log.append(f"Available county handlers for state '{normalized_state}': {available_counties}")
-            url_and_html = ((url or "") + " " + (html or "")).lower()
+            url_and_html = safe_lower((url or "") + " " + (html or ""))
             # Try exact match in URL/HTML
             for c in available_counties:
                 if c in url_and_html:
@@ -962,6 +964,49 @@ class ContextCoordinator(object):
                 return label
 
         return "unknown"
+
+    def segment_prompt(self, segment, session_id=None, reason=None, non_interactive=False):
+        """
+        Robust segment prompt for webapp GUI and CLI.
+        - If non_interactive, logs the segment and reason for review, does not prompt.
+        - If interactive, prompts user for label/correction.
+        - Optionally logs feedback for downstream learning.
+        """
+        logger.info(f"[SEGMENT_PROMPT] Segment needs review. Reason: {reason}. Session: {session_id}")
+        html_preview = safe_get(segment, "html", "")
+        if non_interactive:
+            # Just log for review, no prompt
+            logger.warning(f"[SEGMENT_PROMPT][non_interactive] Segment flagged for review: {html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
+            # Optionally, add to a review queue or feedback log
+            self.log_field_selection(
+                field_type="segment",
+                field_name="segment_prompt",
+                extracted_value=html_preview,
+                method="non_interactive",
+                score=0.0,
+                result=reason,
+                context={"session_id": session_id, "reason": reason},
+                user_feedback=None
+            )
+            return None
+        # Interactive prompt (CLI or webapp)
+        logger.info(f"[SEGMENT_PROMPT][interactive] Segment HTML: {html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
+        label = None
+        try:
+            label = input("Please enter the semantic label for this segment: ").strip()
+        except Exception:
+            label = "unknown"
+        self.log_field_selection(
+            field_type="segment",
+            field_name="segment_prompt",
+            extracted_value=html_preview,
+            method="interactive",
+            score=1.0,
+            result=reason,
+            context={"session_id": session_id, "reason": reason},
+            user_feedback=label
+        )
+        return label
 
     def group_dom_nodes_by_label(self, label_field="ml_label") -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -1694,7 +1739,7 @@ class ContextCoordinator(object):
             else:
                 max_sim = 0.0
             # 2. Fuzzy match to known headers
-            fuzzy_scores = [difflib.SequenceMatcher(None, (h or "").lower(), (title or "").lower()).ratio() for h in known_headers]
+            fuzzy_scores = [difflib.SequenceMatcher(None, safe_lower(h), safe_lower(title)).ratio() for h in known_headers]
             max_fuzzy = max(fuzzy_scores) if fuzzy_scores else 0.0
             # 3. Entity detection
             ents = self.extract_entities(title)
@@ -1709,7 +1754,7 @@ class ContextCoordinator(object):
                         entity_boost += 0.1 * get_semantic_score(model, ent, contest_title)
                     # Optionally: use fuzzy match to known labels
                     if known_labels:
-                        fuzzy_scores = [difflib.SequenceMatcher(None, (lbl or "").lower(), (ent or "").lower()).ratio() for lbl in known_labels]
+                        fuzzy_scores = [difflib.SequenceMatcher(None, safe_lower(lbl), safe_lower(ent)).ratio() for lbl in known_labels]
                         entity_boost += 0.05 * max(fuzzy_scores) if fuzzy_scores else 0.0
                     break
             # 4. Contextual match to contest title
@@ -1754,7 +1799,7 @@ class ContextCoordinator(object):
             else:
                 max_sim = 0.0
             # 2. Fuzzy match to known labels
-            fuzzy_scores = [difflib.SequenceMatcher(None, (lbl or "").lower(), (title or "").lower()).ratio() for lbl in known_labels]
+            fuzzy_scores = [difflib.SequenceMatcher(None, safe_lower(lbl), safe_lower(title)).ratio() for lbl in known_labels]
             max_fuzzy = max(fuzzy_scores) if fuzzy_scores else 0.0
             # 3. Entity detection
             ents = self.extract_entities(title)
@@ -1808,7 +1853,7 @@ class ContextCoordinator(object):
             known_headers = set()
             if context and isinstance(context, dict):
                 known_headers = set(context.get("known_headers", []))
-            if known_headers and (title or "").lower() in ((h or "").lower() for h in known_headers):
+            if known_headers and safe_lower(title) in (safe_lower(h) for h in known_headers):
                 return 0.9
             # Fallback: score by length and capitalization
             if isinstance(title, str) and len(title) > 2 and safe_isupper(safe_get_first(title, "title_first_char", "", logger), logger):
@@ -2096,9 +2141,14 @@ class ContextCoordinator(object):
         Return all buttons, or those for a specific contest, or matching a keyword/URL.
         First, check the button selection log for a successful match.
         """
-        # 1. Check button selection log for a successful match
-        os.makedirs(LOG_DIR, exist_ok=True)
-        log_path = os.path.join(LOG_DIR, "button_selection_log.jsonl")
+        # Sanitize log path to prevent path-injection
+        safe_log_filename = "button_selection_log.jsonl"
+        log_dir = os.path.abspath(LOG_DIR)
+        log_path = os.path.join(log_dir, safe_log_filename)
+        if not log_path.startswith(log_dir):
+            logger.error(f"[get_buttons] Unsafe log path detected: {log_path}")
+            return []
+        os.makedirs(log_dir, exist_ok=True)
         if os.path.exists(log_path):
             with open(log_path, "rb") as f:
                 for line in f:
@@ -2108,22 +2158,22 @@ class ContextCoordinator(object):
                         continue
                     if not isinstance(entry, dict):
                         continue
-                    # Check for a successful result for this contest/keyword/url
-                    if contest and entry.get("contest") == contest.get("title") and safe_startswith(entry.get("result", ""), "pass", logger):
-                        # Reconstruct a button dict from the log entry
-                        button = {
-                            "label": entry.get("button_label"),
-                            "selector": entry.get("selector"),
-                            # Optionally add more fields if you log them
-                        }
-                        return clean_for_json([button])
-                    if keyword and keyword.lower() in (entry.get("button_label") or "").lower() and safe_startswith(entry.get("result", ""), "pass", logger):
+                    # Contest match (safe_lower for robust comparison)
+                    if contest and safe_lower(entry.get("contest", "")) == safe_lower(safe_get(contest, "title", "")) and safe_startswith(entry.get("result", ""), "pass", logger):
                         button = {
                             "label": entry.get("button_label"),
                             "selector": entry.get("selector"),
                         }
                         return clean_for_json([button])
-                    if url and url in (entry.get("selector") or "") and safe_startswith(entry.get("result", ""), "pass", logger):
+                    # Keyword match (safe_lower for both sides)
+                    if keyword and safe_lower(keyword) in safe_lower(entry.get("button_label", "")) and safe_startswith(entry.get("result", ""), "pass", logger):
+                        button = {
+                            "label": entry.get("button_label"),
+                            "selector": entry.get("selector"),
+                        }
+                        return clean_for_json([button])
+                    # URL match (safe_get for selector)
+                    if url and url in safe_get(entry, "selector", "") and safe_startswith(entry.get("result", ""), "pass", logger):
                         button = {
                             "label": entry.get("button_label"),
                             "selector": entry.get("selector"),
@@ -2140,7 +2190,7 @@ class ContextCoordinator(object):
             if results:
                 return clean_for_json(results)
         if keyword:
-            keyword = keyword.lower()
+            keyword = safe_lower(keyword)
             btn_lists = buttons_dict.values() if isinstance(buttons_dict, dict) else buttons_dict
             for btn_list in btn_lists:
                 for btn in btn_list:

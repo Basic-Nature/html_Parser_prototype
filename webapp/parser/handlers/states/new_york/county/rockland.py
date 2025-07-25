@@ -40,7 +40,11 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         page=page,
         coordinator=coordinator,
         debug=False,
+        non_interactive=non_interactive,
+        session_id=getattr(coordinator, "session_id", None),
+        allow_duplicates=getattr(coordinator, "allow_duplicates", False)
     )
+    
     state = context_result.get("state") or "NY"
     county = context_result.get("county") or "Rockland"
     year = context_result.get("year")
@@ -179,6 +183,9 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 page=page,
                 coordinator=coordinator,
                 debug=False,
+                non_interactive=non_interactive,
+                session_id=getattr(coordinator, "session_id", None),
+                allow_duplicates=getattr(coordinator, "allow_duplicates", False)
             )
 
             segments = context_result.get("tagged_segments_with_attrs", [])

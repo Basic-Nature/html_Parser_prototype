@@ -15,6 +15,9 @@ from ..Context_Integration.Context_Library.constants import (
 import os
 import orjson
 from ..utils.shared_logger import SharedLogger
+from ..utils.shared_logic import (
+    safe_get, safe_lower
+)
 # Load spaCy model globally for efficiency, auto-download if missing
 try:
     nlp = spacy.load("en_core_web_sm")
@@ -189,26 +192,50 @@ def flag_suspicious_contests(contests, context_library_path=None):
     Optionally uses a context library if context_library_path is provided.
     Returns a list of flagged contest dicts with reasons.
     """
+    context_library = None
     if context_library_path:
         # Load and use the context library as needed
         if os.path.exists(context_library_path):
-            with open(context_library_path, "rb") as f:
-                context_library = orjson.loads(f.read())    
+            try:
+                with open(context_library_path, "rb") as f:
+                    context_library = orjson.loads(f.read())
+            except Exception as e:
+                logger.error(f"[flag_suspicious_contests] Failed to load context library: {e}")
+                context_library = None
+
     known_states, known_counties = load_known_states_counties()
     flagged = []
     for c in contests:
-        title = c.get("title", "")
+        title = safe_get(c, "title", "")
+        # Use context library for additional validation if available
+        context_info = {}
+        if context_library and isinstance(context_library, dict):
+            # Try to match contest title to context library entries (case-insensitive)
+            match_key = next(
+                (k for k in context_library.keys() if safe_lower(k) == safe_lower(title)),
+                None
+            )
+            if match_key:
+                context_info = context_library.get(match_key, {})
         result = validate_contest(title, known_states, known_counties)
+        # Enhance result with context library info if available
+        if context_info:
+            result["context_info"] = context_info
+            # Optionally, flag if context library marks as suspicious or ambiguous
+            if safe_get(context_info, "suspicious", False):
+                result["valid"] = False
+                result.setdefault("noisy_entities", []).append("context_library_flagged")
         if not result["valid"]:
             flagged.append({
                 "title": title,
                 "reasons": {
-                    "no_state": not result["state_found"],
-                    "no_county": not result["county_found"],
-                    "noisy_entities": result["noisy_entities"]
+                    "no_state": not result.get("state_found", False),
+                    "no_county": not result.get("county_found", False),
+                    "noisy_entities": result.get("noisy_entities", [])
                 },
-                "entities": result["entities"],
-                "locations": result["locations"]
+                "entities": result.get("entities", []),
+                "locations": result.get("locations", []),
+                "context_info": result.get("context_info", {})
             })
     return flagged
 

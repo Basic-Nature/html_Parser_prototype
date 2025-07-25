@@ -7,6 +7,7 @@ import re
 import time
 import numpy as np
 import inspect
+from sqlalchemy.orm import Session
 from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..utils.user_prompt import UserPrompt
 from playwright.sync_api import Page, Locator, ElementHandle
@@ -17,7 +18,7 @@ from ..Context_Integration.Context_Library.constants import (
 from typing import (
     TYPE_CHECKING, Optional, Generator, Any, Iterable, Dict, 
     Union, Iterable, Collection, Protocol, Awaitable, TypedDict,
-    List, Callable, Mapping
+    List, Callable, Mapping, Sequence
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -27,6 +28,13 @@ assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
 console = RichConsoleProxy()   
 prompt = UserPrompt()
 logger = SharedLogger()
+
+class HasAllMethod(Protocol):
+    def all(self) -> List[Any]:
+        """        Returns:
+            List[Any]: All items from the result set.
+        """
+        ...
 
 class PredictionResult(TypedDict, total=False):
     year: Optional[int]
@@ -83,8 +91,9 @@ class Predictable(Protocol):
         Raises:
             Exception: If prediction fails.
         """
+        ...
 
-def safe_merge_defaults(existing, defaults):
+def safe_merge_defaults(existing: dict, defaults: dict) -> bool:
     """
     Recursively merge defaults into existing dict, only setting missing keys.
     Uses safe_get for robust access.
@@ -100,6 +109,12 @@ def safe_merge_defaults(existing, defaults):
                 changed = True
     return changed
 
+def safe_strip(val) -> str:
+    try:
+        return val.strip() if isinstance(val, str) else str(val).strip()
+    except Exception:
+        return ""
+
 def safe_setdefault(d: dict, key, default):
     """
     Robust setdefault: returns d[key] if present, else sets d[key]=default and returns default.
@@ -110,6 +125,80 @@ def safe_setdefault(d: dict, key, default):
         d[key] = default
         return default
     return val
+
+def safe_tolist(val):
+    """
+    Safely convert val to a list.
+    Handles numpy arrays, tuples, sets, and returns [val] for scalars.
+    Returns an empty list for None.
+    """
+    import numpy as np
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, (tuple, set)):
+        return list(val)
+    if isinstance(val, np.ndarray):
+        return val.tolist()
+    try:
+        # Try to convert if it's an iterable (but not string/bytes)
+        if hasattr(val, '__iter__') and not isinstance(val, (str, bytes)):
+            return list(val)
+    except Exception:
+        pass
+    return [val]
+
+def safe_execute(session: Session, stmt) -> Optional[Any]:
+    """
+    Safely execute a SQLAlchemy statement.
+    Returns result or None if not supported.
+    """
+    if hasattr(session, "execute") and callable(session.execute):
+        try:
+            return session.execute(stmt)
+        except Exception:
+            return None
+    return None
+
+def safe_all(rows: HasAllMethod) -> list:
+    """
+    Safely call .all() on a SQLAlchemy result/scalars object.
+    Returns list or empty list if not supported.
+    """
+    if hasattr(rows, "all") and callable(getattr(rows, "all", None)):
+        try:
+            return rows.all()
+        except Exception:
+            return []
+    return []
+
+def safe_attr_keys(attrs) -> list:
+    """
+    Safely get a list of attribute keys from a dict-like object.
+    Handles None, non-dict, and exceptions robustly.
+    Returns a list of strings (keys), lowercased for consistency.
+    """
+    try:
+        if isinstance(attrs, dict):
+            return [safe_lower(str(k)) for k in attrs.keys()]
+        # Try to convert to dict if possible
+        return [safe_lower(str(k)) for k in dict(attrs).keys()]
+    except Exception:
+        return []
+
+def safe_replace(val: str, old: str, new: str) -> str:
+    """
+    Safely call .replace on a string-like object.
+    Returns the replaced string, or the original value if not a string or error occurs.
+    """
+    try:
+        if isinstance(val, str):
+            return val.replace(old, new)
+        return str(val).replace(old, new)
+    except Exception as e:
+        logger.error(f"[safe_replace] Error: {e}")
+        return str(val)
 
 def safe_isdigit(val: Any) -> bool:
     """Safely check if val is a string and isdigit()."""
@@ -348,9 +437,9 @@ def _sync_type_and_election_types(obj, fallback_types=None, fallback_type=None):
 
 def _keyword_in_text(text, keywords) -> bool:
     """Check if any keyword is present in the text (case-insensitive, word-boundary)."""
-    text = (text or "").lower()
+    text = safe_lower(text)
     for kw in keywords:
-        if re.search(rf'\b{re.escape((kw or "").lower())}\b', text):
+        if re.search(rf'\b{re.escape(safe_lower(kw))}\b', text):
             return True
     return False
 
@@ -400,6 +489,30 @@ def safe_predict(model: Predictable, text: str, logger: SharedLogger = None) -> 
     except Exception as e:
         logger.error(f"[safe_predict] Error during predict: {e}")
         return None
+
+def safe_split(val: Any, sep: Union[str, None] = None, maxsplit: int = -1) -> List[str]:
+    """
+    Safely split a string-like object.
+    - Returns an empty list if val is None or not a string.
+    - Handles exceptions gracefully.
+    - If val is already a sequence (not a string/bytes), returns list(val).
+    """
+    try:
+        if val is None:
+            return []
+        if isinstance(val, str):
+            return val.split(sep, maxsplit) if sep is not None else val.split()
+        if isinstance(val, bytes):
+            return val.decode(errors="replace").split(sep, maxsplit) if sep is not None else val.decode(errors="replace").split()
+        if isinstance(val, Sequence) and not isinstance(val, (str, bytes)):
+            return list(val)
+        return [str(val)]
+    except Exception:
+        return []
+
+def safe_capitalize(val: object) -> str:
+    """Safely capitalize a string, returns '' if not a string."""
+    return val.capitalize() if isinstance(val, str) else ""
 
 def safe_items(obj) -> Iterable:
     """
@@ -691,11 +804,10 @@ def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
     Resolve a county name to its canonical form using known counties and aliases.
     Optionally, provide a state for more accurate mapping.
     """
-    
     county_norm = normalize_county_name(county_name)
     # If state is provided, check only that state's counties
     if state:
-        state_norm = (state or "").lower().replace(" ", "_")
+        state_norm = safe_replace(safe_strip(safe_lower(state)), " ", "_")
         counties = KNOWN_STATE_TO_COUNTY_MAP.get(state_norm, [])
         if county_norm in counties:
             return county_norm
@@ -726,7 +838,9 @@ def normalize_county_name(name) -> Optional[str]:
     """
     if not name:
         return None
-    name = (name or "").lower().replace("_", " ").replace("-", " ").strip()
+    name = safe_strip(safe_lower(name))
+    name = safe_replace(name, "_", " ")
+    name = safe_replace(name, "-", " ")
     # Remove 'county' suffix if present
     name = re.sub(r"\s+county$", "", name)
     name = re.sub(r"\s+", " ", name)
@@ -761,7 +875,7 @@ def normalize_state_name(name) -> Optional[str]:
     """
     if not name:
         return None
-    name = (name or "").strip().lower().replace(" ", "_")
+    name = safe_replace(safe_strip(safe_lower(name)), " ", "_")
     # Try abbreviation lookup first
     if name in STATE_ABBR:
         return STATE_ABBR[name]
@@ -794,8 +908,8 @@ def infer_state_county_from_url(url: str) -> tuple:
     Robustly infer state and county from a URL using regex, mappings, and context library.
     Returns (state, county) or (None, None) if not found.
     """
-    url = (url or "").lower()
-    url_norm = url.replace("-", "_").replace(" ", "_")
+    url = safe_lower(url)
+    url_norm = safe_replace(safe_replace(url, "-", "_"), " ", "_")
     state_map = STATE_MODULE_MAP
     county_map = KNOWN_STATE_TO_COUNTY_MAP
     IGNORED_TLDS = {
@@ -911,11 +1025,11 @@ def coordinator_feedback(domain, scrolls, step, incomplete=False) -> None:
     logger.info(f"[COORDINATOR] Scroll pattern for {domain}: {scrolls} scrolls, step {step}, incomplete={incomplete}")
 
 def normalize_text(text) -> str:
-    return re.sub(r"\s+", " ", (text or "").strip().lower())
+    return re.sub(r"\s+", " ", safe_strip(safe_lower(text)))
 
 def match_any(label, keywords) -> bool:
     label = normalize_text(label)
-    return any((k or "").lower() in label for k in keywords)
+    return any(safe_lower(k) in label for k in keywords)
 
 def build_csv_headers(rows) -> list[str]:
     headers = set()
@@ -1040,8 +1154,8 @@ def keyphrase_match(label, keyphrase, min_words=2, fuzzy_cutoff=0.8) -> bool:
     Returns True if the label matches the keyphrase as a whole (regex or fuzzy),
     or if at least min_words from the keyphrase are present in the label.
     """
-    label_norm = (label or "").lower().strip()
-    keyphrase_norm = (keyphrase or "").lower().strip()
+    label_norm = safe_strip(safe_lower(label))
+    keyphrase_norm = safe_strip(safe_lower(keyphrase))
     # 1. Try full phrase regex (allowing whitespace, punctuation, : or \n at end)
     pattern = re.sub(r"\s+", r"\\s+", re.escape(keyphrase_norm)) + r"[\s:]*$"
     if re.search(pattern, label_norm):

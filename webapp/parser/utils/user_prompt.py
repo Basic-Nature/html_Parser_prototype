@@ -10,6 +10,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, Ti
 from typing import Any, Callable, Dict, List, Optional, Union, Generator, ContextManager
 from contextlib import contextmanager
 from ..utils.shared_logger import SharedLogger, RichConsoleProxy
+from ..utils.shared_logic import safe_lower, safe_strip
 logger = SharedLogger()
 console = RichConsoleProxy()
 try:
@@ -430,7 +431,7 @@ class UserPrompt(ContextManager):
                     self._log_to_file(prompt + " [Timed out]", context)
                     return default
                 continue
-            if allow_cancel and (response or "").strip().lower() == "cancel":
+            if allow_cancel and safe_lower(safe_strip(response)) == "cancel":
                 if log_func:
                     log_func(f"[PROMPT] User cancelled at {datetime.datetime.now()}")
                 self._log_to_file(prompt + " [User cancelled]", context)
@@ -497,13 +498,13 @@ class UserPrompt(ContextManager):
                 t.join(timeout)
                 if t.is_alive():
                     logger.warning("\n[Prompt] Timed out.")
-                    return (default or "").lower() == "y"
+                    return safe_lower(default or "") == "y"
                 resp = result[0]
             else:
                 resp = input(prompt_str)
-            if resp is None or not resp.strip():
+            if resp is None or not safe_strip(resp):
                 resp = default
-            resp = (resp or "").strip().lower()
+            resp = safe_lower(safe_strip(resp))
             if allow_cancel and resp == "cancel":
                 if log_func:
                     log_func(f"[PROMPT] User cancelled yes/no at {datetime.datetime.now()}")
@@ -722,7 +723,7 @@ class UserPrompt(ContextManager):
             resp = self.prompt_input(
                 f"Do you want to click this button? (y/n): ",
                 default="y",
-                validator=lambda x: (x or "").lower() in {"y", "n", "yes", "no"},
+                vvalidator=lambda x: safe_lower(x or "") in {"y", "n", "yes", "no"},
                 allow_cancel=True,
                 header="BUTTON CONFIRMATION",
                 session_id=session_id,
