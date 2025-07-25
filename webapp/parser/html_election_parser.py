@@ -118,6 +118,7 @@ def prompt_url_selection(
     processed: Dict[str, Any],
     prompt_func: Callable[[str], str],
     output_func: Callable[[str], None],
+    cancel_flag: threading.Event = None,
     non_interactive=False
 ) -> List[str]:
     output_func("\n[bold #eb4f43]URLs loaded:[/bold #eb4f43]")
@@ -137,11 +138,23 @@ def prompt_url_selection(
         output_func(f"  [{i+1}] {url} [bold {status_color}]({status})[/bold {status_color}]")
 
     if non_interactive:
-        # Let the frontend or API caller handle selection and pass it in.
         output_func("[INFO] Non-interactive mode: awaiting selection from frontend or API.")
         return []
 
+    # Check cancel_flag before prompting
+    if cancel_flag is not None and hasattr(cancel_flag, "is_set") and callable(cancel_flag.is_set):
+        if cancel_flag.is_set():
+            output_func("[CANCELLED] Selection cancelled before prompt.")
+            return []
+
     user_input = prompt_func("\n[INPUT] Enter indices (comma-separated), 'all', or leave empty to cancel: ")
+
+    # Check cancel_flag after prompt
+    if cancel_flag is not None and hasattr(cancel_flag, "is_set") and callable(cancel_flag.is_set):
+        if cancel_flag.is_set():
+            output_func("[CANCELLED] Selection cancelled after prompt.")
+            return []
+
     if not isinstance(user_input, str):
         return []
     user_input = user_input.strip().lower()
@@ -188,7 +201,7 @@ def process_format_override() -> bool:
     full_path = safe_join(input_folder, target_file)
     html_context = {"manual_file": full_path}
     dummy_page = cast(Page, None)
-    result = handler.parse(dummy_page, html_context)
+    result = safe_parse(handler, dummy_page, html_context, logger=logger)
     if result and all(result):
         *_, metadata = result
         if "output_file" in metadata:
@@ -462,10 +475,10 @@ def main(prompt_func=prompt.prompt_input, output_func=logger.info, session_id=No
 
         if ENABLE_PARALLEL:
             with Pool() as pool:
-                pool.starmap(orchestrate_url, [(url, processed_info, prompt_func, output_func, session_id, cancel_flag) for url in selected_urls])
+                pool.starmap(orchestrate_url, [(url, processed_info, prompt_func, output_func, session_id, cancel_flag, non_interactive) for url in selected_urls])
         else:
             for url in selected_urls:
-                orchestrate_url(url, processed_info, prompt_func, output_func, session_id, cancel_flag)
+                orchestrate_url(url, processed_info, prompt_func, output_func, session_id, cancel_flag, non_interactive)
         summary = {"success": 0, "fail": 0, "partial": 0, "error": 0, "flagged": 0}
         processed = load_processed_urls()
         for url in selected_urls:
