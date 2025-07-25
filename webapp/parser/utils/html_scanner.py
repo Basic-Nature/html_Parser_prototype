@@ -973,6 +973,7 @@ def extract_tagged_segments_with_attrs(
                 return []
 
         def walk(node, parent_idx=None, heading_idx=None, panel_idx=None, **kwargs):
+            kwargs.pop('session_id', None)
             tag = getattr(node, "tag", None)
             tag_lower = safe_lower(tag or "")
             if not tag or tag_lower not in HTML_TAGS:
@@ -1065,8 +1066,6 @@ def extract_tagged_segments_with_attrs(
             segments.append(seg)
             this_idx = seg["_idx"]
             for child in getattr(node, "iter", lambda **kw: [] if not kw else [] )(include_text=True, **kwargs):
-                if kwargs:
-                    logger.debug(f"walk: kwargs passed to iter: {kwargs}")
                 child_idx = walk(child, this_idx, this_heading_idx, this_panel_idx, **kwargs)
                 if child_idx is not None:
                     if not isinstance(seg.get("children"), list):

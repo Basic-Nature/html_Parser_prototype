@@ -1762,7 +1762,10 @@ class ContextCoordinator(object):
             context_sim = get_semantic_score(model, title, contest_title) if model and contest_title else 0.0
             # 5. Length and capitalization heuristic
             length_score = min(len(title) / 20.0, 0.2) if isinstance(title, str) else 0.0
-            cap_score = 0.1 if isinstance(title, str) and len(title) > 2 and safe_isupper(safe_get_first(title, "title_first_char", "", logger), logger) else 0.0
+            # Defensive conversion: always pass a list to safe_get_first
+            title_chars = list(title) if isinstance(title, str) else title
+            first_char = safe_get_first(title_chars, "title_first_char", "", logger)
+            cap_score = 0.1 if isinstance(title, str) and len(title) > 2 and safe_isupper(first_char, logger) else 0.0
             # 6. Aggregate score
             score = (
                 0.4 * max_sim +
@@ -1787,7 +1790,6 @@ class ContextCoordinator(object):
         try:
             context_dict = context if isinstance(context, dict) else {}
             model = getattr(self, "_semantic_model", None)
-            # 1. Semantic similarity to contest title and known labels
             contest_obj = context_dict.get("contest", {})
             contest_title = contest_obj.get("title", "") if isinstance(contest_obj, dict) else str(contest_obj)
             known_labels = set(context_dict.get("known_labels", []))
@@ -1799,22 +1801,19 @@ class ContextCoordinator(object):
                 max_sim = max(sim_scores) if sim_scores else 0.0
             else:
                 max_sim = 0.0
-            # 2. Fuzzy match to known labels
             fuzzy_scores = [difflib.SequenceMatcher(None, safe_lower(lbl), safe_lower(title)).ratio() for lbl in known_labels]
             max_fuzzy = max(fuzzy_scores) if fuzzy_scores else 0.0
-            # 3. Entity detection
             ents = self.extract_entities(title)
             entity_boost = 0.0
             for ent, label in ents:
                 if label in {"PERSON", "CANDIDATE", "ORG", "NORP", "GPE", "LOC"}:
                     entity_boost = 0.2
                     break
-            # 4. Contextual match to contest title
             context_sim = get_semantic_score(model, title, contest_title) if model and contest_title else 0.0
-            # 5. Length and capitalization heuristic
             length_score = min(len(title) / 20.0, 0.2) if isinstance(title, str) else 0.0
-            cap_score = 0.1 if isinstance(title, str) and len(title) > 2 and safe_isupper(safe_get_first(title, "title_first_char", "", logger), logger) else 0.0
-            # 6. Aggregate score
+            title_chars = list(title) if isinstance(title, str) else title
+            first_char = safe_get_first(title_chars, "title_first_char", "", logger)
+            cap_score = 0.1 if isinstance(title, str) and len(title) > 2 and safe_isupper(first_char, logger) else 0.0
             score = (
                 0.4 * max_sim +
                 0.2 * max_fuzzy +
@@ -1823,7 +1822,6 @@ class ContextCoordinator(object):
                 length_score +
                 cap_score
             )
-            # Clamp between 0.0 and 1.0
             return max(0.0, min(score, 1.0))
         except Exception as e:
             logger.error(f"[score_entry] Error scoring entry '{title}': {e}")
@@ -1846,20 +1844,19 @@ class ContextCoordinator(object):
             if hasattr(self, "extract_entities"):
                 ents = self.extract_entities(title)
                 if ents:
-                    # Boost if header is a known entity type
                     for ent, label in ents:
                         if label in {"PERSON", "CANDIDATE", "ORG", "NORP", "GPE", "LOC"}:
                             return 0.8
-            # Use known header keywords if available in context
             known_headers = set()
             if context and isinstance(context, dict):
                 known_headers = set(context.get("known_headers", []))
             if known_headers and safe_lower(title) in (safe_lower(h) for h in known_headers):
                 return 0.9
-            # Fallback: score by length and capitalization
-            if isinstance(title, str) and len(title) > 2 and safe_isupper(safe_get_first(title, "title_first_char", "", logger), logger):
+            # Defensive conversion for capitalization
+            title_chars = list(title) if isinstance(title, str) else title
+            first_char = safe_get_first(title_chars, "title_first_char", "", logger)
+            if isinstance(title, str) and len(title) > 2 and safe_isupper(first_char, logger):
                 return 0.6
-            # Default fallback
             return 0.5
         except Exception as e:
             logger.error(f"[score_header] Error scoring header '{title}': {e}")

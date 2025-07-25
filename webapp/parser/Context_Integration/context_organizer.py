@@ -498,6 +498,9 @@ class ContextOrganizer(object):
                     try:
                         query_title = c.get("title")
                         query_embs = safe_model_encode(embedding_model, [query_title if isinstance(query_title, str) else ""])
+                        # Ensure query_embs is always a list
+                        if isinstance(query_embs, np.ndarray):
+                            query_embs = query_embs.tolist()
                         if query_embs is not None and len(query_embs) > 0:
                             query_emb = safe_get_first(query_embs, "query_embs", c.get("source_url", ""), logger)
                             if query_emb is not None:
