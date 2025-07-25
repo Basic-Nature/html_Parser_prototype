@@ -344,7 +344,7 @@ def get_handler(
             logger.info(f"[Router][Session:{session_id}] {entry}")
     # Step 2: Enrich context using the coordinator (NLP, ML, etc.)
     coordinator = ContextCoordinator(use_library=True, enable_ml=False, alert_monitor=False)
-    enriched = coordinator.organize_and_enrich(context, suppress_dom_errors=True, session_id=session_id, non_interactive=non_interactive)
+    enriched = coordinator.organize_and_enrich(context, suppress_dom_errors=True)
     html = context.get("raw_html", "") or (enriched.get("raw_html") if enriched else "")
     # Step 3: Use dynamic_state_county_detection for best guess (context, html)
     county, state, handler_path, detection_log = dynamic_state_county_detection(
