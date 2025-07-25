@@ -10,7 +10,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, Ti
 from typing import Any, Callable, Dict, List, Optional, Union, Generator, ContextManager
 from contextlib import contextmanager
 from ..utils.shared_logger import SharedLogger, RichConsoleProxy
-from ..utils.shared_logic import safe_lower, safe_strip
+
 logger = SharedLogger()
 console = RichConsoleProxy()
 try:
@@ -18,6 +18,18 @@ try:
     load_dotenv()
 except ImportError:
     pass  # dotenv is optional
+
+def safe_lower(val) -> str:
+    try:
+        return val.lower() if isinstance(val, str) else str(val).lower()
+    except Exception:
+        return ""
+
+def safe_strip(val) -> str:
+    try:
+        return val.strip() if isinstance(val, str) else str(val).strip()
+    except Exception:
+        return ""
 
 def get_prompt_mode() -> str:
     """Get prompt mode from environment or default to CLI."""
