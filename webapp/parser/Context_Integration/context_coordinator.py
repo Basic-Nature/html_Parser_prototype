@@ -498,7 +498,7 @@ class ContextCoordinator(object):
         Ensure alert monitoring thread is cleaned up on destruction.
         """
         try:
-            if self.alert_monitor_thread and self.alert_monitor_thread.is_alive():
+            if hasattr(self, "alert_monitor_thread") and self.alert_monitor_thread and self.alert_monitor_thread.is_alive():
                 logger.info("[ALERT MONITOR] Stopping alert monitoring thread.")
                 self.alert_monitor_thread.join(timeout=1)
                 if self.alert_monitor_thread.is_alive():
@@ -510,7 +510,8 @@ class ContextCoordinator(object):
         except Exception as e:
             logger.error(f"[ALERT MONITOR] Exception during cleanup: {e}", exc_info=True)
         finally:
-            self.alert_monitor_thread = None
+            if hasattr(self, "alert_monitor_thread"):
+                self.alert_monitor_thread = None
 
     def append_to_context_library(self, organized, path=None, merge_lists=True, deduplicate=True) -> bool:
         """
