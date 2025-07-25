@@ -271,20 +271,17 @@ def print_analyze_contests(results) -> None:
 
 # --- Real-Time Monitoring (unchanged) ---
 
-def monitor_db_for_alerts(db_path: str = None, poll_interval: int = 10) -> None:
+def monitor_db_for_alerts(poll_interval: int = 10) -> None:
     """
     Monitor the alerts table in PostgreSQL for new alerts in real time using SQLAlchemy.
     Adds type checking for .id, .scalars().all(), and .execute.
     """
-    if db_path is None:
-        db_path = POSTGRES_URL  # Use robust config value
-
     last_alert_id = 0
     def monitor():
         nonlocal last_alert_id
         while True:
             try:
-                with get_session(db_path) as session:
+                with get_session() as session:
                     stmt = select(Alert).where(Alert.id > last_alert_id).order_by(Alert.id.asc())
                     result = safe_execute(session, stmt)
                     if result is None:
