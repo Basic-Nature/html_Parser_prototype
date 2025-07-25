@@ -14,7 +14,7 @@ from rich.json import JSON
 import orjson
 from contextlib import contextmanager
 from io import StringIO
-from ..utils.shared_logic import safe_lower
+
 
 try:
     from dotenv import load_dotenv
@@ -376,6 +376,7 @@ class SharedLogger(logging.Logger):
         Robustly handle logging for both CLI and webapp GUI.
         Emits to SocketIO in webapp mode, prints rich panels in CLI.
         """
+        from ..utils.shared_logic import safe_lower
         if self.suppress_rich_logs or not self._should_emit(level):
             return
 
