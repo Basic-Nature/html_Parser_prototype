@@ -24,7 +24,12 @@ from ..Context_Integration.Context_Library.constants import (
     ALWAYS_IGNORE_TAGS, ALWAYS_IGNORE_CLASSES, ALWAYS_IGNORE_IDS, ICON_CLASSES, ICON_TAGS, BUTTON_CLASSES,
     HEADING_CLASSES, PANEL_CLASSES, TIMESTAMP_CLASSES, STRUCTURAL_TAGS, TIMESTAMP_ID_PATTERNS, TIMESTAMP_ATTRS,
     MISC_FOOTER_KEYWORDS, UPDATE_PANEL_KEYWORDS, VIEW_BY_PHRASES, CANONICAL_SEGMENT_LABELS,
-    TOTAL_KEYWORDS, PERCENT_KEYWORDS, ROOT_CONTAINER_TAGS, LOCATION_ABBREVIATIONS
+    TOTAL_KEYWORDS, PERCENT_KEYWORDS, ROOT_CONTAINER_TAGS, LOCATION_ABBREVIATIONS,
+    CONTEST_PANEL_TAGS, TABLE_TAGS, BALLOT_TYPES_SORT_ORDER, BUTTON_TAGS,
+    BUTTON_CLASSES, STATE_TAGS, OFFICE_KEYWORDS, PRECINCT_HEADER_PATTERNS,
+    HEADING_TAGS, HEADING_CLASSES, NOISY_LABEL_PATTERNS, SELECTORS, DISTRICT_REGEX
+    
+    
 )
 from ..Context_Integration.librarian import (
     
@@ -495,8 +500,6 @@ def auto_label_segment(
     model=None,
     ml_threshold=0.7,
     coordinator=None,
-    session_id=None,
-    non_interactive=False
 ) -> Optional[tuple]:
     if coordinator is None:
         coordinator = ContextCoordinator()
@@ -935,18 +938,31 @@ def extract_tagged_segments_with_attrs(
     model_name: Optional[str] = None,
     use_finetuned: bool = True,
     pattern_kb: list = None,
-    ml_threshold: float = 0.85,   
+    ml_threshold: float = 0.85,
     model=None,
     coordinator=None,
     **kwargs
 ) -> List[Dict[str, Any]]:
     """
-    Extract DOM segments with attributes and ML-driven semantic labels.
-    Uses selectolax for DOM, leverages context, pattern KB, and coordinator for optimal labeling.
-    Ensures robust parent/child relationships, unique indices, and auditability for downstream use.
+    Ultra-advanced DOM segment extraction with ML, NLP, and dynamic context enrichment.
+    - Uses selectolax for DOM parsing.
+    - Integrates spaCy for entity/context-aware labeling.
+    - Leverages ContextCoordinator for self-learning, feedback, and smart context.
+    - Multi-level filtering, robust parent/child relationships, unique indices, and auditability.
+    - Uses spacy_utils for robust entity, location, and date extraction.
+    - Uses coordinator.extract_field for dynamic context enrichment.
     """
     from ..Context_Integration.context_organizer import ContextOrganizer
+    from ..utils.spacy_utils import extract_entities, extract_locations, extract_dates
+
+    try:
+        import spacy
+        nlp = spacy.load("en_core_web_sm")
+    except Exception:
+        nlp = None
+
     if coordinator is None:
+        from ..Context_Integration.context_coordinator import ContextCoordinator
         coordinator = ContextCoordinator()
     if context_cache is not None:
         clean_cache_inplace(context_cache)
@@ -958,17 +974,68 @@ def extract_tagged_segments_with_attrs(
         context_library = {}
     if context_cache is None:
         context_cache = load_context_cache_from_disk()
-    panel_tags = PANEL_TAGS
-    heading_tags = HEADING_TAGS
-    custom_attr_patterns = CUSTOM_ATTR_PATTERNS
-    location_keywords = LOCATION_KEYWORDS
-    candidate_keywords = CANDIDATE_KEYWORDS
-    ballot_types = BALLOT_TYPES
+
+    # --- Dynamic context enrichment ---
+    all_panel_tags = PANEL_TAGS | CONTEST_PANEL_TAGS | {"main", "aside", "article"}
+    all_heading_tags = HEADING_TAGS | EXTRA_HEADING_TAGS
+    all_table_tags = TABLE_TAGS
+    all_structural_tags = STRUCTURAL_TAGS | ROOT_CONTAINER_TAGS | ALWAYS_IGNORE_TAGS
+    all_icon_tags = ICON_TAGS
+    all_button_tags = BUTTON_TAGS
+    all_classes_ignore = ALWAYS_IGNORE_CLASSES | ICON_CLASSES | BUTTON_CLASSES | PANEL_CLASSES | HEADING_CLASSES
+    all_ids_ignore = ALWAYS_IGNORE_IDS
+    all_location_keywords = LOCATION_KEYWORDS | set(LOCATION_ABBREVIATIONS.keys())
+    all_candidate_keywords = CANDIDATE_KEYWORDS | PARTY_KEYWORDS
+    all_ballot_types = set(BALLOT_TYPES) | set(BALLOT_TYPES_SORT_ORDER)
+    all_contest_keywords = CONTEST_KEYWORDS
+    all_misc_keywords = TOTAL_KEYWORDS | PERCENT_KEYWORDS | MISC_FOOTER_KEYWORDS | UPDATE_PANEL_KEYWORDS
+    all_state_tags = STATE_TAGS | set(STATE_ABBR.keys())
+    all_office_keywords = set([k for k, _ in OFFICE_KEYWORDS])
+    all_precinct_patterns = [re.compile(pat) for pat in PRECINCT_HEADER_PATTERNS]
+    all_noisy_label_patterns = NOISY_LABEL_PATTERNS
+    all_selectors = SELECTORS
+    all_canonical_labels = CANONICAL_SEGMENT_LABELS
+    all_district_regex = DISTRICT_REGEX
+    all_election_types = set(ELECTION_TYPES)
+    all_party_keywords = PARTY_KEYWORDS
+
+    # --- Coordinator-driven context using extract_field ---
+    context_contests = set()
+    context_parties = set()
+    context_vote_methods = set()
+    if coordinator:
+        try:
+            context_contests = set(
+                safe_lower(c.get("title", "")) for c in coordinator.get_contests() if isinstance(c, dict)
+            )
+        except Exception: pass
+        try:
+            all_state_tags |= set(coordinator.extract_field("states") or [])
+        except Exception: pass
+        try:
+            for state in all_state_tags:
+                context_counties = coordinator.extract_field("precincts", context={"state": state}) or []
+                all_location_keywords |= set(context_counties)
+        except Exception: pass
+        try:
+            all_election_types |= set(coordinator.extract_field("election_types") or [])
+        except Exception: pass
+        try:
+            for county in coordinator.get_known_county_to_PRECINCTS_map():
+                precincts = coordinator.extract_field("precincts", context={"county": county}) or []
+                all_location_keywords |= set(precincts)
+        except Exception: pass
+        try:
+            context_parties = set(safe_lower(p) for p in (coordinator.extract_field("party") or []))
+        except Exception: pass
+        try:
+            context_vote_methods = set(safe_lower(vm) for vm in (coordinator.extract_field("vote_methods") or []))
+        except Exception: pass
+
     segments: List[Dict[str, Any]] = []
 
     try:
         tree = HTMLParser(html)
-        # --- Robust index assignment ---
         idx_counter = [0]
 
         def safe_split(val, sep=None):
@@ -976,6 +1043,83 @@ def extract_tagged_segments_with_attrs(
                 return val.split(sep) if isinstance(val, str) else []
             except Exception:
                 return []
+
+        def is_semantic_tag(tag, classes, id_, attrs, text):
+            tag = safe_lower(tag)
+            classes = set(safe_lower(c) for c in classes)
+            id_ = safe_lower(id_)
+            text = safe_lower(text)
+            # --- Heuristic rules ---
+            if tag in all_panel_tags or classes & PANEL_CLASSES:
+                return "panel"
+            if tag in all_heading_tags or classes & HEADING_CLASSES:
+                return "heading"
+            if tag in all_table_tags or "table" in classes or "results" in classes:
+                return "results_table"
+            if tag in all_button_tags or classes & BUTTON_CLASSES or "button" in id_:
+                return "ballot_toggle"
+            if tag in all_icon_tags or classes & ICON_CLASSES:
+                return "ignore"
+            if classes & TIMESTAMP_CLASSES or any(re.search(pat, id_) for pat in TIMESTAMP_ID_PATTERNS):
+                return "results_timestamp"
+            if tag in all_state_tags or any(st in text for st in all_state_tags):
+                return "state_panel"
+            if any(ok in text for ok in all_office_keywords) or text in context_contests:
+                return "contest"
+            if any(pat.search(text) for pat in all_precinct_patterns) or all_district_regex.search(text):
+                return "location_panel"
+            for sel_type, sel_dict in all_selectors.items():
+                for k, v in sel_dict.items():
+                    if attrs.get(k, "").lower() == v.lower():
+                        return sel_type
+            if any(et in text for et in all_election_types):
+                return "ballot_types"
+            # Use coordinator.extract_field for party and vote_method detection
+            party_label = None
+            vote_method_label = None
+            try:
+                party_label = coordinator.extract_field("party", text=text)
+            except Exception:
+                party_label = None
+            try:
+                vote_method_label = coordinator.extract_field("vote_methods", text=text)
+            except Exception:
+                vote_method_label = None
+            if party_label:
+                return "party_label"
+            if vote_method_label:
+                return "vote_method"
+            if any(pk in text for pk in all_party_keywords) or text in context_parties:
+                return "party_label"
+            if text in context_vote_methods:
+                return "vote_method"
+            if any(mk in text for mk in all_misc_keywords):
+                return "misc_info"
+            if tag in all_structural_tags or classes & all_classes_ignore or id_ in all_ids_ignore:
+                return "ignore"
+            canonical = all_canonical_labels.get(text)
+            if canonical:
+                return canonical
+            if any(pat.search(text) for pat in all_noisy_label_patterns):
+                return "ignore"
+            # --- spaCy entity-based rules using spacy_utils ---
+            entities = extract_entities(text, nlp) if nlp else []
+            locations = extract_locations(text, nlp) if nlp else []
+            dates = extract_dates(text, nlp) if nlp else []
+            for ent in entities:
+                ent_text_lower = safe_lower(ent.get("text", ""))
+                ent_label = ent.get("label", "")
+                if ent_label == "PERSON" and any(ent_text_lower in safe_lower(kw) for kw in all_candidate_keywords):
+                    return "candidate_panel"
+                if ent_label in {"GPE", "LOC"} and any(ent_text_lower in safe_lower(kw) for kw in all_location_keywords):
+                    return "location_panel"
+                if ent_label == "ORG" and any(ent_text_lower in safe_lower(kw) for kw in all_party_keywords):
+                    return "party_label"
+            if locations:
+                return "location_panel"
+            if dates:
+                return "results_timestamp"
+            return None
 
         def walk(node, parent_idx=None, heading_idx=None, panel_idx=None, **kwargs):
             tag = getattr(node, "tag", None)
@@ -991,22 +1135,12 @@ def extract_tagged_segments_with_attrs(
             classes = safe_split(attrs.get("class", "") or "")
             id_ = attrs.get("id", "")
             is_button = tag_lower == "button" or (tag_lower == "input" and safe_lower(attrs.get("type", "") or "") in ["button", "submit"])
-            button_text = ""
-            if is_button:
-                button_text = (
-                    attrs.get("aria-label")
-                    or attrs.get("value")
-                    or (
-                        getattr(
-                            node,
-                            "text",
-                            lambda **kw: (logger.debug(f"text lambda received kw: {kw}") or "")
-                        )(strip=True, **kwargs)
-                        if hasattr(node, "text")
-                        else ""
-                    )
-                    or ""
-                )
+            button_text = (
+                attrs.get("aria-label")
+                or attrs.get("value")
+                or (getattr(node, "text", lambda **kw: "")(strip=True, **kwargs) if hasattr(node, "text") else "")
+                or ""
+            ) if is_button else ""
             is_clickable = (
                 is_button
                 or tag_lower == "a"
@@ -1016,11 +1150,10 @@ def extract_tagged_segments_with_attrs(
             )
 
             this_heading_idx = heading_idx
-            if tag_lower in heading_tags:
+            if tag_lower in all_heading_tags:
                 this_heading_idx = safe_get_first(idx_counter, "heading_idx", None, logger)
-
             this_panel_idx = panel_idx
-            if tag_lower in panel_tags:
+            if tag_lower in all_panel_tags:
                 this_panel_idx = safe_get_first(idx_counter, "panel_idx", None, logger)
 
             seg = {
@@ -1042,9 +1175,8 @@ def extract_tagged_segments_with_attrs(
                 "panel_ancestor_heading": None,
             }
             idx_counter[0] = safe_get_first([idx_counter[0] + 1], "idx_counter_increment", idx_counter[0] + 1, logger)
-            # Attribute audit
             for k in attrs:
-                if any(pat.match(k) for pat in custom_attr_patterns):
+                if any(pat.match(k) for pat in CUSTOM_ATTR_PATTERNS):
                     seg["has_custom_attr"] = True
                 log_unknown_attr(k, context_library)
             node_start = getattr(node, "start", None)
@@ -1059,7 +1191,8 @@ def extract_tagged_segments_with_attrs(
                 seg["html"] = getattr(node, "html", "") if hasattr(node, "html") else ""
 
             seg["segment_hash"] = segment_identity_hash(seg)
-            # --- Filter out trivial segments here ---
+
+            # --- Multi-level filtering ---
             clean_text = _extract_clean_text(seg["html"])
             if not clean_text or not clean_text.strip():
                 return None
@@ -1067,6 +1200,77 @@ def extract_tagged_segments_with_attrs(
                 return None
             if re.fullmatch(r"<[^>]+>", clean_text.strip()):
                 return None
+            if tag_lower in ROOT_CONTAINER_TAGS or tag_lower in ALWAYS_IGNORE_TAGS or tag_lower in STRUCTURAL_TAGS:
+                return None
+            if set(classes) & ALWAYS_IGNORE_CLASSES or id_ in ALWAYS_IGNORE_IDS:
+                return None
+            if tag_lower in ICON_TAGS and (set(classes) & ICON_CLASSES or not clean_text.strip()):
+                return None
+            if len(clean_text.strip()) < 2 or clean_text.strip().isdigit() or bool(re.fullmatch(r'[\W_]+', clean_text.strip())):
+                return None
+            if tag_lower in {"script", "style", "meta", "link", "base"}:
+                return None
+
+            # --- Smart semantic categorization ---
+            semantic_label = is_semantic_tag(tag_lower, classes, id_, attrs, clean_text)
+            text_lower = safe_lower(clean_text)
+            html_lower = safe_lower(seg["html"])
+
+            # --- Context-driven overrides ---
+            if any(kw in text_lower for kw in all_location_keywords) or any(kw in html_lower for kw in all_location_keywords):
+                semantic_label = semantic_label or "location_panel"
+            if any(kw in text_lower for kw in all_candidate_keywords) or any(kw in html_lower for kw in all_candidate_keywords):
+                semantic_label = semantic_label or "candidate_panel"
+            if any(bt in text_lower for bt in all_ballot_types) or any(bt in html_lower for bt in all_ballot_types):
+                semantic_label = semantic_label or "ballot_types"
+            if any(kw in text_lower for kw in all_contest_keywords) or any(kw in html_lower for kw in all_contest_keywords) or text_lower in context_contests:
+                semantic_label = semantic_label or "contest"
+            if any(kw in text_lower for kw in all_misc_keywords):
+                semantic_label = semantic_label or "misc_info"
+            if any(kw in text_lower for kw in TOTAL_KEYWORDS | PERCENT_KEYWORDS | MISC_FOOTER_KEYWORDS):
+                semantic_label = semantic_label or "results_table"
+            if any(kw in text_lower for kw in UPDATE_PANEL_KEYWORDS) or re.search(r"\b\d{1,2}:\d{2}\s*(am|pm)?\b", text_lower) or re.search(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b", text_lower):
+                semantic_label = semantic_label or "results_timestamp"
+            if tag_lower == "a" and "href" in attrs:
+                href = safe_lower(str(attrs["href"]))
+                if any(href.endswith(ext) for ext in [".csv", ".json", ".pdf", ".xlsx", ".zip", ".xls", ".doc", ".docx"]):
+                    semantic_label = "download_link"
+            if is_clickable:
+                semantic_label = semantic_label or "clickable"
+            # Use coordinator.extract_field for party and vote_method detection (again for override)
+            try:
+                if coordinator.extract_field("party", text=text_lower):
+                    semantic_label = semantic_label or "party_label"
+            except Exception:
+                pass
+            try:
+                if coordinator.extract_field("vote_methods", text=text_lower):
+                    semantic_label = semantic_label or "vote_method"
+            except Exception:
+                pass
+            if any(pk in text_lower for pk in all_party_keywords) or text_lower in context_parties:
+                semantic_label = semantic_label or "party_label"
+            if text_lower in context_vote_methods:
+                semantic_label = semantic_label or "vote_method"
+            if any(et in text_lower for et in all_election_types):
+                semantic_label = semantic_label or "ballot_types"
+
+            # --- ML/heuristic fallback ---
+            if not semantic_label and coordinator and hasattr(coordinator, "auto_label_segment"):
+                try:
+                    ml_label = coordinator.auto_label_segment(seg, context_library=context_library, context_cache=context_cache, pattern_kb=pattern_kb, model=model, ml_threshold=ml_threshold)
+                    if ml_label and isinstance(ml_label, str):
+                        semantic_label = ml_label
+                except Exception:
+                    semantic_label = None
+            if not semantic_label:
+                semantic_label = "unknown"
+
+            # --- Use spacy_utils for robust NLP enrichment ---
+            seg["ml_label"] = semantic_label
+            seg["nlp_entities"] = extract_entities(clean_text, nlp) if nlp else []
+            seg["nlp_locations"] = extract_locations(clean_text, nlp) if nlp else []
+            seg["nlp_dates"] = extract_dates(clean_text, nlp) if nlp else []
             segments.append(seg)
             this_idx = seg["_idx"]
             for child in getattr(node, "iter", lambda **kw: [] if not kw else [] )(include_text=True, **kwargs):
@@ -1094,12 +1298,7 @@ def extract_tagged_segments_with_attrs(
             seg["dom_node"] = dom_tree["nodes"][seg["_idx"]] if seg["_idx"] < len(dom_tree["nodes"]) else None
 
         label_groups = organizer.group_nodes_by_label(dom_tree["nodes"], label_field="ml_label")
-        for label, group in label_groups.items():
-            logger.info(f"[DOM LABEL GROUP] '{label}': {len(group)} nodes")
-
         panels_and_tables = organizer.get_panels_and_tables(dom_tree)
-        logger.info(f"[DOM PANELS/TABLES] {len(panels_and_tables)} panel/table groups extracted.")
-
         for seg in segments:
             seg["panel_group"] = None
             for panel in panels_and_tables:
@@ -1146,37 +1345,45 @@ def extract_tagged_segments_with_attrs(
             seg["_embedding"] = hash_to_embedding[h]
         logger.info(f"[EMBED] Embedding assignment complete for {len(segments)} segments.")
 
+        # --- Final enrichment and audit ---
         for seg in segments:
             text = safe_lower(seg.get("html") or "")
             seg["contains_election_keyword"] = any(
-                safe_lower(kw) in text for kw in (list(location_keywords) + list(candidate_keywords) + list(ballot_types))
+                safe_lower(kw) in text for kw in (list(all_location_keywords) + list(all_candidate_keywords) + list(all_ballot_types))
             )
             seg["contains_candidate"] = any(
-                safe_lower(cand) in text for cand in candidate_keywords
+                safe_lower(cand) in text for cand in all_candidate_keywords
             )
+            seg["contains_misc_info"] = any(
+                safe_lower(mk) in text for mk in all_misc_keywords
+            )
+            seg["contains_nlp_person"] = any(ent.get("label", "") == "PERSON" for ent in seg.get("nlp_entities", []))
+            seg["contains_nlp_location"] = bool(seg.get("nlp_locations", []))
+            seg["contains_nlp_date"] = bool(seg.get("nlp_dates", []))
             emb = seg.get("_embedding")
-            label = auto_label_segment(
-                seg,
-                context_library=context_library,
-                context_cache=context_cache,
-                pattern_kb=pattern_kb,
-                model=model,
-                ml_threshold=ml_threshold,
-                coordinator=coordinator
-            )
-            seg["ml_label"] = label
+            label = seg["ml_label"]
             seg["ml_confidence"] = 1.0 if label != "unknown" else 0.0
             html_val = seg.get('html') or ''
             if not isinstance(html_val, str):
                 html_val = str(html_val)
             seg["pattern_id"] = f"pattern_{hashlib.sha256(html_val.encode('utf-8')).hexdigest()[:10]}"
-            seg["is_actionable"] = label in ("results_table", "contest", "candidate_panel", "location_panel")
+            seg["is_actionable"] = label in (
+                "results_table", "contest", "candidate_panel", "location_panel", "state_panel",
+                "party_label", "ballot_types", "vote_method", "misc_info"
+            )
             seg["is_election_result"] = label == "results_table"
             seg["is_contest"] = label == "contest"
             seg["label_group"] = label_groups.get(label, [])
             seg["panel_table_context"] = seg.get("panel_group", {})
 
-        logger.debug(f"[DOM SEGMENTS] Extracted {len(segments)} segments. Example: {safe_get_first(segments, 'segments', None, logger, default='None')}")
+        if segments:
+            seg = segments[0]
+            logger.debug(
+                f"[DOM SEGMENTS] Extracted {len(segments)} segments. Example: "
+                f"tag={seg.get('tag','')}, label={seg.get('ml_label','')}, text={_extract_clean_text(seg.get('html',''))[:80]}..."
+            )
+        else:
+            logger.debug(f"[DOM SEGMENTS] Extracted 0 segments.")
         if not segments:
             logger.warning("[DOM SEGMENTS] No DOM segments extracted. Check HTML input and parser logic.")
 
@@ -2186,10 +2393,14 @@ def scan_html_for_context(
         for section in required_sections:
             items = context_result.get(section, [])
             if not items:
-                logger.warning(
-                    f"[DOM_PARTS] No items found in '{section}'. "
-                    f"Downstream code should check for empty lists before accessing [0]."
-                )
+                if section not in getattr(logger, "_warned_sections", set()):
+                    logger.warning(
+                        f"[DOM_PARTS] No items found in '{section}'. "
+                        f"Downstream code should check for empty lists before accessing [0]."
+                    )
+                    if not hasattr(logger, "_warned_sections"):
+                        logger._warned_sections = set()
+                    logger._warned_sections.add(section)
                 # Log upstream extraction results for debugging
                 raw_items = context_result.get(f"raw_{section}", None)
                 if raw_items is not None:
