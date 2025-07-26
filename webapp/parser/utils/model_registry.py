@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from ..utils.shared_logger import SharedLogger
 from ..config import MODEL_DIR, PROJECT_ROOT, VOCAB_DIR
-from ..bots.librarian import load_context_library
+from ..Context_Integration.librarian import load_context_library
 try:
     from sentence_transformers import SentenceTransformer
 except ImportError:

@@ -11,20 +11,21 @@ import matplotlib.pyplot as plt
 import threading
 import orjson
 import time
+import re
 from pathlib import Path
 from ..utils.shared_logger import RichConsoleProxy
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple
 from ..utils.spacy_utils import extract_dates
-from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH, POSTGRES_URL
+from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
 from ..utils import db_utils
-from sqlalchemy.orm import Session
-
-
 from sqlalchemy import select
 from ..utils.db_utils import get_session
 from ..utils.shared_logic import (
     safe_get, safe_items, safe_encode, safe_tolist,
     safe_execute, safe_all
+)
+from ..Context_Integration.librarian import (
+    clean_for_json
 )
 from ..utils.models import Alert
 # --- Rich imports for CLI output ---
@@ -318,14 +319,20 @@ def monitor_db_for_alerts(poll_interval: int = 10) -> None:
 # --- Utility: Audit Logging (unchanged) ---
 
 def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str = None) -> None:
-    from ..Context_Integration.context_organizer import clean_for_json
+    # Use .jsonl extension and safe path
+    default_name = "integrity_issues.jsonl"
     if log_path:
+        # Ensure .jsonl extension
+        if not log_path.endswith(".jsonl"):
+            log_path = re.sub(r"\.[^.]+$", "", log_path) + ".jsonl"
         log_path = db_utils._safe_db_path(log_path)
     else:
-        log_path = str((Path(CONTEXT_DB_PATH).parent / "integrity_issues.log").resolve())
+        log_path = str((Path(CONTEXT_DB_PATH).parent / default_name).resolve())
+    # Write each issue as a JSON object per line
     with open(log_path, "ab") as f:
         for issue_type, contest in issues:
-            f.write(orjson.dumps({"issue": issue_type, "contest": clean_for_json(contest)}) + b"\n")
+            obj = {"issue": issue_type, "contest": clean_for_json(contest)}
+            f.write(orjson.dumps(obj) + b"\n")
 
 def detect_statistical_outliers(
     values: List[float],

@@ -14,7 +14,7 @@ from ..utils.model_registry import ModelRegistry
 from collections import Counter
 from sentence_transformers import InputExample, losses
 from torch.utils.data import DataLoader
-from ..bots.librarian import load_context_library
+from ..Context_Integration.librarian import load_context_library
 from ..utils.db_utils import _safe_db_path, get_session, create_engine
 from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, POSTGRES_URL, LOG_DIR

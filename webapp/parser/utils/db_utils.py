@@ -12,6 +12,9 @@ from .models import (
     StagingElectionResult, WarehouseElectionResult, Base,
     State, County, Party,
 )
+from ..Context_Integration.librarian import (
+    clean_for_json
+)
 from .shared_logger import SharedLogger
 from ..config import POSTGRES_URL, CONTEXT_LIBRARY_PATH
 logger = SharedLogger()
@@ -28,22 +31,6 @@ def robust_orjson_loads(val) -> dict:
         return orjson.loads(val.encode("utf-8"))
     else:
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
-    
-def clean_for_json(obj) -> dict:
-    import numpy as np
-    if isinstance(obj, dict):
-        return {k: clean_for_json(v) for k, v in obj.items() if k != "_fixed_fields"}
-    elif isinstance(obj, list):
-        return [clean_for_json(i) for i in obj]
-    elif isinstance(obj, set):
-        return [clean_for_json(i) for i in obj]
-    elif isinstance(obj, np.ndarray):
-        return clean_for_json(obj.tolist())
-    elif isinstance(obj, (str, int, float, bool)) or obj is None:
-        return obj
-    else:
-        # Fallback: convert to string
-        return str(obj)
 
 # --- Robust session context manager ---
 @contextmanager

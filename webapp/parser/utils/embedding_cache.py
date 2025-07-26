@@ -2,6 +2,7 @@ import os
 import logging
 import threading
 import atexit
+import orjson
 import numpy as np
 from functools import lru_cache
 from sqlalchemy.exc import SQLAlchemyError
@@ -34,7 +35,7 @@ for name in [
 
 
 DISK_CACHE_PATH = os.path.join(CACHE_DIR, "embedding_disk_cache.pkl")
-MISSING_LOG_PATH = os.path.join(LOG_DIR, "missing_embeddings.log")
+MISSING_LOG_PATH = os.path.join(LOG_DIR, "missing_embeddings_log.jsonl")
 
 with logger.progress_bar("Loading...", total=100) as update_progress:
     for i in range(100):
@@ -156,8 +157,8 @@ def load_embedding(segment_hash):
                 _disk_cache[segment_hash] = emb
                 return emb
     # Log missing hash for diagnostics
-    with open(MISSING_LOG_PATH, "a") as f:
-        f.write(f"{segment_hash}\n")
+    with open(MISSING_LOG_PATH, "ab") as f:
+        f.write(orjson.dumps({"segment_hash": segment_hash}) + b"\n")
     return None
 
 @lru_cache(maxsize=2048)
@@ -279,9 +280,9 @@ def load_embeddings_batch(segment_hashes):
     # Log missing hashes
     still_missing = [h for h in segment_hashes if result[h] is None]
     if still_missing:
-        with open(MISSING_LOG_PATH, "a") as f:
+        with open(MISSING_LOG_PATH, "ab") as f:
             for h in still_missing:
-                f.write(f"{h}\n")
+                f.write(orjson.dumps({"segment_hash": h}) + b"\n")
     total = len(segment_hashes)
     console.log(
         f"[cyan][EMBEDDING CACHE] Batch load: {cache_hits} from mem, {disk_hits} from disk, {db_hits} from DB, {total - cache_hits - disk_hits - db_hits} missing.[/cyan]",
@@ -291,13 +292,19 @@ def load_embeddings_batch(segment_hashes):
 
 def fix_missing_embeddings():
     """
-    Scan missing_embeddings.log, try to compute/fetch missing embeddings,
+    Scan missing_embeddings_log.jsonl, try to compute/fetch missing embeddings,
     and save them to the cache if possible.
     """
     if not os.path.exists(MISSING_LOG_PATH):
         return
-    with open(MISSING_LOG_PATH, "r") as f:
-        missing_hashes = [line.strip() for line in f if line.strip()]
+    with open(MISSING_LOG_PATH, "rb") as f:
+        missing_hashes = []
+        for line in f:
+            try:
+                obj = orjson.loads(line)
+                missing_hashes.append(obj["segment_hash"])
+            except Exception:
+                continue
     if not missing_hashes:
         return
     fixed = []
@@ -317,9 +324,9 @@ def fix_missing_embeddings():
     # Remove fixed hashes from log
     if fixed:
         remaining = set(missing_hashes) - set(fixed)
-        with open(MISSING_LOG_PATH, "w") as f:
+        with open(MISSING_LOG_PATH, "wb") as f:
             for h in remaining:
-                f.write(f"{h}\n")
+                f.write(orjson.dumps({"segment_hash": h}) + b"\n")
         console.print(f"[green][EMBEDDING CACHE] Fixed {len(fixed)} missing embeddings automatically.[/green]")
 
 # --- Ensure table and fix missing embeddings at startup ---

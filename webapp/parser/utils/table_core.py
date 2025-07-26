@@ -40,7 +40,7 @@ from ..Context_Integration.Context_Library.constants import (
     KNOWN_COUNTY_TO_PRECINCTS_MAP, TOTAL_KEYWORDS, LOCATION_ABBREVIATIONS,
     LOCATION_KEYWORDS, PERCENT_KEYWORDS, MISC_FOOTER_KEYWORDS,
 )
-from ..bots.librarian import (
+from ..Context_Integration.librarian import (
     normalize_segment_text
 )
 if TYPE_CHECKING:

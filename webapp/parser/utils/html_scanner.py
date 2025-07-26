@@ -26,7 +26,7 @@ from ..Context_Integration.Context_Library.constants import (
     MISC_FOOTER_KEYWORDS, UPDATE_PANEL_KEYWORDS, VIEW_BY_PHRASES, CANONICAL_SEGMENT_LABELS,
     TOTAL_KEYWORDS, PERCENT_KEYWORDS, ROOT_CONTAINER_TAGS, LOCATION_ABBREVIATIONS
 )
-from ..bots.librarian import (
+from ..Context_Integration.librarian import (
     
     update_context_library, load_context_library, log_unknown_tag, log_unknown_attr, 
     get_canonical_segment_label, cache_segment_label, get_cached_segment_label,    
@@ -185,8 +185,13 @@ def safe_cache_path(filename: str) -> str:
         raise ValueError("Unsafe cache path detected!")
     return full_path
 
-def safe_log_path(filename: str) -> str:
-    """Generates a safe log file path, ensuring it does not escape the log directory."""
+def safe_log_path(filename: str, default_ext: str = ".jsonl") -> str:
+    """
+    Generates a safe log file path for JSONL logs, ensuring it does not escape the log directory.
+    - Enforces .jsonl extension by default.
+    - Sanitizes filename and prevents directory traversal.
+    - Handles Windows path length limits.
+    """
     if not filename:
         raise ValueError("Filename cannot be empty")
     if not isinstance(filename, str):
@@ -195,22 +200,20 @@ def safe_log_path(filename: str) -> str:
         raise ValueError("Filename contains unsafe characters")
     # Sanitize filename to prevent directory traversal or unsafe characters
     filename = _sanitize_log_filename(filename)
-    if not filename.endswith(".log"):
-        filename += ".log"
+    # Ensure correct extension
+    if not filename.endswith(default_ext):
+        # Remove any other extension before appending
+        filename = re.sub(r"\.[^.]+$", "", filename) + default_ext
     log_folder = LOG_DIR
-    # Defensive: fallback to temp if path too long
-    if os.name == "nt" and len(os.path.abspath(os.path.join(log_folder, filename))) >= 240:
+    full_path = os.path.join(log_folder, filename)
+    # Defensive: fallback to temp if path too long (Windows limit is ~260, but 240 is safer)
+    if os.name == "nt" and len(os.path.abspath(full_path)) >= 240:
         import tempfile
         temp_path = os.path.join(tempfile.gettempdir(), filename)
         logger.warning(f"[LOG] Path too long for Windows, using temp path: {temp_path}")
-        # Ensure temp dir exists
         os.makedirs(os.path.dirname(temp_path), exist_ok=True)
         return temp_path
     os.makedirs(log_folder, exist_ok=True)
-    # Ensure log dir exists
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
-    full_path = os.path.join(log_folder, filename)
     # Ensure the log path does not escape the log directory
     if not os.path.abspath(full_path).startswith(os.path.abspath(log_folder)):
         raise ValueError("Unsafe log path detected!")
@@ -1317,6 +1320,11 @@ def export_context_cache_for_db(path=CONTEXT_CACHE_PATH) -> List[dict]:
     return export
 
 def load_pattern_kb() -> List[Dict[str, Any]]:
+    """
+    Loads the pattern KB from dom_pattern_kb.jsonl as a list of dicts.
+    Deduplicates by pattern_id and timestamp, and ignores corrupt lines.
+    Caches the result for future calls.
+    """
     global _pattern_kb_cache
     if _pattern_kb_cache is not None:
         return _pattern_kb_cache
@@ -1326,21 +1334,46 @@ def load_pattern_kb() -> List[Dict[str, Any]]:
         with open(path, "rb") as f:
             for line in f:
                 try:
-                    kb.append(robust_orjson_loads(line))
+                    entry = robust_orjson_loads(line)
+                    # Only accept dicts with required keys
+                    if isinstance(entry, dict) and "pattern_id" in entry and "label" in entry:
+                        kb.append(entry)
                 except Exception:
                     continue
-    _pattern_kb_cache = kb
-    return kb
+    # Deduplicate by pattern_id, keep latest timestamp
+    dedup = {}
+    for entry in kb:
+        pid = entry.get("pattern_id")
+        ts = entry.get("timestamp", 0)
+        if pid not in dedup or ts > dedup[pid].get("timestamp", 0):
+            dedup[pid] = entry
+    _pattern_kb_cache = list(dedup.values())
+    return _pattern_kb_cache
 
 def append_pattern_kb(entry) -> None:
+    """
+    Appends a pattern KB entry to dom_pattern_kb.jsonl as a single-line JSON object.
+    Converts numpy embeddings to lists, and ensures valid structure.
+    """
     if not isinstance(entry, dict):
         raise ValueError("Only dict entries can be written to dom_pattern_kb.jsonl")
     entry = convert_ndarrays(entry)
-    if "embedding" in entry and isinstance(entry["embedding"], np.ndarray):
-        entry["embedding"] = (entry["embedding"] or np.array([])).tolist()
+    # Ensure embedding is a list (even if empty)
+    if "embedding" in entry:
+        emb = entry["embedding"]
+        if isinstance(emb, np.ndarray):
+            entry["embedding"] = emb.tolist()
+        elif not isinstance(emb, list):
+            entry["embedding"] = list(emb) if emb else []
+    else:
+        entry["embedding"] = []
+    # Defensive: ensure required keys
+    for key in ["pattern_id", "label", "timestamp"]:
+        if key not in entry:
+            raise ValueError(f"Missing required key '{key}' in pattern KB entry")
     path = safe_log_path("dom_pattern_kb.jsonl")
     with open(path, "ab") as f:
-        f.write(orjson.dumps(entry, option=orjson.OPT_INDENT_2) + b"\n")
+        f.write(orjson.dumps(entry) + b"\n")
 
 def append_feedback_log(entry) -> None:
     if not isinstance(entry, dict):
@@ -1894,9 +1927,6 @@ def scan_html_for_context(
         "url": page_url,
         "pattern_kb_matches": [],
         "segments_needing_review": [],
-        "session_id": session_id,
-        "coordinator": str(type(coordinator).__name__) if coordinator else None,
-        "non_interactive": non_interactive,
     }
 
     try:
@@ -2155,8 +2185,25 @@ def scan_html_for_context(
 
         required_sections = ["contests", "panels", "tables", "candidate_panels", "location_panels"]
         for section in required_sections:
-            if not context_result.get(section):
-                logger.warning(f"[DOM_PARTS] No items found in '{section}'. Downstream code should check for empty lists before accessing [0].")
+            items = context_result.get(section, [])
+            if not items:
+                logger.warning(
+                    f"[DOM_PARTS] No items found in '{section}'. "
+                    f"Downstream code should check for empty lists before accessing [0]."
+                )
+                # Log upstream extraction results for debugging
+                raw_items = context_result.get(f"raw_{section}", None)
+                if raw_items is not None:
+                    logger.debug(f"[DOM_PARTS] raw_{section} contains: {raw_items[:2]}")
+            else:
+                logger.info(
+                    f"[DOM_PARTS] Section '{section}' contains {len(items)} items. "
+                    f"Sample: {str(items[0])[:120]}{'...' if len(str(items[0])) > 120 else ''}"
+                )
+                # Use safe_get_first to access the first item safely
+                first_item = safe_get_first(items, section, None, logger, default=None)
+                if first_item is None:
+                    logger.warning(f"[DOM_PARTS] safe_get_first returned None for section '{section}'.")
 
         # --- 4. ML-driven DOM pattern clustering and tagging ---
         pattern_matches = []
@@ -2200,9 +2247,6 @@ def scan_html_for_context(
                     "example_html": safe_get(seg, "html", "")[:500],
                     "source_url": page_url,
                     "timestamp": time.time(),
-                    "session_id": session_id,
-                    "coordinator": str(type(coordinator).__name__) if coordinator else None,
-                    "non_interactive": non_interactive,
                 }
                 append_pattern_kb(kb_entry)
                 append_feedback_log({
@@ -2211,9 +2255,6 @@ def scan_html_for_context(
                     "html": safe_get(seg, "html", "")[:500],
                     "source_url": page_url,
                     "timestamp": time.time(),
-                    "session_id": session_id,
-                    "coordinator": str(type(coordinator).__name__) if coordinator else None,
-                    "non_interactive": non_interactive,
                 })
                 segments_needing_review.append(seg)
 
@@ -2234,9 +2275,6 @@ def scan_html_for_context(
                     "label": seg["ml_label"],
                     "confidence": seg["ml_confidence"],
                     "segment_html": safe_get(seg, "html", "")[:200],
-                    "session_id": session_id,
-                    "coordinator": str(type(coordinator).__name__) if coordinator else None,
-                    "non_interactive": non_interactive,
                 })
 
         context_result["pattern_kb_matches"] = pattern_matches
@@ -2260,9 +2298,6 @@ def scan_html_for_context(
             "source_url": page_url,
             "scrape_time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "pattern_kb_size": len(pattern_kb) if pattern_kb else 0,
-            "session_id": session_id,
-            "coordinator": str(type(coordinator).__name__) if coordinator else None,
-            "non_interactive": non_interactive,
         }, logger)
 
         if debug:
@@ -2286,9 +2321,6 @@ def scan_html_for_context(
                             "ml_label": safe_get(seg, "ml_label", None),
                             "ml_confidence": safe_get(seg, "ml_confidence", None),
                             "pattern_id": safe_get(seg, "pattern_id", None),
-                            "session_id": session_id,
-                            "coordinator": str(type(coordinator).__name__) if coordinator else None,
-                            "non_interactive": non_interactive,
                         },
                         logger
                     )
@@ -2303,9 +2335,6 @@ def scan_html_for_context(
                             "ml_label": safe_get(seg, "ml_label", None),
                             "ml_confidence": safe_get(seg, "ml_confidence", None),
                             "pattern_id": safe_get(seg, "pattern_id", None),
-                            "session_id": session_id,
-                            "coordinator": str(type(coordinator).__name__) if coordinator else None,
-                            "non_interactive": non_interactive,
                         }
                         for seg in segments_with_attrs
                         if safe_get(seg, "segment_hash", None) and safe_get(seg, "segment_hash", None) not in known_hashes
@@ -2359,9 +2388,6 @@ def scan_html_for_context(
         "raw_html": safe_get(context_result, "raw_html", ""),
         "error": safe_get(context_result, "error", None),
         "url": safe_get(context_result, "url", None),
-        "session_id": session_id,
-        "coordinator": str(type(coordinator).__name__) if coordinator else None,
-        "non_interactive": non_interactive,
     }
     for key in [
         "contests", "panels", "tables", "candidate_panels", "location_panels",
@@ -2437,7 +2463,13 @@ def scan_html_for_context(
     for contest in safe_get(context_result, "contests", []):
         _sync_type_and_election_types(contest)
 
-    best_contest = safe_get(context_result, "contests", [{}])[0] if safe_get(context_result, "contests", []) else {}
+    best_contest = safe_get_first(
+        safe_get(context_result, "contests", []),
+        "contests",
+        safe_get(context_result, "url", None),
+        logger,
+        default={}
+    )
     best_type = safe_get(best_contest, "type_", None)
     best_election_types = safe_get(best_contest, "election_types", [])
 

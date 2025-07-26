@@ -21,8 +21,10 @@ from ..utils.db_utils import (
     load_output_cache,
     normalize_label,
     save_table_structure_to_db,
-    get_table_structure_from_db,
-    clean_for_json,    
+    get_table_structure_from_db,  
+)
+from ..Context_Integration.librarian import (
+    clean_for_json
 )
 from ..services.election_data_services import ElectionDataService
 from ..utils.shared_logic import (
@@ -33,7 +35,7 @@ from .Context_Library.constants import (
     CONTEST_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS,
     PERCENT_KEYWORDS, TOTAL_KEYWORDS, MISC_FOOTER_KEYWORDS, LOCATION_KEYWORDS,
 )
-from ..bots.librarian import (
+from .librarian import (
     load_context_library, update_context_library,   
     
 )
@@ -54,7 +56,7 @@ from ..config import (
 )
 
 PROCESSED_URLS_CACHE = os.path.join(CACHE_DIR, "processed_urls.json")
-OUTPUT_CACHE = os.path.join(CACHE_DIR, "output_cache.jsonl")
+OUTPUT_CACHE = os.path.join(CACHE_DIR, "output_cache.json")
 
 processed_urls = load_processed_urls()
 output_cache = load_output_cache()
@@ -736,11 +738,11 @@ class ContextOrganizer(object):
             return re.sub(r'[^a-zA-Z0-9_\-]', '_', name)
         safe_field_type = _sanitize_log_filename(field_type)
         if log_path is None:
-            log_path = os.path.join(LOG_DIR, "log", f"{safe_field_type}_selection_log.jsonl")
+            log_path = os.path.join(LOG_DIR, f"{safe_field_type}_selection_log.jsonl")
         else:
             base = os.path.basename(log_path)
             safe_base = _sanitize_log_filename(base)
-            log_path = os.path.join(LOG_DIR, "log", safe_base)
+            log_path = os.path.join(LOG_DIR, safe_base)
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "field_type": field_type,

@@ -19,8 +19,11 @@ from ..utils.db_utils import (
     create_staging_election_result, get_staging_results_by_batch,
     create_warehouse_election_result, get_warehouse_results_by_batch,
     fetch_table_structures, search_table_structures, update_table_structure_fields,
-    select_table_structures_by_title, clean_for_json, get_or_create_state,
+    select_table_structures_by_title, get_or_create_state,
     get_or_create_county, get_or_create_party, check_missing_tables, get_engine, SessionLocal
+)
+from ..Context_Integration.librarian import (
+    clean_for_json
 )
 from ..utils.models import (
     Base, Contest, State, County, Party, 

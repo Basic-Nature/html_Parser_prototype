@@ -8,7 +8,7 @@ from ..Context_Integration.Context_Library.constants import (
     STATE_ABBR, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP,
     PARTY_KEYWORDS, CANDIDATE_KEYWORDS, ELECTION_TYPES, CONTEST_KEYWORDS
 )
-from ..bots.librarian import (
+from ..Context_Integration.librarian import (
     load_context_library
     # Add more normalization/alias utilities as needed
 )

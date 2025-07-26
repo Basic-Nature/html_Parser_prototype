@@ -28,7 +28,7 @@ from .Context_Library.constants import (
     STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, PARTY_KEYWORDS,
     ELECTION_TYPES, STATE_ABBR, LOCATION_KEYWORDS, TABLE_TAGS, PANEL_TAGS, STATE_TAGS, BUTTON_TAGS,
 )
-from ..bots.librarian import (    
+from .librarian import (    
     atomic_write_json 
 )
 from sklearn.preprocessing import LabelEncoder
@@ -46,7 +46,10 @@ from .Integrity_check import (
     advanced_cross_field_validation,
     print_integrity_summary
 )
-from .context_organizer import ContextOrganizer, clean_for_json
+from .librarian import (
+    clean_for_json
+)
+from .context_organizer import ContextOrganizer
 from ..services.election_data_services import ElectionDataService
 from typing import Optional, Any, List, Dict, Tuple, Callable
 logger = SharedLogger()
@@ -1280,12 +1283,12 @@ class ContextCoordinator(object):
         # Always use log/ as the directory, and sanitize the filename
         safe_field_type = _sanitize_log_filename(field_type)
         if log_path is None:
-            log_path = os.path.join(LOG_DIR, "log", f"{safe_field_type}_selection_log.jsonl")
+            log_path = os.path.join(LOG_DIR, f"{safe_field_type}_selection_log.jsonl")
         else:
             # Only use the filename part, sanitize it, and force it into log/
             base = os.path.basename(log_path)
             safe_base = _sanitize_log_filename(base)
-            log_path = os.path.join(LOG_DIR, "log", safe_base)
+            log_path = os.path.join(LOG_DIR, safe_base)
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "field_type": field_type,

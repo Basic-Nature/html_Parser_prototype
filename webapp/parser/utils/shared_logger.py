@@ -14,6 +14,7 @@ from rich.json import JSON
 import orjson
 from contextlib import contextmanager
 from io import StringIO
+from ..config import LOG_DIR
 
 
 try:
@@ -547,10 +548,37 @@ class SharedLogger(logging.Logger):
     def summarize_logs(self, log_path: Optional[str] = None, max_lines: int = 1000) -> str:
         """
         Return the last max_lines of the log file as a string.
+        Handles both text and JSONL logs robustly.
         """
-        log_path = log_path or "pipeline.log"
+        
+        # Default to pipeline_log.jsonl in LOG_DIR
+        default_log_name = "pipeline_log.jsonl"
+        log_path = log_path or os.path.join(LOG_DIR, default_log_name)
+
         if not os.path.exists(log_path):
             return ""
-        with open(log_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-        return "".join(lines[-max_lines:])
+
+        # Try to detect if it's a JSONL file
+        is_jsonl = log_path.endswith(".jsonl")
+
+        lines = []
+        try:
+            with open(log_path, "rb" if is_jsonl else "r", encoding=None if is_jsonl else "utf-8") as f:
+                if is_jsonl:
+                    # Read last max_lines JSON objects
+                    all_lines = f.readlines()
+                    for line in all_lines[-max_lines:]:
+                        try:
+                            obj = orjson.loads(line)
+                            lines.append(orjson.dumps(obj, option=orjson.OPT_INDENT_2).decode("utf-8"))
+                        except Exception:
+                            # If not valid JSON, include raw line
+                            lines.append(line.decode("utf-8", errors="replace").strip())
+                    return "\n".join(lines)
+                else:
+                    # Plain text log
+                    all_lines = f.readlines()
+                    return "".join(all_lines[-max_lines:])
+        except Exception as e:
+            self.error(f"Failed to summarize log file {log_path}: {e}")
+            return ""

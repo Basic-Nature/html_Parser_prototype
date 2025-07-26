@@ -8,6 +8,9 @@ from .....utils.shared_logger import SharedLogger
 from .....utils.shared_logic import autoscroll_until_stable, safe_is_visible, safe_is_enabled, safe_click, safe_get
 from .....utils.user_prompt import UserPrompt
 from .....utils.html_scanner import scan_html_for_context
+from .....Context_Integration.librarian import (
+    clean_for_json
+)
 logger = SharedLogger()
 prompt = UserPrompt()
 
@@ -28,7 +31,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     - Autoscrolls as needed (only once, after all toggles)
     - Extracts tables and outputs results
     """
-    from .....Context_Integration.context_organizer import clean_for_json
     if html_context is None:
         html_context = {}
 

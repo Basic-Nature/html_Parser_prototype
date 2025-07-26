@@ -31,7 +31,7 @@ import uvicorn
 from ..utils.shared_logger import SharedLogger
 from us.states import lookup as us_state_lookup
 import re
-from ..bots.librarian import (
+from ..Context_Integration.librarian import (
     update_context_library,
     SCHEMA_VERSION,
     DEFAULT_STRUCTURE,

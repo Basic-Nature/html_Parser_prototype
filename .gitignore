@@ -46,7 +46,7 @@ input/
 uploads/
 *.csv
 *.pdf
-.output_cache.jsonl
+.output_cache.json
 .processed_urls
 fine_tuned_table_headers_tmp/
 fine_tuned_spacy_ner_tmp/

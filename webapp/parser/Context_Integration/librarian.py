@@ -15,7 +15,7 @@ import time
 import threading
 import shutil
 import tempfile
-from ..Context_Integration.Context_Library.constants import (
+from .Context_Library.constants import (
     BALLOT_TYPES, CANDIDATE_KEYWORDS, CANONICAL_SEGMENT_LABELS, CUSTOM_ATTR_PATTERNS, PANEL_TAGS,
     HEADING_TAGS, HTML_TAGS, LOCATION_KEYWORDS
 )
@@ -132,6 +132,22 @@ def safe_join(base, *paths):
         raise ValueError("Attempted Path Traversal Detected!")
     return final_path
 
+def clean_for_json(obj) -> dict:
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: clean_for_json(v) for k, v in obj.items() if k != "_fixed_fields"}
+    elif isinstance(obj, list):
+        return [clean_for_json(i) for i in obj]
+    elif isinstance(obj, set):
+        return [clean_for_json(i) for i in obj]
+    elif isinstance(obj, np.ndarray):
+        return clean_for_json(obj.tolist())
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    else:
+        # Fallback: convert to string
+        return str(obj)
+
 # --- Context Library Integration ---
 def robust_orjson_loads(val):
     if isinstance(val, bytes):
@@ -233,7 +249,7 @@ def update_context_library(path, update_fn):
     Safely update the context library at `path` by applying `update_fn(library)`.
     If a dict is passed instead of a function, it will update the library with that dict.
     """
-    from ..Context_Integration.context_organizer import clean_for_json  # Import here to avoid circular import at module level
+    from .context_organizer import clean_for_json
     with _CONTEXT_LOCK:
         lib = load_context_library(path)
         # Accept either a function or a dict
@@ -398,39 +414,83 @@ def _get_log_path(filename: str) -> str:
     os.makedirs(LOG_DIR, exist_ok=True)
     return os.path.join(LOG_DIR, filename)
 
+def _deduplicate_jsonl_log(log_path: str, key: str):
+    """
+    Deduplicate a JSONL log file by the given key ('tag' or 'attr').
+    Keeps only the first occurrence of each value.
+    """
+    import orjson
+    if not os.path.exists(log_path):
+        return set()
+    seen = set()
+    deduped = []
+    with open(log_path, "rb") as f:
+        for line in f:
+            try:
+                entry = orjson.loads(line)
+                val = entry.get(key)
+                if val and val not in seen:
+                    seen.add(val)
+                    deduped.append(entry)
+            except Exception:
+                continue
+    # Rewrite file with deduped entries
+    with open(log_path, "wb") as f:
+        for entry in deduped:
+            f.write(orjson.dumps(entry) + b"\n")
+    return seen
+
+# Initialize sets with deduplication on first import
+_UNKNOWN_TAGS_SET = None
+_UNKNOWN_ATTRS_SET = None
+
 def log_unknown_tag(tag: str, context_library):
-    # Safeguard all gets
+    """
+    Log unknown HTML tag to unknown_tags_log.jsonl as a valid JSON object per line.
+    Deduplicates log file and prevents future duplicates.
+    """
+    import orjson
+    global _UNKNOWN_TAGS_SET
+    if _UNKNOWN_TAGS_SET is None:
+        log_path = _get_log_path("unknown_tags_log.jsonl")
+        _UNKNOWN_TAGS_SET = _deduplicate_jsonl_log(log_path, "tag")
     panel_tags = safe_get(context_library, "panel_tags", [])
     heading_tags = safe_get(context_library, "heading_tags", [])
     html_tags = safe_get(context_library, "html_tags", [])
     known_tags = set(panel_tags + heading_tags + html_tags)
-    if tag not in known_tags:
-        UNKNOWN_TAGS_LOG.add(tag)
+    if isinstance(tag, str) and tag and tag not in known_tags and tag not in _UNKNOWN_TAGS_SET:
+        _UNKNOWN_TAGS_SET.add(tag)
         try:
             log_path = _get_log_path("unknown_tags_log.jsonl")
             with open(log_path, "ab") as f:
-                f.write(orjson.dumps({"tag": tag}) + b"\n")
-        except Exception:
-            pass
+                f.write(orjson.dumps({"tag": str(tag)}) + b"\n")
+        except Exception as exc:
+            logger.error(f"[LOG_UNKNOWN_TAG] Failed to log tag '{tag}': {exc}")
 
 def log_unknown_attr(attr: str, context_library):
-    # Safeguard pattern_strings
+    """
+    Log unknown HTML attribute to unknown_attrs_log.jsonl as a valid JSON object per line.
+    Deduplicates log file and prevents future duplicates.
+    """
+    import orjson
+    global _UNKNOWN_ATTRS_SET
+    if _UNKNOWN_ATTRS_SET is None:
+        log_path = _get_log_path("unknown_attrs_log.jsonl")
+        _UNKNOWN_ATTRS_SET = _deduplicate_jsonl_log(log_path, "attr")
     pattern_strings = safe_get(context_library, "custom_attr_patterns", []) if context_library else []
     patterns = [re.compile(p) for p in pattern_strings] if pattern_strings else CUSTOM_ATTR_PATTERNS
-
-    # Always allow common dynamic attributes
+    if not isinstance(attr, str) or not attr:
+        return
     if attr.startswith("data-") or attr.startswith("aria-") or attr == "role":
         return
-
-    # Only log if it doesn't match any known pattern
-    if not any(pat.match(attr) for pat in patterns):
-        UNKNOWN_ATTRS_LOG.add(attr)
+    if not any(pat.match(attr) for pat in patterns) and attr not in _UNKNOWN_ATTRS_SET:
+        _UNKNOWN_ATTRS_SET.add(attr)
         try:
             log_path = _get_log_path("unknown_attrs_log.jsonl")
             with open(log_path, "ab") as f:
-                f.write(orjson.dumps({"attr": attr}) + b"\n")
-        except Exception:
-            pass
+                f.write(orjson.dumps({"attr": str(attr)}) + b"\n")
+        except Exception as exc:
+            logger.error(f"[LOG_UNKNOWN_ATTR] Failed to log attr '{attr}': {exc}")
 
 # --- ML/LLM Feedback Integration Example ---
 def integrate_llm_feedback(new_panel_tags=None, new_heading_tags=None, new_attr_patterns=None, new_location_keywords=None, new_candidate_keywords=None, new_ballot_types=None):

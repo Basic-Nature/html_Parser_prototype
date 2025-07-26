@@ -20,7 +20,7 @@ from .utils.db_utils import load_processed_urls
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.format_router import prompt_and_handle_download
 from .utils.shared_logic import infer_state_county_from_url, safe_parse, safe_is_set
-from .bots.librarian import safe_join
+from .Context_Integration.librarian import safe_join
 from .utils.user_prompt import UserPrompt
 from .utils.shared_logger import SharedLogger, RichConsoleProxy
 prompt = UserPrompt()
