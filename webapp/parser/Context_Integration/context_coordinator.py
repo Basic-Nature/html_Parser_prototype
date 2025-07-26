@@ -55,8 +55,8 @@ from typing import Optional, Any, List, Dict, Tuple, Callable
 logger = SharedLogger()
 
 def _sanitize_log_filename(name: str) -> str:
-    # Only allow alphanumeric, underscore, and dash
-    return re.sub(r'[^a-zA-Z0-9_\-]', '_', name) 
+    # Only allow alphanumeric, underscore, dash, and dot
+    return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
 
 def get_semantic_score(model, text1, text2) -> float:
     """
