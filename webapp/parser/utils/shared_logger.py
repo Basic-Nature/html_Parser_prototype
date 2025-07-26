@@ -14,8 +14,6 @@ from rich.json import JSON
 import orjson
 from contextlib import contextmanager
 from io import StringIO
-from ..config import LOG_DIR
-
 
 try:
     from dotenv import load_dotenv
@@ -550,6 +548,7 @@ class SharedLogger(logging.Logger):
         Return the last max_lines of the log file as a string.
         Handles both text and JSONL logs robustly.
         """
+        from ..config import LOG_DIR
         
         # Default to pipeline_log.jsonl in LOG_DIR
         default_log_name = "pipeline_log.jsonl"

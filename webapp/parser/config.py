@@ -3,9 +3,8 @@ import os
 
 
 from dotenv import load_dotenv
-from .utils.shared_logger import SharedLogger
 load_dotenv()
-logger = SharedLogger()
+
 import psycopg2
 from psycopg2 import sql, OperationalError
 
@@ -49,6 +48,13 @@ POSTGRES_URL = os.getenv(
 POSTGRES_SERVICE_NAME = os.getenv("POSTGRES_SERVICE_NAME", "Check PostgreSQL service name in .env")
 def ensure_postgres_db():
     """Ensure the target database exists, create if not."""
+    try:
+        from .utils.shared_logger import SharedLogger
+        logger = SharedLogger()
+    except ImportError:
+        import logging
+        logger = logging.getLogger("postgres_fallback")
+    
     if not all([POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_HOST, POSTGRES_PORT]):
         raise RuntimeError("PostgreSQL credentials are not fully set in the environment variables.")
 
