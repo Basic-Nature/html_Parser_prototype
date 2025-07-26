@@ -22,7 +22,7 @@ from ..utils.shared_logic import (
     safe_model_encode, safe_locator, safe_nth, safe_inner_text, safe_get_attribute,
     safe_evaluate, safe_is_visible, safe_is_enabled, safe_click,
     safe_wait_for_timeout, safe_count, safe_startswith, safe_isupper,
-    _sync_type_and_election_types, safe_get, safe_items, safe_lower
+    _sync_type_and_election_types, safe_get, safe_items, safe_lower, safe_endswith
 )
 from .Context_Library.constants import (
     STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, PARTY_KEYWORDS,
@@ -1265,44 +1265,77 @@ class ContextCoordinator(object):
         return model.similarity(str(a), str(b))
 
     def log_field_selection(
-        self,
-        field_type,
-        field_name,
-        extracted_value,
-        method,
-        score,
-        result,
-        context,
-        user_feedback=None,
-        log_path=None
-    ) -> None:
+            self,
+            field_type,
+            field_name,
+            extracted_value,
+            method,
+            score,
+            result,
+            context,
+            user_feedback=None,
+            log_path=None
+        ) -> None:
         """
         Log field extraction/correction attempts for ML/feedback.
         Ensures log file is always inside the log/ directory and filename is sanitized.
+        Robust to path injection, extension errors, and serialization issues.
         """
-        # Always use log/ as the directory, and sanitize the filename
+        # --- Sanitize and validate filename ---
         safe_field_type = _sanitize_log_filename(field_type)
+        default_filename = f"{safe_field_type}_selection_log.jsonl"
+        log_dir = os.path.abspath(LOG_DIR)
         if log_path is None:
-            log_path = os.path.join(LOG_DIR, f"{safe_field_type}_selection_log.jsonl")
+            log_path = os.path.join(log_dir, default_filename)
         else:
             # Only use the filename part, sanitize it, and force it into log/
             base = os.path.basename(log_path)
+            # Ensure .jsonl extension
+            if not safe_endswith(base, ".jsonl", logger):
+                base = re.sub(r'(\.jsonl)?$', '', base) + ".jsonl"
             safe_base = _sanitize_log_filename(base)
-            log_path = os.path.join(LOG_DIR, safe_base)
-        log_entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "field_type": field_type,
-            "field_name": field_name,
-            "extracted_value": extracted_value,
-            "method": method,
-            "score": score,
-            "result": result,
-            "context": context,
-            "user_feedback": user_feedback
-        }
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        with open(log_path, "ab") as f:
-            f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
+            log_path = os.path.join(log_dir, safe_base)
+        # Defensive: prevent path traversal
+        log_path = os.path.abspath(log_path)
+        if not log_path.startswith(log_dir):
+            logger.error(f"[log_field_selection] Unsafe log path detected: {log_path}")
+            return
+
+        # --- Prepare log entry ---
+        try:
+            log_entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "field_type": field_type,
+                "field_name": field_name,
+                "extracted_value": extracted_value,
+                "method": method,
+                "score": float(score) if score is not None else None,
+                "result": result,
+                "context": context,
+                "user_feedback": user_feedback
+            }
+            # Defensive: clean for JSON, handle serialization errors
+            entry_bytes = None
+            try:
+                entry_bytes = orjson.dumps(clean_for_json(log_entry)) + b"\n"
+            except Exception as e:
+                logger.error(f"[log_field_selection] Serialization error: {e}")
+                # Fallback: try to convert problematic fields to string
+                for k, v in log_entry.items():
+                    if not isinstance(v, (str, int, float, bool, type(None), dict, list)):
+                        log_entry[k] = str(v)
+                entry_bytes = orjson.dumps(clean_for_json(log_entry)) + b"\n"
+        except Exception as e:
+            logger.error(f"[log_field_selection] Failed to prepare log entry: {e}")
+            return
+
+        # --- Write to file robustly ---
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "ab") as f:
+                f.write(entry_bytes)
+        except Exception as e:
+            logger.error(f"[log_field_selection] Failed to write log entry to {log_path}: {e}")
 
     def extract_entities(self, text, labels=None, first_only=False):
         """
