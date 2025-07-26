@@ -494,7 +494,9 @@ def auto_label_segment(
     pattern_kb=None,
     model=None,
     ml_threshold=0.7,
-    coordinator=None
+    coordinator=None,
+    session_id=None,
+    non_interactive=False
 ) -> Optional[tuple]:
     if coordinator is None:
         coordinator = ContextCoordinator()
@@ -976,14 +978,6 @@ def extract_tagged_segments_with_attrs(
                 return []
 
         def walk(node, parent_idx=None, heading_idx=None, panel_idx=None, **kwargs):
-            kwargs.pop('session_id', None)
-            kwargs.pop('non_interactive', None)
-            kwargs.pop('debug', None)
-            kwargs.pop('allow_duplicates', None)
-            kwargs.pop('ml_threshold', None)
-            kwargs.pop('coordinator', None)
-            kwargs.pop('model_name', None)
-            kwargs.pop('use_finetuned', None)
             tag = getattr(node, "tag", None)
             tag_lower = safe_lower(tag or "")
             if not tag or tag_lower not in HTML_TAGS:
@@ -1250,11 +1244,14 @@ def load_context_cache_from_disk(filename=None) -> Dict[str, Any]:
     """
     Loads the context cache from disk as a dict of dicts.
     If the file is corrupted, logs and resets the cache.
+    Always uses CONTEXT_CACHE_PATH from config.py.
     """
     global _context_cache
-    if filename is None:
-        filename = os.path.basename(CONTEXT_CACHE_PATH)
-    path = safe_cache_path(filename)
+    # Always use the canonical cache path from config
+    path = CONTEXT_CACHE_PATH
+    # Defensive: ignore filename if it tries to escape the canonical path
+    if filename is not None and os.path.basename(filename) != os.path.basename(CONTEXT_CACHE_PATH):
+        logger.warning(f"[CACHE] Ignoring filename '{filename}', using CONTEXT_CACHE_PATH.")
     logger.debug(f"[DEBUG] Loading context cache from: {path}")
     if os.path.exists(path):
         try:
@@ -1264,40 +1261,46 @@ def load_context_cache_from_disk(filename=None) -> Dict[str, Any]:
                 _context_cache = {k: v for k, v in safe_items(raw_cache or {}) if isinstance(v, dict)}
                 return _context_cache
         except Exception as e:
-            logger.error(f"[ERROR] Failed to load {filename}: {e}. Resetting context cache.")
+            logger.error(f"[ERROR] Failed to load context cache: {e}. Resetting context cache.")
             _context_cache = {}
-            save_context_cache_to_disk(_context_cache, path)
+            save_context_cache_to_disk(_context_cache)
             return {}
     _context_cache = {}
     return {}
 
-def save_context_cache_to_disk(context_cache, path=CONTEXT_CACHE_PATH) -> None:
+def save_context_cache_to_disk(context_cache, path=None) -> None:
     """
     Saves the entire context cache as a single JSON object (dict of dicts).
     Always overwrites the file. Handles serialization and file errors gracefully.
+    Always uses CONTEXT_CACHE_PATH from config.py.
     """
-    logger.debug(f"[DEBUG] Saving context cache to: {path}")
+    # Always use the canonical cache path from config
+    cache_path = CONTEXT_CACHE_PATH
+    if path is not None and os.path.basename(path) != os.path.basename(CONTEXT_CACHE_PATH):
+        logger.warning(f"[CACHE] Ignoring path '{path}', using CONTEXT_CACHE_PATH.")
+    logger.debug(f"[DEBUG] Saving context cache to: {cache_path}")
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         context_cache = convert_ndarrays(context_cache)
-        with open(path, "wb") as f:
+        with open(cache_path, "wb") as f:
             try:
                 f.write(orjson.dumps(context_cache, option=orjson.OPT_INDENT_2))
             except Exception as e:
                 logger.error(f"[ERROR] Failed to serialize context cache: {e}")
     except Exception as e:
-        logger.error(f"[ERROR] Failed to save context cache to disk at {path}: {e}")
+        logger.error(f"[ERROR] Failed to save context cache to disk at {cache_path}: {e}")
 
-def add_context_entry(page_hash: str, context: dict, path=CONTEXT_CACHE_PATH) -> None:
+def add_context_entry(page_hash: str, context: dict, path=None) -> None:
     """
     Adds or updates a context entry for a page hash and saves to disk.
+    Always uses CONTEXT_CACHE_PATH from config.py.
     """
-    cache = load_context_cache_from_disk(path)
+    cache = load_context_cache_from_disk()
     # Always ensure required metadata
     context.setdefault("page_hash", page_hash)
     context.setdefault("timestamp", time.strftime("%Y-%m-%d %H:%M:%S"))
     cache[page_hash] = context
-    save_context_cache_to_disk(cache, path)
+    save_context_cache_to_disk(cache)
 
 def get_context_entry(page_hash: str, path=CONTEXT_CACHE_PATH) -> Optional[dict]:
     """
@@ -1967,10 +1970,6 @@ def scan_html_for_context(
             ml_threshold=ml_threshold,
             model=model,
             coordinator=coordinator,
-            session_id=session_id,
-            non_interactive=non_interactive,
-            allow_duplicates=allow_duplicates,
-            debug=debug
         )
 
         logger.info(f"[EXTRACTION] Extracted {len(segments_with_attrs) if isinstance(segments_with_attrs, list) else 0} segments with attributes.")
