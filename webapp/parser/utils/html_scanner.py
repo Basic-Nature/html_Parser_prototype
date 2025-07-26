@@ -2577,6 +2577,14 @@ def scan_html_for_context(
         logger.warning(f"[yellow][CACHE] {len(embedding_cache_hits)} embeddings loaded from cache, {len(embedding_cache_misses)} computed.[/yellow]")
     logger.info(f"[PROFILE] scan_html_for_context completed in {time.time() - start_time:.2f} seconds.")
 
+    # Only keep the HTML for extracted segments, not the whole page
+    context_result["tagged_segments_with_attrs"] = segments_with_attrs
+    context_result["tagged_segments"] = [safe_get(seg, "html", "") for seg in segments_with_attrs]
+
+    # --- Ensure dom_parts is present ---
+    if "dom_parts" not in context_result or not context_result["dom_parts"]:
+        context_result["dom_parts"] = {"tagged_segments_with_attrs": segments_with_attrs}
+
     # --- DOM Parts and downstream enrichment ---
     dom_parts = {
         "contests": safe_get(context_result, "contests", []),
