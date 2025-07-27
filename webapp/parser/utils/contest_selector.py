@@ -15,8 +15,13 @@ from ..Context_Integration.Context_Library.constants import (
 try:
     from nltk.stem import PorterStemmer
     from nltk.corpus import stopwords
+    import nltk
+    try:
+        STOPWORDS = set(stopwords.words('english'))
+    except LookupError:
+        nltk.download('stopwords')
+        STOPWORDS = set(stopwords.words('english'))
     STEMMER = PorterStemmer()
-    STOPWORDS = set(stopwords.words('english'))
 except ImportError:
     STEMMER = None
     STOPWORDS = set()
