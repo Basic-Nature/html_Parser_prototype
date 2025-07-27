@@ -267,13 +267,13 @@ class UserPrompt(ContextManager):
         if self.mode == "webapp" and self.socketio_emit_func and session_id:
             self.socketio_emit_func(orjson.dumps(payload).decode("utf-8"))
         else:
-            # For CLI, print a user-friendly message
+            # For CLI, print only the message field, not the whole dict
             if status == "error":
                 console.print(f"[ERROR] {message}")
             elif status == "status":
                 console.print(f"[STATUS] {message}")
             else:
-                console.print(message)
+                console.print(str(message))
 
     def _should_emit(self, level: str = "INFO") -> bool:
         """

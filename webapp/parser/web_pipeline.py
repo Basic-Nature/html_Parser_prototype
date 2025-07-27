@@ -81,12 +81,14 @@ def process_urls_for_web(
         def prompt_func(message) -> str:
             return console.input(message)
         def output_func(msg) -> None:
-            if not isinstance(msg, (str, bytes)):
-                try:
-                    msg = orjson.dumps(msg, option=orjson.OPT_INDENT_2).decode("utf-8")
-                except Exception:
-                    msg = str(msg)
-            console.print(msg)
+            # Only print the message field if it's a dict with "message"
+            if isinstance(msg, dict) and "message" in msg:
+                console.print(msg["message"])
+            elif isinstance(msg, (list, tuple)):
+                for item in msg:
+                    console.print(str(item))
+            else:
+                console.print(str(msg))
 
     try:
         if urls is None:
