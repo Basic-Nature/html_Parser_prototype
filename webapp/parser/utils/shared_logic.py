@@ -132,7 +132,6 @@ def safe_tolist(val):
     Handles numpy arrays, tuples, sets, and returns [val] for scalars.
     Returns an empty list for None.
     """
-    import numpy as np
     if val is None:
         return []
     if isinstance(val, list):
@@ -539,24 +538,38 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
     Returns: np.ndarray or list[np.ndarray] or None
     IDE-friendly: always returns consistent types, logs errors, and handles batch/single input.
     """
-    import numpy as np
 
-    def _normalize_text(val: Union[str, list[str]]) -> Union[str, list[str]]:
-        # Accept str, bytes, or list/tuple of str/bytes
+    def _normalize_text(val):
         if isinstance(val, (str, bytes)):
             return str(val)
         if isinstance(val, (list, tuple)):
             return [str(v) if not isinstance(v, str) else v for v in val]
         return str(val)
 
-    def _safe_model_encode_call(val: Union[str, list[str]]) -> Any:
+    def _safe_model_encode_call(val):
         try:
-            return model.encode(val, **kwargs)
+            result = model.encode(val, **kwargs)
+            # Defensive: If result is a string, error
+            if isinstance(result, str):
+                logger.error(f"[safe_model_encode] Model.encode returned a string for input {repr(val)[:80]}")
+                return None
+            # Defensive: If result is not np.ndarray or list/tuple of np.ndarray, try to convert
+            if isinstance(result, (list, tuple)):
+                result = [r for r in result if not isinstance(r, str)]
+                result = [np.array(r) if not isinstance(r, np.ndarray) else r for r in result]
+                return result
+            if isinstance(result, np.ndarray):
+                return result
+            # Try to convert to np.ndarray if possible
+            try:
+                return np.array(result)
+            except Exception:
+                logger.error(f"[safe_model_encode] Could not convert result to np.ndarray: {type(result)}")
+                return None
         except Exception as e:
             logger.error(f"[safe_model_encode] model.encode failed for input {repr(val)[:80]}: {e}")
             return None
 
-    # Handle None input
     if text is None:
         logger.error("[safe_model_encode] Input text is None.")
         return None
@@ -566,7 +579,6 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
         norm_text = _normalize_text(text)
         result = _safe_model_encode_call(norm_text)
         if result is not None:
-            # Ensure not string
             if isinstance(result, str):
                 logger.error("[safe_model_encode] Model returned a string for batch input. Returning None.")
                 return None
@@ -574,8 +586,7 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
         # Fallback: encode each item individually
         try:
             result = [_safe_model_encode_call(_normalize_text(t)) for t in text]
-            # Remove any string elements
-            result = [r for r in result if not isinstance(r, str)]
+            result = [r for r in result if r is not None and not isinstance(r, str)]
             if not result:
                 return None
             return result
@@ -587,7 +598,6 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
     norm_text = _normalize_text(text)
     result = _safe_model_encode_call(norm_text)
     if result is not None:
-        # Ensure not string
         if isinstance(result, str):
             logger.error("[safe_model_encode] Model returned a string for single input. Returning None.")
             return None
@@ -598,7 +608,6 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
         batch_result = _safe_model_encode_call([norm_text])
         if batch_result is not None and isinstance(batch_result, (list, tuple, np.ndarray)) and len(batch_result) > 0:
             first = safe_get_first(batch_result, "batch_result", None, logger)
-            # Ensure not string
             if isinstance(first, str):
                 logger.error("[safe_model_encode] Model returned a string in batch fallback. Returning None.")
                 return None
@@ -610,8 +619,7 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
     try:
         logger.error(f"[safe_model_encode] All string encode attempts failed. Trying per-char fallback.")
         result = [safe_get_first(_safe_model_encode_call([c]), "char_encode", None, logger) for c in norm_text if isinstance(c, str)]
-        # Remove any string elements
-        result = [r for r in result if not isinstance(r, str)]
+        result = [r for r in result if r is not None and not isinstance(r, str)]
         if not result:
             return None
         return result
