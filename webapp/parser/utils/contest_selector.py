@@ -27,7 +27,10 @@ except ImportError:
     STOPWORDS = set()
 
 logger = SharedLogger()
+logger.debug(f"STEMMER type: {type(STEMMER)}")
+logger.debug(f"STOPWORDS type: {type(STOPWORDS)}")
 prompt = UserPrompt()
+
 from typing import TYPE_CHECKING, List, Dict, Any, Optional
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -242,6 +245,7 @@ def normalize_contest(title: str, advanced: bool = False) -> str:
     title = title.strip().lower()
     if advanced:
         title = _stem_and_remove_stopwords(title)
+    assert isinstance(title, str), f"normalize_contest returned non-str: {type(title)}"
     return title
 
 def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator", context: dict, threshold: float = 0.75) -> bool:
