@@ -134,7 +134,7 @@ def _save_label_cache() -> None:
     global _LABEL_CACHE
     if _LABEL_CACHE is None:
         _LABEL_CACHE = _load_label_cache()
-    if not isinstance(_LABEL_CACHE, dict):
+    if not isinstance(_LABEL_CACHE, Dict):
         raise ValueError("Label cache must be a dictionary")
     path = _get_label_cache_path()
     with open(path, "wb") as f:
@@ -1095,7 +1095,7 @@ def extract_tagged_segments_with_attrs(
                 return "location_panel"
             for sel_type, sel_dict in all_selectors.items():
                 for k, v in sel_dict.items():
-                    if attrs.get(k, "").lower() == v.lower():
+                    if safe_lower(safe_get(attrs, k, "")) == safe_lower(v):
                         return sel_type
             if any(et in text for et in all_election_types):
                 return "ballot_types"
@@ -1132,8 +1132,8 @@ def extract_tagged_segments_with_attrs(
             locations = extract_locations(text, nlp) if nlp else []
             dates = extract_dates(text, nlp) if nlp else []
             for ent in entities:
-                ent_text_lower = safe_lower(ent.get("text", ""))
-                ent_label = ent.get("label", "")
+                ent_text_lower = safe_lower(safe_get(ent, "text", ""))
+                ent_label = safe_get(ent, "label", "")
                 if ent_label == "PERSON" and any(ent_text_lower in safe_lower(kw) for kw in all_candidate_keywords):
                     return "candidate_panel"
                 if ent_label in {"GPE", "LOC"} and any(ent_text_lower in safe_lower(kw) for kw in all_location_keywords):
@@ -1151,7 +1151,7 @@ def extract_tagged_segments_with_attrs(
             tag_lower = safe_lower(tag or "")
             if not tag or tag_lower not in HTML_TAGS:
                 log_unknown_tag(tag, context_library)
-                for child in getattr(node, "iter", lambda **kw: [] if not kw else [] )(include_text=True, **kwargs):
+                for child in getattr(node, "iter", lambda **kw: [])(include_text=True, **kwargs):
                     walk(child, parent_idx, heading_idx, panel_idx, **kwargs)
                 return None
             attrs = dict(getattr(node, "attributes", {}))
@@ -1298,7 +1298,7 @@ def extract_tagged_segments_with_attrs(
             seg["nlp_dates"] = extract_dates(clean_text, nlp) if nlp else []
             segments.append(seg)
             this_idx = seg["_idx"]
-            for child in getattr(node, "iter", lambda **kw: [] if not kw else [] )(include_text=True, **kwargs):
+            for child in getattr(node, "iter", lambda **kw: [])(include_text=True, **kwargs):
                 child_idx = walk(child, this_idx, this_heading_idx, this_panel_idx, **kwargs)
                 if child_idx is not None:
                     if not isinstance(seg.get("children"), list):
@@ -1382,7 +1382,7 @@ def extract_tagged_segments_with_attrs(
             seg["contains_misc_info"] = any(
                 safe_lower(mk) in text for mk in all_misc_keywords
             )
-            seg["contains_nlp_person"] = any(ent.get("label", "") == "PERSON" for ent in seg.get("nlp_entities", []))
+            seg["contains_nlp_person"] = any(safe_get(ent, "label", "") == "PERSON" for ent in safe_get(seg, "nlp_entities", []))
             seg["contains_nlp_location"] = bool(seg.get("nlp_locations", []))
             seg["contains_nlp_date"] = bool(seg.get("nlp_dates", []))
             emb = seg.get("_embedding")
@@ -1578,9 +1578,9 @@ def load_pattern_kb() -> List[Dict[str, Any]]:
     # Deduplicate by pattern_id, keep latest timestamp
     dedup = {}
     for entry in kb:
-        pid = entry.get("pattern_id")
-        ts = entry.get("timestamp", 0)
-        if pid not in dedup or ts > dedup[pid].get("timestamp", 0):
+        pid = safe_get(entry, "pattern_id", None)
+        ts = safe_get(entry, "timestamp", 0)
+        if pid not in dedup or ts > safe_get(dedup.get(pid, {}), "timestamp", 0):
             dedup[pid] = entry
     _pattern_kb_cache = list(dedup.values())
     return _pattern_kb_cache
@@ -2425,8 +2425,6 @@ def scan_html_for_context(
                         f"[DOM_PARTS] No items found in '{section}'. "
                         f"Downstream code should check for empty lists before accessing [0]."
                     )
-                    if not hasattr(logger, "_warned_sections"):
-                        logger._warned_sections = set()
                     logger._warned_sections.add(section)
                 # Log upstream extraction results for debugging
                 raw_items = context_result.get(f"raw_{section}", None)

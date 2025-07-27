@@ -5,7 +5,7 @@ import logging
 import inspect
 import traceback
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Generator, Tuple
+from typing import Any, Callable, Dict, List, Optional, Generator, Tuple, Set
 from rich import print as rprint
 from rich.console import Console, RenderableType
 from rich.panel import Panel
@@ -179,7 +179,9 @@ class SharedLogger(logging.Logger):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
-
+    
+    _warned_sections: Set[str]
+    
     def __init__(
         self,
         mode: Optional[str] = None,
@@ -198,6 +200,7 @@ class SharedLogger(logging.Logger):
         self.socketio_emit_func = socketio_emit_func
         self.suppress_rich_logs = suppress_rich_logs
         self.file_path = file_path
+        self._warned_sections = set()
         self._setup_python_logger()
 
     def _setup_python_logger(self) -> None:
