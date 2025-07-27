@@ -82,6 +82,17 @@ def load_urls(prompt_func=prompt.prompt_input) -> List[str]:
             return [url]
     return lines
 
+def output_urls(urls, output_func, logger: SharedLogger) -> None:
+    """
+    Outputs URLs in a mode-aware format:
+    - As a JSON array for webapp (for frontend parsing)
+    - As plain text for CLI (for human readability)
+    """
+    if logger.mode == "webapp" and getattr(logger, "format", None) == "json":
+        output_func({"level": "INFO", "message": urls})
+    else:
+        output_func("Raw URLs loaded:\n" + "\n".join(str(u) for u in urls))
+
 def mark_url_processed(url, status="success", **metadata) -> None:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = {
@@ -119,6 +130,7 @@ def prompt_url_selection(
     prompt_func: Callable[[str], str],
     output_func: Callable[[str], None],
     cancel_flag: threading.Event = None,
+    session_id=None,
     non_interactive=False
 ) -> List[str]:
     output_func("\n[bold #eb4f43]URLs loaded:[/bold #eb4f43]")
@@ -147,7 +159,13 @@ def prompt_url_selection(
             output_func("[CANCELLED] Selection cancelled before prompt.")
             return []
 
-    user_input = prompt_func("\n[INPUT] Enter indices (comma-separated), 'all', or leave empty to cancel: ")
+    prompt_text = "\nEnter indices (comma-separated), 'all', or leave empty to cancel: "
+    # Only emit the prompt once, in the correct format
+    if logger.mode == "webapp" and getattr(logger, "format", None) == "json":
+        output_func({"type": "prompt", "message": prompt_text, "session_id": session_id})
+    else:
+        output_func(prompt_text)
+    user_input = prompt_func(prompt_text)
 
     # Check cancel_flag after prompt
     if cancel_flag is not None and hasattr(cancel_flag, "is_set") and callable(cancel_flag.is_set):
@@ -450,11 +468,8 @@ def main(prompt_func=prompt.prompt_input, output_func=logger.info, session_id=No
         ensure_output_directory()
 
         urls = load_urls(prompt_func=prompt_func)
-        # Output URLs as JSON array for webapp, plain text for CLI
-        if logger.mode == "webapp" and logger.format == "json":
-            output_func({"level": "INFO", "message": urls})
-        else:
-            output_func("Raw URLs loaded:\n" + "\n".join(urls))
+        output_urls(urls, output_func, logger)
+
         logger.info(f"Loaded {len(urls)} raw URLs from urls.txt")
 
         max_urls = os.getenv("MAX_URLS_DISPLAYED")
@@ -468,7 +483,7 @@ def main(prompt_func=prompt.prompt_input, output_func=logger.info, session_id=No
         processed_info = load_processed_urls()
         logger.warning(f"{len(urls)} URLs remain after filtering .processed_urls")
 
-        selected_urls = prompt_url_selection(urls, processed_info, prompt_func=prompt_func, output_func=output_func, cancel_flag=cancel_flag, non_interactive=non_interactive)
+        selected_urls = prompt_url_selection(urls, processed_info, prompt_func=prompt_func, output_func=output_func, cancel_flag=cancel_flag, session_id=session_id, non_interactive=non_interactive)
         if not selected_urls:
             output_func("[INFO] No URLs selected. Exiting.")
             return

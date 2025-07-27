@@ -261,7 +261,6 @@ class UserPrompt(ContextManager):
         if error:
             payload["error"] = error
 
-        # Always log the structured payload
         logger.info(orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
         if self.mode == "webapp" and self.socketio_emit_func and session_id:

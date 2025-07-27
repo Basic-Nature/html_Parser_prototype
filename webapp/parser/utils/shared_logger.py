@@ -428,14 +428,19 @@ class SharedLogger(logging.Logger):
                 else:
                     self.logger.info(plain_msg.strip())
         elif self.mode == "cli":
-            # CLI: print only the message, not the whole dict/JSON
             try:
                 # If msg is JSON, extract "message" field if present
                 if isinstance(msg, str) and msg.strip().startswith("{"):
                     try:
                         msg_obj = orjson.loads(msg)
+                        # If message is a list, print each item
                         if isinstance(msg_obj, dict) and "message" in msg_obj:
-                            rprint(Panel(str(msg_obj["message"]), style=color))
+                            message = msg_obj["message"]
+                            if isinstance(message, list):
+                                for item in message:
+                                    rprint(Panel(str(item), style=color))
+                            else:
+                                rprint(Panel(str(message), style=color))
                         else:
                             rprint(Panel(str(msg), style=color))
                     except Exception:

@@ -23,7 +23,7 @@ import subprocess
 from threading import Thread
 from webapp.parser.utils.shared_logger import SharedLogger, RichConsoleProxy
 from webapp.parser.web_pipeline import process_urls_for_web, cancel_processing
-from webapp.parser.config import BASE_DIR, POSTGRES_URL, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
+from webapp.parser.config import BASE_DIR, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
 from webapp.parser.utils.user_prompt import UserPrompt
 # Load environment variables from .env
 
@@ -74,7 +74,12 @@ def add_url() -> None:
         logger.info(f"[ADDED] {url}")
         
 def allowed_file(filename) -> bool:
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return (
+        filename and
+        '.' in filename and
+        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS and
+        len(filename) < 128
+    )
 
 def append_history(data) -> None:
     snapshot = {
@@ -168,7 +173,11 @@ def log_parser_status(msg, session_id=None, rich=False) -> None:
     if logger.mode == "webapp":
         # In webapp, always send as JSON for frontend rendering
         status_msg = f"{msg} (session_id={session_id})" if session_id else msg
-        logger.info(status_msg)
+        logger.info({
+            "level": "INFO",
+            "message": status_msg,
+            "session_id": session_id
+        })
     elif rich:
         # In CLI, use rich panel for status
         console.panel(f"{msg}\nSession: {session_id}", title="Parser Status")
@@ -184,25 +193,31 @@ def index() -> str:
 
 @socketio.on('connect')
 def handle_connect() -> None:
-    # Set logging mode to webapp for this session
     logger.set_mode("webapp")
-    # Set logger format to JSON for this session
     logger.set_format("json")
     session['log_format'] = "json"
-
-    # Get the session ID for this client
     session_id = session.get('sid') if 'sid' in session else request.sid
 
-    # Set the global logger's emit function to route logs to this client's SocketIO room
+    # Patch: emit structured objects, not stringified JSON
     def emit_to_socketio(line) -> None:
-        socketio.emit('parser_output', line, room=session_id)
+        # If line is a string that looks like JSON, parse it
+        if isinstance(line, str) and line.strip().startswith("{"):
+            try:
+                obj = orjson.loads(line)
+                socketio.emit('parser_output', obj, room=session_id)
+                return
+            except Exception:
+                pass
+        # If line is already a dict, emit directly
+        if isinstance(line, dict):
+            socketio.emit('parser_output', line, room=session_id)
+        else:
+            socketio.emit('parser_output', line, room=session_id)
     logger.set_socketio_emit_func(emit_to_socketio)
 
-    # Set the prompt system to webapp mode and route prompts to this client's SocketIO room
     prompt.set_mode("webapp")
     prompt.set_socketio_emit_func(lambda msg: socketio.emit('parser_output', msg, room=session_id))
 
-    # Log connection event
     logger.info("Client connected")
 
 @app.route("/delete-hint/<frag>", methods=["POST"])
@@ -223,7 +238,12 @@ def handle_disconnect(sid) -> None:
     cancel_processing(sid)
     logger.info(f"Client disconnected (sid={sid})")
     # Optionally, emit a styled disconnect message
-    emit('parser_output', '{"level":"INFO","message":"🚪 Disconnected from server.","color":"#eb4f43"}', room=sid)
+    emit('parser_output', {
+        "level": "INFO",
+        "message": "🚪 Disconnected from server.",
+        "color": "#eb4f43"
+    }, room=sid)
+    prompt.clear_prompt_session(sid)
     
 @app.route("/edit-hint", methods=["POST"])
 def edit_hint_route() -> None:
@@ -446,10 +466,16 @@ def handle_data_framework(data) -> None:
 @socketio.on('run_parser')
 def handle_run_parser() -> None:
     session_id = session.get('sid') if 'sid' in session else request.sid
-    log_parser_status("Starting parser run...", session_id, rich=True)
-    # Always pass None for urls to trigger interactive main() pipeline in webapp
-    thread = Thread(target=process_urls_for_web, args=(None, session_id))
-    thread.start()
+    try:
+        log_parser_status("Starting parser run...", session_id, rich=True)
+        thread = Thread(target=process_urls_for_web, args=(None, session_id))
+        thread.start()
+    except Exception as e:
+        emit('parser_output', {
+            "level": "ERROR",
+            "message": f"Failed to start parser: {e}",
+            "color": "#eb4f43"
+        }, room=session_id)
     
 @app.route("/undo-hints", methods=["POST"])
 def undo_hints() -> str:
@@ -471,6 +497,7 @@ def undo_hints() -> str:
 @app.route("/upload/input", methods=["POST"])
 def upload_to_input() -> str:
     file = request.files.get("file")
+    logger.info(f"Upload to input: {file.filename if file else 'No file'}")
     if file and allowed_file(file.filename):
         filename = file.filename
         file.save(os.path.join(INPUT_FOLDER, filename))
@@ -500,6 +527,10 @@ def upload_to_uploads() -> str:
     else:
         flash("Invalid file type or no file selected.", "danger")
     return redirect(request.referrer or url_for("manage_data"))
+
+@app.route("/health")
+def health() -> str:
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 if __name__ == "__main__":
     socketio.run(app, debug=True) # to stop loop (..., use_reloader=True)
