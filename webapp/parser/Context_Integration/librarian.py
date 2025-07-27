@@ -1,16 +1,14 @@
 import os, re
 
-from typing import Dict, Set, List
+from typing import Dict, Set, List, Any
 from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT, LOG_DIR, BASE_DIR
 import orjson
 import subprocess
 import sys
 import time
-from tempfile import NamedTemporaryFile
 import shutil
 from pathlib import Path
 from datetime import datetime, timezone
-import hashlib
 import time
 import threading
 import shutil
@@ -25,6 +23,8 @@ from ..utils.download_utils import file_hash
 logger = SharedLogger()
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
+_TEMP_CONTEXT_LIB_TEMPFILES = set()
+
 
 DEFAULT_STRUCTURE = {
     "schema_version": SCHEMA_VERSION,
@@ -36,7 +36,7 @@ DEFAULT_STRUCTURE = {
 }
 _context_library_cache = None
 
-def atomic_write_json(obj, path):
+def atomic_write_json(obj, path) -> None:
     """
     Atomically write JSON to path, keeping only the latest .bak and .tmp.
     - Writes to .tmp first, then moves to final path.
@@ -94,19 +94,19 @@ def atomic_write_json(obj, path):
             pass
 
 # --- Extend/Modify Functions ---
-def extend_panel_tags(new_tags: List[str]):
+def extend_panel_tags(new_tags: List[str]) -> None:
     global PANEL_TAGS
     PANEL_TAGS |= set(t.lower() for t in new_tags)
 
-def extend_heading_tags(new_tags: List[str]):
+def extend_heading_tags(new_tags: List[str]) -> None:
     global HEADING_TAGS
     HEADING_TAGS |= set(t.lower() for t in new_tags)
 
-def extend_html_tags(new_tags: List[str]):
+def extend_html_tags(new_tags: List[str]) -> None:
     global HTML_TAGS
     HTML_TAGS |= set(t.lower() for t in new_tags)
 
-def extend_custom_attr_patterns(new_patterns: List[str]):
+def extend_custom_attr_patterns(new_patterns: List[str]) -> None:
     global CUSTOM_ATTR_PATTERNS
     for pat in new_patterns:
         if isinstance(pat, str):
@@ -114,26 +114,26 @@ def extend_custom_attr_patterns(new_patterns: List[str]):
         else:
             CUSTOM_ATTR_PATTERNS.append(pat)
 
-def extend_location_keywords(new_keywords: List[str]):
+def extend_location_keywords(new_keywords: List[str]) -> None:
     global LOCATION_KEYWORDS
     LOCATION_KEYWORDS |= set(k.lower() for k in new_keywords)
 
-def extend_candidate_keywords(new_keywords: List[str]):
+def extend_candidate_keywords(new_keywords: List[str]) -> None:
     global CANDIDATE_KEYWORDS
     CANDIDATE_KEYWORDS |= set(k.lower() for k in new_keywords)
 
-def extend_ballot_types(new_types: List[str]):
+def extend_ballot_types(new_types: List[str]) -> None:
     global BALLOT_TYPES
     BALLOT_TYPES.extend([t for t in new_types if t not in BALLOT_TYPES])
 
-def safe_join(base, *paths):
+def safe_join(base, *paths) -> str:
     final_path = os.path.abspath(os.path.join(base, *paths))
     if not safe_startswith(final_path, os.path.abspath(base)):
         logger.debug(f"DEBUG: Attempted to join {paths} to base {base} -> {final_path}")
         raise ValueError("Attempted Path Traversal Detected!")
     return final_path
 
-def clean_for_json(obj) -> dict:
+def clean_for_json(obj) -> Dict[str, Any]:
     import numpy as np
     if isinstance(obj, dict):
         return {k: clean_for_json(v) for k, v in obj.items() if k != "_fixed_fields"}
@@ -150,7 +150,7 @@ def clean_for_json(obj) -> dict:
         return str(obj)
 
 # --- Context Library Integration ---
-def robust_orjson_loads(val):
+def robust_orjson_loads(val) -> Any:
     if isinstance(val, bytes):
         return orjson.loads(val)
     elif isinstance(val, str):
@@ -158,7 +158,7 @@ def robust_orjson_loads(val):
     else:
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
-def load_context_library(path=CONTEXT_LIBRARY_PATH) -> dict:
+def load_context_library(path=CONTEXT_LIBRARY_PATH) -> Dict[str, Any]:
     """
     Loads the context library robustly:
     - If missing, creates with default structure.
@@ -245,7 +245,7 @@ def load_context_library(path=CONTEXT_LIBRARY_PATH) -> dict:
 
     return context_lib
     
-def update_context_library(path, update_fn):
+def update_context_library(path, update_fn) -> None:
     """
     Safely update the context library at `path` by applying `update_fn(library)`.
     If a dict is passed instead of a function, it will update the library with that dict.
@@ -261,7 +261,7 @@ def update_context_library(path, update_fn):
         lib = clean_for_json(lib)  # <-- Ensure all sets are converted before saving
         save_context_library(lib, path)
        
-def backup_context_library(path=CONTEXT_LIBRARY_PATH, max_backups=5):
+def backup_context_library(path=CONTEXT_LIBRARY_PATH, max_backups=5) -> None:
     """
     Make a timestamped backup of the context library before overwriting,
     but only if the content has changed. Keep only the most recent `max_backups` backups.
@@ -310,27 +310,54 @@ def backup_context_library(path=CONTEXT_LIBRARY_PATH, max_backups=5):
         except Exception:
             pass
 
-def save_context_library(lib, path=None):
+def save_context_library(lib, path=None) -> None:
     """
     Robustly save the context library:
     - Always makes a timestamped backup before writing.
     - Writes atomically (temp file, then replace).
+    - Cleans up previous temp files to avoid disk bloat.
     - Never truncates or loses data on failure.
     """
+    global _TEMP_CONTEXT_LIB_TEMPFILES
     if path is None:
         path = CONTEXT_LIBRARY_PATH
     safe_path = safe_join(BASE_DIR, os.path.relpath(path, BASE_DIR))
     backup_context_library(safe_path)
     data = orjson.dumps(lib, option=orjson.OPT_INDENT_2)
-    # Write to a temp file first
     dir_name = os.path.dirname(safe_path)
+
+    # Remove any previous temp files for this context lib
+    for temp_file in list(_TEMP_CONTEXT_LIB_TEMPFILES):
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except Exception:
+                pass
+        _TEMP_CONTEXT_LIB_TEMPFILES.discard(temp_file)
+
+    # Write to a temp file first
     with tempfile.NamedTemporaryFile("wb", dir=dir_name, delete=False) as tf:
         tf.write(data)
         temp_path = tf.name
-    # Atomically replace the original file
-    os.replace(temp_path, safe_path)
 
-def merge_and_save_context_library(partial_dict, path=CONTEXT_LIBRARY_PATH):
+    _TEMP_CONTEXT_LIB_TEMPFILES.add(temp_path)
+
+    # Atomically replace the original file
+    try:
+        os.replace(temp_path, safe_path)
+    except Exception as e:
+        # Clean up temp file if replace fails
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+        raise e
+
+    # Remove temp file from tracker after successful replace
+    _TEMP_CONTEXT_LIB_TEMPFILES.discard(temp_path)
+
+def merge_and_save_context_library(partial_dict, path=CONTEXT_LIBRARY_PATH) -> None:
     """
     Safely merge a partial dict into the context library and save atomically.
     """
@@ -338,7 +365,7 @@ def merge_and_save_context_library(partial_dict, path=CONTEXT_LIBRARY_PATH):
     lib.update(partial_dict)
     save_context_library(lib, path)
 
-def update_context_library_field(key, value, path=CONTEXT_LIBRARY_PATH):
+def update_context_library_field(key, value, path=CONTEXT_LIBRARY_PATH) -> None:
     """
     Safely update a top-level key in the context library.
     """
@@ -349,7 +376,7 @@ def update_context_library_field(key, value, path=CONTEXT_LIBRARY_PATH):
     # Optionally log the change
     logger.info(f"Updated context_library field '{key}': {old_value} -> {value}")
 
-def update_domain_selector_cache(domain, selector, label, success=True):
+def update_domain_selector_cache(domain, selector, label, success=True) -> None:
     lib = load_context_library()
     domain_selectors = safe_setdefault(lib, "domain_selectors", {})
     entry = {
@@ -370,12 +397,12 @@ def update_domain_selector_cache(domain, selector, label, success=True):
         safe_setdefault(domain_selectors, domain, []).append(entry)
     update_context_library_field("domain_selectors", domain_selectors)
 
-def get_domain_selectors(domain):
+def get_domain_selectors(domain) -> List[Dict[str, Any]]:
     lib = load_context_library()
     domain_selectors = safe_get(lib, "domain_selectors", {})
     return safe_get(domain_selectors, domain, [])
 
-def log_selector_attempt(domain, selector, label, success):
+def log_selector_attempt(domain, selector, label, success) -> None:
     """
     Robustly log a selector attempt for a domain, using safe_append and safe_get.
     """
@@ -404,7 +431,7 @@ def _get_log_path(filename: str) -> str:
     os.makedirs(LOG_DIR, exist_ok=True)
     return os.path.join(LOG_DIR, filename)
 
-def _deduplicate_jsonl_log(log_path: str, key: str):
+def _deduplicate_jsonl_log(log_path: str, key: str) -> Set[str]:
     """
     Deduplicate a JSONL log file by the given key ('tag' or 'attr').
     Keeps only the first occurrence of each value.
@@ -434,7 +461,7 @@ def _deduplicate_jsonl_log(log_path: str, key: str):
 _UNKNOWN_TAGS_SET = None
 _UNKNOWN_ATTRS_SET = None
 
-def log_unknown_tag(tag: str, context_library):
+def log_unknown_tag(tag: str, context_library) -> None:
     """
     Log unknown HTML tag to unknown_tags_log.jsonl as a valid JSON object per line.
     Deduplicates log file and prevents future duplicates.
@@ -457,7 +484,7 @@ def log_unknown_tag(tag: str, context_library):
         except Exception as exc:
             logger.error(f"[LOG_UNKNOWN_TAG] Failed to log tag '{tag}': {exc}")
 
-def log_unknown_attr(attr: str, context_library):
+def log_unknown_attr(attr: str, context_library) -> None:
     """
     Log unknown HTML attribute to unknown_attrs_log.jsonl as a valid JSON object per line.
     Deduplicates log file and prevents future duplicates.
@@ -483,7 +510,7 @@ def log_unknown_attr(attr: str, context_library):
             logger.error(f"[LOG_UNKNOWN_ATTR] Failed to log attr '{attr}': {exc}")
 
 # --- ML/LLM Feedback Integration Example ---
-def integrate_llm_feedback(new_panel_tags=None, new_heading_tags=None, new_attr_patterns=None, new_location_keywords=None, new_candidate_keywords=None, new_ballot_types=None):
+def integrate_llm_feedback(new_panel_tags=None, new_heading_tags=None, new_attr_patterns=None, new_location_keywords=None, new_candidate_keywords=None, new_ballot_types=None) -> None:
     if new_panel_tags:
         extend_panel_tags(new_panel_tags)
     if new_heading_tags:
@@ -514,7 +541,7 @@ def get_canonical_segment_label(text: str) -> str:
     norm = normalize_segment_text(text)
     return CANONICAL_SEGMENT_LABELS.get(norm)
 
-def cache_segment_label(text: str, label: str):
+def cache_segment_label(text: str, label: str) -> None:
     norm = normalize_segment_text(text)
     _segment_label_cache[norm] = label
 
@@ -523,7 +550,7 @@ def get_cached_segment_label(text: str) -> str:
     return _segment_label_cache.get(norm)
 
 # --- Self-Heal Mode ---
-def self_heal_context_library(max_retries=3, cooldown=2):
+def self_heal_context_library(max_retries=3, cooldown=2) -> None:
     """Self-heal: scan for misaligned NER, run correction bot, reload context library, repeat until clean or max_retries."""
     scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
     for attempt in range(1, max_retries + 1):

@@ -5,6 +5,7 @@ import re
 import time
 import threading
 import traceback
+import tempfile
 import numpy as np
 from typing import Dict, Any, List, Optional, TYPE_CHECKING, Set, Pattern
 import concurrent.futures
@@ -58,7 +59,7 @@ _LABEL_CACHE_LOCK = threading.Lock()
 _LABEL_CACHE = None
 _context_cache = None
 _pattern_kb_cache = None
-
+_TEMP_FILES_TRACKER = set()
 embedding_cache_hits = set()
 embedding_cache_misses = set()
 
@@ -83,16 +84,28 @@ def robust_orjson_loads(val) -> Any:
         raise TypeError(f"Cannot decode type {type(val)} with orjson")
 
 def _get_label_cache_path() -> str:
-    """Returns the path to the label cache file, ensuring it is safe and does not exceed OS limits."""
+    """Returns the path to the label cache file, ensuring it is safe and does not exceed OS limits.
+    Cleans up previous temp files if switching to a new temp path."""
+    global _TEMP_FILES_TRACKER
     if not _LABEL_CACHE_FILENAME:
         raise ValueError("Label cache filename cannot be empty")
     if not isinstance(_LABEL_CACHE_FILENAME, str):
         raise TypeError("Label cache filename must be a string")
     path = safe_cache_path(_LABEL_CACHE_FILENAME)
-    if os.name == "nt" and len(os.path.abspath(path)) >= 260:
-        import tempfile
+    abs_path = os.path.abspath(path)
+    if os.name == "nt" and len(abs_path) >= 260:
         short_path = os.path.join(tempfile.gettempdir(), _LABEL_CACHE_FILENAME)
         logger.warning(f"[CACHE] Path too long for Windows, using temp path: {short_path}")
+        # Clean up previous temp files
+        for temp_file in list(_TEMP_FILES_TRACKER):
+            if temp_file != short_path and os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                    logger.info(f"[CACHE] Removed old temp file: {temp_file}")
+                except Exception as e:
+                    logger.warning(f"[CACHE] Failed to remove temp file {temp_file}: {e}")
+                _TEMP_FILES_TRACKER.discard(temp_file)
+        _TEMP_FILES_TRACKER.add(short_path)
         return short_path
     return path
 
@@ -165,62 +178,74 @@ def get_cached_segment_label(seg_hash) -> Optional[List[str]]:
         return None
 
 def safe_cache_path(filename: str) -> str:
-    """Generates a safe cache file path, ensuring it does not escape the cache directory."""
+    """Generates a safe cache file path, ensuring it does not escape the cache directory.
+    Cleans up previous temp files if switching to a new temp path."""
+    global _TEMP_FILES_TRACKER
     if not filename:
         raise ValueError("Filename cannot be empty")
     if not isinstance(filename, str):
         raise TypeError("Filename must be a string")
     if not re.match(r"^[\w\-. ]+$", filename):
         raise ValueError("Filename contains unsafe characters")
-    # Sanitize filename to prevent directory traversal or unsafe characters
     filename = _sanitize_log_filename(filename)
     cache_folder = CACHE_DIR
-    # Defensive: fallback to temp if path too long
     full_path = os.path.join(cache_folder, filename)
-    if os.name == "nt" and len(os.path.abspath(full_path)) >= 240:
-        import tempfile
+    abs_path = os.path.abspath(full_path)
+    if os.name == "nt" and len(abs_path) >= 240:
         temp_path = os.path.join(tempfile.gettempdir(), filename)
         logger.warning(f"[CACHE] Path too long for Windows, using temp path: {temp_path}")
-        # Ensure temp dir exists
         os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        # Clean up previous temp files
+        for temp_file in list(_TEMP_FILES_TRACKER):
+            if temp_file != temp_path and os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                    logger.info(f"[CACHE] Removed old temp file: {temp_file}")
+                except Exception as e:
+                    logger.warning(f"[CACHE] Failed to remove temp file {temp_file}: {e}")
+                _TEMP_FILES_TRACKER.discard(temp_file)
+        _TEMP_FILES_TRACKER.add(temp_path)
         return temp_path
-    # Ensure cache dir exists
     os.makedirs(cache_folder, exist_ok=True)
-    if not os.path.abspath(full_path).startswith(os.path.abspath(cache_folder)):
+    if not abs_path.startswith(os.path.abspath(cache_folder)):
         raise ValueError("Unsafe cache path detected!")
     return full_path
 
 def safe_log_path(filename: str, default_ext: str = ".jsonl") -> str:
     """
     Generates a safe log file path for JSONL logs, ensuring it does not escape the log directory.
-    - Enforces .jsonl extension by default.
-    - Sanitizes filename and prevents directory traversal.
-    - Handles Windows path length limits.
+    Cleans up previous temp files if switching to a new temp path.
     """
+    global _TEMP_FILES_TRACKER
     if not filename:
         raise ValueError("Filename cannot be empty")
     if not isinstance(filename, str):
         raise TypeError("Filename must be a string")
     if not re.match(r"^[\w\-. ]+$", filename):
         raise ValueError("Filename contains unsafe characters")
-    # Sanitize filename to prevent directory traversal or unsafe characters
     filename = _sanitize_log_filename(filename)
-    # Ensure correct extension
     if not filename.endswith(default_ext):
-        # Remove any other extension before appending
         filename = re.sub(r"\.[^.]+$", "", filename) + default_ext
     log_folder = LOG_DIR
     full_path = os.path.join(log_folder, filename)
-    # Defensive: fallback to temp if path too long (Windows limit is ~260, but 240 is safer)
-    if os.name == "nt" and len(os.path.abspath(full_path)) >= 240:
-        import tempfile
+    abs_path = os.path.abspath(full_path)
+    if os.name == "nt" and len(abs_path) >= 240:
         temp_path = os.path.join(tempfile.gettempdir(), filename)
         logger.warning(f"[LOG] Path too long for Windows, using temp path: {temp_path}")
         os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        # Clean up previous temp files
+        for temp_file in list(_TEMP_FILES_TRACKER):
+            if temp_file != temp_path and os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                    logger.info(f"[LOG] Removed old temp file: {temp_file}")
+                except Exception as e:
+                    logger.warning(f"[LOG] Failed to remove temp file {temp_file}: {e}")
+                _TEMP_FILES_TRACKER.discard(temp_file)
+        _TEMP_FILES_TRACKER.add(temp_path)
         return temp_path
     os.makedirs(log_folder, exist_ok=True)
-    # Ensure the log path does not escape the log directory
-    if not os.path.abspath(full_path).startswith(os.path.abspath(log_folder)):
+    if not abs_path.startswith(os.path.abspath(log_folder)):
         raise ValueError("Unsafe log path detected!")
     return full_path
 
