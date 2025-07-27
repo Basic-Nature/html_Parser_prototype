@@ -12,6 +12,15 @@ from ..Context_Integration.Context_Library.constants import (
     ELECTION_TYPE_REGEX_MAP, OFFICE_KEYWORDS
     )
 
+try:
+    from nltk.stem import PorterStemmer
+    from nltk.corpus import stopwords
+    STEMMER = PorterStemmer()
+    STOPWORDS = set(stopwords.words('english'))
+except ImportError:
+    STEMMER = None
+    STOPWORDS = set()
+
 logger = SharedLogger()
 prompt = UserPrompt()
 from typing import TYPE_CHECKING, List, Dict, Any, Optional
@@ -134,19 +143,105 @@ def fuzzy_county_match(contest_county, norm_county, known_county_to_precincts) -
         return True
     return False
 
-def normalize_race_name(name) -> str:
-    # Use safe_lower and safe_strip for robust handling
-    return re.sub(r"\W+", "", safe_lower(safe_strip(name))) if name else ""
+def _remove_boilerplate(text: str) -> str:
+    """
+    Remove boilerplate phrases using regex and constants.
+    Handles noisy phrases, election instructions, and patterns from constants.
+    """
+    patterns = [
+        r'\s*[\r\n]*Vote for \d+\s*',
+        r'\s*[\r\n]*Select \d+\s*',
+        r'\s*[\r\n]*Choose \d+\s*',
+        r'\s*[\r\n]*Pick \d+\s*',
+        r'\s*[\r\n]*Ballot Item \d+\s*',
+        r'\s*[\r\n]*Ballot Position \d+\s*',
+        r'\s*[\r\n]*For Election Use Only\s*',
+        r'\s*[\r\n]*Unofficial Results\s*',
+        r'\s*[\r\n]*Summary\s*',
+        r'\s*[\r\n]*Results by Election District\s*',
+    ]
+    # Add patterns from ELECTION_TYPE_REGEX_MAP and OFFICE_KEYWORDS if relevant
+    patterns += [pat for pat, _ in ELECTION_TYPE_REGEX_MAP if "vote" in pat or "select" in pat or "ballot" in pat]
+    patterns += [rf'\b{re.escape(kw)}\b' for kw, _ in OFFICE_KEYWORDS]
+    for pat in patterns:
+        text = re.sub(pat, '', text, flags=re.IGNORECASE)
+    return text
 
-def normalize_contest(title: str) -> str:
+def _remove_keywords(text: str, keywords) -> str:
+    """
+    Remove contest/office keywords from text, including plural and possessive forms.
+    """
+    for kw in keywords:
+        # Remove keyword, plural, and possessive forms
+        text = re.sub(rf'\b{re.escape(kw)}(\'s|s)?\b', '', text, flags=re.IGNORECASE)
+    return text
+
+def _stem_and_remove_stopwords(text: str) -> str:
+    """
+    Apply stemming and remove stopwords for advanced normalization.
+    """
+    if not STEMMER or not STOPWORDS:
+        return text
+    words = re.findall(r'\w+', text, flags=re.UNICODE)
+    stemmed = [STEMMER.stem(w) for w in words if w.lower() not in STOPWORDS]
+    return ' '.join(stemmed)
+
+def normalize_race_name(name: str, advanced: bool = False) -> str:
+    """
+    Advanced normalization for race/contest names:
+    - Lowercase
+    - Remove boilerplate phrases and contest/office keywords
+    - Remove common suffixes
+    - Remove non-alphanumeric (Unicode-aware)
+    - Collapse whitespace
+    - Optionally stem and remove stopwords
+    """
+    if not name:
+        return ""
+    name = safe_strip(name)
+    name = safe_lower(name)
+    name = _remove_boilerplate(name)
+    name = _remove_keywords(name, CONTEST_KEYWORDS)
+    name = _remove_keywords(name, [kw for kw, _ in OFFICE_KEYWORDS])
+    # Remove common suffixes and extra words
+    name = re.sub(r"\b(race|contest|seat|position|ballot|item|office|role)\b", "", name)
+    # Remove non-alphanumeric (preserve Unicode letters/numbers)
+    name = re.sub(r"[^\w\d]", " ", name, flags=re.UNICODE)
+    # Collapse whitespace
+    name = re.sub(r"\s+", " ", name)
+    name = name.strip()
+    if advanced:
+        name = _stem_and_remove_stopwords(name)
+    return name
+
+def normalize_contest(title: str, advanced: bool = False) -> str:
+    """
+    Advanced normalization for contest titles:
+    - Remove boilerplate phrases using regex and constants
+    - Remove contest/office keywords
+    - Remove trailing/leading numbers and punctuation
+    - Remove extra whitespace
+    - Lowercase for deduplication
+    - Optionally stem and remove stopwords
+    """
     if not title:
         return ""
-    title = re.sub(r'\s*[\r\n]*Vote for \d+\s*', '', title, flags=re.IGNORECASE)
-    return title.strip()
+    title = safe_strip(title)
+    title = _remove_boilerplate(title)
+    title = _remove_keywords(title, CONTEST_KEYWORDS)
+    title = _remove_keywords(title, [kw for kw, _ in OFFICE_KEYWORDS])
+    # Remove trailing/leading numbers and punctuation
+    title = re.sub(r'^[\d\W]+|[\d\W]+$', '', title, flags=re.UNICODE)
+    # Collapse whitespace
+    title = re.sub(r'\s+', ' ', title)
+    title = title.strip().lower()
+    if advanced:
+        title = _stem_and_remove_stopwords(title)
+    return title
 
 def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator", context: dict, threshold: float = 0.75) -> bool:
     """
-    Use ML/NER to verify if the contest's year/type/title are likely correct.
+    Enhanced ML/NER contest verification using context, constants, and semantic scoring.
     Returns True if above threshold, False otherwise.
     """
     if coordinator is None:
@@ -155,6 +250,8 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     year = safe_strip(contest.get("year", ""))
     ctype = safe_strip(contest.get("type_", ""))
     year_score = 0.0
+
+    # Year scoring
     if year and re.match(r"^(19|20)\d{2}$", str(year)):
         year_score = 1.0
     else:
@@ -164,34 +261,80 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
                 year_score = 0.9
                 break
 
-    # --- Election type detection ---
+    # Election type scoring
     known_types = [safe_lower(t or "") for t in coordinator.get_election_types()]
     ctype_norm = safe_lower(ctype).replace("election", "").strip()
-    # Accept common election types even if not in known_types
     type_score = 0.0
+    detected_type = None
+
     if ctype:
+        # Direct match to known types or constants
         if any(t in ctype_norm for t in known_types):
             type_score = 1.0
+            detected_type = ctype
         elif any(safe_lower(v) in ctype_norm for v in ELECTION_TYPES):
             type_score = 1.0
+            detected_type = ctype
         else:
-            # Partial match (e.g., "general" in "general election")
-            if any(safe_lower(v) in ctype_norm for v in ["general", "primary", "presidential", "special", "runoff"]):
+            # Regex/keyword match from constants, utilize forced_type
+            for pattern, forced_type in ELECTION_TYPE_REGEX_MAP:
+                match = re.search(pattern, ctype_norm)
+                if match:
+                    type_score = 0.9
+                    detected_type = forced_type if forced_type else match.group(0)
+                    break
+            # Accept other common types
+            if type_score == 0.0 and ctype_norm in {
+                "judicial", "proposition", "amendment", "state legislature", "federal legislature"
+            }:
                 type_score = 0.8
+                detected_type = ctype_norm
+            # Partial match
+            elif type_score == 0.0 and any(safe_lower(v) in ctype_norm for v in ["general", "primary", "presidential", "special", "runoff"]):
+                type_score = 0.8
+                detected_type = ctype_norm
 
-    # --- Contest keywords: for office/position, not election type ---
+    # Advanced: If type is still ambiguous, use semantic similarity to known types
+    if type_score == 0.0 and hasattr(coordinator, "_semantic_model"):
+        model = getattr(coordinator, "_semantic_model", None)
+        best_sim = 0.0
+        best_type = None
+        for t in known_types:
+            sim = coordinator.score_header(ctype_norm, {"known_labels": [t]})
+            if sim > best_sim:
+                best_sim = sim
+                best_type = t
+        if best_sim > 0.7:
+            type_score = 0.7
+            detected_type = best_type
+
+    # Title scoring (office/position keywords)
     title_score = 1.0 if any(safe_lower(kw or "") in safe_lower(title or "") for kw in CONTEST_KEYWORDS) else 0.0
 
-    # --- ML/NER header score ---
+    # Semantic/ML scoring
     ml_score = coordinator.score_header(title, context)
 
-    # --- Tune weights: prioritize year and type ---
-    score = 0.45 * year_score + 0.35 * type_score + 0.1 * title_score + 0.1 * ml_score
+    # Fuzzy/semantic boost for ambiguous cases
+    fuzzy_boost = 0.0
+    if hasattr(coordinator, "fuzzy_score"):
+        fuzzy_boost = coordinator.fuzzy_score(title, ctype) * 0.1
+
+    # Aggregate score
+    score = (
+        0.4 * year_score +
+        0.3 * type_score +
+        0.2 * title_score +
+        0.1 * ml_score +
+        fuzzy_boost
+    )
+
+    # Log detected type for debugging/feedback
+    logger.debug(f"[ml_verify_contest] Detected type: {detected_type} | year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, fuzzy_boost={fuzzy_boost:.2f}, total={score:.2f}")
 
     if score < threshold:
         logger.debug(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type_: {ctype}")
-        logger.info(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, total={score:.2f}")
-    score = 0.25 * year_score + 0.15 * type_score + 0.45 * title_score + 0.15 * ml_score
+        logger.info(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, fuzzy_boost={fuzzy_boost:.2f}, total={score:.2f}")
+
     # If year and title are strong, allow type_ to be unknown
     if year_score == 1.0 and title_score == 1.0 and score >= 0.55:
         return True
@@ -199,8 +342,7 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
 
 def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "ContextCoordinator", context: dict, max_loops: int = 3, threshold: float = 0.85) -> List[Dict[str, Any]]:
     """
-    Feedback loop: rescans and verifies contests using ML/NER, retries if below threshold.
-    Prompts user for clarification if still ambiguous after max_loops.
+    Enhanced feedback loop: rescans and verifies contests using ML/NER, fuzzy/semantic scoring, and user feedback.
     """
     if coordinator is None:
         coordinator = ContextCoordinator()
@@ -218,11 +360,17 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
             logger.info(f"[CONTEST SELECTOR] Feedback loop {loop+1}: {len(verified)} contests passed ML/NER verification.")
             return verified
         logger.warning(f"[CONTEST SELECTOR] Feedback loop {loop+1}: No contests passed ML/NER verification. Retrying...")
-    # Fallback: select contests with strong title match
-    fallback_verified = [c for c in contests if safe_get(c, "title") and len(safe_get(c, "title")) > 10]
+
+    # Fallback: select contests with strong title match or semantic similarity
+    fallback_verified = [
+        c for c in contests
+        if safe_get(c, "title") and len(safe_get(c, "title")) > 10
+        or (hasattr(coordinator, "score_header") and coordinator.score_header(safe_get(c, "title", ""), context) > 0.6)
+    ]
     if fallback_verified:
-        logger.info("[CONTEST SELECTOR] Fallback: selecting contests by title only.")
+        logger.info("[CONTEST SELECTOR] Fallback: selecting contests by title/semantic score.")
         return fallback_verified
+
     # If still ambiguous, prompt user for clarification
     logger.warning("[yellow]Unable to confidently identify valid contests after feedback loop. Please clarify selection.[/yellow]")
     grouped = defaultdict(list)
@@ -233,6 +381,7 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
         logger.info(f"[bold cyan]Year: {year or 'Unknown'}, Type: {ctype or 'Unknown'}[/bold cyan]")
         for idx, c in items:
             logger.info(f"  [{idx}] {safe_get(c, 'title', '')}")
+
     try:
         choice = prompt.prompt_input(
             "[PROMPT] Enter contest indices (comma-separated), 'all', 'skip', or leave blank to skip: ",

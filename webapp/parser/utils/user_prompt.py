@@ -735,7 +735,7 @@ class UserPrompt(ContextManager):
             resp = self.prompt_input(
                 f"Do you want to click this button? (y/n): ",
                 default="y",
-                vvalidator=lambda x: safe_lower(x or "") in {"y", "n", "yes", "no"},
+                validator=lambda x: safe_lower(x or "") in {"y", "n", "yes", "no"},
                 allow_cancel=True,
                 header="BUTTON CONFIRMATION",
                 session_id=session_id,
