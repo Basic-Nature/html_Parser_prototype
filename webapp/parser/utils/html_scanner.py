@@ -6,7 +6,7 @@ import time
 import threading
 import traceback
 import numpy as np
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, TYPE_CHECKING, Set, Pattern
 import concurrent.futures
 from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH
 from ..utils.shared_logger import SharedLogger
@@ -976,28 +976,28 @@ def extract_tagged_segments_with_attrs(
         context_cache = load_context_cache_from_disk()
 
     # --- Dynamic context enrichment ---
-    all_panel_tags = PANEL_TAGS | CONTEST_PANEL_TAGS | {"main", "aside", "article"}
-    all_heading_tags = HEADING_TAGS | EXTRA_HEADING_TAGS
-    all_table_tags = TABLE_TAGS
-    all_structural_tags = STRUCTURAL_TAGS | ROOT_CONTAINER_TAGS | ALWAYS_IGNORE_TAGS
-    all_icon_tags = ICON_TAGS
-    all_button_tags = BUTTON_TAGS
-    all_classes_ignore = ALWAYS_IGNORE_CLASSES | ICON_CLASSES | BUTTON_CLASSES | PANEL_CLASSES | HEADING_CLASSES
-    all_ids_ignore = ALWAYS_IGNORE_IDS
-    all_location_keywords = LOCATION_KEYWORDS | set(LOCATION_ABBREVIATIONS.keys())
-    all_candidate_keywords = CANDIDATE_KEYWORDS | PARTY_KEYWORDS
-    all_ballot_types = set(BALLOT_TYPES) | set(BALLOT_TYPES_SORT_ORDER)
-    all_contest_keywords = CONTEST_KEYWORDS
-    all_misc_keywords = TOTAL_KEYWORDS | PERCENT_KEYWORDS | MISC_FOOTER_KEYWORDS | UPDATE_PANEL_KEYWORDS
-    all_state_tags = STATE_TAGS | set(STATE_ABBR.keys())
-    all_office_keywords = set([k for k, _ in OFFICE_KEYWORDS])
-    all_precinct_patterns = [re.compile(pat) for pat in PRECINCT_HEADER_PATTERNS]
-    all_noisy_label_patterns = NOISY_LABEL_PATTERNS
-    all_selectors = SELECTORS
-    all_canonical_labels = CANONICAL_SEGMENT_LABELS
-    all_district_regex = DISTRICT_REGEX
-    all_election_types = set(ELECTION_TYPES)
-    all_party_keywords = PARTY_KEYWORDS
+    all_panel_tags: Set[str] = PANEL_TAGS | CONTEST_PANEL_TAGS | {"main", "aside", "article"}
+    all_heading_tags: Set[str] = HEADING_TAGS | EXTRA_HEADING_TAGS
+    all_table_tags: Set[str] = TABLE_TAGS
+    all_structural_tags: Set[str] = STRUCTURAL_TAGS | ROOT_CONTAINER_TAGS | ALWAYS_IGNORE_TAGS
+    all_icon_tags: Set[str] = ICON_TAGS
+    all_button_tags: Set[str] = BUTTON_TAGS
+    all_classes_ignore: Set[str] = ALWAYS_IGNORE_CLASSES | ICON_CLASSES | BUTTON_CLASSES | PANEL_CLASSES | HEADING_CLASSES
+    all_ids_ignore: Set[str] = ALWAYS_IGNORE_IDS
+    all_location_keywords: Set[str] = LOCATION_KEYWORDS | set(LOCATION_ABBREVIATIONS.keys())
+    all_candidate_keywords: Set[str] = CANDIDATE_KEYWORDS | PARTY_KEYWORDS
+    all_ballot_types: Set[str] = set(BALLOT_TYPES) | set(BALLOT_TYPES_SORT_ORDER)
+    all_contest_keywords: Set[str] = set(CONTEST_KEYWORDS)
+    all_misc_keywords: Set[str] = set(TOTAL_KEYWORDS) | set(PERCENT_KEYWORDS) | set(MISC_FOOTER_KEYWORDS) | set(UPDATE_PANEL_KEYWORDS)
+    all_state_tags: Set[str] = set(STATE_TAGS) | set(STATE_ABBR.keys())
+    all_office_keywords: Set[str] = set([k for k, _ in OFFICE_KEYWORDS])
+    all_precinct_patterns: List[Pattern] = [re.compile(pat) for pat in PRECINCT_HEADER_PATTERNS]
+    all_noisy_label_patterns: Set[Pattern] = set(NOISY_LABEL_PATTERNS)
+    all_selectors: Set[str] = set(SELECTORS)
+    all_canonical_labels: Set[str] = set(CANONICAL_SEGMENT_LABELS)
+    all_district_regex: Set[Pattern] = set([DISTRICT_REGEX])  # DISTRICT_REGEX is a Pattern, wrap in a set
+    all_election_types: Set[str] = set(ELECTION_TYPES)
+    all_party_keywords: Set[str] = set(PARTY_KEYWORDS)
 
     # --- Coordinator-driven context using extract_field ---
     context_contests = set()
@@ -2087,6 +2087,8 @@ def scan_html_for_context(
     page_hash = get_page_hash(page)
     if context_cache is None:
         context_cache = load_context_cache_from_disk()
+        
+    segments_with_attrs = []
 
     try:
         html = getattr(page, "content", lambda: "")()
