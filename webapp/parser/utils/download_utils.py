@@ -5,6 +5,7 @@ import orjson
 from urllib.parse import urljoin
 from datetime import datetime
 from ..utils.shared_logger import SharedLogger
+from ..utils.shared_logic import safe_get
 from ..Context_Integration.context_organizer import ContextOrganizer
 from ..config import INPUT_DIR, OUTPUT_DIR
 
@@ -20,12 +21,19 @@ def ensure_output_directory():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def file_hash(filepath, algo="sha256", blocksize=65536):
-    """Compute the hash of a file for deduplication/integrity."""
-    h = hashlib.new(algo)
-    with open(filepath, "rb") as f:
-        for chunk in iter(lambda: f.read(blocksize), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    """Compute the hash of a file for deduplication/integrity, with error handling."""
+    if not isinstance(filepath, str) or not filepath or not os.path.exists(filepath):
+        logger.error(f"[file_hash] Invalid or missing file: {filepath}")
+        return None
+    try:
+        h = hashlib.new(algo)
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(blocksize), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception as e:
+        logger.error(f"[file_hash] Error hashing file '{filepath}': {e}")
+        return None
 
 def load_download_manifest():
     """Load the download manifest as a dict: url or filename -> metadata."""
@@ -36,7 +44,9 @@ def load_download_manifest():
         for line in f:
             try:
                 entry = orjson.loads(line)
-                manifest[entry.get("url") or entry.get("filename")] = entry
+                key = safe_get(entry, "url") or safe_get(entry, "filename")
+                if key:
+                    manifest[key] = entry
             except Exception:
                 continue
     return manifest
@@ -49,16 +59,20 @@ def update_download_manifest(entry):
 def is_already_downloaded(url, filename=None, check_hash=False):
     """Check if a file has already been downloaded (by URL or filename, optionally by hash)."""
     manifest = load_download_manifest()
-    if url in manifest:
-        entry = manifest[url]
-        if filename and os.path.exists(filename):
-            if not check_hash or entry.get("hash") == file_hash(filename):
-                return True
+    entry = safe_get(manifest, url)
+    if entry and filename and os.path.exists(filename):
+        entry_hash = safe_get(entry, "hash")
+        file_hash_val = file_hash(filename)
+        if not check_hash or (entry_hash and file_hash_val and entry_hash == file_hash_val):
+            return True
     if filename and os.path.exists(filename):
         # Check by filename only
         for entry in manifest.values():
-            if entry.get("filename") == filename:
-                if not check_hash or entry.get("hash") == file_hash(filename):
+            entry_filename = safe_get(entry, "filename")
+            entry_hash = safe_get(entry, "hash")
+            file_hash_val = file_hash(filename)
+            if entry_filename == filename:
+                if not check_hash or (entry_hash and file_hash_val and entry_hash == file_hash_val):
                     return True
     return False
 
@@ -143,9 +157,17 @@ def summarize_downloads():
     manifest = load_download_manifest()
     logger.info("\n[DOWNLOAD SUMMARY]")
     for entry in manifest.values():
-        logger.info(f"  {entry.get('filename')} | {entry.get('url')} | {entry.get('status')} | {entry.get('timestamp')}")
+        filename = safe_get(entry, "filename")
+        url = safe_get(entry, "url")
+        status = safe_get(entry, "status")
+        timestamp = safe_get(entry, "timestamp")
+        logger.info(f"  {filename} | {url} | {status} | {timestamp}")
 
 def get_downloaded_files_by_status(status="success"):
     """Return a list of filenames for downloads with the given status."""
     manifest = load_download_manifest()
-    return [entry["filename"] for entry in manifest.values() if entry.get("status") == status]
+    return [
+        safe_get(entry, "filename")
+        for entry in manifest.values()
+        if safe_get(entry, "status") == status and safe_get(entry, "filename") is not None
+    ]

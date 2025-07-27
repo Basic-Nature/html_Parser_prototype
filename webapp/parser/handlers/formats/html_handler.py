@@ -1,4 +1,4 @@
-def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs):
+def parse(page, coordinator=None, context=None, session_id=None, non_interactive=False, logger=None, **kwargs):
     """
     Generic HTML handler: organizes context, attempts to route to the correct state/county handler,
     and ensures all key election data is transferred to the appropriate downstream handler.
@@ -7,7 +7,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
     """
     from ...Context_Integration.context_coordinator import ContextCoordinator
     from ...state_router import get_handler, list_available_handlers, fuzzy_match_handler
-    from ...utils.shared_logic import normalize_state_name, normalize_county_name
+    from ...utils.shared_logic import normalize_state_name, normalize_county_name, safe_parse, safe_get
     from ...utils.shared_logger import SharedLogger
     from ...utils.user_prompt import UserPrompt
     import orjson
@@ -55,7 +55,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
                     handler = handler_mod
                     handler_found = True
                 elif hasattr(handler_mod, "parse"):
-                    handler = handler_mod.parse
+                    handler = safe_parse(handler_mod)
                     handler_found = True
                 else:
                     handler_found = False
@@ -75,7 +75,7 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
         contests = organized.get("contests", [])
         entities = []
         for c in contests:
-            entities.extend(c.get("entities", []))
+            entities.extend(safe_get(c, "entities", []))
         ml_suggestions = coordinator.validate_and_check_integrity()
         suggested_state = normalize_state_name(state or (ml_suggestions.get("integrity_issues") or [{}])[0].get("state"))
         suggested_county = normalize_county_name(county or (ml_suggestions.get("integrity_issues") or [{}])[0].get("county"))
@@ -196,7 +196,16 @@ def parse(page, coordinator=None, context=None, non_interactive=False, **kwargs)
         logger.info(f"[HTML Handler] Routing to state/county handler: {getattr(handler, '__name__', str(handler))}")
         logger.info(f"[HTML Handler] Routing trace: {routing_trace}")
         # Pass enriched context and coordinator downstream
-        return handler.parse(page, coordinator, html_context, non_interactive=non_interactive, **kwargs)
+        return safe_parse(
+            handler,
+            page,
+            coordinator,
+            html_context,
+            session_id=session_id,
+            non_interactive=non_interactive,
+            logger=logger,
+            **kwargs
+        )
 
     # 7. If still not found, log all attempts and provide actionable error
     log_dir = "log"

@@ -539,6 +539,8 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
     Returns: np.ndarray or list[np.ndarray] or None
     IDE-friendly: always returns consistent types, logs errors, and handles batch/single input.
     """
+    import numpy as np
+
     def _normalize_text(val: Union[str, list[str]]) -> Union[str, list[str]]:
         # Accept str, bytes, or list/tuple of str/bytes
         if isinstance(val, (str, bytes)):
@@ -564,10 +566,19 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
         norm_text = _normalize_text(text)
         result = _safe_model_encode_call(norm_text)
         if result is not None:
+            # Ensure not string
+            if isinstance(result, str):
+                logger.error("[safe_model_encode] Model returned a string for batch input. Returning None.")
+                return None
             return result
         # Fallback: encode each item individually
         try:
-            return [_safe_model_encode_call(_normalize_text(t)) for t in text]
+            result = [_safe_model_encode_call(_normalize_text(t)) for t in text]
+            # Remove any string elements
+            result = [r for r in result if not isinstance(r, str)]
+            if not result:
+                return None
+            return result
         except Exception as e2:
             logger.error(f"[safe_model_encode] Batch encode fallback also failed: {e2}")
             return [None for _ in text]
@@ -576,20 +587,34 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
     norm_text = _normalize_text(text)
     result = _safe_model_encode_call(norm_text)
     if result is not None:
+        # Ensure not string
+        if isinstance(result, str):
+            logger.error("[safe_model_encode] Model returned a string for single input. Returning None.")
+            return None
         return result
 
     # Fallback: try as [string]
     try:
         batch_result = _safe_model_encode_call([norm_text])
         if batch_result is not None and isinstance(batch_result, (list, tuple, np.ndarray)) and len(batch_result) > 0:
-            return safe_get_first(batch_result, "batch_result", None, logger)
+            first = safe_get_first(batch_result, "batch_result", None, logger)
+            # Ensure not string
+            if isinstance(first, str):
+                logger.error("[safe_model_encode] Model returned a string in batch fallback. Returning None.")
+                return None
+            return first
     except Exception as e2:
         logger.error(f"[safe_model_encode] Batch fallback failed: {e2}")
 
     # Extra safety: try to encode each character (rare fallback)
     try:
         logger.error(f"[safe_model_encode] All string encode attempts failed. Trying per-char fallback.")
-        return [safe_get_first(_safe_model_encode_call([c]), "char_encode", None, logger) for c in norm_text if isinstance(c, str)]
+        result = [safe_get_first(_safe_model_encode_call([c]), "char_encode", None, logger) for c in norm_text if isinstance(c, str)]
+        # Remove any string elements
+        result = [r for r in result if not isinstance(r, str)]
+        if not result:
+            return None
+        return result
     except Exception as e3:
         logger.error(f"[safe_model_encode] All encode attempts failed: {e3}")
         return None
@@ -654,6 +679,8 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
             if logger: logger.error("[safe_parse] Handler has no callable 'parse' method.")
             return None
         sig = inspect.signature(parse_method)
+        if logger:
+            logger.debug(f"[safe_parse] Calling handler.parse with args: {[type(a) for a in args]}, kwargs: {kwargs}")
         if 'coordinator' in sig.parameters:
             return parse_method(*args, coordinator, **kwargs)
         else:

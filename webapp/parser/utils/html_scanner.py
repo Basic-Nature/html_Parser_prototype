@@ -1946,13 +1946,13 @@ def scan_html_for_context(
     target_url,
     page,
     coordinator=None,
-    debug=False,
+    session_id=None,
+    non_interactive=False,
+    allow_duplicates=False,
     context_cache=None,
+    debug=False,
     model_name: Optional[str] = None,
     use_finetuned: bool = True,
-    non_interactive=False,
-    session_id=None,
-    allow_duplicates=False,
     ml_threshold: float = 0.85
 ) -> Dict[str, Any]:
     """

@@ -22,7 +22,7 @@ BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type
 context_cache = {}
 accepted_buttons_cache = {}
 
-def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, non_interactive=False, **kwargs) -> tuple:
+def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, non_interactive=False, logger=logger, **kwargs) -> tuple:
     """
     Rockland County handler: all logic in one place.
     - Scans HTML for context and contests
@@ -41,10 +41,11 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         target_url=getattr(page, "url", None),
         page=page,
         coordinator=coordinator,
-        debug=False,
+        session_id=session_id if session_id is not None else getattr(coordinator, "session_id", None),
         non_interactive=non_interactive,
-        session_id=getattr(coordinator, "session_id", None),
-        allow_duplicates=getattr(coordinator, "allow_duplicates", False)
+        allow_duplicates=getattr(coordinator, "allow_duplicates", False),
+        context_cache=context_cache,
+        debug=False,        
     )
     
     state = context_result.get("state") or "NY"
@@ -57,6 +58,9 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             contest["county"] = county
         if safe_get(contest, "year", None) is None and year is not None:
             contest["year"] = year
+        if session_id is not None:
+            contest["session_id"] = session_id
+            
     context_result = clean_for_json(context_result)
     result = coordinator.organize_and_enrich(context_result)
     if "organized" in result and "dom_parts" in result["organized"]:
@@ -73,11 +77,14 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         "contests": context_result.get("contests", []),
         **{k: v for k, v in html_context.items() if k not in ("state", "county", "year", "contests")}
     }
+    if session_id is not None:
+        context_for_selector["session_id"] = session_id
     selected = select_contest(
         coordinator,
         state=state,
         county=county,
         year=year,
+        session_id=session_id,
         non_interactive=non_interactive,
         context=context_for_selector
     )
@@ -184,10 +191,11 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 target_url=getattr(page, "url", None),
                 page=page,
                 coordinator=coordinator,
-                debug=False,
+                session_id=session_id if session_id is not None else getattr(coordinator, "session_id", None),
                 non_interactive=non_interactive,
-                session_id=getattr(coordinator, "session_id", None),
-                allow_duplicates=getattr(coordinator, "allow_duplicates", False)
+                allow_duplicates=getattr(coordinator, "allow_duplicates", False),
+                context_cache=context_cache,
+                debug=False,
             )
 
             segments = context_result.get("tagged_segments_with_attrs", [])
@@ -298,6 +306,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 "race": contest,
                 "source": getattr(page, "url", "Unknown"),
                 "handler": "rockland",
+                "session_id": session_id
             }
             if "year" in html_context:
                 metadata["year"] = html_context["year"]

@@ -63,31 +63,37 @@ def get_semantic_score(model, text1, text2) -> float:
     Compute semantic similarity between two strings using SentenceTransformer.
     Handles tensor/list conversion and logs errors gracefully.
     """
-    if not text1 or not text2:
+    # Type and value checks
+    if model is None:
+        if logger: logger.error("[get_semantic_score] Model is None.")
+        return 0.0
+    if not isinstance(text1, str) or not isinstance(text2, str) or not text1 or not text2:
+        if logger: logger.error(f"[get_semantic_score] Invalid input types: text1={type(text1)}, text2={type(text2)}")
         return 0.0
     try:
         emb1 = safe_model_encode(model, text1, convert_to_tensor=True, show_progress_bar=False)
         emb2 = safe_model_encode(model, text2, convert_to_tensor=True, show_progress_bar=False)
+        if logger: logger.debug(f"Type of emb1: {type(emb1)}, Type of emb2: {type(emb2)}")
         from sentence_transformers import util
-        # util.pytorch_cos_sim returns a tensor; extract scalar value safely
         cos_sim = util.pytorch_cos_sim(emb1, emb2)
+        # Defensive extraction
         if hasattr(cos_sim, "item"):
-            # Single value tensor
-            return float(cos_sim.item())
+            val = cos_sim.item()
         elif hasattr(cos_sim, "numpy"):
             arr = cos_sim.numpy()
-            if arr.size > 0:
-                return float(arr.flatten()[0])
-            else:
-                return 0.0
+            val = float(arr.flatten()[0]) if arr.size > 0 else 0.0
         elif isinstance(cos_sim, (list, tuple, np.ndarray)):
-            # Defensive: handle list/array
-            return float(cos_sim[0][0]) if cos_sim and cos_sim[0] else 0.0
+            val = float(cos_sim[0][0]) if cos_sim and cos_sim[0] else 0.0
         else:
-            logger.error(f"[get_semantic_score] Unexpected cos_sim type: {type(cos_sim)}")
+            if logger: logger.error(f"[get_semantic_score] Unexpected cos_sim type: {type(cos_sim)}")
+            val = 0.0
+        # Final type check
+        if not isinstance(val, (float, int)):
+            if logger: logger.error(f"[get_semantic_score] Non-numeric similarity value: {val}")
             return 0.0
+        return float(val)
     except Exception as e:
-        logger.error(f"[get_semantic_score] Error: {e}")
+        if logger: logger.error(f"[get_semantic_score] Error: {e}")
         return 0.0
 
 def merge_and_rank_candidates(
@@ -1346,20 +1352,27 @@ class ContextCoordinator(object):
         Returns: list of (entity, label) or a single (entity, label) if first_only
         """
         try:
-            if not text or not isinstance(text, str):
+            if not isinstance(text, str) or not text:
+                if hasattr(self, 'logger'):
+                    self.logger.error(f"[extract_entities] Invalid text type: {type(text)}")
                 return [] if not first_only else None
             from ..utils.spacy_utils import extract_entities
             entities = extract_entities(text)
+            if not isinstance(entities, list):
+                if hasattr(self, 'logger'):
+                    self.logger.error(f"[extract_entities] extract_entities did not return a list: {type(entities)}")
+                entities = []
             if labels:
                 labels_set = set(labels)
                 filtered = [(ent, label) for ent, label in entities if label in labels_set]
             else:
                 filtered = entities
             if first_only:
-                return safe_get_first(filtered, "entity_filtered", None, logger) if filtered else None
+                return safe_get_first(filtered, "entity_filtered", None, self.logger if hasattr(self, 'logger') else None) if filtered else None
             return filtered
         except Exception as e:
-            logger.error(f"[ContextCoordinator.extract_entities] Error: {e}")
+            if hasattr(self, 'logger'):
+                self.logger.error(f"[ContextCoordinator.extract_entities] Error: {e}")
             return [] if not first_only else None
 
     def extract_locations(self, text, labels=None, first_only=False):
@@ -1718,15 +1731,16 @@ class ContextCoordinator(object):
             contest_title = contest_obj.get("title", "") if isinstance(contest_obj, dict) else str(contest_obj)
             # 1. Semantic similarity to known headers
             sim_scores = []
-            if model and known_headers:
+            if model and known_headers and isinstance(title, str):
                 for h in known_headers:
-                    sim = get_semantic_score(model, title, h)
-                    sim_scores.append(sim)
+                    sim = get_semantic_score(model, title, h, logger)
+                    if isinstance(sim, (float, int)):
+                        sim_scores.append(sim)
                 max_sim = max(sim_scores) if sim_scores else 0.0
             else:
                 max_sim = 0.0
             # 2. Fuzzy match to known headers
-            fuzzy_scores = [difflib.SequenceMatcher(None, safe_lower(h), safe_lower(title)).ratio() for h in known_headers]
+            fuzzy_scores = [difflib.SequenceMatcher(None, safe_lower(h), safe_lower(title)).ratio() for h in known_headers if isinstance(h, str) and isinstance(title, str)]
             max_fuzzy = max(fuzzy_scores) if fuzzy_scores else 0.0
             # 3. Entity detection
             ents = self.extract_entities(title)
@@ -1737,18 +1751,19 @@ class ContextCoordinator(object):
                     entity_boost = 0.2
                     best_entity = ent
                     # Optionally: use semantic similarity to contest title or known labels
-                    if model and contest_title:
-                        entity_boost += 0.1 * get_semantic_score(model, ent, contest_title)
+                    if model and contest_title and isinstance(ent, str):
+                        sim = get_semantic_score(model, ent, contest_title, logger)
+                        if isinstance(sim, (float, int)):
+                            entity_boost += 0.1 * sim
                     # Optionally: use fuzzy match to known labels
-                    if known_labels:
-                        fuzzy_scores = [difflib.SequenceMatcher(None, safe_lower(lbl), safe_lower(ent)).ratio() for lbl in known_labels]
+                    if known_labels and isinstance(ent, str):
+                        fuzzy_scores = [difflib.SequenceMatcher(None, safe_lower(lbl), safe_lower(ent)).ratio() for lbl in known_labels if isinstance(lbl, str)]
                         entity_boost += 0.05 * max(fuzzy_scores) if fuzzy_scores else 0.0
                     break
             # 4. Contextual match to contest title
-            context_sim = get_semantic_score(model, title, contest_title) if model and contest_title else 0.0
+            context_sim = get_semantic_score(model, title, contest_title, logger) if model and contest_title and isinstance(title, str) else 0.0
             # 5. Length and capitalization heuristic
             length_score = min(len(title) / 20.0, 0.2) if isinstance(title, str) else 0.0
-            # Defensive conversion: always pass a list to safe_get_first
             title_chars = list(title) if isinstance(title, str) else title
             first_char = safe_get_first(title_chars, "title_first_char", "", logger)
             cap_score = 0.1 if isinstance(title, str) and len(title) > 2 and safe_isupper(first_char, logger) else 0.0
@@ -1765,7 +1780,7 @@ class ContextCoordinator(object):
             return max(0.0, min(score, 1.0)), best_entity
         except Exception as e:
             logger.error(f"[score_header_ml] Error scoring header '{title}': {e}")
-            return 0.5
+            return 0.5, None
 
     def score_entry(self, title: str, context: dict = None) -> float:
         """

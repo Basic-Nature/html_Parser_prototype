@@ -21,6 +21,7 @@ from .Context_Library.constants import (
 )
 from ..utils.shared_logic import safe_get, safe_merge_defaults, safe_setdefault, safe_startswith, safe_append
 from ..utils.shared_logger import SharedLogger
+from ..utils.download_utils import file_hash
 logger = SharedLogger()
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
@@ -259,17 +260,6 @@ def update_context_library(path, update_fn):
             update_fn(lib)
         lib = clean_for_json(lib)  # <-- Ensure all sets are converted before saving
         save_context_library(lib, path)
-
-def file_hash(path):
-    """Return SHA256 hash of file contents."""
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        while True:
-            chunk = f.read(8192)
-            if not chunk:
-                break
-            h.update(chunk)
-    return h.hexdigest()
        
 def backup_context_library(path=CONTEXT_LIBRARY_PATH, max_backups=5):
     """

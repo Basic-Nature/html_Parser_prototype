@@ -1,8 +1,10 @@
 import re
+import numpy as np
 from ..utils.shared_logger import SharedLogger
 from ..utils.shared_logic import (
     normalize_state_name, normalize_county_name, _sync_type_and_election_types,
-    safe_get, safe_items, safe_lower, safe_split, safe_capitalize, safe_strip
+    safe_get, safe_items, safe_lower, safe_split, safe_capitalize, safe_strip,
+    safe_model_encode
 )
 from ..utils.user_prompt import UserPrompt, PromptCancelled
 from collections import defaultdict
@@ -191,7 +193,7 @@ def _stem_and_remove_stopwords(text: str) -> str:
     if not STEMMER or not STOPWORDS:
         return text
     words = re.findall(r'\w+', text, flags=re.UNICODE)
-    stemmed = [STEMMER.stem(w) for w in words if w.lower() not in STOPWORDS]
+    stemmed = [STEMMER.stem(w) for w in words if safe_lower(w) not in STOPWORDS]
     return ' '.join(stemmed)
 
 def normalize_race_name(name: str, advanced: bool = False) -> str:
@@ -250,7 +252,7 @@ def normalize_contest(title: str, advanced: bool = False) -> str:
 
 def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator", context: dict, threshold: float = 0.75) -> bool:
     """
-    Enhanced ML/NER contest verification using context, constants, and semantic scoring.
+    Enhanced ML/NER contest verification using context, constants, semantic scoring, and entity analysis.
     Returns True if above threshold, False otherwise.
     """
     if coordinator is None:
@@ -259,7 +261,7 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     year = safe_strip(contest.get("year", ""))
     ctype = safe_strip(contest.get("type_", ""))
     year_score = 0.0
-
+    logger.info(f"[ml_verify_contest] Verifying contest: {title} | Year: {year} | Type: {ctype}")
     # Year scoring
     if year and re.match(r"^(19|20)\d{2}$", str(year)):
         year_score = 1.0
@@ -308,41 +310,98 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
         model = getattr(coordinator, "_semantic_model", None)
         best_sim = 0.0
         best_type = None
-        for t in known_types:
-            sim = coordinator.score_header(ctype_norm, {"known_labels": [t]})
-            if sim > best_sim:
-                best_sim = sim
-                best_type = t
+        if model is not None and hasattr(model, "encode"):
+            try:
+                ctype_emb = safe_model_encode(model, [ctype_norm])
+                known_embs = safe_model_encode(model, known_types)
+                logger.debug(f"[DEBUG] ctype_emb type: {type(ctype_emb)}, known_embs type: {type(known_embs)}")
+                logger.debug(f"[DEBUG] ctype_emb[0] type: {type(ctype_emb[0]) if ctype_emb and len(ctype_emb) > 0 else 'None'}")
+                if ctype_emb is not None and known_embs is not None:
+                    for idx, t in enumerate(known_types):
+                        sim = float(np.dot(ctype_emb[0], known_embs[idx]) / (np.linalg.norm(ctype_emb[0]) * np.linalg.norm(known_embs[idx]) + 1e-8))
+                        if sim > best_sim:
+                            best_sim = sim
+                            best_type = t
+            except Exception as e:
+                logger.error(f"[ml_verify_contest] ERROR in semantic similarity: {e}")
+        else:
+            for t in known_types:
+                sim = coordinator.score_header(ctype_norm, {"known_labels": [t]})
+                if isinstance(sim, str):
+                    logger.error(f"[ml_verify_contest] ERROR: score_header returned string for semantic similarity: {sim}")
+                    continue
+                if sim > best_sim:
+                    best_sim = sim
+                    best_type = t
         if best_sim > 0.7:
             type_score = 0.7
             detected_type = best_type
 
-    # Title scoring (office/position keywords)
-    title_score = 1.0 if any(safe_lower(kw or "") in safe_lower(title or "") for kw in CONTEST_KEYWORDS) else 0.0
+    # --- Enhanced NER scoring for office/role detection ---
+    ner_boost = 0.0
+    entities = coordinator.extract_entities(title)
+    office_labels = {"ORG", "PERSON", "EVENT", "NORP", "FAC", "GPE"}
+    office_found = False
+    for ent, label in entities:
+        if label in office_labels:
+            ner_boost += 0.15
+            office_found = True
+        # Boost if entity matches known office keywords
+        if any(safe_lower(kw) in safe_lower(ent) for kw, _ in OFFICE_KEYWORDS):
+            ner_boost += 0.2
+            office_found = True
+    # If strong NER match, boost title_score
+    title_score = 1.0 if any(safe_lower(kw or "") in safe_lower(title or "") for kw in CONTEST_KEYWORDS) or office_found else 0.0
 
     # Semantic/ML scoring
     ml_score = coordinator.score_header(title, context)
+    if isinstance(ml_score, str):
+        logger.error(f"[ml_verify_contest] ERROR: ml_score is a string! Value: {ml_score} | contest title: {title}")
+        return False
 
     # Fuzzy/semantic boost for ambiguous cases
     fuzzy_boost = 0.0
     if hasattr(coordinator, "fuzzy_score"):
-        fuzzy_boost = coordinator.fuzzy_score(title, ctype) * 0.1
+        fuzzy_score_val = coordinator.fuzzy_score(title, ctype)
+        if isinstance(fuzzy_score_val, str):
+            logger.error(f"[ml_verify_contest] ERROR: fuzzy_score is a string! Value: {fuzzy_score_val} | contest title: {title}")
+            fuzzy_boost = 0.0
+        else:
+            fuzzy_boost = fuzzy_score_val * 0.1
+
+    # --- Context-aware boost: if context matches contest attributes ---
+    context_boost = 0.0
+    if context:
+        ctx_year = safe_get(context, "year")
+        ctx_type = safe_lower(safe_get(context, "type_", ""))
+        if ctx_year and str(ctx_year) == str(year):
+            context_boost += 0.1
+        if ctx_type and ctx_type in ctype_norm:
+            context_boost += 0.1
 
     # Aggregate score
     score = (
-        0.4 * year_score +
-        0.3 * type_score +
+        0.35 * year_score +
+        0.25 * type_score +
         0.2 * title_score +
         0.1 * ml_score +
-        fuzzy_boost
+        fuzzy_boost +
+        ner_boost +
+        context_boost
     )
 
-    # Log detected type for debugging/feedback
-    logger.debug(f"[ml_verify_contest] Detected type: {detected_type} | year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, fuzzy_boost={fuzzy_boost:.2f}, total={score:.2f}")
+    logger.debug(
+        f"[ml_verify_contest] Detected type: {detected_type} | year_score={year_score}, type_score={type_score}, "
+        f"title_score={title_score}, ml_score={ml_score}, fuzzy_boost={fuzzy_boost:.2f}, ner_boost={ner_boost:.2f}, "
+        f"context_boost={context_boost:.2f}, total={score:.2f}"
+    )
 
     if score < threshold:
         logger.debug(f"[DEBUG][ml_verify_contest] Rejected contest: '{title}' | year: {year} | type_: {ctype}")
-        logger.info(f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, fuzzy_boost={fuzzy_boost:.2f}, total={score:.2f}")
+        logger.info(
+            f"  year_score={year_score}, type_score={type_score}, title_score={title_score}, ml_score={ml_score}, "
+            f"fuzzy_boost={fuzzy_boost:.2f}, ner_boost={ner_boost:.2f}, context_boost={context_boost:.2f}, total={score:.2f}"
+        )
 
     # If year and title are strong, allow type_ to be unknown
     if year_score == 1.0 and title_score == 1.0 and score >= 0.55:
@@ -451,11 +510,11 @@ def select_contest(
     county=None,
     year=None,
     session_id=None,
+    non_interactive=False,
+    context=None,
     prompt_message="[PROMPT] Enter contest indices (comma-separated), 'all', or leave blank to skip: ",
     allow_multiple=True,
-    non_interactive=False,
     log_func=None,
-    context=None
 ) -> Optional[List[Dict[str, Any]]]:
     """
     Prompts the user to select contests from the organized context, filtering out noisy/generic labels.

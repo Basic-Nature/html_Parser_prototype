@@ -314,7 +314,8 @@ def orchestrate_url(
     output_func,
     session_id=None,
     cancel_flag=None,
-    non_interactive=False
+    non_interactive=False,
+    **kwargs
 ):
     from .Context_Integration.context_coordinator import ContextCoordinator
     rejected_downloads = set()
@@ -390,10 +391,10 @@ def orchestrate_url(
             # 5. Call handler (handler is responsible for all DOM/context scanning)
             result = None
             if handler and hasattr(handler, 'parse'):
-                result = safe_parse(handler, page, coordinator, context, logger=logger)
+                result = safe_parse(handler, page, coordinator, context, session_id=session_id, non_interactive=non_interactive, logger=logger, **kwargs)
             else:
                 output_func("[Router] No suitable handler found, using generic HTML handler.")
-                result = safe_parse(html_handler, page, coordinator, context, logger=logger)
+                result = safe_parse(html_handler, page, coordinator, context, session_id=session_id, non_interactive=non_interactive, logger=logger, **kwargs)
 
             # 6. Validate result
             if not isinstance(result, tuple) or len(result) != 4:
