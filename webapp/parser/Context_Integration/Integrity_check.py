@@ -17,7 +17,7 @@ from ..utils.shared_logger import RichConsoleProxy
 from typing import List, Dict, Any, Tuple
 from ..utils.spacy_utils import extract_dates
 from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
-from ..utils import db_utils
+from ..utils import misc_utils
 from sqlalchemy import select
 from ..utils.db_utils import get_session
 from ..utils.shared_logic import (
@@ -325,7 +325,7 @@ def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str
         # Ensure .jsonl extension
         if not log_path.endswith(".jsonl"):
             log_path = re.sub(r"\.[^.]+$", "", log_path) + ".jsonl"
-        log_path = db_utils._safe_db_path(log_path)
+        log_path = misc_utils._safe_db_path(log_path)
     else:
         log_path = str((Path(CONTEXT_DB_PATH).parent / default_name).resolve())
     # Write each issue as a JSON object per line

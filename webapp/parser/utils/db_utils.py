@@ -52,10 +52,6 @@ def get_engine() -> create_engine:
         _engine = create_engine(POSTGRES_URL, echo=False, future=True)
     return _engine
 
-# --- DB Path Safety (for legacy compatibility, not used for SQLAlchemy) ---
-def _safe_db_path(path) -> str:
-    return str(Path(path or CONTEXT_LIBRARY_PATH).resolve())
-
 # --- Contest Operations ---
 def update_contest_in_db(contest: dict, session: Optional[Session] = None) -> None:
     """
@@ -113,40 +109,7 @@ def fetch_contests_by_filter(filters: Optional[dict] = None, limit: int = 100, s
         if close_session:
             session.close()
 
-def normalize_label(label) -> str:
-    if not label:
-        return ""
-    return re.sub(r"\W+", "", str(label).strip().lower())
 
-# --- Utility: Processed URL cache (unchanged, not DB) ---
-def load_processed_urls() -> Dict[str, Any]:
-    from ..utils.output_utils import CACHE_FILE
-    cache_path = Path(CACHE_FILE).resolve()
-    if not cache_path.exists() or os.path.getsize(cache_path) == 0:
-        return {}
-    with cache_path.open('rb') as f:
-        try:
-            entries = orjson.loads(f.read())
-            if not isinstance(entries, list):
-                entries = []
-        except Exception:
-            entries = []
-    processed = {}
-    for entry in entries:
-        url = entry.get("url")
-        if url:
-            processed[url] = entry
-    return processed
-
-def load_output_cache(path=None) -> List[dict]:
-    if path is None:
-        from ..Context_Integration.context_organizer import OUTPUT_CACHE
-        path = OUTPUT_CACHE
-    safe_path = Path(_safe_db_path(path)).resolve()
-    if not safe_path.exists():
-        return []
-    with open(safe_path, "rb") as f:
-        return [orjson.loads(line) for line in f if line.strip()]
 
 # --- Utility: Create all tables (run once at startup or migration) ---
 def create_all_tables() -> None:

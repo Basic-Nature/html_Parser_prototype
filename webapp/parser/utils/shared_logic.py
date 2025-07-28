@@ -1205,6 +1205,11 @@ def keyphrase_match(label, keyphrase, min_words=2, fuzzy_cutoff=0.8) -> bool:
         return True
     return False
 
+def normalize_label(label) -> str:
+    if not label:
+        return ""
+    return re.sub(r"\W+", "", str(label).strip().lower())
+
 def infer_contest_fields(
     contest: dict,
     context_library: dict,
@@ -1221,7 +1226,6 @@ def infer_contest_fields(
     5. Fallback: extract_year_and_type (only if all else fails)
     Logs the inference path if log is provided.
     """
-    from ..utils.db_utils import normalize_label
     if db_service is None:
         try:
             from ..services.election_data_services import ElectionDataService

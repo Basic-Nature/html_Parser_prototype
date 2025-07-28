@@ -16,20 +16,19 @@ import collections.abc
 import numpy as np
 from ..utils.model_registry import ModelRegistry
 from sqlalchemy.exc import SQLAlchemyError
-from ..utils.db_utils import (
+from ..utils.misc_utils import (
     load_processed_urls,
     load_output_cache,
-    normalize_label,
-    save_table_structure_to_db,
-    get_table_structure_from_db,  
+    
 )
+
 from ..Context_Integration.librarian import (
     clean_for_json
 )
 from ..services.election_data_services import ElectionDataService
 from ..utils.shared_logic import (
     safe_model_encode, scan_environment, flatten_raw_field, flatten_raw_field, infer_contest_fields, safe_get_first,
-    flatten_raw_field, safe_add, safe_items, safe_update, _sync_type_and_election_types, safe_db_call
+    flatten_raw_field, safe_add, safe_items, safe_update, _sync_type_and_election_types, safe_db_call, normalize_label,
 )
 from .Context_Library.constants import (
     CONTEST_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS,
@@ -1847,6 +1846,7 @@ class ContextOrganizer(object):
         """
         Save or update a table structure for a contest in the database.
         """
+        from ..utils.db_utils import save_table_structure_to_db
         try:
             save_table_structure_to_db(contest, headers, context, ml_confidence, confirmed_by_user)
             logger.info(f"[CONTEXT ORGANIZER] Saved table structure for contest: {contest}")
@@ -1857,6 +1857,7 @@ class ContextOrganizer(object):
         """
         Retrieve a table structure for a contest from the database.
         """
+        from ..utils.db_utils import get_table_structure_from_db
         try:
             result = get_table_structure_from_db(contest, context)
             if result:

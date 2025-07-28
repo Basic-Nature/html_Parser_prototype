@@ -7,6 +7,7 @@ from datetime import datetime
 from ..utils.shared_logger import SharedLogger
 from ..utils.shared_logic import safe_get
 from ..Context_Integration.context_organizer import ContextOrganizer
+from ..utils.misc_utils import file_hash
 from ..config import INPUT_DIR, OUTPUT_DIR
 
 logger = SharedLogger()
@@ -19,21 +20,6 @@ def ensure_input_directory():
 def ensure_output_directory():
     """Ensure the 'output' directory exists."""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-def file_hash(filepath, algo="sha256", blocksize=65536):
-    """Compute the hash of a file for deduplication/integrity, with error handling."""
-    if not isinstance(filepath, str) or not filepath or not os.path.exists(filepath):
-        logger.error(f"[file_hash] Invalid or missing file: {filepath}")
-        return None
-    try:
-        h = hashlib.new(algo)
-        with open(filepath, "rb") as f:
-            for chunk in iter(lambda: f.read(blocksize), b""):
-                h.update(chunk)
-        return h.hexdigest()
-    except Exception as e:
-        logger.error(f"[file_hash] Error hashing file '{filepath}': {e}")
-        return None
 
 def load_download_manifest():
     """Load the download manifest as a dict: url or filename -> metadata."""

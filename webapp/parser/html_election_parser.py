@@ -16,7 +16,7 @@ from .config import BASE_DIR, CONTEXT_DB_PATH, PROJECT_ROOT
 from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler, preload_handler_map
 from .utils.browser_utils import browser_pipeline, safe_browser_close
-from .utils.db_utils import load_processed_urls
+from .utils.misc_utils import load_processed_urls
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.format_router import prompt_and_handle_download
 from .utils.shared_logic import infer_state_county_from_url, safe_parse, safe_is_set

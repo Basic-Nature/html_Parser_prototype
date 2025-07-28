@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from ..utils.shared_logger import SharedLogger
 from ..config import MODEL_DIR, PROJECT_ROOT, VOCAB_DIR
-from ..Context_Integration.librarian import load_context_library
+
 try:
     from sentence_transformers import SentenceTransformer
 except ImportError:
@@ -304,6 +304,7 @@ class ModelRegistry(object):
         Loads and caches the torch-based CandidateClassifier model.
         Dynamically builds vocab from librarian.py if available.
         """
+        from ..Context_Integration.librarian import load_context_library
         if cls._torch_candidate_model is not None:
             return cls._torch_candidate_model
 

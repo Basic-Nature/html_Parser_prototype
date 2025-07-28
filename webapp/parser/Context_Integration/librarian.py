@@ -19,7 +19,7 @@ from .Context_Library.constants import (
 )
 from ..utils.shared_logic import safe_get, safe_merge_defaults, safe_setdefault, safe_startswith, safe_append
 from ..utils.shared_logger import SharedLogger
-from ..utils.download_utils import file_hash
+from ..utils.misc_utils import file_hash
 logger = SharedLogger()
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"

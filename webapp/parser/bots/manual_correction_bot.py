@@ -31,6 +31,7 @@ import uvicorn
 from ..utils.shared_logger import SharedLogger
 from us.states import lookup as us_state_lookup
 import re
+from ..utils.misc_utils import file_hash
 from ..Context_Integration.librarian import (
     update_context_library,
     SCHEMA_VERSION,
@@ -354,17 +355,6 @@ def load_jsonl(path):
                 except Exception as e:
                     logger.warning(f"[CORRUPT] {path} line {i}: {e}")
     return entries
-
-# --- Log file hash/timestamp and offset tracking ---
-def file_hash(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        while True:
-            chunk = f.read(8192)
-            if not chunk:
-                break
-            h.update(chunk)
-    return h.hexdigest()
 
 def check_and_fix_json_files(
     directories=None,
