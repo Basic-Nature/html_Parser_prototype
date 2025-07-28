@@ -33,7 +33,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     """
     if html_context is None:
         html_context = {}
-
+    from .....Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     logger.info("[bold cyan][Rockland Handler] Parsing Rockland County Enhanced Voting page...[/bold cyan]")
 
     # --- 1. Scan HTML and organize context before contest selection ---

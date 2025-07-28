@@ -30,7 +30,8 @@ def parse(
     """
     if html_context is None:
         html_context = {}
-
+    from ....Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     # --- 1. Try to delegate to a county handler if county is specified ---
     raw_county = safe_get(html_context, "county", "")
     county = safe_lower(safe_strip(raw_county)).replace(" ", "_")

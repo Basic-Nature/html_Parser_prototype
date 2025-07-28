@@ -174,6 +174,8 @@ def analyze_candidate_nlp(candidate, coordinator):
     Enrich a candidate dict with NLP/NER analysis for headers.
     Adds 'header_entities' and 'header_scores' fields.
     """
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     headers = candidate.get("headers", [])
     header_entities = []
     header_scores = []
@@ -194,6 +196,8 @@ def score_candidate(candidate, context, coordinator):
     and penalizes if missing when context expects one.
     """
     from .table_core import is_location_header
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     headers = candidate.get("headers", [])
     rows = candidate.get("rows", [])
     rationale = []
@@ -322,6 +326,8 @@ def advanced_party_candidate_detection(headers, coordinator):
     """
     Use NER and context to better distinguish between candidate, party, and location columns.
     """
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     result = {"candidate": [], "party": [], "location": []}
     for idx, h in enumerate(headers):
         ents = coordinator.extract_entities(h)
@@ -346,6 +352,8 @@ def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoor
     """
     Returns a dict: {party: {candidate: [ballot_types]}}
     """
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     known_parties = PARTY_KEYWORDS
     ballot_types = BALLOT_TYPES
 
@@ -767,6 +775,8 @@ def is_candidate_major_col(headers, data, context):
     )
 
 def is_precinct_major(headers, coordinator):
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     # First column is a location/precinct/district
     location_patterns = set(coordinator.library.get("location_patterns", LOCATION_KEYWORDS))
     return headers and normalize_text(headers[0]) in location_patterns

@@ -24,7 +24,8 @@ def parse(
     """
     if html_context is None:
         html_context = {}
-
+    from .....Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     logger.info("[bold cyan][Example County Handler] Parsing county results page...[/bold cyan]")
 
     # 1. Scan HTML for context and update html_context

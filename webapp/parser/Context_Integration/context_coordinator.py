@@ -1269,6 +1269,29 @@ class ContextCoordinator(object):
         Tries semantic model, then difflib, then fuzzywuzzy, with full error handling and logging.
         Aggregates scores if possible. Always returns a float between 0.0 and 1.0.
         """
+        import numbers
+
+        def _is_numeric_sequence(seq):
+            # Accepts list/tuple/np.ndarray of numbers (not strings)
+            if isinstance(seq, (list, tuple)):
+                return all(isinstance(x, numbers.Number) for x in seq)
+            if hasattr(seq, "dtype"):
+                return np.issubdtype(seq.dtype, np.number)
+            return False
+
+        def _to_numeric_array(seq):
+            # Flattens and filters to only numeric values
+            if isinstance(seq, (list, tuple)):
+                seq = [x for x in seq if isinstance(x, numbers.Number)]
+            try:
+                arr = np.array(seq, dtype=np.float32)
+                if arr.ndim != 1 or arr.size == 0 or np.any(np.isnan(arr)):
+                    return None
+                return arr
+            except Exception as e:
+                logger.error(f"[fuzzy_score] Could not convert embedding to numeric array: {e} | seq={seq}")
+                return None
+
         try:
             def _normalize(s):
                 return " ".join(str(s).strip().lower().split()) if s is not None else ""
@@ -1308,24 +1331,14 @@ class ContextCoordinator(object):
                             emb_a = emb_a[0] if isinstance(emb_a, (list, tuple)) else emb_a
                             emb_b = emb_b[0] if isinstance(emb_b, (list, tuple)) else emb_b
                             # Defensive: ensure embeddings are numeric arrays
-                            try:
-                                emb_a_np = np.array(emb_a, dtype=np.float32)
-                                emb_b_np = np.array(emb_b, dtype=np.float32)
-                                if emb_a_np.ndim != 1 or emb_b_np.ndim != 1:
-                                    logger.error(f"[fuzzy_score] Embeddings are not 1D arrays: emb_a shape={emb_a_np.shape}, emb_b shape={emb_b_np.shape}")
-                                elif np.any(np.isnan(emb_a_np)) or np.any(np.isnan(emb_b_np)):
-                                    logger.error(f"[fuzzy_score] Embeddings contain NaN values.")
-                                elif emb_a_np.size == 0 or emb_b_np.size == 0:
-                                    logger.error(f"[fuzzy_score] Embeddings are empty arrays.")
-                                else:
-                                    sim = float(np.dot(emb_a_np, emb_b_np) / (np.linalg.norm(emb_a_np) * np.linalg.norm(emb_b_np) + 1e-8))
-                                    logger.debug(f"[fuzzy_score] Used model.encode + cosine (np): {sim}")
-                                    scores.append(sim)
-                            except Exception as emb_exc:
-                                logger.error(
-                                    f"[fuzzy_score] Failed to convert embeddings to numeric arrays: {emb_exc} | emb_a type={type(emb_a)}, emb_b type={type(emb_b)}, emb_a={emb_a}, emb_b={emb_b}",
-                                    exc_info=True
-                                )
+                            emb_a_np = _to_numeric_array(emb_a)
+                            emb_b_np = _to_numeric_array(emb_b)
+                            if emb_a_np is not None and emb_b_np is not None:
+                                sim = float(np.dot(emb_a_np, emb_b_np) / (np.linalg.norm(emb_a_np) * np.linalg.norm(emb_b_np) + 1e-8))
+                                logger.debug(f"[fuzzy_score] Used model.encode + cosine (np): {sim}")
+                                scores.append(sim)
+                            else:
+                                logger.error(f"[fuzzy_score] Embeddings are not valid numeric arrays: emb_a={type(emb_a)}, emb_b={type(emb_b)}")
                         else:
                             logger.error(f"[fuzzy_score] safe_model_encode returned None for a='{a_str}' or b='{b_str}'")
                     except Exception as e:

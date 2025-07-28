@@ -382,7 +382,6 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     # --- Context-aware boost: if context matches contest attributes ---
     context_boost = 0.0
     if context:
-        logger.debug(f"[ml_verify_contest] Context for contest verification: {context}")
         ctx_year = safe_get(context, "year")
         ctx_type = safe_lower(safe_get(context, "type_", ""))
         if ctx_year and str(ctx_year) == str(year):
