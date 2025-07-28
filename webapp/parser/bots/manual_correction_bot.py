@@ -302,8 +302,8 @@ def ml_score_entry(entry, coordinator=None):
     Use ML/NER or coordinator's ML model to score the entry for likely correctness.
     Returns a float score between 0 and 1.
     """
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     text = entry.get("extracted_value", "")
     score = 0.0
     if coordinator and hasattr(coordinator, "score_entry"):
@@ -325,8 +325,8 @@ def ml_suggest_field(entry, coordinator=None):
     """
     Use ML/NER or coordinator to suggest a better field for the entry.
     """
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     text = entry.get("extracted_value", "")
     if coordinator and hasattr(coordinator, "suggest_field"):
         try:
@@ -667,9 +667,9 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
     return field_entries, dup_count, skipped_existing, len(unique_entries)
 
 # --- Feedback loop (interactive and LLM/ML-powered) ---
-def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, coordinator=None, context_organizer=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None, fast_mode=False):
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, coordinator=None, context_organizer=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None, fast_mode=False) -> tuple[int, int, int]:
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     context_library_path = safe_path(context_library_path, [CONTEXT_LIBRARY_DIR])
     if not new_entries:
         logger.info(f"No new entries to review for {field_type}.")
@@ -1015,9 +1015,9 @@ def highlight_anomalies(context_library, field_type, context_path=None, autofix=
             logger.info(f"[INTEGRITY] Auto-fixed {fixed_count} contests with missing fields and updated context library.")
 
 # --- DB update logic (batch, periodic, error handling) ---
-def update_database_with_context(library, db_path=None, coordinator=None, enhanced=True):
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+def update_database_with_context(library, db_path=None, coordinator=None, enhanced=True) -> None:
+    from ..Context_Integration.context_coordinator import ContextCoordinator   
+    coordinator = ContextCoordinator()
     if not db_path:
         db_path = CONTEXT_LIBRARY_DIR / "context_library.json"
     db_path = safe_path(db_path, [CONTEXT_LIBRARY_DIR])

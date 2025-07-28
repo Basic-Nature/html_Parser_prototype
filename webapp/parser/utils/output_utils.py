@@ -35,13 +35,8 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
     If any key info is missing, use feedback loop (ML/NER/user prompt) to resolve.
     Safeguards all string operations and path parts.
     """
-    if coordinator is None:
-        try:
-            from ..Context_Integration.context_coordinator import ContextCoordinator
-            coordinator = ContextCoordinator()
-        except Exception as e:
-            logger.warning(f"[OUTPUT_UTILS] Could not initialize coordinator: {e}")
-            coordinator = None
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
 
     parts = []
     # Use coordinator to try to fill missing info if available

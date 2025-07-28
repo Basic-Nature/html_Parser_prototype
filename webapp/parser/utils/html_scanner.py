@@ -526,8 +526,8 @@ def auto_label_segment(
     ml_threshold=0.7,
     coordinator=None,
 ) -> Optional[tuple]:
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     seg_hash = segment_identity_hash(segment)
     # 1. Persistent label cache
     cached_label = get_cached_segment_label(seg_hash)
@@ -978,17 +978,15 @@ def extract_tagged_segments_with_attrs(
     - Uses coordinator.extract_field for dynamic context enrichment.
     """
     from ..Context_Integration.context_organizer import ContextOrganizer
+    from ..Context_Integration.context_coordinator import ContextCoordinator
     from ..utils.spacy_utils import extract_entities, extract_locations, extract_dates
-
+    
     try:
         import spacy
         nlp = spacy.load("en_core_web_sm")
     except Exception:
         nlp = None
-
-    if coordinator is None:
-        from ..Context_Integration.context_coordinator import ContextCoordinator
-        coordinator = ContextCoordinator()
+    coordinator = ContextCoordinator()
     if context_cache is not None:
         clean_cache_inplace(context_cache)
     if model is None:
@@ -1986,9 +1984,8 @@ def scan_html_for_context(
     Robustly utilizes session_id, coordinator, allow_duplicates, and non_interactive for webapp GUI use.
     """
     from ..Context_Integration.context_organizer import ContextOrganizer
-    if coordinator is None:
-        from ..Context_Integration.context_coordinator import ContextCoordinator
-        coordinator = ContextCoordinator()
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
 
     def extract_all_segment_html(html: str) -> List[str]:
         try:
@@ -2014,6 +2011,7 @@ def scan_html_for_context(
         coordinator=None,
         non_interactive=False
     ) -> List[Dict[str, Any]]:
+        coordinator = ContextCoordinator()
         if not isinstance(data, list):
             logger.warning(f"[diagnostics_and_filter] Input data is not a list: {type(data)}")
             return []
@@ -2099,9 +2097,6 @@ def scan_html_for_context(
 
         if coordinator and hasattr(coordinator, "segment_prompt") and session_id and not non_interactive:
             for d, reason in filtered_out:
-                if coordinator is None:
-                    from ..Context_Integration.context_coordinator import ContextCoordinator
-                    coordinator = ContextCoordinator()
                 if reason and safe_startswith(reason, "custom validator failed"):
                     coordinator.segment_prompt(d, session_id=session_id)
 

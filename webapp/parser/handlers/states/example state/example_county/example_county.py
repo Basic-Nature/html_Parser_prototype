@@ -44,11 +44,7 @@ def parse(
     county = html_context.get("county", "Example County")
 
     # 2. Organize and enrich context with coordinator
-    if coordinator is None:
-        from .....Context_Integration.context_coordinator import ContextCoordinator
-        coordinator = ContextCoordinator()
-    if not getattr(coordinator, "organized", None):
-        coordinator.organize_and_enrich(html_context)
+    coordinator.organize_and_enrich(html_context)
 
     # 3. Contest selection using coordinator
     selected = select_contest(

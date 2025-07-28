@@ -54,8 +54,8 @@ def build_dynamic_table(
     Always merges, harmonizes, and pivots all panel tables before any feedback/confirmation.
     Returns (headers, data, entity_info) for downstream enrichment.
     """
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     if context is None:
         context = {}
     if data is None:
@@ -248,8 +248,8 @@ def prompt_user_to_confirm_table_structure(headers, data, domain, contest, coord
     Interactive CLI for user to confirm, correct, or reject table structure.
     Ensures 'Percent Reported' is always included if present in data or context.
     """
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     should_log = True
     columns_changed = False
     new_headers = copy.deepcopy(headers)
@@ -542,8 +542,8 @@ def auto_suggest_corrections(headers, data, coordinator):
     """
     Suggest likely corrections based on previous user feedback or ML confidence.
     """
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     suggestions = []
     for h in headers:
         score = coordinator.score_header(h, {})

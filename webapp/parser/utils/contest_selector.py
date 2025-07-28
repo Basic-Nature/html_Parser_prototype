@@ -255,8 +255,8 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     Enhanced ML/NER contest verification using context, constants, semantic scoring, and entity analysis.
     Returns True if above threshold, False otherwise.
     """
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     title = safe_strip(contest.get("title", ""))
     year = safe_strip(contest.get("year", ""))
     ctype = safe_strip(contest.get("type_", ""))
@@ -422,8 +422,8 @@ def feedback_loop_verify_contests(contests: List[Dict[str, Any]], coordinator: "
     """
     Enhanced feedback loop: rescans and verifies contests using ML/NER, fuzzy/semantic scoring, and user feedback.
     """
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     for loop in range(max_loops):
         verified = []
         for c in contests:
@@ -531,8 +531,8 @@ def select_contest(
     Uses ML/NER/regex feedback loop to verify correct year/type/title.
     Returns a list of selected contest dicts or None if skipped/cancelled.
     """
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+    from ..Context_Integration.context_coordinator import ContextCoordinator
+    coordinator = ContextCoordinator()
     norm_state = normalize_state_name(state)
     norm_county = normalize_county_name(county)
     selector_data = coordinator.get_for_selector()

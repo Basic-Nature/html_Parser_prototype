@@ -14,6 +14,7 @@ def parse(page, coordinator=None, context=None, session_id=None, non_interactive
     import os
     import importlib
     from ...Context_Integration.Context_Library.constants import KNOWN_COUNTY_TO_PRECINCTS_MAP
+    from ...Context_Integration.context_coordinator import ContextCoordinator
     logger = SharedLogger()
     prompt = UserPrompt()
     
@@ -24,8 +25,7 @@ def parse(page, coordinator=None, context=None, session_id=None, non_interactive
     logger.debug(f"[HTML Handler] Initial html_context: {html_context}")
 
     # 2. Use ContextCoordinator for enrichment, NLP, and validation
-    if coordinator is None:
-        coordinator = ContextCoordinator()
+    coordinator = ContextCoordinator()
     coordinator.organize_and_enrich(html_context)
     organized = coordinator.organized or {}
 
