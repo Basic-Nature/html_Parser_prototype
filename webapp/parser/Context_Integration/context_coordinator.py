@@ -1270,7 +1270,6 @@ class ContextCoordinator(object):
         Aggregates scores if possible. Always returns a float between 0.0 and 1.0.
         """
         try:
-            # Defensive normalization
             def _normalize(s):
                 return " ".join(str(s).strip().lower().split()) if s is not None else ""
             a_str = _normalize(a)
@@ -1299,7 +1298,7 @@ class ContextCoordinator(object):
                         else:
                             logger.error(f"[fuzzy_score] model.similarity did not return float/int: {type(sim)}")
                     except Exception as e:
-                        logger.error(f"[fuzzy_score] Exception in model.similarity: {e}")
+                        logger.error(f"[fuzzy_score] Exception in model.similarity: {e}", exc_info=True)
                 # Embedding + cosine similarity
                 elif hasattr(model, "encode"):
                     try:
@@ -1308,23 +1307,29 @@ class ContextCoordinator(object):
                         if emb_a is not None and emb_b is not None:
                             emb_a = emb_a[0] if isinstance(emb_a, (list, tuple)) else emb_a
                             emb_b = emb_b[0] if isinstance(emb_b, (list, tuple)) else emb_b
-                            # Defensive: handle lists, np.ndarray, torch.Tensor
-                            if hasattr(emb_a, "shape") and hasattr(emb_b, "shape"):
-                                sim = float(np.dot(emb_a, emb_b) / (np.linalg.norm(emb_a) * np.linalg.norm(emb_b) + 1e-8))
-                                logger.debug(f"[fuzzy_score] Used model.encode + cosine: {sim}")
-                                scores.append(sim)
-                            elif isinstance(emb_a, (list, tuple)) and isinstance(emb_b, (list, tuple)):
-                                emb_a_np = np.array(emb_a)
-                                emb_b_np = np.array(emb_b)
-                                sim = float(np.dot(emb_a_np, emb_b_np) / (np.linalg.norm(emb_a_np) * np.linalg.norm(emb_b_np) + 1e-8))
-                                logger.debug(f"[fuzzy_score] Used model.encode + cosine (list): {sim}")
-                                scores.append(sim)
-                            else:
-                                logger.error(f"[fuzzy_score] Embeddings are not arrays: {type(emb_a)}, {type(emb_b)}")
+                            # Defensive: ensure embeddings are numeric arrays
+                            try:
+                                emb_a_np = np.array(emb_a, dtype=np.float32)
+                                emb_b_np = np.array(emb_b, dtype=np.float32)
+                                if emb_a_np.ndim != 1 or emb_b_np.ndim != 1:
+                                    logger.error(f"[fuzzy_score] Embeddings are not 1D arrays: emb_a shape={emb_a_np.shape}, emb_b shape={emb_b_np.shape}")
+                                elif np.any(np.isnan(emb_a_np)) or np.any(np.isnan(emb_b_np)):
+                                    logger.error(f"[fuzzy_score] Embeddings contain NaN values.")
+                                elif emb_a_np.size == 0 or emb_b_np.size == 0:
+                                    logger.error(f"[fuzzy_score] Embeddings are empty arrays.")
+                                else:
+                                    sim = float(np.dot(emb_a_np, emb_b_np) / (np.linalg.norm(emb_a_np) * np.linalg.norm(emb_b_np) + 1e-8))
+                                    logger.debug(f"[fuzzy_score] Used model.encode + cosine (np): {sim}")
+                                    scores.append(sim)
+                            except Exception as emb_exc:
+                                logger.error(
+                                    f"[fuzzy_score] Failed to convert embeddings to numeric arrays: {emb_exc} | emb_a type={type(emb_a)}, emb_b type={type(emb_b)}, emb_a={emb_a}, emb_b={emb_b}",
+                                    exc_info=True
+                                )
                         else:
                             logger.error(f"[fuzzy_score] safe_model_encode returned None for a='{a_str}' or b='{b_str}'")
                     except Exception as e:
-                        logger.error(f"[fuzzy_score] Exception in model.encode: {e}")
+                        logger.error(f"[fuzzy_score] Exception in model.encode: {e}", exc_info=True)
 
             # Fallback: difflib ratio
             try:
@@ -1332,7 +1337,7 @@ class ContextCoordinator(object):
                 logger.debug(f"[fuzzy_score] Used difflib.SequenceMatcher: {sim}")
                 scores.append(sim)
             except Exception as e:
-                logger.error(f"[fuzzy_score] Exception in difflib.SequenceMatcher: {e}")
+                logger.error(f"[fuzzy_score] Exception in difflib.SequenceMatcher: {e}", exc_info=True)
 
             # Fallback: fuzzywuzzy
             try:
@@ -1341,7 +1346,7 @@ class ContextCoordinator(object):
                 logger.debug(f"[fuzzy_score] Used fuzzywuzzy.fuzz.ratio: {sim}")
                 scores.append(sim)
             except Exception as e:
-                logger.error(f"[fuzzy_score] Exception in fuzzywuzzy.fuzz.ratio: {e}")
+                logger.error(f"[fuzzy_score] Exception in fuzzywuzzy.fuzz.ratio: {e}", exc_info=True)
 
             # Aggregate: take max, mean, or weighted average
             if scores:
@@ -1360,7 +1365,7 @@ class ContextCoordinator(object):
             logger.error(f"[fuzzy_score] All methods failed for a='{a_str}', b='{b_str}'")
             return 0.0
         except Exception as e:
-            logger.error(f"[fuzzy_score] Unexpected error: {e}")
+            logger.error(f"[fuzzy_score] Unexpected error: {e}", exc_info=True)
             return 0.0
 
     def log_field_selection(
