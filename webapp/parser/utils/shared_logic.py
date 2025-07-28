@@ -18,7 +18,7 @@ from ..Context_Integration.Context_Library.constants import (
 from typing import (
     TYPE_CHECKING, Optional, Generator, Any, Iterable, Dict, 
     Union, Iterable, Collection, Protocol, Awaitable, TypedDict,
-    List, Callable, Mapping, Sequence
+    List, Callable, Mapping, Sequence, runtime_checkable
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -28,6 +28,13 @@ assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
 console = RichConsoleProxy()   
 prompt = UserPrompt()
 logger = SharedLogger()
+
+
+@runtime_checkable
+class HasItem(Protocol):
+    def item(self) -> float:
+        """Returns a single item, typically a float."""
+        ...
 
 class HasAllMethod(Protocol):
     def all(self) -> List[Any]:
@@ -513,6 +520,20 @@ def safe_capitalize(val: object) -> str:
     """Safely capitalize a string, returns '' if not a string."""
     return val.capitalize() if isinstance(val, str) else ""
 
+def safe_item(val: Union[HasItem, float, int], logger: SharedLogger = None) -> float:
+    """
+    Safely call .item() on a numpy scalar or similar object.
+    Returns float value or 0.0 on error.
+    """
+    try:
+        if hasattr(val, "item") and callable(val.item):
+            return float(val.item())
+        return float(val)
+    except Exception as e:
+        if logger:
+            logger.error(f"[safe_item] Error calling .item(): {e}")
+        return 0.0
+
 def safe_items(obj) -> Iterable:
     """
     Safely get items from a dict-like object.
@@ -532,13 +553,34 @@ def safe_items(obj) -> Iterable:
     except Exception:
         return []
 
-def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwargs: Any) -> Any:
+def safe_similarity(model: SentenceTransformer, a: str, b: str, logger: SharedLogger = None) -> float:
+    """
+    Safely compute similarity between two strings using model.similarity.
+    Returns a float between 0.0 and 1.0, or 0.0 on error.
+    """
+    try:
+        sim = model.similarity(a, b)
+        # Handle numpy scalars, lists, etc.
+        if isinstance(sim, (float, int)):
+            return float(sim)
+        if hasattr(sim, "item"):
+            return safe_item(sim, logger)
+        if isinstance(sim, (list, tuple)) and sim:
+            return float(sim[0])
+        if logger:
+            logger.error(f"[safe_similarity] Unexpected similarity type: {type(sim)}")
+        return 0.0
+    except Exception as e:
+        if logger:
+            logger.error(f"[safe_similarity] Exception: {e}")
+        return 0.0
+
+def safe_model_encode(model: SentenceTransformer, text: str, **kwargs: Any) -> Union[np.ndarray, List[np.ndarray], None]   :
     """
     Safely encode text or list of text using a model, handling edge cases.
     Returns: np.ndarray or list[np.ndarray] or None
-    IDE-friendly: always returns consistent types, logs errors, and handles batch/single input.
+    Always returns consistent types, logs errors, and handles batch/single input.
     """
-
     def _normalize_text(val):
         if isinstance(val, (str, bytes)):
             return str(val)
@@ -546,23 +588,29 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
             return [str(v) if not isinstance(v, str) else v for v in val]
         return str(val)
 
-    def _safe_model_encode_call(val):
+    def _encode(val):
         try:
             result = model.encode(val, **kwargs)
             # Defensive: If result is a string, error
             if isinstance(result, str):
                 logger.error(f"[safe_model_encode] Model.encode returned a string for input {repr(val)[:80]}")
                 return None
-            # Defensive: If result is not np.ndarray or list/tuple of np.ndarray, try to convert
+            # If result is a list/tuple, filter and convert to np.ndarray
             if isinstance(result, (list, tuple)):
-                result = [r for r in result if not isinstance(r, str)]
-                result = [np.array(r) if not isinstance(r, np.ndarray) else r for r in result]
-                return result
+                arrs = [np.array(r) if not isinstance(r, np.ndarray) and not isinstance(r, str) else r
+                        for r in result if not isinstance(r, str)]
+                arrs = [r for r in arrs if isinstance(r, np.ndarray)]
+                return arrs if arrs else None
+            # If already np.ndarray
             if isinstance(result, np.ndarray):
                 return result
-            # Try to convert to np.ndarray if possible
+            # Try to convert to np.ndarray
             try:
-                return np.array(result)
+                arr = np.array(result)
+                if arr.dtype.kind in {'U', 'S', 'O'}:
+                    logger.error(f"[safe_model_encode] Model.encode returned non-numeric array: {arr.dtype}")
+                    return None
+                return arr
             except Exception:
                 logger.error(f"[safe_model_encode] Could not convert result to np.ndarray: {type(result)}")
                 return None
@@ -577,52 +625,43 @@ def safe_model_encode(model: SentenceTransformer, text: str | list[str], **kwarg
     # Handle batch input
     if isinstance(text, (list, tuple)):
         norm_text = _normalize_text(text)
-        result = _safe_model_encode_call(norm_text)
+        result = _encode(norm_text)
         if result is not None:
-            if isinstance(result, str):
-                logger.error("[safe_model_encode] Model returned a string for batch input. Returning None.")
-                return None
             return result
         # Fallback: encode each item individually
         try:
-            result = [_safe_model_encode_call(_normalize_text(t)) for t in text]
-            result = [r for r in result if r is not None and not isinstance(r, str)]
-            if not result:
-                return None
-            return result
+            result = [_encode(_normalize_text(t)) for t in text]
+            result = [r for r in result if isinstance(r, np.ndarray)]
+            return result if result else None
         except Exception as e2:
             logger.error(f"[safe_model_encode] Batch encode fallback also failed: {e2}")
             return [None for _ in text]
 
     # Handle single string input
     norm_text = _normalize_text(text)
-    result = _safe_model_encode_call(norm_text)
+    result = _encode(norm_text)
     if result is not None:
-        if isinstance(result, str):
-            logger.error("[safe_model_encode] Model returned a string for single input. Returning None.")
-            return None
-        return result
-
+        if isinstance(result, np.ndarray):
+            return result
+        if isinstance(result, (list, tuple)):
+            arrs = [r for r in result if isinstance(r, np.ndarray)]
+            return arrs if arrs else None
     # Fallback: try as [string]
     try:
-        batch_result = _safe_model_encode_call([norm_text])
-        if batch_result is not None and isinstance(batch_result, (list, tuple, np.ndarray)) and len(batch_result) > 0:
+        batch_result = _encode([norm_text])
+        if batch_result and isinstance(batch_result, (list, tuple, np.ndarray)) and len(batch_result) > 0:
             first = safe_get_first(batch_result, "batch_result", None, logger)
-            if isinstance(first, str):
-                logger.error("[safe_model_encode] Model returned a string in batch fallback. Returning None.")
-                return None
-            return first
+            if isinstance(first, np.ndarray):
+                return first
     except Exception as e2:
         logger.error(f"[safe_model_encode] Batch fallback failed: {e2}")
 
     # Extra safety: try to encode each character (rare fallback)
     try:
         logger.error(f"[safe_model_encode] All string encode attempts failed. Trying per-char fallback.")
-        result = [safe_get_first(_safe_model_encode_call([c]), "char_encode", None, logger) for c in norm_text if isinstance(c, str)]
-        result = [r for r in result if r is not None and not isinstance(r, str)]
-        if not result:
-            return None
-        return result
+        result = [_encode([c]) for c in norm_text if isinstance(c, str)]
+        result = [r for r in result if isinstance(r, np.ndarray)]
+        return result if result else None
     except Exception as e3:
         logger.error(f"[safe_model_encode] All encode attempts failed: {e3}")
         return None
@@ -687,12 +726,34 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
             if logger: logger.error("[safe_parse] Handler has no callable 'parse' method.")
             return None
         sig = inspect.signature(parse_method)
+        param_names = list(sig.parameters.keys())
+
+        # Build positional and keyword arguments safely
+        call_args = list(args)
+        call_kwargs = dict(kwargs)
+
+        # Only add coordinator if not already in args
+        if 'coordinator' in param_names:
+            # Find the index of 'coordinator' in the signature
+            coord_idx = param_names.index('coordinator')
+            # If not enough args to fill coordinator, add it positionally
+            if len(call_args) <= coord_idx:
+                call_args.insert(coord_idx, coordinator)
+            else:
+                # If already present, don't add as kwarg
+                pass
+            # Remove from kwargs if present
+            call_kwargs.pop('coordinator', None)
+
+        # Remove any kwargs that are already filled by positional args
+        for i, name in enumerate(param_names[:len(call_args)]):
+            if name in call_kwargs:
+                call_kwargs.pop(name)
+
         if logger:
-            logger.debug(f"[safe_parse] Calling handler.parse with args: {[type(a) for a in args]}, kwargs: {kwargs}")
-        if 'coordinator' in sig.parameters:
-            return parse_method(*args, coordinator, **kwargs)
-        else:
-            return parse_method(*args, **kwargs)
+            logger.debug(f"[safe_parse] Calling handler.parse with args: {[type(a) for a in call_args]}, kwargs: {call_kwargs}")
+
+        return parse_method(*call_args, **call_kwargs)
     except Exception as e:
         if logger: logger.error(f"[safe_parse] Error calling handler.parse: {e}")
         return None

@@ -22,7 +22,8 @@ from ..utils.shared_logic import (
     safe_model_encode, safe_locator, safe_nth, safe_inner_text, safe_get_attribute,
     safe_evaluate, safe_is_visible, safe_is_enabled, safe_click,
     safe_wait_for_timeout, safe_count, safe_startswith, safe_isupper,
-    _sync_type_and_election_types, safe_get, safe_items, safe_lower, safe_endswith
+    _sync_type_and_election_types, safe_get, safe_items, safe_lower, safe_endswith,
+    safe_similarity
 )
 from .Context_Library.constants import (
     STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, PARTY_KEYWORDS,
@@ -251,7 +252,6 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                 detection_log.append(f"State '{state}' found in context, mapped via state_module_map/abbr.")
             else:
                 # Fuzzy match as last resort
-                import difflib
                 match = difflib.get_close_matches(state, known_states, n=1, cutoff=0.8)
                 if match:
                     state = safe_get_first(match, "state_match", None, logger)
@@ -1263,12 +1263,105 @@ class ContextCoordinator(object):
                 except Exception as e:
                     logger.error(f"[enrich_contests_with_nlp] Error enriching contest '{c.get('title', '')}': {e}", exc_info=True)
 
-    def fuzzy_score(self, a, b) -> float:
+    def fuzzy_score(self, a: str, b: str) -> float:
         """
-        Compute a fuzzy string similarity score between two strings.
+        Compute a robust fuzzy string similarity score between two strings.
+        Tries semantic model, then difflib, then fuzzywuzzy, with full error handling and logging.
+        Aggregates scores if possible. Always returns a float between 0.0 and 1.0.
         """
-        model = self._semantic_model
-        return model.similarity(str(a), str(b))
+        try:
+            # Defensive normalization
+            def _normalize(s):
+                return " ".join(str(s).strip().lower().split()) if s is not None else ""
+            a_str = _normalize(a)
+            b_str = _normalize(b)
+            if not a_str or not b_str:
+                logger.warning(f"[fuzzy_score] One or both inputs are empty: a='{a_str}', b='{b_str}'")
+                return 0.0
+            if a_str == b_str:
+                logger.debug(f"[fuzzy_score] Exact match for '{a_str}' and '{b_str}'")
+                return 1.0
+            if len(a_str) < 2 or len(b_str) < 2:
+                logger.warning(f"[fuzzy_score] One or both inputs are too short: a='{a_str}', b='{b_str}'")
+                return 0.0
+
+            scores = []
+            model = getattr(self, "_semantic_model", None)
+            # Try semantic model similarity
+            if model is not None:
+                # SentenceTransformer-style similarity
+                if hasattr(model, "similarity"):
+                    try:
+                        sim = safe_similarity(model, a_str, b_str, logger)
+                        if isinstance(sim, (float, int)):
+                            logger.debug(f"[fuzzy_score] Used model.similarity: {sim}")
+                            scores.append(float(sim))
+                        else:
+                            logger.error(f"[fuzzy_score] model.similarity did not return float/int: {type(sim)}")
+                    except Exception as e:
+                        logger.error(f"[fuzzy_score] Exception in model.similarity: {e}")
+                # Embedding + cosine similarity
+                elif hasattr(model, "encode"):
+                    try:
+                        emb_a = safe_model_encode(model, [a_str])
+                        emb_b = safe_model_encode(model, [b_str])
+                        if emb_a is not None and emb_b is not None:
+                            emb_a = emb_a[0] if isinstance(emb_a, (list, tuple)) else emb_a
+                            emb_b = emb_b[0] if isinstance(emb_b, (list, tuple)) else emb_b
+                            # Defensive: handle lists, np.ndarray, torch.Tensor
+                            if hasattr(emb_a, "shape") and hasattr(emb_b, "shape"):
+                                sim = float(np.dot(emb_a, emb_b) / (np.linalg.norm(emb_a) * np.linalg.norm(emb_b) + 1e-8))
+                                logger.debug(f"[fuzzy_score] Used model.encode + cosine: {sim}")
+                                scores.append(sim)
+                            elif isinstance(emb_a, (list, tuple)) and isinstance(emb_b, (list, tuple)):
+                                emb_a_np = np.array(emb_a)
+                                emb_b_np = np.array(emb_b)
+                                sim = float(np.dot(emb_a_np, emb_b_np) / (np.linalg.norm(emb_a_np) * np.linalg.norm(emb_b_np) + 1e-8))
+                                logger.debug(f"[fuzzy_score] Used model.encode + cosine (list): {sim}")
+                                scores.append(sim)
+                            else:
+                                logger.error(f"[fuzzy_score] Embeddings are not arrays: {type(emb_a)}, {type(emb_b)}")
+                        else:
+                            logger.error(f"[fuzzy_score] safe_model_encode returned None for a='{a_str}' or b='{b_str}'")
+                    except Exception as e:
+                        logger.error(f"[fuzzy_score] Exception in model.encode: {e}")
+
+            # Fallback: difflib ratio
+            try:
+                sim = difflib.SequenceMatcher(None, a_str, b_str).ratio()
+                logger.debug(f"[fuzzy_score] Used difflib.SequenceMatcher: {sim}")
+                scores.append(sim)
+            except Exception as e:
+                logger.error(f"[fuzzy_score] Exception in difflib.SequenceMatcher: {e}")
+
+            # Fallback: fuzzywuzzy
+            try:
+                from fuzzywuzzy import fuzz
+                sim = fuzz.ratio(a_str, b_str) / 100.0
+                logger.debug(f"[fuzzy_score] Used fuzzywuzzy.fuzz.ratio: {sim}")
+                scores.append(sim)
+            except Exception as e:
+                logger.error(f"[fuzzy_score] Exception in fuzzywuzzy.fuzz.ratio: {e}")
+
+            # Aggregate: take max, mean, or weighted average
+            if scores:
+                # Penalize trivial matches (e.g., single char, numeric only)
+                if len(a_str) <= 2 or len(b_str) <= 2 or a_str.isdigit() or b_str.isdigit():
+                    logger.debug(f"[fuzzy_score] Penalizing trivial/short/numeric match: a='{a_str}', b='{b_str}'")
+                    return min(max(max(scores) * 0.5, 0.0), 1.0)
+                # Prefer max for fuzzy, but mean if semantic and fuzzy both present
+                if len(scores) > 1:
+                    agg = (max(scores) + np.mean(scores)) / 2.0
+                    logger.debug(f"[fuzzy_score] Aggregated score (max/mean): {agg}")
+                    return min(max(agg, 0.0), 1.0)
+                else:
+                    return min(max(scores[0], 0.0), 1.0)
+
+            logger.error(f"[fuzzy_score] All methods failed for a='{a_str}', b='{b_str}'")
+            return 0.0
+        except Exception as e:
+            logger.error(f"[fuzzy_score] Unexpected error: {e}")
+            return 0.0
 
     def log_field_selection(
             self,

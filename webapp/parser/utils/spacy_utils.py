@@ -30,8 +30,19 @@ logger = SharedLogger()
 # --- Core NLP Utilities ---
 
 def extract_entities(text: str) -> List[Tuple[str, str]]:
-    doc = nlp(text)
-    return [(ent.text, ent.label_) for ent in doc.ents]
+    """
+    Extract named entities from text using spaCy, with error handling.
+    Returns a list of (entity_text, entity_label) tuples.
+    """
+    if not isinstance(text, str) or not text.strip():
+        logger.error(f"[extract_entities] Invalid or empty text input: {repr(text)}")
+        return []
+    try:
+        doc = nlp(text)
+        return [(ent.text, ent.label_) for ent in doc.ents]
+    except Exception as e:
+        logger.error(f"[extract_entities] spaCy failed on input: {repr(text)[:80]} | Error: {e}")
+        return []
 
 def get_sentences(text: str) -> List[str]:
     doc = nlp(text)

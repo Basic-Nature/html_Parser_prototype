@@ -267,6 +267,7 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
         year_score = 1.0
     else:
         entities = coordinator.extract_entities(title)
+        logger.debug(f"[ml_verify_contest] Extracted entities: {entities}")
         for ent, label in entities:
             if label == "DATE" and re.match(r"^(19|20)\d{2}$", ent):
                 year_score = 0.9
@@ -312,12 +313,16 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
         best_type = None
         if model is not None and hasattr(model, "encode"):
             try:
+                logger.debug(f"[ml_verify_contest] Using semantic model for type matching: {model}")
                 ctype_emb = safe_model_encode(model, [ctype_norm])
                 known_embs = safe_model_encode(model, known_types)
                 logger.debug(f"[DEBUG] ctype_emb type: {type(ctype_emb)}, known_embs type: {type(known_embs)}")
                 logger.debug(f"[DEBUG] ctype_emb[0] type: {type(ctype_emb[0]) if ctype_emb and len(ctype_emb) > 0 else 'None'}")
                 if ctype_emb is not None and known_embs is not None:
                     for idx, t in enumerate(known_types):
+                        if not (isinstance(ctype_emb[0], np.ndarray) and isinstance(known_embs[idx], np.ndarray)):
+                            logger.error(f"[ml_verify_contest] Embedding is not np.ndarray: ctype_emb[0]={type(ctype_emb[0])}, known_embs[{idx}]={type(known_embs[idx])}")
+                            continue
                         sim = float(np.dot(ctype_emb[0], known_embs[idx]) / (np.linalg.norm(ctype_emb[0]) * np.linalg.norm(known_embs[idx]) + 1e-8))
                         if sim > best_sim:
                             best_sim = sim
@@ -340,6 +345,7 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     # --- Enhanced NER scoring for office/role detection ---
     ner_boost = 0.0
     entities = coordinator.extract_entities(title)
+    logger.debug(f"[ml_verify_contest] Extracted entities for NER boost: {entities}")
     office_labels = {"ORG", "PERSON", "EVENT", "NORP", "FAC", "GPE"}
     office_found = False
     for ent, label in entities:
@@ -354,7 +360,9 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     title_score = 1.0 if any(safe_lower(kw or "") in safe_lower(title or "") for kw in CONTEST_KEYWORDS) or office_found else 0.0
 
     # Semantic/ML scoring
+    logger.debug(f"[ml_verify_contest] Using ML/NER coordinator: {coordinator}")
     ml_score = coordinator.score_header(title, context)
+    logger.debug(f"[ml_verify_contest] ML score for title '{title}': {ml_score}")
     if isinstance(ml_score, str):
         logger.error(f"[ml_verify_contest] ERROR: ml_score is a string! Value: {ml_score} | contest title: {title}")
         return False
@@ -362,7 +370,9 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     # Fuzzy/semantic boost for ambiguous cases
     fuzzy_boost = 0.0
     if hasattr(coordinator, "fuzzy_score"):
+        logger.debug(f"[ml_verify_contest] Using fuzzy_score for title '{title}' with type '{ctype}'")
         fuzzy_score_val = coordinator.fuzzy_score(title, ctype)
+        logger.debug(f"[ml_verify_contest] Fuzzy score for title '{title}': {fuzzy_score_val}")
         if isinstance(fuzzy_score_val, str):
             logger.error(f"[ml_verify_contest] ERROR: fuzzy_score is a string! Value: {fuzzy_score_val} | contest title: {title}")
             fuzzy_boost = 0.0
@@ -372,6 +382,7 @@ def ml_verify_contest(contest: Dict[str, Any], coordinator: "ContextCoordinator"
     # --- Context-aware boost: if context matches contest attributes ---
     context_boost = 0.0
     if context:
+        logger.debug(f"[ml_verify_contest] Context for contest verification: {context}")
         ctx_year = safe_get(context, "year")
         ctx_type = safe_lower(safe_get(context, "type_", ""))
         if ctx_year and str(ctx_year) == str(year):
