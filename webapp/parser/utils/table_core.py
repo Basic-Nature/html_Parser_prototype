@@ -24,6 +24,16 @@ import glob
 import re
 import string
 import difflib
+from ..utils.browser_utils import (
+    safe_nth, safe_locator, safe_count, safe_inner_text, safe_content, 
+    safe_get_attribute, safe_evaluate
+)
+from ..utils.shared_logic import (
+    safe_get, safe_lower, safe_append, safe_pop, safe_add,
+    safe_items, safe_values, safe_replace, safe_isalpha,
+    safe_extract, safe_scheme, safe_netloc, safe_geturl, safe_strip,
+    safe_translate, safe_isdigit, safe_split, safe_startswith
+)
 from difflib import SequenceMatcher
 from collections import Counter
 from typing import List, Dict, Any, Tuple, TYPE_CHECKING
@@ -36,9 +46,10 @@ from ..config import CACHE_DIR, LOG_DIR
 from difflib import get_close_matches
 from ..Context_Integration.Context_Library.constants import (
     PARTY_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES_SORT_ORDER, 
-    CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES,
+    CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, CONTEST_TITLE_KEYWORDS,
     KNOWN_COUNTY_TO_PRECINCTS_MAP, TOTAL_KEYWORDS, LOCATION_ABBREVIATIONS,
-    LOCATION_KEYWORDS, PERCENT_KEYWORDS, MISC_FOOTER_KEYWORDS,
+    LOCATION_KEYWORDS, PERCENT_KEYWORDS, MISC_FOOTER_KEYWORDS, NLP_SKIP_PHRASES,
+    LIKELY_ROW_CLASSES, CONTEST_TITLE_TAGS, CONTEST_TITLE_MIN_WORDS, CONTEST_TITLE_SKIP_PHRASES 
 )
 from ..Context_Integration.librarian import (
     normalize_segment_text
@@ -98,7 +109,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # --- Try to use cached structure if available ---
     domain = None
     if extraction_context:
-        domain = extraction_context.get("domain") or extraction_context.get("url")
+        domain = safe_get(extraction_context, "domain", None) or safe_get(extraction_context, "url", None)
     cached_headers, cached_data = None, None
     if domain:
         # Try to get cached structure for this domain and headers
@@ -107,20 +118,24 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             cached = get_cached_table_structure(domain, existing_headers)
             if cached:
                 logger.info(f"[TABLE BUILDER] Using cached table structure for domain: {domain}")
-                return cached.get("headers", []), cached.get("data", [])
+                if isinstance(cached, dict):
+                    return cached.get("headers", []), cached.get("data", [])
+                else:
+                    logger.warning(f"[TABLE BUILDER] Cached table structure is not a dict: {type(cached)}")
+                    return [], []
 
     # --- ML context integration ---
-    ml_confidence = extraction_context.get("ml_confidence", []) if extraction_context else None
-    association_log = extraction_context.get("association_log", []) if extraction_context else None
-    segments = extraction_context.get("segments", []) if extraction_context else None
-    panels = extraction_context.get("panels", []) if extraction_context else None
+    ml_confidence = safe_get(extraction_context, "ml_confidence", None) if extraction_context else None
+    association_log = safe_get(extraction_context, "association_log", None) if extraction_context else None
+    segments = safe_get(extraction_context, "segments", None) if extraction_context else None
+    panels = safe_get(extraction_context, "panels", None) if extraction_context else None
 
     # 1. DOM structure extraction (divs, lists, etc.)
     try:
         headers_dom, data_dom, diagnostics_dom = extract_rows_and_headers_from_dom(
             page,
-            coordinator=extraction_context.get("coordinator", []) if extraction_context else None,
-            context=extraction_context
+            coordinator = safe_get(extraction_context, "coordinator", None) if extraction_context else None,
+            context = extraction_context
         )
         if headers_dom and data_dom:
             all_tables.append((headers_dom, data_dom))
@@ -169,14 +184,15 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 
     # 3. Standard HTML table extraction
     try:
-        tables = page.locator("table")
-        for i in range(tables.count()):
-            table = tables.nth(i)
+        tables = safe_locator(page, "table", logger)
+        table_count = safe_count(tables, logger)
+        for i in range(table_count):
+            table = safe_nth(tables, i, logger)
             if table is not None:
                 headers_tab, data_tab, diagnostics_tab = extract_table_data(
                     table,
-                    coordinator=extraction_context.get("coordinator", []) if extraction_context else None,
-                    structure_info={"context": extraction_context} if extraction_context else None
+                    coordinator = safe_get(extraction_context, "coordinator", None) if extraction_context else None,
+                    structure_info = {"context": extraction_context} if extraction_context else None
                 )
                 if headers_tab and data_tab:
                     all_tables.append((headers_tab, data_tab))
@@ -202,7 +218,9 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # 4. Table extraction with heading/location context
     try:
         headers_loc, data_loc, diagnostics_loc = extract_all_tables_with_location(
-            page, coordinator=extraction_context.get("coordinator", []) if extraction_context else None, context=extraction_context
+            page, 
+            coordinator = safe_get(extraction_context, "coordinator", None) if extraction_context else None,
+            context = extraction_context
         )
         if headers_loc and data_loc:
             all_tables.append((headers_loc, data_loc))
@@ -343,7 +361,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     # --- Deduplicate tables by header signature ---
     unique_tables = {}
     for headers, data in all_tables:
-        sig = tuple(normalize_header_name(h) for h in headers)
+        sig = tuple(normalize_header(h) for h in headers)
         if sig not in unique_tables or (len(data) > len(unique_tables[sig][1])):
             unique_tables[sig] = (headers, data)
     all_tables = list(unique_tables.values())
@@ -355,7 +373,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         # 2. Merge candidate/party fields
         combined_headers, combined_data = merge_multiline_candidate_rows(combined_headers, combined_data)
         # 3. Entity annotation and structure verification (pass ML context)
-        coordinator = extraction_context.get("coordinator", []) if extraction_context else None
+        coordinator = safe_get(extraction_context, "coordinator", None) if extraction_context else None
         entity_info = {
             "ml_confidence": ml_confidence,
             "association_log": association_log,
@@ -411,6 +429,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
 # ===================================================================
 # EXTRACTION STRATEGIES (HTML, DOM, PATTERNS, NLP)
 # ===================================================================
+
 def extract_percent_reported_from_heading(heading):
     """Extract percent reported or fully reported from heading text."""
     # Look for patterns like '80% Reported', 'Fully Reported', etc.
@@ -418,17 +437,22 @@ def extract_percent_reported_from_heading(heading):
     match = percent_pattern.search(heading)
     if match:
         return f"{match.group(1)}%"
-    if "fully reported" in heading.lower():
-        return "100%"
+    try:
+        if isinstance(heading, str) and "fully reported" in heading.lower():
+            return "100%"
+    except Exception:
+        pass
     return ""
 
 def extract_percent_reported_from_page(page):
     """Try to extract percent reported from the page outside the table."""
     # Look for common phrases in spans/divs
     for selector in ["span", "div", "p"]:
-        elements = page.locator(selector)
-        for i in range(elements.count()):
-            text = elements.nth(i).inner_text().strip()
+        elements = safe_locator(page, selector, logger)
+        count = safe_count(elements, logger)
+        for i in range(count):
+            element = safe_nth(elements, i, logger)
+            text = safe_inner_text(element, logger).strip() if element else ""
             if not text:
                 continue
             percent = extract_percent_reported_from_heading(text)
@@ -447,7 +471,7 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
         find_tables_with_section_headings,
     )
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
     extraction_types = [
         ("panel", find_tables_with_panel_headings(page)),
         ("section", find_tables_with_section_headings(page)),
@@ -471,19 +495,16 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
             # --- Always normalize location column to "Precinct" ---
             location_col = find_best_header(headers, LOCATION_KEYWORDS)
             if not location_col:
-                # Use heading as the location value
                 if "Precinct" not in headers:
                     headers = ["Precinct"] + headers
                 for row in data:
                     row["Precinct"] = heading
                 location_col = "Precinct"
             else:
-                # Rename location_col to "Precinct" if needed
                 if location_col != "Precinct":
                     headers = ["Precinct" if h == location_col else h for h in headers]
                     for row in data:
                         row["Precinct"] = row.pop(location_col)
-                # Fill missing values with heading
                 for row in data:
                     if not row.get("Precinct", []):
                         row["Precinct"] = heading
@@ -504,8 +525,8 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
             all_headers.update(headers)
             all_panel_rows.extend(data)
             all_entity_previews.append(entity_preview)
-        candidate_cols = [h for h in all_panel_headers if any(k in h.lower() for k in CANDIDATE_KEYWORDS)]
-        ballot_types_cols = [h for h in all_panel_headers if any(bt in h.lower() for bt in BALLOT_TYPES)]
+        candidate_cols = [h for h in all_panel_headers if any(k in safe_lower(h) for k in CANDIDATE_KEYWORDS)]
+        ballot_types_cols = [h for h in all_panel_headers if any(bt in safe_lower(h) for bt in BALLOT_TYPES)]
         final_headers = ["Precinct"] + sorted(set(candidate_cols + ballot_types_cols)) + [
             h for h in all_panel_headers if h not in candidate_cols + ballot_types_cols + ["Precinct"]
         ]
@@ -523,51 +544,57 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
     for result in extraction_results:
         score = 0
         if coordinator and hasattr(coordinator, "score_header"):
-            # Average ML score for headers
-            scores = [coordinator.score_header(h, {}) for h in result["headers"]]
+            scores = [coordinator.score_header(h, {}) for h in safe_get(result, "headers", [])]
             score = sum(scores) / len(scores) if scores else 0
-        # Bonus for more rows and columns
-        score += 0.1 * min(len(result["data"]) / 10.0, 1.0)
-        score += 0.1 * min(len(result["headers"]) / 8.0, 1.0)
+        score += 0.1 * min(len(safe_get(result, "data", [])) / 10.0, 1.0)
+        score += 0.1 * min(len(safe_get(result, "headers", [])) / 8.0, 1.0)
         result["score"] = score
 
-    # --- Try to merge/patch missing information between extraction types ---
-    # If one extraction is missing a location or percent column, but the other has it, fill in
+    # --- Robust patching logic using context_coordinator ---
     def patch_missing_info(primary, secondary):
+        """
+        Patch missing headers and their values from secondary into primary.
+        Uses sec_headers for robust logic and safe appending.
+        """
         patched = False
-        sec_headers = set(secondary["headers"])
-        for h in secondary["headers"]:
-            if h not in primary["headers"]:
-                # Add missing header and fill with values if possible
-                primary["headers"].append(h)
-                for i, row in enumerate(primary["data"]):
-                    # Try to match by row index (could be improved with NLP/ML row association)
-                    if i < len(secondary["data"]):
-                        row[h] = secondary["data"][i].get(h, "")
+        sec_headers = set(safe_get(secondary, "headers", []))
+        primary_headers = set(safe_get(primary, "headers", []))
+        sec_data = safe_get(secondary, "data", [])
+        primary_data = safe_get(primary, "data", [])
+        for h in sec_headers:
+            if h not in primary_headers:
+                safe_append(safe_get(primary, "headers", []), h)
+                for i, row in enumerate(primary_data):
+                    if i < len(sec_data):
+                        row[h] = safe_get(sec_data[i], h, "")
                     else:
                         row[h] = ""
                 patched = True
         return patched
 
-    # Pick the best extraction by score, but patch with info from the other if possible
+    # --- Pick the best extraction by score, patch with info from others if possible ---
     extraction_results.sort(key=lambda r: r["score"], reverse=True)
-    best = extraction_results[0]
-    if len(extraction_results) > 1:
-        other = extraction_results[1]
-        patched = patch_missing_info(best, other)
-        # Optionally, use NLP/ML to check if rows are associated (e.g., by location/district/candidate)
-        # This can be extended with coordinator.match_rows(row1, row2) if implemented
+    best = extraction_results[0] if extraction_results else None
+
+    # Patch all others into best, not just the second-best
+    if best and len(extraction_results) > 1:
+        for other in extraction_results[1:]:
+            patch_missing_info(best, other)
+            # Optionally, use context_coordinator for more advanced row association in the future
 
     # --- Combine all panel tables if more than one ---
-    all_tables = [(r["headers"], r["data"]) for r in extraction_results if r["headers"] and r["data"]]
+    all_tables = [(safe_get(r, "headers", []), safe_get(r, "data", [])) for r in extraction_results if safe_get(r, "headers", []) and safe_get(r, "data", [])]
     if len(all_tables) > 1:
         headers, data = combine_panel_tables_by_precinct(all_tables)
         # Optionally, merge entity previews as well
         entity_previews = []
         for r in extraction_results:
-            entity_previews.extend(r.get("entity_previews", []))
+            entity_previews.extend(safe_get(r, "entity_previews", []))
         return headers, data, entity_previews
-    return best["headers"], best["data"], best["entity_previews"]
+
+    if best:
+        return safe_get(best, "headers", []), safe_get(best, "data", []), safe_get(best, "entity_previews", [])
+    return [], [], []
 
 def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """
@@ -578,7 +605,7 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
     Now walks the DOM for best-matching columns and values, scoring all candidates and picking the best.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
     if table is None:
         logger.error("[TABLE BUILDER][extract_table_data] Table locator is None.")
         return [], [], {}
@@ -597,68 +624,75 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
 
     try:
         # --- Extract headers ---
-        header_cells = table.locator("thead tr th")
-        if header_cells.count() == 0:
-            first_row = table.locator("tr").first
-            header_cells = first_row.locator("th, td")
-        for i in range(header_cells.count()):
-            text = header_cells.nth(i).inner_text().strip()
+        header_cells = safe_locator(table, "thead tr th", logger)
+        if safe_count(header_cells, logger) == 0:
+            first_row = safe_nth(safe_locator(table, "tr", logger), 0, logger)
+            header_cells = safe_locator(first_row, "th, td", logger) if first_row else None
+        for i in range(safe_count(header_cells, logger)):
+            text = safe_inner_text(safe_nth(header_cells, i, logger), logger).strip()
             headers.append(text if text else f"Column {i+1}")
 
         # --- Extract rows ---
-        rows = table.locator("tbody tr")
-        if rows.count() == 0:
-            all_rows = table.locator("tr")
+        rows = safe_locator(table, "tbody tr", logger)
+        if safe_count(rows, logger) == 0:
+            all_rows = safe_locator(table, "tr", logger)
             rows = all_rows
 
-        for i in range(rows.count()):
+        for i in range(safe_count(rows, logger)):
             row = {}
-            cells = rows.nth(i).locator("td, th")
-            if cells.count() == 0:
+            row_locator = safe_nth(rows, i, logger)
+            cells = safe_locator(row_locator, "td, th", logger) if row_locator else None
+            if safe_count(cells, logger) == 0:
                 continue
-            for j in range(cells.count()):
+            for j in range(safe_count(cells, logger)):
+                cell = safe_nth(cells, j, logger)
                 if j < len(headers):
-                    row[headers[j]] = cells.nth(j).inner_text().strip()
+                    row[headers[j]] = safe_inner_text(cell, logger).strip()
                 else:
-                    row[f"Extra_{j+1}"] = cells.nth(j).inner_text().strip()
+                    row[f"Extra_{j+1}"] = safe_inner_text(cell, logger).strip()
             if any(v for v in row.values()):
                 data.append(row)
 
         # --- After extracting headers and data ---
-        # If no location column, but context provides one, inject it
-        context = structure_info.get("context", []) if structure_info else {}
-        panel_heading = context.get("panel_heading", []) or context.get("Precinct", []) or context.get("district", [])
-        location_col = entity_preview.get("location_column", []) or (
-            next((h for h in headers if is_location_header(h)), None)
-        ) or "Precinct"
+        context = safe_get(structure_info, "context", {}) if structure_info else {}
+        panel_heading = (
+            safe_get(context, "panel_heading", None)
+            or safe_get(context, "Precinct", None)
+            or safe_get(context, "district", None)
+        )
+        location_col = (
+            safe_get(entity_preview, "location_column", None)
+            or next((h for h in headers if is_location_header(h)), None)
+            or "Precinct"
+        )
         if location_col and location_col != "Precinct":
             headers = ["Precinct" if h == location_col else h for h in headers]
             for row in data:
-                row["Precinct"] = row.pop(location_col)
+                row["Precinct"] = safe_pop(row, location_col, "")
             location_col = "Precinct"
-        # --- PATCH: Inject location if missing ---
-        if not location_col and panel_heading:           
+        if not location_col and panel_heading:
             for row in data:
                 row["Precinct"] = panel_heading
             if "Precinct" not in headers:
                 headers = ["Precinct"] + headers
             location_col = "Precinct"
-        # --- PATCH: If only one unique location, synthesize from context ---
+
         unique_locations = sorted(
-            set(str(row.get(location_col, "") or "") for row in data if row.get(location_col, ""))
+            set(str(safe_get(row, location_col, "") or "") for row in data if safe_get(row, location_col, ""))
         )
-        unique_candidates = sorted(set(row.get("Candidate", "") for row in data if row.get("Candidate", "")))
-        n_candidates = len(entity_preview.get("candidates") or [])
-        n_ballot_types = len(entity_preview.get("ballot_types") or [])
-        n_numbers = len(entity_preview.get("numbers") or [])
+        unique_candidates = sorted(set(safe_get(row, "Candidate", "") for row in data if safe_get(row, "Candidate", "")))
+        n_candidates = len(safe_get(entity_preview, "candidates", []))
+        n_ballot_types = len(safe_get(entity_preview, "ballot_types", []))
+        n_numbers = len(safe_get(entity_preview, "numbers", []))
         n_locations = len(unique_locations)
         loc_col_disp = location_col if location_col else "N/A"
-        pct_col_disp = entity_preview.get("percent_column") or "N/A"
-        
+        pct_col_disp = safe_get(entity_preview, "percent_column", "N/A")
+
         if location_col and len(unique_locations) <= 1 and panel_heading:
             for row in data:
-                row[location_col] = panel_heading             
-        county = context.get("county", "").lower() if context else ""
+                row[location_col] = panel_heading
+
+        county = safe_lower(safe_get(context, "county", "")) if context else ""
         known_districts = set()
         if coordinator and hasattr(coordinator, "library"):
             county_map = KNOWN_COUNTY_TO_PRECINCTS_MAP
@@ -670,31 +704,28 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         percent_candidates = []
         percent_patterns = set(PERCENT_KEYWORDS)
 
-        # 1. Score headers using ML/NLP/NER and heuristics
         for h in headers:
             score = 0
             if coordinator:
                 ents = []
-                if coordinator and hasattr(coordinator, "extract_entities"):
+                if hasattr(coordinator, "extract_entities"):
                     ents = coordinator.extract_entities(h)
-                for ents, label in ents:
-                    if label in {"GPE", "LOC", "FAC"} and h.lower() != "candidate":
+                for ent, label in ents:
+                    if label in {"GPE", "LOC", "FAC"} and safe_lower(h) != "candidate":
                         score += 1.0
-                if is_location_header(h) and h.lower() != "candidate":
+                if is_location_header(h) and safe_lower(h) != "candidate":
                     score += coordinator.score_header(h, {}) if hasattr(coordinator, "score_header") else 0.5
-            if is_location_header(h) and h.lower() != "candidate":
+            if is_location_header(h) and safe_lower(h) != "candidate":
                 score += 0.3
-            # Value-based: check if values match known districts
             if known_districts:
-                col_vals = [str(row.get(h, "")).lower() for row in data]
+                col_vals = [safe_lower(str(safe_get(row, h, ""))) for row in data]
                 match_count = sum(
                     1 for v in col_vals
                     if v in known_districts or difflib.get_close_matches(v, known_districts, n=1, cutoff=0.8)
                 )
                 if match_count / max(1, len(col_vals)) > 0.5:
                     score += 0.7
-            # Uniqueness/entropy: high unique values, not all numeric
-            col_vals = [str(row.get(h, "")) for row in data]
+            col_vals = [str(safe_get(row, h, "")) for row in data]
             unique_vals = len(set(col_vals))
             if unique_vals > 3 and not all(v.replace(",", "").isdigit() for v in col_vals if v):
                 score += 0.2
@@ -703,30 +734,25 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
 
             # Percent detection
             pscore = 0
-            if any(kw in h.lower() for kw in percent_patterns):
+            if any(kw in safe_lower(h) for kw in percent_patterns):
                 pscore += 1.0
             elif "%" in h:
                 pscore += 0.8
             if pscore > 0:
                 percent_candidates.append((h, pscore))
 
-        # 2. Walk the DOM for additional clues (scan all cells for location/percent-like values)
-        # This is a second pass, not just headers
         dom_location_scores = {}
         dom_percent_scores = {}
         for h in headers:
-            col_vals = [str(row.get(h, "")) for row in data]
-            # Location: match against known districts or location-like patterns
+            col_vals = [str(safe_get(row, h, "")) for row in data]
             if known_districts:
                 match_count = sum(
                     1 for v in col_vals
-                    if v.lower() in known_districts or difflib.get_close_matches(v.lower(), known_districts, n=1, cutoff=0.8)
+                    if safe_lower(v) in known_districts or difflib.get_close_matches(safe_lower(v), known_districts, n=1, cutoff=0.8)
                 )
                 dom_location_scores[h] = match_count / max(1, len(col_vals))
-            # Percent: look for % in values
             percent_count = sum(1 for v in col_vals if "%" in v)
             dom_percent_scores[h] = percent_count / max(1, len(col_vals))
-        # Add to candidates if above threshold
         for h, v in dom_location_scores.items():
             if v > 0.5:
                 location_candidates.append((h, 0.5 + v))
@@ -734,68 +760,55 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
             if v > 0.5:
                 percent_candidates.append((h, 0.5 + v))
 
-        # 3. Score and pick the best (highest score) for each, require threshold
         location_candidates = sorted(location_candidates, key=lambda x: x[1], reverse=True)
         percent_candidates = sorted(percent_candidates, key=lambda x: x[1], reverse=True)
-        location_col = location_candidates[0][0] if location_candidates and location_candidates[0][1] > 0.7 else None
+        location_col = location_candidates[0][0] if location_candidates and location_candidates[0][1] > 0.7 else location_col
         percent_col = percent_candidates[0][0] if percent_candidates and percent_candidates[0][1] > 0.7 else None
 
         entity_preview["location_column"] = location_col
         entity_preview["percent_column"] = percent_col
 
-        # --- Scan data for entity types ---
-        ballot_types_keywords = set(bt.lower() for bt in BALLOT_TYPES)
+        ballot_types_keywords = set(safe_lower(bt) for bt in BALLOT_TYPES)
         number_pattern = re.compile(r"^-?\d{1,3}(?:,\d{3})*(?:\.\d+)?%?$")
         for row in data:
-            for h, v in row.items():
+            for h, v in safe_items(row):
                 if not v:
                     continue
-                # Candidate detection (robust)
-                if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS):
-                    entity_preview["candidates"].add(v)
-                # Ballot type detection (robust)
-                if any(bk in h.lower() for bk in ballot_types_keywords):
-                    entity_preview["ballot_types"].add(h)
-                # Number detection (improved)
-                if number_pattern.match(v.replace(",", "")):
-                    entity_preview["numbers"].add(v)
-                # Location detection (only if a valid location_col was found)
+                if any(ck in safe_lower(h) for ck in CANDIDATE_KEYWORDS):
+                    safe_add(entity_preview["candidates"], v)
+                if any(bk in safe_lower(h) for bk in ballot_types_keywords):
+                    safe_add(entity_preview["ballot_types"], h)
+                if number_pattern.match(safe_replace(v, ",", "")):
+                    safe_add(entity_preview["numbers"], v)
                 if location_col and h == location_col:
-                    entity_preview["locations"].add(v)
+                    safe_add(entity_preview["locations"], v)
 
-        # --- Automated feedback/learning: log if location_col is missing or suspect ---
         if not location_col or len(entity_preview["locations"]) == 0:
             logger.warning(f"[TABLE BUILDER][extract_table_data] No valid location column {location_col} or values detected {entity_preview['locations']}. Consider user/ML feedback.")
 
-        # --- Percent Reported Value Extraction ---
         percent_value = ""
         if percent_col:
-            # Try to extract a percent value from the first row
             for row in data:
-                val = row.get(percent_col, "")
+                val = safe_get(row, percent_col, "")
                 if val and "%" in val:
                     percent_value = val
                     break
         if not percent_value:
-            # Try to extract from context or fallback
             if context and "percent_reported" in context:
                 percent_value = context["percent_reported"]
             else:
-                # Try to extract from any cell value
                 for row in data:
-                    for v in row.values():
+                    for v in safe_values(row):
                         if isinstance(v, str) and "%" in v:
                             percent_value = v
                             break
                     if percent_value:
                         break
-        # Optionally, fill percent_col in all rows if found
         if percent_col and percent_value:
             for row in data:
-                if not row.get(percent_col, []):
+                if not safe_get(row, percent_col, []):
                     row[percent_col] = percent_value
 
-        # Log NLP-style preview
         summary = (
             f"[bold green][NLP PREVIEW][/bold green] "
             f"Candidates: [cyan]{n_candidates}[/cyan], "
@@ -814,16 +827,14 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
             logger.info(f"[magenta]Unique Candidates: {unique_candidates}[/magenta]")
         else:
             logger.warning(f"[yellow]No unique candidates detected in data.[/yellow]")
-        # Optional: show a compact table preview of the first 2 rows
         if data:
             from rich.table import Table as RichTable
             preview_table = RichTable(show_header=True, header_style="bold magenta")
             for h in headers:
                 preview_table.add_column(h)
             for row in data[:2]:
-                preview_table.add_row(*(str(row.get(h, "")) for h in headers))
+                preview_table.add_row(*(str(safe_get(row, h, "")) for h in headers))
             logger.alert(preview_table)
-        # If not headers and data, fallback to generic headers
         if not headers and data:
             max_cols = max(len(row) for row in data)
             headers = [f"Column {i+1}" for i in range(max_cols)]
@@ -832,7 +843,8 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
             for row in data:
                 new_row = {}
                 for idx, h in enumerate(headers):
-                    new_row[h] = list(row.values())[idx] if idx < len(row) else ""
+                    vals = safe_values(row)
+                    new_row[h] = vals[idx] if idx < len(vals) else ""
                 new_data.append(new_row)
             data = new_data
 
@@ -856,24 +868,55 @@ def guess_headers_from_row(row, known_keywords=None, context=None):
         logger.warning("[TABLE BUILDER][guess_headers_from_row] Row is None, cannot guess headers.")
         diagnostics["error"] = "Row is None"
         return [], diagnostics
-    if known_keywords is None:
-        known_keywords = ["candidate", "votes", "party", "precinct", "choice", "option", "response", "total"]
-    cells = row.locator("> *")
+
+    # --- Build robust keyword set ---
+    keyword_set = set()
+    # 1. Always include constants
+    keyword_set.update(CANDIDATE_KEYWORDS)
+    keyword_set.update(PARTY_KEYWORDS)
+    keyword_set.update(LOCATION_KEYWORDS)
+    keyword_set.update(TOTAL_KEYWORDS)
+    # 2. Add from context if present
+    if context:
+        # Add any explicit header keywords
+        if "header_keywords" in context and isinstance(context["header_keywords"], (list, set)):
+            keyword_set.update(context["header_keywords"])
+        # Add contest/field names if present
+        for k in ("contest", "field_names", "expected_headers"):
+            if k in context and isinstance(context[k], (list, set)):
+                keyword_set.update(context[k])
+            elif k in context and isinstance(context[k], str):
+                keyword_set.add(context[k])
+    # 3. Add any provided known_keywords
+    if known_keywords:
+        keyword_set.update(known_keywords)
+    # 4. Normalize all keywords (lowercase, strip)
+    normalized_keywords = set(str(kw).strip().lower() for kw in keyword_set if kw)
+
+    # --- Extract cell texts ---
+    cells = safe_locator(row, "> *", logger)
     headers = []
     cell_texts = []
-    for i in range(cells.count()):
-        text = cells.nth(i).inner_text().strip().lower()
-        cell_texts.append(text)
+    for i in range(safe_count(cells, logger)):
+        cell = safe_nth(cells, i, logger)
+        text = safe_inner_text(cell, logger)
+        text_stripped = text.strip() if isinstance(text, str) else ""
+        text_lower = text_stripped.lower()
+        cell_texts.append(text_lower)
         header = None
-        for kw in known_keywords:
-            if kw in text:
+        # Try to match any normalized keyword as substring or exact
+        for kw in normalized_keywords:
+            if kw and (kw == text_lower or kw in text_lower):
                 header = kw.capitalize()
                 break
         if not header:
             header = f"Column {i+1}"
         headers.append(header)
+
     diagnostics["cell_texts"] = cell_texts
     diagnostics["headers"] = headers
+    diagnostics["used_keywords"] = sorted(normalized_keywords)
+    diagnostics["context_used"] = bool(context)
     return headers, diagnostics
 
 def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2, coordinator=None, context=None):
@@ -881,7 +924,11 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     Attempts to extract tabular data from repeated DOM structures (divs, etc.).
     Returns headers, data, and diagnostics.
     Enhanced: logs and returns what is being removed, and column stats.
+    Utilizes heading context and diagnostics from header guessing.
     """
+    if coordinator is None:
+        from ..Context_Integration.context_coordinator import ContextCoordinator
+        coordinator = coordinator or ContextCoordinator()
     logger.info("[TABLE_BUILDER][extract_rows_and_headers_from_dom] Starting DOM structure extraction.")
     repeated_rows = extract_repeated_dom_structures(page, extra_keywords=extra_keywords, min_row_count=min_row_count)
     logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Found {len(repeated_rows)} repeated rows.")
@@ -892,40 +939,69 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     # --- Heuristic header detection block ---
     headers = None
     header_row_idx = None
+    header_diag = None
     for idx, (heading, row) in enumerate(repeated_rows[:10]):
         if row is None:
             logger.warning(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Row locator is None at index {idx}. Skipping.")
             continue
-        cells = row.locator("> *")
-        cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
-        logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Checking row {idx} for headers: {cell_texts}")
+        cells = safe_locator(row, "> *", logger)
+        cell_texts = []
+        for i in range(safe_count(cells, logger)):
+            cell = safe_nth(cells, i, logger)
+            text = safe_inner_text(cell, logger)
+            cell_texts.append(text.strip() if isinstance(text, str) else "")
+        logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Checking row {idx} for headers: {cell_texts} (heading: {heading})")
         # Heuristic: header row if at least 2 known fields or all non-numeric
         if is_likely_header(cell_texts) or all(not re.match(r"^\d+([,.]\d+)?$", c) for c in cell_texts):
             headers = cell_texts
             header_row_idx = idx
-            logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Detected header row at index {idx}: {headers}")
+            header_diag = {"detected_by": "heuristic", "row_idx": idx, "heading": heading, "cell_texts": cell_texts}
+            logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Detected header row at index {idx}: {headers} (heading: {heading})")
             break
     if headers is not None:
         repeated_rows = repeated_rows[header_row_idx + 1 :]
     else:
-        headers, _ = guess_headers_from_row(repeated_rows[0][1], context=context or {})
-        logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Guessed headers from first row: {headers}")
+        # Use coordinator logic if available for header guessing
+        if coordinator and hasattr(coordinator, "score_header"):
+            guessed_headers, diag = guess_headers_from_row(repeated_rows[0][1], context=context or {})
+            header_diag = diag
+            # Optionally, score and reorder headers by ML score
+            header_scores = [(h, coordinator.score_header(h, context or {})) for h in guessed_headers]
+            header_scores.sort(key=lambda x: x[1], reverse=True)
+            headers = [h for h, _ in header_scores]
+        else:
+            headers, diag = guess_headers_from_row(repeated_rows[0][1], context=context or {})
+            header_diag = diag
+        logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Guessed headers from first row: {headers} (heading: {repeated_rows[0][0]})")
+        header_diag = header_diag or {}
 
     # --- Merge split header rows (e.g., two header rows) ---
     if len(repeated_rows) > 1:
-        first_row_cells = [repeated_rows[0][1].locator("> *").nth(i).inner_text().strip() for i in range(repeated_rows[0][1].locator("> *").count())]
-        if all(c.isalpha() or c == "" for c in first_row_cells) and any(c for c in first_row_cells):
-            logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Merging split header rows: {headers} + {first_row_cells}")
+        first_row_heading, first_row = repeated_rows[0]
+        cells = safe_locator(first_row, "> *", logger)
+        first_row_cells = []
+        for i in range(safe_count(cells, logger)):
+            cell = safe_nth(cells, i, logger)
+            text = safe_inner_text(cell, logger)
+            first_row_cells.append(text.strip() if isinstance(text, str) else "")
+        if all(safe_isalpha(c) or c == "" for c in first_row_cells) and any(c for c in first_row_cells):
+            logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Merging split header rows: {headers} + {first_row_cells} (heading: {first_row_heading})")
             headers = [" ".join(filter(None, [h, f])) for h, f in zip(headers, first_row_cells)]
             repeated_rows = repeated_rows[1:]
 
     # --- Sample rows for stats ---
     sample_rows = []
+    sample_headings = []
     for heading, row in repeated_rows[:20]:
-        cells = row.locator("> *")
-        cell_texts = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
+        cells = safe_locator(row, "> *", logger)
+        cell_texts = []
+        for i in range(safe_count(cells, logger)):
+            cell = safe_nth(cells, i, logger)
+            text = safe_inner_text(cell, logger)
+            cell_texts.append(text.strip() if isinstance(text, str) else "")
         sample_rows.append(cell_texts)
-    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Sample rows for stats: {sample_rows[:3]}")
+        sample_headings.append(heading)
+    logger.info(f"[TABLE_BUILDER][extract_rows_and_headers_from_dom] Sample rows for stats: {sample_rows[:3]} (headings: {sample_headings[:3]})")
 
     # --- Column stats ---
     col_stats = []
@@ -944,11 +1020,19 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
 
     # --- Build all data rows before filtering ---
     all_panel_rows = []
+    all_panel_headings = []
     for heading, row in repeated_rows:
-        cells = row.locator("> *")
-        cell_values = [cells.nth(i).inner_text().strip() for i in range(cells.count())]
+        cells = safe_locator(row, "> *", logger)
+        cell_values = []
+        for i in range(len(headers)):
+            cell = safe_nth(cells, i, logger)
+            text = safe_inner_text(cell, logger)
+            cell_values.append(text.strip() if isinstance(text, str) else "")
         row_data = {headers[idx]: cell_values[idx] if idx < len(cell_values) else "" for idx in range(len(headers))}
+        # Attach heading context to each row for downstream use
+        row_data["_heading"] = heading
         all_panel_rows.append(row_data)
+        all_panel_headings.append(heading)
 
     # --- Remove footer/summary rows, log what is removed ---
     filtered_data = []
@@ -973,11 +1057,14 @@ def extract_rows_and_headers_from_dom(page, extra_keywords=None, min_row_count=2
     # --- Diagnostics dictionary ---
     diagnostics = {
         "headers": headers,
+        "header_diag": header_diag,
         "all_panel_rows": all_panel_rows,
+        "all_panel_headings": all_panel_headings,
         "removed_footer_rows": removed_footer_rows,
         "removed_empty_rows": removed_empty_rows,
         "col_stats": col_stats,
         "sample_rows": sample_rows,
+        "sample_headings": sample_headings,
         "final_row_count": len(final_data),
         "final_col_count": len(headers),
     }
@@ -989,9 +1076,13 @@ def extract_with_patterns(page, context=None, log_path=None):
     """
     Attempts to extract tabular data using approved DOM patterns.
     Returns (headers, data, diagnostics)
+    Safeguards all DOM and list operations.
     """
-    patterns = load_dom_patterns(log_path)
-    approved = [p for p in patterns if p.get("approved", [])]
+    # Use lambda x: [] as a fallback for any safe_get in this function
+    fallback_empty = lambda x: []
+
+    patterns = safe_get(globals(), "load_dom_patterns", fallback_empty)(log_path)
+    approved = [p for p in patterns if safe_get(p, "approved", fallback_empty)]
     results = []
     diagnostics = {
         "patterns_tried": len(patterns),
@@ -999,48 +1090,79 @@ def extract_with_patterns(page, context=None, log_path=None):
         "matches": [],
     }
     for pat in approved:
-        selector = pat["selector"]
-        cell_selectors = pat.get("cell_selectors", []) or [pat.get("cell_selector", "> *")]
-        containers = page.locator(selector)
-        for i in range(containers.count()):
-            container = containers.nth(i)
-            heading = pat.get("heading", []) or f"Pattern: {selector} #{i+1}"
+        selector = safe_get(pat, "selector", "")
+        # Use fallback_empty for all safe_gets that expect a list
+        cell_selectors = safe_get(pat, "cell_selectors", fallback_empty) or [safe_get(pat, "cell_selector", "> *")]
+        try:
+            containers = safe_locator(page, selector, logger)
+            container_count = safe_count(containers, logger)
+        except Exception:
+            continue
+        for i in range(container_count):
+            container = safe_nth(containers, i, logger)
+            if container is None:
+                continue
+            heading = safe_get(pat, "heading", None) or f"Pattern: {selector} #{i+1}"
             for cell_selector in cell_selectors:
-                children = container.locator(cell_selector)
-                if children.count() > 0:
-                    for j in range(children.count()):
-                        row = children.nth(j)
-                        if "row_tag" in pat:
-                            tag = row.evaluate("el => el.tagName.toLowerCase()")
-                            if tag != pat["row_tag"]:
-                                continue
-                        if "row_class" in pat:
-                            classes = row.evaluate("el => el.className")
-                            if pat["row_class"] not in classes:
-                                continue
-                        if "row_text_contains" in pat:
-                            text = row.inner_text().strip()
-                            if pat["row_text_contains"] not in text:
-                                continue
-                        if row is not None:
+                try:
+                    children = safe_locator(container, cell_selector, logger)
+                    children_count = safe_count(children, logger)
+                except Exception:
+                    continue
+                if children_count > 0:
+                    for j in range(children_count):
+                        row = safe_nth(children, j, logger)
+                        if row is None:
+                            continue
+                        try:
+                            if "row_tag" in pat:
+                                tag = row.evaluate("el => el.tagName.toLowerCase()") if hasattr(row, "evaluate") else ""
+                                if tag != safe_get(pat, "row_tag", ""):
+                                    continue
+                            if "row_class" in pat:
+                                classes = row.evaluate("el => el.className") if hasattr(row, "evaluate") else ""
+                                if safe_get(pat, "row_class", "") not in classes:
+                                    continue
+                            if "row_text_contains" in pat:
+                                text = safe_inner_text(row, logger).strip()
+                                if safe_get(pat, "row_text_contains", "") not in text:
+                                    continue
                             results.append((heading, row, pat))
-                            diagnostics["matches"].append({
-                                "heading": heading,
-                                "selector": selector,
-                                "cell_selector": cell_selector,
-                                "row_index": j
-                            })
+                            safe_append(
+                                diagnostics["matches"],
+                                {
+                                    "heading": heading,
+                                    "selector": selector,
+                                    "cell_selector": cell_selector,
+                                    "row_index": j
+                                },
+                                logger
+                            )
+                        except Exception:
+                            continue
     # Build headers/data if any matches
     if results:
-        headers, _ = guess_headers_from_row(results[0][1], context=context)
+        # Use fallback_empty for guess_headers_from_row context
+        headers, _ = guess_headers_from_row(results[0][1], context=context or fallback_empty)
         data = []
         for heading, row, pat in results:
-            cells = row.locator("> *")
-            row_data = {}
-            for idx in range(cells.count()):
-                row_data[headers[idx] if idx < len(headers) else f"Column {idx+1}"] = cells.nth(idx).inner_text().strip()
-            if row_data:
-                data.append(row_data)
+            try:
+                cells = safe_locator(row, "> *", logger)
+                cell_count = safe_count(cells, logger)
+                row_data = {}
+                for idx in range(cell_count):
+                    cell = safe_nth(cells, idx, logger)
+                    if cell is not None:
+                        try:
+                            cell_text = safe_inner_text(cell, logger).strip()
+                        except Exception:
+                            cell_text = ""
+                        key = headers[idx] if idx < len(headers) else f"Column {idx+1}"
+                        row_data[key] = cell_text
+                if row_data:
+                    data.append(row_data)
+            except Exception:
+                continue
         return headers, data, diagnostics
     return [], [], diagnostics
 
@@ -1048,38 +1170,65 @@ def fallback_nlp_candidate_vote_scan(page):
     """
     Improved fallback: scan for elements with candidate-like, party-like, or location-like names and vote-like numbers nearby.
     Returns headers, data.
+    Enhanced: extra input sanitization, more robust Playwright API usage, and stricter skip phrase/label filtering.
     """
-    import re
     # Accept more flexible candidate/location/party patterns
     label_pattern = re.compile(r"^[A-Za-z][A-Za-z\s\-\']{1,40}$")
     vote_pattern = re.compile(r"^\d{1,3}(,\d{3})*$")
-    skip_phrases = [
+    # Use skip phrases from constants if available, else fallback
+    skip_phrases = NLP_SKIP_PHRASES if 'NLP_SKIP_PHRASES' in globals() else [
         "Last Updated", "Vote Method", "Fully Reported", "Search", "Reported", "Total", "Precincts Reporting"
     ]
-    elements = page.locator("*")
+
+    elements = safe_locator(page, "*", logger)
     labels = []
     votes = []
-    for i in range(elements.count()):
-        text = elements.nth(i).inner_text().strip()
+    element_count = safe_count(elements, logger)
+    for i in range(element_count):
+        text = ""
+        try:
+            el = safe_nth(elements, i, logger)
+            text = safe_inner_text(el, logger).strip() if el else ""
+            # --- Extra sanitization: remove control chars, excessive whitespace, and dangerous chars ---
+            text = re.sub(r"[\x00-\x1F\x7F]", "", text)
+            text = text.replace("\r", " ").replace("\n", " ").strip()
+            text = re.sub(r"\s+", " ", text)
+            # Remove SQL meta-characters (defense-in-depth, even though not used in SQL here)
+            text = text.replace(";", "").replace("--", "").replace("'", "").replace('"', "")
+        except Exception:
+            continue
         if not text or len(text) < 2:
             continue
-        if any(skip in text for skip in skip_phrases):
+        # Stricter skip: match whole word or phrase, case-insensitive
+        if any(skip.lower() in text.lower() for skip in skip_phrases):
             continue
+        # Only allow ASCII printable for fallback
+        if not all(32 <= ord(c) < 127 for c in text):
+            continue
+        # Robust vote and label detection
         if vote_pattern.fullmatch(text.replace(",", "")):
             votes.append((i, text))
         elif label_pattern.match(text):
+            # Avoid labels that look like SQL keywords or dangerous input
+            if text.upper() in {"SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE"}:
+                continue
             labels.append((i, text))
     # Pair each vote with the closest preceding label
     data = []
+    used_label_idxs = set()
     for vote_idx, vote_val in votes:
         # Find the closest label before this vote
         label = None
         for idx, lbl in reversed(labels):
-            if idx < vote_idx:
+            if idx < vote_idx and idx not in used_label_idxs:
                 label = lbl
+                used_label_idxs.add(idx)
                 break
         if label is not None:
-            data.append({"Label": label, "Votes": vote_val})
+            # Extra: sanitize output fields
+            safe_label = re.sub(r"[^\w\s\-']", "", label).strip()
+            safe_vote = re.sub(r"[^\d,]", "", vote_val)
+            data.append({"Label": safe_label, "Votes": safe_vote})
     headers = ["Label", "Votes"]
     logger.info(f"[TABLE BUILDER] Robust NLP fallback: {len(data)} rows, {len(headers)} columns.")
     return headers, data
@@ -1089,40 +1238,56 @@ def extract_repeated_dom_structures(page, container_selectors=None, min_row_coun
     Scans the DOM for repeated structures (divs, uls, etc.) that look like tabular data.
     Returns a list of (section_heading, row_locator) tuples.
     Dynamically updates likely_row_classes from log analysis.
+    Enhanced: input sanitization for selectors, robust Playwright API usage, and defense-in-depth for selector injection.
     """
-    # --- Dynamically update likely_row_classes from logs ---
     log_dir = LOG_DIR
     suggested_classes, suggested_ids = suggest_new_row_classes_from_logs(log_dir)
-    likely_row_classes = [
+    likely_row_classes = list(LIKELY_ROW_CLASSES) + suggested_classes if 'LIKELY_ROW_CLASSES' in globals() else [
         "row", "table-row", "ballot-option", "candidate-info", "result-row", "precinct-row"
     ] + suggested_classes
     likely_row_ids = suggested_ids
 
+    # --- Sanitize selectors to prevent selector injection ---
+    def sanitize_selector(s):
+        # Only allow alphanum, dash, underscore, and no quotes/brackets
+        return re.sub(r"[^a-zA-Z0-9_\-]", "", s)
+
     if container_selectors is None:
-        selectors = [f"div.{cls}" for cls in likely_row_classes]
-        selectors += [f"div#{id_}" for id_ in likely_row_ids]
+        selectors = [f"div.{sanitize_selector(cls)}" for cls in likely_row_classes if cls]
+        selectors += [f"div#{sanitize_selector(id_)}" for id_ in likely_row_ids if id_]
         selectors += ["ul > li", "ol > li"]
     else:
-        selectors = container_selectors
+        selectors = [sanitize_selector(sel) for sel in container_selectors if sel]
 
     results = []
     MAX_CONTAINERS = 100
     for selector in selectors:
-        containers = page.locator(selector)
-        for i in range(min(containers.count(), MAX_CONTAINERS)):
+        try:
+            containers = safe_locator(page, selector, logger)
+            container_count = safe_count(containers, logger)
+        except Exception:
+            continue
+        for i in range(min(container_count, MAX_CONTAINERS)):
             try:
-                container = containers.nth(i)
-                children = container.locator("> *")
-                if children.count() >= min_row_count:
+                container = safe_nth(containers, i, logger)
+                children = safe_locator(container, "> *", logger) if container else None
+                children_count = safe_count(children, logger) if children else 0
+                if children_count >= min_row_count:
                     # Try to find a heading above the container
                     heading = ""
-                    heading_loc = container.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
-                    if heading_loc.count() > 0:
-                        heading = heading_loc.nth(0).inner_text().strip()
+                    heading_loc = safe_locator(container, "xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]", logger) if container else None
+                    heading_count = safe_count(heading_loc, logger) if heading_loc else 0
+                    if heading_count > 0:
+                        heading_el = safe_nth(heading_loc, 0, logger)
+                        heading = safe_inner_text(heading_el, logger).strip() if heading_el else ""
+                        # Extra sanitization for heading
+                        heading = re.sub(r"[\x00-\x1F\x7F]", "", heading)
+                        heading = heading.replace("\r", " ").replace("\n", " ").strip()
+                        heading = re.sub(r"\s+", " ", heading)
                     else:
                         heading = f"Section {i+1}"
-                    for j in range(children.count()):
-                        row = children.nth(j)
+                    for j in range(children_count):
+                        row = safe_nth(children, j, logger)
                         if row is not None:
                             results.append((heading, row))
             except Exception as e:
@@ -1133,21 +1298,23 @@ def extract_all_candidates_from_data(headers, data, extraction_context=None):
     """
     Extract all unique candidate names from the data, using the provided headers and context.
     Optionally uses extraction_context for more robust candidate column detection.
+    Safeguards .lower, .split, .strip, .startswith, and .get usage.
     """
     candidates = set()
     # Try to find the candidate column robustly
     candidate_col = None
     # 1. Use context if available
-    if extraction_context and "candidate_column" in extraction_context:
-        candidate_col = extraction_context["candidate_column"]
+    if extraction_context and isinstance(extraction_context, dict) and "candidate_column" in extraction_context:
+        candidate_col = extraction_context.get("candidate_column")
     # 2. Fallback: look for best header match
     if not candidate_col:
         for h in headers:
-            if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS):
+            h_safe = h.lower() if isinstance(h, str) else str(h).lower()
+            if any(ck in h_safe for ck in CANDIDATE_KEYWORDS):
                 candidate_col = h
                 break
     # 3. Fallback: use "Candidate" if present
-    if not candidate_col and "Candidate" in headers:
+    if not candidate_col and any((isinstance(h, str) and h == "Candidate") for h in headers):
         candidate_col = "Candidate"
     # 4. If still not found, skip extraction
     if not candidate_col:
@@ -1155,44 +1322,74 @@ def extract_all_candidates_from_data(headers, data, extraction_context=None):
         return candidates
 
     for row in data:
-        val = row.get(candidate_col, "")
+        val = row.get(candidate_col, "") if isinstance(row, dict) else ""
+        # Defensive: ensure val is a string for split
+        if not isinstance(val, str):
+            val = str(val)
         for part in val.split("\n"):
-            part = part.strip()
+            part_safe = part.strip() if isinstance(part, str) else str(part).strip()
             # Filter out party-only or generic lines
-            if part and not any(part.lower().startswith(pk) for pk in PARTY_KEYWORDS):
-                candidates.add(part)
+            if part_safe and not any(
+                part_safe.lower().startswith(pk.lower() if isinstance(pk, str) else str(pk).lower())
+                for pk in PARTY_KEYWORDS
+            ):
+                candidates.add(part_safe)
     return candidates
+
 # 1. ML-based table detection (e.g., using a model to find tables in arbitrary HTML)
 def ml_based_table_detection(page, extraction_context=None):
     """
     Use a machine learning model to detect and extract tables from arbitrary HTML.
     Returns a list of (headers, data, diagnostics) tuples.
     Each diagnostics dict includes the extraction_context for traceability.
+    Enhanced: uses safe_content, robust error handling, and logs more diagnostics.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = ContextCoordinator()
     try:
-        ml_tables = detect_tables_ml(page.content())
+        html = safe_content(page)
+        if not html or not isinstance(html, str) or len(html) < 100:
+            logger.error("[ML TABLE DETECTION] Empty or invalid HTML content for ML table detection.")
+            return []
+        ml_tables = detect_tables_ml(html)
         results = []
         for idx, table_dict in enumerate(ml_tables):
-            headers = table_dict.get("headers", [])
-            data = table_dict.get("data", [])
+            headers = table_dict.get("headers", []) if isinstance(table_dict, dict) else []
+            data = table_dict.get("data", []) if isinstance(table_dict, dict) else []
             # Optionally, correlate context to this table (if available)
             context = extraction_context if extraction_context else {}
             if coordinator and hasattr(coordinator, "get_for_table_builder"):
-                context = coordinator.get_for_table_builder()
+                try:
+                    context = coordinator.get_for_table_builder()
+                except Exception as e:
+                    logger.warning(f"[ML TABLE DETECTION] Could not get context from coordinator: {e}")
             diagnostics = {
                 "ml_table_index": idx,
                 "row_count": len(data),
                 "headers": headers,
-                "extraction_context": context
+                "extraction_context": context,
+                "source": "ml_based_table_detection"
             }
             # Optionally, attach context to each row for downstream traceability
-            if headers and data:
-                # Optionally, add context to each row (comment out if not needed)
-                # for row in data:
-                #     row["_extraction_context"] = context
+            if headers and data and isinstance(headers, list) and isinstance(data, list):
+                # Attach context and diagnostics to each row for traceability and debugging
+                for row in data:
+                    # Only attach if row is a dict (defensive)
+                    if isinstance(row, dict):
+                        # Attach extraction context (if not already present)
+                        if "_extraction_context" not in row:
+                            row["_extraction_context"] = context
+                        # Attach ML diagnostics index for traceability
+                        row["_ml_table_index"] = idx
+                        # Optionally, attach header signature for deduplication/debug
+                        row["_header_signature"] = tuple(headers)
+                        # Optionally, attach row source
+                        row["_row_source"] = "ml_based_table_detection"
                 results.append((headers, data, diagnostics))
+            else:
+                logger.warning(f"[ML TABLE DETECTION] Skipping table {idx}: invalid headers or data.")
+        if not results:
+            logger.warning("[ML TABLE DETECTION] No tables detected by ML model.")
         return results
     except Exception as e:
         logger.error(f"[ML TABLE DETECTION] Error: {e}")
@@ -1206,9 +1403,10 @@ def nested_table_extraction(page):
     """
     try:
         results = []
-        tables = page.locator("table table")
-        for i in range(tables.count()):
-            table = tables.nth(i)
+        tables = safe_locator(page, "table table", logger)
+        table_count = safe_count(tables, logger)
+        for i in range(table_count):
+            table = safe_nth(tables, i, logger)
             if table is not None:
                 headers, data, diagnostics = extract_table_data(table)
                 diagnostics = diagnostics or {}
@@ -1225,9 +1423,14 @@ def robust_html_fallback_extraction(page):
     """
     Use BeautifulSoup to parse HTML and extract tables as a last-resort fallback.
     Returns a list of (headers, data, diagnostics) tuples.
+    Enhanced: uses LOCATION_KEYWORDS and constants for header normalization and attaches extraction context.
     """
     try:
-        html = page.content()
+        # Use safe_content from browser_utils for robust HTML extraction
+        html = safe_content(page)
+        if not html or not isinstance(html, str):
+            logger.error("[HTML FALLBACK] No HTML content available for fallback extraction.")
+            return []
         soup = BeautifulSoup(html, "html.parser")
         tables = soup.find_all("table")
         all_tables = []
@@ -1235,11 +1438,21 @@ def robust_html_fallback_extraction(page):
             rows = table.find_all("tr")
             if not rows:
                 continue
+            # Extract headers, normalize using LOCATION_KEYWORDS and constants
             headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
+            # Normalize location headers if possible
+            for i, h in enumerate(headers):
+                h_norm = h.strip().lower()
+                for loc_kw in LOCATION_KEYWORDS:
+                    if loc_kw in h_norm and h != "Precinct":
+                        headers[i] = "Precinct"
             data = []
             for row in rows[1:]:
                 cells = row.find_all(["td", "th"])
-                data.append({headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))})
+                row_dict = {headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))}
+                # Attach fallback context for traceability
+                row_dict["_extraction_context"] = {"source": "robust_html_fallback", "table_index": idx}
+                data.append(row_dict)
             diagnostics = {
                 "fallback_table_index": idx,
                 "row_count": len(data),
@@ -1259,22 +1472,19 @@ def custom_plugin_extraction(page, extraction_context=None):
     Returns a list of (headers, data, diagnostics) tuples.
     """
     try:
-        plugins = extraction_context.get("plugins", []) if extraction_context else []
+        plugins = safe_get(extraction_context, "plugins", []) if extraction_context else []
         results = []
         for idx, plugin in enumerate(plugins):
-            try:
-                plugin_result = plugin.extract(page, extraction_context)
-                if plugin_result:
-                    for headers, data in plugin_result:
-                        diagnostics = {
-                            "plugin_index": idx,
-                            "plugin_name": getattr(plugin, "__name__", str(plugin)),
-                            "row_count": len(data)
-                        }
-                        if headers and data:
-                            results.append((headers, data, diagnostics))
-            except Exception as e:
-                logger.error(f"[PLUGIN EXTRACTION] Plugin {plugin}: {e}")
+            plugin_result = safe_extract(plugin, page, extraction_context)
+            if plugin_result:
+                for headers, data in plugin_result:
+                    diagnostics = {
+                        "plugin_index": idx,
+                        "plugin_name": getattr(plugin, "__name__", str(plugin)),
+                        "row_count": len(data)
+                    }
+                    if headers and data:
+                        results.append((headers, data, diagnostics))
         return results
     except Exception as e:
         logger.error(f"[PLUGIN EXTRACTION] Error: {e}")
@@ -1287,7 +1497,7 @@ def feedback_correction_loop(headers, data, extraction_context=None):
     Returns possibly corrected (headers, data).
     """
     try:
-        if extraction_context and extraction_context.get("interactive", []):
+        if extraction_context and safe_get(extraction_context, "interactive", []):
             logger.info("\n[FEEDBACK] Review extracted headers and data:")
             logger.info("Headers:", headers)
             for i, row in enumerate(data[:5]):
@@ -1313,26 +1523,28 @@ def safe_redirect_url(user_url, allowed_domains=None):
         allowed_domains = {"yourdomain.com"}
     try:
         parsed = urlparse(user_url)
-        if parsed.scheme not in {"http", "https"}:
+        if safe_scheme(parsed) not in {"http", "https"}:
             return "/"
-        if parsed.netloc and parsed.netloc not in allowed_domains:
+        if safe_netloc(parsed) and safe_netloc(parsed) not in allowed_domains:
             return "/"
         # Optionally, further sanitize the path
-        return parsed.geturl()
+        return safe_geturl(parsed)
     except Exception:
         return "/"
 
 def find_best_header(headers, keywords):
     """Find the best matching header from a set of keywords (case-insensitive, fuzzy)."""
-    headers_lower = [h.lower() for h in headers]
+    headers_lower = [safe_lower(h) for h in headers]
     # Try substring match for any keyword
     for kw in keywords:
+        kw_lower = safe_lower(kw)
         for i, h in enumerate(headers_lower):
-            if kw in h:
+            if kw_lower in h:
                 return headers[i]
     # Fuzzy match if no substring match
     for kw in keywords:
-        matches = get_close_matches(kw, headers_lower, n=1, cutoff=0.7)
+        kw_lower = safe_lower(kw)
+        matches = get_close_matches(kw_lower, headers_lower, n=1, cutoff=0.7)
         if matches:
             return headers[headers_lower.index(matches[0])]
     return None
@@ -1435,7 +1647,7 @@ def deduplicate_headers(headers, data):
     seen = set()
     new_headers = []
     for h in headers:
-        norm = normalize_header_name(h)
+        norm = normalize_header(h)
         if norm not in seen:
             new_headers.append(h)
             seen.add(norm)
@@ -2102,28 +2314,70 @@ def handle_candidate_major(headers, data, coordinator, context):
 def handle_precinct_major(headers, data, coordinator, context):
     """
     Handles tables where each row is a precinct, columns are candidates.
+    Uses context_coordinator for robust detection of location/candidate columns and context-aware scoring.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    # Use provided coordinator if available, else instantiate
+    coordinator = coordinator or ContextCoordinator()
+
+    # --- Robust detection: check if table is truly precinct-major using structure detection ---
+    structure_info = detect_table_structure(headers, data, coordinator)
+    is_precinct_major = False
+    # Heuristic: structure_info type or location/candidate columns
+    if structure_info.get("type_") == "precinct-major":
+        is_precinct_major = True
+    elif structure_info.get("location_cols") or any(is_location_header(h) for h in headers):
+        is_precinct_major = True
+    elif context and safe_get(context, "expected_structure", None) == "precinct-major":
+        is_precinct_major = True
+
+    if not is_precinct_major:
+        logger.warning("[handle_precinct_major] Table may not be precinct-major. Structure info: %s", structure_info)
+
+    # Optionally, use context_coordinator to further validate or enrich context
+    if hasattr(coordinator, "score_header"):
+        # Score location/candidate columns for extra validation
+        location_scores = [coordinator.score_header(h, context) for h in headers if is_location_header(h)]
+        candidate_scores = [coordinator.score_header(h, context) for h in headers if any(ck in h.lower() for ck in CANDIDATE_KEYWORDS)]
+        logger.info(f"[handle_precinct_major] Location header scores: {location_scores}, Candidate header scores: {candidate_scores}")
+
+    # Proceed to pivot using robust context and coordinator
     return pivot_precinct_major_to_wide(headers, data, coordinator, context)
 
-def handle_ambiguous(headers, data, coordinator, context):
+def handle_ambiguous(headers, data, coordinator, context) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     Handles ambiguous tables by trying both handlers and picking the one with more filled data.
+    Uses context_coordinator for additional context-aware scoring if available.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
+
     # Try candidate-major
     cand_headers, cand_data = handle_candidate_major(headers, data, coordinator, context)
     # Try precinct-major
     prec_headers, prec_data = handle_precinct_major(headers, data, coordinator, context)
-    # Heuristic: pick the one with more non-empty cells
-    def non_empty_count(data):
-        return sum(1 for row in data for v in row.values() if v not in ("", "0", 0, None))
-    if non_empty_count(cand_data) >= non_empty_count(prec_data):
-        return cand_headers, cand_data
+
+    # Heuristic: pick the one with more non-empty cells, using safe_values for robustness
+    def non_empty_count(data) -> int:
+        return sum(1 for row in data for v in safe_values(row) if v not in ("", "0", 0, None))
+
+    cand_score = non_empty_count(cand_data)
+    prec_score = non_empty_count(prec_data)
+
+    # If context_coordinator has a scoring method, use it to break ties or further improve selection
+    if hasattr(coordinator, "score_header"):
+        cand_struct_score = sum(coordinator.score_header(h, context) for h in cand_headers) / max(1, len(cand_headers))
+        prec_struct_score = sum(coordinator.score_header(h, context) for h in prec_headers) / max(1, len(prec_headers))
+        # Weighted: prefer more filled data, but use structure score as tiebreaker
+        if cand_score > prec_score or (cand_score == prec_score and cand_struct_score >= prec_struct_score):
+            return cand_headers, cand_data
+        else:
+            return prec_headers, prec_data
     else:
-        return prec_headers, prec_data
+        if cand_score >= prec_score:
+            return cand_headers, cand_data
+        else:
+            return prec_headers, prec_data
 
 def pivot_to_wide_format(
     headers: List[str],
@@ -2136,11 +2390,38 @@ def pivot_to_wide_format(
     # 1. Detect location header robustly and normalize to "Precinct"
     location_header = None
     percent_header = None
+
+    # Use entity_info for robust detection if available
+    if entity_info:
+        location_header = entity_info.get("location_header", None)
+        percent_header = entity_info.get("percent_header", None)
+        entity_candidates = set(safe_strip(c) for c in entity_info.get("people", []) if c)
+        entity_locations = set(safe_strip(l) for l in entity_info.get("locations", []) if l)
+    else:
+        entity_candidates = set()
+        entity_locations = set()
+
+    # Use coordinator for fallback detection if needed
+    if coordinator and (not location_header or not percent_header):
+        detected_loc, detected_pct, _ = dynamic_detect_location_header(headers, coordinator)
+        if not location_header:
+            location_header = detected_loc
+        if not percent_header:
+            percent_header = detected_pct
+
+    # Fallback to header scan if not found in entity_info or coordinator
     for h in headers:
-        if is_location_header(h) and h.lower() != "candidate":
+        if not location_header and is_location_header(h) and safe_lower(h) != "candidate":
             location_header = h
-        if h.lower() in (ph.lower() for ph in PERCENT_KEYWORDS) or "%" in h or "reported" in h.lower():
+        if not percent_header and (safe_lower(h) in (safe_lower(ph) for ph in PERCENT_KEYWORDS) or "%" in h or "reported" in safe_lower(h)):
             percent_header = h
+
+    # Use context for fallback if still not found
+    if not location_header and context:
+        location_header = safe_get(context, "location_header", "Precinct")
+    if not percent_header and context:
+        percent_header = safe_get(context, "percent_header", "Percent Reported")
+
     if not location_header:
         location_header = "Precinct"
     if location_header != "Precinct":
@@ -2148,13 +2429,14 @@ def pivot_to_wide_format(
         for row in data:
             row["Precinct"] = row.pop(location_header)
         location_header = "Precinct"
+
     # 2. Gather all unique candidates and ballot types using canonical normalization
-    candidates = set()
+    candidates = set(entity_candidates)
     ballot_types = set()
     for row in data:
-        cand = row.get("Candidate", "")
+        cand = safe_get(row, "Candidate", "")
         if cand:
-            candidates.add(cand.strip())
+            candidates.add(safe_strip(cand))
         for h in row.keys():
             norm_h = normalize_segment_text(h)
             if norm_h in [normalize_segment_text(bt) for bt in BALLOT_TYPES_SORT_ORDER] or h in BALLOT_TYPES_SORT_ORDER:
@@ -2170,6 +2452,7 @@ def pivot_to_wide_format(
     for bt in sorted(ballot_types):
         if bt not in ballot_types_sorted:
             ballot_types_sorted.append(bt)
+
     # 3. Build wide headers: Precinct, % Reported, [Candidate - BallotType ... Total Vote], Grand Total
     wide_headers = [location_header]
     if percent_header:
@@ -2179,8 +2462,14 @@ def pivot_to_wide_format(
             wide_headers.append(f"{candidate} - {bt}")
         wide_headers.append(f"{candidate} - Total Vote")
     wide_headers.append("Grand Total")
+
     # 4. Build wide data, one row per unique location
-    location_values = set(row.get(location_header, "") for row in data if row.get(location_header, ""))
+    # Use entity_info locations if available, else extract from data
+    if entity_locations:
+        location_values = entity_locations
+    else:
+        location_values = set(safe_get(row, location_header, "") for row in data if safe_get(row, location_header, ""))
+
     wide_data = []
     for loc in sorted(location_values):
         out_row = {h: "" for h in wide_headers}
@@ -2188,7 +2477,7 @@ def pivot_to_wide_format(
         if percent_header:
             # Use the first found value for this precinct
             for row in data:
-                if row.get(location_header, "") == loc and percent_header in row:
+                if safe_get(row, location_header, "") == loc and percent_header in row:
                     out_row[percent_header] = row[percent_header]
                     break
         grand_total = 0
@@ -2197,7 +2486,7 @@ def pivot_to_wide_format(
             for bt in ballot_types_sorted:
                 val = ""
                 for row in data:
-                    if row.get(location_header, "") == loc and row.get("Candidate", "") == candidate:
+                    if safe_get(row, location_header, "") == loc and safe_strip(safe_get(row, "Candidate", "")) == candidate:
                         val = row.get(bt, "") or row.get(f"{candidate} - {bt}", "")
                         break
                 out_row[f"{candidate} - {bt}"] = val if val not in (None, "") else "-"
@@ -2210,7 +2499,10 @@ def pivot_to_wide_format(
             grand_total += cand_total
         out_row["Grand Total"] = str(grand_total)
         wide_data.append(out_row)
-    logger.info(f"[TABLE_CORE][pivot_to_wide_format] Wide format: {len(wide_data)} rows, {len(wide_headers)} columns.")
+    logger.info(
+        f"[TABLE_CORE][pivot_to_wide_format] Wide format: {len(wide_data)} rows, {len(wide_headers)} columns. "
+        f"Used coordinator: {bool(coordinator)}, Used context: {bool(context)}"
+    )
     return wide_headers, wide_data
 
 def pivot_precinct_major_to_wide(
@@ -2218,17 +2510,22 @@ def pivot_precinct_major_to_wide(
     data: List[Dict[str, Any]],
     coordinator: "ContextCoordinator",
     context: dict
-) -> Tuple[List[str], List[Dict[str, Any]]]:
+) -> Tuple[List[str], List[Dict[str, Any]], dict]:
     """
     Pivot a precinct-major table to wide format:
     Precinct | Percent Reported | [Candidate (Party) - BallotType ... Total Votes] | [Misc Totals] | Grand Total
     Handles variable ballot types and miscellaneous columns.
+    Context is used for fallback values and robust header/entity detection.
+    Returns (output_headers, output_rows, info_dict) where info_dict includes location_entity_value.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = ContextCoordinator()
-    location_header, percent_header = dynamic_detect_location_header(headers, coordinator)
+    # Use context for robust header/entity detection
+    location_header, percent_header, location_entity_value = dynamic_detect_location_header(headers, coordinator)
     if not percent_header:
-        percent_header = "Percent Reported"
+        percent_header = safe_get(context, "percent_header", "Percent Reported")
+    if not location_header:
+        location_header = safe_get(context, "location_header", "Precinct")
 
     # Parse headers
     candidate_party_ballot = {}  # (candidate, party) -> {ballot_types: header}
@@ -2272,7 +2569,7 @@ def pivot_precinct_major_to_wide(
 
     # Remove candidate columns from misc_columns
     for (candidate, party), bt_map in candidate_party_ballot.items():
-        for bt, h in bt_map.items():
+        for bt, h in safe_items(bt_map):
             if h in misc_columns:
                 misc_columns.remove(h)
 
@@ -2284,6 +2581,7 @@ def pivot_precinct_major_to_wide(
     for bt in sorted(ballot_types_set):
         if bt not in ballot_types:
             ballot_types.append(bt)
+
     # 3. Build output headers
     output_headers = [location_header, percent_header]
     candidate_columns = []
@@ -2301,8 +2599,13 @@ def pivot_precinct_major_to_wide(
         if len(row) != len(headers):
             logger.warning(f"[TABLE BUILDER] pivot_precinct_major_to_wide Row length mismatch: {row}")
         out_row = {}
-        out_row[location_header] = row.get(location_header, "")
-        out_row[percent_header] = row.get(percent_header, "Fully Reported")
+        # Use context fallback for location/percent if missing
+        # --- Robustly use location_entity_value if location is missing ---
+        location_val = safe_get(row, location_header, None)
+        if not location_val and location_entity_value:
+            location_val = location_entity_value
+        out_row[location_header] = location_val if location_val is not None else safe_get(context, "location_value", "")
+        out_row[percent_header] = safe_get(row, percent_header, safe_get(context, "percent_value", "Fully Reported"))
         grand_total = 0
         # Candidate columns
         for candidate, party in sorted(candidate_party_set):
@@ -2310,9 +2613,9 @@ def pivot_precinct_major_to_wide(
             bt_map = candidate_party_ballot.get((candidate, party), {})
             for bt in ballot_types:
                 col = f"{candidate} ({party}) - {bt}"
-                val = row.get(bt_map.get(bt, ""), "")
+                val = safe_get(row, safe_get(bt_map, bt, ""), "")
                 try:
-                    ival = int(val.replace(",", "")) if val else 0
+                    ival = int(safe_replace(val, ",", "")) if val else 0
                 except Exception:
                     ival = 0
                 out_row[col] = str(ival) if val != "" else ""
@@ -2321,9 +2624,12 @@ def pivot_precinct_major_to_wide(
             grand_total += cand_total
         # Misc columns
         for h in misc_columns:
-            out_row[h] = row.get(h, "")
+            out_row[h] = safe_get(row, h, "")
             try:
-                grand_total += int(row.get(h, "0").replace(",", "")) if row.get(h, "") else 0
+                misc_val = safe_get(row, h, "0")
+                misc_val_clean = safe_replace(misc_val, ",", "")
+                if misc_val_clean and (safe_isdigit(misc_val_clean) or (safe_startswith(misc_val_clean, "-") and safe_isdigit(misc_val_clean[1:]))):
+                    grand_total += int(misc_val_clean)
             except Exception:
                 pass
         out_row["Grand Total"] = str(grand_total)
@@ -2335,22 +2641,31 @@ def pivot_precinct_major_to_wide(
     totals_row[percent_header] = ""
     for h in candidate_columns + misc_columns + ["Grand Total"]:
         try:
-            values = [r.get(h, "0").replace(",", "") for r in output_rows]
-            if all(v == "" or v.isdigit() or (v.startswith('-') and v[1:].isdigit()) for v in values):
+            values = [safe_replace(safe_get(r, h, "0"), ",", "") for r in output_rows]
+            if all(v == "" or safe_isdigit(v) or (safe_startswith(v, "-") and safe_isdigit(v[1:])) for v in values):
                 totals_row[h] = str(sum(int(v) for v in values if v != ""))
             else:
                 totals_row[h] = ""
         except Exception:
             totals_row[h] = ""
     output_rows.append(totals_row)
-    logger.info(f"[TABLE BUILDER] Build dynamic tables Final table: {len(output_rows)} rows, {len(output_headers)} columns.")
-    return output_headers, output_rows
+    logger.info(
+        f"[TABLE BUILDER] Build dynamic tables Final table: {len(output_rows)} rows, {len(output_headers)} columns. "
+        f"Location entity value used: {location_entity_value}"
+    )
+    # Return info dict for downstream use
+    info_dict = {
+        "location_header": location_header,
+        "percent_header": percent_header,
+        "location_entity_value": location_entity_value,
+    }
+    return output_headers, output_rows, info_dict
 
-def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoordinator") -> Tuple[str, str]:
+def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoordinator") -> Tuple[str, str, str]:
     """
     Dynamically detect the first and second location columns (e.g., precinct, ward, city, district, municipal).
     Uses context, regex, NER, and library.
-    Returns (location_header, percent_reported_header)
+    Returns (location_header, percent_reported_header, location_entity_value)
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = ContextCoordinator()
@@ -2376,6 +2691,7 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     norm_headers = [normalize_text(h) for h in headers]
     location_header = None
     percent_header = None
+    location_entity_value = None
 
     # 1. Try exact match (case-insensitive)
     for idx, h in enumerate(norm_headers):
@@ -2396,13 +2712,14 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
             if location_header:
                 break
 
-    # 3. Try spaCy NER if available
+    # 3. Try spaCy NER if available, and store entity value
     if not location_header and coordinator:
         for idx, h in enumerate(headers):
             entities = coordinator.extract_entities(h)
             for ent, label in entities:
                 if label in {"GPE", "LOC", "FAC"}:
                     location_header = headers[idx]
+                    location_entity_value = ent  # <-- Store the entity value
                     break
             if location_header:
                 break
@@ -2434,100 +2751,172 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     if not percent_header and headers:
         percent_header = next((h for h in headers if "%" in h), None)
 
-    logger.info(f"[TABLE BUILDER] Location header detected: {location_header}, Percent header detected: {percent_header}")
-    return location_header, percent_header
+    logger.info(f"[TABLE BUILDER] Location header detected: {location_header}, Percent header detected: {percent_header}, Location entity: {location_entity_value}")
+    return location_header, percent_header, location_entity_value
 
-def is_likely_header(row):
+def is_likely_header(row) -> bool:
+    """
+    Heuristically determine if a row is likely a header row.
+    Uses robust normalization (safe_lower, safe_strip) and keyword sets.
+    """
     # Combine all relevant keywords into a single set for header detection
     known_fields = (
-        set(k.lower() for k in CANDIDATE_KEYWORDS)
-        | set(k.lower() for k in PARTY_KEYWORDS)
-        | set(k.lower() for k in LOCATION_KEYWORDS)
-        | set(k.lower() for k in PERCENT_KEYWORDS)
-        | set(k.lower() for k in TOTAL_KEYWORDS)
+        set(safe_lower(k) for k in CANDIDATE_KEYWORDS)
+        | set(safe_lower(k) for k in PARTY_KEYWORDS)
+        | set(safe_lower(k) for k in LOCATION_KEYWORDS)
+        | set(safe_lower(k) for k in PERCENT_KEYWORDS)
+        | set(safe_lower(k) for k in TOTAL_KEYWORDS)
         | {"votes", "percent", "district", "party", "candidate"}
     )
-    return sum(1 for cell in row if any(k in cell.lower() for k in known_fields)) >= 2
+    # Use safe_lower and safe_strip for each cell
+    return sum(
+        1 for cell in row
+        if any(k in safe_lower(safe_strip(cell)) for k in known_fields)
+    ) >= 2
 
 # ===================================================================
 # ADVANCED/UTILITY FUNCTIONS
 # ===================================================================
 
-def normalize_text(text):
+def normalize_text(text, lang="en", collapse_whitespace=True, translate_func=None) -> str:
     """
-    Normalize text for comparison: lowercase, strip, remove accents.
+    Normalize text for comparison:
+    - Converts to string, strips, lowercases, removes accents.
+    - Optionally collapses whitespace.
+    - Optionally translates if a translation function is provided and lang != 'en'.
     """
     if not isinstance(text, str):
         text = str(text)
     text = text.strip().lower()
     text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
+    if collapse_whitespace:
+        text = re.sub(r"\s+", " ", text)
+    if lang != "en" and translate_func is not None:
+        text = translate_func(text, lang)
     return text
 
-def normalize_header(header, lang="en"):
+def normalize_header(header, lang="en", collapse_whitespace=True, translate_func=None) -> str:
     """
-    Normalize header for comparison: lower, strip, remove accents, and translate if needed.
-    """
-    header = header.strip().lower()
-    header = unicodedata.normalize('NFKD', header).encode('ascii', 'ignore').decode('ascii')
-    # Optionally: add translation for non-English headers here using a translation dictionary or service
-    # Example: if lang != "en": header = translate(header, lang)
-    return header
-
-def normalize_header_name(header):
-    """
-    Normalize header for deduplication and comparison.
-    Lowercase, strip, remove accents, and collapse whitespace.
+    Normalize header for comparison and deduplication:
+    - Converts to string, strips, lowercases, removes accents.
+    - Optionally collapses whitespace.
+    - Optionally translates if a translation function is provided and lang != 'en'.
     """
     if not isinstance(header, str):
         header = str(header)
     header = header.strip().lower()
     header = unicodedata.normalize('NFKD', header).encode('ascii', 'ignore').decode('ascii')
-    header = re.sub(r"\s+", " ", header)
+    if collapse_whitespace:
+        header = re.sub(r"\s+", " ", header)
+    if lang != "en" and translate_func is not None:
+        header = translate_func(header, lang)
     return header
 
-def is_date_like(val):
+def is_date_like(val) -> bool:
+    """
+    Robustly determine if a value is date-like.
+    Handles strings, numbers, and common date formats. Ignores empty/null values.
+    """
     import dateutil.parser
+    if val is None or (isinstance(val, str) and not val.strip()):
+        return False
+    # Accept numeric timestamps (e.g., 20230704)
+    if isinstance(val, (int, float)) and 1800 < val < 30000000:
+        return True
+    # Accept ISO and common date formats
     try:
-        dateutil.parser.parse(val)
+        if isinstance(val, bytes):
+            val = val.decode("utf-8", errors="ignore")
+        val_str = str(val).strip()
+        # Quick reject for very short or non-date-like strings
+        if len(val_str) < 6 or not any(c.isdigit() for c in val_str):
+            return False
+        # Try parsing
+        dateutil.parser.parse(val_str, fuzzy=True)
         return True
     except Exception:
         return False
 
-def detect_language(headers):
+def detect_language(headers) -> str:
     """
-    Detect language of headers (very basic, can be replaced with langdetect).
+    Detect language of headers (robust, supports empty input and fallback).
+    Uses langdetect if available, else defaults to 'en'.
     """
     try:
-        from langdetect import detect
-        text = " ".join(headers)
-        return detect(text)
+        from langdetect import detect, DetectorFactory
+        DetectorFactory.seed = 0  # For deterministic results
+        if not headers or not isinstance(headers, (list, tuple)):
+            return "en"
+        text = " ".join(str(h) for h in headers if h)
+        if not text.strip():
+            return "en"
+        lang = detect(text)
+        # Defensive: only return ISO 639-1 codes, fallback to 'en'
+        if isinstance(lang, str) and len(lang) == 2:
+            return lang
+        return "en"
     except Exception:
         return "en"
 
-def dynamic_required_columns(context, default_required=None):
+def dynamic_required_columns(context, default_required=None) -> set:
     """
-    Adjust required columns based on context.
+    Adjust required columns based on context and robust election constants.
+    Uses LOCATION_KEYWORDS, PERCENT_KEYWORDS, TOTAL_KEYWORDS from constants.py for flexibility.
     """
+    # Start with a robust default set if not provided
     if default_required is None:
-        default_required = {"Grand Total", "Precinct", "Location"}
-    # Example: if context says percent reported is not present, remove it
-    if not context.get("has_percent_reported", True):
-        default_required.discard("Percent Reported")
+        # Use canonical names for location and percent columns
+        default_required = set(["Grand Total", "Precinct"])
+        # Add a generic location column if not already present
+        default_required.update([kw.title() for kw in LOCATION_KEYWORDS if kw.lower() in {"precinct", "district", "ward", "county", "city"}])
+        # Add percent reported if relevant
+        default_required.update([kw.title() for kw in PERCENT_KEYWORDS])
+    # Remove percent columns if context says not present
+    if not safe_get(context, "has_percent_reported", True):
+        for kw in list(default_required):
+            if any(p.lower() in kw.lower() for p in PERCENT_KEYWORDS):
+                default_required.discard(kw)
+    # Remove location columns if context says not present
+    if not safe_get(context, "has_location", True):
+        for kw in list(default_required):
+            if any(lk.lower() in kw.lower() for lk in LOCATION_KEYWORDS):
+                default_required.discard(kw)
+    # Remove total columns if context says not present
+    if not safe_get(context, "has_totals", True):
+        for kw in list(default_required):
+            if any(tk.lower() in kw.lower() for tk in TOTAL_KEYWORDS):
+                default_required.discard(kw)
+    # Add any extra required columns from context
+    extra_required = safe_get(context, "extra_required_columns", [])
+    if extra_required:
+        default_required.update(extra_required)
     return default_required
 
-def log_failed_container(page, container, selector, idx, error_msg):
+def log_failed_container(page, container, selector, idx, error_msg) -> None:
+    """
+    Log details of a failed container extraction, using robust safe_* utilities for all DOM operations.
+    The page variable is used to provide additional context if available.
+    """
     if container is None:
         logger.error(f"[TABLE BUILDER] log_failed_container: container is None for selector {selector} idx {idx}")
         return
     try:
-        html = container.evaluate("el => el.outerHTML")
-        parent = container.locator("xpath=..")
-        parent_class = parent.get_attribute("class", []) or ""
-        parent_id = parent.get_attribute("id", []) or ""
+        # Safely get outer HTML
+        html = safe_evaluate(container, "el => el.outerHTML", logger) or ""
+        # Safely get parent element and its attributes
+        parent = safe_locator(container, "xpath=..", logger)
+        parent_class = safe_get_attribute(parent, "class", logger) or ""
+        parent_id = safe_get_attribute(parent, "id", logger) or ""
+        # Safely get heading above the container
         heading = ""
-        heading_loc = container.locator("xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]")
-        if heading_loc.count() > 0:
-            heading = heading_loc.nth(0).inner_text().strip()
+        heading_loc = safe_locator(container, "xpath=preceding-sibling::*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]", logger)
+        if safe_count(heading_loc, logger) > 0:
+            heading_el = safe_nth(heading_loc, 0, logger)
+            heading = safe_inner_text(heading_el, logger).strip() if heading_el else ""
+        # Optionally, get page URL for extra context
+        page_url = ""
+        if page is not None and hasattr(page, "url"):
+            page_url = getattr(page, "url", "")
         log_entry = {
             "selector": selector,
             "container_idx": idx,
@@ -2535,18 +2924,18 @@ def log_failed_container(page, container, selector, idx, error_msg):
             "parent_id": parent_id,
             "heading": heading,
             "error": error_msg,
-            "html": html[:2000]  # Truncate for log size
+            "html": (html[:2000] if html else ""),
+            "page_url": page_url
         }
-        log_path = get_safe_log_path(f"failed_container_{selector.replace('.', '_')}_{idx}.json")
+        safe_selector = safe_replace(selector, ".", "_")
+        log_path = get_safe_log_path(f"failed_container_{safe_selector}_{idx}.json")
         with open(log_path, "wb") as f:
             f.write(orjson.dumps(log_entry))
         logger.error(f"[TABLE BUILDER] Failed container logged: {log_path}")
     except Exception as e:
         logger.error(f"[TABLE BUILDER] Could not log failed container: {e}")
 
-
-
-def suggest_new_row_classes_from_logs(log_dir):
+def suggest_new_row_classes_from_logs(log_dir) -> Tuple[List[str], List[str]]:
     """
     Analyze failed container logs and suggest new likely row classes/IDs.
     """
@@ -2555,11 +2944,11 @@ def suggest_new_row_classes_from_logs(log_dir):
     for path in glob.glob(os.path.join(log_dir, "failed_container_*.json")):
         with open(path, "rb") as f:
             entry = orjson.loads(f.read())
-            cls = entry.get("parent_class", "")
+            cls = safe_get(entry, "parent_class", "")
             if cls:
-                for c in cls.split():
+                for c in safe_split(cls):
                     class_counter[c] += 1
-            parent_id = entry.get("parent_id", "")
+            parent_id = safe_get(entry, "parent_id", "")
             if parent_id:
                 parent_counter[parent_id] += 1
     # Suggest top classes/IDs as new selectors
@@ -2569,7 +2958,7 @@ def suggest_new_row_classes_from_logs(log_dir):
     logger.info("Suggested new row IDs:", suggested_ids)
     return suggested_classes, suggested_ids
 
-def load_dom_patterns(log_path=None):
+def load_dom_patterns(log_path=None) -> list[dict]:
     """
     Loads all DOM patterns, returns a list of dicts.
     """
@@ -2580,20 +2969,26 @@ def load_dom_patterns(log_path=None):
     with open(log_path, "rb") as f:
         return [orjson.loads(line) for line in f if line.strip()]
 
-def remove_footer_and_summary_rows(data, headers):
+def remove_footer_and_summary_rows(data, headers) -> list[dict]:
     """
     Remove rows that are likely summary, totals, or repeated headers.
     --- Only remove if 'total' or 'summary' appears in a column that is a total/summary column.
+    Advanced: also skips rows that are all empty or all repeated values.
     """
     filtered = []
-    total_cols = [h for h in headers if any(kw in h.lower() for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS))]
+    total_cols = [h for h in headers if any(kw in safe_lower(h) for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS))]
     for row in data:
-        values = list(row.values())
+        values = list(safe_values(row))
+        # Advanced: skip if all values are empty or all values are the same (repeated header row)
+        if not any(v not in ("", None) for v in values):
+            continue
+        if len(set(values)) == 1 and len(values) > 1:
+            continue
         # --- Only remove if 'total' or 'summary' appears in a total/summary column
         remove = False
         for h in total_cols:
-            v = row.get(h, "")
-            if any(kw in str(v).lower() for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS)):
+            v = safe_get(row, h, "")
+            if any(kw in safe_lower(str(v)) for kw in TOTAL_KEYWORDS.union(MISC_FOOTER_KEYWORDS)):
                 remove = True
                 break
         # --- Do not remove if header row repeated (keep as is)
@@ -2601,21 +2996,25 @@ def remove_footer_and_summary_rows(data, headers):
             filtered.append(row)
     return filtered
 
-def remove_outlier_and_empty_rows(data, min_non_empty=2):
+def remove_outlier_and_empty_rows(data, min_non_empty=2) -> list[dict]:
     """
     Remove rows with too many empty or repeated values.
-    --- Only remove if truly all values are empty.
+    --- Only keep rows with at least min_non_empty non-empty values.
+    Advanced: also skips rows where all values are the same (likely repeated header or noise).
     """
     filtered = []
     for row in data:
-        values = list(row.values())
+        values = list(safe_values(row))
         non_empty = [v for v in values if v not in ("", None)]
-        # --- Only remove if all values are empty
-        if len(non_empty) > 0:
+        # Only keep if at least min_non_empty non-empty values
+        if len(non_empty) >= min_non_empty:
+            # Skip if all values are the same (repeated header or noise)
+            if len(set(values)) == 1 and len(values) > 1:
+                continue
             filtered.append(row)
     return filtered
 
-def review_learned_table_structures(log_path=None):
+def review_learned_table_structures(log_path=None) -> None:
     """
     CLI to review/edit learned table structures.
     """
@@ -2636,10 +3035,10 @@ def review_learned_table_structures(log_path=None):
                 continue
 
     for idx, entry in enumerate(entries):
-        logger.info(f"\n[{idx}] Contest: {entry.get('contest', [])}")
-        logger.info(f"    Headers: {entry.get('headers', [])}")
-        logger.info(f"    Context: {entry.get('context', [])}")
-        logger.info(f"    Result: {entry.get('result', [])}")
+        logger.info(f"\n[{idx}] Contest: {safe_get(entry, 'contest', [])}")
+        logger.info(f"    Headers: {safe_get(entry, 'headers', [])}")
+        logger.info(f"    Context: {safe_get(entry, 'context', [])}")
+        logger.info(f"    Result: {safe_get(entry, 'result', [])}")
         logger.info("-" * 40)
 
     while True:
@@ -2667,64 +3066,102 @@ def review_learned_table_structures(log_path=None):
                 f.write(orjson.dumps(entry) + b"\n")
         logger.info("Changes saved.")
 
-def table_signature(headers):
+def table_signature(headers) -> str:
     return hashlib.md5(orjson.dumps(headers, sort_keys=True)).hexdigest()
 
-def load_table_structure_cache():
+def load_table_structure_cache() -> dict:
     if os.path.exists(TABLE_STRUCTURE_CACHE_PATH):
         with open(TABLE_STRUCTURE_CACHE_PATH, "rb") as f:
             return orjson.loads(f.read())
     return {}
 
-def save_table_structure_cache(cache):
+def save_table_structure_cache(cache) -> None:
     with open(TABLE_STRUCTURE_CACHE_PATH, "wb") as f:
         f.write(orjson.dumps(cache))
 
-def cache_table_structure(domain, headers, structure):
+def cache_table_structure(domain, headers, structure) -> None:
     cache = load_table_structure_cache()
     sig = f"{domain}:{table_signature(headers)}"
     cache[sig] = structure
     save_table_structure_cache(cache)
 
-def get_cached_table_structure(domain, headers):
+def get_cached_table_structure(domain, headers) -> list[dict]:
     cache = load_table_structure_cache()
     sig = f"{domain}:{table_signature(headers)}"
-    return cache.get(sig, [])
+    return safe_get(cache, sig, [])
 
-def guess_contest(table_headers, known_titles):
+def guess_contest(table_headers, known_titles) -> str | None:
     """
-    Try to match table headers to known contest titles using fuzzy matching.
+    Try to match table headers to known contest titles using robust matching.
+    Uses CONTEST_TITLE_KEYWORDS and CONTEST_TITLE_SKIP_PHRASES from constants.py.
+    Returns the best-matching contest keyword or None.
     """
+    # Normalize all keywords and skip phrases for robust matching
+    contest_keywords = set(normalize_for_matching(k) for k in CONTEST_TITLE_KEYWORDS)
+    skip_phrases = set(normalize_for_matching(k) for k in CONTEST_TITLE_SKIP_PHRASES)
+    contest_keywords.update(normalize_for_matching(k) for k in known_titles if k)
+
+    best_match = None
+    best_score = 0.0
+
     for header in table_headers:
-        matches = difflib.get_close_matches(header, known_titles, n=1, cutoff=0.7)
+        if not header or not isinstance(header, str):
+            continue
+        header_norm = normalize_for_matching(header)
+        # Skip known non-contest/summary/footer phrases
+        if any(skip in header_norm for skip in skip_phrases):
+            continue
+        # Try exact and substring match
+        for keyword in contest_keywords:
+            if keyword in header_norm or header_norm in keyword:
+                return keyword
+        # Fuzzy match with score
+        matches = difflib.get_close_matches(header_norm, contest_keywords, n=1, cutoff=0.7)
         if matches:
-            return matches[0]
-    return None
+            score = difflib.SequenceMatcher(None, header_norm, matches[0]).ratio()
+            if score > best_score:
+                best_match = matches[0]
+                best_score = score
+    return best_match
 
-def extract_title_from_html_near_table(table_idx, dom_nodes, window=5):
+def extract_title_from_html_near_table(table_idx, dom_nodes, window=5) -> str:
     """
     Scan nearby DOM nodes for likely contest titles.
+    Returns the first likely contest title found, or None.
     """
+    # Defensive: use constants, fallback to defaults if not present
+    title_tags = set(CONTEST_TITLE_TAGS) if 'CONTEST_TITLE_TAGS' in locals() or 'CONTEST_TITLE_TAGS' in globals() else {"h1", "h2", "h3", "caption"}
+    min_words = CONTEST_TITLE_MIN_WORDS if 'CONTEST_TITLE_MIN_WORDS' in locals() or 'CONTEST_TITLE_MIN_WORDS' in globals() else 3
+    skip_phrases = set(normalize_for_matching(k) for k in CONTEST_TITLE_SKIP_PHRASES) if 'CONTEST_TITLE_SKIP_PHRASES' in locals() or 'CONTEST_TITLE_SKIP_PHRASES' in globals() else set()
+
     idx_range = range(max(0, table_idx - window), min(len(dom_nodes), table_idx + window + 1))
     for idx in idx_range:
         node = dom_nodes[idx]
-        if node.get("tag", "").lower() in {"h1", "h2", "h3", "caption"}:
-            text = node.get("html", "").strip()
-            if text and len(text.split()) > 2:
+        tag = safe_lower(safe_get(node, "tag", ""))
+        if tag in title_tags:
+            text = safe_strip(safe_get(node, "html", ""))
+            if text and len(safe_split(text)) >= min_words:
+                text_norm = normalize_for_matching(text)
+                if any(skip in text_norm for skip in skip_phrases):
+                    continue
                 return text
     return None
 
-def merge_multirow_headers(header_rows):
+def merge_multirow_headers(header_rows) -> list[str]:
     """
     Merge multiple header rows (e.g., stacked headers) into a single header list.
+    Uses safe_strip and safe_isdigit for robustness.
     """
     merged = []
     for cols in zip(*header_rows):
-        merged_col = " ".join([c for c in cols if c and c.strip() and not c.strip().isdigit()])
-        merged.append(merged_col.strip())
+        merged_col = " ".join([
+            c for c in cols
+            if c and safe_strip(c) and not safe_isdigit(safe_strip(c))
+        ])
+        merged.append(safe_strip(merged_col))
     return merged
 
-def fuzzy_merge_headers(headers, threshold=0.85):
+def fuzzy_merge_headers(headers, threshold=0.85) -> list[str]:
     """
     Merge similar headers using fuzzy matching.
     """
@@ -2744,7 +3181,7 @@ def fuzzy_merge_headers(headers, threshold=0.85):
         used.add(i)
     return merged
 
-def profile_extraction_step(func):
+def profile_extraction_step(func) -> callable:
     """
     Decorator to profile extraction speed.
     """
@@ -2756,64 +3193,56 @@ def profile_extraction_step(func):
         return result
     return wrapper
 
-def log_decision(decision, context=None):
+def log_decision(decision, context=None) -> None:
     """
     Log not just errors but also decisions made by heuristics for later review.
     """
     logger.info(f"[DECISION] {decision} | Context: {context}")
 
-def robust_html_fallback(page):
-    """
-    Add more robust fallbacks for broken or inconsistent markup.
-    """
-    try:
-        html = page.content()
-        # Try to parse with BeautifulSoup as a fallback
-        soup = BeautifulSoup(html, "html.parser")
-        tables = soup.find_all("table")
-        all_tables = []
-        for table in tables:
-            rows = table.find_all("tr")
-            headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
-            data = []
-            for row in rows[1:]:
-                cells = row.find_all(["td", "th"])
-                data.append({headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))})
-            all_tables.append((headers, data))
-        return all_tables
-    except Exception as e:
-        logger.error(f"[HTML FALLBACK] Error: {e}")
-        return []
-
-def handle_nested_tables(page):
+def handle_nested_tables(page) -> list[tuple[list[str], list[list[str]], dict]]:
     """
     Handle tables within tables or complex nested DOM structures.
+    Returns a list of (headers, data, diagnostics) tuples.
+    Enhanced: attaches diagnostics, skips empty tables, logs extraction.
     """
-    tables = page.locator("table table")
-    results = []
-    for i in range(tables.count()):
-        table = tables.nth(i)
-        if table is not None:
-            headers, data, _ = extract_table_data(table)
-            results.append((headers, data))
-    return results
+    try:
+        results = []
+        tables = safe_locator(page, "table table", logger)
+        table_count = safe_count(tables, logger)
+        for i in range(table_count):
+            table = safe_nth(tables, i, logger)
+            if table is not None:
+                headers, data, diagnostics = extract_table_data(table)
+                diagnostics = diagnostics or {}
+                diagnostics["nested_table_index"] = i
+                if headers and data:
+                    results.append((headers, data, diagnostics))
+                else:
+                    logger.warning(f"[HANDLE NESTED TABLES] Skipping empty or malformed nested table at index {i}.")
+        if not results:
+            logger.warning("[HANDLE NESTED TABLES] No nested tables extracted.")
+        return results
+    except Exception as e:
+        logger.error(f"[HANDLE NESTED TABLES] Error: {e}")
+        return []
 
-def fuzzy_in(word, text, threshold=0.7):
+def fuzzy_in(word, text, threshold=0.7) -> bool:
     """Return True if word is in text by substring or fuzzy match."""
-    word = word.lower()
-    text = text.lower()
+    word = safe_strip(safe_lower(word))
+    text = safe_strip(safe_lower(text))
     if word in text:
         return True
     # Fuzzy match: allow for partials (e.g., "town" in "orangetown")
     ratio = SequenceMatcher(None, word, text).ratio()
     return ratio >= threshold
 
-def normalize_for_matching(text):
-    text = text.lower()
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    return text.strip()
+def normalize_for_matching(text) -> str:
+    text = safe_strip(safe_lower(text))
+    table = str.maketrans('', '', string.punctuation)
+    text = safe_translate(text, table)
+    return text
 
-def contains_location_keyword(text, keywords=LOCATION_KEYWORDS):
+def contains_location_keyword(text, keywords=LOCATION_KEYWORDS) -> bool:
     text_norm = normalize_for_matching(text)
     for kw in keywords:
         # Match as a whole word or as a suffix/prefix (e.g., "orangetown")
@@ -2823,7 +3252,7 @@ def contains_location_keyword(text, keywords=LOCATION_KEYWORDS):
             return True
     return False
 
-def is_location_header(header):
+def is_location_header(header) -> bool:
     """
     Robustly determine if a header is a location column using LOCATION_KEYWORDS and abbreviations.
     This is the SINGLE SOURCE OF TRUTH for location column detection.

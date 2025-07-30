@@ -16,12 +16,14 @@ from datetime import datetime, timezone
 from fuzzywuzzy import process
 from ..utils.shared_logger import SharedLogger
 import difflib
-from ..utils.shared_logic import (
-    scan_buttons_with_progress, keyphrase_match,
-    normalize_state_name, normalize_county_name, safe_get_first,
-    safe_model_encode, safe_locator, safe_nth, safe_inner_text, safe_get_attribute,
+from ..utils.browser_utils import (
+    safe_nth, safe_locator,  safe_inner_text, safe_get_attribute,
     safe_evaluate, safe_is_visible, safe_is_enabled, safe_click,
-    safe_wait_for_timeout, safe_count, safe_startswith, safe_isupper,
+    safe_wait_for_timeout, safe_count, scan_buttons_with_progress
+)
+from ..utils.shared_logic import (
+    keyphrase_match, normalize_state_name, normalize_county_name, safe_get_first,
+    safe_model_encode, safe_startswith, safe_isupper,
     _sync_type_and_election_types, safe_get, safe_items, safe_lower, safe_endswith,
     safe_similarity
 )

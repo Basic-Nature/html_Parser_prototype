@@ -340,14 +340,6 @@ def advanced_party_candidate_detection(headers, coordinator):
                 result["location"].append(idx)
     return result
 
-def normalize_header(header, lang="en"):
-    """
-    Normalize header for comparison: lower, strip, remove accents, and translate if needed.
-    """
-    header = header.strip().lower()
-    header = unicodedata.normalize('NFKD', header).encode('ascii', 'ignore').decode('ascii')
-    return header
-
 def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoordinator") -> Dict[str, Dict[str, List[str]]]:
     """
     Returns a dict: {party: {candidate: [ballot_types]}}
@@ -392,17 +384,53 @@ def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoor
             candidate_party_map[party][candidate].append(ballot_types)
     return candidate_party_map
 
-def entity_linking(header, known_entities):
+def entity_linking(header, known_entities, threshold=0.8, return_score=False, allow_substring=True, allow_token_match=True):
     """
-    Link header to known candidates/parties for normalization.
+    Link header to known candidates/parties/entities for normalization.
+    Uses robust normalization, fuzzy, substring, and token-based matching.
+    Returns the best match if above threshold, else the original header.
+    If return_score is True, returns (best_match, score).
     """
     import difflib
-    best, score = None, 0
+    from ..utils.table_core import normalize_header
+
+    header_norm = normalize_header(header)
+    best, best_score = None, 0
+
+    # 1. Exact and substring match (case-insensitive, normalized)
     for ent in known_entities:
-        s = difflib.SequenceMatcher(None, normalize_header(header), normalize_header(ent)).ratio()
-        if s > score:
-            best, score = ent, s
-    return best if score > 0.8 else header
+        ent_norm = normalize_header(ent)
+        if allow_substring and (ent_norm in header_norm or header_norm in ent_norm):
+            if return_score:
+                return ent, 1.0
+            return ent
+
+    # 2. Token-based match (all tokens in entity must be in header or vice versa)
+    if allow_token_match:
+        header_tokens = set(header_norm.split())
+        for ent in known_entities:
+            ent_norm = normalize_header(ent)
+            ent_tokens = set(ent_norm.split())
+            if header_tokens and ent_tokens and (header_tokens <= ent_tokens or ent_tokens <= header_tokens):
+                if return_score:
+                    return ent, 0.95
+                return ent
+
+    # 3. Fuzzy match (difflib)
+    for ent in known_entities:
+        ent_norm = normalize_header(ent)
+        s = difflib.SequenceMatcher(None, header_norm, ent_norm).ratio()
+        if s > best_score:
+            best, best_score = ent, s
+
+    if best_score >= threshold:
+        if return_score:
+            return best, best_score
+        return best
+
+    if return_score:
+        return header, best_score
+    return header
 
 # --- Pattern/Selector Discovery & Logging ---
 

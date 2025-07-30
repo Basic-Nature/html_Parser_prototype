@@ -5,7 +5,10 @@ from .....utils.table_builder import build_dynamic_table
 from .....utils.table_core import harmonize_headers_and_data
 from .....utils.output_utils import finalize_election_output
 from .....utils.shared_logger import SharedLogger
-from .....utils.shared_logic import autoscroll_until_stable, safe_is_visible, safe_is_enabled, safe_click, safe_get
+from .....utils.browser_utils import (
+    autoscroll_until_stable, safe_is_visible, safe_is_enabled, safe_click
+)
+from .....utils.shared_logic import  safe_get
 from .....utils.user_prompt import UserPrompt
 from .....utils.html_scanner import scan_html_for_context
 from .....Context_Integration.librarian import (

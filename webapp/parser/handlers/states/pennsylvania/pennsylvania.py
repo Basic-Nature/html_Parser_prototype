@@ -3,10 +3,11 @@ from pathlib import Path
 import csv
 from ....utils.shared_logger import SharedLogger
 from ....utils.shared_logic import (
-    safe_get, safe_lower, safe_strip, safe_isdigit, 
-    safe_click, safe_wait_for_timeout, safe_inner_text, safe_replace
+    safe_get, safe_lower, safe_strip, safe_isdigit, safe_replace
 )
-from ....utils.browser_utils import safe_query_selector_all
+from ....utils.browser_utils import (
+    safe_query_selector_all, safe_click, safe_wait_for_timeout, safe_inner_text
+)
 from ....utils.output_utils import finalize_election_output
 from ....config import CONTEXT_DB_PATH, BASE_DIR
 

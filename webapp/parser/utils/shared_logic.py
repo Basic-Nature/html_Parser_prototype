@@ -8,16 +8,16 @@ import time
 import numpy as np
 import inspect
 from sqlalchemy.orm import Session
+from urllib.parse import ParseResult, SplitResult
 from ..utils.shared_logger import SharedLogger, RichConsoleProxy
 from ..utils.user_prompt import UserPrompt
-from playwright.sync_api import Page, Locator, ElementHandle
 from sentence_transformers import SentenceTransformer
 from ..Context_Integration.Context_Library.constants import (
     STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
 )
 from typing import (
     TYPE_CHECKING, Optional, Generator, Any, Iterable, Dict, 
-    Union, Iterable, Collection, Protocol, Awaitable, TypedDict,
+    Union, Iterable, Protocol, Awaitable, TypedDict,
     List, Callable, Mapping, Sequence, runtime_checkable
 )
 if TYPE_CHECKING:
@@ -28,7 +28,6 @@ assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
 console = RichConsoleProxy()   
 prompt = UserPrompt()
 logger = SharedLogger()
-
 
 @runtime_checkable
 class HasItem(Protocol):
@@ -99,6 +98,74 @@ class Predictable(Protocol):
             Exception: If prediction fails.
         """
         ...
+
+def safe_translate(val: str, table) -> str:
+    """
+    Safely call .translate on a string-like object.
+    Returns the translated string, or the original value if not a string or error occurs.
+    """
+    try:
+        if isinstance(val, str):
+            return val.translate(table)
+        return str(val).translate(table)
+    except Exception:
+        return str(val)
+
+def safe_scheme(parsed: Union[ParseResult, SplitResult, object]) -> str:
+    try:
+        if hasattr(parsed, "scheme"):
+            return parsed.scheme
+        return getattr(parsed, "scheme", "")
+    except Exception:
+        return ""
+
+def safe_netloc(parsed: Union[ParseResult, SplitResult, object]) -> str:
+    try:
+        if hasattr(parsed, "netloc"):
+            return parsed.netloc
+        return getattr(parsed, "netloc", "")
+    except Exception:
+        return ""
+
+def safe_geturl(parsed: Union[ParseResult, SplitResult]) -> str:
+    try:
+        if hasattr(parsed, "geturl"):
+            return parsed.geturl()
+        return getattr(parsed, "geturl", "")
+    except Exception:
+        return ""
+
+def safe_extract(plugin, page, extraction_context):
+    """
+    Safely call the extract method of a plugin, handling missing methods and exceptions.
+    """
+    try:
+        if hasattr(plugin, "extract") and callable(getattr(plugin, "extract")):
+            return plugin.extract(page, extraction_context)
+        else:
+            logger.warning(f"[PLUGIN EXTRACTION] Plugin {plugin} has no callable 'extract' method.")
+            return []
+    except Exception as e:
+        logger.error(f"[PLUGIN EXTRACTION] Error in plugin {plugin}: {e}")
+        return []
+
+def safe_isalpha(val: Any) -> bool:
+    """
+    Safely check if val is a string and .isalpha() returns True.
+    Returns False for non-strings or on error.
+    """
+    try:
+        return isinstance(val, str) and val.isalpha()
+    except Exception:
+        return False
+
+def safe_pop(dct: dict, key: str, default=None) -> Any:
+    try:
+        if isinstance(dct, dict):
+            return dct.pop(key, default)
+    except Exception:
+        pass
+    return default
 
 def safe_merge_defaults(existing: dict, defaults: dict) -> bool:
     """
@@ -308,15 +375,6 @@ def safe_append(lst, value, logger: SharedLogger, deduplicate=False) -> bool:
         if logger:
             logger.error(f"[safe_append] Error appending value: {e}")
         return False
-
-def safe_url(page) -> str:
-    """Safely get the URL from a Playwright page object."""
-    try:
-        url = getattr(page, "url", "")
-        return str(url) if isinstance(url, str) else ""
-    except Exception as e:
-        logger.error(f"[safe_url] Error accessing page.url: {e}")
-        return ""
 
 def safe_update(dct, updates, logger: SharedLogger) -> None:
     """
@@ -692,26 +750,6 @@ def safe_get_first(lst, label, url, logger: SharedLogger, default=None, allow_no
     logger.error(f"[DOM_PARTS] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
     return default
 
-def safe_is_visible(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
-    """Safely call .is_visible on a Playwright element handle or locator."""
-    try:
-        if hasattr(obj, "is_visible"):
-            return obj.is_visible()
-        return False
-    except Exception as e:
-        if logger: logger.error(f"[safe_is_visible] Error: {e}")
-        return False
-
-def safe_is_enabled(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
-    """Safely call .is_enabled on a Playwright element handle or locator."""
-    try:
-        if hasattr(obj, "is_enabled"):
-            return obj.is_enabled()
-        return False
-    except Exception as e:
-        if logger: logger.error(f"[safe_is_enabled] Error: {e}")
-        return False
-
 def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, coordinator: Optional["ContextCoordinator"] = None, logger: SharedLogger = None, **kwargs: Any) -> Any:
     """
     Safely call handler.parse, injecting coordinator if supported.
@@ -778,114 +816,7 @@ def safe_endswith(obj: Union[str, bytes], suffix: Union[str, bytes], logger: Sha
         if logger: logger.error(f"[safe_endswith] Error: {e}")
         return False
 
-def safe_locator(page: Page, selector: str, logger: SharedLogger = None) -> Optional[Locator]:
-    """Safely call .locator on a Playwright page."""
-    try:
-        if hasattr(page, "locator"):
-            return page.locator(selector)
-        return None
-    except Exception as e:
-        if logger: logger.error(f"[safe_locator] Error: {e}")
-        return None
-
-def safe_count(obj: Union[Locator, Collection], logger: SharedLogger = None) -> int:
-    """Safely call .count() on a locator or collection."""
-    try:
-        if hasattr(obj, "count"):
-            return obj.count()
-        if hasattr(obj, "__len__"):
-            return len(obj)
-        return 0
-    except Exception as e:
-        if logger: logger.error(f"[safe_count] Error: {e}")
-        return 0
-
-def safe_evaluate(obj: Union[Locator, ElementHandle], script: str, logger: SharedLogger = None) -> Any:
-    """Safely call .evaluate on a Playwright element handle."""
-    try:
-        if hasattr(obj, "evaluate"):
-            return obj.evaluate(script)
-        return None
-    except Exception as e:
-        if logger: logger.error(f"[safe_evaluate] Error: {e}")
-        return None
-
-def safe_is_visible(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
-    """Safely call .is_visible on a Playwright element handle."""
-    try:
-        if hasattr(obj, "is_visible"):
-            return obj.is_visible()
-        return False
-    except Exception as e:
-        if logger: logger.error(f"[safe_is_visible] Error: {e}")
-        return False
-
-def safe_is_enabled(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
-    """Safely call .is_enabled on a Playwright element handle."""
-    try:
-        if hasattr(obj, "is_enabled"):
-            return obj.is_enabled()
-        return False
-    except Exception as e:
-        if logger: logger.error(f"[safe_is_enabled] Error: {e}")
-        return False
-
-def safe_click(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
-    """Safely call .click on a Playwright element handle."""
-    try:
-        if hasattr(obj, "click"):
-            obj.click()
-            return True
-        return False
-    except Exception as e:
-        if logger: logger.error(f"[safe_click] Error: {e}")
-        return False
-
-def safe_wait_for_timeout(page: Page, ms: int, logger: SharedLogger = None) -> bool:
-    """Safely call .wait_for_timeout on a Playwright page."""
-    try:
-        if hasattr(page, "wait_for_timeout"):
-            page.wait_for_timeout(ms)
-            return True
-        return False
-    except Exception as e:
-        if logger: logger.error(f"[safe_wait_for_timeout] Error: {e}")
-        return False
-
-def safe_get_attribute(obj: Union[Locator, ElementHandle], attr: str, logger: SharedLogger = None) -> Optional[str]:
-    """Safely call .get_attribute on a Playwright element handle."""
-    try:
-        if hasattr(obj, "get_attribute"):
-            return obj.get_attribute(attr)
-        return None
-    except Exception as e:
-        if logger: logger.error(f"[safe_get_attribute] Error: {e}")
-        return None
-
-def safe_inner_text(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> str:
-    """Safely call .inner_text on a Playwright element handle."""
-    try:
-        if hasattr(obj, "inner_text"):
-            return obj.inner_text()
-        return ""
-    except Exception as e:
-        if logger: logger.error(f"[safe_inner_text] Error: {e}")
-        return ""
-
-def safe_nth(obj: Union[Locator, ElementHandle], index: int, logger: SharedLogger = None) -> Optional[Union[Locator, ElementHandle]]:
-    """Safely call .nth on a Playwright locator."""
-    try:
-        if hasattr(obj, "nth"):
-            return obj.nth(index)
-        # Fallback for lists
-        if isinstance(obj, (list, tuple)) and 0 <= index < len(obj):
-            return obj[index]
-        return None
-    except Exception as e:
-        if logger: logger.error(f"[safe_nth] Error: {e}")
-        return None
-
-def safe_isupper(obj, logger: SharedLogger = None):
+def safe_isupper(obj: Union[str, bytes], logger: SharedLogger = None) -> bool:
     """Safely call .isupper() on a string-like object."""
     try:
         if isinstance(obj, str):
@@ -1133,117 +1064,6 @@ def build_csv_headers(rows) -> list[str]:
         for k, _ in safe_items(row):
             headers.add(k)
     return sorted(headers)
-
-def autoscroll_until_stable(
-    page,
-    max_stable_frames=5,
-    step=8000,
-    delay_ms=200,
-    max_total_time=10000,
-    wait_for_selector=None,
-    domain=None,
-    coordinator_feedback=None,
-) -> bool:
-    """
-    Continuously scrolls a Playwright page until its scroll height and visible content stabilize
-    for at least 5 consecutive measurements, or until max_total_time is reached.
-    Optionally waits for a selector to appear.
-    Shows a dynamic progress bar using rich or emits progress via SocketIO in webapp mode.
-    Does NOT use or save any cached scroll pattern.
-    """
-
-    start_time = time.time()
-    safe_evaluate(page, "window.scrollTo(0, 0)", logger)
-    safe_wait_for_timeout(page, delay_ms, logger)
-
-    stable = 0
-    last_heights = []
-    last_texts = []
-    scroll_attempts = 0
-    max_scrolls = max_total_time // delay_ms
-    url_str = safe_url(page)
-    domain = domain or (
-        safe_get_first(url_str.split("/"), "domain_split", None, logger, default="")
-        if not ("://" in url_str) else
-        safe_get_first(url_str.split("/"), "domain_split", None, logger, default="")
-    )
-    if "://" in url_str and len(url_str.split("/")) > 2:
-        domain = safe_get_first(url_str.split("/"), "domain_split", None, logger, default="", allow_nonlist=True)
-        if isinstance(domain, list) and len(domain) > 2:
-            domain = domain[2]
-
-    def get_main_text() -> str:
-        try:
-            main_div = safe_locator(page, "main, .main-content, #main-content, body", logger)
-            if main_div:
-                return safe_inner_text(main_div, logger)
-            else:
-                return safe_inner_text(page, logger)
-        except Exception:
-            return ""
-
-    with logger.progress_bar("[cyan]Scrolling page...", total=max_scrolls) as update_progress:
-        while stable < max_stable_frames and scroll_attempts < max_scrolls:
-            current_height = safe_evaluate(page, "document.body.scrollHeight", logger)
-            current_text = get_main_text()
-            last_heights.append(current_height)
-            last_texts.append(current_text)
-            if len(last_heights) > max_stable_frames:
-                last_heights.pop(0)
-                last_texts.pop(0)
-            # Check if the last N heights and texts are all the same
-            if (
-                len(last_heights) == max_stable_frames
-                and all(h == safe_get_first(last_heights, "last_heights", None, logger) for h in last_heights)
-                and all(t == safe_get_first(last_texts, "last_texts", None, logger) for t in last_texts)
-            ):
-                stable += 1
-            else:
-                stable = 0
-            safe_evaluate(page, f"window.scrollBy(0, {step})", logger)
-            safe_wait_for_timeout(page, delay_ms, logger)
-            scroll_attempts += 1
-            update_progress(scroll_attempts)
-            if wait_for_selector and safe_locator(page, wait_for_selector, logger):
-                logger.info(f"[SCROLL] Selector '{wait_for_selector}' found. Stopping scroll.")
-                break
-            elapsed = (time.time() - start_time) * 1000
-            if elapsed > max_total_time * 0.8 and scroll_attempts % 10 == 0:
-                console.print("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
-                resp = prompt.prompt_input("Continue scrolling? (y/N): ").strip().lower()
-                if resp != "y":
-                    logger and logger.warning("[SCROLL] User aborted scrolling.")
-                    break
-        # Ensure progress bar is completed
-        update_progress(max_scrolls)
-
-    if stable >= max_stable_frames:
-        logger and logger.info("[SCROLL] Completed scrolling until page height/content stabilized.")
-        if coordinator_feedback:
-            coordinator_feedback(domain, scroll_attempts, step)
-        return True
-    else:
-        logger and logger.warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
-        if coordinator_feedback:
-            coordinator_feedback(domain, scroll_attempts, step, incomplete=True)
-        return False
-
-def scan_buttons_with_progress(buttons, scan_callback=None) -> None:
-    """
-    Scan a list of buttons with a single-line progress bar or emits progress via SocketIO in webapp mode.
-    Optionally, provide a scan_callback(button, idx) for custom logic.
-    """
-    total = len(buttons)
-    with logger.progress_bar("Scanning buttons...", total=total) as update_progress:
-        for idx, btn in enumerate(buttons):
-            label = ""
-            try:
-                label = safe_inner_text(btn, logger)[:60]
-            except Exception:
-                label = str(btn)[:60]
-            update_progress(idx + 1, extra={"label": label})
-            if scan_callback:
-                scan_callback(btn, idx)
 
 def keyphrase_match(label, keyphrase, min_words=2, fuzzy_cutoff=0.8) -> bool:
     """

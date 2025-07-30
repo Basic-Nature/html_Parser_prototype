@@ -54,6 +54,8 @@ def build_dynamic_table(
     Always merges, harmonizes, and pivots all panel tables before any feedback/confirmation.
     Returns (headers, data, entity_info) for downstream enrichment.
     """
+    from ..utils.table_core import normalize_header, merge_table_data
+    from ..utils.dynamic_table_extractor import dynamic_table_extractor
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = ContextCoordinator()
     if context is None:
@@ -68,7 +70,6 @@ def build_dynamic_table(
     if "panel_heading" in context and "Precinct" not in context:
         context["Precinct"] = context["panel_heading"]
     page = context.get("page", [])
-    from ..utils.dynamic_table_extractor import dynamic_table_extractor
 
     # --- 1. Gather all panel tables if present ---
     all_panel_tables = []
@@ -89,20 +90,32 @@ def build_dynamic_table(
         if h and d:
             all_panel_tables.append((h, d))
 
-    # --- 2. Merge and harmonize all tables ---
+    # --- 2. Merge and harmonize all tables (advanced logic) ---
     if all_panel_tables:
-        from ..utils.table_core import merge_table_data
-        merged_headers, merged_data = merge_table_data(
-            [h for h, d in all_panel_tables],
-            [d for h, d in all_panel_tables]
-        )
+        # Unpack headers and data, ensuring alignment and advanced deduplication
+        all_headers = []
+        all_data = []
+        for h, d in all_panel_tables:
+            # If h or d are lists of lists, flatten them
+            if isinstance(h, list) and any(isinstance(x, list) for x in h):
+                for sub_h in h:
+                    all_headers.append(sub_h)
+            else:
+                all_headers.append(h)
+            if isinstance(d, list) and any(isinstance(x, dict) for x in d):
+                all_data.extend(d)
+            else:
+                all_data.append(d)
+        # Remove empty headers/data and ensure alignment
+        all_headers = [h for h in all_headers if h]
+        all_data = [d for d in all_data if d]
+        # Merge headers and data with advanced deduplication and alignment
+        merged_headers, merged_data = merge_table_data(all_headers, all_data)
     else:
         merged_headers, merged_data = [], []
     merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data)
 
     # --- [NEW] Ensure all required percent columns are present ---
-    def normalize_header(h):
-        return h.strip().lower().replace("%", "percent").replace("  ", " ")
     norm_headers = set(normalize_header(h) for h in merged_headers)
     for percent_col in PERCENT_KEYWORDS:
         norm_percent_col = normalize_header(percent_col)

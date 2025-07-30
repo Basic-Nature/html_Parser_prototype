@@ -7,9 +7,12 @@ from dotenv import load_dotenv
 from ..handlers.formats import json_handler, pdf_handler, csv_handler
 from ..utils.shared_logger import SharedLogger
 from ..utils.shared_logic import (
-    safe_lower, safe_get_attribute, safe_get, safe_url, safe_isdigit
+    safe_lower, safe_get, safe_isdigit
 )
-from ..utils.browser_utils import safe_content, safe_query_selector_all, safe_context_library, safe_context_result 
+from ..utils.browser_utils import (
+    safe_content, safe_query_selector_all, safe_context_library, safe_context_result,
+    safe_get_attribute, safe_url
+)
 from urllib.parse import urljoin
 from ..config import CONTEXT_LIBRARY_PATH
 load_dotenv()
