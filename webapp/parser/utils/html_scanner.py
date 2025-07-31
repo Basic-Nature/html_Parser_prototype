@@ -7,7 +7,7 @@ import threading
 import traceback
 import tempfile
 import numpy as np
-from typing import Dict, Any, List, Optional, TYPE_CHECKING, Set, Pattern
+from typing import Dict, Any, List, Optional, Set, Pattern
 import concurrent.futures
 from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH
 from ..utils.shared_logger import SharedLogger
@@ -28,9 +28,7 @@ from ..Context_Integration.Context_Library.constants import (
     TOTAL_KEYWORDS, PERCENT_KEYWORDS, ROOT_CONTAINER_TAGS, LOCATION_ABBREVIATIONS,
     CONTEST_PANEL_TAGS, TABLE_TAGS, BALLOT_TYPES_SORT_ORDER, BUTTON_TAGS,
     BUTTON_CLASSES, STATE_TAGS, OFFICE_KEYWORDS, PRECINCT_HEADER_PATTERNS,
-    HEADING_TAGS, HEADING_CLASSES, NOISY_LABEL_PATTERNS, SELECTORS, DISTRICT_REGEX
-    
-    
+    HEADING_TAGS, HEADING_CLASSES, NOISY_LABEL_PATTERNS, SELECTORS, DISTRICT_REGEX  
 )
 from ..Context_Integration.librarian import (
     
@@ -44,9 +42,6 @@ from ..utils.user_prompt import UserPrompt
 from selectolax.parser import HTMLParser
 from ..utils.model_registry import ModelRegistry
 from difflib import get_close_matches
-
-if TYPE_CHECKING:
-    from ..Context_Integration.context_coordinator import ContextCoordinator
 
 prompt = UserPrompt()
 logger = SharedLogger()
