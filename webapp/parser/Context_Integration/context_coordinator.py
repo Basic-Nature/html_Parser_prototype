@@ -529,6 +529,50 @@ class ContextCoordinator(object):
     def library(self):
         return getattr(self.organizer, "library", {})
 
+    @property
+    def pattern_kb(self) -> List[dict]:
+        """
+        Robust property to get the current pattern KB (feedback/ML/labeling knowledge base).
+        Always returns a deduplicated list, never None.
+        """
+        try:
+            # Prefer method if available
+            if hasattr(self, "get_feedback_pattern_kb"):
+                kb = self.get_feedback_pattern_kb()
+                if kb:
+                    seen = set()
+                    deduped = []
+                    for entry in kb:
+                        key = safe_get(entry, "pattern_id") or safe_get(entry, "segment_hash")
+                        if key and key not in seen:
+                            seen.add(key)
+                            deduped.append(entry)
+                    return deduped
+            # Fallback: try attribute
+            pattern_kb = getattr(self, "_pattern_kb", None)
+            if isinstance(pattern_kb, list):
+                # Defensive deduplication
+                seen = set()
+                deduped = []
+                for entry in pattern_kb:
+                    if not isinstance(entry, dict):
+                        continue
+                    key = entry.get("pattern_id") or entry.get("segment_hash")
+                    if key and key not in seen:
+                        seen.add(key)
+                        deduped.append(entry)
+                return deduped
+        except Exception as e:
+            logger.error(f"[pattern_kb property] Error loading pattern KB: {e}")
+        # Final fallback: load from disk
+        try:
+            from ..utils.html_scanner import load_pattern_kb, deduplicate_pattern_kb
+            kb = load_pattern_kb()
+            return deduplicate_pattern_kb(kb)
+        except Exception as e:
+            logger.error(f"[pattern_kb property] Fallback load failed: {e}")
+            return []
+
     def append_to_context_library(self, organized, path=None, merge_lists=True, deduplicate=True) -> bool:
         """
         Append or update the organized context into the context library JSON file.

@@ -49,7 +49,8 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         non_interactive=non_interactive,
         allow_duplicates=getattr(coordinator, "allow_duplicates", False),
         context_cache=context_cache,
-        debug=False,        
+        debug=False,  
+        **kwargs      
     )
     
     state = context_result.get("state") or "NY"
@@ -200,6 +201,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 allow_duplicates=getattr(coordinator, "allow_duplicates", False),
                 context_cache=context_cache,
                 debug=False,
+                **kwargs
             )
 
             segments = context_result.get("tagged_segments_with_attrs", [])

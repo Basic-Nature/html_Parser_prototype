@@ -9,12 +9,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .....Context_Integration.context_coordinator import ContextCoordinator
 logger = SharedLogger()
-def parse(
-    page: Page,
-    coordinator: "ContextCoordinator",
-    html_context: dict = None,
-    non_interactive: bool = False
-):
+context_cache = {}
+def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, non_interactive=False, logger=logger, **kwargs) -> tuple:
     """
     Main entry point for Example County handler.
     - Scans HTML for context and contests
@@ -33,10 +29,12 @@ def parse(
         target_url=getattr(page, "url", None),
         page=page,
         coordinator=coordinator,
-        debug=False,
+        session_id=session_id if session_id is not None else getattr(coordinator, "session_id", None),
         non_interactive=non_interactive,
-        session_id=getattr(coordinator, "session_id", None),
-        allow_duplicates=getattr(coordinator, "allow_duplicates", False)
+        allow_duplicates=getattr(coordinator, "allow_duplicates", False),
+        context_cache=context_cache,
+        debug=False,  
+        **kwargs      
     )
     
     html_context.update(context_result)
