@@ -4,7 +4,7 @@ import difflib
 import os
 import platform
 import re
-import time
+import copy
 import numpy as np
 import inspect
 from sqlalchemy.orm import Session
@@ -245,6 +245,52 @@ def safe_all(rows: HasAllMethod) -> list:
         except Exception:
             return []
     return []
+
+def safe_copy(obj: Any) -> Any:
+    """
+    Robustly copy an object.
+    - Tries copy.deepcopy first.
+    - Falls back to copy.copy.
+    - Falls back to manual shallow copy for lists/dicts.
+    - Returns the object itself if all else fails.
+    """
+    try:
+        return copy.deepcopy(obj)
+    except Exception:
+        try:
+            return copy.copy(obj)
+        except Exception:
+            try:
+                if isinstance(obj, list):
+                    return obj[:]
+                if isinstance(obj, dict):
+                    return dict(obj)
+            except Exception:
+                pass
+    return obj
+
+def safe_isalnum(val) -> bool:
+    """
+    Safely check if val is a string and .isalnum() returns True.
+    Returns False for non-strings or on error.
+    """
+    try:
+        return isinstance(val, str) and val.isalnum()
+    except Exception:
+        return False
+
+def safe_keys(obj) -> list:
+    """
+    Safely get .keys() from a dict-like object.
+    Returns an empty list if obj is not a dict or .keys() fails.
+    """
+    try:
+        if isinstance(obj, dict):
+            return list(obj.keys())
+        # Try to convert to dict if possible
+        return list(dict(obj).keys())
+    except Exception:
+        return []
 
 def safe_attr_keys(attrs) -> list:
     """
@@ -1215,7 +1261,7 @@ def infer_contest_fields(
     if log is not None:
         safe_append(log, f"[infer_contest_fields] {title} → {inference_path}", logger)
 
-    # --- PATCH: Ensure type_ and election_types are synced ---
+    # --- Ensure type_ and election_types are synced ---
     contest_dict["year"] = year
     contest_dict["type_"] = type_
     contest_dict["state"] = state

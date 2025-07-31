@@ -173,6 +173,19 @@ def safe_get_attribute(obj: Union[Locator, ElementHandle], attr: str, logger: Sh
         if logger: logger.error(f"[safe_get_attribute] Error: {e}")
         return None
 
+def safe_attributes(element) -> dict:
+    """
+    Safely get the attributes dictionary from a selectolax element.
+    Returns an empty dict if not available.
+    """
+    try:
+        attrs = getattr(element, "attributes", {})
+        if isinstance(attrs, dict):
+            return attrs
+        return {}
+    except Exception:
+        return {}
+
 def safe_inner_text(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> str:
     """Safely call .inner_text on a Playwright element handle."""
     try:

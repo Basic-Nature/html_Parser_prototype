@@ -14,6 +14,7 @@ import numpy as np
 import orjson
 from datetime import datetime, timezone
 from fuzzywuzzy import process
+from collections import defaultdict
 from ..utils.shared_logger import SharedLogger
 import difflib
 from ..utils.browser_utils import (
@@ -25,7 +26,7 @@ from ..utils.shared_logic import (
     keyphrase_match, normalize_state_name, normalize_county_name, safe_get_first,
     safe_model_encode, safe_startswith, safe_isupper,
     _sync_type_and_election_types, safe_get, safe_items, safe_lower, safe_endswith,
-    safe_similarity
+    safe_similarity, safe_strip, safe_replace, safe_append
 )
 from .Context_Library.constants import (
     STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, PARTY_KEYWORDS,
@@ -524,6 +525,10 @@ class ContextCoordinator(object):
             if hasattr(self, "alert_monitor_thread"):
                 self.alert_monitor_thread = None
 
+    @property
+    def library(self):
+        return getattr(self.organizer, "library", {})
+
     def append_to_context_library(self, organized, path=None, merge_lists=True, deduplicate=True) -> bool:
         """
         Append or update the organized context into the context library JSON file.
@@ -806,13 +811,47 @@ class ContextCoordinator(object):
         except Exception as e:
             logger.error(f"[update_db_with_context] Failed to update DB: {e}")
 
-    def save_table_structure_to_db(self, contest: Dict[str, Any], headers: Dict[str, Any], context: Dict[str, Any], ml_confidence: Optional[float] = None, confirmed_by_user: bool = False) -> Dict[str, Any]:
-        from .context_organizer import save_table_structure_to_db
-        return save_table_structure_to_db(contest, headers, context, ml_confidence, confirmed_by_user)
+    def save_table_structure_to_db(
+        self,
+        contest: Dict[str, Any],
+        headers: Dict[str, Any],
+        context: Dict[str, Any],
+        ml_confidence: Optional[float] = None,
+        confirmed_by_user: bool = False
+    ) -> dict:
+        """
+        Save or update a table structure for a contest in the database using ElectionDataService.
+        Returns a dict with 'success' (bool), 'result' (any returned object), and 'error' (if any).
+        """
+        try:
+            result = self.data_service.save_table_structure(
+                contest, headers, context, ml_confidence, confirmed_by_user
+            )
+            logger.info(f"[ContextCoordinator] Saved table structure for contest: {contest} | Result: {result}")
+            return {"success": True, "result": result, "error": None}
+        except Exception as e:
+            logger.error(f"[ContextCoordinator] Failed to save table structure: {e}", exc_info=True)
+            return {"success": False, "result": None, "error": str(e)}
 
-    def get_table_structure_from_db(self, contest: Dict[str, Any], context: Dict[str, Any] = None) -> Optional[List[Dict[str, Any]]]:
-        from .context_organizer import get_table_structure_from_db
-        return get_table_structure_from_db(contest, context)
+    def get_table_structure_from_db(
+        self,
+        contest: Dict[str, Any],
+        context: Dict[str, Any] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve the best-matching table structure for a contest from the database using ElectionDataService.
+        Returns a dict with headers, context, and ml_confidence, or None if not found.
+        """
+        try:
+            result = self.data_service.get_table_structure(contest, context)
+            if result:
+                logger.info(f"[ContextCoordinator] Loaded table structure for contest: {contest}")
+            else:
+                logger.warning(f"[ContextCoordinator] No table structure found for contest: {contest}")
+            return result
+        except Exception as e:
+            logger.error(f"[ContextCoordinator] Failed to load table structure: {e}", exc_info=True)
+            return None
 
     def organize_and_enrich(self, raw_context, **kwargs) -> Dict[str, Any]:
         self.last_raw_context = raw_context
@@ -842,7 +881,99 @@ class ContextCoordinator(object):
         except Exception as e:
             logger.error(f"[organize_context_advanced] Failed: {e}", exc_info=True)
             return {"error": str(e)}
-        
+
+    def get_feedback_log(self, log_dir=None, min_count=2, deduplicate=True) -> dict:
+        """
+        Aggregate and analyze user feedback logs for advanced suggestions.
+        Returns a dict with stats on removed/renamed columns, header corrections, and other feedback.
+        - log_dir: Optionally override the log directory.
+        - min_count: Minimum number of occurrences to consider a feedback significant.
+        - deduplicate: Whether to deduplicate by normalized header names.
+        """
+        log_dir = log_dir or LOG_DIR
+        feedback = {
+            "removed_columns": defaultdict(int),
+            "renamed_columns": defaultdict(str),
+            "header_corrections": defaultdict(list),
+            "structure_denials": defaultdict(int),
+            "raw_entries": [],
+        }
+
+        # --- Scan removed_columns_cache.json ---
+        removed_path = os.path.join(log_dir, "removed_columns_cache.json")
+        if os.path.exists(removed_path):
+            try:
+                with open(removed_path, "rb") as f:
+                    removed_data = orjson.loads(f.read())
+                for contest, cols in safe_items(removed_data):
+                    for col, count in safe_items(cols):
+                        col_norm = safe_lower(safe_strip(safe_replace(col, " ", "")))
+                        feedback["removed_columns"][col_norm] += count
+            except Exception as e:
+                logger.error(f"[get_feedback_log] Failed to load removed_columns_cache: {e}")
+
+        # --- Scan denied_table_structures.json ---
+        denied_path = os.path.join(log_dir, "denied_table_structures.json")
+        if os.path.exists(denied_path):
+            try:
+                with open(denied_path, "rb") as f:
+                    denied_data = orjson.loads(f.read())
+                for sig, count in safe_items(denied_data):
+                    feedback["structure_denials"][sig] += count
+            except Exception as e:
+                logger.error(f"[get_feedback_log] Failed to load denied_table_structures: {e}")
+
+        # --- Scan table_structure_learning_log.jsonl for header corrections ---
+        ts_log_path = os.path.join(log_dir, "table_structure_learning_log.jsonl")
+        if os.path.exists(ts_log_path):
+            try:
+                with open(ts_log_path, "rb") as f:
+                    for line in f:
+                        try:
+                            entry = orjson.loads(line)
+                            safe_append(feedback["raw_entries"], entry, logger)
+                            headers = safe_get(entry, "headers", [])
+                            context = safe_get(entry, "context", {})
+                            contest = safe_get(entry, "contest", "")
+                            for h in headers:
+                                h_norm = safe_lower(safe_strip(safe_replace(h, " ", "")))
+                                safe_append(
+                                    feedback["header_corrections"][h_norm],
+                                    {"contest": contest, "context": context, "raw": h},
+                                    logger
+                                )
+                        except Exception:
+                            continue
+            except Exception as e:
+                logger.error(f"[get_feedback_log] Failed to load table_structure_learning_log: {e}")
+
+        # --- Scan for renamed columns if possible (from feedback pattern KB or other logs) ---
+        if hasattr(self, "get_feedback_pattern_kb"):
+            pattern_kb = self.get_feedback_pattern_kb()
+            for entry in pattern_kb:
+                old = safe_get(entry, "old_header")
+                new = safe_get(entry, "new_header")
+                if old and new:
+                    old_norm = safe_lower(safe_strip(safe_replace(old, " ", "")))
+                    feedback["renamed_columns"][old_norm] = new
+
+        # --- Filter by min_count and deduplicate ---
+        def filter_dict(d, min_count):
+            return {k: v for k, v in safe_items(d) if isinstance(v, int) and v >= min_count}
+
+        feedback["removed_columns"] = filter_dict(feedback["removed_columns"], min_count)
+        feedback["structure_denials"] = filter_dict(feedback["structure_denials"], min_count)
+
+        # Optionally deduplicate header corrections and renamed columns
+        if deduplicate:
+            feedback["header_corrections"] = {
+                k: {frozenset((frozenset(item.items()) if isinstance(item, dict) else item) for item in v)}
+                for k, v in safe_items(feedback["header_corrections"])
+            }
+            feedback["renamed_columns"] = dict(feedback["renamed_columns"])
+
+        return dict(feedback)
+ 
     def get_feedback_pattern_kb(self, log_path=None, deduplicate=True, min_fields=("pattern_id", "label", "html")) -> list:
         """
         Load and return feedback pattern KB entries from the feedback log.
@@ -851,9 +982,6 @@ class ContextCoordinator(object):
         - min_fields: Tuple of required fields for a valid entry
         Returns a list of dicts, each representing a feedback KB entry.
         """
-        import orjson
-        import os
-
         if log_path is None:
             log_path = os.path.join(LOG_DIR, "segment_feedback_log.jsonl")
         entries = []

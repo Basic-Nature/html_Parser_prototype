@@ -21,7 +21,9 @@ import os
 import re
 import orjson
 from typing import List, Dict, Any, Optional, Tuple
+from selectolax.parser import HTMLParser
 from .shared_logger import SharedLogger
+from .browser_utils import safe_content, safe_attributes
 try:
     import torch
     import numpy as np
@@ -29,10 +31,6 @@ try:
 except ImportError:
     ML_AVAILABLE = False
 
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    BeautifulSoup = None
 logger = SharedLogger()
 # --- Optional LLM integration (OpenAI, local LLM, etc.) ---
 def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
@@ -109,7 +107,9 @@ def detect_tables_ml(html: str, options: Optional[dict] = None) -> List[Dict[str
     """
     Detects tables in HTML using ML, LLM, vision, and advanced heuristics.
     Returns a list of dicts: {headers: [...], data: [...], meta: {...}}
+    Uses selectolax for all HTML parsing.
     """
+    
     tables = []
 
     # 1. Try ML-based detection (vision or transformer model)
@@ -124,17 +124,17 @@ def detect_tables_ml(html: str, options: Optional[dict] = None) -> List[Dict[str
         if llm_results:
             tables.extend(llm_results)
 
-    # 3. Heuristic: Standard <table> extraction (with header/data detection)
-    if BeautifulSoup:
-        soup = BeautifulSoup(html, "html.parser")
-        for table in soup.find_all("table"):
-            headers, data, meta = _extract_table_from_bs4(table)
-            if headers and data:
-                tables.append({"headers": headers, "data": data, "meta": meta})
+    # 3. Heuristic: Standard <table> extraction (with header/data detection) using selectolax
+    html_tree = HTMLParser(html)
+    for table in html_tree.css("table"):
+        headers, data, meta = _extract_table_from_selectolax(table)
+        if headers and data:
+            tables.append({"headers": headers, "data": data, "meta": meta})
 
-        # 4. Heuristic: Table-like div/ul/ol grids (repeated structures)
-        for grid in soup.find_all(lambda tag: tag.name in ["div", "ul", "ol"] and _looks_like_table(tag)):
-            headers, data, meta = _extract_table_like_structure(grid)
+    # 4. Heuristic: Table-like div/ul/ol grids (repeated structures) using selectolax
+    for grid in html_tree.css("div,ul,ol"):
+        if _looks_like_table_selectolax(grid):
+            headers, data, meta = _extract_table_like_structure_selectolax(grid)
             if headers and data:
                 tables.append({"headers": headers, "data": data, "meta": meta})
 
@@ -189,63 +189,92 @@ def _vision_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
     # For now, return empty.
     return []
 
-def _extract_table_from_bs4(table) -> Tuple[List[str], List[Dict[str, str]], dict]:
+def _extract_table_from_selectolax(table_element) -> Tuple[List[str], List[Dict[str, str]], dict]:
     """
-    Extract headers and data from a BeautifulSoup <table> element.
+    Extract headers and data from a selectolax <table> element.
     Returns (headers, data, meta).
     """
-    rows = table.find_all("tr")
+    html = safe_content(table_element)
+    html_tree = HTMLParser(html)
+    # Defensive: check for selectolax Node API
+    if not hasattr(html_tree, "css") or not callable(html_tree.css):
+        return [], [], {}
+    try:
+        rows = html_tree.css("tr")
+    except Exception:
+        return [], [], {}
     if not rows:
         return [], [], {}
     # Try to find header row
-    header_cells = rows[0].find_all(["th", "td"])
-    headers = [th.get_text(strip=True) for th in header_cells]
+    try:
+        header_cells = rows[0].css("th")
+        if not header_cells:
+            header_cells = rows[0].css("td")
+        headers = [cell.text(strip=True) for cell in header_cells]
+    except Exception:
+        headers = []
     data = []
     for row in rows[1:]:
-        cells = row.find_all(["td", "th"])
-        row_data = {headers[i]: cells[i].get_text(strip=True) if i < len(cells) else "" for i in range(len(headers))}
-        if any(v for v in row_data.values()):
-            data.append(row_data)
+        try:
+            cells = row.css("td")
+            if not cells:
+                cells = row.css("th")
+            row_data = {headers[i]: cells[i].text(strip=True) if i < len(cells) else "" for i in range(len(headers))}
+            if any(v for v in row_data.values()):
+                data.append(row_data)
+        except Exception:
+            continue
     meta = {
-        "source": "bs4_table",
+        "source": "selectolax_table",
         "n_rows": len(data),
         "n_cols": len(headers),
-        "table_html": str(table)[:1000]
+        "table_html": getattr(html_tree, "html", "")[:1000] if hasattr(html_tree, "html") else ""
     }
     return headers, data, meta
 
-def _looks_like_table(tag) -> bool:
+def _looks_like_table_selectolax(element) -> bool:
     """
-    Heuristic: Does this tag look like a table/grid? (e.g., repeated children, grid classes)
+    Heuristic: Does this selectolax element look like a table/grid? (e.g., repeated children, grid classes)
     """
-    if tag.name == "div":
-        classes = tag.get("class", [])
-        if any("table" in c or "row" in c or "grid" in c for c in classes):
+    html = safe_content(element)
+    html_tree = HTMLParser(html)
+    tag = getattr(html_tree, "tag", "").lower() if hasattr(html_tree, "tag") else ""
+    if tag == "div":
+        attrs = safe_attributes(html_tree)
+        classes = attrs.get("class", "")
+        if any(x in classes for x in ["table", "row", "grid"]):
             return True
-        # Many direct children with similar structure
-        children = tag.find_all(recursive=False)
-        if len(children) >= 2 and all(len(child.find_all(recursive=False)) == len(children[0].find_all(recursive=False)) for child in children):
+        children = html_tree.css("> *") if hasattr(html_tree, "css") and callable(html_tree.css) else []
+        if len(children) >= 2 and all(
+            len(child.css("> *")) == len(children[0].css("> *"))
+            for child in children
+            if hasattr(child, "css") and callable(child.css)
+        ):
             return True
-    if tag.name in ["ul", "ol"]:
-        items = tag.find_all("li", recursive=False)
+    if tag in ["ul", "ol"]:
+        items = html_tree.css("li") if hasattr(html_tree, "css") and callable(html_tree.css) else []
         if len(items) >= 2:
             return True
     return False
 
-def _extract_table_like_structure(tag) -> Tuple[List[str], List[Dict[str, str]], dict]:
+def _extract_table_like_structure_selectolax(element) -> Tuple[List[str], List[Dict[str, str]], dict]:
     """
-    Extract headers and data from a table-like structure (div grid, ul/ol).
+    Extract headers and data from a table-like structure (div grid, ul/ol) using selectolax.
     """
+    html = safe_content(element)
     rows = []
-    if tag.name == "div":
-        children = tag.find_all(recursive=False)
+    html_tree = HTMLParser(html)
+    tag = getattr(html_tree, "tag", "").lower() if hasattr(html_tree, "tag") else ""
+    if tag == "div":
+        children = html_tree.css("> *") if hasattr(html_tree, "css") and callable(html_tree.css) else []
         for child in children:
-            cell_texts = [c.get_text(strip=True) for c in child.find_all(recursive=False)]
+            cell_texts = [c.text(strip=True) for c in child.css("> *")] if hasattr(child, "css") and callable(child.css) else []
             if cell_texts:
                 rows.append(cell_texts)
-    elif tag.name in ["ul", "ol"]:
-        for li in tag.find_all("li", recursive=False):
-            cell_texts = [li.get_text(strip=True)]
+    elif tag in ["ul", "ol"]:
+        lis = html_tree.css("li") if hasattr(html_tree, "css") and callable(html_tree.css) else []
+        for li in lis:
+            cell_texts = [li.text(strip=True)]
             rows.append(cell_texts)
     if not rows or len(rows) < 2:
         return [], [], {}
@@ -256,11 +285,11 @@ def _extract_table_like_structure(tag) -> Tuple[List[str], List[Dict[str, str]],
         if any(v for v in row_data.values()):
             data.append(row_data)
     meta = {
-        "source": "bs4_table_like",
+        "source": "selectolax_table_like",
         "n_rows": len(data),
         "n_cols": len(headers),
-        "tag": tag.name,
-        "table_html": str(tag)[:1000]
+        "tag": tag,
+        "table_html": getattr(element, "html", "")[:1000] if hasattr(element, "html") else ""
     }
     return headers, data, meta
 
