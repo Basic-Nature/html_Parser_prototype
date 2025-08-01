@@ -116,25 +116,6 @@ def load_urls() -> List[str]:
             return [url]
     return lines
 
-def output_urls(urls, logger=logger) -> None:
-    """
-    Outputs URLs in a mode-aware format:
-    - As a structured payload for webapp (for frontend parsing)
-    - As plain text for CLI (for human readability)
-    """
-    if logger.mode == "cli":
-        console.panel("URLs loaded", title="Status")
-        for i, url in enumerate(urls, 1):
-            console.print(f"[{i}] {url}")
-    else:
-        payload = {
-            "level": "INFO",
-            "type": "input",
-            "message": "URLs loaded",
-            "urls": urls
-        }
-        logger.info(payload)
-
 def mark_url_processed(url, status="success", **metadata) -> None:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = {
@@ -870,7 +851,6 @@ def main(session_id=None, cancel_flag=None, non_interactive=False, **kwargs):
         ensure_output_directory()
 
         urls = load_urls()
-        output_urls(urls, logger)
 
         # Mode-aware output for "Loaded X raw URLs..."
         msg = f"Loaded {len(urls)} raw URLs from urls.txt"
