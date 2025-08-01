@@ -16,12 +16,10 @@ from ..utils.shared_logic import (
     PredictionResult, safe_append, safe_get,
     normalize_state_name, normalize_county_name, resolve_county_alias
 )
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger, prompt
 from ..services.election_data_services import ElectionDataService
 from ..utils.spacy_utils import extract_entities, extract_dates, extract_locations
-from ..utils.user_prompt import UserPrompt
 
-logger = SharedLogger()
 AUDIT_LOG = "context_audit_log.jsonl"
 
 class ContextBasedPredictor:
@@ -215,7 +213,7 @@ class ContextService:
         self.context = load_context_library()
         self.version = self._compute_version()
         self.audit_log_path = os.path.join(self.vocab_dir, AUDIT_LOG)
-        self.prompt = UserPrompt()
+        self.prompt = prompt
         self._event_hooks: Dict[str, List[Callable]] = {}
         self._cache = {}
 

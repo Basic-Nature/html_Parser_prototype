@@ -1,5 +1,5 @@
 from playwright.sync_api import Page
-from .....utils.shared_logger import SharedLogger
+from .....utils.logger_singleton import logger
 from .....utils.output_utils import finalize_election_output
 from .....utils.table_builder import build_dynamic_table
 from .....utils.table_core import robust_table_extraction
@@ -8,7 +8,6 @@ from .....utils.contest_selector import select_contest
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .....Context_Integration.context_coordinator import ContextCoordinator
-logger = SharedLogger()
 context_cache = {}
 def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, non_interactive=False, logger=logger, **kwargs) -> tuple:
     """

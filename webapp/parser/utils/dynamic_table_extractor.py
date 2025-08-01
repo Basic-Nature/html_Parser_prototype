@@ -50,7 +50,7 @@ from ..Context_Integration.Context_Library.constants import (
     CONTAINER_EXTRA_KEYWORDS, CONTAINER_FALLBACK_SELECTORS
 )
 from typing import List, Dict, Tuple, Any
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 from typing import TYPE_CHECKING
 from ..utils.table_core import ( 
     extract_rows_and_headers_from_dom,
@@ -66,7 +66,7 @@ from ..utils.table_core import (
     normalize_header,
     safe_split
 )
-logger = SharedLogger()
+
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 

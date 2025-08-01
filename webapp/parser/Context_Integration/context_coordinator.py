@@ -15,7 +15,7 @@ import orjson
 from datetime import datetime, timezone
 from fuzzywuzzy import process
 from collections import defaultdict
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 import difflib
 from ..utils.browser_utils import (
     safe_nth, safe_locator,  safe_inner_text, safe_get_attribute,
@@ -56,7 +56,6 @@ from .librarian import (
 from .context_organizer import ContextOrganizer
 from ..services.election_data_services import ElectionDataService
 from typing import Optional, Any, List, Dict, Tuple, Callable
-logger = SharedLogger()
 
 def _sanitize_log_filename(name: str) -> str:
     # Only allow alphanumeric, underscore, dash, and dot

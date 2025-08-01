@@ -14,24 +14,25 @@ from datetime import datetime, timezone
 from difflib import get_close_matches
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, session, url_for, flash, send_file, send_from_directory
-from flask_socketio import emit, SocketIO
+from flask_socketio import emit, SocketIO, join_room
 import importlib
 from io import StringIO
 import orjson
 import os
 import subprocess
 from threading import Thread
-from webapp.parser.utils.shared_logger import SharedLogger, RichConsoleProxy
-from webapp.parser.web_pipeline import process_urls_for_web, cancel_processing
+from webapp.parser.utils.shared_logic import safe_get, safe_split, safe_lower
+from webapp.parser.web_pipeline import (
+    process_urls_for_web, cancel_processing, safe_sid, safe_rsplit, cancellation_manager
+)
 from webapp.parser.config import BASE_DIR, PROJECT_ROOT, POSTGRES_SERVICE_NAME 
-from webapp.parser.utils.user_prompt import UserPrompt
+
 # Load environment variables from .env
 
 load_dotenv()
 
-prompt = UserPrompt()
-logger = SharedLogger()
-console = RichConsoleProxy(logger)
+from webapp.parser.utils.logger_singleton import logger, console, prompt
+
 app = Flask(__name__)
 socketio = SocketIO(app)
 
@@ -71,13 +72,14 @@ def add_url() -> None:
     if url:
         with open(URLS_FILE, "a", encoding="utf-8") as f:
             f.write(url + "\n")
-        logger.info(f"[ADDED] {url}")
+        log_parser_status(f"[ADDED] {url}")
         
 def allowed_file(filename) -> bool:
+    parts = safe_rsplit(filename, '.', 1)
+    ext = safe_lower(parts[1]) if len(parts) > 1 else ''
     return (
         filename and
-        '.' in filename and
-        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS and
+        ext in ALLOWED_EXTENSIONS and
         len(filename) < 128
     )
 
@@ -112,13 +114,13 @@ def get_url_list() -> list[str]:
 
 def list_urls() -> list[str]:
     if not os.path.exists(URLS_FILE):
-        logger.info("[INFO] No urls.txt found.")
+        log_parser_status("[INFO] No urls.txt found.")
         return []
     with open(URLS_FILE, "r", encoding="utf-8") as f:
         urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
-    logger.info("\n[URLS.TXT ENTRIES]")
+    log_parser_status("\n[URLS.TXT ENTRIES]")
     for i, url in enumerate(urls, 1):
-        logger.info(f"{i}. {url}")
+        log_parser_status(f"{i}. {url}")
     return urls
 
 def load_overrides() -> dict:
@@ -151,8 +153,9 @@ def validate_module_path(path) -> tuple[bool, str | None]:
         importlib.import_module(path)
         return True, None
     except ModuleNotFoundError:
-        base = path.split(".")[-1]
-        parent = ".".join(path.split(".")[:-1])
+        parts = safe_split(os.path, ".")
+        base = parts[-1] if parts else ""
+        parent = ".".join(parts[:-1]) if len(parts) > 1 else ""
         try:
             pkg = importlib.import_module(parent)
             suggestion = get_close_matches(base, dir(pkg), n=1, cutoff=0.6)
@@ -196,7 +199,7 @@ def handle_connect() -> None:
     logger.set_mode("webapp")
     logger.set_format("json")
     session['log_format'] = "json"
-    session_id = session.get('sid') if 'sid' in session else request.sid
+    session_id = safe_sid()
 
     # Patch: emit structured objects, not stringified JSON
     def emit_to_socketio(line) -> None:
@@ -218,7 +221,7 @@ def handle_connect() -> None:
     prompt.set_mode("webapp")
     prompt.set_socketio_emit_func(lambda msg: socketio.emit('parser_output', msg, room=session_id))
 
-    logger.info("Client connected")
+    log_parser_status("Client connected", session_id)
 
 @app.route("/delete-hint/<frag>", methods=["POST"])
 def delete_hint_route(frag) -> None:
@@ -234,16 +237,16 @@ def delete_hint_route(frag) -> None:
 
 @socketio.on('disconnect')
 def handle_disconnect(sid) -> None:
-    # Use the sid provided by Socket.IO
     cancel_processing(sid)
-    logger.info(f"Client disconnected (sid={sid})")
-    # Optionally, emit a styled disconnect message
+    log_parser_status(f"Client disconnected (sid={sid})", sid)
     emit('parser_output', {
         "level": "INFO",
         "message": "🚪 Disconnected from server.",
         "color": "#eb4f43"
     }, room=sid)
     prompt.clear_prompt_session(sid)
+    cancellation_manager.remove(sid)
+
     
 @app.route("/edit-hint", methods=["POST"])
 def edit_hint_route() -> None:
@@ -327,8 +330,8 @@ def history() -> str:
             for line in f:
                 try:
                     snap = orjson.loads(line)
-                    timestamp = snap.get("timestamp")
-                    data = snap.get("data", snap)  # fallback for old entries
+                    timestamp = safe_get(snap, "timestamp")
+                    data = safe_get(snap, "data", snap)
                     snapshots.append({"timestamp": timestamp, "data": data})
                     snapshots.append(snap)
                 except Exception:
@@ -415,9 +418,10 @@ def handle_set_output_mode(data) -> None:
     Allows the frontend to set the output mode at runtime.
     Example payload: {"mode": "live"} or {"mode": "batch"}
     """
-    mode = data.get("mode", "live").lower()
+    mode = safe_lower(safe_get(data, "mode", "live"))
     valid_modes = {"live", "batch"}
-    session_id = session.get('sid') if 'sid' in session else request.sid
+    valid_modes = {"live", "batch"}
+    session_id = safe_sid()
     if mode in valid_modes:
         # Store the mode in the session or a global/session dict as needed
         session['output_mode'] = mode
@@ -427,8 +431,8 @@ def handle_set_output_mode(data) -> None:
         
 @socketio.on('parser_prompt_response')
 def handle_parser_prompt_response(data) -> None:
-    session_id = session.get('sid') if 'sid' in session else request.sid
-    response = data.get('response')
+    session_id = safe_sid()
+    response = safe_get(data, "response")
     prompt_session = prompt.get_prompt_session(session_id)
     prompt_session.set_response(response)
     # Optionally clear after use
@@ -441,15 +445,15 @@ def output_files() -> str:
 
 @socketio.on('cancel_parser')
 def handle_cancel_parser() -> None:
-    session_id = session.get('sid') or request.sid
+    session_id = safe_sid()
     cancel_processing(session_id)
 
 @socketio.on('parser_prompt')
 def handle_parser_prompt(data) -> None:
-    logger.info(f"Received prompt: {data}")
-    session_id = session.get('sid') if 'sid' in session else request.sid
-    # Start the parser pipeline in a thread, passing session_id for correct routing
-    thread = Thread(target=process_urls_for_web, args=(data, session_id))
+    log_parser_status(f"Received prompt: {data}")
+    session_id = safe_sid()
+    cancel_flag = cancellation_manager.get_flag(session_id)
+    thread = Thread(target=process_urls_for_web, args=(data, session_id, cancel_flag))
     thread.start()
 
 @app.route("/run-parser")
@@ -458,17 +462,18 @@ def run_parser_page() -> str:
 
 @socketio.on('data_framework')
 def handle_data_framework(data) -> None:
-    logger.info(f"Received data_framework event: {data}")
-    session_id = session.get('sid') if 'sid' in session else request.sid
+    session_id = safe_sid()
+    log_parser_status(f"Received data_framework event: {data}", session_id)
     output = postgres_service_status(POSTGRES_SERVICE_NAME)
     emit('parser_output', output, room=session_id)
 
 @socketio.on('run_parser')
 def handle_run_parser() -> None:
-    session_id = session.get('sid') if 'sid' in session else request.sid
+    session_id = safe_sid()
+    cancel_flag = cancellation_manager.get_flag(session_id)
     try:
         log_parser_status("Starting parser run...", session_id, rich=True)
-        thread = Thread(target=process_urls_for_web, args=(None, session_id))
+        thread = Thread(target=process_urls_for_web, args=(None, session_id, cancel_flag))
         thread.start()
     except Exception as e:
         emit('parser_output', {
@@ -476,6 +481,10 @@ def handle_run_parser() -> None:
             "message": f"Failed to start parser: {e}",
             "color": "#eb4f43"
         }, room=session_id)
+
+@socketio.on('join')
+def on_join(data):
+    join_room(data['session_id'])
     
 @app.route("/undo-hints", methods=["POST"])
 def undo_hints() -> str:
@@ -497,7 +506,7 @@ def undo_hints() -> str:
 @app.route("/upload/input", methods=["POST"])
 def upload_to_input() -> str:
     file = request.files.get("file")
-    logger.info(f"Upload to input: {file.filename if file else 'No file'}")
+    log_parser_status(f"Upload to input: {file.filename if file else 'No file'}")
     if file and allowed_file(file.filename):
         filename = file.filename
         file.save(os.path.join(INPUT_FOLDER, filename))

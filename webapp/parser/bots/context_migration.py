@@ -4,14 +4,11 @@ from typing import Any, Dict, List
 from ..utils.db_utils import get_session
 from ..utils.models import Contest, Panel, TableStructure, CandidatePanel, LocationPanel, Heading, BallotType, ResultsTimestamp, PartyLabel, VoteMethod
 from ..config import CACHE_DIR, LOG_DIR, CONTEXT_LIBRARY_DIR
-from ..utils.shared_logger import RichConsoleProxy, SharedLogger
+from ..utils.logger_singleton import console
 from ..utils.html_scanner import export_context_cache_for_db
 from ..bots.manual_correction_bot import MAIN_FIELDS, AUX_FIELDS
 
 ALL_FIELDS = MAIN_FIELDS + AUX_FIELDS
-
-console = RichConsoleProxy()
-logger = SharedLogger()
 
 MIGRATION_STATE_FILE = Path(CONTEXT_LIBRARY_DIR) / "migration_state.json"
 

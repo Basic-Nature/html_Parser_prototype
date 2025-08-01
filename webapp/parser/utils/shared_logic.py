@@ -9,8 +9,7 @@ import numpy as np
 import inspect
 from sqlalchemy.orm import Session
 from urllib.parse import ParseResult, SplitResult
-from ..utils.shared_logger import SharedLogger, RichConsoleProxy
-from ..utils.user_prompt import UserPrompt
+from ..utils.logger_singleton import logger, console, prompt
 from sentence_transformers import SentenceTransformer
 from ..Context_Integration.Context_Library.constants import (
     STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
@@ -25,9 +24,6 @@ if TYPE_CHECKING:
 
 assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
     "STATE_MODULE_MAP and KNOWN_STATE_TO_COUNTY_MAP keys are out of sync!"
-console = RichConsoleProxy()   
-prompt = UserPrompt()
-logger = SharedLogger()
 
 @runtime_checkable
 class HasItem(Protocol):
@@ -359,6 +355,26 @@ def safe_is_set(event_like: EventLike) -> bool:
         pass
     return False
 
+def safe_set(event_like) -> None:
+    """
+    Safely call .set() on an event-like object.
+    """
+    try:
+        if hasattr(event_like, "set") and callable(event_like.set):
+            event_like.set()
+    except Exception as e:
+        logger.error(f"[safe_set] Error calling .set(): {e}")
+
+def safe_clear(event_like) -> None:
+    """
+    Safely call .clear() on an event-like object.
+    """
+    try:
+        if hasattr(event_like, "clear") and callable(event_like.clear):
+            event_like.clear()
+    except Exception as e:
+        logger.error(f"[safe_clear] Error calling .clear(): {e}")
+
 def safe_append_cached_segment(lib, seg_hash, user_label) -> None:
     """
     Safely append a segment to lib['cached_segments'].
@@ -377,7 +393,7 @@ def safe_append_cached_segment(lib, seg_hash, user_label) -> None:
         "ml_label": user_label,
     })
 
-def safe_db_call(callable_fn: Callable, *args: Any, default=None, logger: SharedLogger = None, **kwargs) -> Any:
+def safe_db_call(callable_fn: Callable, *args: Any, default=None, logger=logger, **kwargs) -> Any:
     """
     Safely call a DB function, logging any exceptions and returning a safe default.
     Args:
@@ -398,7 +414,7 @@ def safe_db_call(callable_fn: Callable, *args: Any, default=None, logger: Shared
             print(f"[DB] Exception in {func_name}: {e}")
         return default
     
-def safe_append(lst, value, logger: SharedLogger, deduplicate=False) -> bool:
+def safe_append(lst, value, logger=logger, deduplicate=False) -> bool:
     """
     Safely append a value to a list.
     - If lst is not a list, does nothing and logs a warning.
@@ -422,7 +438,7 @@ def safe_append(lst, value, logger: SharedLogger, deduplicate=False) -> bool:
             logger.error(f"[safe_append] Error appending value: {e}")
         return False
 
-def safe_update(dct, updates, logger: SharedLogger) -> None:
+def safe_update(dct, updates, logger=logger) -> None:
     """
     Safely update a dict with another dict.
     - Only updates if both are dicts.
@@ -589,7 +605,7 @@ def safe_add(container, item) -> bool:
         return _safe_add_call(container, item)
     return False
 
-def safe_predict(model: Predictable, text: str, logger: SharedLogger = None) -> Any:
+def safe_predict(model: Predictable, text: str, logger=logger) -> Any:
     try:
         if hasattr(model, "predict") and callable(model.predict):
             return model.predict(text)
@@ -624,7 +640,7 @@ def safe_capitalize(val: object) -> str:
     """Safely capitalize a string, returns '' if not a string."""
     return val.capitalize() if isinstance(val, str) else ""
 
-def safe_item(val: Union[HasItem, float, int], logger: SharedLogger = None) -> float:
+def safe_item(val: Union[HasItem, float, int], logger=logger) -> float:
     """
     Safely call .item() on a numpy scalar or similar object.
     Returns float value or 0.0 on error.
@@ -657,7 +673,7 @@ def safe_items(obj) -> Iterable:
     except Exception:
         return []
 
-def safe_similarity(model: SentenceTransformer, a: str, b: str, logger: SharedLogger = None) -> float:
+def safe_similarity(model: SentenceTransformer, a: str, b: str, logger=logger) -> float:
     """
     Safely compute similarity between two strings using model.similarity.
     Returns a float between 0.0 and 1.0, or 0.0 on error.
@@ -770,7 +786,7 @@ def safe_model_encode(model: SentenceTransformer, text: str, **kwargs: Any) -> U
         logger.error(f"[safe_model_encode] All encode attempts failed: {e3}")
         return None
 
-def safe_get_first(lst, label, url, logger: SharedLogger, default=None, allow_nonlist=False):
+def safe_get_first(lst, label, url, logger=logger, default=None, allow_nonlist=False):
     """
     Safely get the first item from a list-like object.
     - Handles empty lists, None, non-list types, and index errors.
@@ -796,7 +812,7 @@ def safe_get_first(lst, label, url, logger: SharedLogger, default=None, allow_no
     logger.error(f"[DOM_PARTS] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
     return default
 
-def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, coordinator: Optional["ContextCoordinator"] = None, logger: SharedLogger = None, **kwargs: Any) -> Any:
+def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, coordinator: Optional["ContextCoordinator"] = None, logger=logger, **kwargs: Any) -> Any:
     """
     Safely call handler.parse, injecting coordinator if supported.
     Handles missing parse method, non-callable, and exceptions.
@@ -842,7 +858,7 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
         if logger: logger.error(f"[safe_parse] Error calling handler.parse: {e}")
         return None
 
-def safe_startswith(obj: Union[str, bytes], prefix: Union[str, bytes], logger: SharedLogger = None) -> bool:
+def safe_startswith(obj: Union[str, bytes], prefix: Union[str, bytes], logger=logger) -> bool:
     """Safely call .startswith on a string-like object."""
     try:
         if isinstance(obj, (str, bytes)):
@@ -852,7 +868,7 @@ def safe_startswith(obj: Union[str, bytes], prefix: Union[str, bytes], logger: S
         if logger: logger.error(f"[safe_startswith] Error: {e}")
         return False
 
-def safe_endswith(obj: Union[str, bytes], suffix: Union[str, bytes], logger: SharedLogger = None) -> bool:
+def safe_endswith(obj: Union[str, bytes], suffix: Union[str, bytes], logger=logger) -> bool:
     """Safely call .endswith on a string-like object."""
     try:
         if isinstance(obj, (str, bytes)):
@@ -862,7 +878,7 @@ def safe_endswith(obj: Union[str, bytes], suffix: Union[str, bytes], logger: Sha
         if logger: logger.error(f"[safe_endswith] Error: {e}")
         return False
 
-def safe_isupper(obj: Union[str, bytes], logger: SharedLogger = None) -> bool:
+def safe_isupper(obj: Union[str, bytes], logger=logger) -> bool:
     """Safely call .isupper() on a string-like object."""
     try:
         if isinstance(obj, str):

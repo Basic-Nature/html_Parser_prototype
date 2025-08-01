@@ -21,13 +21,11 @@ from .utils.download_utils import ensure_input_directory, ensure_output_director
 from .utils.format_router import prompt_and_handle_download
 from .utils.shared_logic import infer_state_county_from_url, safe_parse, safe_is_set
 from .Context_Integration.librarian import safe_join
-from .utils.user_prompt import UserPrompt
-from .utils.shared_logger import SharedLogger, RichConsoleProxy
-prompt = UserPrompt()
-logger = SharedLogger()
+from .utils.logger_singleton import logger, console, prompt
+
 # --- Environment & Path Setup ---
 load_dotenv()
-console = RichConsoleProxy()
+
 INPUT_DIR = os.path.join(PROJECT_ROOT, "input")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 URL_LIST_FILE = os.path.join(BASE_DIR, "parser", "urls.txt")
@@ -53,16 +51,34 @@ if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     logger.warning("Deleting .processed_urls cache for fresh start...")
     PROCESSED_URLS_FILE.unlink()
 
-def load_urls(prompt_func=prompt.prompt_input) -> List[str]:
+def load_urls() -> List[str]:
     def safe_strip(val):
         return val.strip() if isinstance(val, str) else ""
 
     if not URL_LIST_FILE.exists():
-        console.print("[bold red]\nNo urls.txt found. Please input a URL to append:")
-        url = safe_strip(prompt_func("URL: "))
+        msg = "No urls.txt found. Please input a URL to append:"
+        if logger.mode == "cli":
+            console.print(f"[bold red]\n{msg}")
+        else:
+            payload = {
+                "level": "ERROR",
+                "type": "input",
+                "message": msg,
+            }
+            logger.error(payload)
+        url = safe_strip(prompt.prompt_input("URL: "))
         if url:
             URL_LIST_FILE.write_text(url + "\n")
-            logger.info(f"Appended URL to urls.txt: {url}")
+            msg = f"Appended URL to urls.txt: {url}"
+            if logger.mode == "cli":
+                console.print(f"[green]{msg}[/green]")
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "input",
+                    "message": msg,
+                }
+                logger.info(payload)
         return [url] if url else []
 
     with URL_LIST_FILE.open('r') as f:
@@ -73,25 +89,51 @@ def load_urls(prompt_func=prompt.prompt_input) -> List[str]:
                 lines.append(line_stripped)
 
     if not lines:
-        console.print("[bold red]\nurls.txt has no usable URLs. Please input a URL to append:")
-        url = safe_strip(prompt_func("URL: "))
+        msg = "urls.txt has no usable URLs. Please input a URL to append:"
+        if logger.mode == "cli":
+            console.print(f"[bold red]\n{msg}")
+        else:
+            payload = {
+                "level": "ERROR",
+                "type": "input",
+                "message": msg,
+            }
+            logger.error(payload)
+        url = safe_strip(prompt.prompt_input("URL: "))
         if url:
             with URL_LIST_FILE.open('a') as f_append:
                 f_append.write(url + "\n")
-            logger.info(f"Appended URL to urls.txt: {url}")
+            msg = f"Appended URL to urls.txt: {url}"
+            if logger.mode == "cli":
+                console.print(f"[green]{msg}[/green]")
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "input",
+                    "message": msg,
+                }
+                logger.info(payload)
             return [url]
     return lines
 
-def output_urls(urls, output_func, logger: SharedLogger) -> None:
+def output_urls(urls, logger=logger) -> None:
     """
     Outputs URLs in a mode-aware format:
-    - As a JSON array for webapp (for frontend parsing)
+    - As a structured payload for webapp (for frontend parsing)
     - As plain text for CLI (for human readability)
     """
-    if logger.mode == "webapp" and getattr(logger, "format", None) == "json":
-        output_func({"level": "INFO", "message": urls})
+    if logger.mode == "cli":
+        console.panel("URLs loaded", title="Status")
+        for i, url in enumerate(urls, 1):
+            console.print(f"[{i}] {url}")
     else:
-        output_func("Raw URLs loaded:\n" + "\n".join(str(u) for u in urls))
+        payload = {
+            "level": "INFO",
+            "type": "input",
+            "message": "URLs loaded",
+            "urls": urls
+        }
+        logger.info(payload)
 
 def mark_url_processed(url, status="success", **metadata) -> None:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -127,50 +169,112 @@ def mark_url_processed(url, status="success", **metadata) -> None:
 def prompt_url_selection(
     urls: List[str],
     processed: Dict[str, Any],
-    prompt_func: Callable[[str], str],
-    output_func: Callable[[str], None],
     cancel_flag: threading.Event = None,
     session_id=None,
     non_interactive=False
 ) -> List[str]:
-    output_func("\n[bold #eb4f43]URLs loaded:[/bold #eb4f43]")
-    for i, url in enumerate(urls):
-        proc_entry = processed.get(url)
-        status = "unprocessed"
-        if isinstance(proc_entry, dict):
-            status_val = proc_entry.get("status")
-            if isinstance(status_val, str):
-                status = status_val
-        status_color = {
-            "success": "green",
-            "fail": "red",
-            "partial": "yellow",
-            "error": "red"
-        }.get(status, "white")
-        output_func(f"  [{i+1}] {url} [bold {status_color}]({status})[/bold {status_color}]")
+    # Mode-aware: URLs loaded
+    msg = "URLs loaded"
+    if logger.mode == "cli":
+        console.panel(msg, title="Status")
+        for i, url in enumerate(urls):
+            proc_entry = processed.get(url)
+            status = "unprocessed"
+            if isinstance(proc_entry, dict):
+                status_val = proc_entry.get("status")
+                if isinstance(status_val, str):
+                    status = status_val
+            status_color = {
+                "success": "green",
+                "fail": "red",
+                "partial": "yellow",
+                "error": "red"
+            }.get(status, "white")
+            console.print(f"[{i+1}] {url} ({status})", style=status_color)
+    else:
+        payload = {
+            "level": "INFO",
+            "type": "input",
+            "message": msg,
+            "urls": urls,
+            "processed": processed,
+            "session_id": session_id
+        }
+        logger.info(payload)
+        for i, url in enumerate(urls):
+            proc_entry = processed.get(url)
+            status = "unprocessed"
+            if isinstance(proc_entry, dict):
+                status_val = proc_entry.get("status")
+                if isinstance(status_val, str):
+                    status = status_val
+            status_color = {
+                "success": "green",
+                "fail": "red",
+                "partial": "yellow",
+                "error": "red"
+            }.get(status, "white")
+            payload = {
+                "level": "INFO",
+                "type": "input",
+                "message": f"[{i+1}] {url} ({status})",
+                "session_id": session_id,
+                "status_color": status_color,
+                "status": status,
+            }
+            logger.info(payload)
 
     if non_interactive:
-        output_func("[INFO] Non-interactive mode: awaiting selection from frontend or API.")
+        msg = "Non-interactive mode: awaiting selection from frontend or API."
+        if logger.mode == "cli":
+            console.panel(msg, title="Info", style="cyan")
+        else:
+            payload = {
+                "level": "INFO",
+                "type": "input",
+                "message": msg,
+                "session_id": session_id
+            }
+            logger.info(payload)
         return []
 
     # Check cancel_flag before prompting
     if cancel_flag is not None and hasattr(cancel_flag, "is_set") and callable(cancel_flag.is_set):
         if cancel_flag.is_set():
-            output_func("[CANCELLED] Selection cancelled before prompt.")
+            msg = "Selection cancelled before prompt."
+            if logger.mode == "cli":
+                console.panel(msg, title="Cancelled", style="yellow")
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "cancel",
+                    "message": msg,
+                    "session_id": session_id
+                }
+                logger.info(payload)
             return []
 
     prompt_text = "\nEnter indices (comma-separated), 'all', or leave empty to cancel: "
-    # Only emit the prompt once, in the correct format
-    if logger.mode == "webapp" and getattr(logger, "format", None) == "json":
-        output_func({"type": "prompt", "message": prompt_text, "session_id": session_id})
-    else:
-        output_func(prompt_text)
-    user_input = prompt_func(prompt_text)
+    user_input = prompt.prompt_input(
+        prompt_text,
+        session_id=session_id,
+        context={"urls": urls, "processed": processed}
+    )
 
     # Check cancel_flag after prompt
     if cancel_flag is not None and hasattr(cancel_flag, "is_set") and callable(cancel_flag.is_set):
         if cancel_flag.is_set():
-            output_func("[CANCELLED] Selection cancelled after prompt.")
+            msg = "Selection cancelled after prompt."
+            if logger.mode == "cli":
+                console.panel(msg, title="Cancelled", style="yellow")
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "cancel",
+                    "message": msg,
+                    "session_id": session_id
+                }
+                logger.info(payload)
             return []
 
     if not isinstance(user_input, str):
@@ -181,15 +285,20 @@ def prompt_url_selection(
     if user_input == 'all':
         return urls
     indices = []
-    for i in user_input.split(',') if isinstance(user_input, str) else []:
-        i_stripped = i.strip() if isinstance(i, str) else ""
-        if i_stripped.isdigit():
-            idx = int(i_stripped) - 1
+    for part in user_input.split(','):
+        part = part.strip()
+        if '-' in part:
+            start, end = part.split('-', 1)
+            if start.isdigit() and end.isdigit():
+                indices.extend(range(int(start)-1, int(end)))
+        elif part.isdigit():
+            idx = int(part) - 1
             if 0 <= idx < len(urls):
                 indices.append(idx)
+    indices = sorted(set(i for i in indices if 0 <= i < len(urls)))
     return [urls[i] for i in indices]
 
-def process_format_override() -> bool:
+def process_format_override(session_id=None) -> bool:
     from .utils.format_router import route_format_handler
     force_parse = os.getenv("FORCE_PARSE_INPUT_FILE", "false").lower() == "true"
     force_format = os.getenv("FORCE_PARSE_FORMAT", "").strip().lower()
@@ -198,23 +307,75 @@ def process_format_override() -> bool:
     input_folder = INPUT_DIR
     files = [f for f in os.listdir(input_folder) if f.endswith(f".{force_format}")]
     if not files:
-        logger.error(f"[red][ERROR] No .{force_format} files found in 'input' folder.[/red]")
+        msg = f"[ERROR] No .{force_format} files found in 'input' folder."
+        if logger.mode == "cli":
+            console.panel(msg, title="Error", style="red")
+        else:
+            payload = {
+                "level": "ERROR",
+                "type": "input",
+                "message": msg,
+                "session_id": None
+            }
+            logger.error(payload)
         return None
-    logger.warning(f"[yellow]Manual override enabled for format:[/yellow] [bold]{force_format}[/bold]")
-    for i, f in enumerate(files):
-        logger.info(f"  [bold cyan][{i}][/bold cyan] {f}")
+    msg = f"Found {len(files)} .{force_format} files in 'input' folder. Manual override enabled."
+    if logger.mode == "cli":
+        console.panel(msg, title="Manual Override", style="yellow")
+        for i, f in enumerate(files):
+            console.print(f"[{i}] {f}", style="cyan")
+    else:
+        payload = {
+            "level": "INFO",
+            "type": "manual_override",
+            "message": msg,
+            "session_id": session_id
+        }
+        logger.warning(payload)
+        for i, f in enumerate(files):
+            payload = {
+                "level": "INFO",
+                "type": "info",
+                "message": f"[{i}] {f}",
+                "session_id": session_id
+            }
+            logger.info(payload)
     try:
-        selection = prompt.prompt_input("[PROMPT] Select a file index to parse: ").strip()
+        selection = prompt.prompt_input(
+            "[PROMPT] Select a file index to parse:",
+            session_id=session_id,
+            context={"files": files},
+        ).strip()
         index = int(selection)
         if not (0 <= index < len(files)):
             raise ValueError("Invalid file index")
         target_file = safe_filename(files[index])
     except (IndexError, ValueError, EOFError, KeyboardInterrupt):
-        logger.error("[red]Invalid selection. Aborting manual parse.[/red]")
+        msg = "[ERROR] Invalid selection. Aborting manual parse."
+        if logger.mode == "cli":
+            console.panel(msg, title="Error", style="red")
+        else:
+            payload = {
+                "level": "ERROR",
+                "type": "error",
+                "message": msg,
+                "session_id": session_id
+            }
+            logger.error(payload)
         return None
     handler = route_format_handler(force_format)
     if not handler:
-        logger.error(f"[red][ERROR] No format handler found for '{force_format}'[/red]")
+        msg = f"[ERROR] No format handler found for '{force_format}'"
+        if logger.mode == "cli":
+            console.panel(msg, title="Error", style="red")
+        else:
+            payload = {
+                "level": "ERROR",
+                "type": "error",
+                "message": msg,
+                "session_id": session_id
+            }
+            logger.error(payload)
         return None
     full_path = safe_join(input_folder, target_file)
     html_context = {"manual_file": full_path}
@@ -223,16 +384,43 @@ def process_format_override() -> bool:
     if result and all(result):
         *_, metadata = result
         if "output_file" in metadata:
-            logger.info(f"[OUTPUT] CSV written to: {metadata['output_file']}")
+            msg = f"Manual override parsing completed for {target_file}"
+            if logger.mode == "cli":
+                console.panel(msg, title="Manual Override", style="green")
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "manual_override",
+                    "message": msg,
+                    "session_id": session_id,
+                    "output_file": metadata["output_file"],
+                    "metadata": metadata
+                }
+                logger.info(payload)
         else:
-            logger.warning("No output file path returned from parser.")
+            msg = f"Manual override parsing completed for {target_file}, but no output file was generated."
+            if logger.mode == "cli":
+                console.panel(msg, title="Manual Override", style="yellow")
+            else:
+                payload = {
+                    "level": "WARNING",
+                    "type": "manual_override",
+                    "message": msg,
+                    "session_id": session_id,
+                    "metadata": metadata
+                }
+                logger.warning(payload)
         mark_url_processed("manual_override", status="success")
         return True
     else:
-        logger.error("[red][ERROR] Manual parsing failed or returned no data.[/red]")
+        msg = "[ERROR] Manual parsing failed or returned no data."
+        if logger.mode == "cli":
+            console.panel(msg, title="Error", style="red")
+        else:
+            logger.error(msg)
         return None
 
-def ai_analyze_results(headers, data, contest, metadata):
+def ai_analyze_results(headers, data, contest, metadata, target_url=None, session_id=None):
     """
     Uses advanced NLP and ML utilities to analyze results for anomalies and integrity issues.
     Logs findings and flags suspicious contests.
@@ -241,45 +429,79 @@ def ai_analyze_results(headers, data, contest, metadata):
         try:
             from .Context_Integration.Integrity_check import analyze_contests, print_integrity_summary
 
-            # Prepare context for analysis
             contests = []
             if isinstance(contest, list):
                 contests = contest
             elif isinstance(contest, dict):
                 contests = [contest]
 
-            # Advanced: Attach headers, data, and metadata to each contest for richer analysis
             for c in contests:
                 if isinstance(c, dict):
                     c["_headers"] = headers
                     c["_data"] = data
                     c["_metadata"] = metadata
 
-            # Run integrity and anomaly checks
             results = analyze_contests(contests)
             anomalies = results.get("ml_anomalies", [])
             flagged = results.get("flagged_suspicious", [])
             integrity_issues = results.get("integrity_issues", [])
             summary_stats = results.get("summary_stats", {})
 
-            # Log summary with all context
             if anomalies or flagged or integrity_issues:
-                logger.error(
-                    f"[bold red][AI ALERT][/bold red] Potential anomalies: {anomalies}, "
-                    f"Flagged: {flagged}, Integrity issues: {integrity_issues}, "
-                    f"Summary: {summary_stats}"
-                )
-                logger.warning(
-                    f"[AI] Anomalies: {anomalies}, Flagged: {flagged}, Integrity Issues: {integrity_issues}, "
-                    f"Metadata: {metadata}"
-                )
+                msg = "AI analysis results"
+                if logger.mode == "cli":
+                    console.panel(msg, title="AI Analysis", style="red")
+                    console.print(f"Anomalies: {anomalies}")
+                    console.print(f"Flagged: {flagged}")
+                    console.print(f"Integrity Issues: {integrity_issues}")
+                    console.print(f"Summary Stats: {summary_stats}")
+                else:
+                    payload_1 = {
+                        "level": "ERROR",
+                        "type": "ai_analysis",
+                        "message": msg,
+                        "session_id": session_id,
+                        "anomalies": anomalies,
+                        "flagged": flagged,
+                        "integrity_issues": integrity_issues,
+                        "summary_stats": summary_stats,
+                        "metadata": metadata
+                    }
+                    logger.error(payload_1)
+                    payload_2 = {
+                        "level": "INFO",
+                        "type": "info",
+                        "message": f"AI analysis completed for {target_url}",
+                        "session_id": session_id,
+                        "anomalies": anomalies,
+                        "flagged": flagged,
+                        "integrity_issues": integrity_issues,
+                        "summary_stats": summary_stats,
+                        "metadata": metadata
+                    }
+                    logger.warning(payload_2)
                 print_integrity_summary(contests)
             else:
-                logger.info(f"[AI] No anomalies or suspicious contests detected. Metadata: {metadata}")
+                msg = f"No anomalies or suspicious contests detected for {target_url}"
+                if logger.mode == "cli":
+                    console.panel(msg, title="AI Analysis", style="green")
+                else:
+                    payload = {
+                        "level": "INFO",
+                        "type": "info",
+                        "message": msg,
+                        "session_id": session_id,
+                        "metadata": metadata
+                    }
+                    logger.info(payload)
         except Exception as e:
-            logger.error(f"[AI] Analysis failed: {e}")
+            msg = f"[AI] Analysis failed: {e}"
+            if logger.mode == "cli":
+                console.panel(msg, title="AI Analysis Error", style="red")
+            else:
+                logger.error(msg)
 
-def stream_results(headers, data, contest, metadata):
+def stream_results(headers, data, contest, metadata, target_url=None, session_id=None):
     """
     Streams results in real-time if enabled, using rich output and context-aware formatting.
     """
@@ -287,7 +509,6 @@ def stream_results(headers, data, contest, metadata):
         try:
             from .Context_Integration.Integrity_check import print_integrity_summary
 
-            # Prepare contests for streaming, attach context
             contests = []
             if isinstance(contest, list):
                 contests = contest
@@ -299,19 +520,49 @@ def stream_results(headers, data, contest, metadata):
                     c["_headers"] = headers
                     c["_data"] = data
                     c["_metadata"] = metadata
-
-            logger.info("[STREAM] Streaming results in real-time with full context...")
+            msg = f"Streaming results for {target_url}"
+            if logger.mode == "cli":
+                console.panel(msg, title="Stream", style="cyan")
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "stream",
+                    "message": msg,
+                    "session_id": session_id,
+                    "contests": contests,
+                    "metadata": metadata
+                }
+                logger.info(payload)
             print_integrity_summary(contests)
             # Optionally, stream metadata and summary stats if needed
-            logger.info(f"[STREAM] Metadata: {metadata}")
+            msg = f"Streaming results for {target_url}"
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "info",
+                    "message": msg,
+                    "session_id": session_id,
+                    "metadata": metadata
+                }
+                logger.info(payload)
         except Exception as e:
-            logger.error(f"[STREAM] Streaming failed: {e}")
+            msg = f"[STREAM] Streaming failed: {e}"
+            if logger.mode == "cli":
+                console.panel(msg, title="Stream Error", style="red")
+            else:
+                payload = {
+                    "level": "ERROR",
+                    "type": "error",
+                    "message": msg,
+                    "session_id": session_id
+                }
+                logger.error(payload)
 
 def orchestrate_url(
     target_url,
     processed_info,
-    prompt_func,
-    output_func,
     session_id=None,
     cancel_flag=None,
     non_interactive=False,
@@ -319,7 +570,19 @@ def orchestrate_url(
 ):
     from .Context_Integration.context_coordinator import ContextCoordinator
     rejected_downloads = set()
-    output_func(f"Navigating to: {target_url} (Session: {session_id})")
+
+    # Mode-aware: Navigating to URL
+    msg = f"Navigating to: {target_url}"
+    if logger.mode == "cli":
+        console.panel(msg, title="Status")
+    else:
+        payload = {
+            "level": "INFO",
+            "type": "status",
+            "message": msg,
+            "session_id": session_id
+        }
+        logger.info(payload)
 
     browser = page = None
     try:
@@ -327,31 +590,71 @@ def orchestrate_url(
             browser, _, page, _ = browser_pipeline(
                 p, target_url, cache_exit_callback=mark_url_processed, non_interactive=non_interactive, session_id=session_id
             )
-            # Robust cancel_flag check
+            # cancel_flag check
             if cancel_flag is not None and safe_is_set(cancel_flag):
                 try:
                     if safe_is_set(cancel_flag):
-                        output_func(f"[CANCELLED] Processing stopped for {target_url} (Session: {session_id})")
-                        safe_browser_close(browser, output_func, session_id)
+                        msg = f"Processing cancelled for {target_url}"
+                        if logger.mode == "cli":
+                            console.panel(msg, title="Cancelled", style="yellow")
+                        else:
+                            payload = {
+                                "level": "INFO",
+                                "type": "cancel",
+                                "message": msg,
+                                "session_id": session_id
+                            }
+                            logger.info(payload)
+                        safe_browser_close(browser, session_id)
                         return
                 except Exception as e:
-                    output_func(f"[WARN] Exception during cancel_flag check: {e} (Session: {session_id})")
-                    safe_browser_close(browser, output_func, session_id)
+                    msg = f"Exception during cancel_flag check: {e}"
+                    if logger.mode == "cli":
+                        console.panel(msg, title="Cancel Error", style="yellow")
+                    else:
+                        payload = {
+                            "level": "WARNING",
+                            "type": "cancel",
+                            "message": msg,
+                            "session_id": session_id
+                        }
+                        logger.warning(payload)
+                    safe_browser_close(browser, session_id)
                     return
 
             if not page:
-                output_func(f"[ERROR] Could not open page for {target_url} (Session: {session_id})")
-                safe_browser_close(browser, output_func, session_id)
+                msg = f"Could not open page for {target_url}"
+                if logger.mode == "cli":
+                    console.panel(msg, title="Browser Error", style="red")
+                else:
+                    payload = {
+                        "level": "ERROR",
+                        "type": "browser",
+                        "message": msg,
+                        "session_id": session_id
+                    }
+                    logger.error(payload)
+                safe_browser_close(browser, session_id)
                 return
 
             # 1. Prompt for downloadable format and handle if chosen
             result, handled = prompt_and_handle_download(
-                page, target_url, rejected_downloads, non_interactive=non_interactive, prompt_func=prompt_func, session_id=session_id
+                page, target_url, rejected_downloads, non_interactive=non_interactive, session_id=session_id
             )
             if handled:
                 mark_url_processed(target_url, status="success", session_id=session_id)
-                output_func(f"[INFO] Download handled for {target_url} (Session: {session_id})")
-                safe_browser_close(browser, output_func, session_id)
+                msg = f"Download handled for {target_url}"
+                if logger.mode == "cli":
+                    console.panel(msg, title="Download", style="green")
+                else:
+                    payload = {
+                        "level": "INFO",
+                        "type": "download",
+                        "message": msg,
+                        "session_id": session_id
+                    }
+                    logger.info(payload)
+                safe_browser_close(browser, session_id)
                 return
 
             # 2. Infer state/county from URL and build minimal context
@@ -381,9 +684,17 @@ def orchestrate_url(
             # Optionally log the routing summary for diagnostics
             if summary and isinstance(summary, dict) and summary.get("log"):
                 log_entries = summary.get("log")
-                if isinstance(log_entries, list):
-                    for entry in log_entries:
-                        output_func(f"[Router] {entry}")
+                for entry in log_entries:
+                    if logger.mode == "cli":
+                        console.panel(entry, title="Router", style="cyan")
+                    else:
+                        payload = {
+                            "level": "INFO",
+                            "type": "router",
+                            "message": entry,
+                            "session_id": session_id
+                        }
+                        logger.info(payload)
 
             # 4. Prepare coordinator (for handler use)
             coordinator = ContextCoordinator()
@@ -393,14 +704,34 @@ def orchestrate_url(
             if handler and hasattr(handler, 'parse'):
                 result = safe_parse(handler, page, coordinator, context, session_id=session_id, non_interactive=non_interactive, logger=logger, **kwargs)
             else:
-                output_func("[Router] No suitable handler found, using generic HTML handler.")
+                msg = f"[Router] No suitable handler found for {target_url}, using generic HTML handler."
+                if logger.mode == "cli":
+                    console.panel(msg, title="Router", style="yellow")
+                else:
+                    payload = {
+                        "level": "WARNING",
+                        "type": "router",
+                        "message": msg,
+                        "session_id": session_id
+                    }
+                    logger.warning(payload)
                 result = safe_parse(html_handler, page, coordinator, context, session_id=session_id, non_interactive=non_interactive, logger=logger, **kwargs)
 
             # 6. Validate result
             if not isinstance(result, tuple) or len(result) != 4:
-                output_func(f"[ERROR] Handler did not return a valid result tuple. (Session: {session_id})")
+                msg = f"Handler did not return a valid result tuple. (Session: {session_id})"
+                if logger.mode == "cli":
+                    console.panel(msg, title="Handler Error", style="red")
+                else:
+                    payload = {
+                        "level": "ERROR",
+                        "type": "handler",
+                        "message": msg,
+                        "session_id": session_id
+                    }
+                    logger.error(payload)
                 mark_url_processed(target_url, status="fail", session_id=session_id)
-                safe_browser_close(browser, output_func, session_id)
+                safe_browser_close(browser, session_id)
                 return
 
             headers, data, contest, metadata = result
@@ -422,21 +753,51 @@ def orchestrate_url(
                         session_id=session_id
                     )
                 except Exception as e:
-                    output_func(f"[Batch Mode] Coordinator batch handling failed: {e} (Session: {session_id})")
+                    msg = f"[Batch Mode] Coordinator batch handling failed: {e} (Session: {session_id})"
+                    if logger.mode == "cli":
+                        console.panel(msg, title="Batch Error", style="red")
+                    else:
+                        payload = {
+                            "level": "ERROR",
+                            "type": "batch",
+                            "message": msg,
+                            "session_id": session_id
+                        }
+                        logger.error(payload)
                     mark_url_processed(target_url, status="error", session_id=session_id)
-                safe_browser_close(browser, output_func, session_id)
+                safe_browser_close(browser, session_id)
                 return
 
             # 8. Single result (non-batch)
             if all([headers, data, contest, metadata]):
-                ai_analyze_results(headers, data, contest, metadata)
-                stream_results(headers, data, contest, metadata)
+                ai_analyze_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
+                stream_results(headers, data, contest, metadata, target_url=target_url, session_id=session_id)
                 output_file = metadata.get("output_file") if isinstance(metadata, dict) else None
                 if output_file:
                     if os.path.exists(output_file):
-                        output_func(f"[OUTPUT] CSV written to: {output_file} (Session: {session_id})")
+                        msg = f"CSV written to: {output_file} (Session: {session_id})"
+                        if logger.mode == "cli":
+                            console.panel(msg, title="Output", style="green")
+                        else:
+                            payload = {
+                                "level": "INFO",
+                                "type": "output",
+                                "message": msg,
+                                "session_id": session_id
+                            }
+                            logger.info(payload)
                     else:
-                        output_func(f"[WARN] Output file path returned but file does not exist: {output_file} (Session: {session_id})")
+                        msg = f"Output file path returned but file does not exist: {output_file} (Session: {session_id})"
+                        if logger.mode == "cli":
+                            console.panel(msg, title="Output Warning", style="yellow")
+                        else:
+                            payload = {
+                                "level": "WARNING",
+                                "type": "output",
+                                "message": msg,
+                                "session_id": session_id
+                            }
+                            logger.warning(payload)
                 else:
                     output_dir = metadata.get("output_dir") if isinstance(metadata, dict) else OUTPUT_DIR
                     possible_files = []
@@ -445,56 +806,143 @@ def orchestrate_url(
                             if f.endswith(".csv") or f.endswith(".json"):
                                 possible_files.append(os.path.join(output_dir, f))
                     if possible_files:
-                        output_func("[WARN] No output file path returned from parser, but found files:\n" + "\n".join(possible_files[-3:]))
+                        msg = f"No output file path returned from parser, but found files: {', '.join(possible_files)} (Session: {session_id})"
+                        if logger.mode == "cli":
+                            console.panel(msg, title="Output Warning", style="yellow")
+                        else:
+                            payload = {
+                                "level": "WARNING",
+                                "type": "output",
+                                "message": msg,
+                                "session_id": session_id
+                            }
+                            logger.warning(payload)
                     else:
-                        output_func("[WARN] No output file path returned from parser and no output files found.")
+                        msg = "[WARN] No output file path returned from parser and no output files found."
+                        if logger.mode == "cli":
+                            console.panel(msg, title="Output Warning", style="yellow")
+                        else:
+                            payload = {
+                                "level": "WARNING",
+                                "type": "output",
+                                "message": msg,
+                                "session_id": session_id
+                            }
+                            logger.warning(payload)
                 mark_url_processed(target_url, status="success", session_id=session_id)
             else:
-                output_func(f"Incomplete result structure — skipping CSV write. (Session: {session_id})")
+                msg = f"Incomplete result structure for {target_url} — skipping CSV write. (Session: {session_id})"
+                if logger.mode == "cli":
+                    console.panel(msg, title="Output Warning", style="yellow")
+                else:
+                    payload = {
+                        "level": "WARNING",
+                        "type": "output",
+                        "message": msg,
+                        "session_id": session_id
+                    }
+                    logger.warning(payload)
                 mark_url_processed(target_url, status="partial", session_id=session_id)
 
     except Exception as e:
-        output_func(f"[ERROR] Exception while processing {target_url}: {e} (Session: {session_id})")
+        msg = f"Exception while processing {target_url}: {e}"
+        if logger.mode == "cli":
+            console.panel(msg, title="Exception", style="red")
+        else:
+            payload = {
+                "level": "ERROR",
+                "type": "exception",
+                "message": msg,
+                "session_id": session_id
+            }
+            logger.error(payload)
         mark_url_processed(target_url, status="error", session_id=session_id)
     finally:
-        # Robust browser close (only once)
-        safe_browser_close(browser, output_func, session_id)
+        # browser close (only once)
+        safe_browser_close(browser, session_id)
 
-def main(prompt_func=prompt.prompt_input, output_func=logger.info, session_id=None, cancel_flag=None, non_interactive=False):
+def main(session_id=None, cancel_flag=None, non_interactive=False, **kwargs):
     try:
-        if process_format_override():
+        if process_format_override(session_id=session_id):
             return
 
         ensure_input_directory()
         ensure_output_directory()
 
-        urls = load_urls(prompt_func=prompt_func)
-        output_urls(urls, output_func, logger)
+        urls = load_urls()
+        output_urls(urls, logger)
 
-        logger.info(f"Loaded {len(urls)} raw URLs from urls.txt")
+        # Mode-aware output for "Loaded X raw URLs..."
+        msg = f"Loaded {len(urls)} raw URLs from urls.txt"
+        if logger.mode == "cli":
+            console.panel(msg, title="Status")
+        else:
+            payload = {
+                "level": "INFO",
+                "type": "input",
+                "message": msg,
+                "session_id": session_id
+            }
+            logger.info(payload)
 
         max_urls = os.getenv("MAX_URLS_DISPLAYED")
         if max_urls and max_urls.isdigit():
             urls = urls[:int(max_urls)]
 
         if not urls:
-            output_func("[ERROR] No URLs to process. Exiting.")
+            msg = "No URLs to process. Exiting."
+            if logger.mode == "cli":
+                console.panel(msg, title="Error", style="red")
+            else:
+                payload = {
+                    "level": "ERROR",
+                    "type": "input",
+                    "message": msg,
+                    "session_id": session_id
+                }
+                logger.error(payload)
             return
 
         processed_info = load_processed_urls()
-        logger.warning(f"{len(urls)} URLs remain after filtering .processed_urls")
+        msg = f"{len(urls)} URLs remain after filtering .processed_urls"
+        if logger.mode == "cli":
+            console.panel(msg, title="Warning", style="yellow")
+        else:
+            payload = {
+                "level": "WARNING",
+                "type": "status",
+                "message": msg,
+                "session_id": session_id
+            }
+            logger.warning(payload)
 
-        selected_urls = prompt_url_selection(urls, processed_info, prompt_func=prompt_func, output_func=output_func, cancel_flag=cancel_flag, session_id=session_id, non_interactive=non_interactive)
+        selected_urls = prompt_url_selection(
+            urls, processed_info,
+            session_id=session_id,
+            cancel_flag=cancel_flag,
+            non_interactive=non_interactive
+        )
         if not selected_urls:
-            output_func("[INFO] No URLs selected. Exiting.")
+            msg = "No URLs selected. Exiting."
+            if logger.mode == "cli":
+                console.panel(msg, title="Info", style="cyan")
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "input",
+                    "message": msg,
+                    "session_id": session_id
+                }
+                logger.info(payload)
             return
 
         if ENABLE_PARALLEL:
             with Pool() as pool:
-                pool.starmap(orchestrate_url, [(url, processed_info, prompt_func, output_func, session_id, cancel_flag, non_interactive) for url in selected_urls])
+                pool.starmap(orchestrate_url, [(url, processed_info, session_id, cancel_flag, non_interactive, *kwargs.values()) for url in selected_urls])
         else:
             for url in selected_urls:
-                orchestrate_url(url, processed_info, prompt_func, output_func, session_id, cancel_flag, non_interactive)
+                orchestrate_url(url, processed_info, session_id, cancel_flag, non_interactive, **kwargs)
+
         summary = {"success": 0, "fail": 0, "partial": 0, "error": 0, "flagged": 0}
         processed = load_processed_urls()
         for url in selected_urls:
@@ -507,17 +955,40 @@ def main(prompt_func=prompt.prompt_input, output_func=logger.info, session_id=No
             if proc_entry.get("flagged_for_review"):
                 summary["flagged"] += 1
 
-        output_func("\n[SUMMARY]")
-        output_func(f"  URLs processed: {len(selected_urls)}")
-        output_func(f"  Success: {summary['success']}")
-        output_func(f"  Failures: {summary['fail']}")
-        output_func(f"  Partial: {summary['partial']}")
-        output_func(f"  Errors: {summary['error']}")
-        output_func(f"  Flagged for review: {summary['flagged']}")
+        # Mode-aware output for summary
+        if logger.mode == "cli":
+            console.panel(f"Summary: {summary}", title="Summary", style="green")
+        else:
+            payload = {
+                "level": "INFO",
+                "type": "summary",
+                "message": summary,
+                "session_id": session_id
+            }
+            logger.info(payload)
+
     except (OperationalError, psycopg2.OperationalError) as db_err:
-        output_func(f"[DB ERROR] Could not connect to the database: {db_err}")
-        output_func("[FATAL] Database connection failed. Exiting pipeline.")
+        msg = f"DB ERROR: Could not connect to the database: {db_err}"
+        if logger.mode == "cli":
+            console.panel(msg, title="Database Error", style="red")
+            console.panel("Database connection failed. Exiting pipeline.", title="Fatal", style="red")
+        else:
+            payload = {
+                "level": "ERROR",
+                "type": "error",
+                "message": msg,
+                "session_id": session_id
+            }
+            logger.error(payload)
+            payload = {
+                "level": "ERROR",
+                "type": "fatal",
+                "message": "Database connection failed. Exiting pipeline.",
+                "session_id": session_id
+            }
+            logger.error(payload)
         sys.exit(1)
 
 if __name__ == "__main__":
+    logger.set_mode("cli")
     main()

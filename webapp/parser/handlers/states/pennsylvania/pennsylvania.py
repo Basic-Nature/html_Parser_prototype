@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import csv
-from ....utils.shared_logger import SharedLogger
+from ....utils.logger_singleton import logger
 from ....utils.shared_logic import (
     safe_get, safe_lower, safe_strip, safe_isdigit, safe_replace
 )
@@ -10,8 +10,6 @@ from ....utils.browser_utils import (
 )
 from ....utils.output_utils import finalize_election_output
 from ....config import CONTEXT_DB_PATH, BASE_DIR
-
-logger = SharedLogger()
 
 INPUT_DIR = Path(os.path.join(BASE_DIR, "input"))
 OUTPUT_DIR = Path(os.path.join(BASE_DIR, "output"))

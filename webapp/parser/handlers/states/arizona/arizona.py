@@ -6,12 +6,11 @@
 import os
 import orjson
 from tqdm import tqdm
-from ....utils.shared_logger import SharedLogger
+from ....utils.logger_singleton import logger
 from ....Context_Integration.context_organizer import ContextOrganizer
 from ....utils.output_utils import finalize_election_output
 from ....config import CONTEXT_LIBRARY_PATH
 
-logger = SharedLogger()
 # Load config from context library if available
 # Debug: Print the path being checked and whether it exists
 

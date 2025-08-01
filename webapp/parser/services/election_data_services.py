@@ -31,8 +31,7 @@ from ..utils.models import (
     Heading, BallotType, ResultsTimestamp, PartyLabel, VoteMethod,
     Candidate, Office, District, Result, Button
 )
-from ..utils.shared_logger import SharedLogger
-logger = SharedLogger()
+from ..utils.logger_singleton import logger
 
 class DictConvertible(Protocol):
     def as_dict(self) -> Dict[str, Any]:

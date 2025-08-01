@@ -6,10 +6,9 @@
 import time
 import os
 import platform
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 import orjson
 from ..config import CONTEXT_LIBRARY_PATH
-logger = SharedLogger()
 # Load CAPTCHA indicators from context library
 if os.path.exists(CONTEXT_LIBRARY_PATH):
     with open(CONTEXT_LIBRARY_PATH, "rb") as f:

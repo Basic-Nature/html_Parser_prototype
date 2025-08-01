@@ -49,8 +49,7 @@ POSTGRES_SERVICE_NAME = os.getenv("POSTGRES_SERVICE_NAME", "Check PostgreSQL ser
 def ensure_postgres_db():
     """Ensure the target database exists, create if not."""
     try:
-        from .utils.shared_logger import SharedLogger
-        logger = SharedLogger()
+        from .utils.logger_singleton import logger
     except ImportError:
         import logging
         logger = logging.getLogger("postgres_fallback")

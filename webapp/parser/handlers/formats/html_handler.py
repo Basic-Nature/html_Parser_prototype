@@ -8,15 +8,12 @@ def parse(page, coordinator=None, context=None, session_id=None, non_interactive
     from ...Context_Integration.context_coordinator import ContextCoordinator
     from ...state_router import get_handler, list_available_handlers, fuzzy_match_handler
     from ...utils.shared_logic import normalize_state_name, normalize_county_name, safe_parse, safe_get
-    from ...utils.shared_logger import SharedLogger
-    from ...utils.user_prompt import UserPrompt
+    from ...utils.logger_singleton import logger, prompt
     import orjson
     import os
     import importlib
     from ...Context_Integration.Context_Library.constants import KNOWN_COUNTY_TO_PRECINCTS_MAP
     from ...Context_Integration.context_coordinator import ContextCoordinator
-    logger = SharedLogger()
-    prompt = UserPrompt()
     
     # 1. Organize and enrich context
     html_context = context or {}

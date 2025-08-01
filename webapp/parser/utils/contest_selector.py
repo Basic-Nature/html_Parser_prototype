@@ -1,12 +1,12 @@
 import re
 import numpy as np
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger, prompt
 from ..utils.shared_logic import (
     normalize_state_name, normalize_county_name, _sync_type_and_election_types,
     safe_get, safe_items, safe_lower, safe_split, safe_capitalize, safe_strip,
     safe_model_encode
 )
-from ..utils.user_prompt import UserPrompt, PromptCancelled
+from ..utils.user_prompt import PromptCancelled
 from collections import defaultdict
 from difflib import get_close_matches
 from ..Context_Integration.Context_Library.constants import (
@@ -28,10 +28,9 @@ except ImportError:
     STEMMER = None
     STOPWORDS = set()
 
-logger = SharedLogger()
 logger.debug(f"STEMMER type: {type(STEMMER)}")
 logger.debug(f"STOPWORDS type: {type(STOPWORDS)}")
-prompt = UserPrompt()
+
 
 from typing import TYPE_CHECKING, List, Dict, Any, Optional
 if TYPE_CHECKING:

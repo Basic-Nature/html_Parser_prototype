@@ -4,13 +4,12 @@ import hashlib
 import orjson
 from urllib.parse import urljoin
 from datetime import datetime
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 from ..utils.shared_logic import safe_get
 from ..Context_Integration.context_organizer import ContextOrganizer
 from ..utils.misc_utils import file_hash
 from ..config import INPUT_DIR, OUTPUT_DIR
 
-logger = SharedLogger()
 DOWNLOAD_MANIFEST = os.path.join(INPUT_DIR, ".download_manifest.jsonl")
 
 def ensure_input_directory():

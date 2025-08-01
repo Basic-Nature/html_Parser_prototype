@@ -42,12 +42,10 @@ from .Integrity_check import (
     detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
 )
 from ..utils.html_scanner import load_context_cache_from_disk
-from ..utils.shared_logger import SharedLogger, RichConsoleProxy
+from ..utils.logger_singleton import logger, console
 from rich.table import Table
 import matplotlib.pyplot as plt 
 from difflib import get_close_matches
-logger = SharedLogger()
-console = RichConsoleProxy()
 
 from ..config import (
     CONTEXT_LIBRARY_PATH, CONTEXT_DB_PATH, 
@@ -160,7 +158,7 @@ def repair_dom_segments(segments) -> list:
         seg["children"] = valid_children
     return segments
 
-def _defensive_dom_check(dom_parts, url, logger: SharedLogger, log_errors=True) -> dict:
+def _defensive_dom_check(dom_parts, url, logger=logger, log_errors=True) -> dict:
     """
     Efficiently checks for missing/empty lists in dom_parts for all major field types.
     Returns a dict of errors found.

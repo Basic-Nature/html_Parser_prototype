@@ -2,7 +2,7 @@ import importlib
 from playwright.sync_api import Page
 from typing import Optional, Tuple, Any, List, Dict
 
-from ....utils.shared_logger import SharedLogger
+from ....utils.logger_singleton import logger
 from ....utils.shared_logic import (
     safe_get, safe_lower, safe_strip, safe_parse
 )
@@ -12,7 +12,6 @@ from ....utils.table_builder import build_dynamic_table
 from ....utils.table_core import robust_table_extraction
 from ....utils.html_scanner import scan_html_for_context
 from typing import TYPE_CHECKING
-logger = SharedLogger()
 if TYPE_CHECKING:
     from ....Context_Integration.context_coordinator import ContextCoordinator
 

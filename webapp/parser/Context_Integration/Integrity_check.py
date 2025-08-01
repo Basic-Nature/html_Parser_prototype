@@ -13,7 +13,7 @@ import orjson
 import time
 import re
 from pathlib import Path
-from ..utils.shared_logger import RichConsoleProxy
+from ..utils.logger_singleton import console
 from typing import List, Dict, Any, Tuple
 from ..utils.spacy_utils import extract_dates
 from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
@@ -31,8 +31,6 @@ from ..utils.models import Alert
 # --- Rich imports for CLI output ---
 from rich.table import Table
 from rich.panel import Panel
-
-console = RichConsoleProxy()
 
 def _ensure_alerts_table():
     # Table is managed by SQLAlchemy migrations; nothing to do here

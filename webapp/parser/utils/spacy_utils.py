@@ -14,7 +14,7 @@ from ..Context_Integration.Context_Library.constants import (
 )
 import os
 import orjson
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 from ..utils.shared_logic import (
     safe_get, safe_lower
 )
@@ -26,7 +26,6 @@ except OSError:
     subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=True, cwd=PROJECT_ROOT)
     nlp = spacy.load("en_core_web_sm")
 
-logger = SharedLogger()
 # --- Core NLP Utilities ---
 
 def extract_entities(text: str) -> List[Tuple[str, str]]:

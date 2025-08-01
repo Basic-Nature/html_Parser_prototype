@@ -8,8 +8,8 @@
 import os
 import importlib
 from typing import Optional, Dict, Any, List, Tuple
-from .utils.shared_logger import SharedLogger, RichConsoleProxy
-from .utils.user_prompt import UserPrompt, PromptCancelled
+from .utils.logger_singleton import logger, console, prompt
+from .utils.user_prompt import PromptCancelled
 import traceback
 from .config import BASE_DIR
 from .Context_Integration.Context_Library.constants import (
@@ -21,8 +21,7 @@ from .utils.shared_logic import (
     normalize_state_name, normalize_county_name, safe_append, safe_get_first, safe_lower
 )
 import orjson
-logger = SharedLogger()
-console = RichConsoleProxy()
+
 LOADED_HANDLERS: Dict[str, Any] = {}
 
 STATE_HANDLER_BASE_PATH = os.path.join(BASE_DIR, "parser", "handlers", "states")
@@ -125,7 +124,7 @@ def prompt_for_handler_fallback(
     Shows last error, allows cancel, and limits attempts.
     Supports session_id and non_interactive for logging and automation.
     """
-    prompt = UserPrompt()
+
     attempts = 0
 
     # Non-interactive mode: auto-select first available state/county

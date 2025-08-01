@@ -324,38 +324,31 @@ class SharedLogger(logging.Logger):
                 }
         return {}
 
-    def trace(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
-        """Log a trace message."""
+    def trace(self, msg, context=None, exc_info=None):
         msg = self._append_traceback(msg, exc_info)
         self._log("TRACE", msg, context, color="cyan")
 
-    def debug(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
-        """Log a debug message."""
+    def debug(self, msg, context=None, exc_info=None):
         msg = self._append_traceback(msg, exc_info)
         self._log("DEBUG", msg, context, color="blue")
 
-    def info(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
-        """Log an info message."""
+    def info(self, msg, context=None, exc_info=None):
         msg = self._append_traceback(msg, exc_info)
         self._log("INFO", msg, context, color="green")
 
-    def warning(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
-        """Log a warning message."""
+    def warning(self, msg, context=None, exc_info=None):
         msg = self._append_traceback(msg, exc_info)
         self._log("WARNING", msg, context, color="yellow")
 
-    def error(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
-        """Log an error message. Accepts exc_info for traceback compatibility."""
+    def error(self, msg, context=None, exc_info=None):
         msg = self._append_traceback(msg, exc_info)
         self._log("ERROR", msg, context, color="red")
 
-    def critical(self, msg: str, context: Any = None, exc_info: Any = None) -> None:
-        """Log a critical message."""
+    def critical(self, msg, context=None, exc_info=None):
         msg = self._append_traceback(msg, exc_info)
         self._log("CRITICAL", msg, context, color="magenta")
 
-    def alert(self, msg: str, context: Any = None, alert_type: str = "info", exc_info: Any = None) -> None:
-        """Log an alert message with a specific alert type."""
+    def alert(self, msg, context=None, alert_type="info", exc_info=None):
         msg = self._append_traceback(msg, exc_info)
         style = {
             "info": "cyan",
@@ -392,73 +385,73 @@ class SharedLogger(logging.Logger):
         if self.suppress_rich_logs or not self._should_emit(level):
             return
 
-        # Defensive: ensure msg is always a string
+        # Defensive: ensure msg is always a string or dict
+        msg_obj = None
         if not isinstance(msg, (str, bytes)):
+            msg_obj = msg
             try:
-                msg = orjson.dumps(msg, option=orjson.OPT_INDENT_2).decode("utf-8")
+                msg_str = orjson.dumps(msg, option=orjson.OPT_INDENT_2).decode("utf-8")
             except Exception:
-                msg = str(msg)
+                msg_str = str(msg)
+        else:
+            msg_str = msg
 
         context_str = self._format_context(context)
-        # Compose message for panel or plain output
-        text_msg = f"[{level}] {msg}"
+        text_msg = f"[{level}] {msg_str}"
+
+        # Choose the correct Python logger method
+        log_method = getattr(self.logger, safe_lower(level), None)
+        if not callable(log_method):
+            log_method = self.logger.info  # Default to info
 
         # Output logic
         if self.mode == "webapp" and self.socketio_emit_func:
-            # Webapp: emit JSON if format is json, else plain text
-            if self.format == "json":
+            # If structured payload, emit as JSON
+            if isinstance(msg, dict):
+                self.socketio_emit_func(orjson.dumps(msg).decode("utf-8"))
+                log_method(str(msg))
+            # If format is json, emit structured log object
+            elif self.format == "json":
                 log_obj = {
                     "timestamp": time.time(),
                     "level": level,
                     "color": color,
-                    "message": re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", msg).strip(),
+                    "message": msg_obj if msg_obj is not None else re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", msg_str).strip(),
                     "context": context_str,
                 }
                 self.socketio_emit_func(orjson.dumps(log_obj).decode("utf-8"))
-                # Also log to Python logger
-                log_method = getattr(self.logger, safe_lower(level), None)
-                if callable(log_method):
-                    log_method(log_obj["message"])
-                else:
-                    self.logger.info(log_obj["message"])
+                log_method(log_obj["message"])
             else:
                 plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
                 self.socketio_emit_func(plain_msg.strip())
-                # Also log to Python logger
-                log_method = getattr(self.logger, safe_lower(level), None)
-                if callable(log_method):
-                    log_method(plain_msg.strip())
-                else:
-                    self.logger.info(plain_msg.strip())
+                log_method(plain_msg.strip())
         elif self.mode == "cli":
             try:
-                # If msg is JSON, extract "message" field if present
-                if isinstance(msg, str) and msg.strip().startswith("{"):
-                    try:
-                        msg_obj = orjson.loads(msg)
-                        # If message is a list, print each item
-                        if isinstance(msg_obj, dict) and "message" in msg_obj:
-                            message = msg_obj["message"]
-                            if isinstance(message, list):
-                                for item in message:
-                                    rprint(Panel(str(item), style=color))
-                            else:
-                                rprint(Panel(str(message), style=color))
-                        else:
-                            rprint(Panel(str(msg), style=color))
-                    except Exception:
-                        rprint(Panel(str(msg), style=color))
+                # If msg is a dict, extract "message" field for display/logging
+                if isinstance(msg, dict):
+                    message = msg.get("message", "")
+                    # Show a nice panel in the terminal
+                    if isinstance(message, list):
+                        for item in message:
+                            rprint(Panel(str(item), style=color))
+                        log_method("\n".join(str(item) for item in message))
+                    else:
+                        rprint(Panel(str(message), style=color))
+                        log_method(str(message))
                 else:
-                    rprint(Panel(str(msg), style=color))
+                    # Fallback: treat as string
+                    rprint(Panel(str(msg_str), style=color))
+                    log_method(str(msg_str))
             except Exception:
-                print(str(msg))
+                print(str(msg_str))
+                log_method(str(msg_str))
         # File output (optional)
         if self.file_path:
             log_line = {
                 "timestamp": time.time(),
                 "level": level,
                 "color": color,
-                "message": re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", msg).strip(),
+                "message": re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", msg_str).strip(),
                 "context": context_str,
             }
             with open(self.file_path, "a", encoding="utf-8") as f:

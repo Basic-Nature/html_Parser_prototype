@@ -40,7 +40,7 @@ from typing import List, Dict, Any, Tuple, TYPE_CHECKING
 import time
 from selectolax.parser import HTMLParser
 import hashlib
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger, console, prompt
 from ..utils.ml_table_detector import detect_tables_ml
 from ..config import CACHE_DIR, LOG_DIR
 from difflib import get_close_matches
@@ -57,7 +57,6 @@ from ..Context_Integration.librarian import (
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 # --- CONSTANTS & GLOBALS ---
-logger = SharedLogger()
 TABLE_STRUCTURE_CACHE_PATH = os.path.join(CACHE_DIR, "table_structure_cache.json")
 
 def get_safe_log_path(filename):

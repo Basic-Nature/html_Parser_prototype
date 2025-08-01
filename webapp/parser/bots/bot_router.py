@@ -7,7 +7,7 @@ import errno
 from datetime import datetime
 from sqlalchemy import inspect
 from pathlib import Path
-from ..utils.shared_logger import SharedLogger, RichConsoleProxy
+from ..utils.logger_singleton import logger, console
 from ..Context_Integration.librarian import load_context_library
 from ..utils.models import Base
 from ..utils.db_utils import get_engine
@@ -17,8 +17,6 @@ try:
 except ImportError:
     openai = None
 
-logger = SharedLogger()
-console = RichConsoleProxy()
 ORCHESTRATION_PLUGINS = []
 
 def register_orchestration_plugin(plugin_func):

@@ -29,15 +29,15 @@ from sqlalchemy import create_engine, inspect
 from dotenv import load_dotenv
 from pathlib import Path
 import sys
-from webapp.parser.utils.shared_logger import SharedLogger
-# --- Import config robustly ---
+from ..utils.logger_singleton import logger
+# --- Import config ---
 try:
     from .. import config
 except ImportError:
     # Allow running as a script from project root
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
     import webapp.parser.config as config
-logger = SharedLogger()
+
 # Load environment variables
 load_dotenv()
 

@@ -28,7 +28,7 @@ import importlib
 from fastapi import FastAPI
 import uvicorn
 # --- Unified logger import ---
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 from us.states import lookup as us_state_lookup
 import re
 from ..utils.misc_utils import file_hash
@@ -43,7 +43,7 @@ from ..Context_Integration.librarian import (
 from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
 from webapp.parser.Context_Integration.context_coordinator import ContextCoordinator
 from ..utils.model_registry import ModelRegistry
-logger = SharedLogger()
+
 # Ensure these are Path objects
 LOG_DIR = Path(LOG_DIR)
 CONTEXT_LIBRARY_PATH = Path(CONTEXT_LIBRARY_PATH)

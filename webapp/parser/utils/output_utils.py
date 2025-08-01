@@ -3,10 +3,9 @@ import orjson
 import os
 from datetime import datetime
 from typing import Optional
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 from ..utils.shared_logic import safe_get_first, safe_items, safe_get, safe_lower
 from ..config import CONTEXT_DB_PATH, BASE_DIR, LOG_DIR
-logger = SharedLogger()
 
 CACHE_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
 

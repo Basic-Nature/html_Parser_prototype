@@ -7,7 +7,7 @@ import re
 import csv
 from concurrent.futures import ThreadPoolExecutor
 from ...config import BASE_DIR
-from ...utils.shared_logger import SharedLogger
+from ...utils.logger_singleton import logger
 from ...Context_Integration.Context_Library.constants import (
     LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS
@@ -26,7 +26,6 @@ try:
 except ImportError:
     pytesseract = None
     pdf2image = None
-logger = SharedLogger()
 def get_input_folder():
     # Parent of webapp, then 'input'
     return os.path.join(os.path.dirname(BASE_DIR), "input")

@@ -10,7 +10,7 @@ import numpy as np
 from typing import Dict, Any, List, Optional, Set, Pattern
 import concurrent.futures
 from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger, prompt
 from ..utils.shared_logic import (
     safe_append_cached_segment, safe_append, safe_update, safe_extend,
     convert_ndarrays, _sanitize_log_filename, _normalize_html_for_hash, clean_cache_inplace,
@@ -29,7 +29,8 @@ from ..Context_Integration.Context_Library.constants import (
     TOTAL_KEYWORDS, PERCENT_KEYWORDS, ROOT_CONTAINER_TAGS, LOCATION_ABBREVIATIONS,
     CONTEST_PANEL_TAGS, TABLE_TAGS, BALLOT_TYPES_SORT_ORDER, BUTTON_TAGS,
     BUTTON_CLASSES, STATE_TAGS, OFFICE_KEYWORDS, PRECINCT_HEADER_PATTERNS,
-    HEADING_TAGS, HEADING_CLASSES, NOISY_LABEL_PATTERNS, SELECTORS, DISTRICT_REGEX  
+    HEADING_TAGS, HEADING_CLASSES, NOISY_LABEL_PATTERNS, SELECTORS, DISTRICT_REGEX,
+    ALLOWED_LABELS  
 )
 from ..Context_Integration.librarian import (
     
@@ -39,13 +40,10 @@ from ..Context_Integration.librarian import (
 from ..utils.embedding_cache import (
     save_embedding, get_embedding_from_memory, load_embeddings_batch, save_embeddings_batch
 )
-from ..utils.user_prompt import UserPrompt
 from selectolax.parser import HTMLParser
 from ..utils.model_registry import ModelRegistry
 from difflib import get_close_matches
 
-prompt = UserPrompt()
-logger = SharedLogger()
 ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 console = None  # Only import rich.console.Console if needed for interactive output
 
@@ -1633,16 +1631,15 @@ def append_feedback_log(entry) -> None:
         if _pattern_kb_cache is not None and isinstance(_pattern_kb_cache, list):
             _pattern_kb_cache.append(kb_entry)
 
+def label_validator(val: str) -> bool:
+    return safe_lower(safe_strip(val)) in ALLOWED_LABELS
+
 def prompt_for_segment_label(
     segment,
     context_library=None,
     session_id=None,
     non_interactive=False
 ) -> str:
-    """
-    Prompt for a semantic label for a segment, with robust support for session_id and non_interactive mode.
-    If non_interactive is True, returns 'unknown' without prompting.
-    """
     seg_hash = segment_identity_hash(segment)
     cached_label = get_cached_segment_label(seg_hash)
     if cached_label:
@@ -1656,7 +1653,6 @@ def prompt_for_segment_label(
     if auto != "ignore" and auto != "unknown":
         cache_segment_label(seg_hash, auto)
         return auto
-    # Robust non-interactive toggle for webapp UI/CLI
     if non_interactive or not ENABLE_SEGMENT_LABEL_PROMPT:
         return "unknown"
     if not html_preview:
@@ -1665,9 +1661,15 @@ def prompt_for_segment_label(
         f"\n[bold yellow]Segment needs review:[/bold yellow]\n{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}"
     )
     logger.info(
-        "[cyan]What is the semantic role of this segment? (e.g., results_table, ballot_toggle, heading, panel, candidate_panel, location_panel, ballot_types, results_timestamp, download_link, clickable, footer, legend, contest, party_label, vote_method, reporting_status, summary, error_message, warning, info_box, navigation, pagination, tab, modal, tooltip, ignore, unknown, etc.)[/cyan]"
+        "[cyan]What is the semantic role of this segment? Allowed labels: "
+        f"{', '.join(sorted(ALLOWED_LABELS))}[/cyan]"
     )
-    label = prompt.prompt_input("> ", session_id=session_id).strip()
+    label = prompt.prompt_input(
+        "> ",
+        session_id=session_id,
+        validator=label_validator,
+        on_error=lambda msg: logger.warning(f"[PROMPT] {msg} Allowed: {', '.join(sorted(ALLOWED_LABELS))}")
+    ).strip()
     cache_segment_label(seg_hash, label)
     return label
 

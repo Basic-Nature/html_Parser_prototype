@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional, Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 from ..config import MODEL_DIR, PROJECT_ROOT, VOCAB_DIR
 
 try:
@@ -29,7 +29,6 @@ try:
 except ImportError:
     spacy = None
     Language = None
-logger = SharedLogger()
 _lock = threading.Lock()
 
 # --- Robust Vocabulary Loading Utilities ---

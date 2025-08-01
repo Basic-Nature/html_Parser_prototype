@@ -17,9 +17,8 @@ from ..utils.shared_logic import (
     safe_values
 )
 from typing import List, Dict, Tuple, Any, TYPE_CHECKING
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 from ..config import BASE_DIR, CACHE_DIR
-logger = SharedLogger()
 
 LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
 

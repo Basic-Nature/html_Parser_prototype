@@ -3,16 +3,14 @@ import orjson
 import os
 from difflib import get_close_matches
 from .config import BASE_DIR
-from .utils.shared_logger import SharedLogger, RichConsoleProxy
-from webapp.parser.utils.user_prompt import UserPrompt
+from .utils.logger_singleton import logger, console, prompt
+
 PARSER_DIR = os.path.join(os.path.dirname(__file__))
 INPUT_FOLDER = os.path.join(BASE_DIR, "input")
 OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")
 HINT_FILE = os.path.join(PARSER_DIR, "url_hint_overrides.txt")
 URLS_FILE = os.path.join(PARSER_DIR, "urls.txt")
-logger = SharedLogger()
-console = RichConsoleProxy()
-prompt = UserPrompt()
+
 def load_overrides():
     try:
         with open(HINT_FILE, "rb") as f:

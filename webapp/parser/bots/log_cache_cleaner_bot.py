@@ -30,12 +30,12 @@ import threading
 from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 # --- SQLAlchemy imports for DB maintenance ---
 from ..utils.db_utils import get_engine
 from .context_migration import migrate_all
 from ..config import LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
-logger = SharedLogger()
+
 DEFAULT_MAX_SIZE_MB = 1024 # Default max size for files before cleaning 250MB, 500MB, 1024MB, 2048MB
 MISALIGNED_KEYWORDS = ["misaligned", "pattern-excluding"]
 ALLOWED_EXTS = (".json", ".jsonl", ".html")

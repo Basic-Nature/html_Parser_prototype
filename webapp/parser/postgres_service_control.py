@@ -1,8 +1,7 @@
 import subprocess
 import os
-from .utils.shared_logger import SharedLogger, RichConsoleProxy
-logger = SharedLogger()
-console = RichConsoleProxy()
+from .utils.logger_singleton import logger, console
+
 POSTGRES_SERVICE_NAME = os.getenv("POSTGRES_SERVICE_NAME", "postgresql-x64-17")
 
 def start_postgres_service(service_name=None):

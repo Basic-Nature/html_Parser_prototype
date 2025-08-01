@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from ..Context_Integration.librarian import load_context_library
 from ..utils.misc_utils import _safe_db_path
 from ..utils.db_utils import get_session, create_engine
-from ..utils.shared_logger import SharedLogger, RichConsoleProxy
+from ..utils.logger_singleton import logger, console
 from ..config import CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, POSTGRES_URL, LOG_DIR
 import numpy as np
 import spacy
@@ -30,9 +30,6 @@ import tqdm
 import torch
 from sqlalchemy import select, inspect
 from ..utils.models import TableStructure, Base
-
-logger = SharedLogger()
-console = RichConsoleProxy()
 
 # --- Logging Setup ---
 

@@ -2,13 +2,11 @@ from __future__ import annotations
 import hashlib
 import os
 import orjson
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 from ..utils.shared_logic import safe_get
 from typing import Dict, Any, List
 from pathlib import Path
 from ..config import CONTEXT_LIBRARY_PATH
-
-logger = SharedLogger()
 
 # --- Utility: Processed URL cache (unchanged, not DB) ---
 def load_processed_urls() -> Dict[str, Any]:

@@ -12,7 +12,8 @@ from sqlalchemy.dialects.postgresql import insert
 from ..utils.db_utils import get_session, engine
 from ..utils.models import EmbeddingCache
 from ..config import LOG_DIR, CACHE_DIR
-from ..utils.shared_logger import RichConsoleProxy, SharedLogger, SQLAlchemyToSharedLoggerHandler
+from ..utils.shared_logger import SQLAlchemyToSharedLoggerHandler
+from ..utils.logger_singleton import logger, console
 
 try:
     import joblib
@@ -20,9 +21,6 @@ try:
 except ImportError:
     import pickle
     JOBLIB_AVAILABLE = False
-
-console = RichConsoleProxy()
-logger = SharedLogger()
 
 for name in [
     "sqlalchemy",

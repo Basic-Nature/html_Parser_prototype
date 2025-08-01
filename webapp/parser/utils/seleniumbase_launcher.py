@@ -1,8 +1,7 @@
 from seleniumbase import Driver
 import time
 import os
-from webapp.parser.utils.shared_logger import SharedLogger
-logger = SharedLogger()
+from ..utils.logger_singleton import logger
 
 def launch_browser(user_agent=None, headless=True, proxy=None):
     """

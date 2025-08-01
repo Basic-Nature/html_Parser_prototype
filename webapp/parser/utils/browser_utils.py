@@ -18,15 +18,12 @@ from playwright.sync_api import (
     sync_playwright, Browser, BrowserContext, Page, BrowserType, ElementHandle, Locator
 )
 from selenium.webdriver.remote.webdriver import WebDriver
-from ..utils.user_prompt import UserPrompt
-from ..utils.shared_logger import SharedLogger, RichConsoleProxy
+from ..utils.logger_singleton import logger, console, prompt
 from ..utils.shared_logic import (
     safe_lower, safe_get, safe_get_first
 )
 from ..config import CONTEXT_LIBRARY_PATH
-prompt = UserPrompt()
-logger = SharedLogger()
-console = RichConsoleProxy()
+
 # Load user agents and captcha indicators from context library
 if os.path.exists(CONTEXT_LIBRARY_PATH):
     import orjson
@@ -69,7 +66,7 @@ def safe_url(page) -> str:
         logger.error(f"[safe_url] Error accessing page.url: {e}")
         return ""
 
-def safe_is_visible(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
+def safe_is_visible(obj: Union[Locator, ElementHandle], logger=logger) -> bool:
     """Safely call .is_visible on a Playwright element handle or locator."""
     try:
         if hasattr(obj, "is_visible"):
@@ -79,7 +76,7 @@ def safe_is_visible(obj: Union[Locator, ElementHandle], logger: SharedLogger = N
         if logger: logger.error(f"[safe_is_visible] Error: {e}")
         return False
 
-def safe_is_enabled(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
+def safe_is_enabled(obj: Union[Locator, ElementHandle], logger=logger) -> bool:
     """Safely call .is_enabled on a Playwright element handle or locator."""
     try:
         if hasattr(obj, "is_enabled"):
@@ -89,7 +86,7 @@ def safe_is_enabled(obj: Union[Locator, ElementHandle], logger: SharedLogger = N
         if logger: logger.error(f"[safe_is_enabled] Error: {e}")
         return False
 
-def safe_locator(page: Page, selector: str, logger: SharedLogger = None) -> Optional[Locator]:
+def safe_locator(page: Page, selector: str, logger=logger) -> Optional[Locator]:
     """Safely call .locator on a Playwright page."""
     try:
         if hasattr(page, "locator"):
@@ -99,7 +96,7 @@ def safe_locator(page: Page, selector: str, logger: SharedLogger = None) -> Opti
         if logger: logger.error(f"[safe_locator] Error: {e}")
         return None
 
-def safe_count(obj: Union[Locator, Collection], logger: SharedLogger = None) -> int:
+def safe_count(obj: Union[Locator, Collection], logger=logger) -> int:
     """Safely call .count() on a locator or collection."""
     try:
         if hasattr(obj, "count"):
@@ -111,7 +108,7 @@ def safe_count(obj: Union[Locator, Collection], logger: SharedLogger = None) -> 
         if logger: logger.error(f"[safe_count] Error: {e}")
         return 0
 
-def safe_evaluate(obj: Union[Locator, ElementHandle], script: str, logger: SharedLogger = None) -> Any:
+def safe_evaluate(obj: Union[Locator, ElementHandle], script: str, logger=logger) -> Any:
     """Safely call .evaluate on a Playwright element handle."""
     try:
         if hasattr(obj, "evaluate"):
@@ -121,7 +118,7 @@ def safe_evaluate(obj: Union[Locator, ElementHandle], script: str, logger: Share
         if logger: logger.error(f"[safe_evaluate] Error: {e}")
         return None
 
-def safe_is_visible(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
+def safe_is_visible(obj: Union[Locator, ElementHandle], logger=logger) -> bool:
     """Safely call .is_visible on a Playwright element handle."""
     try:
         if hasattr(obj, "is_visible"):
@@ -131,7 +128,7 @@ def safe_is_visible(obj: Union[Locator, ElementHandle], logger: SharedLogger = N
         if logger: logger.error(f"[safe_is_visible] Error: {e}")
         return False
 
-def safe_is_enabled(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
+def safe_is_enabled(obj: Union[Locator, ElementHandle], logger=logger) -> bool:
     """Safely call .is_enabled on a Playwright element handle."""
     try:
         if hasattr(obj, "is_enabled"):
@@ -141,7 +138,7 @@ def safe_is_enabled(obj: Union[Locator, ElementHandle], logger: SharedLogger = N
         if logger: logger.error(f"[safe_is_enabled] Error: {e}")
         return False
 
-def safe_click(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> bool:
+def safe_click(obj: Union[Locator, ElementHandle], logger=logger) -> bool:
     """Safely call .click on a Playwright element handle."""
     try:
         if hasattr(obj, "click"):
@@ -152,7 +149,7 @@ def safe_click(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) 
         if logger: logger.error(f"[safe_click] Error: {e}")
         return False
 
-def safe_wait_for_timeout(page: Page, ms: int, logger: SharedLogger = None) -> bool:
+def safe_wait_for_timeout(page: Page, ms: int, logger=logger) -> bool:
     """Safely call .wait_for_timeout on a Playwright page."""
     try:
         if hasattr(page, "wait_for_timeout"):
@@ -163,7 +160,7 @@ def safe_wait_for_timeout(page: Page, ms: int, logger: SharedLogger = None) -> b
         if logger: logger.error(f"[safe_wait_for_timeout] Error: {e}")
         return False
 
-def safe_get_attribute(obj: Union[Locator, ElementHandle], attr: str, logger: SharedLogger = None) -> Optional[str]:
+def safe_get_attribute(obj: Union[Locator, ElementHandle], attr: str, logger=logger) -> Optional[str]:
     """Safely call .get_attribute on a Playwright element handle."""
     try:
         if hasattr(obj, "get_attribute"):
@@ -186,7 +183,7 @@ def safe_attributes(element) -> dict:
     except Exception:
         return {}
 
-def safe_inner_text(obj: Union[Locator, ElementHandle], logger: SharedLogger = None) -> str:
+def safe_inner_text(obj: Union[Locator, ElementHandle], logger=logger) -> str:
     """Safely call .inner_text on a Playwright element handle."""
     try:
         if hasattr(obj, "inner_text"):
@@ -196,7 +193,7 @@ def safe_inner_text(obj: Union[Locator, ElementHandle], logger: SharedLogger = N
         if logger: logger.error(f"[safe_inner_text] Error: {e}")
         return ""
 
-def safe_nth(obj: Union[Locator, ElementHandle], index: int, logger: SharedLogger = None) -> Optional[Union[Locator, ElementHandle]]:
+def safe_nth(obj: Union[Locator, ElementHandle], index: int, logger=logger) -> Optional[Union[Locator, ElementHandle]]:
     """Safely call .nth on a Playwright locator."""
     try:
         if hasattr(obj, "nth"):
@@ -377,7 +374,6 @@ def launch_selenium_stealth(target_url: str, user_agent: str) -> WebDriver:
 
 def safe_browser_close(
     browser: Optional[Closable], 
-    output_func: Optional[Callable[[str], None]] = None, 
     session_id: Optional[str] = None
 ) -> None:
     """
@@ -389,11 +385,19 @@ def safe_browser_close(
             if hasattr(browser, "close") and callable(browser.close):
                 browser.close()
             else:
-                if output_func:
-                    output_func(f"[WARN] Browser object of type '{browser_type}' does not support close(). (Session: {session_id})")
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "browser",
+                    "message": f"Browser object of type '{browser_type}' does not support close().",
+                    "session_id": session_id
+                })
         except Exception as e:
-            if output_func:
-                output_func(f"[WARN] Exception during browser close: {e} (Session: {session_id})")
+            logger.warning({
+                "level": "WARNING",
+                "type": "browser",
+                "message": f"Exception during browser close: {e}",
+                "session_id": session_id
+            })
 
 def browser_pipeline(playwright, target_url, cache_exit_callback=None, non_interactive=False, session_id=None):
     """

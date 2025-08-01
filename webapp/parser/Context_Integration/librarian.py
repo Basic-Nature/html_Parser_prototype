@@ -18,9 +18,9 @@ from .Context_Library.constants import (
     HEADING_TAGS, HTML_TAGS, LOCATION_KEYWORDS
 )
 from ..utils.shared_logic import safe_get, safe_merge_defaults, safe_setdefault, safe_startswith, safe_append
-from ..utils.shared_logger import SharedLogger
+
 from ..utils.misc_utils import file_hash
-logger = SharedLogger()
+from ..utils.logger_singleton import logger
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
 _TEMP_CONTEXT_LIB_TEMPFILES = set()

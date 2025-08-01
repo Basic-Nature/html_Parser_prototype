@@ -5,9 +5,9 @@ import re
 from typing import Optional, Tuple
 from dotenv import load_dotenv
 from ..handlers.formats import json_handler, pdf_handler, csv_handler
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger, prompt
 from ..utils.shared_logic import (
-    safe_lower, safe_get, safe_isdigit
+    safe_lower, safe_get, safe_isdigit, safe_parse
 )
 from ..utils.browser_utils import (
     safe_content, safe_query_selector_all, safe_context_library, safe_context_result,
@@ -17,11 +17,8 @@ from urllib.parse import urljoin
 from ..config import CONTEXT_LIBRARY_PATH
 load_dotenv()
 from .download_utils import download_file
-from ..utils.user_prompt import UserPrompt
 from .html_scanner import load_pattern_kb, append_pattern_kb
 
-prompt = UserPrompt()
-logger = SharedLogger()
 # --- Load supported formats from .env or context library ---
 
 if os.path.exists(CONTEXT_LIBRARY_PATH):
@@ -137,28 +134,15 @@ def prompt_and_handle_download(
     target_url,
     rejected_downloads=None,
     non_interactive=False,
-    prompt_func=None,
     session_id=None
 ) -> Tuple[Optional[dict], bool]:
     """
     Extracts download links (from context library, DOM, and HTML), prompts user for format,
     downloads file, and routes to handler.
     Returns (result, handled) where handled=True if a format was selected and processed.
-    Pipeline steps:
-      1. Extract links from context library
-      2. Extract links from DOM
-      3. Extract links from HTML
-      4. Merge and deduplicate links
-      5. Remove rejected links
-      6. Update context metadata with discovered links
-      7. Add to pattern KB for ML-driven format clustering
-      8. Prompt user for format
-      9. Download and handle
     """
     if rejected_downloads is None:
         rejected_downloads = set()
-    if prompt_func is None:
-        prompt_func = prompt.prompt_input  # fallback
 
     html = safe_content(page, session_id=session_id)
 
@@ -247,8 +231,6 @@ def prompt_and_handle_download(
 
     fmt, file_url = prompt_user_for_format(
         confirmed,
-        logger=logger,
-        prompt_func=prompt_func,
         non_interactive=non_interactive,
         session_id=session_id
     )
@@ -267,7 +249,12 @@ def prompt_and_handle_download(
 
     format_handler = route_format_handler(fmt)
     if format_handler and hasattr(format_handler, "parse"):
-        result = format_handler.parse(None, {"manual_file": local_file, "source_url": target_url})
+        result = safe_parse(
+            format_handler,
+            None,
+            {"manual_file": local_file, "source_url": target_url},
+            logger=logger
+        )
         logger.debug(f"[format_router][Session:{session_id}] Format handler completed. KB size: {len(format_kb) if format_kb else 'N/A'}")
         return result, True
 
@@ -276,8 +263,7 @@ def prompt_and_handle_download(
 
 def prompt_user_for_format(
     confirmed,
-    logger=None,
-    prompt_func=None,
+    logger=logger,
     non_interactive=False,
     session_id=None
 ) -> tuple[Optional[str], Optional[str]]:
@@ -285,11 +271,6 @@ def prompt_user_for_format(
     Prompts the user to select a format from the confirmed list.
     Returns (fmt, file_url) or (None, None) if skipped or denied.
     """
-    if logger is None:
-        logger = SharedLogger()
-    if prompt_func is None:
-        prompt_func = prompt.prompt_input
-
     if not confirmed:
         logger.warning(f"[WARN][Session:{session_id}] No downloadable formats detected.")
         return None, None
@@ -318,10 +299,11 @@ def prompt_user_for_format(
             logger.info(f"[INFO][Session:{session_id}] Non-interactive mode: no formats to select.")
             return None, None
 
-    selection = prompt_func(
+    selection = prompt.prompt_input(
         f"[PROMPT][Session:{session_id}] Select a format to download (0-{len(format_options)-1}) or 'n' to skip:",
         default="n",
-        validator=validator
+        validator=validator,
+        session_id=session_id
     )
     if safe_lower(selection) == "" or safe_lower(selection) == "n":
         logger.info(f"[INFO][Session:{session_id}] User chose to skip format download.")

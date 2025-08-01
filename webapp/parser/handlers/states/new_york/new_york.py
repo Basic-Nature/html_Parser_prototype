@@ -1,11 +1,10 @@
 import importlib
 from playwright.sync_api import Page
 from typing import Optional, Tuple, Any
-from ....utils.shared_logger import SharedLogger
+from ....utils.logger_singleton import logger
 from ....utils.shared_logic import (
     safe_get, safe_lower, safe_strip, safe_parse
 )
-logger = SharedLogger()
 def parse(page: Page, html_context: Optional[dict] = None) -> Tuple[Any, Any, Any, dict]:
     """
     State-level handler for New York.

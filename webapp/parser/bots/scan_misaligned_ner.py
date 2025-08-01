@@ -7,9 +7,8 @@ import subprocess
 import time
 from pathlib import Path
 from ..config import LOG_DIR, PROJECT_ROOT
-from ..utils.shared_logger import SharedLogger
+from ..utils.logger_singleton import logger
 
-logger = SharedLogger()
 
 def resolve_jsonl_path(jsonl_path):
     # If absolute, use as-is; else, join with LOG_DIR
