@@ -7,8 +7,7 @@ from sqlalchemy.orm import declarative_base, relationship, backref
 import uuid
 from datetime import datetime, timezone
 import enum
-from .shared_logger import SharedLogger
-logger = SharedLogger()
+from .logger_singleton import logger
 Base = declarative_base()
 
 # --- ENUMS ---

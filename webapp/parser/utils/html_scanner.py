@@ -45,7 +45,6 @@ from ..utils.model_registry import ModelRegistry
 from difflib import get_close_matches
 
 ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
-console = None  # Only import rich.console.Console if needed for interactive output
 
 # --- Caching and threading ---
 _LABEL_CACHE_FILENAME = "segment_label_cache.json"
@@ -2217,7 +2216,6 @@ def _load_context_resources(coordinator, model_name, use_finetuned):
 
 def _prepare_html_and_cache(page, target_url, context_cache):
     """Extract HTML, compute hash, and check cache."""
-    logger = SharedLogger()
     try:
         html = getattr(page, "content", lambda: "")()
     except Exception:

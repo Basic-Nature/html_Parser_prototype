@@ -15,9 +15,9 @@ from .models import (
 from ..Context_Integration.librarian import (
     clean_for_json
 )
-from .shared_logger import SharedLogger
+from .logger_singleton import logger
 from ..config import POSTGRES_URL, CONTEXT_LIBRARY_PATH
-logger = SharedLogger()
+
 # Set up SQLAlchemy engine and session
 engine = create_engine(POSTGRES_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
