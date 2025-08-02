@@ -1,3 +1,271 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:fe823f9af76d6cd68603cee2d5eb3f2d3bcf67cd2ec28eac81e66dba8dc1910b
-size 10482
+<!-- filepath: c:\Users\olivi\OneDrive\Desktop\html_Parser_prototype\webapp\templates\manage_data.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Data & URL Hint Manager | Smart Elections Parser</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --main-blue: #45818e;
+            --main-red: #eb4f43;
+            --main-bg: #f8f9fa;
+        }
+        body {
+            background: linear-gradient(120deg, var(--main-blue) 0%, var(--main-red) 100%);
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            color: #222;
+        }
+        .navbar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: var(--main-blue);
+            padding: 1em 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .navbar a {
+            color: #fff;
+            text-decoration: none;
+            margin: 0 1.2em;
+            font-weight: 600;
+            letter-spacing: 1px;
+            padding: 0.5em 1em;
+            border-radius: 6px;
+            transition: background 0.3s, color 0.3s;
+        }
+        .navbar a:hover, .navbar a.active {
+            background: var(--main-red);
+            color: #fff;
+        }
+        .container-main {
+            max-width: 950px;
+            margin: 2.5em auto;
+            background: var(--glass);
+            border-radius: var(--border-radius);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            padding: 2.5em 2em;
+        }
+        h1 {
+            text-align: center;
+            color: var(--main-blue);
+            margin-bottom: 0.5em;
+        }
+        .subtitle {
+            text-align: center;
+            color: var(--main-red);
+            font-size: 1.2em;
+            margin-bottom: 1.5em;
+        }
+        .section {
+            background: #fff;
+            border-radius: var(--border-radius);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            padding: 1.5em 1.2em;
+            margin-bottom: 2em;
+        }
+        .section h2 {
+            color: var(--main-blue);
+            margin-bottom: 0.7em;
+        }
+        .collapsible-btn {
+            background: var(--main-blue);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 0.6em 1.2em;
+            margin-bottom: 1em;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .collapsible-btn:hover {
+            background: var(--main-red);
+        }
+        .file-list {
+            list-style: none;
+            padding: 0;
+            margin: 0.5em 0 0 0;
+        }
+        .file-list li {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--main-bg);
+            border-radius: 8px;
+            margin-bottom: 0.5em;
+            padding: 0.5em 1em;
+        }
+        .file-actions {
+            display: flex;
+            gap: 0.5em;
+        }
+        .btn {
+            border: none;
+            border-radius: 6px;
+            padding: 0.4em 0.9em;
+            font-size: 0.98em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .btn-primary {
+            background: var(--main-blue);
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background: var(--main-red);
+        }
+        .btn-success {
+            background: #4caf50;
+            color: #fff;
+        }
+        .btn-success:hover {
+            background: #388e3c;
+        }
+        .btn-danger {
+            background: #eb4f43;
+            color: #fff;
+        }
+        .btn-danger:hover {
+            background: #b71c1c;
+        }
+        .btn-upload {
+            background: #fff;
+            color: var(--main-blue);
+            border: 1px solid var(--main-blue);
+        }
+        .btn-upload:hover {
+            background: var(--main-blue);
+            color: #fff;
+        }
+        .flash {
+            margin: 1em auto;
+            max-width: 600px;
+            padding: 1em 1.5em;
+            border-radius: 8px;
+            background: var(--main-red);
+            color: #fff;
+            font-weight: 600;
+            text-align: center;
+        }
+        @media (max-width: 700px) {
+            .container-main { padding: 1em; }
+            .file-list li { flex-direction: column; align-items: flex-start; }
+            .file-actions { margin-top: 0.5em; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('manage_data') }}" class="active">Data & URL Hints</a>
+        <a href="{{ url_for('run_parser_page') }}">Run Parser</a>
+        <a href="#" onclick="alert('Coming soon'); return false;">Master Datasheet</a>
+        <a href="{{ url_for('data_framework') }}">Upload Data</a>
+    </nav>
+    <div class="container-main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <h1>Data & URL Hint Manager</h1>
+        <div class="subtitle">
+            Manage custom URL-to-handler mappings and upload, download, or delete files in your project folders.
+        </div>
+
+        <!-- Input Folder Section -->
+        <div class="section">
+            <button type="button" class="collapsible-btn" onclick="toggleSection('inputSection')">Input Folder Files</button>
+            <div id="inputSection" style="display:none;">
+                <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
+                    <input type="file" name="file" required>
+                    <button type="submit" class="btn btn-upload">Upload</button>
+                </form>
+                <ul class="file-list">
+                    {% for file in input_files %}
+                        <li>
+                            <span>{{ file }}</span>
+                            <div class="file-actions">
+                                <a href="{{ url_for('download_input_file', filename=file) }}" class="btn btn-success">Download</a>
+                                <form method="POST" action="{{ url_for('delete_input_file', filename=file) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                </form>
+                            </div>
+                        </li>
+                    {% else %}
+                        <li>No files in input folder.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- Output Folder Section -->
+        <div class="section">
+            <button type="button" class="collapsible-btn" onclick="toggleSection('outputSection')">Output Folder Files</button>
+            <div id="outputSection" style="display:none;">
+                <form method="POST" action="{{ url_for('upload_to_output') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
+                    <input type="file" name="file" required>
+                    <button type="submit" class="btn btn-upload">Upload</button>
+                </form>
+                <ul class="file-list">
+                    {% for file in output_files %}
+                        <li>
+                            <span>{{ file }}</span>
+                            <div class="file-actions">
+                                <a href="{{ url_for('download_output_file', filename=file) }}" class="btn btn-success">Download</a>
+                                <form method="POST" action="{{ url_for('delete_output_file', filename=file) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                </form>
+                            </div>
+                        </li>
+                    {% else %}
+                        <li>No files in output folder.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- Uploads Folder Section -->
+        <div class="section">
+            <button type="button" class="collapsible-btn" onclick="toggleSection('uploadsSection')">Uploads Folder Files</button>
+            <div id="uploadsSection" style="display:none;">
+                <ul class="file-list">
+                    {% for file in uploaded_files %}
+                        <li>
+                            <span>{{ file }}</span>
+                            <div class="file-actions">
+                                <a href="{{ url_for('download_upload_file', filename=file) }}" class="btn btn-success">Download</a>
+                                <form method="POST" action="{{ url_for('delete_upload_file', filename=file) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                </form>
+                            </div>
+                        </li>
+                    {% else %}
+                        <li>No files in uploads folder.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- URL Hint Manager Section (existing logic can go here) -->
+        <div class="section">
+            <h2>URL Hint Overrides</h2>
+            <!-- Place your URL hint manager form/table here as before -->
+            <!-- ... -->
+        </div>
+    </div>
+    <script>
+    function toggleSection(id) {
+        var el = document.getElementById(id);
+        el.style.display = (el.style.display === "none" || el.style.display === "") ? "block" : "none";
+    }
+    </script>
+</body>
+</html>

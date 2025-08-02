@@ -1,3 +1,20 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:922912a0c874352f099fbd593221922ccbbf47765f344f651c15fc7315481d9d
-size 508
+<!-- filepath: ...\html_Parser_prototype\webapp\templates\file_list.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ folder }} Files</title>
+</head>
+<body>
+    <h1>{{ folder }} Files</h1>
+    <ul>
+        {% for file in files %}
+            <li>
+                <a href="{{ url_for(download_url, filename=file) }}">{{ file }}</a>
+            </li>
+        {% else %}
+            <li>No files found.</li>
+        {% endfor %}
+    </ul>
+    <a href="{{ url_for('index') }}">Back to Home</a>
+</body>
+</html>
