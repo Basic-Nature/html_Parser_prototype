@@ -33,7 +33,7 @@ load_dotenv()
 
 from webapp.parser.utils.logger_singleton import logger, console, prompt
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=os.path.join(PROJECT_ROOT, "docs"), static_folder=os.path.join(PROJECT_ROOT, "docs", "static"))
 socketio = SocketIO(app)
 
 
