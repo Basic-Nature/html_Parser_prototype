@@ -398,9 +398,18 @@ document.addEventListener("DOMContentLoaded", function() {
     if (window.__parserSocketInitialized) return;
     window.__parserSocketInitialized = true;
 
+    // Always send a string session ID, never an object
+    let prevSessionId = localStorage.getItem('session_id');
+    try {
+        // If accidentally stored as object, extract session_id
+        if (prevSessionId && prevSessionId.startsWith('{')) {
+            let parsed = JSON.parse(prevSessionId);
+            if (parsed.session_id) prevSessionId = parsed.session_id;
+        }
+    } catch {}
     var socket = io({
         query: {
-            prev_session_id: localStorage.getItem('session_id') || ""
+            prev_session_id: prevSessionId || ""
         }
     });
 
@@ -415,12 +424,15 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function getSessions() {
         let sessions = JSON.parse(localStorage.getItem('active_sessions') || "[]");
+        // Only keep string session IDs
+        sessions = sessions.map(s => (typeof s === 'object' && s.session_id) ? s.session_id : s);
         sessions = Array.from(new Set(sessions));
         localStorage.setItem('active_sessions', JSON.stringify(sessions));
         return sessions;
     }
 
     function setActiveSession(sid) {
+        // Always use string session ID
         if (typeof sid === 'object' && sid.session_id) {
             sid = sid.session_id;
         }
@@ -440,6 +452,7 @@ document.addEventListener("DOMContentLoaded", function() {
         let sessions = getSessions();
         sessionListDiv.innerHTML = '';
         sessions.forEach(sid => {
+            if (typeof sid === 'object' && sid.session_id) sid = sid.session_id;
             let btn = document.createElement('button');
             btn.textContent = sid;
             btn.className = 'session-btn';
@@ -501,7 +514,7 @@ document.addEventListener("DOMContentLoaded", function() {
         socket.emit('run_parser');
     });
 
-    // Do NOT create new session on connect
+    // Do NOT create new session on connect, just join existing
     socket.on('connect', function() {
         let sid = localStorage.getItem('session_id');
         if (sid) {
@@ -718,10 +731,12 @@ document.addEventListener("DOMContentLoaded", function() {
     socket.emit('get_sessions');
     socket.on('session_list', function(data) {
         if (Array.isArray(data.sessions)) {
-            localStorage.setItem('active_sessions', JSON.stringify(data.sessions));
+            // Only keep string session IDs
+            let sessionIds = data.sessions.map(s => (typeof s === 'object' && s.session_id) ? s.session_id : s);
+            localStorage.setItem('active_sessions', JSON.stringify(sessionIds));
             renderSessionList();
-            if (!data.sessions.includes(localStorage.getItem('session_id'))) {
-                setActiveSession(data.sessions[0] || '');
+            if (!sessionIds.includes(localStorage.getItem('session_id'))) {
+                setActiveSession(sessionIds[0] || '');
             }
         }
     });
