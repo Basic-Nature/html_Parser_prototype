@@ -341,6 +341,7 @@
                 <option value="cancel">Cancel</option> <!-- Cancellation events -->
                 <option value="heartbeat">Heartbeat</option> <!-- Keepalive/session -->
                 <option value="summary">Summary</option> <!-- Final summary/results -->
+                <option value="cache">Cache</option> <!-- General info messages -->
                 <option value="other">Other</option> <!-- Any other logs not fitting above -->
             </select>
             <label for="outputModeSelect" style="color:#00ffe7;font-weight:700;margin-left:2em;margin-right:0.7em;letter-spacing:1px;">
@@ -378,7 +379,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var cancelRequested = false;
 
     // Track seen log types for auto-population
-    var seenLogTypes = new Set(["all", "info", "router", "ai_analysis", "stream", "manual_override", "status", "summary", "other"]);
+    var seenLogTypes = new Set(["all", "status", "router", "ai_analysis", "stream", "manual_override", "input", "output", "validation", "network", "cancel", "heartbeat", "summary", "cache", "other"]);
     var logTypeSelect = document.getElementById('logTypeFilterSelect');
 
     // Helper to add new log type option if not present

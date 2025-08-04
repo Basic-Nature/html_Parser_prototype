@@ -10,7 +10,7 @@ import numpy as np
 from typing import Dict, Any, List, Optional, Set, Pattern
 import concurrent.futures
 from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH
-from ..utils.logger_singleton import logger, prompt
+from ..utils.logger_singleton import logger, console, prompt
 from ..utils.shared_logic import (
     safe_append_cached_segment, safe_append, safe_update, safe_extend,
     convert_ndarrays, _sanitize_log_filename, _normalize_html_for_hash, clean_cache_inplace,
@@ -88,15 +88,42 @@ def _get_label_cache_path() -> str:
     abs_path = os.path.abspath(path)
     if os.name == "nt" and len(abs_path) >= 260:
         short_path = os.path.join(tempfile.gettempdir(), _LABEL_CACHE_FILENAME)
-        logger.warning(f"[CACHE] Path too long for Windows, using temp path: {short_path}")
+        msg = f"Path too long for Windows, using temp path: {short_path}"
+        if logger.mode == "cli":
+            console.print(f"[CACHE] {msg}")
+        else:
+            payload = {
+                "level": "WARNING",
+                "type": "cache",
+                "message": msg
+            }
+            logger.warning(payload)
         # Clean up previous temp files
         for temp_file in list(_TEMP_FILES_TRACKER):
             if temp_file != short_path and os.path.exists(temp_file):
                 try:
                     os.remove(temp_file)
-                    logger.info(f"[CACHE] Removed old temp file: {temp_file}")
+                    msg = f"[CACHE] Removed old temp file: {temp_file}"
+                    if logger.mode == "cli":
+                        console.print(msg)
+                    else:
+                        payload = {
+                            "level": "INFO",
+                            "type": "cache",
+                            "message": msg
+                        }
+                        logger.info(payload)
                 except Exception as e:
-                    logger.warning(f"[CACHE] Failed to remove temp file {temp_file}: {e}")
+                    msg = f"[CACHE] Failed to remove temp file {temp_file}: {e}"
+                    if logger.mode == "cli":
+                        console.print(msg)
+                    else:
+                        payload = {
+                            "level": "WARNING",
+                            "type": "cache",
+                            "message": msg
+                        }
+                        logger.warning(payload)
                 _TEMP_FILES_TRACKER.discard(temp_file)
         _TEMP_FILES_TRACKER.add(short_path)
         return short_path
@@ -186,16 +213,43 @@ def safe_cache_path(filename: str) -> str:
     abs_path = os.path.abspath(full_path)
     if os.name == "nt" and len(abs_path) >= 240:
         temp_path = os.path.join(tempfile.gettempdir(), filename)
-        logger.warning(f"[CACHE] Path too long for Windows, using temp path: {temp_path}")
+        msg = f"Path too long for Windows, using temp path: {temp_path}"
+        if logger.mode == "cli":
+            console.print(f"[CACHE] {msg}")
+        else:
+            payload = {
+                "level": "WARNING",
+                "type": "cache",
+                "message": msg
+            }
+            logger.warning(payload)
         os.makedirs(os.path.dirname(temp_path), exist_ok=True)
         # Clean up previous temp files
         for temp_file in list(_TEMP_FILES_TRACKER):
             if temp_file != temp_path and os.path.exists(temp_file):
                 try:
                     os.remove(temp_file)
-                    logger.info(f"[CACHE] Removed old temp file: {temp_file}")
+                    msg = f"[CACHE] Removed old temp file: {temp_file}"
+                    if logger.mode == "cli":
+                        console.print(msg)
+                    else:
+                        payload = {
+                            "level": "INFO",
+                            "type": "cache",
+                            "message": msg
+                        }
+                        logger.info(payload)
                 except Exception as e:
-                    logger.warning(f"[CACHE] Failed to remove temp file {temp_file}: {e}")
+                    msg = f"[CACHE] Failed to remove temp file {temp_file}: {e}"
+                    if logger.mode == "cli":
+                        console.print(msg)
+                    else:
+                        payload = {
+                            "level": "WARNING",
+                            "type": "cache",
+                            "message": msg
+                        }
+                        logger.warning(payload)
                 _TEMP_FILES_TRACKER.discard(temp_file)
         _TEMP_FILES_TRACKER.add(temp_path)
         return temp_path
@@ -224,16 +278,43 @@ def safe_log_path(filename: str, default_ext: str = ".jsonl") -> str:
     abs_path = os.path.abspath(full_path)
     if os.name == "nt" and len(abs_path) >= 240:
         temp_path = os.path.join(tempfile.gettempdir(), filename)
-        logger.warning(f"[LOG] Path too long for Windows, using temp path: {temp_path}")
+        msg = f"Path too long for Windows, using temp path: {temp_path}"
+        if logger.mode == "cli":
+            console.print(f"[LOG] {msg}")
+        else:
+            payload = {
+                "level": "WARNING",
+                "type": "log",
+                "message": msg
+            }
+            logger.warning(payload)
         os.makedirs(os.path.dirname(temp_path), exist_ok=True)
         # Clean up previous temp files
         for temp_file in list(_TEMP_FILES_TRACKER):
             if temp_file != temp_path and os.path.exists(temp_file):
                 try:
                     os.remove(temp_file)
-                    logger.info(f"[LOG] Removed old temp file: {temp_file}")
+                    msg = f"[LOG] Removed old temp file: {temp_file}"
+                    if logger.mode == "cli":
+                        console.print(msg)
+                    else:
+                        payload = {
+                            "level": "INFO",
+                            "type": "log",
+                            "message": msg
+                        }
+                        logger.info(payload)
                 except Exception as e:
-                    logger.warning(f"[LOG] Failed to remove temp file {temp_file}: {e}")
+                    msg = f"[LOG] Failed to remove temp file {temp_file}: {e}"
+                    if logger.mode == "cli":
+                        console.print(msg)
+                    else:
+                        payload = {
+                            "level": "WARNING",
+                            "type": "log",
+                            "message": msg
+                        }
+                        logger.warning(payload)
                 _TEMP_FILES_TRACKER.discard(temp_file)
         _TEMP_FILES_TRACKER.add(temp_path)
         return temp_path
@@ -242,79 +323,79 @@ def safe_log_path(filename: str, default_ext: str = ".jsonl") -> str:
         raise ValueError("Unsafe log path detected!")
     return full_path
 
-def is_trivial_segment(seg, diagnostics=False, logger_instance=None) -> bool:
+def is_trivial_segment(seg, diagnostics=False) -> bool:
     """
     Determines if a segment is trivial (should be ignored for semantic processing).
     Checks for empty, whitespace, HTML entities, tags, icons, comments, scripts, styles,
     numeric-only, special-char-only, and other non-informative content.
     Optionally logs diagnostics for audit/debug.
     """
-    logger_obj = logger_instance or logger
     html = safe_get(seg, "html", "")
     tag = safe_lower(safe_get(seg, "tag", ""))
     classes = [safe_lower(c) for c in safe_get(seg, "classes", [])]
     attrs = safe_get(seg, "attrs", {}) or {}
 
+    def log_trivial(msg):
+        if diagnostics:
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "trivial_segment",
+                    "message": msg
+                }
+                logger.info(payload)
+
     # Empty or whitespace-only HTML
     if not html or not safe_strip(html):
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] Empty or whitespace HTML for tag={tag}")
+        log_trivial(f"[TRIVIAL] Empty or whitespace HTML for tag={tag}")
         return True
 
     # HTML entities or just tags
     html_stripped = safe_strip(html)
     if html_stripped in {"&nbsp;", "&#160;"}:
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] HTML entity only for tag={tag}")
+        log_trivial(f"[TRIVIAL] HTML entity only for tag={tag}")
         return True
     if re.fullmatch(r"<[^>]+>", html_stripped):
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] Just a tag for tag={tag}")
+        log_trivial(f"[TRIVIAL] Just a tag for tag={tag}")
         return True
 
     # Known trivial tags
     if tag in {"br", "hr", "wbr"} and not html_stripped:
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] Known trivial tag: {tag}")
+        log_trivial(f"[TRIVIAL] Known trivial tag: {tag}")
         return True
 
     # Icon-only spans
     if tag == "span" and classes and all("icon" in cls for cls in classes) and not safe_strip(re.sub(r"<[^>]+>", "", html)):
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] Icon-only span for tag={tag}, classes={classes}")
+        log_trivial(f"[TRIVIAL] Icon-only span for tag={tag}, classes={classes}")
         return True
 
     # Comments, scripts, styles
     if re.search(r"<!--.*?-->", html, re.DOTALL):
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] HTML comment detected for tag={tag}")
+        log_trivial(f"[TRIVIAL] HTML comment detected for tag={tag}")
         return True
     if re.search(r"<script.*?>.*?</script>", html, re.DOTALL) or re.search(r"<style.*?>.*?</style>", html, re.DOTALL):
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] Script or style block detected for tag={tag}")
+        log_trivial(f"[TRIVIAL] Script or style block detected for tag={tag}")
         return True
 
     # Numeric-only or special-char-only segments
     text_content = re.sub(r"<[^>]+>", "", html_stripped)
     if safe_strip(text_content).isdigit():
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] Numeric-only content for tag={tag}")
+        log_trivial(f"[TRIVIAL] Numeric-only content for tag={tag}")
         return True
     if bool(re.fullmatch(r'[\W_]+', safe_strip(text_content))):
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] Special-char-only content for tag={tag}")
+        log_trivial(f"[TRIVIAL] Special-char-only content for tag={tag}")
         return True
 
     # Trivial by attribute (e.g., aria-hidden, display:none)
     if safe_lower(attrs.get("aria-hidden", "")) == "true" or "display:none" in safe_lower(attrs.get("style", "")):
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] aria-hidden or display:none for tag={tag}")
+        log_trivial(f"[TRIVIAL] aria-hidden or display:none for tag={tag}")
         return True
 
     # Defensive: very short text (1 char or less)
     if len(safe_strip(text_content)) <= 1:
-        if diagnostics:
-            logger_obj.info(f"[TRIVIAL] Very short content for tag={tag}")
+        log_trivial(f"[TRIVIAL] Very short content for tag={tag}")
         return True
 
     return False
@@ -371,7 +452,7 @@ def get_segment_embedding(
     cache_hits=None,
     cache_misses=None,
     diagnostics=False,
-    logger_instance=None
+    logger=logger
 ) -> Optional[np.ndarray]:
     """
     Robustly computes or retrieves the embedding for a segment.
@@ -380,20 +461,37 @@ def get_segment_embedding(
     - Handles trivial/empty segments.
     - Optionally logs timing and diagnostics.
     """
-    logger_obj = logger_instance or logger
     model_id = getattr(model, 'name_or_path', str(model))
     identity = embedding_cache_hash(segment, model_id)
     if cache is not None:
         clean_cache_inplace(cache)
     if is_trivial_segment(segment):
         if diagnostics:
-            logger_obj.info(f"[EMBED] Skipping trivial segment: {identity}")
+            msg = f"[EMBED] Skipping trivial segment: {identity}"
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "embedding",
+                    "message": msg
+                }
+                logger.info(payload)
         return None
     emb = get_embedding_from_memory(identity)
     if emb is not None:
         safe_add(cache_hits, str(identity))
         if diagnostics:
-            logger_obj.info(f"[EMBED] Cache hit for {identity}")
+            msg = f"[EMBED] Cache hit for {identity}"
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "embedding",
+                    "message": msg
+                }
+                logger.info(payload)
         return emb
     tag = safe_get(segment, "tag", "")
     attrs = " ".join([f"{k}={v}" for k, v in safe_items(safe_get(segment, "attrs", {}))])
@@ -406,7 +504,16 @@ def get_segment_embedding(
     full_text = f"{tag} {attrs} {text}"
     if not safe_strip(full_text):
         if diagnostics:
-            logger_obj.warning(f"[EMBED] Empty text for segment: {identity}")
+            msg = f"[EMBED] Empty text for segment: {identity}"
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "WARNING",
+                    "type": "embedding",
+                    "message": msg
+                }
+                logger.warning(payload)
         return None
     try:
         import time
@@ -415,19 +522,37 @@ def get_segment_embedding(
         save_embedding(identity, emb)
         safe_add(cache_misses, str(identity))
         if diagnostics:
-            logger_obj.info(f"[EMBED] Computed embedding for {identity} in {time.time()-t0:.3f}s")
+            msg = f"[EMBED] Computed embedding for {identity} in {time.time()-t0:.3f}s"
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "INFO",
+                    "type": "embedding",
+                    "message": msg
+                }
+                logger.info(payload)
         return emb
     except Exception as e:
         segment["embedding_error"] = str(e)
         if diagnostics:
-            logger_obj.error(f"[EMBED] Error for {identity}: {e}")
+            msg = f"[EMBED] Error for {identity}: {e}"
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "ERROR",
+                    "type": "embedding",
+                    "message": msg
+                }
+                logger.error(payload)
         return None
 
 def batch_get_segment_embeddings(
     model,
     segments,
     diagnostics=False,
-    logger_instance=None
+    logger=logger
 ) -> List[Optional[np.ndarray]]:
     """
     Robust batch embedding retrieval/computation for segments.
@@ -435,7 +560,6 @@ def batch_get_segment_embeddings(
     - Parallelizes computation for large batches.
     - Logs progress and errors.
     """
-    logger_obj = logger_instance or logger
     model_id = getattr(model, 'name_or_path', str(model))
     identities = [embedding_cache_hash(seg, model_id) if not is_trivial_segment(seg) else None for seg in segments]
     cached = [get_embedding_from_memory(identity) if identity else None for identity in identities]
@@ -473,10 +597,28 @@ def batch_get_segment_embeddings(
                 save_embedding(identities[idx], new_embs[i])
                 cached[idx] = new_embs[i]
             if diagnostics:
-                logger_obj.info(f"[EMBED] Batch computed {len(texts)} embeddings in {time.time()-t0:.2f}s")
+                msg = f"[EMBED] Batch computed {len(texts)} embeddings in {time.time()-t0:.2f}s"
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    payload = {
+                        "level": "INFO",
+                        "type": "embedding",
+                        "message": msg
+                    }
+                    logger.info(payload)
         except Exception as e:
             if diagnostics:
-                logger_obj.error(f"[EMBED] Batch embedding error: {e}")
+                msg = f"[EMBED] Batch embedding error: {e}"
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    payload = {
+                        "level": "ERROR",
+                        "type": "embedding",
+                        "message": msg
+                    }
+                    logger.error(payload)
     return [emb if identity else None for emb, identity in zip(cached, identities)]
 
 def deduplicate_pattern_kb(pattern_kb) -> List[Dict[str, Any]]:
@@ -752,7 +894,7 @@ def _extract_segments_by_label(
     allow_special_only: bool = False,
     custom_validator=None,
     diagnostics: bool = False,
-    logger_instance=None,
+    logger=logger,
 ) -> List[Dict[str, Any]]:
     """
     Advanced extraction and cleaning of segments by label.
@@ -763,7 +905,6 @@ def _extract_segments_by_label(
     results = []
     filtered_out = []
     seen = set()
-    logger_obj = logger_instance or logger
 
     def is_numeric_only(val):
         return isinstance(val, str) and val.strip().isdigit()
@@ -819,11 +960,27 @@ def _extract_segments_by_label(
     # Optional diagnostics logging
     if diagnostics and filtered_out:
         for item in filtered_out[:10]:
-            logger_obj.warning(
-                f"[SEGMENT FILTER] Skipped segment ({item['reason']}): {str(item['segment'])[:120]}..."
-            )
+            msg = f"[SEGMENT FILTER] Skipped segment ({item['reason']}): {str(item['segment'])[:120]}..."
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "WARNING",
+                    "type": "segment_filter",
+                    "message": msg
+                }
+                logger.warning(payload)
         if len(filtered_out) > 10:
-            logger_obj.warning(f"[SEGMENT FILTER] {len(filtered_out)} segments filtered out (showing first 10).")
+            msg = f"[SEGMENT FILTER] {len(filtered_out)} segments filtered out (showing first 10)."
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "WARNING",
+                    "type": "segment_filter",
+                    "message": msg
+                }
+                logger.warning(payload)
 
     return results
 
@@ -1141,7 +1298,16 @@ def extract_tagged_segments_with_attrs(
             tag = getattr(node, "tag", None)
             tag_lower = safe_lower(tag or "")
             if not tag or tag_lower not in HTML_TAGS:
-                log_unknown_tag(tag, context_library)
+                msg = f"[UNKNOWN_TAG] {tag}"
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    payload = {
+                        "level": "WARNING",
+                        "type": "unknown_tag",
+                        "message": msg
+                    }
+                    logger.warning(payload)
                 for child in getattr(node, "iter", lambda **kw: [])(include_text=True, **kwargs):
                     walk(child, parent_idx, heading_idx, panel_idx, **kwargs)
                 return None
@@ -1194,7 +1360,16 @@ def extract_tagged_segments_with_attrs(
             for k in attrs:
                 if any(pat.match(k) for pat in CUSTOM_ATTR_PATTERNS):
                     seg["has_custom_attr"] = True
-                log_unknown_attr(k, context_library)
+                msg = f"[UNKNOWN_ATTR] {k}"
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    payload = {
+                        "level": "WARNING",
+                        "type": "unknown_attr",
+                        "message": msg
+                    }
+                    logger.warning(payload)
             node_start = getattr(node, "start", None)
             node_end = getattr(node, "end", None)
             if node_start is not None and node_end is not None:
@@ -1326,13 +1501,23 @@ def extract_tagged_segments_with_attrs(
         for i in range(N):
             node_html = organizer.extract_html_by_idx(dom_tree["nodes"], i, html)
             subtree_html = organizer.extract_subtree_html(dom_tree["nodes"], i, html)
-            logger.info(f"[DOM NODE HTML] Node {i}: {node_html[:120]}...")
-            logger.info(f"[DOM SUBTREE HTML] Node {i}: {subtree_html[:120]}...")
+            msg_node = f"[DOM NODE HTML] Node {i}: {node_html[:120]}..."
+            msg_subtree = f"[DOM SUBTREE HTML] Node {i}: {subtree_html[:120]}..."
+            if logger.mode == "cli":
+                console.print(msg_node)
+                console.print(msg_subtree)
+            else:
+                logger.info({"level": "INFO", "type": "dom_node_html", "message": msg_node})
+                logger.info({"level": "INFO", "type": "dom_subtree_html", "message": msg_subtree})
 
         seg_hashes = [segment_hash(seg.get("html", "")) for seg in segments]
         seg_htmls = [seg.get("html", "") for seg in segments]
         total_segments = len(seg_hashes)
-        logger.info(f"[EMBED] Total segments: {total_segments}")
+        msg_embed = f"[EMBED] Total segments: {total_segments}"
+        if logger.mode == "cli":
+            console.print(msg_embed)
+        else:
+            logger.info({"level": "INFO", "type": "embedding", "message": msg_embed})
 
         hash_to_embedding = {}
         CHUNK_SIZE = 1024
@@ -1341,25 +1526,45 @@ def extract_tagged_segments_with_attrs(
             chunk_result = load_embeddings_batch(chunk_hashes)
             hash_to_embedding.update(chunk_result)
             hits = sum(1 for v in chunk_result.values() if v is not None)
-            logger.debug(f"[EMBED] Batch {i//CHUNK_SIZE+1}: {hits} hits, {len(chunk_hashes)-hits} misses")
+            msg_batch = f"[EMBED] Batch {i//CHUNK_SIZE+1}: {hits} hits, {len(chunk_hashes)-hits} misses"
+            if logger.mode == "cli":
+                console.print(msg_batch)
+            else:
+                logger.debug({"level": "DEBUG", "type": "embedding_batch", "message": msg_batch})
         missing = [(h, html) for h, html in zip(seg_hashes, seg_htmls) if hash_to_embedding.get(h) is None]
         if missing:
-            logger.info(f"[EMBED] Computing {len(missing)} missing embeddings in chunks of {CHUNK_SIZE}")
+            msg_missing = f"[EMBED] Computing {len(missing)} missing embeddings in chunks of {CHUNK_SIZE}"
+            if logger.mode == "cli":
+                console.print(msg_missing)
+            else:
+                logger.info({"level": "INFO", "type": "embedding_missing", "message": msg_missing})
             for i in range(0, len(missing), CHUNK_SIZE):
                 chunk = missing[i:i+CHUNK_SIZE]
                 missing_hashes, missing_htmls = zip(*chunk)
                 try:
                     new_embs = model.encode(list(missing_htmls), convert_to_numpy=True, show_progress_bar=False)
                 except Exception as e:
-                    logger.error(f"[EMBED] Batch embedding computation failed: {e}")
+                    msg = f"[EMBED] Batch embedding computation failed: {e}"
+                    if logger.mode == "cli":
+                        console.print(msg)
+                    else:
+                        logger.error({"level": "ERROR", "type": "embedding", "message": msg})
                     continue
                 save_embeddings_batch(list(zip(missing_hashes, new_embs)))
+                msg_saved = f"[EMBED] Saved {len(chunk)} new embeddings to cache."
                 for h, emb in zip(missing_hashes, new_embs):
                     hash_to_embedding[h] = emb
-                logger.debug(f"[EMBED] Saved {len(chunk)} new embeddings to cache.")
+                if logger.mode == "cli":
+                    console.print(msg_saved)
+                else:
+                    logger.debug({"level": "DEBUG", "type": "embedding", "message": msg_saved})
         for seg, h in zip(segments, seg_hashes):
             seg["_embedding"] = hash_to_embedding[h]
-        logger.info(f"[EMBED] Embedding assignment complete for {len(segments)} segments.")
+        msg_complete = f"[EMBED] Embedding assignment complete for {len(segments)} segments."
+        if logger.mode == "cli":
+            console.print(msg_complete)
+        else:
+            logger.info({"level": "INFO", "type": "embedding_complete", "message": msg_complete})
 
         # --- Final enrichment and audit ---
         for seg in segments:
@@ -1394,14 +1599,26 @@ def extract_tagged_segments_with_attrs(
 
         if segments:
             seg = segments[0]
-            logger.debug(
+            msg_debug = (
                 f"[DOM SEGMENTS] Extracted {len(segments)} segments. Example: "
                 f"tag={seg.get('tag','')}, label={seg.get('ml_label','')}, text={_extract_clean_text(seg.get('html',''))[:80]}..."
             )
+            if logger.mode == "cli":
+                console.print(msg_debug)
+            else:
+                logger.debug({"level": "DEBUG", "type": "dom_segments", "message": msg_debug})
         else:
-            logger.debug(f"[DOM SEGMENTS] Extracted 0 segments.")
+            msg_debug = f"[DOM SEGMENTS] Extracted 0 segments."
+            if logger.mode == "cli":
+                console.print(msg_debug)
+            else:
+                logger.debug({"level": "DEBUG", "type": "dom_segments", "message": msg_debug})
         if not segments:
-            logger.warning("[DOM SEGMENTS] No DOM segments extracted. Check HTML input and parser logic.")
+            msg_warn = "[DOM SEGMENTS] No DOM segments extracted. Check HTML input and parser logic."
+            if logger.mode == "cli":
+                console.print(msg_warn)
+            else:
+                logger.warning({"level": "WARNING", "type": "dom_segments", "message": msg_warn})
 
         dom_enrichment = {
             "dom_tree": dom_tree,
@@ -1423,7 +1640,11 @@ def extract_tagged_segments_with_attrs(
             "html_snippet": (html or "")[:200],
             "segments_extracted": len(segments),
         }
-        logger.error(f"[FALLBACK] selectolax failed: {e}\nDetails: {error_details}")
+        msg_error = f"[FALLBACK] selectolax failed: {e}\nDetails: {error_details}"
+        if logger.mode == "cli":
+            console.print(msg_error)
+        else:
+            logger.error({"level": "ERROR", "type": "selectolax_fallback", "message": msg_error})
         if not fallback_on_error:
             raise
         return [{
@@ -1435,56 +1656,79 @@ def get_page_hash(page) -> str:
     """
     Robustly compute a hash for the page content.
     Handles None, bytes, and normalizes whitespace for stability.
+    Mode-aware logging.
     """
     try:
         if page is None:
             content = ""
         else:
-            # Safety net for .content
             try:
                 content = getattr(page, "content", lambda: "")()
             except Exception:
-                logger.warning("[PAGE_HASH] Exception when calling page.content(), using empty string.")
+                msg = "[PAGE_HASH] Exception when calling page.content(), using empty string."
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    logger.warning({"level": "WARNING", "type": "page_hash", "message": msg})
                 content = ""
         if content is None:
-            logger.warning("[PAGE_HASH] Page content is None, using empty string for hash.")
+            msg = "[PAGE_HASH] Page content is None, using empty string for hash."
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                logger.warning({"level": "WARNING", "type": "page_hash", "message": msg})
             content = ""
         if isinstance(content, bytes):
             content = content.decode("utf-8", errors="replace")
         elif not isinstance(content, str):
             content = str(content)
-        # Normalize line endings and strip leading/trailing whitespace
         content = content.replace('\r\n', '\n').replace('\r', '\n').strip()
         if not content:
-            logger.warning("[PAGE_HASH] Page content is empty after normalization.")
+            msg = "[PAGE_HASH] Page content is empty after normalization."
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                logger.warning({"level": "WARNING", "type": "page_hash", "message": msg})
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
     except Exception as e:
-        logger.error(f"[PAGE_HASH] Failed to compute hash: {e}")
+        msg = f"[PAGE_HASH] Failed to compute hash: {e}"
+        if logger.mode == "cli":
+            console.print(msg)
+        else:
+            logger.error({"level": "ERROR", "type": "page_hash", "message": msg})
         return hashlib.sha256(b"").hexdigest()
 
 
 def load_context_cache_from_disk(filename=None) -> Dict[str, Any]:
     """
     Loads the context cache from disk as a dict of dicts.
-    If the file is corrupted, logs and resets the cache.
-    Always uses CONTEXT_CACHE_PATH from config.py.
+    Mode-aware logging.
     """
     global _context_cache
-    # Always use the canonical cache path from config
     path = CONTEXT_CACHE_PATH
-    # Defensive: ignore filename if it tries to escape the canonical path
     if filename is not None and os.path.basename(filename) != os.path.basename(CONTEXT_CACHE_PATH):
-        logger.warning(f"[CACHE] Ignoring filename '{filename}', using CONTEXT_CACHE_PATH.")
-    logger.debug(f"[DEBUG] Loading context cache from: {path}")
+        msg = f"[CACHE] Ignoring filename '{filename}', using CONTEXT_CACHE_PATH."
+        if logger.mode == "cli":
+            console.print(msg)
+        else:
+            logger.warning({"level": "WARNING", "type": "cache", "message": msg})
+    msg_debug = f"[DEBUG] Loading context cache from: {path}"
+    if logger.mode == "cli":
+        console.print(msg_debug)
+    else:
+        logger.debug({"level": "DEBUG", "type": "cache", "message": msg_debug})
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
                 raw_cache = robust_orjson_loads(f.read())
-                # Defensive: Only keep dict values
                 _context_cache = {k: v for k, v in safe_items(raw_cache or {}) if isinstance(v, dict)}
                 return _context_cache
         except Exception as e:
-            logger.error(f"[ERROR] Failed to load context cache: {e}. Resetting context cache.")
+            msg_error = f"[ERROR] Failed to load context cache: {e}. Resetting context cache."
+            if logger.mode == "cli":
+                console.print(msg_error)
+            else:
+                logger.error({"level": "ERROR", "type": "cache", "message": msg_error})
             _context_cache = {}
             save_context_cache_to_disk(_context_cache)
             return {}
@@ -1494,14 +1738,20 @@ def load_context_cache_from_disk(filename=None) -> Dict[str, Any]:
 def save_context_cache_to_disk(context_cache, path=None) -> None:
     """
     Saves the entire context cache as a single JSON object (dict of dicts).
-    Always overwrites the file. Handles serialization and file errors gracefully.
-    Always uses CONTEXT_CACHE_PATH from config.py.
+    Mode-aware logging.
     """
-    # Always use the canonical cache path from config
     cache_path = CONTEXT_CACHE_PATH
     if path is not None and os.path.basename(path) != os.path.basename(CONTEXT_CACHE_PATH):
-        logger.warning(f"[CACHE] Ignoring path '{path}', using CONTEXT_CACHE_PATH.")
-    logger.debug(f"[DEBUG] Saving context cache to: {cache_path}")
+        msg = f"[CACHE] Ignoring path '{path}', using CONTEXT_CACHE_PATH."
+        if logger.mode == "cli":
+            console.print(msg)
+        else:
+            logger.warning({"level": "WARNING", "type": "cache", "message": msg})
+    msg_debug = f"[DEBUG] Saving context cache to: {cache_path}"
+    if logger.mode == "cli":
+        console.print(msg_debug)
+    else:
+        logger.debug({"level": "DEBUG", "type": "cache", "message": msg_debug})
     try:
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         context_cache = convert_ndarrays(context_cache)
@@ -1509,9 +1759,17 @@ def save_context_cache_to_disk(context_cache, path=None) -> None:
             try:
                 f.write(orjson.dumps(context_cache, option=orjson.OPT_INDENT_2))
             except Exception as e:
-                logger.error(f"[ERROR] Failed to serialize context cache: {e}")
+                msg_error = f"[ERROR] Failed to serialize context cache: {e}"
+                if logger.mode == "cli":
+                    console.print(msg_error)
+                else:
+                    logger.error({"level": "ERROR", "type": "cache", "message": msg_error})
     except Exception as e:
-        logger.error(f"[ERROR] Failed to save context cache to disk at {cache_path}: {e}")
+        msg_error = f"[ERROR] Failed to save context cache to disk at {cache_path}: {e}"
+        if logger.mode == "cli":
+            console.print(msg_error)
+        else:
+            logger.error({"level": "ERROR", "type": "cache", "message": msg_error})
 
 def add_context_entry(page_hash: str, context: dict, path=None) -> None:
     """
@@ -1656,18 +1914,33 @@ def prompt_for_segment_label(
         return "unknown"
     if not html_preview:
         html_preview = f"[No HTML] tag={safe_get(segment, 'tag', [])} attrs={safe_get(segment, 'attrs', [])}"
-    logger.warning(
-        f"\n[bold yellow]Segment needs review:[/bold yellow]\n{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}"
+    msg = (
+        f"\n[bold yellow]Segment needs review:[/bold yellow]\n"
+        f"{html_preview[:200]}{'...' if len(html_preview) > 200 else ''}"
     )
-    logger.info(
+    info_msg = (
         "[cyan]What is the semantic role of this segment? Allowed labels: "
         f"{', '.join(sorted(ALLOWED_LABELS))}[/cyan]"
     )
+    if logger.mode == "cli":
+        console.print(msg)
+        console.print(info_msg)
+    else:
+        logger.warning({"level": "WARNING", "type": "segment_review", "message": msg})
+        logger.info({"level": "INFO", "type": "segment_prompt", "message": info_msg})
     label = prompt.prompt_input(
         "> ",
         session_id=session_id,
         validator=label_validator,
-        on_error=lambda msg: logger.warning(f"[PROMPT] {msg} Allowed: {', '.join(sorted(ALLOWED_LABELS))}")
+        on_error=lambda msg: (
+            console.print(f"[PROMPT] {msg} Allowed: {', '.join(sorted(ALLOWED_LABELS))}")
+            if logger.mode == "cli"
+            else logger.warning({
+                "level": "WARNING",
+                "type": "prompt",
+                "message": f"[PROMPT] {msg} Allowed: {', '.join(sorted(ALLOWED_LABELS))}"
+            })
+        )
     ).strip()
     cache_segment_label(seg_hash, label)
     return label
@@ -1756,7 +2029,6 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
         "pattern_kb_matches", "segments_needing_review", "selector_log", "metadata",
         "tagged_segments", "tagged_segments_with_attrs", "raw_html", "error", "url"
     ]
-    # Only warn about missing required keys if context expects them
     required_keys = ["contests", "panels", "tables", "candidate_panels", "location_panels"]
     if context_expected is not None:
         required_keys = [k for k in required_keys if k in context_expected]
@@ -1774,26 +2046,50 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
         "vote_methods": ["vote_method_text", "vote_method_html", "segment_hash"],
     }
 
-    # Check all expected keys exist, but only warn if context expects them
     for key in expected_keys:
         if key not in dom_parts:
             if verbose and (context_expected is None or key in context_expected):
-                logger.warning(f"[DOM_PARTS] Missing key: {key}")
+                msg = f"[DOM_PARTS] Missing key: {key}"
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    payload = {
+                        "level": "WARNING",
+                        "type": "dom_parts",
+                        "message": msg
+                    }
+                    logger.warning(payload)
             valid = False
 
-    # Check required keys are lists and not empty, but only warn if context expects them
     for key in required_keys:
         val = dom_parts.get(key)
         if not isinstance(val, list):
             if verbose:
-                logger.warning(f"[DOM_PARTS] Key '{key}' is not a list.")
+                msg = f"[DOM_PARTS] Key '{key}' is not a list."
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    payload = {
+                        "level": "WARNING",
+                        "type": "dom_parts",
+                        "message": msg
+                    }
+                    logger.warning(payload)
             valid = False
         elif len(val) == 0:
             if verbose:
-                logger.warning(f"[DOM_PARTS] No items found in '{key}'.")
+                msg = f"[DOM_PARTS] No items found in '{key}'."
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    payload = {
+                        "level": "WARNING",
+                        "type": "dom_parts",
+                        "message": msg
+                    }
+                    logger.warning(payload)
             valid = False
 
-    # Deep schema, regex, allowed values, and cross-field checks
     for section, fields in section_fields.items():
         items = dom_parts.get(section, [])
         if not isinstance(items, list):
@@ -1801,76 +2097,189 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
         for i, item in enumerate(items):
             if not isinstance(item, dict):
                 if verbose and warning_count < MAX_WARNINGS:
-                    logger.warning(f"[DOM_PARTS] Item {i} in '{section}' is not a dict.")
+                    msg = f"[DOM_PARTS] Item {i} in '{section}' is not a dict."
+                    if logger.mode == "cli":
+                        console.print(msg)
+                    else:
+                        payload = {
+                            "level": "WARNING",
+                            "type": "dom_parts",
+                            "message": msg
+                        }
+                        logger.warning(payload)
                 warning_count += 1
                 continue
             for field in fields:
                 value = item.get(field)
-                # Only warn for missing/empty fields if context expects this section
                 if value is None or (isinstance(value, str) and not value.strip()):
                     if verbose and warning_count < MAX_WARNINGS and (context_expected is None or section in context_expected):
-                        logger.warning(f"[DOM_PARTS] Item {i} in '{section}' missing or empty field '{field}'.")
+                        msg = f"[DOM_PARTS] Item {i} in '{section}' missing or empty field '{field}'."
+                        if logger.mode == "cli":
+                            console.print(msg)
+                        else:
+                            payload = {
+                                "level": "WARNING",
+                                "type": "dom_parts",
+                                "message": msg
+                            }
+                            logger.warning(payload)
                     warning_count += 1
-                # Type checks
                 if field.endswith("_html") and value and not isinstance(value, str):
                     if verbose:
-                        logger.warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' should be str (HTML).")
+                        msg = f"[DOM_PARTS] Item {i} in '{section}' field '{field}' should be str (HTML)."
+                        if logger.mode == "cli":
+                            console.print(msg)
+                        else:
+                            payload = {
+                                "level": "WARNING",
+                                "type": "dom_parts",
+                                "message": msg
+                            }
+                            logger.warning(payload)
                     valid = False
                 if field.endswith("_text") and value and not isinstance(value, str):
                     if verbose:
-                        logger.warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' should be str (text).")
+                        msg = f"[DOM_PARTS] Item {i} in '{section}' field '{field}' should be str (text)."
+                        if logger.mode == "cli":
+                            console.print(msg)
+                        else:
+                            payload = {
+                                "level": "WARNING",
+                                "type": "dom_parts",
+                                "message": msg
+                            }
+                            logger.warning(payload)
                     valid = False
                 if field == "year" and value:
                     if not re.fullmatch(r"20\d{2}", str(value)):
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has invalid year format: {value}")
+                            msg = f"[DOM_PARTS] Item {i} in '{section}' has invalid year format: {value}"
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
                     else:
                         year_int = int(value)
                         if year_int < 2000 or year_int > datetime.datetime.now().year + 1:
                             if verbose:
-                                logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has out-of-range year: {value}")
+                                msg = f"[DOM_PARTS] Item {i} in '{section}' has out-of-range year: {value}"
+                                if logger.mode == "cli":
+                                    console.print(msg)
+                                else:
+                                    payload = {
+                                        "level": "WARNING",
+                                        "type": "dom_parts",
+                                        "message": msg
+                                    }
+                                    logger.warning(payload)
                             valid = False
                 if field == "type_" and value:
                     if safe_lower(value) not in {safe_lower(t or "") for t in ELECTION_TYPES}:
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown election type: {value}")
+                            msg = f"[DOM_PARTS] Item {i} in '{section}' has unknown election type: {value}"
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
                 if field == "county" and value and "state" in item:
                     state_val = safe_lower(item.get("state") or "")
-                    # Normalize state using STATE_ABBR
                     state_val = STATE_ABBR.get(state_val, state_val)
                     if state_val and safe_lower(value) not in {safe_lower(c) for c in KNOWN_STATE_TO_COUNTY_MAP.get(state_val, [])}:
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown county '{value}' for state '{state_val}'")
+                            msg = f"[DOM_PARTS] Item {i} in '{section}' has unknown county '{value}' for state '{state_val}'"
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
                 if field == "state" and value:
                     state_norm = STATE_ABBR.get(safe_lower(value), safe_lower(value))
                     if state_norm not in KNOWN_STATE_TO_COUNTY_MAP:
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown state: {value}")
+                            msg = f"[DOM_PARTS] Item {i} in '{section}' has unknown state: {value}"
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
                 if field == "timestamp_text" and value:
                     if not re.search(r"\d{4}.*\d{1,2}:\d{2}", value):
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' field '{field}' does not look like a timestamp: {value}")
+                            msg = f"[DOM_PARTS] Item {i} in '{section}' field '{field}' does not look like a timestamp: {value}"
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
                 if section == "ballot_types" and field == "ballot_types_text" and value:
                     if safe_lower(value) not in {safe_lower(bt) for bt in BALLOT_TYPES}:
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown ballot type: {value}")
+                            msg = f"[DOM_PARTS] Item {i} in '{section}' has unknown ballot type: {value}"
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
                 if section == "party_labels" and field == "party_label_text" and value:
                     if safe_lower(value) not in {safe_lower(k) for k in PARTY_KEYWORDS}:
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has unknown party label: {value}")
+                            msg = f"[DOM_PARTS] Item {i} in '{section}' has unknown party label: {value}"
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
                 if section == "location_panels" and field == "location_panel_text" and value:
                     if not any(safe_lower(kw) in safe_lower(value) for kw in LOCATION_KEYWORDS):
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Item {i} in '{section}' has location text missing known keywords: {value}")
+                            msg = f"[DOM_PARTS] Item {i} in '{section}' has location text missing known keywords: {value}"
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
-                    # Precinct/district validation
                     county_val = safe_lower(item.get("county", "") or "")
                     for abbrev, full_names in LOCATION_ABBREVIATIONS.items():
                         if safe_lower(abbrev) in safe_lower(value):
@@ -1880,41 +2289,101 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
                                     found = any(safe_lower(p) in safe_lower(value) for p in precincts)
                                     if not found:
                                         if verbose:
-                                            logger.warning(f"[DOM_PARTS] Location panel {i}: '{value}' does not match any known precinct/district for county '{county_val}'.")
+                                            msg = f"[DOM_PARTS] Location panel {i}: '{value}' does not match any known precinct/district for county '{county_val}'."
+                                            if logger.mode == "cli":
+                                                console.print(msg)
+                                            else:
+                                                payload = {
+                                                    "level": "WARNING",
+                                                    "type": "dom_parts",
+                                                    "message": msg
+                                                }
+                                                logger.warning(payload)
                                         valid = False
-                # Canonical label checks for headings/panels
                 if section == "headings" and field == "heading_text" and value:
                     canonical = CANONICAL_SEGMENT_LABELS.get(safe_lower(value))
                     if canonical and canonical != "heading":
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Heading {i}: text '{value}' has canonical label '{canonical}' not 'heading'.")
+                            msg = f"[DOM_PARTS] Heading {i}: text '{value}' has canonical label '{canonical}' not 'heading'."
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
                 if section == "panels" and field == "panel_text" and value:
                     canonical = CANONICAL_SEGMENT_LABELS.get(safe_lower(value))
                     if canonical and canonical != "panel":
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Panel {i}: text '{value}' has canonical label '{canonical}' not 'panel'.")
+                            msg = f"[DOM_PARTS] Panel {i}: text '{value}' has canonical label '{canonical}' not 'panel'."
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
-                # Tag checks for headings/panels
                 if section == "headings" and "heading_html" in item:
                     tag_match = any(safe_lower(tag) in safe_lower(item["heading_html"] or "") for tag in HEADING_TAGS | EXTRA_HEADING_TAGS)
                     if not tag_match:
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Heading {i}: html '{item['heading_html']}' does not contain a valid heading tag.")
+                            msg = f"[DOM_PARTS] Heading {i}: html '{item['heading_html']}' does not contain a valid heading tag."
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
                 if section == "panels" and "panel_html" in item:
                     tag_match = any(safe_lower(tag) in safe_lower(item["panel_html"] or "") for tag in PANEL_TAGS)
                     if not tag_match:
                         if verbose:
-                            logger.warning(f"[DOM_PARTS] Panel {i}: html '{item['panel_html']}' does not contain a valid panel tag.")
+                            msg = f"[DOM_PARTS] Panel {i}: html '{item['panel_html']}' does not contain a valid panel tag."
+                            if logger.mode == "cli":
+                                console.print(msg)
+                            else:
+                                payload = {
+                                    "level": "WARNING",
+                                    "type": "dom_parts",
+                                    "message": msg
+                                }
+                                logger.warning(payload)
                         valid = False
     if warning_count > MAX_WARNINGS:
-        logger.warning(f"[DOM_PARTS] {warning_count} items missing required fields (warnings suppressed after {MAX_WARNINGS}).")
-    # Metadata checks
+        msg = f"[DOM_PARTS] {warning_count} items missing required fields (warnings suppressed after {MAX_WARNINGS})."
+        if logger.mode == "cli":
+            console.print(msg)
+        else:
+            payload = {
+                "level": "WARNING",
+                "type": "dom_parts",
+                "message": msg
+            }
+            logger.warning(payload)
     meta = dom_parts.get("metadata", {})
     if not isinstance(meta, dict):
         if verbose:
-            logger.warning("[DOM_PARTS] 'metadata' is not a dict.")
+            msg = "[DOM_PARTS] 'metadata' is not a dict."
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "WARNING",
+                    "type": "dom_parts",
+                    "message": msg
+                }
+                logger.warning(payload)
         valid = False
     else:
         scrape_time = meta.get("scrape_time")
@@ -1923,42 +2392,100 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
                 datetime.datetime.strptime(scrape_time, "%Y-%m-%d %H:%M:%S")
             except Exception:
                 if verbose:
-                    logger.warning(f"[DOM_PARTS] metadata.scrape_time has invalid format: {scrape_time}")
+                    msg = f"[DOM_PARTS] metadata.scrape_time has invalid format: {scrape_time}"
+                    if logger.mode == "cli":
+                        console.print(msg)
+                    else:
+                        payload = {
+                            "level": "WARNING",
+                            "type": "dom_parts",
+                            "message": msg
+                        }
+                        logger.warning(payload)
                 valid = False
 
-    # Check selector_log is a list
     if "selector_log" in dom_parts and not isinstance(dom_parts["selector_log"], list):
         if verbose:
-            logger.warning("[DOM_PARTS] 'selector_log' is not a list.")
+            msg = "[DOM_PARTS] 'selector_log' is not a list."
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "WARNING",
+                    "type": "dom_parts",
+                    "message": msg
+                }
+                logger.warning(payload)
         valid = False
 
-    # Check tagged_segments and tagged_segments_with_attrs are lists
     for key in ["tagged_segments", "tagged_segments_with_attrs"]:
         if key in dom_parts and not isinstance(dom_parts[key], list):
             if verbose:
-                logger.warning(f"[DOM_PARTS] '{key}' is not a list.")
+                msg = f"[DOM_PARTS] '{key}' is not a list."
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    payload = {
+                        "level": "WARNING",
+                        "type": "dom_parts",
+                        "message": msg
+                    }
+                    logger.warning(payload)
             valid = False
 
-    # Check url is a string
     if "url" in dom_parts and dom_parts["url"] is not None and not isinstance(dom_parts["url"], str):
         if verbose:
-            logger.warning("[DOM_PARTS] 'url' is not a string.")
+            msg = "[DOM_PARTS] 'url' is not a string."
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "WARNING",
+                    "type": "dom_parts",
+                    "message": msg
+                }
+                logger.warning(payload)
         valid = False
 
-    # Check raw_html is a string
     if "raw_html" in dom_parts and dom_parts["raw_html"] is not None and not isinstance(dom_parts["raw_html"], str):
         if verbose:
-            logger.warning("[DOM_PARTS] 'raw_html' is not a string.")
+            msg = "[DOM_PARTS] 'raw_html' is not a string."
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "WARNING",
+                    "type": "dom_parts",
+                    "message": msg
+                }
+                logger.warning(payload)
         valid = False
 
-    # Check error is None or str
     if "error" in dom_parts and dom_parts["error"] is not None and not isinstance(dom_parts["error"], str):
         if verbose:
-            logger.warning("[DOM_PARTS] 'error' is not a string or None.")
+            msg = "[DOM_PARTS] 'error' is not a string or None."
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                payload = {
+                    "level": "WARNING",
+                    "type": "dom_parts",
+                    "message": msg
+                }
+                logger.warning(payload)
         valid = False
 
     if not valid and verbose:
-        logger.error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
+        msg = "[DOM_PARTS] Validation failed. Downstream consumers may not function correctly."
+        if logger.mode == "cli":
+            console.print(msg)
+        else:
+            payload = {
+                "level": "ERROR",
+                "type": "dom_parts",
+                "message": msg
+            }
+            logger.error(payload)
 
     return valid
 
@@ -1981,6 +2508,7 @@ def scan_html_for_context(
     Organizes all logic into clear pipeline stages for maintainability and extensibility.
     Implements robust feedback, pattern KB, context library update, election type extraction,
     semantic tags, selector log, debug logging, and list field safety.
+    Mode-aware logging for CLI and non-CLI environments.
     """
     from ..Context_Integration.context_organizer import ContextOrganizer
     from ..Context_Integration.context_coordinator import ContextCoordinator
@@ -2045,7 +2573,6 @@ def scan_html_for_context(
             safe_append(seg["semantic_tags"], safe_get(seg, "ml_label", ""), logger)
         # Pattern KB/feedback logic
         if safe_get(seg, "ml_confidence", 0.0) < 0.7 or safe_get(seg, "ml_label", "unknown") == "unknown":
-            # Feedback log and pattern KB entry
             html_val = safe_get(seg, "html", "")
             if not isinstance(html_val, str):
                 html_val = str(html_val)
@@ -2095,11 +2622,27 @@ def scan_html_for_context(
 
     # --- 6. Debug Logging for Extraction ---
     if debug:
-        logger.debug("\n[orange][DEBUG] Extracted HTML segments with ML labels:[/orange]")
+        msg_debug = "\n[orange][DEBUG] Extracted HTML segments with ML labels:[/orange]"
+        if logger.mode == "cli":
+            console.print(msg_debug)
+        else:
+            logger.debug({"level": "DEBUG", "type": "scan_html", "message": msg_debug})
         for seg in segments_with_attrs:
-            logger.info(f"{safe_get(seg, 'tag', '')} {safe_get(seg, 'attrs', {})} [label={safe_get(seg, 'ml_label', '')}, conf={safe_get(seg, 'ml_confidence', 0.0):.2f}] {safe_get(seg, 'html', '')[:80]}{'...' if len(safe_get(seg, 'html', '')) > 80 else ''}")
+            info_msg = (
+                f"{safe_get(seg, 'tag', '')} {safe_get(seg, 'attrs', {})} "
+                f"[label={safe_get(seg, 'ml_label', '')}, conf={safe_get(seg, 'ml_confidence', 0.0):.2f}] "
+                f"{safe_get(seg, 'html', '')[:80]}{'...' if len(safe_get(seg, 'html', '')) > 80 else ''}"
+            )
+            if logger.mode == "cli":
+                console.print(info_msg)
+            else:
+                logger.info({"level": "INFO", "type": "scan_html", "message": info_msg})
         if segments_needing_review:
-            logger.debug(f"\n[red][DEBUG] {len(segments_needing_review)} segments flagged for review.[/red]")
+            msg_review = f"\n[red][DEBUG] {len(segments_needing_review)} segments flagged for review.[/red]"
+            if logger.mode == "cli":
+                console.print(msg_review)
+            else:
+                logger.debug({"level": "DEBUG", "type": "scan_html", "message": msg_review})
 
     # --- 7. Ensure All List Fields Are Lists ---
     for key in [
@@ -2169,7 +2712,12 @@ def _load_context_resources(coordinator, model_name, use_finetuned):
         # Use properties and methods directly
         try:
             context_library = coordinator.library if hasattr(coordinator, "library") else None
-        except Exception:
+        except Exception as e:
+            msg = f"[CONTEXT] Failed to load coordinator.library: {e}"
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                logger.warning({"level": "WARNING", "type": "context", "message": msg})
             context_library = None
         try:
             # Prefer method if available, else property
@@ -2180,28 +2728,53 @@ def _load_context_resources(coordinator, model_name, use_finetuned):
                 pattern_kb = coordinator.pattern_kb
             else:
                 pattern_kb = []
-        except Exception:
+        except Exception as e:
+            msg = f"[CONTEXT] Failed to load coordinator.pattern_kb: {e}"
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                logger.warning({"level": "WARNING", "type": "context", "message": msg})
             pattern_kb = []
         try:
             model = coordinator._semantic_model if hasattr(coordinator, "_semantic_model") else None
-        except Exception:
+        except Exception as e:
+            msg = f"[CONTEXT] Failed to load coordinator._semantic_model: {e}"
+            if logger.mode == "cli":
+                console.print(msg)
+            else:
+                logger.warning({"level": "WARNING", "type": "context", "message": msg})
             model = None
 
         # Defensive: fallback to loading if any are still None
         if context_library is None:
             try:
                 context_library = load_context_library(CONTEXT_LIBRARY_PATH)
-            except Exception:
+            except Exception as e:
+                msg = f"[CONTEXT] Fallback load_context_library failed: {e}"
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    logger.warning({"level": "WARNING", "type": "context", "message": msg})
                 context_library = {}
         if not pattern_kb:
             try:
                 pattern_kb = load_pattern_kb()
-            except Exception:
+            except Exception as e:
+                msg = f"[CONTEXT] Fallback load_pattern_kb failed: {e}"
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    logger.warning({"level": "WARNING", "type": "context", "message": msg})
                 pattern_kb = []
         if model is None:
             try:
                 model = ModelRegistry.get_sentence_transformer(model_name=model_name, use_finetuned=use_finetuned)
-            except Exception:
+            except Exception as e:
+                msg = f"[CONTEXT] Fallback ModelRegistry failed: {e}"
+                if logger.mode == "cli":
+                    console.print(msg)
+                else:
+                    logger.warning({"level": "WARNING", "type": "context", "message": msg})
                 model = None
 
         # Deduplicate pattern_kb if needed
@@ -2215,11 +2788,15 @@ def _load_context_resources(coordinator, model_name, use_finetuned):
     return context_library, pattern_kb, model
 
 def _prepare_html_and_cache(page, target_url, context_cache):
-    """Extract HTML, compute hash, and check cache."""
+    """Extract HTML, compute hash, and check cache. Mode-aware logging."""
     try:
         html = getattr(page, "content", lambda: "")()
-    except Exception:
-        logger.warning("[SCAN_HTML] Exception when calling page.content(), using empty string.")
+    except Exception as e:
+        msg = f"[SCAN_HTML] Exception when calling page.content(): {e}. Using empty string."
+        if logger.mode == "cli":
+            console.print(msg)
+        else:
+            logger.warning({"level": "WARNING", "type": "scan_html", "message": msg})
         html = ""
     if html is None:
         html = ""
@@ -2230,7 +2807,7 @@ def _prepare_html_and_cache(page, target_url, context_cache):
     return html, page_hash, page_url, context_cache
 
 def _fast_path_cache_hit(html, page_hash, page_url, context_cache, coordinator):
-    """Check if all segments are already cached with high confidence."""
+    """Check if all segments are already cached with high confidence. Mode-aware logging."""
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = coordinator or ContextCoordinator()
     segment_htmls = [n.html for n in HTMLParser(html).root.traverse() if hasattr(n, "html")]
@@ -2240,14 +2817,24 @@ def _fast_path_cache_hit(html, page_hash, page_url, context_cache, coordinator):
         if h in context_cache and safe_get(context_cache[h], "ml_confidence", 0) > 0.95
     ]
     if len(fast_path_hits) == len(segment_hashes) and segment_hashes:
-        logger.info("[FAST-PATH] All segments covered by cache. Skipping full scan.")
+        msg = "[FAST-PATH] All segments covered by cache. Skipping full scan."
+        if logger.mode == "cli":
+            console.print(msg)
+        else:
+            logger.info({"level": "INFO", "type": "scan_html", "message": msg})
         fast_path_result = {h: context_cache[h] for h in segment_hashes}
         if coordinator is not None:
             coordinator.organize_and_enrich(fast_path_result)
         return True
     if page_hash in context_cache:
-        logger.info(f"[SCAN] Using cached context for {page_url}")
-        logger.info("[bold green][CACHE] Entire context loaded from cache. Skipping scan.[/bold green]")
+        msg1 = f"[SCAN] Using cached context for {page_url}"
+        msg2 = "[bold green][CACHE] Entire context loaded from cache. Skipping scan.[/bold green]"
+        if logger.mode == "cli":
+            console.print(msg1)
+            console.print(msg2)
+        else:
+            logger.info({"level": "INFO", "type": "scan_html", "message": msg1})
+            logger.info({"level": "INFO", "type": "scan_html", "message": msg2})
         cached_result = context_cache[page_hash]
         if coordinator is not None:
             coordinator.organize_and_enrich(cached_result)
@@ -2263,16 +2850,17 @@ def _organize_segments_and_sections(
     session_id,
     non_interactive,
     **kwargs
-):
+) -> Dict[str, Any]:
     """
     Organize segments into sections (contests, panels, tables, etc.) and filter.
     Uses robust filtering, deduplication, context enrichment, and context_library-aware logic.
     Passes **kwargs to all helpers for future extensibility.
+    Mode-aware logging for diagnostics.
     """
     # Helper for diagnostics and filtering
     def diagnostics_and_filter(
         data, field, **local_kwargs
-    ):
+    ) -> List[Dict[str, Any]]:
         # Merge local_kwargs with outer kwargs and always pass context_library
         merged_kwargs = {**kwargs, **local_kwargs, "context_library": context_library}
         if "diagnostics_and_filter" in globals():
@@ -2490,7 +3078,7 @@ def _organize_segments_and_sections(
 
 def _enrich_and_validate_context(
     context_result, page_hash, html, context_cache, coordinator, debug
-):
+) -> Dict[str, Any]:
     """
     Propagate year/type, validate, enrich, and save to cache.
     - Propagates year/type to all relevant sections.
@@ -2510,7 +3098,7 @@ def _enrich_and_validate_context(
     best_election_types = []
     if contests:
         best_election_types = safe_get(contests[0], "election_types", []) or []
-    def propagate_year_type(items, year, type_, election_types=None):
+    def propagate_year_type(items, year, type_, election_types=None) -> None:
         for item in items:
             if isinstance(item, dict):
                 if "year" not in item or item["year"] is None:
@@ -2554,7 +3142,11 @@ def _enrich_and_validate_context(
             dom_parts[key] = []
     valid = validate_dom_parts(dom_parts, verbose=debug)
     if not valid:
-        logger.error("[DOM_PARTS] Validation failed. Downstream consumers may not function correctly.")
+        msg = "[DOM_PARTS] Validation failed. Downstream consumers may not function correctly."
+        if logger.mode == "cli":
+            console.print(msg)
+        else:
+            logger.error({"level": "ERROR", "type": "dom_parts", "message": msg})
 
     context_result["dom_parts"] = dom_parts
 
@@ -2585,18 +3177,30 @@ def _enrich_and_validate_context(
             organizer.extract_subtree_html(dom_tree["nodes"], i, safe_get(context_result, "raw_html", html))
             for i in range(N)
         ]
-        logger.info(f"[DOM ENRICHMENT] Added dom_tree, label_groups, panels_and_tables, and HTML samples to context_result.")
+        msg_enrich = "[DOM ENRICHMENT] Added dom_tree, label_groups, panels_and_tables, and HTML samples to context_result."
+        if logger.mode == "cli":
+            console.print(msg_enrich)
+        else:
+            logger.info({"level": "INFO", "type": "dom_enrichment", "message": msg_enrich})
 
     # --- 4. Save to context cache ---
     if context_cache is not None:
         safe_setdefault(context_result, "page_hash", page_hash)
         safe_setdefault(context_result, "timestamp", time.strftime("%Y-%m-%d %H:%M:%S"))
         context_cache[page_hash] = context_result
-        logger.debug(f"[CACHE] Saving context cache for page_hash={page_hash} with {len(context_result.get('tagged_segments_with_attrs', []))} segments.")
+        msg_cache = f"[CACHE] Saving context cache for page_hash={page_hash} with {len(context_result.get('tagged_segments_with_attrs', []))} segments."
+        if logger.mode == "cli":
+            console.print(msg_cache)
+        else:
+            logger.debug({"level": "DEBUG", "type": "cache", "message": msg_cache})
         try:
             save_context_cache_to_disk(context_cache)
         except Exception as e:
-            logger.error(f"[ERROR] Exception during save_context_cache_to_disk: {e}")
+            msg_error = f"[ERROR] Exception during save_context_cache_to_disk: {e}"
+            if logger.mode == "cli":
+                console.print(msg_error)
+            else:
+                logger.error({"level": "ERROR", "type": "cache", "message": msg_error})
 
     # --- 5. Downstream enrichment via coordinator if present ---
     if coordinator is not None and hasattr(coordinator, "organize_and_enrich"):
@@ -2605,7 +3209,11 @@ def _enrich_and_validate_context(
             safe_update(context_result, organized, logger)
             if "dom_parts" in organized:
                 dom_parts_keys = list(safe_keys(organized["dom_parts"]))
-                logger.debug(f"[DOM_PARTS] dom_parts successfully organized with keys: {dom_parts_keys}")
+                msg_dom_parts = f"[DOM_PARTS] dom_parts successfully organized with keys: {dom_parts_keys}"
+                if logger.mode == "cli":
+                    console.print(msg_dom_parts)
+                else:
+                    logger.debug({"level": "DEBUG", "type": "dom_parts", "message": msg_dom_parts})
 
     # --- 6. Debug logging ---
     if debug and "dom_tree" in context_result:
@@ -2614,13 +3222,25 @@ def _enrich_and_validate_context(
         for idx in range(min(5, len(nodes))):
             node = nodes[idx] if idx < len(nodes) else None
             if node is None:
-                logger.warning(f"[DOM DEBUG] Node {idx} is None.")
+                msg_warn = f"[DOM DEBUG] Node {idx} is None."
+                if logger.mode == "cli":
+                    console.print(msg_warn)
+                else:
+                    logger.warning({"level": "WARNING", "type": "dom_debug", "message": msg_warn})
                 continue
             html_snippet = organizer.extract_html_by_idx(nodes, idx, safe_get(context_result, "raw_html", html))
-            logger.info(f"[DOM DEBUG] Node {idx} HTML: {html_snippet[:100]}")
+            msg_html = f"[DOM DEBUG] Node {idx} HTML: {html_snippet[:100]}"
+            if logger.mode == "cli":
+                console.print(msg_html)
+            else:
+                logger.info({"level": "INFO", "type": "dom_debug", "message": msg_html})
             subtree_html = organizer.extract_subtree_html(nodes, idx, safe_get(context_result, "raw_html", html))
-            logger.info(f"[DOM DEBUG] Subtree HTML for node {idx}: {subtree_html[:200]}")
-
+            msg_subtree = f"[DOM DEBUG] Subtree HTML for node {idx}: {subtree_html[:200]}"
+            if logger.mode == "cli":
+                console.print(msg_subtree)
+            else:
+                logger.info({"level": "INFO", "type": "dom_debug", "message": msg_subtree})
+                
     # --- 7. Final type/election type propagation for all sections ---
     for contest in safe_get(context_result, "contests", []):
         _sync_type_and_election_types(contest)
