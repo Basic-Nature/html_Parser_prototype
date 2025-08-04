@@ -276,6 +276,22 @@
             word-break: break-word;
             white-space: pre-wrap;
         }
+        .session-btn {
+            background: linear-gradient(90deg, #45818e, #d4af37);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 0.4em 1.2em;
+            margin-right: 0.5em;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 2px 8px #bfc9d1;
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .session-btn:hover {
+            background: linear-gradient(90deg, #d4af37, #45818e);
+            box-shadow: 0 0 12px #00ffe7;
+        }        
     </style>
 </head>
 <body>
@@ -352,6 +368,16 @@
                 <option value="batch">Batch</option>
             </select>
         </div>
+        <div id="sessionInfo" style="margin-bottom:1em;text-align:right;">
+            <span style="color:#00ffe7;font-weight:700;">Session:</span>
+            <span id="activeSessionId" style="color:#ffd166;font-weight:900;"></span>
+            <span id="sessionSwitcher" style="margin-left:2em;"></span>
+        </div> 
+        <div id="sessionSidebar" style="float:right;width:220px;margin-left:2em;">
+            <div style="font-weight:700;color:#00ffe7;margin-bottom:0.7em;">Active Sessions</div>
+            <div id="sessionList"></div>
+            <button id="addSessionBtn" class="session-btn" style="margin-top:1em;width:100%;">+ New Session</button>
+        </div>       
         <div class="output-section" id="terminal">
             {% if parser_output %}
                 {{ parser_output }}
@@ -372,17 +398,115 @@ document.addEventListener("DOMContentLoaded", function() {
     if (window.__parserSocketInitialized) return;
     window.__parserSocketInitialized = true;
 
-    var socket = io();
+    var socket = io({
+        query: {
+            prev_session_id: localStorage.getItem('session_id') || ""
+        }
+    });
+
     var outputDiv = document.getElementById('terminal');
     var promptInput = document.getElementById('promptInput');
     var cancelBtn = document.getElementById('cancelParserBtn');
     var cancelRequested = false;
 
-    // Track seen log types for auto-population
+    // Session sidebar logic
+    var activeSessionIdSpan = document.getElementById('activeSessionId');
+    var sessionListDiv = document.getElementById('sessionList');
+    var addSessionBtn = document.getElementById('addSessionBtn');
+
+    function getSessions() {
+        let sessions = JSON.parse(localStorage.getItem('active_sessions') || "[]");
+        sessions = Array.from(new Set(sessions));
+        localStorage.setItem('active_sessions', JSON.stringify(sessions));
+        return sessions;
+    }
+
+    function setActiveSession(sid) {
+        localStorage.setItem('session_id', sid);
+        activeSessionIdSpan.textContent = sid;
+        highlightActiveSession();
+    }
+
+    function highlightActiveSession() {
+        let sid = localStorage.getItem('session_id');
+        Array.from(sessionListDiv.children).forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.sid === sid);
+        });
+    }
+
+    function renderSessionList() {
+        let sessions = getSessions();
+        sessionListDiv.innerHTML = '';
+        sessions.forEach(sid => {
+            let btn = document.createElement('button');
+            btn.textContent = sid;
+            btn.className = 'session-btn';
+            btn.dataset.sid = sid;
+            btn.style.width = '100%';
+            btn.style.marginBottom = '0.5em';
+            btn.onclick = function() {
+                setActiveSession(sid);
+                highlightActiveSession();
+                outputDiv.innerHTML = '';
+                socket.emit('join', {session_id: sid});
+            };
+            // Remove button
+            let removeBtn = document.createElement('span');
+            removeBtn.textContent = '✖';
+            removeBtn.style.cssText = 'float:right;color:#eb4f43;cursor:pointer;font-weight:bold;margin-left:1em;';
+            removeBtn.onclick = function(e) {
+                e.stopPropagation();
+                let sessions = getSessions().filter(s => s !== sid);
+                localStorage.setItem('active_sessions', JSON.stringify(sessions));
+                renderSessionList();
+                if (localStorage.getItem('session_id') === sid) {
+                    setActiveSession(sessions[0] || '');
+                    highlightActiveSession();
+                }
+            };
+            btn.appendChild(removeBtn);
+            sessionListDiv.appendChild(btn);
+        });
+        highlightActiveSession();
+    }
+
+    addSessionBtn.onclick = function() {
+        let newSid = 'sess_' + Math.random().toString(36).substr(2, 9);
+        let sessions = getSessions();
+        sessions.push(newSid);
+        localStorage.setItem('active_sessions', JSON.stringify(sessions));
+        setActiveSession(newSid);
+        renderSessionList();
+        socket.emit('join', {session_id: newSid});
+        outputDiv.innerHTML = '';
+    };
+
+    socket.on('connect', function() {
+        let sid = localStorage.getItem('session_id') || socket.id;
+        let sessions = getSessions();
+        if (!sessions.includes(sid)) {
+            sessions.push(sid);
+            localStorage.setItem('active_sessions', JSON.stringify(sessions));
+        }
+        setActiveSession(sid);
+        renderSessionList();
+        socket.emit('join', {session_id: sid});
+    });
+
+    socket.on('session_id', function(data) {
+        let sid = data.session_id;
+        let sessions = getSessions();
+        if (!sessions.includes(sid)) {
+            sessions.push(sid);
+            localStorage.setItem('active_sessions', JSON.stringify(sessions));
+        }
+        setActiveSession(sid);
+        renderSessionList();
+    });
+
+    // Log type filter logic
     var seenLogTypes = new Set(["all", "status", "router", "ai_analysis", "stream", "manual_override", "input", "output", "validation", "network", "cancel", "heartbeat", "summary", "cache", "other"]);
     var logTypeSelect = document.getElementById('logTypeFilterSelect');
-
-    // Helper to add new log type option if not present
     function addLogTypeOption(type) {
         type = (type || "other").toLowerCase();
         if (!seenLogTypes.has(type)) {
@@ -393,11 +517,6 @@ document.addEventListener("DOMContentLoaded", function() {
             logTypeSelect.appendChild(opt);
         }
     }
-
-    // Join the session room on connect
-    socket.on('connect', function() {
-        socket.emit('join', {session_id: socket.id});
-    });
 
     // Data particle explosion effect
     function createExplosion(x, y, color) {
@@ -484,16 +603,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // Enhanced parser_output handler
     socket.on('parser_output', function(data) {
-        // Clear default message
         if (outputDiv.innerHTML.includes('Parser output will appear')) {
             outputDiv.innerHTML = '';
         }
-
         let msg = '';
         let obj = data;
         let isJson = false;
-
-        // Try to parse JSON if needed
         if (typeof data === 'string' && data.trim().startsWith('{')) {
             try {
                 obj = JSON.parse(data);
@@ -505,19 +620,13 @@ document.addEventListener("DOMContentLoaded", function() {
                 obj = data;
             }
         }
-
-        // Prompt handling
         if (isJson && obj && obj.type === "prompt" && promptInput) {
             promptInput.placeholder = obj.message || "Type a command...";
             promptInput.focus();
         }
-
-        // Determine log level and type for filtering
         let logLevel = (isJson && obj && obj.level) ? obj.level.toLowerCase() : "other";
         let logType = (isJson && obj && obj.type) ? obj.type.toLowerCase() : "other";
         addLogTypeOption(logType);
-
-        // Format message
         let mainMsg = '';
         if (isJson && obj) {
             if (Array.isArray(obj.message)) {
@@ -542,8 +651,6 @@ document.addEventListener("DOMContentLoaded", function() {
             } else {
                 mainMsg = `<span class="log-msg" style="color:#fff;text-shadow:0 0 6px #00ffe7;">${JSON.stringify(obj)}</span>`;
             }
-
-            // Icon by level
             let levelIcon = {
                 'INFO': '🛈',
                 'DEBUG': '⚙️',
@@ -551,8 +658,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 'ERROR': '⛔',
                 'CRITICAL': '🚨'
             }[obj.level] || '🛈';
-
-            // Color by level
             let levelColor = {
                 'INFO': '#00ffe7',
                 'DEBUG': '#8ecae6',
@@ -560,47 +665,51 @@ document.addEventListener("DOMContentLoaded", function() {
                 'ERROR': '#eb4f43',
                 'CRITICAL': '#ff006e'
             }[obj.level] || '#fff';
-
-            // Timestamp
             let timeStr = '';
             if (obj.timestamp) {
                 const d = new Date(obj.timestamp * 1000);
                 timeStr = `<span class="log-time">[${d.toLocaleTimeString()}]</span>`;
             }
-
-            // Level
             let levelStr = `<span class="log-level" style="color:${levelColor};text-shadow:0 0 8px ${levelColor};">${levelIcon} ${obj.level}</span>`;
-
-            // Context (if present)
             let contextStr = '';
             if (obj.context && obj.context !== "" && obj.context !== "{}") {
                 contextStr = `<br><span class="log-context" style="color:#bfc9d1;font-size:0.97em;">${obj.context}</span>`;
             }
-
-            // Compose the log line with data-level and data-type
             msg = `<div class="log-line" data-level="${logLevel}" data-type="${logType}" style="margin-bottom:0.3em;padding:0.7em 1em 0.7em 0.7em;border-radius:10px;background:rgba(30,40,60,0.55);box-shadow:0 0 8px 1px ${levelColor}33;overflow-x:auto;">
                 ${timeStr} ${levelStr}: ${mainMsg}${contextStr}
             </div>`;
         } else {
-            // Plain string or rich panel
             msg = `<div class="log-panel" data-level="other" data-type="other" style="margin:1em 0;padding:1em 1.2em;border-radius:14px;background:rgba(40,60,80,0.85);border:2px solid #00ffe7;box-shadow:0 0 24px 2px #00ffe7,0 2px 12px #bfc9d1;overflow-x:auto;max-width:100%;word-break:break-word;white-space:pre-wrap;">
                 ${typeof obj === 'string' ? obj.replace(/\n/g, '<br>') : JSON.stringify(obj)}
             </div>`;
         }
-
-        // Insert and animate
         const temp = document.createElement('div');
         temp.innerHTML = msg;
         const logElem = temp.firstElementChild;
         outputDiv.appendChild(logElem);
         logElem.classList.add('log-glow');
         setTimeout(() => logElem.classList.remove('log-glow'), 1200);
-
         outputDiv.scrollTop = outputDiv.scrollHeight;
         window.scrollTo(0, document.body.scrollHeight);
-
-        // Re-apply filter after adding new log
         filterLogs();
+    });
+
+    // Initial render
+    renderSessionList();
+    setActiveSession(localStorage.getItem('session_id') || socket.id);
+    // Request session list from backend on load
+    socket.emit('get_sessions');
+
+    socket.on('session_list', function(data) {
+        // Replace local session list with backend's
+        if (Array.isArray(data.sessions)) {
+            localStorage.setItem('active_sessions', JSON.stringify(data.sessions));
+            renderSessionList();
+            // Optionally, set active session if not present
+            if (!data.sessions.includes(localStorage.getItem('session_id'))) {
+                setActiveSession(data.sessions[0] || '');
+            }
+        }
     });
 });
 </script>

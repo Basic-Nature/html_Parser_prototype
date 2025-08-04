@@ -14,7 +14,6 @@ from .utils.logger_singleton import logger, prompt
 from flask import session, request
 from typing import Any
 
-
 class CancellationManager(threading.Thread):
     """
     Manages cancellation flags per session/user.
@@ -123,7 +122,7 @@ def save_pipeline_report(session_id, results, errors):
     return report_path
 
 def process_urls_for_web(
-    urls,
+    prompt_queue,
     session_id,
     cancel_flag,
     max_workers=2,
@@ -132,15 +131,22 @@ def process_urls_for_web(
 ) -> None:
     """
     Advanced pipeline: per-URL timing, global timing, live progress, error threshold, tracebacks,
-    output file saving, env-configurable workers, heartbeat.
+    output file saving, env-configurable workers, heartbeat, and prompt queue handling.
     """
-    # Set up environment and logger/prompt modes
     max_workers = int(os.environ.get("PIPELINE_MAX_WORKERS", max_workers))
     MAX_ERRORS = int(os.environ.get("PIPELINE_MAX_ERRORS", 5))
     HEARTBEAT_INTERVAL = int(os.environ.get("PIPELINE_HEARTBEAT_INTERVAL", 10))
 
-    cancel_flag = cancellation_manager.get_flag(session_id)
-    cancellation_manager.reset(session_id)
+    # Safeguard: Only reset if the flag is not already set (i.e., not cancelled)
+    if not safe_is_set(cancel_flag):
+        cancellation_manager.reset(session_id)
+    else:
+        logger.warning({
+            "level": "WARNING",
+            "type": "cancellation",
+            "message": f"Session {session_id} is already cancelled. Not resetting.",
+            "session_id": session_id
+        })
 
     # Set logger and prompt mode
     if mode == "webapp":
@@ -164,75 +170,163 @@ def process_urls_for_web(
             "session_id": session_id
         })
 
+        # --- Main pipeline logic (initial run) ---
+        urls = kwargs.get("urls")
         if urls is None:
             main(
                 session_id=session_id,
                 cancel_flag=cancel_flag,
                 **kwargs
             )
-            return
+        else:
+            if isinstance(urls, str):
+                urls = [urls]
+            elif not isinstance(urls, list) or not all(isinstance(u, str) for u in urls):
+                logger.error({
+                    "level": "ERROR",
+                    "type": "input",
+                    "message": "[ERROR] Invalid URLs input. Must be list of strings.",
+                    "session_id": session_id
+                })
+                cancellation_manager.remove(session_id)
+                return
 
-        if isinstance(urls, str):
-            urls = [urls]
-        elif not isinstance(urls, list) or not all(isinstance(u, str) for u in urls):
-            logger.error({
-                "level": "ERROR",
-                "type": "input",
-                "message": "[ERROR] Invalid URLs input. Must be list of strings.",
+            total = len(urls)
+            if total == 0:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "input",
+                    "message": "No URLs provided for processing.",
+                    "session_id": session_id
+                })
+                cancellation_manager.remove(session_id)
+                return
+
+            logger.info({
+                "level": "INFO",
+                "type": "status",
+                "message": f"Starting pipeline for {total} URL(s)...",
+                "total": total,
                 "session_id": session_id
             })
-            cancellation_manager.remove(session_id)
-            return
+            completed = 0
+            errors = []
+            results = []
+            url_timings = []
 
-        total = len(urls)
-        if total == 0:
-            logger.warning({
-                "level": "WARNING",
-                "type": "input",
-                "message": "No URLs provided for processing.",
-                "session_id": session_id
-            })
-            cancellation_manager.remove(session_id)
-            return
-
-        logger.info({
-            "level": "INFO",
-            "type": "status",
-            "message": f"Starting pipeline for {total} URL(s)...",
-            "total": total,
-            "session_id": session_id
-        })
-        completed = 0
-        errors = []
-        results = []
-        url_timings = []
-
-        if max_workers and max_workers > 1 and total > 1:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_to_url = {
-                    executor.submit(
-                        main,
-                        url=url,
-                        session_id=session_id,
-                        cancel_flag=cancel_flag,
-                        **kwargs
-                    ): (idx, url) for idx, url in enumerate(urls)
-                }
-                for i, future in enumerate(as_completed(future_to_url)):
-                    idx, url = future_to_url[future]
+            if max_workers and max_workers > 1 and total > 1:
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    future_to_url = {
+                        executor.submit(
+                            main,
+                            url=url,
+                            session_id=session_id,
+                            cancel_flag=cancel_flag,
+                            **kwargs
+                        ): (idx, url) for idx, url in enumerate(urls)
+                    }
+                    for i, future in enumerate(as_completed(future_to_url)):
+                        idx, url = future_to_url[future]
+                        url_start = time.time()
+                        try:
+                            result = future.result()
+                            url_duration = time.time() - url_start
+                            results.append((url, result))
+                            url_timings.append({"url": url, "index": idx, "duration": url_duration})
+                            logger.info({
+                                "level": "SUCCESS",
+                                "type": "status",
+                                "message": f"{url} processed: {result}" if result is not None else f"{url} processed.",
+                                "url": url,
+                                "result": result,
+                                "index": idx,
+                                "duration": url_duration,
+                                "session_id": session_id
+                            })
+                        except Exception as exc:
+                            url_duration = time.time() - url_start
+                            errors.append((url, str(exc)))
+                            logger.error({
+                                "level": "ERROR",
+                                "type": "exception",
+                                "message": f"Exception for {url}: {exc}",
+                                "url": url,
+                                "error": str(exc),
+                                "traceback": traceback.format_exc(),
+                                "index": idx,
+                                "duration": url_duration,
+                                "session_id": session_id
+                            })
+                        completed += 1
+                        logger.info({
+                            "level": "PROGRESS",
+                            "type": "status",
+                            "message": f"Progress update: {completed}/{total}",
+                            "progress": completed / total,
+                            "current_url": url,
+                            "index": idx,
+                            "session_id": session_id
+                        })
+                        if safe_is_set(cancel_flag):
+                            logger.info({
+                                "level": "CANCELLED",
+                                "type": "cancel",
+                                "message": "[CANCELLED] Processing stopped by user.",
+                                "session_id": session_id
+                            })
+                            break
+                        if len(errors) >= MAX_ERRORS:
+                            logger.error({
+                                "level": "ERROR",
+                                "type": "exception",
+                                "message": f"Too many errors ({MAX_ERRORS}), aborting pipeline.",
+                                "errors": errors,
+                                "session_id": session_id
+                            })
+                            break
+                if errors:
+                    logger.warning({
+                        "level": "SUMMARY",
+                        "type": "summary",
+                        "message": f"{len(errors)} URLs failed.",
+                        "errors": errors,
+                        "session_id": session_id
+                    })
+                if results:
+                    logger.info({
+                        "level": "SUMMARY",
+                        "type": "summary",
+                        "message": f"{len(results)} URLs processed successfully.",
+                        "results": results,
+                        "session_id": session_id
+                    })
+            else:
+                for i, url in enumerate(urls):
+                    if safe_is_set(cancel_flag):
+                        logger.info({
+                            "level": "CANCELLED",
+                            "type": "cancel",
+                            "message": "[CANCELLED] Processing stopped by user.",
+                            "session_id": session_id
+                        })
+                        break
                     url_start = time.time()
                     try:
-                        result = future.result()
+                        main(
+                            url=url,
+                            session_id=session_id,
+                            cancel_flag=cancel_flag,
+                            **kwargs
+                        )
                         url_duration = time.time() - url_start
-                        results.append((url, result))
-                        url_timings.append({"url": url, "index": idx, "duration": url_duration})
+                        results.append((url, "success"))
+                        url_timings.append({"url": url, "index": i, "duration": url_duration})
                         logger.info({
                             "level": "SUCCESS",
                             "type": "status",
-                            "message": f"{url} processed: {result}" if result is not None else f"{url} processed.",
+                            "message": f"{url} processed.",
                             "url": url,
-                            "result": result,
-                            "index": idx,
+                            "index": i,
                             "duration": url_duration,
                             "session_id": session_id
                         })
@@ -246,29 +340,20 @@ def process_urls_for_web(
                             "url": url,
                             "error": str(exc),
                             "traceback": traceback.format_exc(),
-                            "index": idx,
+                            "index": i,
                             "duration": url_duration,
                             "session_id": session_id
                         })
                     completed += 1
-                    # Live Progress Events
                     logger.info({
                         "level": "PROGRESS",
                         "type": "status",
                         "message": f"Progress update: {completed}/{total}",
                         "progress": completed / total,
                         "current_url": url,
-                        "index": idx,
+                        "index": i,
                         "session_id": session_id
                     })
-                    if cancel_flag.is_set():
-                        logger.info({
-                            "level": "CANCELLED",
-                            "type": "cancel",
-                            "message": "[CANCELLED] Processing stopped by user.",
-                            "session_id": session_id
-                        })
-                        break
                     if len(errors) >= MAX_ERRORS:
                         logger.error({
                             "level": "ERROR",
@@ -278,93 +363,14 @@ def process_urls_for_web(
                             "session_id": session_id
                         })
                         break
-            if errors:
-                logger.warning({
-                    "level": "SUMMARY",
-                    "type": "summary",
-                    "message": f"{len(errors)} URLs failed.",
-                    "errors": errors,
-                    "session_id": session_id
-                })
-            if results:
-                logger.info({
-                    "level": "SUMMARY",
-                    "type": "summary",
-                    "message": f"{len(results)} URLs processed successfully.",
-                    "results": results,
-                    "session_id": session_id
-                })
-        else:
-            for i, url in enumerate(urls):
-                if cancel_flag.is_set():
-                    logger.info({
-                        "level": "CANCELLED",
-                        "type": "cancel",
-                        "message": "[CANCELLED] Processing stopped by user.",
-                        "session_id": session_id
-                    })
-                    break
-                url_start = time.time()
-                try:
-                    main(
-                        url=url,
-                        session_id=session_id,
-                        cancel_flag=cancel_flag,
-                        **kwargs
-                    )
-                    url_duration = time.time() - url_start
-                    results.append((url, "success"))
-                    url_timings.append({"url": url, "index": i, "duration": url_duration})
-                    logger.info({
-                        "level": "SUCCESS",
-                        "type": "status",
-                        "message": f"{url} processed.",
-                        "url": url,
-                        "index": i,
-                        "duration": url_duration,
-                        "session_id": session_id
-                    })
-                except Exception as exc:
-                    url_duration = time.time() - url_start
-                    errors.append((url, str(exc)))
-                    logger.error({
-                        "level": "ERROR",
-                        "type": "exception",
-                        "message": f"Exception for {url}: {exc}",
-                        "url": url,
-                        "error": str(exc),
-                        "traceback": traceback.format_exc(),
-                        "index": i,
-                        "duration": url_duration,
-                        "session_id": session_id
-                    })
-                completed += 1
-                logger.info({
-                    "level": "PROGRESS",
-                    "type": "status",
-                    "message": f"Progress update: {completed}/{total}",
-                    "progress": completed / total,
-                    "current_url": url,
-                    "index": i,
-                    "session_id": session_id
-                })
-                if len(errors) >= MAX_ERRORS:
-                    logger.error({
-                        "level": "ERROR",
-                        "type": "exception",
-                        "message": f"Too many errors ({MAX_ERRORS}), aborting pipeline.",
+                if errors:
+                    logger.warning({
+                        "level": "SUMMARY",
+                        "type": "summary",
+                        "message": f"{len(errors)} URLs failed.",
                         "errors": errors,
                         "session_id": session_id
                     })
-                    break
-            if errors:
-                logger.warning({
-                    "level": "SUMMARY",
-                    "type": "summary",
-                    "message": f"{len(errors)} URLs failed.",
-                    "errors": errors,
-                    "session_id": session_id
-                })
         # Global Pipeline Timing and Summary
         pipeline_duration = time.time() - pipeline_start
         logger.info({
@@ -386,6 +392,29 @@ def process_urls_for_web(
             "report_path": report_path,
             "session_id": session_id
         })
+
+        # --- Prompt queue handling loop ---
+        while not safe_is_set(cancel_flag):
+            try:
+                prompt_data = prompt_queue.get(timeout=1)
+                if safe_is_set(cancel_flag):
+                    break
+                logger.info({
+                    "level": "PROMPT",
+                    "type": "prompt",
+                    "message": f"Processing prompt: {prompt_data}",
+                    "session_id": session_id
+                })
+                # Handle prompt (custom logic, e.g. call main, emit output, etc.)
+                main(
+                    prompt=prompt_data,
+                    session_id=session_id,
+                    cancel_flag=cancel_flag,
+                    **kwargs
+                )
+            except Exception:
+                continue  # Timeout or empty queue, just check cancel_flag again
+
     except Exception as e:
         logger.error({
             "level": "ERROR",
@@ -395,7 +424,7 @@ def process_urls_for_web(
             "session_id": session_id
         })
     finally:
-        if cancel_flag.is_set():
+        if safe_is_set(cancel_flag):
             logger.info({
                 "level": "INFO",
                 "type": "cancel",
