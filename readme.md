@@ -227,8 +227,7 @@ html_Parser_prototype/
    `
 
 - 7. ## Run Bot_router
-   
-   - `python -m webapp.parser.bots.bot_router`
+   python -m webapp.parser.bots.bot_router
    - The bot_router cleans up the .json/.jsonl and preps for 
    retraining as well as migrating data to postgreSQL
 ---
