@@ -409,7 +409,6 @@ document.addEventListener("DOMContentLoaded", function() {
     var cancelBtn = document.getElementById('cancelParserBtn');
     var cancelRequested = false;
 
-    // Session sidebar logic
     var activeSessionIdSpan = document.getElementById('activeSessionId');
     var sessionListDiv = document.getElementById('sessionList');
     var addSessionBtn = document.getElementById('addSessionBtn');
@@ -422,6 +421,9 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function setActiveSession(sid) {
+        if (typeof sid === 'object' && sid.session_id) {
+            sid = sid.session_id;
+        }
         localStorage.setItem('session_id', sid);
         activeSessionIdSpan.textContent = sid;
         highlightActiveSession();
@@ -450,7 +452,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 outputDiv.innerHTML = '';
                 socket.emit('join', {session_id: sid});
             };
-            // Remove button
             let removeBtn = document.createElement('span');
             removeBtn.textContent = '✖';
             removeBtn.style.cssText = 'float:right;color:#eb4f43;cursor:pointer;font-weight:bold;margin-left:1em;';
@@ -470,6 +471,7 @@ document.addEventListener("DOMContentLoaded", function() {
         highlightActiveSession();
     }
 
+    // Only create new session when Add Session is pressed
     addSessionBtn.onclick = function() {
         let newSid = 'sess_' + Math.random().toString(36).substr(2, 9);
         let sessions = getSessions();
@@ -481,20 +483,36 @@ document.addEventListener("DOMContentLoaded", function() {
         outputDiv.innerHTML = '';
     };
 
-    socket.on('connect', function() {
-        let sid = localStorage.getItem('session_id') || socket.id;
+    // Only create new session when Run Parser is pressed
+    document.getElementById('runParserBtn').addEventListener('click', function(e) {
+        e.preventDefault();
+        let newSid = 'sess_' + Math.random().toString(36).substr(2, 9);
         let sessions = getSessions();
-        if (!sessions.includes(sid)) {
-            sessions.push(sid);
-            localStorage.setItem('active_sessions', JSON.stringify(sessions));
-        }
-        setActiveSession(sid);
+        sessions.push(newSid);
+        localStorage.setItem('active_sessions', JSON.stringify(sessions));
+        setActiveSession(newSid);
         renderSessionList();
-        socket.emit('join', {session_id: sid});
+        socket.emit('join', {session_id: newSid});
+        outputDiv.innerHTML = '';
+        const rect = this.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2 + window.scrollY;
+        createExplosion(x, y);
+        socket.emit('run_parser');
+    });
+
+    // Do NOT create new session on connect
+    socket.on('connect', function() {
+        let sid = localStorage.getItem('session_id');
+        if (sid) {
+            setActiveSession(sid);
+            renderSessionList();
+            socket.emit('join', {session_id: sid});
+        }
     });
 
     socket.on('session_id', function(data) {
-        let sid = data.session_id;
+        let sid = typeof data === 'string' ? data : data.session_id;
         let sessions = getSessions();
         if (!sessions.includes(sid)) {
             sessions.push(sid);
@@ -696,16 +714,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // Initial render
     renderSessionList();
-    setActiveSession(localStorage.getItem('session_id') || socket.id);
-    // Request session list from backend on load
+    setActiveSession(localStorage.getItem('session_id') || '');
     socket.emit('get_sessions');
-
     socket.on('session_list', function(data) {
-        // Replace local session list with backend's
         if (Array.isArray(data.sessions)) {
             localStorage.setItem('active_sessions', JSON.stringify(data.sessions));
             renderSessionList();
-            // Optionally, set active session if not present
             if (!data.sessions.includes(localStorage.getItem('session_id'))) {
                 setActiveSession(data.sessions[0] || '');
             }
