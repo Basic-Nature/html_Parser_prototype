@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 context_cache = {}
 
-def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, non_interactive=False, logger=logger, **kwargs) -> tuple:
+def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, logger=logger, **kwargs) -> tuple:
     """
     Example state handler, fully integrated with context coordinator and shared utilities.
     - If the state has county-specific handlers, delegates to them.
@@ -41,7 +41,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 page,
                 coordinator=coordinator,
                 html_context=html_context,
-                non_interactive=non_interactive,
                 logger=logger
             )
         except ModuleNotFoundError:
@@ -59,7 +58,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         page=page,
         coordinator=coordinator,
         session_id=session_id if session_id is not None else getattr(coordinator, "session_id", None),
-        non_interactive=non_interactive,
         allow_duplicates=getattr(coordinator, "allow_duplicates", False),
         context_cache=context_cache,
         debug=False,  
@@ -78,8 +76,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         coordinator,
         state=state,
         county=county,
-        year=html_context.get("year"),
-        non_interactive=non_interactive
+        year=html_context.get("year")
     )
     if not selected:
         logger.error("[red]No contest selected. Skipping.[/red]")

@@ -168,7 +168,7 @@ def parse_json_election_results(json_path, output_dir=None):
     return headers, rows, target_contest, metadata
 
 # --- Entry point for pipeline integration ---
-def parse(page=None, coordinator=None, html_context=None, non_interactive=False, manual_file=None, **kwargs):
+def parse(page=None, coordinator=None, html_context=None, manual_file=None, **kwargs):
     """
     Universal pipeline entry: Accepts a JSON file path (manual_file) from the format router,
     or prompts user to select a file from the input folder.

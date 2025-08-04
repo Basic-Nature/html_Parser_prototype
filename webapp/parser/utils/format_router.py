@@ -133,7 +133,6 @@ def prompt_and_handle_download(
     page,
     target_url,
     rejected_downloads=None,
-    non_interactive=False,
     session_id=None
 ) -> Tuple[Optional[dict], bool]:
     """
@@ -231,7 +230,6 @@ def prompt_and_handle_download(
 
     fmt, file_url = prompt_user_for_format(
         confirmed,
-        non_interactive=non_interactive,
         session_id=session_id
     )
     if not fmt or not file_url:
@@ -264,7 +262,6 @@ def prompt_and_handle_download(
 def prompt_user_for_format(
     confirmed,
     logger=logger,
-    non_interactive=False,
     session_id=None
 ) -> tuple[Optional[str], Optional[str]]:
     """
@@ -289,15 +286,6 @@ def prompt_user_for_format(
             safe_lower(x) == "" or safe_lower(x) == "n" or
             (safe_isdigit(x) and 0 <= int(x) < len(format_options))
         )
-
-    # Non-interactive mode: auto-select first available format
-    if non_interactive:
-        if format_options:
-            logger.info(f"[INFO][Session:{session_id}] Non-interactive mode: auto-selecting {format_options[0]}")
-            return confirmed[0]
-        else:
-            logger.info(f"[INFO][Session:{session_id}] Non-interactive mode: no formats to select.")
-            return None, None
 
     selection = prompt.prompt_input(
         f"[PROMPT][Session:{session_id}] Select a format to download (0-{len(format_options)-1}) or 'n' to skip:",

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .....Context_Integration.context_coordinator import ContextCoordinator
 context_cache = {}
-def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, non_interactive=False, logger=logger, **kwargs) -> tuple:
+def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, logger=logger, **kwargs) -> tuple:
     """
     Main entry point for Example County handler.
     - Scans HTML for context and contests
@@ -29,7 +29,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         page=page,
         coordinator=coordinator,
         session_id=session_id if session_id is not None else getattr(coordinator, "session_id", None),
-        non_interactive=non_interactive,
         allow_duplicates=getattr(coordinator, "allow_duplicates", False),
         context_cache=context_cache,
         debug=False,  
@@ -48,8 +47,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         coordinator,
         state=state,
         county=county,
-        year=html_context.get("year"),
-        non_interactive=non_interactive
+        year=html_context.get("year")
     )
     if not selected:
         logger.error("[red]No contest selected. Skipping.[/red]")

@@ -126,7 +126,6 @@ def process_urls_for_web(
     urls,
     session_id,
     cancel_flag,
-    non_interactive=False,
     max_workers=2,
     mode="webapp",
     **kwargs
@@ -169,7 +168,6 @@ def process_urls_for_web(
             main(
                 session_id=session_id,
                 cancel_flag=cancel_flag,
-                non_interactive=True,
                 **kwargs
             )
             return
@@ -217,7 +215,6 @@ def process_urls_for_web(
                         url=url,
                         session_id=session_id,
                         cancel_flag=cancel_flag,
-                        non_interactive=non_interactive,
                         **kwargs
                     ): (idx, url) for idx, url in enumerate(urls)
                 }
@@ -313,7 +310,6 @@ def process_urls_for_web(
                         url=url,
                         session_id=session_id,
                         cancel_flag=cancel_flag,
-                        non_interactive=non_interactive,
                         **kwargs
                     )
                     url_duration = time.time() - url_start

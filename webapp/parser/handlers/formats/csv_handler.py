@@ -205,7 +205,7 @@ def parse_csv_election_results(csv_path, output_dir=None):
 
     return headers, wide_data, contest, metadata
 
-def parse(page=None, coordinator=None, html_context=None, non_interactive=False, manual_file=None, **kwargs):
+def parse(page=None, coordinator=None, html_context=None, manual_file=None, **kwargs):
     """
     Universal pipeline entry: Accepts a CSV file path (manual_file) from the format router,
     or prompts user to select a file from the input folder.

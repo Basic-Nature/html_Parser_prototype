@@ -152,7 +152,6 @@ def prompt_url_selection(
     processed: Dict[str, Any],
     cancel_flag: threading.Event = None,
     session_id=None,
-    non_interactive=False
 ) -> List[str]:
     # Mode-aware: URLs loaded
     msg = "URLs loaded"
@@ -204,20 +203,6 @@ def prompt_url_selection(
                 "status": status,
             }
             logger.info(payload)
-
-    if non_interactive:
-        msg = "Non-interactive mode: awaiting selection from frontend or API."
-        if logger.mode == "cli":
-            console.panel(msg, title="Info", style="cyan")
-        else:
-            payload = {
-                "level": "INFO",
-                "type": "input",
-                "message": msg,
-                "session_id": session_id
-            }
-            logger.info(payload)
-        return []
 
     # Check cancel_flag before prompting
     if cancel_flag is not None and hasattr(cancel_flag, "is_set") and callable(cancel_flag.is_set):
@@ -546,7 +531,6 @@ def orchestrate_url(
     processed_info,
     session_id=None,
     cancel_flag=None,
-    non_interactive=False,
     **kwargs
 ):
     from .Context_Integration.context_coordinator import ContextCoordinator
@@ -569,7 +553,7 @@ def orchestrate_url(
     try:
         with sync_playwright() as p:
             browser, _, page, _ = browser_pipeline(
-                p, target_url, cache_exit_callback=mark_url_processed, non_interactive=non_interactive, session_id=session_id
+                p, target_url, cache_exit_callback=mark_url_processed, session_id=session_id
             )
             # cancel_flag check
             if cancel_flag is not None and safe_is_set(cancel_flag):
@@ -620,7 +604,7 @@ def orchestrate_url(
 
             # 1. Prompt for downloadable format and handle if chosen
             result, handled = prompt_and_handle_download(
-                page, target_url, rejected_downloads, non_interactive=non_interactive, session_id=session_id
+                page, target_url, rejected_downloads, session_id=session_id
             )
             if handled:
                 mark_url_processed(target_url, status="success", session_id=session_id)
@@ -656,7 +640,6 @@ def orchestrate_url(
                 url=target_url,
                 debug=False,
                 fuzzy_cutoff=None,
-                non_interactive=non_interactive,
                 session_id=session_id
             )
             handler = handler_result.get("handler") if isinstance(handler_result, dict) else None
@@ -683,7 +666,7 @@ def orchestrate_url(
             # 5. Call handler (handler is responsible for all DOM/context scanning)
             result = None
             if handler and hasattr(handler, 'parse'):
-                result = safe_parse(handler, page, coordinator, context, session_id=session_id, non_interactive=non_interactive, logger=logger, **kwargs)
+                result = safe_parse(handler, page, coordinator, context, session_id=session_id, logger=logger, **kwargs)
             else:
                 msg = f"[Router] No suitable handler found for {target_url}, using generic HTML handler."
                 if logger.mode == "cli":
@@ -696,7 +679,7 @@ def orchestrate_url(
                         "session_id": session_id
                     }
                     logger.warning(payload)
-                result = safe_parse(html_handler, page, coordinator, context, session_id=session_id, non_interactive=non_interactive, logger=logger, **kwargs)
+                result = safe_parse(html_handler, page, coordinator, context, session_id=session_id, logger=logger, **kwargs)
 
             # 6. Validate result
             if not isinstance(result, tuple) or len(result) != 4:
@@ -842,8 +825,9 @@ def orchestrate_url(
         # browser close (only once)
         safe_browser_close(browser, session_id)
 
-def main(session_id=None, cancel_flag=None, non_interactive=False, **kwargs):
+def main(session_id=None, cancel_flag=None, **kwargs):
     try:
+        logger.info({"level": "DEBUG", "message": "Entered main()", "session_id": session_id})
         if process_format_override(session_id=session_id):
             return
 
@@ -899,8 +883,7 @@ def main(session_id=None, cancel_flag=None, non_interactive=False, **kwargs):
         selected_urls = prompt_url_selection(
             urls, processed_info,
             session_id=session_id,
-            cancel_flag=cancel_flag,
-            non_interactive=non_interactive
+            cancel_flag=cancel_flag
         )
         if not selected_urls:
             msg = "No URLs selected. Exiting."
@@ -918,10 +901,10 @@ def main(session_id=None, cancel_flag=None, non_interactive=False, **kwargs):
 
         if ENABLE_PARALLEL:
             with Pool() as pool:
-                pool.starmap(orchestrate_url, [(url, processed_info, session_id, cancel_flag, non_interactive, *kwargs.values()) for url in selected_urls])
+                pool.starmap(orchestrate_url, [(url, processed_info, session_id, cancel_flag, *kwargs.values()) for url in selected_urls])
         else:
             for url in selected_urls:
-                orchestrate_url(url, processed_info, session_id, cancel_flag, non_interactive, **kwargs)
+                orchestrate_url(url, processed_info, session_id, cancel_flag, **kwargs)
 
         summary = {"success": 0, "fail": 0, "partial": 0, "error": 0, "flagged": 0}
         processed = load_processed_urls()

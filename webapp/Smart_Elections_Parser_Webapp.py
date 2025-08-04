@@ -470,10 +470,9 @@ def handle_data_framework(data) -> None:
 @socketio.on('run_parser')
 def handle_run_parser() -> None:
     session_id = safe_sid()
-    cancel_flag = cancellation_manager.get_flag(session_id)
     try:
         log_parser_status("Starting parser run...", session_id, rich=True)
-        thread = Thread(target=process_urls_for_web, args=(None, session_id, cancel_flag))
+        thread = Thread(target=process_urls_for_web, args=(None, session_id))
         thread.start()
     except Exception as e:
         emit('parser_output', {

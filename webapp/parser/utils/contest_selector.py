@@ -519,7 +519,6 @@ def select_contest(
     county=None,
     year=None,
     session_id=None,
-    non_interactive=False,
     context=None,
     prompt_message="[PROMPT] Enter contest indices (comma-separated), 'all', or leave blank to skip: ",
     allow_multiple=True,
@@ -731,23 +730,6 @@ def select_contest(
         if log_func:
             log_func(f"[CONTEST] Auto-selected: {safe_get(contest, 'title', '')}")
         return [contest]
-
-    # --- Non-interactive mode: select all ---
-    if non_interactive:
-        # For webapp GUI, return empty and let frontend/API handle selection.
-        if getattr(logger, "mode", None) == "webapp":
-            if log_func:
-                log_func("[CONTEST] Non-interactive mode (webapp): awaiting selection from frontend/API.")
-            return []
-        # For CLI, select all contests automatically.
-        if log_func:
-            log_func(f"[CONTEST] Non-interactive mode (CLI): selecting all contests.")
-        selected = [ensure_contest(c) for c in verified_contests]
-        # Attach session_id to selected contests if provided
-        if session_id is not None:
-            for c in selected:
-                c["session_id"] = session_id
-        return selected
 
     # --- Interactive prompt ---
     try:

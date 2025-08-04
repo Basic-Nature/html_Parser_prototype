@@ -1895,7 +1895,6 @@ def prompt_for_segment_label(
     segment,
     context_library=None,
     session_id=None,
-    non_interactive=False
 ) -> str:
     seg_hash = segment_identity_hash(segment)
     cached_label = get_cached_segment_label(seg_hash)
@@ -1910,7 +1909,7 @@ def prompt_for_segment_label(
     if auto != "ignore" and auto != "unknown":
         cache_segment_label(seg_hash, auto)
         return auto
-    if non_interactive or not ENABLE_SEGMENT_LABEL_PROMPT:
+    if not ENABLE_SEGMENT_LABEL_PROMPT:
         return "unknown"
     if not html_preview:
         html_preview = f"[No HTML] tag={safe_get(segment, 'tag', [])} attrs={safe_get(segment, 'attrs', [])}"
@@ -2494,7 +2493,6 @@ def scan_html_for_context(
     page,
     coordinator=None,
     session_id=None,
-    non_interactive=False,
     allow_duplicates=False,
     context_cache=None,
     debug=False,
@@ -2540,7 +2538,7 @@ def scan_html_for_context(
 
     # --- 4. Organize and filter segments by type ---
     context_result = _organize_segments_and_sections(
-        segments_with_attrs, target_url, context_library, coordinator, allow_duplicates, session_id, non_interactive, **kwargs
+        segments_with_attrs, target_url, context_library, coordinator, allow_duplicates, session_id, **kwargs
     )
 
     # --- 4a. Election Types Extraction from ballot_types ---
@@ -2848,7 +2846,6 @@ def _organize_segments_and_sections(
     coordinator,
     allow_duplicates,
     session_id,
-    non_interactive,
     **kwargs
 ) -> Dict[str, Any]:
     """
@@ -2870,7 +2867,6 @@ def _organize_segments_and_sections(
                 allow_duplicates=allow_duplicates,
                 session_id=session_id,
                 coordinator=coordinator,
-                non_interactive=non_interactive,
                 **merged_kwargs
             )
         return data

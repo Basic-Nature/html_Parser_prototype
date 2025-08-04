@@ -317,7 +317,7 @@ def parse_pdf_election_results(pdf_path, output_dir=None):
     logger.warning(f"[bold yellow][OUTPUT][/bold yellow] Wrote plain text to:\n  [cyan]{output_csv}[/cyan]")
     return ["text"], [{"text": all_text}], safe_title, metadata
 
-def parse(page=None, coordinator=None, html_context=None, non_interactive=False, manual_file=None, **kwargs):
+def parse(page=None, coordinator=None, html_context=None, manual_file=None, **kwargs):
     """
     Universal pipeline entry: Accepts a PDF file path (manual_file) from the format router,
     or prompts user to select a file from the input folder.

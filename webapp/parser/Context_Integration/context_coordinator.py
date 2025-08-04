@@ -1137,30 +1137,14 @@ class ContextCoordinator(object):
 
         return "unknown"
 
-    def segment_prompt(self, segment, session_id=None, reason=None, non_interactive=False):
+    def segment_prompt(self, segment, session_id=None, reason=None):
         """
         Robust segment prompt for webapp GUI and CLI.
-        - If non_interactive, logs the segment and reason for review, does not prompt.
-        - If interactive, prompts user for label/correction.
+        - Prompts user for label/correction.
         - Optionally logs feedback for downstream learning.
         """
         logger.info(f"[SEGMENT_PROMPT] Segment needs review. Reason: {reason}. Session: {session_id}")
         html_preview = safe_get(segment, "html", "")
-        if non_interactive:
-            # Just log for review, no prompt
-            logger.warning(f"[SEGMENT_PROMPT][non_interactive] Segment flagged for review: {html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
-            # Optionally, add to a review queue or feedback log
-            self.log_field_selection(
-                field_type="segment",
-                field_name="segment_prompt",
-                extracted_value=html_preview,
-                method="non_interactive",
-                score=0.0,
-                result=reason,
-                context={"session_id": session_id, "reason": reason},
-                user_feedback=None
-            )
-            return None
         # Interactive prompt (CLI or webapp)
         logger.info(f"[SEGMENT_PROMPT][interactive] Segment HTML: {html_preview[:200]}{'...' if len(html_preview) > 200 else ''}")
         label = None

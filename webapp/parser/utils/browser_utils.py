@@ -399,7 +399,7 @@ def safe_browser_close(
                 "session_id": session_id
             })
 
-def browser_pipeline(playwright, target_url, cache_exit_callback=None, non_interactive=False, session_id=None):
+def browser_pipeline(playwright, target_url, cache_exit_callback=None, session_id=None):
     """
     Main browser utility for html_election_parser.
     Returns (browser, context, page, user_agent) or None if session should exit.
@@ -420,12 +420,7 @@ def browser_pipeline(playwright, target_url, cache_exit_callback=None, non_inter
         return browser, context, page, user_agent
 
     # Step 4: If still CAPTCHA or loading, prompt for Selenium retry
-    # Use non_interactive to skip manual prompt if needed
-    retry_selenium = False
-    if non_interactive:
-        logger.warning(f"[CAPTCHA] Non-interactive mode: skipping Selenium retry prompt. (Session: {session_id})")
-    else:
-        retry_selenium = prompt_user_for_selenium_retry()
+    retry_selenium = prompt_user_for_selenium_retry()
 
     if retry_selenium:
         from ..utils.seleniumbase_launcher import launch_browser, close_driver

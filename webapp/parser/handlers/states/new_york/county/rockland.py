@@ -22,7 +22,7 @@ BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type
 context_cache = {}
 accepted_buttons_cache = {}
 
-def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, non_interactive=False, logger=logger, **kwargs) -> tuple:
+def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = None, session_id=None, logger=logger, **kwargs) -> tuple:
     """
     Rockland County handler: all logic in one place.
     - Scans HTML for context and contests
@@ -43,7 +43,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         page=page,
         coordinator=coordinator,
         session_id=session_id if session_id is not None else getattr(coordinator, "session_id", None),
-        non_interactive=non_interactive,
         allow_duplicates=getattr(coordinator, "allow_duplicates", False),
         context_cache=context_cache,
         debug=False,  
@@ -87,7 +86,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
         county=county,
         year=year,
         session_id=session_id,
-        non_interactive=non_interactive,
         context=context_for_selector
     )
     if not selected:
@@ -194,7 +192,6 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
                 page=page,
                 coordinator=coordinator,
                 session_id=session_id if session_id is not None else getattr(coordinator, "session_id", None),
-                non_interactive=non_interactive,
                 allow_duplicates=getattr(coordinator, "allow_duplicates", False),
                 context_cache=context_cache,
                 debug=False,
