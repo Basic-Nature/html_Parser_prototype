@@ -358,7 +358,7 @@ def input_files() -> str:
     files = os.listdir(INPUT_FOLDER)
     return render_template("file_list.html", files=files, folder="Input", download_url="download_input_file")
 
-@app.route("/manage-data", methods=["GET", "POST"])
+@app.route("/manage_data", methods=["GET", "POST"])
 def manage_data() -> str:
     overrides = load_overrides()
     validations = {k: validate_module_path(v) for k, v in overrides.items()}
@@ -381,6 +381,10 @@ def manage_data() -> str:
         input_files=input_files,
         output_files=output_files
     )
+
+@app.route("/run_parser", methods=["GET"])
+def run_parser():
+    return render_template("run_parser.html")
 
 @app.route("/output-files")
 def output_files() -> str:
@@ -444,14 +448,20 @@ def health() -> str:
 
 # 6. SocketIO Event Handlers
 @socketio.on('get_session_history')
-def handle_get_session_history(data):
-    sid = data['session_id']
+def handle_get_session_history(data) -> None:
+    sid = str(data['session_id'])
+    if not isinstance(sid, str):
+        logger.warning(f"Invalid session_id type: {type(sid)} value: {sid}")
+        return
     logs = session_logs.get(sid, [])
     emit('session_history', {'session_id': sid, 'logs': logs}, room=request.sid)
 
 @socketio.on('clone_session')
-def handle_clone_session(data):
-    old_sid = data['session_id']
+def handle_clone_session(data) -> None:
+    old_sid = str(data['session_id'])
+    if not isinstance(old_sid, str):
+        logger.warning(f"Invalid session_id type: {type(old_sid)} value: {old_sid}")
+        return
     new_sid = 'sess_' + os.urandom(6).hex()
     session_metadata[new_sid] = dict(session_metadata[old_sid])
     session_metadata[new_sid]['session_id'] = new_sid
@@ -464,8 +474,11 @@ def handle_clone_session(data):
     emit('session_cloned', {'old_session': old_sid, 'new_session': new_sid}, room=request.sid)
 
 @socketio.on('delete_session')
-def handle_delete_session(data):
-    sid = data['session_id']
+def handle_delete_session(data) -> None:
+    sid = str(data['session_id'])
+    if not isinstance(sid, str):
+        logger.warning(f"Invalid session_id type: {type(sid)} value: {sid}")
+        return
     username = data.get('username')
     if is_owner(sid, username):
         active_sessions_backend.discard(sid)
@@ -477,7 +490,10 @@ def handle_delete_session(data):
 
 @socketio.on('join')
 def on_join(data):
-    sid = data['session_id']
+    sid = str(data['session_id'])
+    if not isinstance(sid, str):
+        logger.warning(f"Invalid session_id type: {type(sid)} value: {sid}")
+        return
     join_room(sid)
     active_sessions_backend.add(sid)
     session_last_active[sid] = time.time()
@@ -569,21 +585,15 @@ def handle_parser_prompt(data) -> None:
     thread.start()
 
 @socketio.on('run_parser')
-def handle_run_parser():
-    sid = safe_sid()
-    if session_metadata[sid]['locked']:
+def handle_run_parser() -> None:
+    session_id = safe_sid()
+    if session_metadata[session_id]['locked']:
         emit('parser_output', {
             "level": "ERROR",
             "message": "Session is locked. Wait for current job to finish.",
             "color": "#eb4f43"
-        }, room=sid)
+        }, room=session_id)
         return
-    lock_session(sid)
-    unlock_session(sid)
-
-@socketio.on('run_parser')
-def handle_run_parser() -> None:
-    session_id = safe_sid()
     if session_id in session_threads and session_threads[session_id].is_alive():
         emit('parser_output', {
             "level": "WARNING",
@@ -591,6 +601,7 @@ def handle_run_parser() -> None:
             "color": "#ffd166"
         }, room=session_id)
         return
+    lock_session(session_id)
     log_parser_status("Parser connected. Starting parser run...", session_id, rich=True)
     cancel_flag = cancellation_manager.get_flag(session_id)
     prompt_queue = get_prompt_queue(session_id)
@@ -598,6 +609,7 @@ def handle_run_parser() -> None:
     thread.daemon = True
     thread.start()
     session_threads[session_id] = thread
+    unlock_session(session_id)
 
 # 7. Main Entrypoint
 if __name__ == "__main__":

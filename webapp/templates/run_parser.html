@@ -299,7 +299,7 @@
         <a href="{{ url_for('index') }}">Dashboard</a>
         <a href="{{ url_for('manage_data') }}">Manage Data & URL</a>
         <a href="{{ url_for('history') }}">History</a>
-        <a href="{{ url_for('run_parser_page') }}" class="active">Run Parser</a>
+        <a href="{{ url_for('run_parser') }}" class="active">Run Parser</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">About</a>
     </nav>
     <div class="container-main">
@@ -322,7 +322,7 @@
           {% endif %}
         {% endwith %}
         <div class="form-section">
-            <form method="POST" action="{{ url_for('run_parser_page') }}" style="display:inline;">
+            <form method="POST" action="{{ url_for('run_parser') }}" style="display:inline;">
                 <button type="submit" class="run-btn" id="runParserBtn">Run Parser</button>
             </form>
             <button type="button" class="run-btn" id="cancelParserBtn" style="background:linear-gradient(90deg, var(--main-red), #333);margin-left:1em;">Cancel</button>

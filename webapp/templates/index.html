@@ -168,12 +168,12 @@
             position: relative;
             overflow: hidden;
         }
-        .feature[href*="run_parser_page"] {
+        .feature[href*="run_parser"] {
             border-color: var(--main-red);
             
         }
-        .feature[href*="run_parser_page"]:hover {
-            transform: translateY(-8px) scale(1.06) rotate(-1deg);
+        .feature[href*="run_parser"]:hover {
+            transform: translateY(-8px) scale(1.06) rotate(0deg);
             box-shadow: 0 0 18px 8px var(--neon), 0 2px 12px #bfc9d1;
             border-color: var(--neon2);
             background: rgba(0,255,231,0.13);
@@ -183,7 +183,7 @@
             
         }
         .feature[href*="history"]:hover {
-            transform: translate(8px, -8px) scale(1.06) rotate(1deg);
+            transform: translate(8px, -8px) scale(1.06) rotate(2deg);
             box-shadow: 0 0 18px 4px var(--gold), 0 2px 12px #bfc9d1;
             border-color: var(--neon2);
             background: rgba(255,215,0,0.07);
@@ -198,8 +198,6 @@
                 box-shadow 0.22s,
                 border 0.22s,
                 background 0.22s;
-
-
         }
         .feature[href*="manage_data"]:hover {
             transform: translate(-8px, -8px) scale(1.06) rotate(-2deg);
@@ -223,7 +221,7 @@
             color: var(--main-blue);
             text-shadow: 0 2px 12px var(--neon);
         }
-        .feature[href*="run_parser_page"] h3 {
+        .feature[href*="run_parser"] h3 {
             color: var(--main-red);
             text-shadow: 0 2px 12px var(--neon3);
         }
@@ -361,7 +359,7 @@
                 <h3>Data & URL Hint Manager</h3>
                 <p>Manage custom URL-to-handler mappings for tricky or new election sites. Import/export hints, undo changes, and validate handler modules.</p>
             </a>
-            <a class="feature" href="{{ url_for('run_parser_page') }}">
+            <a class="feature" href="{{ url_for('run_parser') }}">
                 <h3>Run Parser</h3>
                 <p>Start a new parsing job using the current configuration. CLI and batch automation also supported.</p>
             </a>            
@@ -510,16 +508,40 @@
         missionPanel.addEventListener('mouseleave', ()=>missionPanel.classList.remove('glossy'));
 
         // Feature button hover rim tracer
+        const featureStyles = {
+            manage_data: {
+                color: "#45818e",
+                transform: "translate(-8px, -8px) scale(1.06) rotate(-2deg)"
+            },
+            run_parser: {
+                color: "#00ffe7",
+                transform: "translateY(-8px) scale(1.06) rotate(0deg)"
+            },
+            history: {
+                color: "#ffd700",
+                transform: "translate(8px, -8px) scale(1.06) rotate(2deg)"
+            }
+        };
+
         document.querySelectorAll('.feature').forEach(btn => {
-            btn.addEventListener('mousemove', function(e){
-                this.style.boxShadow = "0 0 24px 4px " + (
-                    this.href.includes('run_parser_page') ? "#00ffe7" :
-                    this.href.includes('history') ? "#ffd700" :
-                    this.href.includes('manage_data') ? "#45818e" : "#eb4f43"
-                ) + ", 0 2px 12px #bfc9d1";
+            btn.addEventListener('mousemove', function(e) {
+                let style = {
+                    color: "#eb4f43", // default red
+                    transform: ""
+                };
+                if (this.href.includes('manage_data')) {
+                    style = featureStyles.manage_data;
+                } else if (this.href.includes('run_parser')) {
+                    style = featureStyles.run_parser;
+                } else if (this.href.includes('history')) {
+                    style = featureStyles.history;
+                }
+                this.style.boxShadow = `0 0 24px 4px ${style.color}, 0 2px 12px #bfc9d1`;
+                this.style.transform = style.transform;
             });
-            btn.addEventListener('mouseleave', function(e){
+            btn.addEventListener('mouseleave', function(e) {
                 this.style.boxShadow = "";
+                this.style.transform = "";
             });
         });
 
