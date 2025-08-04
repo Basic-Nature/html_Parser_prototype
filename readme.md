@@ -178,22 +178,20 @@ html_Parser_prototype/
 │   │   ├── .env
 │   │   ├── .env.template
 │   │   └── requirements.txt
-
+```bash
 ---
 ## 🧪 How to Use
 
-1. **Install Requirements**
-   ```bash
+- 1. ## Install Requirements
+
    pip install -r requirements.txt
    python -m spacy download en_core_web_sm
 
-2. **Configure Settings (Optional)**
+- 2. ## Configure Settings (Optional)
    Copy `.env.template` to `.env` and modify:
 
-   ``bash
    cp .env.template .env
    ``
-
    Variables include:
 
    - `HEADLESS=false` (for debugging)
@@ -202,32 +200,32 @@ html_Parser_prototype/
    - `ENABLE_BOT_TASKS=true` (to enable bot features)
    - `ENABLE_PARALLEL=true` (to enable multiprocessing)
 
-3. **Add URLs**
+- 3. ## Add URLs
    - Populate `urls.txt` with target election result URLs.
    - `url_hint_overrides.txt` is used in conjunction with `state_router.py` when dynamic state detection fails.
 
-4. 
-   - Run the postgreSQL service to get database specific features to work
-   `python -m webapp.postgres_service_manager`
+- 4. ## Run the postgreSQL service
+   python -m webapp.postgres_service_manager
+   - Get database specific features to work.
+   - Requires admin privileges
+   - If not wanting to add admin privileges then start service in background manually.
 
-5. **Run Parser (Web UI)**
-
-   `bash<Same as above with "" and folder path>`
-    `python -m webapp.Smart_Elections_Parser_Webapp`
-   ``"cd ...full path...\html_Parser_prototype\"
+- 5. ## Run Parser (Web UI)
+   python -m webapp.Smart_Elections_Parser_Webapp
+   - <Same as above with "" and folder path>
+   - \cd ...full path...\html_Parser_prototype\
    - Then visit [http://localhost:5000](http://localhost:5000) in your browser or more likely the printed to terminal IP address pasted into browser of choice. This script activates the postgreSQL database so it must be ran first.
 
-6. **Run Parser (CLI)**
-
-   `bash # <--- Terminal
+- 6. ## Run Parser (CLI)
+   python -m webapp.parser.html_election_parser
    - `(uncomment the "")
-   - `python -m webapp.parser.html_election_parser`
+   - ``
    - if terminal already in root folder; otherwise,
     (replace full path with the actual path to the folder)
     "cd ...full path...\html_Parser_prototype"
    `
 
-7. **Run Bot_router**
+- 7. ## Run Bot_router
    
    - `python -m webapp.parser.bots.bot_router`
    - The bot_router cleans up the .json/.jsonl and preps for 
@@ -240,16 +238,12 @@ All parsed results are saved in a structured, transparent, and auditable format:
 
 ### 📁 Directory Structure
 
-```bash
-
 output/{state}/{county}/{race}/{contest}_results.csv
 
-```bash
-
 **Example:**
-```
 
 output/arizona/maricopa/us_senate/kari_lake_results.csv
+```
 
 ### 📄 Output Files
 
