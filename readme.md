@@ -202,7 +202,8 @@ html_Parser_prototype/
 
 - 3. ## Add URLs
    - Populate `urls.txt` with target election result URLs.
-   - `url_hint_overrides.txt` is used in conjunction with `state_router.py` when dynamic state detection fails.
+   - `url_hint_overrides.txt` is used in conjunction with 
+   `state_router.py` when dynamic state detection fails.
 
 - 4. ## Run the postgreSQL service
    python -m webapp.postgres_service_manager
