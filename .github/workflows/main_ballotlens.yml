@@ -42,7 +42,7 @@ jobs:
             ./webapp
             ./input
             ./output
-            ./.envtemplate
+            ./.env.template
 
   deploy:
     runs-on: ubuntu-latest
@@ -60,8 +60,8 @@ jobs:
       - name: List files for debug
         run: ls -R
 
-      - name: Copy .envtemplate to .env
-        run: cp html_Parser_prototype/.envtemplate html_Parser_prototype/.env
+      - name: Copy .env.template to .env
+        run: cp html_Parser_prototype/.env.template html_Parser_prototype/.env
 
       - name: Login to Azure
         uses: azure/login@v2
