@@ -57,21 +57,23 @@ jobs:
         with:
           name: python-app
 
+      - name: List files for debug
+        run: ls -R
+
       - name: Copy .envtemplate to .env
-        run: cp .envtemplate .env
-      
+        run: cp html_Parser_prototype/.envtemplate html_Parser_prototype/.env
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
-      - name: List files for debug
-        run: ls -R
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'BallotLens'
           slot-name: 'Production'
-          package: .
+          package: html_Parser_prototype
