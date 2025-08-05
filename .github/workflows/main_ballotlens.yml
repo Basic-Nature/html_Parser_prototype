@@ -43,6 +43,7 @@ jobs:
           name: python-app
           path: |
             ./webapp
+            requirements.txt
 
   deploy:
     runs-on: ubuntu-latest
@@ -76,6 +77,10 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
 
+      - name: Set Azure startup command
+        run: |
+          az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "python -m webapp.Smart_Elections_Parser_Webapp"
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
@@ -83,3 +88,4 @@ jobs:
           app-name: 'BallotLens'
           slot-name: 'Production'
           package: .
+          working-directory: './webapp'
