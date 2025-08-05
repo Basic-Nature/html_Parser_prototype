@@ -39,10 +39,8 @@ jobs:
         with:
           name: python-app
           path: |
-            ./webapp
-            ./input
-            ./output
-            ./.env.template
+            .
+            .env.template
 
   deploy:
     runs-on: ubuntu-latest
@@ -61,6 +59,8 @@ jobs:
         run: ls -R
       - name: Find all files (full path)
         run: find . -type f
+      - name: List top-level folders
+        run: ls -l
 
       - name: Copy .env.template to .env
         run: cp ./.env.template ./.env
