@@ -22,7 +22,7 @@ jobs:
       - name: Set up Python version
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.12'
 
       - name: Create and start virtual environment
         run: |
@@ -39,8 +39,7 @@ jobs:
         with:
           name: python-app
           path: |
-            .
-            !venv/
+            webapp
 
   deploy:
     runs-on: ubuntu-latest
@@ -68,4 +67,4 @@ jobs:
         with:
           app-name: 'BallotLens'
           slot-name: 'Production'
-          
+          package: webapp
