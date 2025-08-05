@@ -57,8 +57,10 @@ jobs:
         with:
           name: python-app
 
-      - name: List files for debug
+      - name: List files (recursive)
         run: ls -R
+      - name: Find all files (full path)
+        run: find . -type f
 
       - name: Copy .env.template to .env
         run: cp ./.env.template ./.env
