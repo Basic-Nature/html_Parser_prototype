@@ -39,7 +39,7 @@ jobs:
         with:
           name: python-app
           path: |
-            webapp
+            webapp/
 
   deploy:
     runs-on: ubuntu-latest
