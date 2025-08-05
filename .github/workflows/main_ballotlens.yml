@@ -37,7 +37,8 @@ jobs:
         with:
           name: python-app
           path: |
-            .
+            ./webapp
+            ./venv
 
   deploy:
     runs-on: ubuntu-latest
