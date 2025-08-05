@@ -56,6 +56,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: python-app
+
+      - name: Copy .envtemplate to .env
+        run: cp .envtemplate .env
       
       - name: Login to Azure
         uses: azure/login@v2
