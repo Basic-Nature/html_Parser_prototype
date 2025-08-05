@@ -37,8 +37,7 @@ jobs:
         with:
           name: python-app
           path: |
-            ./webapp
-            requirements.txt
+            .
 
   deploy:
     runs-on: ubuntu-latest
@@ -62,8 +61,8 @@ jobs:
 
       - name: Create .env file
         run: |
-          echo "KEY=VALUE" > .env
-          echo "KEY2=VALUE2" >> .env
+          echo "KEY=VALUE" > webapp/.env
+          echo "KEY2=VALUE2" >> webapp/.env
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -83,4 +82,3 @@ jobs:
           app-name: 'BallotLens'
           slot-name: 'Production'
           package: .
-          working-directory: './webapp'
