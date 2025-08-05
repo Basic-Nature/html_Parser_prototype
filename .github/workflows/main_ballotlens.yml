@@ -39,7 +39,10 @@ jobs:
         with:
           name: python-app
           path: |
-            webapp/
+            ./webapp
+            ./input
+            ./output
+            ./.envtemplate
 
   deploy:
     runs-on: ubuntu-latest
