@@ -61,7 +61,7 @@ jobs:
         run: ls -R
 
       - name: Copy .env.template to .env
-        run: cp html_Parser_prototype/.env.template html_Parser_prototype/.env
+        run: cp ./.env.template ./.env
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -76,4 +76,4 @@ jobs:
         with:
           app-name: 'BallotLens'
           slot-name: 'Production'
-          package: html_Parser_prototype
+          package: .
