@@ -1,6 +1,10 @@
+# webapp/parser/utils/download_utils.py
+# ---------------------------------------------------------------
+# Download utility functions for Smart Elections Parser Webapp
+# ---------------------------------------------------------------
+from __future__ import annotations
 import os
 import requests
-import hashlib
 import orjson
 from urllib.parse import urljoin
 from datetime import datetime
@@ -8,9 +12,7 @@ from ..utils.logger_singleton import logger
 from ..utils.shared_logic import safe_get
 from ..Context_Integration.context_organizer import ContextOrganizer
 from ..utils.misc_utils import file_hash
-from ..config import INPUT_DIR, OUTPUT_DIR
-
-DOWNLOAD_MANIFEST = os.path.join(INPUT_DIR, ".download_manifest.jsonl")
+from ..config import INPUT_DIR, OUTPUT_DIR, DOWNLOAD_MANIFEST
 
 def ensure_input_directory():
     """Ensure the 'input' directory exists."""

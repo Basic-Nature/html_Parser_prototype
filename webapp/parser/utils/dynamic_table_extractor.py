@@ -13,7 +13,7 @@ are handled centrally in table_core.py and table_builder.py.
 
 This ensures a single source of truth for table structure and learning.
 """
-
+from __future__ import annotations
 import os
 import re
 import orjson
@@ -21,11 +21,11 @@ import difflib
 import numpy as np
 import dateutil.parser
 from selectolax.parser import HTMLParser
-from ..utils.browser_utils import (
+from .browser_utils import (
     safe_locator, safe_count, safe_nth, safe_evaluate, safe_inner_text,
     safe_get_attribute
 )
-from ..utils.shared_logic import (
+from .shared_logic import (
     safe_get,
     safe_append,
     safe_copy,
@@ -36,7 +36,7 @@ from ..utils.shared_logic import (
     safe_replace
 )
 from ..Context_Integration.librarian import (
-    extend_panel_tags, extend_heading_tags, log_unknown_tag
+    extend_panel_tags, extend_heading_tags, log_unknown_tag, get_safe_log_path
 )
 from ..Context_Integration.Context_Library.constants import (
     CANDIDATE_KEYWORDS,
@@ -50,14 +50,13 @@ from ..Context_Integration.Context_Library.constants import (
     CONTAINER_EXTRA_KEYWORDS, CONTAINER_FALLBACK_SELECTORS
 )
 from typing import List, Dict, Tuple, Any
-from ..utils.logger_singleton import logger
+from .logger_singleton import logger
 from typing import TYPE_CHECKING
-from ..utils.table_core import ( 
+from .table_core import ( 
     extract_rows_and_headers_from_dom,
     extract_with_patterns,
     guess_headers_from_row,
     extract_table_data,
-    get_safe_log_path,
     load_dom_patterns,
     normalize_text,
     robust_table_extraction,
@@ -315,7 +314,6 @@ def remove_low_signal_columns(headers, data, min_unique=2, min_non_empty_ratio=0
     Remove columns with low variance or too many repeated values.
     Uses safe_get for robustness.
     """
-    from ..utils.shared_logic import safe_get
     keep = []
     n_rows = len(data)
     for h in headers:

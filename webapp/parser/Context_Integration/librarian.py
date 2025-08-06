@@ -1,23 +1,36 @@
-import os, re
 
-from typing import Dict, Set, List, Any
-from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT, LOG_DIR, BASE_DIR
+# webapp/parser/Context_Integration/librarian.py
+# -----------------------------------------------------------------------------------
+# This file contains functions to manage the context library for the HTML parser,
+# including loading, saving, and updating the context library, as well as
+# It also includes utilities for logging unknown HTML tags and attributes,
+# extending context library structures, and handling ML/LLM feedback.
+# -----------------------------------------------------------------------------------
+from __future__ import annotations
+import os
+import re
 import orjson
 import subprocess
 import sys
 import time
 import shutil
-from pathlib import Path
-from datetime import datetime, timezone
+import numpy as np
 import time
 import threading
 import shutil
 import tempfile
+import argparse
+from pathlib import Path
+from datetime import datetime, timezone
+from typing import Dict, Set, List, Any
+from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT, LOG_DIR, BASE_DIR
 from .Context_Library.constants import (
     BALLOT_TYPES, CANDIDATE_KEYWORDS, CANONICAL_SEGMENT_LABELS, CUSTOM_ATTR_PATTERNS, PANEL_TAGS,
     HEADING_TAGS, HTML_TAGS, LOCATION_KEYWORDS
 )
-from ..utils.shared_logic import safe_get, safe_merge_defaults, safe_setdefault, safe_startswith, safe_append
+from ..utils.shared_logic import (
+    safe_get, safe_merge_defaults, safe_setdefault, safe_startswith, safe_append, safe_filename
+)
 
 from ..utils.misc_utils import file_hash
 from ..utils.logger_singleton import logger
@@ -36,6 +49,22 @@ DEFAULT_STRUCTURE = {
 }
 _context_library_cache = None
 
+def get_safe_log_path(filename: str) -> Path:
+    """
+    Returns a safe log path inside the LOG_DIR directory.
+    Prevents path-injection and directory traversal.
+    Ensures the log directory exists.
+    """
+    log_dir = LOG_DIR
+    os.makedirs(log_dir, exist_ok=True)
+    # Sanitize the filename robustly
+    safe_name = safe_filename(os.path.basename(filename))
+    log_path = Path(log_dir) / safe_name
+    # Ensure the resolved path is inside LOG_DIR
+    if not str(log_path.resolve()).startswith(str(Path(log_dir).resolve())):
+        raise ValueError("Unsafe log path detected!")
+    return log_path
+
 def atomic_write_json(obj, path) -> None:
     """
     Atomically write JSON to path, keeping only the latest .bak and .tmp.
@@ -43,7 +72,6 @@ def atomic_write_json(obj, path) -> None:
     - If path exists, creates a .bak (removing any old .bak).
     - Cleans up any stray .tmp before/after.
     """
-    import os
     path = Path(path)
     backup_path = path.with_suffix(path.suffix + ".bak")
     tmp_path = path.with_suffix(path.suffix + ".tmp")
@@ -71,7 +99,6 @@ def atomic_write_json(obj, path) -> None:
         shutil.copy2(path, backup_path)
 
     # --- Fix: If the target file exists and is locked, try to close it or retry ---
-    import time
     for _ in range(3):
         try:
             shutil.move(str(tmp_path), str(path))
@@ -134,7 +161,6 @@ def safe_join(base, *paths) -> str:
     return final_path
 
 def clean_for_json(obj) -> Dict[str, Any]:
-    import numpy as np
     if isinstance(obj, dict):
         return {k: clean_for_json(v) for k, v in obj.items() if k != "_fixed_fields"}
     elif isinstance(obj, list):
@@ -436,7 +462,6 @@ def _deduplicate_jsonl_log(log_path: str, key: str) -> Set[str]:
     Deduplicate a JSONL log file by the given key ('tag' or 'attr').
     Keeps only the first occurrence of each value.
     """
-    import orjson
     if not os.path.exists(log_path):
         return set()
     seen = set()
@@ -466,7 +491,6 @@ def log_unknown_tag(tag: str, context_library) -> None:
     Log unknown HTML tag to unknown_tags_log.jsonl as a valid JSON object per line.
     Deduplicates log file and prevents future duplicates.
     """
-    import orjson
     global _UNKNOWN_TAGS_SET
     if _UNKNOWN_TAGS_SET is None:
         log_path = _get_log_path("unknown_tags_log.jsonl")
@@ -489,7 +513,6 @@ def log_unknown_attr(attr: str, context_library) -> None:
     Log unknown HTML attribute to unknown_attrs_log.jsonl as a valid JSON object per line.
     Deduplicates log file and prevents future duplicates.
     """
-    import orjson
     global _UNKNOWN_ATTRS_SET
     if _UNKNOWN_ATTRS_SET is None:
         log_path = _get_log_path("unknown_attrs_log.jsonl")
@@ -569,7 +592,6 @@ def self_heal_context_library(max_retries=3, cooldown=2) -> None:
     return 2
 
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser(description="Librarian utility for context library management.")
     parser.add_argument("--self-heal", action="store_true", help="Loop: scan -> correct -> rescan until clean or max retries")
     parser.add_argument("--max-retries", type=int, default=3, help="Max self-heal attempts")

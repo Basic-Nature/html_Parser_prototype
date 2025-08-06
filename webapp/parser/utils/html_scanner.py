@@ -1,3 +1,8 @@
+# webapp/parser/utils/html_scanner.py
+# ---------------------------------------------------------------
+# HTML scanning utilities for Smart Elections Parser Webapp
+# ---------------------------------------------------------------
+from __future__ import annotations
 import hashlib
 import orjson
 import os
@@ -6,14 +11,20 @@ import time
 import threading
 import traceback
 import tempfile
+import time
+import datetime
 import numpy as np
 from typing import Dict, Any, List, Optional, Set, Pattern
+from collections import Counter
 import concurrent.futures
-from ..config import CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH
-from ..utils.logger_singleton import logger, console, prompt
-from ..utils.shared_logic import (
+from ..config import (
+    CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH,
+    ENABLE_SEGMENT_LABEL_PROMPT
+)
+from .logger_singleton import logger, console, prompt
+from .shared_logic import (
     safe_append_cached_segment, safe_append, safe_update, safe_extend,
-    convert_ndarrays, _sanitize_log_filename, _normalize_html_for_hash, clean_cache_inplace,
+    convert_ndarrays, safe_filename, _normalize_html_for_hash, clean_cache_inplace,
     _keyword_in_text, safe_lower, safe_encode, safe_startswith, safe_add, safe_items, safe_model_encode,
     safe_get_first, _sync_type_and_election_types, safe_get, safe_strip,
     safe_setdefault, safe_keys
@@ -37,14 +48,12 @@ from ..Context_Integration.librarian import (
     update_context_library, load_context_library, log_unknown_tag, log_unknown_attr, 
     get_canonical_segment_label, cache_segment_label, get_cached_segment_label,    
 )
-from ..utils.embedding_cache import (
+from .embedding_cache import (
     save_embedding, get_embedding_from_memory, load_embeddings_batch, save_embeddings_batch
 )
 from selectolax.parser import HTMLParser
-from ..utils.model_registry import ModelRegistry
+from .model_registry import ModelRegistry
 from difflib import get_close_matches
-
-ENABLE_SEGMENT_LABEL_PROMPT = os.getenv("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 
 # --- Caching and threading ---
 _LABEL_CACHE_FILENAME = "segment_label_cache.json"
@@ -207,7 +216,7 @@ def safe_cache_path(filename: str) -> str:
         raise TypeError("Filename must be a string")
     if not re.match(r"^[\w\-. ]+$", filename):
         raise ValueError("Filename contains unsafe characters")
-    filename = _sanitize_log_filename(filename)
+    filename = safe_filename(filename)
     cache_folder = CACHE_DIR
     full_path = os.path.join(cache_folder, filename)
     abs_path = os.path.abspath(full_path)
@@ -270,7 +279,7 @@ def safe_log_path(filename: str, default_ext: str = ".jsonl") -> str:
         raise TypeError("Filename must be a string")
     if not re.match(r"^[\w\-. ]+$", filename):
         raise ValueError("Filename contains unsafe characters")
-    filename = _sanitize_log_filename(filename)
+    filename = safe_filename(filename)
     if not filename.endswith(default_ext):
         filename = re.sub(r"\.[^.]+$", "", filename) + default_ext
     log_folder = LOG_DIR
@@ -516,7 +525,6 @@ def get_segment_embedding(
                 logger.warning(payload)
         return None
     try:
-        import time
         t0 = time.time()
         emb = safe_model_encode(model, full_text, convert_to_numpy=True, show_progress_bar=False)
         save_embedding(identity, emb)
@@ -584,7 +592,6 @@ def batch_get_segment_embeddings(
         idx_map.append(idx)
     if texts:
         try:
-            import time
             t0 = time.time()
             if len(texts) > 128:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -990,9 +997,7 @@ def extract_year_and_type(text, url=None) -> tuple:
     Also extracts a 'last updated' date if present.
     Returns (year, election_type, cleaned_text, last_updated)
     """
-    import re
-    from collections import Counter
-
+    
     # Helper: Remove "last updated" and similar phrases
     def remove_last_updated(s):
         s = re.sub(r'last updated.*', '', s, flags=re.IGNORECASE)
@@ -1119,24 +1124,16 @@ def extract_tagged_segments_with_attrs(
     **kwargs
 ) -> List[Dict[str, Any]]:
     """
-    Ultra-advanced DOM segment extraction with ML, NLP, and dynamic context enrichment.
+    Ultra-advanced DOM segment extraction with ML and dynamic context enrichment.
     - Uses selectolax for DOM parsing.
-    - Integrates spaCy for entity/context-aware labeling.
-    - Leverages ContextCoordinator for self-learning, feedback, and smart context.
+    - Leverages ContextCoordinator for all NLP/entity enrichment.
     - Multi-level filtering, robust parent/child relationships, unique indices, and auditability.
-    - Uses spacy_utils for robust entity, location, and date extraction.
     - Uses coordinator.extract_field for dynamic context enrichment.
     """
     from ..Context_Integration.context_organizer import ContextOrganizer
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    from ..utils.spacy_utils import extract_entities, extract_locations, extract_dates
-    
-    try:
-        import spacy
-        nlp = spacy.load("en_core_web_sm")
-    except Exception:
-        nlp = None
-    coordinator = ContextCoordinator()
+
+    coordinator = coordinator or ContextCoordinator()
     if context_cache is not None:
         clean_cache_inplace(context_cache)
     if model is None:
@@ -1276,12 +1273,11 @@ def extract_tagged_segments_with_attrs(
             if any(pat.search(text) for pat in all_noisy_label_patterns):
                 return "ignore"
             # --- spaCy entity-based rules using spacy_utils ---
-            entities = extract_entities(text, nlp) if nlp else []
-            locations = extract_locations(text, nlp) if nlp else []
-            dates = extract_dates(text, nlp) if nlp else []
-            for ent in entities:
-                ent_text_lower = safe_lower(safe_get(ent, "text", ""))
-                ent_label = safe_get(ent, "label", "")
+            entities = coordinator.extract_entities(text) if coordinator else []
+            locations = coordinator.extract_locations(text) if coordinator else []
+            dates = coordinator.extract_dates(text) if coordinator else []
+            for ent, ent_label in entities:
+                ent_text_lower = safe_lower(ent)
                 if ent_label == "PERSON" and any(ent_text_lower in safe_lower(kw) for kw in all_candidate_keywords):
                     return "candidate_panel"
                 if ent_label in {"GPE", "LOC"} and any(ent_text_lower in safe_lower(kw) for kw in all_location_keywords):
@@ -1457,11 +1453,11 @@ def extract_tagged_segments_with_attrs(
             if not semantic_label:
                 semantic_label = "unknown"
 
-            # --- Use spacy_utils for robust NLP enrichment ---
+            # --- Use coordinator for NLP enrichment ---
             seg["ml_label"] = semantic_label
-            seg["nlp_entities"] = extract_entities(clean_text, nlp) if nlp else []
-            seg["nlp_locations"] = extract_locations(clean_text, nlp) if nlp else []
-            seg["nlp_dates"] = extract_dates(clean_text, nlp) if nlp else []
+            seg["nlp_entities"] = coordinator.extract_entities(clean_text) if coordinator else []
+            seg["nlp_locations"] = coordinator.extract_locations(clean_text) if coordinator else []
+            seg["nlp_dates"] = coordinator.extract_dates(clean_text) if coordinator else []
             segments.append(seg)
             this_idx = seg["_idx"]
             for child in getattr(node, "iter", lambda **kw: [])(include_text=True, **kwargs):
@@ -1648,7 +1644,12 @@ def extract_tagged_segments_with_attrs(
         if not fallback_on_error:
             raise
         return [{
-            "error_info": error_details,
+            "error_info": {
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+                "html_snippet": (html or "")[:200],
+                "segments_extracted": len(segments),
+            },
             "segments": [],
         }]
 
@@ -2016,8 +2017,6 @@ def validate_dom_parts(dom_parts: dict, verbose: bool = True, context_expected=N
     - Suppresses redundant warnings, adapts to context.
     - Returns True if valid, False otherwise.
     """
-    import datetime
-
     MAX_WARNINGS = 20
     warning_count = 0
     valid = True

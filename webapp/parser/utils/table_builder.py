@@ -3,7 +3,7 @@
 # Election Data Cleaner - Table Extraction and Cleaning Orchestrator
 # Centralizes user feedback, ML learning, and structure confirmation.
 # ===================================================================
-
+from __future__ import annotations
 import copy
 import os
 import orjson
@@ -12,28 +12,22 @@ from rich.table import Table
 from ..Context_Integration.Context_Library.constants import (
     PERCENT_KEYWORDS,  
 )
-from ..utils.shared_logic import (
+from .shared_logic import (
     safe_get, safe_append, safe_isalnum, safe_copy, safe_strip, safe_replace, safe_lower,
     safe_values
 )
 from typing import List, Dict, Tuple, Any, TYPE_CHECKING
-from ..utils.logger_singleton import logger
-from ..config import BASE_DIR, CACHE_DIR
-
-LOG_PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "log"))
-
+from .logger_singleton import logger
+from ..config import CACHE_DIR
 from .table_core import (
-    extract_all_candidates_from_data,
-    merge_multiline_candidate_rows,
-    robust_table_extraction,
     harmonize_headers_and_data,
-    detect_table_structure,
     nlp_entity_annotate_table,
     pivot_to_wide_format,
     table_signature,
-    cache_table_structure
+    cache_table_structure,
+    normalize_header, merge_table_data
 )
-
+from .dynamic_table_extractor import dynamic_table_extractor
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 # ===================================================================
@@ -57,8 +51,6 @@ def build_dynamic_table(
     Always merges, harmonizes, and pivots all panel tables before any feedback/confirmation.
     Returns (headers, data, entity_info) for downstream enrichment.
     """
-    from ..utils.table_core import normalize_header, merge_table_data
-    from ..utils.dynamic_table_extractor import dynamic_table_extractor
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = ContextCoordinator()
     if context is None:

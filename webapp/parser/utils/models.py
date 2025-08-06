@@ -1,14 +1,30 @@
+# webapp/parser/utils/models.py
+# ---------------------------------------------------------------
+# Core database models for Smart Elections Parser Webapp
+# ---------------------------------------------------------------
+from __future__ import annotations
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, ForeignKey, Boolean, Float, LargeBinary,
     UniqueConstraint, Index, Enum
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import declarative_base, relationship, backref
+from sqlalchemy import inspect
 import uuid
+from typing import Protocol, Any
+from sqlalchemy.engine.base import Engine
 from datetime import datetime, timezone
 import enum
 from .logger_singleton import logger
+
 Base = declarative_base()
+
+class MetaDataProtocol(Protocol):
+    tables: Any
+    def create_all(self, bind: Engine) -> None: ...
+
+class DeclarativeBaseProtocol(Protocol):
+    metadata: MetaDataProtocol
 
 # --- ENUMS ---
 
@@ -424,8 +440,6 @@ def main():
         from .db_utils import get_engine
     except ImportError:
         raise RuntimeError("get_engine not available. Cannot create tables.")
-    
-    from sqlalchemy import inspect
     try:
         engine = get_engine()
         logger.info("[MODELS] Creating all tables in the configured database...")

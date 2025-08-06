@@ -1,3 +1,7 @@
+# webapp/parser/utils/ml_table_detector.py
+# ---------------------------------------------------------------
+# Advanced ML-based Table Detection for HTML Table Extraction
+# ---------------------------------------------------------------
 """
 ml_table_detector.py
 
@@ -17,35 +21,36 @@ Features:
 Exports:
     - detect_tables_ml(html: str, options: dict = None) -> List[dict]
 """
-import os
+from __future__ import annotations
 import re
 import orjson
 from typing import List, Dict, Any, Optional, Tuple
 from selectolax.parser import HTMLParser
 from .shared_logger import SharedLogger
 from .browser_utils import safe_content, safe_attributes
-try:
-    import torch
-    import numpy as np
-    ML_AVAILABLE = True
-except ImportError:
-    ML_AVAILABLE = False
+from .model_registry import TableDetectionModel
+
+from ..config import (
+    LLM_PROVIDER, LLM_MODEL, LLM_API_KEY, LLM_SYSTEM_PROMPT, LLM_EXTRA_INSTRUCTIONS,
+    TABLE_MODEL_PATH
+)
 
 logger = SharedLogger()
 # --- Optional LLM integration (OpenAI, local LLM, etc.) ---
 def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
     """
-    Use an LLM (OpenAI, Anthropic, Gemini, local, etc.) to extract tables from HTML.
+    Use OpenAI LLM to extract tables from HTML.
     Returns a list of {headers, data, meta}.
     """
-    llm_provider = (options.get("llm_provider", []) or os.getenv("LLM_PROVIDER", "openai")).lower()
-    llm_model = options.get("llm_model", []) or os.getenv("LLM_MODEL", "gpt-4-turbo")
-    llm_api_key = options.get("llm_api_key", []) or os.getenv("LLM_API_KEY")
-    system_prompt = options.get("llm_system_prompt", []) or os.getenv("LLM_SYSTEM_PROMPT")
-    extra_instructions = options.get("llm_extra_instructions", []) or os.getenv("LLM_EXTRA_INSTRUCTIONS")
+    # Prefer explicit options, then config.py, then sensible defaults
+    llm_provider = (options.get("llm_provider") or LLM_PROVIDER or "openai")
+    llm_model = options.get("llm_model") or LLM_MODEL or "gpt-4-turbo"
+    llm_api_key = options.get("llm_api_key") or LLM_API_KEY
+    system_prompt = options.get("llm_system_prompt") or LLM_SYSTEM_PROMPT or "You are an expert at extracting tabular data from HTML."
+    extra_instructions = options.get("llm_extra_instructions") or LLM_EXTRA_INSTRUCTIONS
     prompt = (
-        (system_prompt or "You are an expert at extracting tabular data from HTML. ")
-        + "Given the following HTML, extract all tables (including non-standard, visually-styled, or grid-like tables). "
+        system_prompt
+        + " Given the following HTML, extract all tables (including non-standard, visually-styled, or grid-like tables). "
         + "For each table, return a JSON object with 'headers' (list of strings), 'data' (list of dicts), "
         + "and 'meta' (with any structure info you can infer). "
         + (f"Extra instructions: {extra_instructions}\n" if extra_instructions else "")
@@ -62,30 +67,6 @@ def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
                 temperature=0.0,
             )
             content = response["choices"][0]["message"]["content"]
-        elif llm_provider == "anthropic":
-            import anthropic # type: ignore
-            client = anthropic.Anthropic(api_key=llm_api_key)
-            system_prompt = system_prompt or "You are an expert at extracting tabular data from HTML."
-            message = client.messages.create(
-                model=llm_model,
-                max_tokens=2048,
-                temperature=0.0,
-                system=system_prompt,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            content = message.content[0].text if hasattr(message.content[0], "text") else str(message.content[0])
-        elif llm_provider == "gemini":
-            import google.generativeai as genai # type: ignore
-            genai.configure(api_key=llm_api_key)
-            model = genai.GenerativeModel(llm_model)
-            response = model.generate_content(prompt)
-            content = response.text
-        elif llm_provider == "local":
-            # Example: Use a local LLM API (e.g., llama.cpp, vllm, etc.)
-            # Implement your local LLM call here, e.g.:
-            # response = requests.post(local_llm_url, json={"prompt": prompt, ...})
-            # content = response.json()["text"]
-            return []
         else:
             return []
         # Try to extract JSON from the response
@@ -109,14 +90,19 @@ def detect_tables_ml(html: str, options: Optional[dict] = None) -> List[Dict[str
     Returns a list of dicts: {headers: [...], data: [...], meta: {...}}
     Uses selectolax for all HTML parsing.
     """
-    
     tables = []
 
     # 1. Try ML-based detection (vision or transformer model)
-    if ML_AVAILABLE and options and options.get("use_ml", True):
-        ml_results = _ml_detect_tables(html, options)
-        if ml_results:
-            tables.extend(ml_results)
+    if options and options.get("use_ml", True):
+        try:
+            model_path = options.get("table_model_path") or TABLE_MODEL_PATH
+            table_model = TableDetectionModel.load_from_checkpoint(model_path)
+            if table_model:
+                ml_results = table_model.predict_tables(html)
+                if ml_results:
+                    tables.extend(ml_results)
+        except Exception as e:
+            logger.error(f"[ML TABLE DETECTION] Error loading TableDetectionModel: {e}")
 
     # 2. Optionally try LLM-based detection (OpenAI, local, etc.)
     if options and options.get("use_llm", False):

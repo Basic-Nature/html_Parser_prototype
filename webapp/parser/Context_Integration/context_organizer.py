@@ -21,14 +21,11 @@ from ..utils.misc_utils import (
     load_output_cache,
     
 )
-
-from ..Context_Integration.librarian import (
-    clean_for_json
-)
 from ..services.election_data_services import ElectionDataService
 from ..utils.shared_logic import (
     safe_model_encode, scan_environment, flatten_raw_field, flatten_raw_field, infer_contest_fields, safe_get_first,
     flatten_raw_field, safe_add, safe_items, safe_update, _sync_type_and_election_types, safe_db_call, normalize_label,
+    safe_filename
 )
 from .Context_Library.constants import (
     CONTEST_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS,
@@ -49,11 +46,8 @@ from difflib import get_close_matches
 
 from ..config import (
     CONTEXT_LIBRARY_PATH, CONTEXT_DB_PATH, 
-    CACHE_DIR, LOG_DIR
+    LOG_DIR
 )
-
-PROCESSED_URLS_CACHE = os.path.join(CACHE_DIR, "processed_urls.json")
-OUTPUT_CACHE = os.path.join(CACHE_DIR, "output_cache.json")
 
 processed_urls = load_processed_urls()
 output_cache = load_output_cache()
@@ -731,14 +725,13 @@ class ContextOrganizer(object):
         Log field extraction/correction attempts for ML/feedback.
         Ensures log file is always inside the log/ directory and filename is sanitized.
         """
-        def _sanitize_log_filename(name: str) -> str:
-            return re.sub(r'[^a-zA-Z0-9_\-]', '_', name)
-        safe_field_type = _sanitize_log_filename(field_type)
+
+        safe_field_type = safe_filename(field_type)
         if log_path is None:
             log_path = os.path.join(LOG_DIR, f"{safe_field_type}_selection_log.jsonl")
         else:
             base = os.path.basename(log_path)
-            safe_base = _sanitize_log_filename(base)
+            safe_base = safe_filename(base)
             log_path = os.path.join(LOG_DIR, safe_base)
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -1793,7 +1786,9 @@ class ContextOrganizer(object):
         - merge_lists: If True, lists are merged (with deduplication if deduplicate=True).
         - deduplicate: If True, removes duplicates from merged lists based on dict content or value.
         """
-
+        from ..Context_Integration.librarian import (
+            clean_for_json
+        )
         def merge_dicts(a, b) -> dict:
             """Recursively merge dict b into dict a."""
             for k, v in safe_items(b):

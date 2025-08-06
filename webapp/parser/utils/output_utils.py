@@ -1,13 +1,22 @@
+# webapp/parser/utils/output_utils.py
+# ---------------------------------------------------------------
+# Output utilities for Smart Elections Parser Webapp
+# ---------------------------------------------------------------
+from __future__ import annotations
+import re
 import csv
 import orjson
 import os
 from datetime import datetime
 from typing import Optional
-from ..utils.logger_singleton import logger
-from ..utils.shared_logic import safe_get_first, safe_items, safe_get, safe_lower
-from ..config import CONTEXT_DB_PATH, BASE_DIR, LOG_DIR
-
-CACHE_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
+from .logger_singleton import logger
+from .shared_logic import (
+    safe_get_first, safe_items, safe_get, safe_lower,
+    safe_filename
+)
+from ..config import (
+    BASE_DIR, LOG_DIR, ENABLE_USER_FEEDBACK, OUTPUT_CACHE
+)
 
 def get_project_root() -> str:
     # Returns the parent directory of webapp (the project root)
@@ -48,14 +57,6 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
     year = safe_get(metadata, "year", "")
     contests = safe_get(metadata, "contests", "")
     election_types = safe_get(metadata, "election_types", "")
-
-    def safe_filename(s: str) -> str:
-        try:
-            sanitized = "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
-            sanitized = sanitized.replace("..", "_").replace("/", "_").replace("\\", "_")
-            return sanitized
-        except Exception:
-            return "Unknown"
 
     # Feedback loop for missing/unknown info
     max_loops = 3
@@ -124,7 +125,7 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
 def format_timestamp(fmt="%Y%m%d_%H%M%S") -> str:
     return datetime.now().strftime(fmt)
 
-def update_output_cache(metadata, output_path, cache_file=CACHE_FILE) -> None:
+def update_output_cache(metadata, output_path, cache_file=OUTPUT_CACHE) -> None:
     """
     Append output metadata to a cache file for fast lookup and deduplication.
     Robustly handles orjson serialization and file writing.
@@ -145,12 +146,12 @@ def update_output_cache(metadata, output_path, cache_file=CACHE_FILE) -> None:
     except Exception as e:
         logger.error(f"[OUTPUT_UTILS] Failed to write to cache file: {e}")
 
-def check_existing_output(metadata, cache_file=CACHE_FILE) -> Optional[dict]:
+def check_existing_output(metadata, cache_file=OUTPUT_CACHE) -> Optional[dict]:
     """
     Check if output for this context already exists in the cache.
     Handles both JSONL (one JSON object per line) and JSON array formats.
     """
-    if not os.path.exists(cache_file):
+    if not os.path.exists(OUTPUT_CACHE):
         return None
     with open(cache_file, "rb") as f:
         content = f.read().strip()
@@ -231,7 +232,6 @@ def finalize_election_output(
     Handles path-injection risks and robustly includes coordinator/session_id.
     """
     from ..Context_Integration.context_organizer import ContextOrganizer
-    import re
 
     if context is None:
         context = {}
@@ -267,14 +267,6 @@ def finalize_election_output(
 
     organizer = ContextOrganizer()
     organizer.append_to_context_library({"metadata": enriched_meta})
-
-    # --- Path-injection mitigation: sanitize all path parts and validate ---
-    def safe_filename(s: str) -> str:
-        # Only allow alphanumeric, space, underscore, dash
-        sanitized = "".join(c if c.isalnum() or c in " _-" else "_" for c in str(s)).strip() or "Unknown"
-        # Remove dangerous patterns
-        sanitized = sanitized.replace("..", "_").replace("/", "_").replace("\\", "_")
-        return sanitized
 
     year = safe_get(enriched_meta, "year", "")
     state = safe_get(enriched_meta, "state", "")
@@ -369,7 +361,7 @@ def finalize_election_output(
     logger.info(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
     logger.info(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
 
-    if enable_user_feedback or os.environ.get("ENABLE_USER_FEEDBACK", "false").lower() == "true":
+    if enable_user_feedback or ENABLE_USER_FEEDBACK:
         feedback_log_path = safe_join(LOG_DIR, "user_feedback_log.jsonl")
         os.makedirs(LOG_DIR, exist_ok=True)
         feedback = input("\n[Feedback] Would you like to provide feedback or corrections for this output? (Leave blank to skip):\n> ").strip()

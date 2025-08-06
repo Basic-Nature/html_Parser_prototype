@@ -12,8 +12,9 @@ import re
 import os
 import numpy as np
 import orjson
+import numbers
 from datetime import datetime, timezone
-from fuzzywuzzy import process
+from rapidfuzz import process, fuzz
 from collections import defaultdict
 from ..utils.logger_singleton import logger
 import difflib
@@ -26,7 +27,8 @@ from ..utils.shared_logic import (
     keyphrase_match, normalize_state_name, normalize_county_name, safe_get_first,
     safe_model_encode, safe_startswith, safe_isupper,
     _sync_type_and_election_types, safe_get, safe_items, safe_lower, safe_endswith,
-    safe_similarity, safe_strip, safe_replace, safe_append
+    safe_similarity, safe_strip, safe_replace, safe_append, safe_filename,
+    safe_tolist
 )
 from .Context_Library.constants import (
     STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, PARTY_KEYWORDS,
@@ -57,9 +59,6 @@ from .context_organizer import ContextOrganizer
 from ..services.election_data_services import ElectionDataService
 from typing import Optional, Any, List, Dict, Tuple, Callable
 
-def _sanitize_log_filename(name: str) -> str:
-    # Only allow alphanumeric, underscore, dash, and dot
-    return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
 
 def get_semantic_score(model, text1, text2) -> float:
     """
@@ -1423,25 +1422,41 @@ class ContextCoordinator(object):
     def fuzzy_score(self, a: str, b: str) -> float:
         """
         Compute a robust fuzzy string similarity score between two strings.
-        Tries semantic model, then difflib, then fuzzywuzzy, with full error handling and logging.
-        Aggregates scores if possible. Always returns a float between 0.0 and 1.0.
+        Uses semantic model (if available), multiple rapidfuzz metrics, difflib, and aggregates for best result.
+        Returns a float between 0.0 and 1.0.
         """
-        import numbers
 
-        def _is_numeric_sequence(seq):
-            # Accepts list/tuple/np.ndarray of numbers (not strings)
+        def _is_numeric_sequence(seq) -> bool:
+            # Robustly check if a sequence is numeric (list, tuple, np.ndarray, pandas.Series, etc.)
             if isinstance(seq, (list, tuple)):
                 return all(isinstance(x, numbers.Number) for x in seq)
+            # Check for numpy arrays or pandas Series/DataFrame columns
             if hasattr(seq, "dtype"):
-                return np.issubdtype(seq.dtype, np.number)
+                try:
+                    # Defensive: only call .dtype if it's a type or np.dtype, not a method
+                    dtype = getattr(seq, "dtype", None)
+                    # dtype should be a type or np.dtype, not callable
+                    if dtype is not None and not callable(dtype):
+                        return np.issubdtype(dtype, np.number)
+                except Exception:
+                    return False
             return False
 
-        def _to_numeric_array(seq):
-            # Flattens and filters to only numeric values
+        def _to_numeric_array(seq) -> Optional[np.ndarray]:
+            # Flattens and filters to only numeric values, robust to dtype errors
             if isinstance(seq, (list, tuple)):
                 seq = [x for x in seq if isinstance(x, numbers.Number)]
             try:
-                arr = np.array(seq, dtype=np.float32)
+                if _is_numeric_sequence(seq):
+                    arr = np.array(seq, dtype=np.float32)
+                elif hasattr(seq, "tolist"):
+                    seq_list = safe_tolist(seq)
+                    if _is_numeric_sequence(seq_list):
+                        arr = np.array(seq_list, dtype=np.float32)
+                    else:
+                        return None
+                else:
+                    return None
                 if arr.ndim != 1 or arr.size == 0 or np.any(np.isnan(arr)):
                     return None
                 return arr
@@ -1450,7 +1465,7 @@ class ContextCoordinator(object):
                 return None
 
         try:
-            def _normalize(s):
+            def _normalize(s) -> str:
                 return " ".join(str(s).strip().lower().split()) if s is not None else ""
             a_str = _normalize(a)
             b_str = _normalize(b)
@@ -1466,28 +1481,21 @@ class ContextCoordinator(object):
 
             scores = []
             model = getattr(self, "_semantic_model", None)
-            # Try semantic model similarity
+            # 1. Semantic model similarity (if available)
             if model is not None:
-                # SentenceTransformer-style similarity
-                if hasattr(model, "similarity"):
-                    try:
+                try:
+                    if hasattr(model, "similarity"):
                         sim = safe_similarity(model, a_str, b_str, logger)
                         if isinstance(sim, (float, int)):
                             logger.debug(f"[fuzzy_score] Used model.similarity: {sim}")
                             scores.append(float(sim))
-                        else:
-                            logger.error(f"[fuzzy_score] model.similarity did not return float/int: {type(sim)}")
-                    except Exception as e:
-                        logger.error(f"[fuzzy_score] Exception in model.similarity: {e}", exc_info=True)
-                # Embedding + cosine similarity
-                elif hasattr(model, "encode"):
-                    try:
+                    elif hasattr(model, "encode"):
                         emb_a = safe_model_encode(model, [a_str])
                         emb_b = safe_model_encode(model, [b_str])
                         if emb_a is not None and emb_b is not None:
                             emb_a = emb_a[0] if isinstance(emb_a, (list, tuple)) else emb_a
                             emb_b = emb_b[0] if isinstance(emb_b, (list, tuple)) else emb_b
-                            # Defensive: ensure embeddings are numeric arrays
+                            # Use robust numeric check before conversion
                             emb_a_np = _to_numeric_array(emb_a)
                             emb_b_np = _to_numeric_array(emb_b)
                             if emb_a_np is not None and emb_b_np is not None:
@@ -1496,41 +1504,60 @@ class ContextCoordinator(object):
                                 scores.append(sim)
                             else:
                                 logger.error(f"[fuzzy_score] Embeddings are not valid numeric arrays: emb_a={type(emb_a)}, emb_b={type(emb_b)}")
-                        else:
-                            logger.error(f"[fuzzy_score] safe_model_encode returned None for a='{a_str}' or b='{b_str}'")
-                    except Exception as e:
-                        logger.error(f"[fuzzy_score] Exception in model.encode: {e}", exc_info=True)
+                except Exception as e:
+                    logger.error(f"[fuzzy_score] Exception in semantic model: {e}", exc_info=True)
 
-            # Fallback: difflib ratio
+            # 2. Rapidfuzz metrics (ratio, partial_ratio, token_sort_ratio, token_set_ratio)
             try:
-                sim = difflib.SequenceMatcher(None, a_str, b_str).ratio()
-                logger.debug(f"[fuzzy_score] Used difflib.SequenceMatcher: {sim}")
-                scores.append(sim)
+                rf_ratio = fuzz.ratio(a_str, b_str) / 100.0
+                rf_partial = fuzz.partial_ratio(a_str, b_str) / 100.0
+                rf_token_sort = fuzz.token_sort_ratio(a_str, b_str) / 100.0
+                rf_token_set = fuzz.token_set_ratio(a_str, b_str) / 100.0
+                logger.debug(f"[fuzzy_score] rapidfuzz.ratio: {rf_ratio}, partial: {rf_partial}, token_sort: {rf_token_sort}, token_set: {rf_token_set}")
+                scores.extend([rf_ratio, rf_partial, rf_token_sort, rf_token_set])
+            except Exception as e:
+                logger.error(f"[fuzzy_score] Exception in rapidfuzz metrics: {e}", exc_info=True)
+
+            # 3. difflib ratio
+            try:
+                difflib_score = difflib.SequenceMatcher(None, a_str, b_str).ratio()
+                logger.debug(f"[fuzzy_score] Used difflib.SequenceMatcher: {difflib_score}")
+                scores.append(difflib_score)
             except Exception as e:
                 logger.error(f"[fuzzy_score] Exception in difflib.SequenceMatcher: {e}", exc_info=True)
 
-            # Fallback: fuzzywuzzy
-            try:
-                from fuzzywuzzy import fuzz
-                sim = fuzz.ratio(a_str, b_str) / 100.0
-                logger.debug(f"[fuzzy_score] Used fuzzywuzzy.fuzz.ratio: {sim}")
-                scores.append(sim)
-            except Exception as e:
-                logger.error(f"[fuzzy_score] Exception in fuzzywuzzy.fuzz.ratio: {e}", exc_info=True)
-
-            # Aggregate: take max, mean, or weighted average
+            # 4. Aggregate: weighted mean, max, and penalize trivial matches
             if scores:
-                # Penalize trivial matches (e.g., single char, numeric only)
+                # Remove any NaN or out-of-bounds scores
+                scores = [s for s in scores if isinstance(s, (float, int)) and 0.0 <= s <= 1.0]
+                if not scores:
+                    logger.error(f"[fuzzy_score] All computed scores were invalid for a='{a_str}', b='{b_str}'")
+                    return 0.0
+                # Penalize trivial/short/numeric matches
                 if len(a_str) <= 2 or len(b_str) <= 2 or a_str.isdigit() or b_str.isdigit():
                     logger.debug(f"[fuzzy_score] Penalizing trivial/short/numeric match: a='{a_str}', b='{b_str}'")
                     return min(max(max(scores) * 0.5, 0.0), 1.0)
-                # Prefer max for fuzzy, but mean if semantic and fuzzy both present
-                if len(scores) > 1:
-                    agg = (max(scores) + np.mean(scores)) / 2.0
-                    logger.debug(f"[fuzzy_score] Aggregated score (max/mean): {agg}")
-                    return min(max(agg, 0.0), 1.0)
+                # Weighted mean: semantic (if present) gets higher weight, then rapidfuzz, then difflib
+                semantic_scores = scores[:1] if model is not None else []
+                rf_scores = scores[1:5] if model is not None else scores[:4]
+                dl_score = scores[5] if len(scores) > 5 else (scores[4] if len(scores) > 4 else None)
+                weights = []
+                vals = []
+                if semantic_scores:
+                    weights.append(0.35)
+                    vals.append(np.mean(semantic_scores))
+                if rf_scores:
+                    weights.append(0.55)
+                    vals.append(np.mean(rf_scores))
+                if dl_score is not None:
+                    weights.append(0.1)
+                    vals.append(dl_score)
+                if vals and weights and len(vals) == len(weights):
+                    agg = np.average(vals, weights=weights)
                 else:
-                    return min(max(scores[0], 0.0), 1.0)
+                    agg = np.mean(scores)
+                logger.debug(f"[fuzzy_score] Aggregated weighted score: {agg}")
+                return min(max(agg, 0.0), 1.0)
 
             logger.error(f"[fuzzy_score] All methods failed for a='{a_str}', b='{b_str}'")
             return 0.0
@@ -1556,7 +1583,7 @@ class ContextCoordinator(object):
         Robust to path injection, extension errors, and serialization issues.
         """
         # --- Sanitize and validate filename ---
-        safe_field_type = _sanitize_log_filename(field_type)
+        safe_field_type = safe_filename(field_type)
         default_filename = f"{safe_field_type}_selection_log.jsonl"
         log_dir = os.path.abspath(LOG_DIR)
         if log_path is None:
@@ -1567,7 +1594,7 @@ class ContextCoordinator(object):
             # Ensure .jsonl extension
             if not safe_endswith(base, ".jsonl", logger):
                 base = re.sub(r'(\.jsonl)?$', '', base) + ".jsonl"
-            safe_base = _sanitize_log_filename(base)
+            safe_base = safe_filename(base)
             log_path = os.path.join(log_dir, safe_base)
         # Defensive: prevent path traversal
         log_path = os.path.abspath(log_path)

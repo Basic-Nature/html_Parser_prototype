@@ -1,12 +1,17 @@
+# webapp/parser/utils/contest_selector.py
+# ---------------------------------------------------------------
+# Contest selection and filtering utilities
+# ---------------------------------------------------------------
+from __future__ import annotations
 import re
 import numpy as np
-from ..utils.logger_singleton import logger, prompt
-from ..utils.shared_logic import (
+from .logger_singleton import logger, prompt
+from .shared_logic import (
     normalize_state_name, normalize_county_name, _sync_type_and_election_types,
     safe_get, safe_items, safe_lower, safe_split, safe_capitalize, safe_strip,
     safe_model_encode
 )
-from ..utils.user_prompt import PromptCancelled
+from .user_prompt import PromptCancelled
 from collections import defaultdict
 from difflib import get_close_matches
 from ..Context_Integration.Context_Library.constants import (

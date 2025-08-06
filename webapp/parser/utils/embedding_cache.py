@@ -1,3 +1,8 @@
+# webapp/parser/utils/embedding_cache.py
+# ---------------------------------------------------------------
+# Embedding cache management for Smart Elections Parser Webapp
+# ---------------------------------------------------------------
+from __future__ import annotations
 import os
 import logging
 import threading
@@ -9,11 +14,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlalchemy import select, inspect
 from sqlalchemy.dialects.postgresql import insert
-from ..utils.db_utils import get_session, engine
-from ..utils.models import EmbeddingCache
-from ..config import LOG_DIR, CACHE_DIR
-from ..utils.shared_logger import SQLAlchemyToSharedLoggerHandler
-from ..utils.logger_singleton import logger, console
+from .db_utils import get_session, engine
+from .models import EmbeddingCache
+from ..config import (
+    DISK_CACHE_PATH, MISSING_LOG_PATH
+)
+from .shared_logger import SQLAlchemyToSharedLoggerHandler
+from .logger_singleton import logger, console
 
 try:
     import joblib
@@ -30,10 +37,6 @@ for name in [
 ]:
     logger_obj = logging.getLogger(name)
     logger_obj.addHandler(SQLAlchemyToSharedLoggerHandler(logger))
-
-
-DISK_CACHE_PATH = os.path.join(CACHE_DIR, "embedding_disk_cache.pkl")
-MISSING_LOG_PATH = os.path.join(LOG_DIR, "missing_embeddings_log.jsonl")
 
 with logger.progress_bar("Loading...", total=100) as update_progress:
     for i in range(100):

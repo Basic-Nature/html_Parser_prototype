@@ -6,9 +6,8 @@ import sys
 import psycopg2
 from pathlib import Path
 from datetime import datetime
-from typing import cast, Dict, Any, List, Callable
+from typing import cast, Dict, Any, List
 from multiprocessing import Pool
-from dotenv import load_dotenv
 
 from playwright.sync_api import sync_playwright, Page
 from sqlalchemy.exc import OperationalError
@@ -19,41 +18,26 @@ from .utils.browser_utils import browser_pipeline, safe_browser_close
 from .utils.misc_utils import load_processed_urls
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.format_router import prompt_and_handle_download
-from .utils.shared_logic import infer_state_county_from_url, safe_parse, safe_is_set
+from .utils.shared_logic import (
+    infer_state_county_from_url, safe_parse, safe_is_set, safe_filename,
+    safe_strip
+)
 from .Context_Integration.librarian import safe_join
 from .utils.logger_singleton import logger, console, prompt
-
-# --- Environment & Path Setup ---
-load_dotenv()
-
-INPUT_DIR = os.path.join(PROJECT_ROOT, "input")
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
-URL_LIST_FILE = os.path.join(BASE_DIR, "parser", "urls.txt")
-PROCESSED_URLS_FILE = os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls")
-URL_LIST_FILE = Path(URL_LIST_FILE)
-PROCESSED_URLS_FILE = Path(PROCESSED_URLS_FILE)
-
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
-CACHE_PROCESSED_URLS = os.getenv("CACHE_PROCESSED", "true").lower() == "true"
-CACHE_LOCK = threading.Lock()
-CACHE_RESET = os.getenv("CACHE_RESET", "false").lower() == "true"
-HEADLESS_DEFAULT = os.getenv("HEADLESS", "true").lower() == "true"
-TIMEOUT_SEC = int(os.getenv("CAPTCHA_TIMEOUT", "300"))
-INCLUDE_TIMESTAMP_IN_FILENAME = os.getenv("TIMESTAMP_IN_FILENAME", "true").lower() == "true"
-ENABLE_PARALLEL = os.getenv("ENABLE_PARALLEL", "false").lower() == "true"
-ENABLE_AI_ANALYSIS = os.getenv("ENABLE_AI_ANALYSIS", "false").lower() == "true"
-ENABLE_REALTIME_STREAM = os.getenv("ENABLE_REALTIME_STREAM", "false").lower() == "true"
-
-def safe_filename(name):
-    return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
+from .config import (
+    BASE_DIR, CONTEXT_DB_PATH, PROJECT_ROOT,
+    LOG_LEVEL, CACHE_PROCESSED_URLS, CACHE_LOCK, CACHE_RESET,
+    HEADLESS_DEFAULT, TIMEOUT_SEC, INCLUDE_TIMESTAMP_IN_FILENAME,
+    ENABLE_PARALLEL, ENABLE_AI_ANALYSIS, ENABLE_REALTIME_STREAM,
+    FORCE_PARSE_INPUT_FILE, FORCE_PARSE_FORMAT, MAX_URLS_DISPLAYED,
+    INPUT_DIR, OUTPUT_DIR, URL_LIST_FILE, PROCESSED_URLS_FILE
+)
 
 if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     logger.warning("Deleting .processed_urls cache for fresh start...")
     PROCESSED_URLS_FILE.unlink()
 
 def load_urls() -> List[str]:
-    def safe_strip(val):
-        return val.strip() if isinstance(val, str) else ""
 
     if not URL_LIST_FILE.exists():
         msg = "No urls.txt found. Please input a URL to append:"
@@ -266,8 +250,8 @@ def prompt_url_selection(
 
 def process_format_override(session_id=None) -> bool:
     from .utils.format_router import route_format_handler
-    force_parse = os.getenv("FORCE_PARSE_INPUT_FILE", "false").lower() == "true"
-    force_format = os.getenv("FORCE_PARSE_FORMAT", "").strip().lower()
+    force_parse = FORCE_PARSE_INPUT_FILE
+    force_format = FORCE_PARSE_FORMAT
     if not force_parse or not force_format:
         return False
     input_folder = INPUT_DIR
@@ -849,8 +833,8 @@ def main(session_id=None, cancel_flag=None, **kwargs):
             }
             logger.info(payload)
 
-        max_urls = os.getenv("MAX_URLS_DISPLAYED")
-        if max_urls and max_urls.isdigit():
+        max_urls = MAX_URLS_DISPLAYED
+        if max_urls and str(max_urls).isdigit():
             urls = urls[:int(max_urls)]
 
         if not urls:

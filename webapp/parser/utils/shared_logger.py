@@ -1,37 +1,28 @@
+# webapp/parser/utils/shared_logger.py
+# -----------------------------------------------------------------------------------
+# This file contains the SharedLogger class, which provides a unified logging interface
+# for both CLI and web applications. It supports rich output, structured logging,
+# and can emit logs via SocketIO for real-time updates in web applications.
+# -----------------------------------------------------------------------------------
+from __future__ import annotations
 import os
 import re
 import time
 import logging
 import inspect
 import traceback
+import orjson
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Generator, Tuple, Set
 from rich import print as rprint
+from rich.logging import RichHandler
 from rich.console import Console, RenderableType
 from rich.panel import Panel
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
 from rich.json import JSON
-import orjson
+from rich.table import Table
 from contextlib import contextmanager
 from io import StringIO
-
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-def get_log_mode() -> str:
-    """Get log mode from environment or default to CLI."""
-    return os.environ.get("LOG_MODE", os.environ.get("PROMPT_MODE", "cli")).lower()
-
-def get_log_format() -> str:
-    """Get log format from environment or default to plain."""
-    return os.environ.get("LOG_FORMAT", "plain").lower()
-
-def get_log_level() -> str:
-    """Get log level from environment or default to INFO."""
-    return os.environ.get("LOG_LEVEL", "INFO").upper()
 
 def safe_getvalue(file_obj: StringIO) -> str:
     """
@@ -114,7 +105,6 @@ class RichConsoleProxy(Console):
         In webapp mode, serialize the table and emit via SocketIO.
         In CLI mode, print using rich's Console.
         """
-        from rich.table import Table
         if args and isinstance(args[0], Table):
             table_obj = args[0]
         else:
@@ -194,9 +184,9 @@ class SharedLogger(logging.Logger):
         """
         Initialize the logger.
         """
-        self.mode = mode or get_log_mode()
-        self.format = fmt or get_log_format()
-        self.level = (level or get_log_level()).upper()
+        self.mode = mode
+        self.format = fmt
+        self.level = (level).upper()
         self.socketio_emit_func = socketio_emit_func
         self.suppress_rich_logs = suppress_rich_logs
         self.file_path = file_path
@@ -218,7 +208,6 @@ class SharedLogger(logging.Logger):
         self.logger.setLevel(self.level_mapping.get(self.level, logging.INFO))
         # Remove all handlers before adding a new one (avoid duplication)
         self.logger.handlers.clear()
-        from rich.logging import RichHandler
         handler = RichHandler(rich_tracebacks=True)
         self.logger.addHandler(handler)
         # Optional: add file handler if file_path is set
@@ -231,15 +220,15 @@ class SharedLogger(logging.Logger):
 
     def set_mode(self, mode: Optional[str] = None) -> None:
         """Set the logger mode (cli/webapp)."""
-        self.mode = mode or get_log_mode()
+        self.mode = mode
 
     def set_format(self, fmt: Optional[str] = None) -> None:
         """Set the logger format (plain/json)."""
-        self.format = fmt or get_log_format()
+        self.format = fmt
 
     def set_level(self, level: Optional[str] = None) -> None:
         """Set the logger level."""
-        self.level = (level or get_log_level()).upper()
+        self.level = (level).upper()
         self.logger.setLevel(self.level_mapping.get(self.level, logging.INFO))
 
     def set_socketio_emit_func(self, emit_func: Callable[[str], None]) -> None:

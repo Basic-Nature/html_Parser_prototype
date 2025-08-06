@@ -1,11 +1,14 @@
-import os
+# webapp/parser/utils/db_utils.py
+# ---------------------------------------------------------------
+# Database utility functions for Smart Elections Parser Webapp
+# ---------------------------------------------------------------
+from __future__ import annotations
 import orjson
-import re
-from pathlib import Path
-from typing import Dict, Any, Optional, List, Generator
+from typing import Optional, List, Generator
 from sqlalchemy import create_engine, update, select, and_, or_, desc
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import inspect
 from contextlib import contextmanager
 from .models import (
     Contest, TableStructure, BatchMetadata, 
@@ -402,7 +405,6 @@ def fetch_contest_full(session, contest) -> Optional[dict]:
     }
 def check_missing_tables(self):
     """Return a list of expected tables that are missing in the DB."""
-    from sqlalchemy import inspect
     engine = get_engine()
     inspector = inspect(engine)
     db_tables = set(inspector.get_table_names())

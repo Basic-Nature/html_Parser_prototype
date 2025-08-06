@@ -13,6 +13,7 @@ from .utils.shared_logic import (
 from .utils.logger_singleton import logger, prompt
 from flask import session, request
 from typing import Any
+from .config import PIPELINE_MAX_WORKERS, PIPELINE_MAX_ERRORS, PIPELINE_HEARTBEAT_INTERVAL
 
 class CancellationManager(threading.Thread):
     """
@@ -125,7 +126,7 @@ def process_urls_for_web(
     prompt_queue,
     session_id,
     cancel_flag,
-    max_workers=2,
+    max_workers=PIPELINE_MAX_WORKERS,
     mode="webapp",
     **kwargs
 ) -> None:
@@ -133,9 +134,8 @@ def process_urls_for_web(
     Advanced pipeline: per-URL timing, global timing, live progress, error threshold, tracebacks,
     output file saving, env-configurable workers, heartbeat, and prompt queue handling.
     """
-    max_workers = int(os.environ.get("PIPELINE_MAX_WORKERS", max_workers))
-    MAX_ERRORS = int(os.environ.get("PIPELINE_MAX_ERRORS", 5))
-    HEARTBEAT_INTERVAL = int(os.environ.get("PIPELINE_HEARTBEAT_INTERVAL", 10))
+    MAX_ERRORS = PIPELINE_MAX_ERRORS
+    HEARTBEAT_INTERVAL = PIPELINE_HEARTBEAT_INTERVAL
 
     # Safeguard: Only reset if the flag is not already set (i.e., not cancelled)
     if not safe_is_set(cancel_flag):

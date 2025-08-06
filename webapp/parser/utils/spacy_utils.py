@@ -1,21 +1,26 @@
+# webapp/parser/utils/spacy_utils.py
+# -----------------------------------------------------------------------------------
+# Advanced spaCy NLP utilities for election data integrity, context validation, and interference mitigation.
+# -----------------------------------------------------------------------------------
 """
 spacy_utils.py
 
 Advanced spaCy NLP utilities for election data integrity, context validation, and interference mitigation.
 """
-
+from __future__ import annotations
 import spacy
+import sys
+import re
+import os
+import orjson
 from collections import Counter
 from typing import List, Tuple, Dict, Any, Set
-import re
 from ..config import PROJECT_ROOT
 from ..Context_Integration.Context_Library.constants import (
     KNOWN_STATE_TO_COUNTY_MAP
 )
-import os
-import orjson
-from ..utils.logger_singleton import logger
-from ..utils.shared_logic import (
+from .logger_singleton import logger
+from .shared_logic import (
     safe_get, safe_lower
 )
 # Load spaCy model globally for efficiency, auto-download if missing
@@ -111,11 +116,9 @@ def extract_money(text: str) -> List[str]:
     return [ent.text for ent in doc.ents if ent.label_ == "MONEY"]
 
 def extract_emails(text: str) -> List[str]:
-    import re
     return re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
 
 def extract_urls(text: str) -> List[str]:
-    import re
     url_pattern = r"https?://[^\s]+"
     return re.findall(url_pattern, text)
 
@@ -266,7 +269,7 @@ def demo_analysis(text: str):
     logger.info("Contest validation:", validate_contest(text, known_states, known_counties))
 
 if __name__ == "__main__":
-    import sys
+    
     if len(sys.argv) > 1:
         sample = sys.argv[1]
         demo_analysis(sample)

@@ -6,7 +6,7 @@ import os
 import re
 import csv
 from concurrent.futures import ThreadPoolExecutor
-from ...config import BASE_DIR
+from ...config import BASE_DIR, ENABLE_OCR
 from ...utils.logger_singleton import logger
 from ...Context_Integration.Context_Library.constants import (
     LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
@@ -140,7 +140,7 @@ def parse_pdf_election_results(pdf_path, output_dir=None):
         all_text = ""
 
     # === OCR fallback if needed ===
-    if not all_text.strip() and pytesseract and pdf2image and os.getenv("ENABLE_OCR", "true").lower() == "true":
+    if not all_text.strip() and pytesseract and pdf2image and ENABLE_OCR:
         logger.info("[INFO] Empty text result from PyMuPDF — attempting OCR fallback.")
         images = pdf2image.convert_from_path(pdf_path)
         all_text, ocr_score, ocr_runs = ocr_multi_pass(images, passes=3, confidence_threshold=30)

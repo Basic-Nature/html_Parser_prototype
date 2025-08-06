@@ -1,64 +1,25 @@
+# webapp/parser/utils/format_router.py
+# ---------------------------------------------------------------
+# Format routing and download handling for Smart Elections Parser Webapp
+# ---------------------------------------------------------------
+from __future__ import annotations
 import os
 import time
-import orjson
 import re
 from typing import Optional, Tuple
-from dotenv import load_dotenv
 from ..handlers.formats import json_handler, pdf_handler, csv_handler
-from ..utils.logger_singleton import logger, prompt
-from ..utils.shared_logic import (
+from .logger_singleton import logger, prompt
+from .shared_logic import (
     safe_lower, safe_get, safe_isdigit, safe_parse
 )
-from ..utils.browser_utils import (
+from .browser_utils import (
     safe_content, safe_query_selector_all, safe_context_library, safe_context_result,
     safe_get_attribute, safe_url
 )
 from urllib.parse import urljoin
-from ..config import CONTEXT_LIBRARY_PATH
-load_dotenv()
+from ..config import SUPPORTED_FORMATS
 from .download_utils import download_file
 from .html_scanner import load_pattern_kb, append_pattern_kb
-
-# --- Load supported formats from .env or context library ---
-
-if os.path.exists(CONTEXT_LIBRARY_PATH):
-    with open(CONTEXT_LIBRARY_PATH, "rb") as f:
-        try:
-            CONTEXT_LIBRARY = orjson.loads(f.read())
-        except Exception as e:
-            logger.error(f"[format_router] Failed to load context_library.json: {e}")
-            CONTEXT_LIBRARY = {}
-
-    formats_raw = CONTEXT_LIBRARY.get("supported_formats", [".json", ".csv", ".pdf"])
-    # Securely handle stringified lists
-    if isinstance(formats_raw, list):
-        JSON_FORMATS = formats_raw
-    elif isinstance(formats_raw, str):
-        try:
-            import json
-            parsed = json.loads(formats_raw)
-            JSON_FORMATS = parsed if isinstance(parsed, list) else [".json", ".csv", ".pdf"]
-        except Exception as e:
-            logger.warning(f"[format_router] Could not parse supported_formats string as JSON: {e}")
-            JSON_FORMATS = [".json", ".csv", ".pdf"]
-    else:
-        JSON_FORMATS = [".json", ".csv", ".pdf"]
-else:
-    logger.error("[format_router] context_library.json not found. Using default formats.")
-    JSON_FORMATS = [".json", ".csv", ".pdf"]
-
-# .env takes priority if set, else use JSON
-ENV_FORMATS = os.getenv("SUPPORTED_FORMATS")
-if ENV_FORMATS:
-    SUPPORTED_FORMATS = [
-        ext if ext.startswith('.') else f'.{ext}'
-        for ext in ENV_FORMATS.split(",")
-    ]
-else:
-    SUPPORTED_FORMATS = JSON_FORMATS
-
-# Remove HTML if present (HTML is fallback, not a downloadable format)
-SUPPORTED_FORMATS = [ext for ext in SUPPORTED_FORMATS if ext.lower() not in [".html", "html"]]
 
 def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tuple[str, str]]:
     """
@@ -115,7 +76,7 @@ def extract_download_links_from_html(html, exts=None) -> list[dict]:
     Returns a list of dicts: {"href": ..., "format": ..., "source": "html"}
     """
     if exts is None:
-        exts = [".json", ".csv", ".pdf"]
+        exts = SUPPORTED_FORMATS
     pattern = re.compile(r'href=[\'"]([^\'"]+\.(?:' + '|'.join(ext[1:] for ext in exts) + r'))[\'"]', re.IGNORECASE)
     matches = pattern.findall(html)
     links = []

@@ -1,8 +1,7 @@
 import subprocess
 import os
 from .utils.logger_singleton import logger, console
-
-POSTGRES_SERVICE_NAME = os.getenv("POSTGRES_SERVICE_NAME", "postgresql-x64-17")
+from .config import POSTGRES_SERVICE_NAME
 
 def start_postgres_service(service_name=None):
     if service_name is None:

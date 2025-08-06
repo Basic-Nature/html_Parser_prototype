@@ -7,17 +7,21 @@ Ensures models are loaded once, cached, and reused across modules.
 Integrates with config.py for model directory paths.
 Optimized for robust, singleton-style loading, device selection, path validation, and logging.
 """
-
+from __future__ import annotations
 import threading
 import os
 import sys
 import re
-from typing import Dict, Any, Optional, Callable
+import subprocess
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..utils.logger_singleton import logger
-from ..config import MODEL_DIR, PROJECT_ROOT, VOCAB_DIR
+from typing import Dict, Any, Callable
+from collections import Counter
+from selectolax.parser import HTMLParser
+from .logger_singleton import logger
+from ..config import MODEL_DIR, PROJECT_ROOT, VOCAB_DIR, TABLE_MODEL_PATH
+from ..Context_Integration.librarian import load_context_library
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -272,7 +276,6 @@ class ModelRegistry(object):
                 return nlp
             except OSError:
                 # Auto-download if missing
-                import subprocess
                 logger.info(f"Downloading spaCy model: {base_name}")
                 subprocess.run([sys.executable, "-m", "spacy", "download", base_name], check=True, cwd=PROJECT_ROOT)
                 nlp = spacy.load(base_name)
@@ -303,7 +306,6 @@ class ModelRegistry(object):
         Loads and caches the torch-based CandidateClassifier model.
         Dynamically builds vocab from librarian.py if available.
         """
-        from ..Context_Integration.librarian import load_context_library
         if cls._torch_candidate_model is not None:
             return cls._torch_candidate_model
 
@@ -445,6 +447,105 @@ class ModelRegistry(object):
         if hasattr(model, 'modules') and hasattr(model.modules[0], 'model_name_or_path'):
             return getattr(model.modules[0], 'model_name_or_path')
         return str(model)
+
+class TableDetectionModel(nn.Module):
+    """
+    Robust Table Detection Model for HTML.
+    Combines a simple neural network for table structure classification
+    with rule-based extraction using selectolax as a fallback.
+    """
+
+    def __init__(self, input_dim=128, hidden_dim=64, num_classes=2):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, num_classes)
+
+    @classmethod
+    def load_from_checkpoint(cls, path=None):
+        """
+        Load the model from a PyTorch checkpoint.
+        If no path is provided, use TABLE_MODEL_PATH from config.py.
+        """
+        if path is None:
+            path = TABLE_MODEL_PATH
+        checkpoint = torch.load(path, map_location="cpu")
+        model = cls(**checkpoint.get("model_args", {}))
+        model.load_state_dict(checkpoint["state_dict"])
+        model.eval()
+        return model
+
+    def forward(self, x) -> torch.Tensor:
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+    def predict_tables(self, html: str) -> list[dict]:
+        """
+        Detect and extract tables from HTML using selectolax.
+        Returns a list of dicts: [{"headers": [...], "data": [...], "meta": {...}}, ...]
+        """
+        tables = []
+        tree = HTMLParser(html)
+
+        for table in tree.css("table"):
+            headers = []
+            data = []
+            meta = {}
+
+            # Extract headers
+            header_row = table.css_first("tr")
+            if header_row:
+                headers = [cell.text(strip=True) for cell in header_row.css("th,td")]
+            # Extract data rows
+            for row in table.css("tr")[1:]:
+                cells = row.css("td,th")
+                row_data = {headers[i]: cells[i].text(strip=True) if i < len(cells) else "" for i in range(len(headers))}
+                if any(row_data.values()):
+                    data.append(row_data)
+            meta = {
+                "source": "selectolax_table",
+                "n_rows": len(data),
+                "n_cols": len(headers),
+                "table_html": table.html[:1000] if hasattr(table, "html") else ""
+            }
+            tables.append({"headers": headers, "data": data, "meta": meta})
+
+        # Fallback: Regex-based detection for table-like structures
+        if not tables:
+            tables.extend(self._regex_table_detection(html))
+
+        return tables
+
+    def _regex_table_detection(self, html: str) -> list[dict]:
+        """
+        Fallback: Use regex to find repeated row/column patterns in flat HTML.
+        Returns list of {headers, data, meta}.
+        """
+        tables = []
+        lines = [l.strip() for l in html.splitlines() if l.strip()]
+        col_counts = [len(re.split(r"\s{2,}|\t|\|", l)) for l in lines]
+        if not col_counts:
+            return []
+        count_freq = Counter(col_counts)
+        common_col = max((c for c in count_freq if c > 1), key=lambda c: count_freq[c], default=None)
+        if not common_col or count_freq[common_col] < 2:
+            return []
+        rows = [re.split(r"\s{2,}|\t|\|", l) for l, c in zip(lines, col_counts) if c == common_col]
+        if len(rows) < 2:
+            return []
+        headers = rows[0]
+        data = []
+        for row in rows[1:]:
+            row_data = {headers[i]: row[i] if i < len(row) else "" for i in range(len(headers))}
+            if any(row_data.values()):
+                data.append(row_data)
+        meta = {
+            "source": "regex_table",
+            "n_rows": len(data),
+            "n_cols": len(headers)
+        }
+        tables.append({"headers": headers, "data": data, "meta": meta})
+        return tables
 
 # --- Example Usage ---
 

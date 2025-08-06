@@ -2,71 +2,113 @@
 # ---------------------------------------------------------------
 # CAPTCHA detection and user-intervention handler (browser-agnostic)
 # ---------------------------------------------------------------
-
+from __future__ import annotations
 import time
 import os
 import platform
-from ..utils.logger_singleton import logger
+import ctypes
+from typing import Any, Protocol, runtime_checkable
+from .logger_singleton import logger
 import orjson
-from ..config import CONTEXT_LIBRARY_PATH
+from ..config import CONTEXT_LIBRARY_PATH, DEFAULT_CAPTCHA_TIMEOUT
+from .shared_logic import safe_get, safe_lower
+
+@runtime_checkable
+class HasContent(Protocol):
+    def content(self) -> str: 
+        """Returns the HTML content of the page."""
+        ...
+
+@runtime_checkable
+class HasPageSource(Protocol):
+    @property
+    def page_source(self) -> str: 
+        """Returns the HTML source of the page."""
+        ...
+
+@runtime_checkable
+class HasBringToFront(Protocol):
+    def bring_to_front(self) -> None: 
+        """Brings the browser window to the front."""
+        ...
+
+@runtime_checkable
+class HasMaximizeWindow(Protocol):
+    def maximize_window(self) -> None: 
+        """Maximizes the browser window."""
+        ...
+
 # Load CAPTCHA indicators from context library
 if os.path.exists(CONTEXT_LIBRARY_PATH):
     with open(CONTEXT_LIBRARY_PATH, "rb") as f:
         CONTEXT_LIBRARY = orjson.loads(f.read())
-    CLOUDFLARE_CAPTCHA_INDICATORS = CONTEXT_LIBRARY.get("cloudflare_captcha_indicators", [])
+    CLOUDFLARE_CAPTCHA_INDICATORS = safe_get(CONTEXT_LIBRARY, "cloudflare_captcha_indicators", [])
 else:
     logger.error("[captcha_tools] context_library.json not found. CAPTCHA detection will be limited.")
     CLOUDFLARE_CAPTCHA_INDICATORS = []
 
-DEFAULT_CAPTCHA_TIMEOUT = int(os.getenv("CAPTCHA_TIMEOUT", "300"))
 POLL_INTERVAL = 5
 
-def detect_cloudflare_challenge(page_or_driver, indicators=None):
+def detect_cloudflare_challenge(page_or_driver, indicators=None) -> bool:
     """
     Scans the current page content for common Cloudflare CAPTCHA/challenge keywords.
     Accepts either a Playwright page or SeleniumBase driver.
     """
     indicators = indicators or CLOUDFLARE_CAPTCHA_INDICATORS
     try:
-        html = get_page_content(page_or_driver).lower()
-        return any(keyword.lower() in html for keyword in indicators)
+        html = safe_lower(get_page_content(page_or_driver))
+        return any(safe_lower(keyword) in html for keyword in indicators)
     except Exception as e:
         logger.error(f"[CAPTCHA] Error reading content: {e}")
         return False
 
-def get_page_content(page_or_driver):
+def get_page_content(page_or_driver: Any) -> str:
     """
     Returns the HTML content from a Playwright page or SeleniumBase driver.
     """
-    # Playwright Page
-    if hasattr(page_or_driver, "content"):
+    if isinstance(page_or_driver, HasContent):
         return page_or_driver.content()
-    # SeleniumBase Driver
-    if hasattr(page_or_driver, "page_source"):
+    if isinstance(page_or_driver, HasPageSource):
         return page_or_driver.page_source
     raise RuntimeError("Unsupported browser object for content extraction.")
 
-def bring_to_front(page_or_driver):
+def bring_to_front(page_or_driver: Any) -> None:
     """
     Attempts to bring the browser window to the foreground.
+    Only runs OS-specific code on the correct platform.
     """
     os_type = platform.system()
     try:
-        # Playwright Page
-        if hasattr(page_or_driver, "bring_to_front"):
+        if isinstance(page_or_driver, HasBringToFront):
             page_or_driver.bring_to_front()
-        # SeleniumBase Driver (Chrome/Edge)
-        elif hasattr(page_or_driver, "maximize_window"):
+        elif isinstance(page_or_driver, HasMaximizeWindow):
             page_or_driver.maximize_window()
-        # OS-level foreground
+        # OS-level foreground (for local dev only)
         if os_type == "Windows":
-            import ctypes
-            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 9)  # SW_RESTORE
-            ctypes.windll.user32.SetForegroundWindow(ctypes.windll.kernel32.GetConsoleWindow())
+            try:
+                windll = getattr(ctypes, "windll", None)
+                user32 = getattr(windll, "user32", None) if windll else None
+                kernel32 = getattr(windll, "kernel32", None) if windll else None
+                GetConsoleWindow = getattr(kernel32, "GetConsoleWindow", None) if kernel32 else None
+                ShowWindow = getattr(user32, "ShowWindow", None) if user32 else None
+                SetForegroundWindow = getattr(user32, "SetForegroundWindow", None) if user32 else None
+                if GetConsoleWindow and ShowWindow and SetForegroundWindow:
+                    hwnd = GetConsoleWindow()
+                    if hwnd:
+                        ShowWindow(hwnd, 9)  # SW_RESTORE
+                        SetForegroundWindow(hwnd)
+            except Exception as e:
+                logger.debug(f"[CAPTCHA] Windows foreground fallback failed: {e}")
         elif os_type == "Darwin":  # macOS
-            os.system("osascript -e 'tell application \"System Events\" to set frontmost of the first process whose unix id is (do shell script \"echo $PPID\") to true'")
+            try:
+                os.system("osascript -e 'tell application \"System Events\" to set frontmost of the first process whose unix id is (do shell script \"echo $PPID\") to true'")
+            except Exception as e:
+                logger.debug(f"[CAPTCHA] macOS foreground fallback failed: {e}")
         elif os_type == "Linux":
-            os.system("xdotool windowactivate $(xdotool search --onlyvisible --name 'Chromium' | head -1) 2>/dev/null")
+            try:
+                os.system("xdotool windowactivate $(xdotool search --onlyvisible --name 'Chromium' | head -1) 2>/dev/null")
+            except Exception as e:
+                logger.debug(f"[CAPTCHA] Linux foreground fallback failed: {e}")
     except Exception as e:
         logger.warning(f"[CAPTCHA] Foreground window fallback failed: {e}")
 
@@ -75,13 +117,13 @@ def is_cloudflare_captcha_present(page_or_driver) -> bool:
     Returns True if a Cloudflare CAPTCHA is detected on the page.
     """
     try:
-        html = get_page_content(page_or_driver).lower()
-        return any(keyword.lower() in html for keyword in CLOUDFLARE_CAPTCHA_INDICATORS)
+        html = safe_lower(get_page_content(page_or_driver))
+        return any(safe_lower(keyword) in html for keyword in CLOUDFLARE_CAPTCHA_INDICATORS)
     except Exception as e:
         logger.error(f"[CAPTCHA] Failed reading page content: {e}")
         return False
 
-def wait_for_user_to_solve_captcha(page_or_driver, timeout: int = DEFAULT_CAPTCHA_TIMEOUT):
+def wait_for_user_to_solve_captcha(page_or_driver, timeout: int = DEFAULT_CAPTCHA_TIMEOUT) -> bool:
     """
     Waits for manual CAPTCHA resolution by checking if challenge elements disappear.
     Works for both Playwright and SeleniumBase.

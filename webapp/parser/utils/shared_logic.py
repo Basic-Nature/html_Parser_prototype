@@ -1,4 +1,7 @@
-# shared_logic.py - Common parsing utilities for context-integrated pipeline
+# webapp/parser/utils/shared_logic.py
+# -----------------------------------------------------------------------------------
+# Common parsing utilities for context-integrated pipeline
+# -----------------------------------------------------------------------------------
 from __future__ import annotations
 import difflib
 import os
@@ -7,7 +10,13 @@ import re
 import copy
 import numpy as np
 import inspect
-from sqlalchemy.orm import Session
+import time
+import shutil
+import gc
+import collections.abc
+from pathlib import Path
+from sqlalchemy.orm import Session, Query
+from sqlalchemy.engine import ScalarResult
 from urllib.parse import ParseResult, SplitResult
 from ..utils.logger_singleton import logger, console, prompt
 from sentence_transformers import SentenceTransformer
@@ -17,13 +26,30 @@ from ..Context_Integration.Context_Library.constants import (
 from typing import (
     TYPE_CHECKING, Optional, Generator, Any, Iterable, Dict, 
     Union, Iterable, Protocol, Awaitable, TypedDict,
-    List, Callable, Mapping, Sequence, runtime_checkable
+    List, Callable, Mapping, Sequence, runtime_checkable,
+    TypeVar, Type
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
 assert set(STATE_MODULE_MAP.keys()) == set(KNOWN_STATE_TO_COUNTY_MAP.keys()), \
     "STATE_MODULE_MAP and KNOWN_STATE_TO_COUNTY_MAP keys are out of sync!"
+
+class ExtractPlugin(Protocol):
+    def extract(self, page: Any, extraction_context: Any) -> List[Any]: ...
+
+class Saveable(Protocol):
+    def save(self, path: str) -> Any: ...
+
+class GCModule(Protocol):
+    def collect(self) -> Any: ...
+
+class ShutilModule(Protocol):
+    def rmtree(self, path: str, ignore_errors: bool = ...) -> Any: ...
+    def move(self, src: str, dst: str) -> Any: ...
+
+class TimeModule(Protocol):
+    def sleep(self, seconds: float) -> Any: ...
 
 @runtime_checkable
 class HasItem(Protocol):
@@ -95,6 +121,154 @@ class Predictable(Protocol):
         """
         ...
 
+def safe_filename(
+    name: str,
+    max_length: int = 255,
+    allow_unicode: bool = False,
+    reserved_names: set = None,
+    default: str = "file"
+) -> str:
+    """
+    Robustly sanitize a string for use as a safe filename.
+    - Removes or replaces unsafe characters.
+    - Optionally restricts to ASCII.
+    - Handles reserved device names (Windows).
+    - Trims to max_length.
+    - Returns a default if the result is empty.
+    """
+    if not isinstance(name, str):
+        name = str(name) if name is not None else default
+
+    # Remove leading/trailing whitespace and control chars
+    name = name.strip().replace('\x00', '')
+
+    # Optionally restrict to ASCII
+    if not allow_unicode:
+        name = name.encode("ascii", "ignore").decode("ascii")
+
+    # Replace unsafe characters
+    name = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
+
+    # Remove repeated underscores or dots
+    name = re.sub(r'[_\.]{2,}', '_', name)
+
+    # Remove leading/trailing dots/underscores
+    name = name.strip("._")
+
+    # Handle reserved device names (Windows)
+    reserved = reserved_names or {
+        "CON", "PRN", "AUX", "NUL",
+        *(f"COM{i}" for i in range(1, 10)),
+        *(f"LPT{i}" for i in range(1, 10)),
+    }
+    if name.upper() in reserved:
+        name = f"_{name}_"
+
+    # Prevent empty filename
+    if not name:
+        name = default
+
+    # Truncate to max_length, preserving extension if possible
+    if len(name) > max_length:
+        p = Path(name)
+        ext = p.suffix
+        base = p.stem[: max_length - len(ext)]
+        name = base + ext
+
+    return name
+
+T = TypeVar("T")
+
+def safe_query(session: Session, model: Type[T]) -> Optional[Query]:
+    """
+    Safely create a SQLAlchemy query for a model.
+    Returns the query or None if an error occurs.
+    """
+    try:
+        return session.query(model)
+    except Exception as e:
+        logger.warning(f"[safe_query] session.query({model}) failed: {e}")
+        return None
+
+def safe_key(val) -> str:
+    """
+    Safely convert a value to a string key, handling None and exceptions.
+    """
+    try:
+        if val is None:
+            return ""
+        return str(val)
+    except Exception:
+        return ""
+    
+def _filter_valid_kwargs(model: Type[Any], kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Filter kwargs to only include valid column names for the model.
+    Uses safe_key for robust key extraction and safe access to mapper.
+    """
+    try:
+        # Defensive: safely get mapper and column_attrs
+        mapper = getattr(inspect(model), "mapper", None)
+        if mapper is None:
+            logger.warning(f"[safe_filter_by] No mapper found for model {model}")
+            return {}
+        column_attrs = list(getattr(mapper, "column_attrs", []))
+        valid_columns = set(safe_key(getattr(c, "key", None)) for c in column_attrs if hasattr(c, "key"))
+        return {k: v for k, v in kwargs.items() if k in valid_columns}
+    except Exception as e:
+        logger.warning(f"[safe_filter_by] Could not inspect model {model}: {e}")
+        return {}
+
+def safe_filter_by(query: Optional[Query], model: Type, **kwargs) -> Optional[Query]:
+    """
+    Safely apply filter_by to a SQLAlchemy query, only allowing valid columns.
+    Returns the filtered query or the original query if an error occurs.
+    """
+    if query is None:
+        return None
+    safe_kwargs = _filter_valid_kwargs(model, kwargs)
+    try:
+        return query.filter_by(**safe_kwargs)
+    except Exception as e:
+        logger.warning(f"[safe_filter_by] filter_by failed: {e}")
+        return query
+
+def safe_first(query: Optional[Query]) -> Optional[Any]:
+    """
+    Safely call .first() on a SQLAlchemy query.
+    Returns the first result or None if an error occurs.
+    """
+    if query is None:
+        return None
+    try:
+        return query.first()
+    except Exception as e:
+        logger.warning(f"[safe_first] query.first() failed: {e}")
+        return None
+
+def get_or_create(
+    session: Session,
+    model: Type[T],
+    defaults: Optional[dict] = None,
+    **kwargs
+) -> T:
+    """
+    Safely get or create a SQLAlchemy model instance.
+    Uses safe_query, safe_filter_by, safe_first, safe_add, and safe_commit.
+    Only allows valid model columns in filter_by to prevent SQL injection.
+    """
+    query = safe_query(session, model)
+    query = safe_filter_by(query, model, **kwargs)
+    instance = safe_first(query)
+    if instance:
+        return instance
+    params = _filter_valid_kwargs(model, kwargs)
+    params.update(defaults or {})
+    instance = model(**params)
+    safe_add(session, instance)
+    safe_commit(session)
+    return instance
+
 def safe_translate(val: str, table) -> str:
     """
     Safely call .translate on a string-like object.
@@ -131,7 +305,7 @@ def safe_geturl(parsed: Union[ParseResult, SplitResult]) -> str:
     except Exception:
         return ""
 
-def safe_extract(plugin, page, extraction_context):
+def safe_extract(plugin: ExtractPlugin, page: Any, extraction_context: Any) -> List[Any]:
     """
     Safely call the extract method of a plugin, handling missing methods and exceptions.
     """
@@ -185,7 +359,7 @@ def safe_strip(val) -> str:
     except Exception:
         return ""
 
-def safe_setdefault(d: dict, key, default):
+def safe_setdefault(d: dict, key, default) -> Any:
     """
     Robust setdefault: returns d[key] if present, else sets d[key]=default and returns default.
     Handles None and missing keys safely.
@@ -196,7 +370,7 @@ def safe_setdefault(d: dict, key, default):
         return default
     return val
 
-def safe_tolist(val):
+def safe_tolist(val) -> List[Any]:
     """
     Safely convert val to a list.
     Handles numpy arrays, tuples, sets, and returns [val] for scalars.
@@ -230,6 +404,71 @@ def safe_execute(session: Session, stmt) -> Optional[Any]:
             return None
     return None
 
+def safe_commit(session: Session) -> bool:
+    try:
+        session.commit()
+        return True
+    except Exception as e:
+        logger.error(f"[safe_commit] Commit failed: {e}")
+        session.rollback()
+        return False
+
+def safe_scalar_one_or_none(result: ScalarResult[T]) -> Optional[T]:
+    """
+    Safely call scalar_one_or_none on a SQLAlchemy ScalarResult.
+    Returns the scalar value or None if not available or on error.
+    """
+    try:
+        return result.scalar_one_or_none()
+    except Exception as e:
+        logger.error(f"[safe_scalar_one_or_none] Error: {e}")
+        return None
+
+def safe_model_save(
+    model: Saveable,
+    model_save_path: str,
+    retries: int = 3,
+    logger=logger,
+    gc_module: GCModule = gc,
+    shutil_module: ShutilModule = shutil,
+    time_module: TimeModule = time
+) -> bool:
+    """
+    Safely save a model to disk, retrying on failure and using a temp path workaround if needed.
+    Returns True if save succeeded, False otherwise.
+    """
+    for attempt in range(1, retries + 1):
+        try:
+            if gc_module:
+                gc_module.collect()
+            model.save(model_save_path)
+            if logger:
+                logger.info(f"[INFO] Model saved successfully on attempt {attempt}.")
+            return True
+        except Exception as e:
+            if logger:
+                logger.warning(f"[WARN] Model save failed (attempt {attempt}): {e}")
+            if time_module:
+                time_module.sleep(2 * attempt)
+            if gc_module:
+                gc_module.collect()
+    # Try saving to a temp dir and moving
+    tmp_path = model_save_path + "_tmp"
+    try:
+        if gc_module:
+            gc_module.collect()
+        model.save(tmp_path)
+        if shutil_module:
+            shutil_module.rmtree(model_save_path, ignore_errors=True)
+            shutil_module.move(tmp_path, model_save_path)
+        if logger:
+            logger.info(f"[INFO] Model saved via temp path workaround.")
+        return True
+    except Exception as e:
+        if logger:
+            logger.error(f"[ERROR] Final model save failed: {e}\nIf you see repeated save failures, close any file explorers or editors viewing the model directory.")
+        return False
+    
 def safe_all(rows: HasAllMethod) -> list:
     """
     Safely call .all() on a SQLAlchemy result/scalars object.
@@ -355,7 +594,7 @@ def safe_is_set(event_like: EventLike) -> bool:
         pass
     return False
 
-def safe_set(event_like) -> None:
+def safe_set(event_like: EventLike) -> None:
     """
     Safely call .set() on an event-like object.
     """
@@ -365,7 +604,7 @@ def safe_set(event_like) -> None:
     except Exception as e:
         logger.error(f"[safe_set] Error calling .set(): {e}")
 
-def safe_clear(event_like) -> None:
+def safe_clear(event_like: EventLike) -> None:
     """
     Safely call .clear() on an event-like object.
     """
@@ -469,7 +708,6 @@ def safe_extend(lib: dict, key: str, values: Iterable[dict]) -> None:
     Ensures lib is a dict, lib[key] is a list, and values is an iterable (but not a string/bytes).
     Filters out None and non-dict items for safety.
     """
-    import collections.abc
     if not isinstance(lib, dict):
         return
     if key not in lib or not isinstance(lib[key], list):
@@ -502,9 +740,6 @@ def convert_ndarrays(obj) -> Any:
         return obj.tolist()
     else:
         return obj
-
-def _sanitize_log_filename(name: str) -> str:
-    return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
 
 def _normalize_html_for_hash(html: str, maxlen: int = 256) -> str:
     html = re.sub(r'\s(_ngcontent-[^=]+|ng-version|ng-star-inserted|_nghost-[^=]+|_ngcontent-[^=]+|aria-checked|tabindex|style|data-[^=]+|id|class)="[^"]*"', '', html)
@@ -901,7 +1136,6 @@ def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
         if county_norm in counties:
             return county_norm
         # Fuzzy match if not found
-        import difflib
         matches = difflib.get_close_matches(county_norm, counties, n=1, cutoff=0.8)
         if matches:
             return safe_get_first(matches, "county_match", None, logger)
@@ -912,7 +1146,6 @@ def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
                 return county_norm
         # Fuzzy match across all counties
         all_counties = [c for counties in KNOWN_STATE_TO_COUNTY_MAP.values() for c in counties]
-        import difflib
         matches = difflib.get_close_matches(county_norm, all_counties, n=1, cutoff=0.8)
         if matches:
             return safe_get_first(matches, "county_match", None, logger)
@@ -1092,7 +1325,7 @@ def scan_environment() -> dict:
     }
 
 def get_title_embedding_features(contests, model_name="all-MiniLM-L6-v2") -> Any:
-    from ..utils.model_registry import ModelRegistry
+    from .model_registry import ModelRegistry
     model = ModelRegistry.get_sentence_transformer(model_name)
     titles = []
     for c in contests:
@@ -1261,7 +1494,7 @@ def infer_contest_fields(
     # 4. Fallback: extract_year_and_type (only if still missing)
     if (not year or not type_) and title:
         try:
-            from ..utils.html_scanner import extract_year_and_type
+            from .html_scanner import extract_year_and_type
             y, t, _, _ = extract_year_and_type(title, url=None)
             if not year and y:
                 year = y

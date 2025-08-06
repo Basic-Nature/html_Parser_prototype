@@ -1,17 +1,20 @@
+# webapp/parser/utils/misc_utils.py
+# ---------------------------------------------------------------
+# Miscellaneous utility functions for Smart Elections Parser Webapp
+# ---------------------------------------------------------------
 from __future__ import annotations
 import hashlib
 import os
 import orjson
-from ..utils.logger_singleton import logger
-from ..utils.shared_logic import safe_get
+from .logger_singleton import logger
+from .shared_logic import safe_get
 from typing import Dict, Any, List
 from pathlib import Path
-from ..config import CONTEXT_LIBRARY_PATH
+from ..config import CONTEXT_LIBRARY_PATH, PROCESSED_URLS_FILE, OUTPUT_CACHE
 
 # --- Utility: Processed URL cache (unchanged, not DB) ---
 def load_processed_urls() -> Dict[str, Any]:
-    from ..utils.output_utils import CACHE_FILE
-    cache_path = Path(CACHE_FILE).resolve()
+    cache_path = Path(PROCESSED_URLS_FILE).resolve()
     if not cache_path.exists() or os.path.getsize(cache_path) == 0:
         return {}
     with cache_path.open('rb') as f:
@@ -34,7 +37,6 @@ def _safe_db_path(path) -> str:
 
 def load_output_cache(path=None) -> List[dict]:
     if path is None:
-        from ..Context_Integration.context_organizer import OUTPUT_CACHE
         path = OUTPUT_CACHE
     safe_path = Path(_safe_db_path(path)).resolve()
     if not safe_path.exists():

@@ -4,6 +4,8 @@ import time
 import subprocess
 import orjson
 import errno
+import glob
+import re
 from datetime import datetime
 from sqlalchemy import inspect
 from pathlib import Path
@@ -11,7 +13,12 @@ from ..utils.logger_singleton import logger, console
 from ..Context_Integration.librarian import load_context_library
 from ..utils.models import Base
 from ..utils.db_utils import get_engine
-from ..config import LOG_DIR, CACHE_DIR, PROJECT_ROOT
+from ..config import (
+    ENABLE_ENHANCED, CORRECTION_MODE, INTEGRITY_CHECK, UPDATE_DB, LLM_API_KEY, LLM_PROVIDER, LLM_MODEL,
+    LLM_SYSTEM_PROMPT, LLM_EXTRA_INSTRUCTIONS, FILTER_CONTEXT_KEY, FILTER_VALUE, FIELDS, CONTEXT_PATH, 
+    LOG_DIR, DRY_RUN, NO_COORDINATOR, NO_ORGANIZER, BATCH_MODE, FAST_MODE, FLUSH_CACHE, CACHE_EXPIRE_DAYS, 
+    EXPORT_AUDIT_LOG, REST_API, SELF_HEAL, MAX_RETRIES, COOLDOWN, DB_PATH, CACHE_DIR, PROJECT_ROOT
+)
 try:
     import openai
 except ImportError:
@@ -36,11 +43,7 @@ def preclean_json_logs(log_dirs, required_files=None):
     Clean all JSON/JSONL files in log_dirs.
     Quarantine corrupt lines, salvage valid lines, and create missing required files.
     """
-    import glob
-    import os
-    import re
-    import shutil
-
+    
     # Clean all .jsonl and .json files
     for log_dir in log_dirs:
         for suf in [".jsonl", ".json"]:
@@ -121,71 +124,65 @@ class BotPipeline:
         
     def build_correction_args(self):
         args = []
-        if os.getenv("ENABLE_ENHANCED", "true").lower() == "true":
+        if str(ENABLE_ENHANCED).lower() == "true":
             args.append("--enhanced")
-        if os.getenv("CORRECTION_MODE", "feedback").lower() == "feedback":
+        if str(CORRECTION_MODE).lower() == "feedback":
             args.append("--feedback")
         else:
             args.append("--auto")
-        if os.getenv("INTEGRITY_CHECK", "false").lower() == "true":
+        if str(INTEGRITY_CHECK).lower() == "true":
             args.append("--integrity")
-        if os.getenv("UPDATE_DB", "true").lower() == "true":
+        if str(UPDATE_DB).lower() == "true":
             args.append("--update-db")
-        llm_api_key = os.getenv("LLM_API_KEY")
-        llm_provider = os.getenv("LLM_PROVIDER", "openai").lower()
-        llm_model = os.getenv("LLM_MODEL", "gpt-4-turbo")
+        llm_api_key = LLM_API_KEY
+        llm_provider = str(LLM_PROVIDER or "openai").lower()
+        llm_model = LLM_MODEL or "gpt-4-turbo"
         if llm_api_key:
             args.extend([
                 "--llm-api-key", llm_api_key,
                 "--llm-provider", llm_provider,
                 "--llm-model", llm_model
             ])
-            if llm_provider == "anthropic" and os.getenv("ANTHROPIC_SYSTEM_PROMPT"):
-                args.extend(["--llm-system-prompt", os.getenv("ANTHROPIC_SYSTEM_PROMPT")])
-            elif llm_provider == "gemini" and os.getenv("GEMINI_SYSTEM_PROMPT"):
-                args.extend(["--llm-system-prompt", os.getenv("GEMINI_SYSTEM_PROMPT")])
-            elif llm_provider == "local" and os.getenv("LOCAL_LLM_PATH"):
-                args.extend(["--llm-model-path", os.getenv("LOCAL_LLM_PATH")])
-            if os.getenv("LLM_SYSTEM_PROMPT"):
-                args.extend(["--llm-system-prompt", os.getenv("LLM_SYSTEM_PROMPT")])
-            if os.getenv("LLM_EXTRA_INSTRUCTIONS"):
-                args.extend(["--llm-extra-instructions", os.getenv("LLM_EXTRA_INSTRUCTIONS")])
-        if os.getenv("FILTER_CONTEXT_KEY"):
-            args.extend(["--filter-context-key", os.getenv("FILTER_CONTEXT_KEY")])
-        if os.getenv("FILTER_VALUE"):
-            args.extend(["--filter-value", os.getenv("FILTER_VALUE")])
-        if os.getenv("FIELDS"):
-            args.extend(["--fields"] + os.getenv("FIELDS").split(","))
-        if os.getenv("CONTEXT_PATH"):
-            args.extend(["--context", os.getenv("CONTEXT_PATH")])
-        if os.getenv("LOG_DIR"):
-            args.extend(["--log-dir", os.getenv("LOG_DIR")])
-        if os.getenv("DRY_RUN", "false").lower() == "true":
+            if LLM_SYSTEM_PROMPT:
+                args.extend(["--llm-system-prompt", LLM_SYSTEM_PROMPT])
+            if LLM_EXTRA_INSTRUCTIONS:
+                args.extend(["--llm-extra-instructions", LLM_EXTRA_INSTRUCTIONS])
+        if FILTER_CONTEXT_KEY:
+            args.extend(["--filter-context-key", FILTER_CONTEXT_KEY])
+        if FILTER_VALUE:
+            args.extend(["--filter-value", FILTER_VALUE])
+        if FIELDS:
+            args.extend(["--fields"] + FIELDS.split(","))
+        if CONTEXT_PATH:
+            args.extend(["--context", CONTEXT_PATH])
+        if LOG_DIR:
+            args.extend(["--log-dir", LOG_DIR])
+        if str(DRY_RUN).lower() == "true":
             args.append("--dry-run")
-        if os.getenv("NO_COORDINATOR", "false").lower() == "true":
+        if str(NO_COORDINATOR).lower() == "true":
             args.append("--no-coordinator")
-        if os.getenv("NO_ORGANIZER", "false").lower() == "true":
+        if str(NO_ORGANIZER).lower() == "true":
             args.append("--no-organizer")
-        if os.getenv("BATCH_MODE", "false").lower() == "true":
+        if str(BATCH_MODE).lower() == "true":
             args.append("--batch")
-        if os.getenv("FAST_MODE", "false").lower() == "true":
+        if str(FAST_MODE).lower() == "true":
             args.append("--fast")
-        if os.getenv("FLUSH_CACHE", "false").lower() == "true":
+        if str(FLUSH_CACHE).lower() == "true":
             args.append("--flush-cache")
-        if os.getenv("CACHE_EXPIRE_DAYS"):
-            args.extend(["--cache-expire-days", os.getenv("CACHE_EXPIRE_DAYS")])
-        if os.getenv("EXPORT_AUDIT_LOG"):
-            args.extend(["--export-audit-log", os.getenv("EXPORT_AUDIT_LOG")])
-        if os.getenv("REST_API", "false").lower() == "true":
+        if CACHE_EXPIRE_DAYS:
+            args.extend(["--cache-expire-days", CACHE_EXPIRE_DAYS])
+        if EXPORT_AUDIT_LOG:
+            args.extend(["--export-audit-log", EXPORT_AUDIT_LOG])
+        if str(REST_API).lower() == "true":
             args.append("--rest-api")
-        if os.getenv("SELF_HEAL", "false").lower() == "true":
+        if str(SELF_HEAL).lower() == "true":
             args.append("--self-heal")
-            if os.getenv("MAX_RETRIES"):
-                args.extend(["--max-retries", os.getenv("MAX_RETRIES")])
-            if os.getenv("COOLDOWN"):
-                args.extend(["--cooldown", os.getenv("COOLDOWN")])
-        if os.getenv("DB_PATH"):
-            args.extend(["--db-path", os.getenv("DB_PATH")])
+            if MAX_RETRIES:
+                args.extend(["--max-retries", MAX_RETRIES])
+            if COOLDOWN:
+                args.extend(["--cooldown", COOLDOWN])
+        if DB_PATH:
+            args.extend(["--db-path", DB_PATH])
         return args
 
     def run_manual_correction(self, mode="enhanced", extra_args=None, retries=1, timeout=600):
@@ -202,7 +199,7 @@ class BotPipeline:
             args.extend(extra_args)
         # Always add context and log-dir
         log_dir_path = Path(LOG_DIR) if not isinstance(LOG_DIR, Path) else LOG_DIR
-        context_path = Path(LOG_DIR) / "context_library.json" if not os.getenv("CONTEXT_PATH") else os.getenv("CONTEXT_PATH")
+        context_path = Path(LOG_DIR) / "context_library.json" if not isinstance(CONTEXT_PATH, Path) else CONTEXT_PATH
         args.extend([
             "--context", str(context_path),
             "--log-dir", str(log_dir_path)
@@ -366,22 +363,20 @@ class BotPipeline:
                 logger.info("[PIPELINE] New entries detected for manual correction. Running manual_correction_bot.")
 
             extra_args = []
-            # Dynamically add arguments based on pipeline state and env
-            if os.getenv("INTEGRITY_CHECK", "false").lower() == "true":
+            if str(INTEGRITY_CHECK).lower() == "true":
                 extra_args.append("--integrity")
-            if os.getenv("LLM_API_KEY"):
+            if LLM_API_KEY:
                 extra_args.extend([
-                    "--llm-api-key", os.getenv("LLM_API_KEY"),
-                    "--llm-provider", os.getenv("LLM_PROVIDER", "openai"),
-                    "--llm-model", os.getenv("LLM_MODEL", "gpt-4-turbo")
+                    "--llm-api-key", LLM_API_KEY,
+                    "--llm-provider", LLM_PROVIDER or "openai",
+                    "--llm-model", LLM_MODEL or "gpt-4-turbo"
                 ])
-            if os.getenv("EXPORT_AUDIT_LOG"):
-                extra_args.extend(["--export-audit-log", os.getenv("EXPORT_AUDIT_LOG")])
-            if os.getenv("FLUSH_CACHE", "false").lower() == "true":
+            if EXPORT_AUDIT_LOG:
+                extra_args.extend(["--export-audit-log", EXPORT_AUDIT_LOG])
+            if str(FLUSH_CACHE).lower() == "true":
                 extra_args.append("--flush-cache")
-            if os.getenv("CACHE_EXPIRE_DAYS"):
-                extra_args.extend(["--cache-expire-days", os.getenv("CACHE_EXPIRE_DAYS")])
-            # Always run in auto mode for end-of-pipeline
+            if CACHE_EXPIRE_DAYS:
+                extra_args.extend(["--cache-expire-days", CACHE_EXPIRE_DAYS])
             logger.info("[PIPELINE] Running manual_correction_bot in auto mode for context correction.")
             self.run_manual_correction(mode="auto", extra_args=extra_args)
 
@@ -503,11 +498,11 @@ class BotPipeline:
             "\nLogs:\n" + logs[-1000:]
         )
         suggestion = None
-        if openai and os.getenv("LLM_API_KEY"):
+        if openai and LLM_API_KEY:
             try:
-                openai.api_key = os.getenv("LLM_API_KEY")
+                openai.api_key = LLM_API_KEY
                 response = openai.ChatCompletion.create(
-                    model=os.getenv("LLM_MODEL", "gpt-4-turbo"),
+                    model=LLM_MODEL or "gpt-4-turbo",
                     messages=[{"role": "system", "content": prompt}],
                     max_tokens=256,
                     temperature=0.2,

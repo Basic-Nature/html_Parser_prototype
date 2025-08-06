@@ -19,13 +19,12 @@ from pathlib import Path
 from collections import defaultdict, Counter
 import shelve
 from datetime import datetime, timedelta
-import hashlib
 import subprocess
 import sys
 import time
 from tempfile import NamedTemporaryFile
-import importlib
 from fastapi import FastAPI
+import openai
 import uvicorn
 # --- Unified logger import ---
 from ..utils.logger_singleton import logger
@@ -40,7 +39,11 @@ from ..Context_Integration.librarian import (
 )
 # --- Config ---
 # --- Directory and file constants ---
-from ..config import PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
+from ..config import (
+    PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR,
+    LLM_API_KEY, LLM_PROVIDER, LLM_MODEL, LLM_SYSTEM_PROMPT, LLM_EXTRA_INSTRUCTIONS, 
+    USER_NAME
+)
 from webapp.parser.Context_Integration.context_coordinator import ContextCoordinator
 from ..utils.model_registry import ModelRegistry
 
@@ -181,7 +184,6 @@ def atomic_write_json(obj, path):
     - If path exists, creates a .bak (removing any old .bak).
     - Cleans up any stray .tmp before/after.
     """
-    import os
     path = Path(path)
     backup_path = path.with_suffix(path.suffix + ".bak")
     tmp_path = path.with_suffix(path.suffix + ".tmp")
@@ -209,7 +211,6 @@ def atomic_write_json(obj, path):
         shutil.copy2(path, backup_path)
 
     # --- Fix: If the target file exists and is locked, try to close it or retry ---
-    import time
     for _ in range(3):
         try:
             shutil.move(str(tmp_path), str(path))
@@ -247,10 +248,30 @@ try:
 except Exception:
     nlp = None
 
-def llm_suggest_action(entry, context=None, api_key=None, model="gpt-4-turbo", provider="openai", system_prompt=None, temperature=0.2, max_tokens=200, extra_instructions=None):
+def llm_suggest_action(
+    entry,
+    context=None,
+    api_key=None,
+    model=None,
+    provider=None,
+    system_prompt=None,
+    temperature=0.2,
+    max_tokens=200,
+    extra_instructions=None
+):
     """
-    Use an external LLM (OpenAI, Anthropic, etc.) to suggest a field or correction for the entry.
+    Use OpenAI LLM to suggest a field or correction for the entry.
     """
+    # Use config.py values if not provided
+    api_key = api_key or LLM_API_KEY
+    model = model or LLM_MODEL or "gpt-4-turbo"
+    provider = provider or LLM_PROVIDER or "openai"
+    system_prompt = system_prompt or LLM_SYSTEM_PROMPT or (
+        "You are a highly reliable, context-aware election data assistant. "
+        "Always provide clear, actionable suggestions and flag ambiguous cases."
+    )
+    extra_instructions = extra_instructions or LLM_EXTRA_INSTRUCTIONS
+
     prompt = (
         "You are an expert election data context classifier and corrector.\n"
         "Given the following extracted value from an election context, and the context dictionary, "
@@ -262,39 +283,21 @@ def llm_suggest_action(entry, context=None, api_key=None, model="gpt-4-turbo", p
     )
     if extra_instructions:
         prompt += f"\nAdditional instructions: {extra_instructions}\n"
-    system_prompt = system_prompt or (
-        "You are a highly reliable, context-aware election data assistant. "
-        "Always provide clear, actionable suggestions and flag ambiguous cases."
-    )
+
     try:
-        if provider == "openai":
-            import openai
-            openai.api_key = api_key
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return response.choices[0].message["content"]
-        elif provider == "anthropic":
-            import anthropic #type: ignore
-            client = anthropic.Anthropic(api_key=api_key)
-            response = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system_prompt,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return response.content[0].text
-        else:
-            logger.error(f"Unknown LLM provider: {provider}")
+        openai.api_key = api_key
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return response.choices[0].message["content"]
     except Exception as e:
-        logger.error(f"LLM suggestion failed ({provider}): {e}")
+        logger.error(f"LLM suggestion failed (openai): {e}")
     return None
 
 def ml_score_entry(entry, coordinator=None):
@@ -369,13 +372,10 @@ def check_and_fix_json_files(
     """
     Robust, fast scan and correction for JSON/JSONL files.
     - Salvages valid lines/objects, quarantines unrecoverable, recreates minimal valid files if needed.
-    - Uses regex, json5, and partial line merging for .jsonl.
+    - Uses only orjson for parsing and writing.
     - Optionally validates schema.
     - Always logs summary and never aborts on error.
     """
-    import json5
-    import re
-
     if directories is None:
         directories = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]
     corrupted = []
@@ -401,45 +401,25 @@ def check_and_fix_json_files(
                     corrupt_items = []
                     # --- .jsonl logic ---
                     if suf == ".jsonl":
-                        with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
-                            partial_line = ""
+                        with open(file, "rb") as f:
                             for i, line in enumerate(f):
                                 line = line.strip()
                                 if not line:
                                     continue
-                                if partial_line:
-                                    line = partial_line + line
-                                    partial_line = ""
                                 try:
-                                    obj = json5.loads(line)
+                                    obj = orjson.loads(line)
                                     if schema_validator and not schema_validator(obj):
                                         raise ValueError("Schema validation failed")
                                     valid_objs.append(obj)
-                                except Exception:
-                                    fixed_line = line
-                                    fixed_line = re.sub(r",\s*$", "", fixed_line)
-                                    fixed_line = re.sub(r"'", '"', fixed_line)
-                                    fixed_line = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', fixed_line)
-                                    fixed_line = fixed_line.replace('\ufeff', '').replace('\x00', '')
-                                    if fixed_line.count("{") > fixed_line.count("}"):
-                                        partial_line = fixed_line
-                                        continue
-                                    try:
-                                        obj = json5.loads(fixed_line)
-                                        if schema_validator and not schema_validator(obj):
-                                            raise ValueError("Schema validation failed")
-                                        valid_objs.append(obj)
-                                        if verbose:
-                                            logger.warning(f"[FIXED-LINE] {file} line {i+1}: {line[:80]}... -> {fixed_line[:80]}...")
-                                    except Exception as e2:
-                                        corrupt_items.append((i, line, str(e2)))
-                                        if verbose:
-                                            logger.warning(f"[CORRUPT-LINE] {file} line {i+1}: {line[:80]}... ({e2})")
+                                except Exception as e:
+                                    corrupt_items.append((i, line.decode(errors="replace"), str(e)))
+                                    if verbose:
+                                        logger.warning(f"[CORRUPT-LINE] {file} line {i+1}: {line[:80]}... ({e})")
                         # Write valid lines back
                         if try_fix:
-                            with open(file, "w", encoding="utf-8") as out:
+                            with open(file, "wb") as out:
                                 for obj in valid_objs:
-                                    out.write(json5.dumps(obj, indent=2) + "\n")
+                                    out.write(orjson.dumps(obj) + b"\n")
                         if corrupt_items:
                             corrupt_path = file.with_suffix(file.suffix + ".corrupt")
                             with open(corrupt_path, "w", encoding="utf-8") as out:
@@ -448,7 +428,7 @@ def check_and_fix_json_files(
                             if verbose:
                                 logger.warning(f"[CORRUPT] {len(corrupt_items)} lines saved to {corrupt_path}")
                         if not valid_objs and try_fix:
-                            with open(file, "w", encoding="utf-8") as out:
+                            with open(file, "wb") as out:
                                 pass
                             if verbose:
                                 logger.warning(f"[FIXED] All lines invalid, recreated empty .jsonl file: {file}")
@@ -456,32 +436,19 @@ def check_and_fix_json_files(
                     # --- .json logic ---
                     else:
                         try:
-                            with open(file, "r", encoding="utf-8-sig", errors="replace") as f:
+                            with open(file, "rb") as f:
                                 text = f.read()
-                            obj = json5.loads(text)
+                            obj = orjson.loads(text)
                             if schema_validator and not schema_validator(obj):
                                 raise ValueError("Schema validation failed")
                             valid_objs.append(obj)
-                        except Exception:
-                            fixed_text = text
-                            fixed_text = re.sub(r",\s*([\]}])", r"\1", fixed_text)
-                            fixed_text = re.sub(r"'", '"', fixed_text)
-                            fixed_text = re.sub(r'([{,]\s*)(\w+)(\s*:)', r'\1"\2"\3', fixed_text)
-                            fixed_text = fixed_text.replace('\ufeff', '').replace('\x00', '')
-                            try:
-                                obj = json5.loads(fixed_text)
-                                if schema_validator and not schema_validator(obj):
-                                    raise ValueError("Schema validation failed")
-                                valid_objs.append(obj)
-                                if verbose:
-                                    logger.warning(f"[FIXED] {file}: applied regex fixes.")
-                            except Exception as e2:
-                                corrupt_items.append((0, text, str(e2)))
-                                if verbose:
-                                    logger.warning(f"[CORRUPT] {file}: {e2}")
+                        except Exception as e:
+                            corrupt_items.append((0, text.decode(errors="replace"), str(e)))
+                            if verbose:
+                                logger.warning(f"[CORRUPT] {file}: {e}")
                         if try_fix and valid_objs:
-                            with open(file, "w", encoding="utf-8") as out:
-                                out.write(json5.dumps(valid_objs[0], indent=2))
+                            with open(file, "wb") as out:
+                                out.write(orjson.dumps(valid_objs[0]))
                             if verbose:
                                 logger.info(f"[FIXED] Salvaged valid JSON in {file}")
                         if corrupt_items:
@@ -492,8 +459,8 @@ def check_and_fix_json_files(
                             if verbose:
                                 logger.warning(f"[CORRUPT] Corrupt JSON saved to {corrupt_path}")
                         if not valid_objs and try_fix:
-                            minimal = "[]" if "array" in file.name or file.name.endswith("s.json") else "{}"
-                            with open(file, "w", encoding="utf-8") as out:
+                            minimal = b"[]" if "array" in file.name or file.name.endswith("s.json") else b"{}"
+                            with open(file, "wb") as out:
                                 out.write(minimal)
                             if verbose:
                                 logger.warning(f"[FIXED] All content invalid, recreated minimal valid JSON in {file}")
@@ -667,7 +634,20 @@ def aggregate_successful_field_entries(log_file: Path, context_library=None, fie
     return field_entries, dup_count, skipped_existing, len(unique_entries)
 
 # --- Feedback loop (interactive and LLM/ML-powered) ---
-def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, coordinator=None, context_organizer=None, llm_api_key=None, llm_provider="openai", llm_model="gpt-4-turbo", llm_system_prompt=None, llm_extra_instructions=None, fast_mode=False) -> tuple[int, int, int]:
+def feedback_loop(
+    new_entries,
+    field_type,
+    context_library_path,
+    enhanced=True,
+    coordinator=None,
+    context_organizer=None,
+    llm_api_key=None,
+    llm_provider=None,
+    llm_model=None,
+    llm_system_prompt=None,
+    llm_extra_instructions=None,
+    fast_mode=False
+) -> tuple[int, int, int]:
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = ContextCoordinator()
     context_library_path = safe_path(context_library_path, [CONTEXT_LIBRARY_DIR])
@@ -682,17 +662,21 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
         raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
     changed = False
     accepted, edited, removed = 0, 0, 0
-    # Summary preview
     new_entries_values = new_entries.values() if isinstance(new_entries, dict) else new_entries
     total_new = sum(len(v) for v in new_entries_values)
     preview = Counter(entry.get("extracted_value") for vals in new_entries_values for entry in vals)
     logger.info(f"[SUMMARY] {total_new} new entries to review. Top values:")
     for val, count in preview.most_common(5):
         logger.info(f"  {val!r}: {count} times")
+    # Use config values if not provided
+    llm_api_key = llm_api_key or LLM_API_KEY
+    llm_provider = llm_provider or LLM_PROVIDER or "openai"
+    llm_model = llm_model or LLM_MODEL or "gpt-4-turbo"
+    llm_system_prompt = llm_system_prompt or LLM_SYSTEM_PROMPT
+    llm_extra_instructions = llm_extra_instructions or LLM_EXTRA_INSTRUCTIONS
     for context_key, values in new_entries.items():
         logger.info(f"\nContext: {context_key}")
         for idx, val in enumerate(values):
-            # Fast mode: auto-accept if exact duplicate in context library
             is_duplicate = False
             if fast_mode and field_type in context_library:
                 for existing in context_library[field_type]:
@@ -709,8 +693,13 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
                 logger.info(f"    [ML] Score: {ml_score:.2f} | ML Field: {ml_field}")
                 if llm_api_key:
                     llm_suggestion = llm_suggest_action(
-                        val, context=context_library, api_key=llm_api_key, model=llm_model, provider=llm_provider,
-                        system_prompt=llm_system_prompt, extra_instructions=llm_extra_instructions
+                        val,
+                        context=context_library,
+                        api_key=llm_api_key,
+                        model=llm_model,
+                        provider=llm_provider,
+                        system_prompt=llm_system_prompt,
+                        extra_instructions=llm_extra_instructions
                     )
                     logger.info(f"    [LLM] Suggestion: {llm_suggestion}")
             action = "a" if fast_mode else (input("Accept (a), Edit (e), Remove (r), Skip (s)? [a]: ").strip().lower() or "a")
@@ -728,10 +717,8 @@ def feedback_loop(new_entries, field_type, context_library_path, enhanced=True, 
                 removed += 1
             else:
                 continue
-        # Remove deleted
         values = [v for v in values if v]
         new_entries[context_key] = values
-    # Save accepted/edited entries
     update_context_with_new_entries(context_library_path, field_type, new_entries)
     logger.info(f"[SUMMARY] Accepted: {accepted}, Edited: {edited}, Removed: {removed}")
     return accepted, edited, removed
@@ -1104,6 +1091,12 @@ def ensure_context_library(path):
     return context_lib
 
 def process_auto_mode(file_field_map, context_path, cache, batch_size=BATCH_SIZE):
+    """
+    Automatically accept all new entries from log files and update the context library.
+    Uses config.py for environment variables and user name.
+    """
+    # Use USER_NAME from config.py, fallback to "system" if not set
+    user = USER_NAME if "USER_NAME" in globals() and USER_NAME else "system"
     total_processed = 0
     total_skipped = 0
     total_errors = 0
@@ -1126,9 +1119,9 @@ def process_auto_mode(file_field_map, context_path, cache, batch_size=BATCH_SIZE
                         "status": "accepted",
                         "timestamp": datetime.now().isoformat(),
                         "action": "auto-accept",
-                        "user": os.environ.get("USER", "system"),
+                        "user": user,
                     }
-                    write_audit_log("accept", entry, user=os.environ.get("USER", "system"))
+                    write_audit_log("accept", entry, user=user)
                     total_processed += 1
 
             # Remove processed log file if it exists
@@ -1177,8 +1170,8 @@ def main():
     parser.add_argument("--export-audit-log", type=str, help="Export audit log to given path")
     parser.add_argument("--rest-api", action="store_true", help="Run REST API server")
     parser.add_argument("--enhanced", action="store_true", help="Enable enhanced learning and automation (spaCy, coordinator, context_organizer, LLM)")
-    parser.add_argument("--llm-api-key", type=str, default=None, help="API key for external LLM (e.g., OpenAI/Anthropic)")
-    parser.add_argument("--llm-provider", type=str, default="openai", help="LLM provider: openai or anthropic")
+    parser.add_argument("--llm-api-key", type=str, default=None, help="API key for external LLM (e.g., OpenAI)")
+    parser.add_argument("--llm-provider", type=str, default="openai", help="LLM provider: openai")
     parser.add_argument("--llm-model", type=str, default="gpt-4-turbo", help="LLM model name")
     parser.add_argument("--llm-system-prompt", type=str, default=None, help="Custom system prompt for LLM")
     parser.add_argument("--llm-extra-instructions", type=str, default=None, help="Extra instructions for LLM prompt")
@@ -1329,11 +1322,11 @@ def main():
                         enhanced=args.enhanced,
                         coordinator=None,
                         context_organizer=None,
-                        llm_api_key=args.llm_api_key,
-                        llm_provider=args.llm_provider,
-                        llm_model=args.llm_model,
-                        llm_system_prompt=args.llm_system_prompt,
-                        llm_extra_instructions=args.llm_extra_instructions
+                        llm_api_key=LLM_API_KEY,
+                        llm_provider=LLM_PROVIDER,
+                        llm_model=LLM_MODEL,
+                        llm_system_prompt=LLM_SYSTEM_PROMPT,
+                        llm_extra_instructions=LLM_EXTRA_INSTRUCTIONS
                     )
                     total_accepted += accepted
                     total_edited += edited

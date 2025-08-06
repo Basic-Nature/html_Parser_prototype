@@ -1,7 +1,12 @@
+# webapp/parser/utils/seleniumbase_launcher.py
+# -----------------------------------------------------------------------------------
+# This file contains functions to launch and manage SeleniumBase browsers
+# for web scraping and automation tasks, including handling CAPTCHAs and stealth mode.
+# -----------------------------------------------------------------------------------
+from __future__ import annotations
 from seleniumbase import Driver
 import time
-import os
-from ..utils.logger_singleton import logger
+from .logger_singleton import logger
 
 def launch_browser(user_agent=None, headless=True, proxy=None):
     """

@@ -11,15 +11,15 @@ import time
 import inspect
 import asyncio
 from typing import (
-    Protocol, Optional, Tuple, Callable, Union, Collection, Any
+    Protocol, Optional, Tuple, Union, Collection, Any
 )
 from flask import Response
 from playwright.sync_api import (
     sync_playwright, Browser, BrowserContext, Page, BrowserType, ElementHandle, Locator
 )
 from selenium.webdriver.remote.webdriver import WebDriver
-from ..utils.logger_singleton import logger, console, prompt
-from ..utils.shared_logic import (
+from .logger_singleton import logger, console, prompt
+from .shared_logic import (
     safe_lower, safe_get, safe_get_first
 )
 from ..config import CONTEXT_LIBRARY_PATH

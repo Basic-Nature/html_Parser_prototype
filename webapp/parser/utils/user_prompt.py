@@ -1,20 +1,22 @@
+# webapp/parser/utils/user_prompt.py
+# -----------------------------------------------------------------------------------
+# This file contains a unified user prompt handler for both CLI and webapp modes.
+# It encapsulates all prompt logic as methods and provides a consistent interface
+# for user interactions, including advanced features like session management and
+# structured logging.
+# -----------------------------------------------------------------------------------
+from __future__ import annotations
 import time
 import threading
 import datetime
-from datetime import timezone
-import os
 import re
 import orjson
 import inspect
+import traceback
+from datetime import timezone
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
 from typing import Any, Callable, Dict, List, Optional, Union, Generator, ContextManager
 from contextlib import contextmanager
-
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass  # dotenv is optional
 
 def safe_lower(val) -> str:
     try:
@@ -27,10 +29,6 @@ def safe_strip(val) -> str:
         return val.strip() if isinstance(val, str) else str(val).strip()
     except Exception:
         return ""
-
-def get_prompt_mode() -> str:
-    """Get prompt mode from environment or default to CLI."""
-    return os.environ.get("PROMPT_MODE", "cli").lower()
 
 class PromptCancelled(Exception):
     """Raised when the user cancels a prompt."""
@@ -58,7 +56,6 @@ class PromptSession(ContextManager):
         self.event.set()
         # Optionally log exceptions for debugging
         if exc_type is not None:
-            import traceback
             print(f"[PromptSession] Exception in context: {exc_type.__name__}: {exc_val}")
             traceback.print_tb(exc_tb)
         # Return False to propagate exceptions
@@ -74,9 +71,10 @@ class PromptSession(ContextManager):
         self.response = response
         self.event.set()
 
-    def is_expired(self) -> bool:
+    def is_expired(self, now: Optional[datetime.datetime] = None) -> bool:
         """Check if the session has expired."""
-        return (datetime.datetime.now(timezone.utc) - self.created_at).total_seconds() > self.expiry_seconds        
+        now = now or datetime.datetime.now(timezone.utc)
+        return (now - self.created_at).total_seconds() > self.expiry_seconds      
 
 class UserPrompt(ContextManager):
     """
@@ -98,7 +96,7 @@ class UserPrompt(ContextManager):
         """
         Initialize the UserPrompt.
         """
-        self.mode = mode or get_prompt_mode()
+        self.mode = mode
         self.socketio_emit_func = socketio_emit_func
         self.prompt_sessions: Dict[str, PromptSession] = {}
         self.file_path = file_path
@@ -109,7 +107,7 @@ class UserPrompt(ContextManager):
         Sets up resources for CLI or webapp mode, manages session state,
         and prepares for advanced/nested prompt handling.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         logger.info(f"[UserPrompt] Entering context at {datetime.datetime.now(timezone.utc).isoformat()} (mode={self.mode})")
 
         # Ensure prompt_sessions is always a dict
@@ -141,19 +139,14 @@ class UserPrompt(ContextManager):
             if not self.socketio_emit_func:
                 logger.warning("[UserPrompt] Webapp mode active but no socketio_emit_func set!")
             # Optionally, preload webapp-specific settings here
-
-        # Optionally, preload environment variables or settings
-        # (already handled at module import with dotenv)
-
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         # Cleanup logic (e.g., clear prompt sessions)
         self.prompt_sessions.clear()
         # Optionally log exceptions for debugging
         if exc_type is not None:
-            import traceback
             logger.error(f"[UserPrompt] Exception in context: {exc_type.__name__}: {exc_val}")
             traceback.print_tb(exc_tb)
         # Return False to propagate exceptions
@@ -161,7 +154,7 @@ class UserPrompt(ContextManager):
 
     def set_mode(self, mode: Optional[str] = None) -> None:
         """Set the prompt mode (cli/webapp)."""
-        self.mode = mode or get_prompt_mode()
+        self.mode = mode
 
     def set_socketio_emit_func(self, emit_func: Callable[[str], None]) -> None:
         """Set the function to emit prompts via socketio (for webapp mode)."""
@@ -185,11 +178,11 @@ class UserPrompt(ContextManager):
         """
         Remove all sessions that are done or expired.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         now = datetime.datetime.now(timezone.utc)
         to_remove = [
             sid for sid, sess in self.prompt_sessions.items()
-            if sess.event.is_set() or sess.is_expired()
+            if sess.event.is_set() or sess.is_expired(now)
         ]
         for sid in to_remove:
             logger.info(f"[UserPrompt] Cleaning up session: {sid}")
@@ -199,7 +192,7 @@ class UserPrompt(ContextManager):
         """
         Centralized CLI prompt logic with consistent logging.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         logger.info(f"[CLI Prompt] {message}")
         try:
             resp = input(message)
@@ -213,7 +206,7 @@ class UserPrompt(ContextManager):
         Centralized webapp prompt logic.
         Emits structured JSON messages for prompt, status, or error.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         payload = {
             "type": status,
             "session_id": session_id,
@@ -235,7 +228,7 @@ class UserPrompt(ContextManager):
 
     def print_header(self, title: str = "USER INPUT REQUIRED", char: str = "=", width: int = 60) -> None:
         """Print a formatted header for prompts."""
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         logger.info("\n" + char * width)
         logger.info(f"{title.center(width)}")
         logger.info(char * width)
@@ -254,7 +247,7 @@ class UserPrompt(ContextManager):
         """
         Emit a prompt or status message in both CLI and webapp modes.
         """
-        from ..utils.logger_singleton import logger, console
+        from .logger_singleton import logger, console
         payload = {
             "type": status,
             "session_id": session_id,
@@ -282,7 +275,7 @@ class UserPrompt(ContextManager):
         """
         Check if a message at the given level should be emitted, based on SharedLogger's current log level.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         # Use the logger's level mapping and current level
         logger_level = getattr(logger, "level", "INFO")
         level_mapping = getattr(logger, "level_mapping", {
@@ -354,7 +347,7 @@ class UserPrompt(ContextManager):
         Prompt the user for input, with optional default, validation, cancel, timeout, header, and logging.
         Returns the validated input or raises PromptCancelled if cancelled.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         self.cleanup_sessions()
         def input_with_timeout(prompt: str, timeout: float) -> Optional[str]:
             result = [None]
@@ -470,7 +463,7 @@ class UserPrompt(ContextManager):
         """
         Prompt the user for a yes/no answer.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         self.cleanup_sessions()
         if header:
             self.print_header(header)
@@ -531,7 +524,7 @@ class UserPrompt(ContextManager):
         """
         Prompt the user to select from a list of options.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         if not options:
             raise ValueError("No options provided for selection.")
         if header:
@@ -567,7 +560,7 @@ class UserPrompt(ContextManager):
         """
         Prompt for a metadata field, optionally with suggestions.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         if suggestions:
             logger.info(f"Suggestions for {field_name}:")
             for idx, s in enumerate(suggestions):
@@ -622,7 +615,7 @@ class UserPrompt(ContextManager):
         """
         Review and optionally edit a context dictionary.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         logger.info("\n[Context Review]")
         for k, v in context.items():
             logger.info(f"  {k}: {v}")
@@ -643,7 +636,7 @@ class UserPrompt(ContextManager):
         """
         Prompt user to resolve a conflict by selecting an option.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         logger.info(f"\n[Conflict Detected: {conflict_type}]")
         for idx, opt in enumerate(options):
             logger.info(f"  [{idx}] {opt}")
@@ -668,7 +661,7 @@ class UserPrompt(ContextManager):
         Prompt user to select the correct button from candidates.
         The `page` argument is accepted for compatibility with advanced feedback/callbacks.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         logger.info(f"\n[FEEDBACK] Please select the correct button for '{toggle_name}':")
         for idx, btn in enumerate(candidates):
             logger.info(
@@ -716,7 +709,7 @@ class UserPrompt(ContextManager):
         """
         Confirm with the user if a button should be clicked.
         """
-        from ..utils.logger_singleton import logger
+        from .logger_singleton import logger
         label = candidate.get("label", "")
         selector = candidate.get("selector", "")
         logger.info(f"\n[CONFIRMATION] Candidate button found: '{label}'\nSelector: {selector}")

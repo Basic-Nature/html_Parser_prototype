@@ -1,3 +1,9 @@
+# webapp/parser/utils/table_core.py
+# -----------------------------------------------------------------------------------
+# This module provides centralized utilities for table extraction, harmonization,
+# annotation, and verification in web scraping and automation tasks.
+# It serves as the single source of truth for all table-related operations.
+# -----------------------------------------------------------------------------------
 """
 table_core.py
 
@@ -15,7 +21,7 @@ All high-level orchestration is handled in table_builder.py.
 
 This ensures all table structure learning, harmonization, and feedback are centralized.
 """
-
+from __future__ import annotations
 import os
 import orjson
 import re
@@ -24,11 +30,16 @@ import glob
 import re
 import string
 import difflib
-from ..utils.browser_utils import (
+import types
+import dateutil.parser
+from rich.table import Table as RichTable
+from urllib.parse import urlparse
+from langdetect import detect, DetectorFactory
+from .browser_utils import (
     safe_nth, safe_locator, safe_count, safe_inner_text, safe_content, 
     safe_get_attribute, safe_evaluate
 )
-from ..utils.shared_logic import (
+from .shared_logic import (
     safe_get, safe_lower, safe_append, safe_pop, safe_add,
     safe_items, safe_values, safe_replace, safe_isalpha,
     safe_extract, safe_scheme, safe_netloc, safe_geturl, safe_strip,
@@ -40,8 +51,8 @@ from typing import List, Dict, Any, Tuple, TYPE_CHECKING
 import time
 from selectolax.parser import HTMLParser
 import hashlib
-from ..utils.logger_singleton import logger, console, prompt
-from ..utils.ml_table_detector import detect_tables_ml
+from .logger_singleton import logger, console, prompt
+from .ml_table_detector import detect_tables_ml
 from ..config import CACHE_DIR, LOG_DIR
 from difflib import get_close_matches
 from ..Context_Integration.Context_Library.constants import (
@@ -52,22 +63,12 @@ from ..Context_Integration.Context_Library.constants import (
     LIKELY_ROW_CLASSES, CONTEST_TITLE_TAGS, CONTEST_TITLE_MIN_WORDS, CONTEST_TITLE_SKIP_PHRASES 
 )
 from ..Context_Integration.librarian import (
-    normalize_segment_text
+    normalize_segment_text, get_safe_log_path
 )
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 # --- CONSTANTS & GLOBALS ---
 TABLE_STRUCTURE_CACHE_PATH = os.path.join(CACHE_DIR, "table_structure_cache.json")
-
-def get_safe_log_path(filename):
-    """
-    Returns a safe log path inside the PROJECT_ROOT/log directory.
-    Prevents path-injection and directory traversal.
-    """
-    log_dir = LOG_DIR
-    os.makedirs(log_dir, exist_ok=True)
-    safe_filename = os.path.basename(filename)
-    return os.path.join(log_dir, safe_filename)
 
 context_cache = {}
 
@@ -80,7 +81,6 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     Unified, persistent table extraction pipeline with robust location detection and forced wide format.
     Now supports ML-driven context, segments, and panels from html_scanner.
     """
-    import types
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = ContextCoordinator()
     def safe_json(obj):
@@ -465,7 +465,7 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
     Dynamically chooses between panel-based and section-heading-based extraction,
     scores each, and merges/patches missing information if possible.
     """
-    from ..utils.dynamic_table_extractor import (
+    from .dynamic_table_extractor import (
         find_tables_with_panel_headings,
         find_tables_with_section_headings,
     )
@@ -827,7 +827,6 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         else:
             logger.warning(f"[yellow]No unique candidates detected in data.[/yellow]")
         if data:
-            from rich.table import Table as RichTable
             preview_table = RichTable(show_header=True, header_style="bold magenta")
             for h in headers:
                 preview_table.add_column(h)
@@ -1518,7 +1517,6 @@ def safe_redirect_url(user_url, allowed_domains=None):
     """
     Prevent unvalidated redirects by checking user-supplied URLs against a whitelist.
     """
-    from urllib.parse import urlparse
     if allowed_domains is None:
         allowed_domains = {"yourdomain.com"}
     try:
@@ -1707,8 +1705,6 @@ def merge_multiline_candidate_rows(headers, data) -> tuple[list[str], list[dict]
     - If the next row is just a party, merge it.
     - Always ensure 'Precinct' and 'Percent Reported' columns are present if found in any row.
     """
-    import re
-
     # --- Detect if we have these columns in headers or data ---
     has_precinct = "Precinct" in headers or any("Precinct" in safe_keys(row) for row in data)
     has_percent_reported = "Percent Reported" in headers or any("Percent Reported" in safe_keys(row) for row in data)
@@ -2982,7 +2978,6 @@ def is_date_like(val) -> bool:
     Robustly determine if a value is date-like.
     Handles strings, numbers, and common date formats. Ignores empty/null values.
     """
-    import dateutil.parser
     if val is None or (isinstance(val, str) and not val.strip()):
         return False
     # Accept numeric timestamps (e.g., 20230704)
@@ -3008,7 +3003,6 @@ def detect_language(headers) -> str:
     Uses langdetect if available, else defaults to 'en'.
     """
     try:
-        from langdetect import detect, DetectorFactory
         DetectorFactory.seed = 0  # For deterministic results
         if not headers or not isinstance(headers, (list, tuple)):
             return "en"
