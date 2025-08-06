@@ -50,6 +50,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y tesseract-ocr poppler-utils libpq-dev
 
+      - name: Clear pip cache
+        run: pip cache purge
+
+      - name: Uninstall all existing Python packages
+        run: |
+          pip freeze > old.txt
+          cat old.txt  # Confirm old.txt is created and list contents
+          if [ -s old.txt ]; then pip uninstall -y -r old.txt; fi
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
@@ -64,7 +73,7 @@ jobs:
 
       - name: Create .env file
         run: |
-          echo "KEY=VALUE" > webapp/.env
+          echo "FLASK_SECRET_KEY=your-very-long-random-string" > webapp/.env
           echo "KEY2=VALUE2" >> webapp/.env
 
       - name: Login to Azure
