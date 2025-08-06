@@ -72,7 +72,6 @@ jobs:
         uses: azure/appservice-settings@v1
         with:
           app-name: 'BallotLens'
-          resource-group-name: 'BallotLens_group'
           app-settings-json: |
             {
               "FLASK_SECRET_KEY": "${{ secrets.FLASK_SECRET_KEY }}",
@@ -94,6 +93,5 @@ jobs:
         id: deploy-to-webapp
         with:
           app-name: 'BallotLens'
-          resource-group-name: 'BallotLens_group'
           slot-name: 'Production'
           package: .
