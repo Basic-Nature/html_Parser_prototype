@@ -1,4 +1,4 @@
-# yml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 # More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -36,8 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write
+      contents: read
 
     steps:
       - name: Download artifact from build job
@@ -60,10 +60,6 @@ jobs:
 
       - name: List files (recursive)
         run: ls -R
-      - name: Find all files (full path)
-        run: find . -type f
-      - name: List top-level folders
-        run: ls -l
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -71,6 +67,22 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
+
+      - name: Set Azure App Settings (Environment Variables)
+        uses: azure/appservice-settings@v1
+        with:
+          app-name: 'BallotLens'
+          settings-json: |
+            {
+              "FLASK_SECRET_KEY": "${{ secrets.FLASK_SECRET_KEY }}",
+              "FLASK_COOKIE_SECURE": "True",
+              "POSTGRES_USER": "${{ secrets.POSTGRES_USER }}",
+              "POSTGRES_PASSWORD": "${{ secrets.POSTGRES_PASSWORD }}",
+              "POSTGRES_DB": "${{ secrets.POSTGRES_DB }}",
+              "POSTGRES_HOST": "${{ secrets.POSTGRES_HOST }}",
+              "POSTGRES_PORT": "${{ secrets.POSTGRES_PORT }}",
+              "POSTGRES_SERVICE_NAME": "${{ secrets.POSTGRES_SERVICE_NAME }}"
+            }
 
       - name: Set Azure startup command
         run: |

@@ -4,8 +4,9 @@
 # ---------------------------------------------------------------
 from __future__ import annotations
 from .shared_logger import SharedLogger, RichConsoleProxy
+from ..config import LOG_LEVEL
 
-logger = SharedLogger()
+logger = SharedLogger(level=LOG_LEVEL)
 console = RichConsoleProxy(logger=logger)
 
 from .user_prompt import UserPrompt

@@ -26,16 +26,14 @@ import re
 import orjson
 from typing import List, Dict, Any, Optional, Tuple
 from selectolax.parser import HTMLParser
-from .shared_logger import SharedLogger
 from .browser_utils import safe_content, safe_attributes
 from .model_registry import TableDetectionModel
-
+from .logger_singleton import logger
 from ..config import (
     LLM_PROVIDER, LLM_MODEL, LLM_API_KEY, LLM_SYSTEM_PROMPT, LLM_EXTRA_INSTRUCTIONS,
     TABLE_MODEL_PATH
 )
 
-logger = SharedLogger()
 # --- Optional LLM integration (OpenAI, local LLM, etc.) ---
 def _llm_detect_tables(html: str, options: dict) -> List[Dict[str, Any]]:
     """

@@ -454,6 +454,8 @@ def handle_get_session_history(data) -> None:
         logger.warning(f"Invalid session_id type: {type(sid)} value: {sid}")
         return
     logs = session_logs.get(sid, [])
+    if not isinstance(logs, list):
+        logs = []
     emit('session_history', {'session_id': sid, 'logs': logs}, room=request.sid)
 
 @socketio.on('clone_session')
@@ -479,14 +481,14 @@ def handle_delete_session(data) -> None:
     if not isinstance(sid, str):
         logger.warning(f"Invalid session_id type: {type(sid)} value: {sid}")
         return
-    username = data.get('username')
-    if is_owner(sid, username):
-        active_sessions_backend.discard(sid)
-        session_last_active.pop(sid, None)
-        session_metadata.pop(sid, None)
-        emit('session_deleted', {'session_id': sid}, broadcast=True)
-    else:
-        emit('error', {'message': 'Permission denied'}, room=request.sid)
+    # Remove session unconditionally (no username check)
+    active_sessions_backend.discard(sid)
+    session_last_active.pop(sid, None)
+    session_metadata.pop(sid, None)
+    session_prompt_queues.pop(sid, None)
+    session_threads.pop(sid, None)
+    session_logs.pop(sid, None)
+    emit('session_deleted', {'session_id': sid}, broadcast=True)
 
 @socketio.on('join')
 def on_join(data):
@@ -502,38 +504,58 @@ def on_join(data):
 
 @socketio.on('get_sessions')
 def handle_get_sessions():
-    cleanup_sessions()
+    cleanup_sessions()  # Clean up expired sessions before listing
     sessions = [session_metadata[sid] for sid in active_sessions_backend if sid in session_metadata]
     emit('session_list', {'sessions': sessions}, broadcast=True)
 
 @socketio.on('connect')
 def handle_connect():
+    cleanup_sessions()  # Clean up expired sessions on connect
     logger.set_mode("webapp")
     logger.set_format("json")
     session['log_format'] = "json"
-    session_id = safe_sid()
-    session_last_active[session_id] = time.time()
+    # Do NOT generate a new session_id here!
     prev_session_id = request.args.get('prev_session_id')
-    if prev_session_id and prev_session_id != session_id:
+    # Only update last_active if prev_session_id is known
+    if prev_session_id and prev_session_id in session_metadata:
+        session_last_active[prev_session_id] = time.time()
+    if prev_session_id:
         cancellation_manager.remove(prev_session_id)
         prompt.clear_prompt_session(prev_session_id)
-        log_parser_status(f"Cleaned up previous session {prev_session_id}", session_id)
-    emit('session_id', {'session_id': session_id})
+        log_parser_status(f"Cleaned up previous session {prev_session_id}", prev_session_id)
+    # Only emit back the session_id if it exists, otherwise emit nothing
+    if prev_session_id:
+        emit('session_id', {'session_id': prev_session_id})
     def emit_to_socketio(line):
+        sid = prev_session_id
+        # Store log for session
+        if sid:
+            if sid not in session_logs:
+                session_logs[sid] = []
+            # Store as dict or string
+            if isinstance(line, str) and line.strip().startswith("{"):
+                try:
+                    obj = orjson.loads(line)
+                    session_logs[sid].append(obj)
+                except Exception:
+                    session_logs[sid].append(line)
+            else:
+                session_logs[sid].append(line)
+        # ...existing emit logic...
         if isinstance(line, str) and line.strip().startswith("{"):
             try:
                 obj = orjson.loads(line)
-                socketio.emit('parser_output', obj, room=session_id)
+                socketio.emit('parser_output', obj, room=sid)
                 return
             except Exception:
                 pass
         if isinstance(line, dict):
-            socketio.emit('parser_output', line, room=session_id)
+            socketio.emit('parser_output', line, room=sid)
         else:
-            socketio.emit('parser_output', line, room=session_id)
+            socketio.emit('parser_output', line, room=sid)
     logger.set_socketio_emit_func(emit_to_socketio)
     prompt.set_mode("webapp")
-    prompt.set_socketio_emit_func(lambda msg: socketio.emit('parser_output', msg, room=session_id))
+    prompt.set_socketio_emit_func(lambda msg: socketio.emit('parser_output', msg, room=prev_session_id))
 
 @socketio.on('disconnect')
 def handle_disconnect(sid) -> None:
@@ -562,10 +584,32 @@ def handle_set_output_mode(data) -> None:
 
 @socketio.on('parser_prompt')
 def handle_parser_prompt(data) -> None:
-    session_id = safe_sid()
-    prompt_queue = get_prompt_queue(session_id)
-    log_parser_status(f"Received prompt: {data}", session_id)
-    prompt_queue.put(data)
+    # Accept both string and dict payloads
+    session_id = None
+    value = data
+    if isinstance(data, dict):
+        value = data.get("value", "")
+        session_id = data.get("session_id")
+    # Only proceed if session_id is valid and exists in session_metadata
+    if not session_id or session_id not in session_metadata:
+        logger.warning(f"parser_prompt: Ignoring prompt for unknown session_id: {session_id}")
+        return
+    # Store prompt in session_logs
+    if session_id not in session_logs:
+        session_logs[session_id] = []
+    session_logs[session_id].append({
+        "level": "PROMPT",
+        "type": "prompt",
+        "timestamp": time.time(),
+        "message": value
+    })
+    # Deliver the value to the waiting prompt session
+    prompt_session = prompt.prompt_sessions.get(session_id)
+    if prompt_session:
+        prompt_session.set_response(value)
+        log_parser_status(f"Delivered prompt response to session {session_id}: {value}", session_id)
+    else:
+        log_parser_status(f"No prompt session found for {session_id} (value: {value})", session_id)
 
 @socketio.on('cancel_parser')
 def handle_cancel_parser() -> None:
@@ -575,18 +619,14 @@ def handle_cancel_parser() -> None:
         del session_threads[session_id]
     if session_id in session_prompt_queues:
         del session_prompt_queues[session_id]
-
-@socketio.on('parser_prompt')
-def handle_parser_prompt(data) -> None:
-    log_parser_status(f"Received prompt: {data}")
-    session_id = safe_sid()
-    cancel_flag = cancellation_manager.get_flag(session_id)
-    thread = Thread(target=process_urls_for_web, args=(data, session_id, cancel_flag))
-    thread.start()
+    cleanup_sessions()  # Clean up after cancel
 
 @socketio.on('run_parser')
 def handle_run_parser() -> None:
+    cleanup_sessions()  # Clean up expired sessions before running
     session_id = safe_sid()
+    if session_id not in session_metadata:
+        create_session_metadata(session_id)
     if session_metadata[session_id]['locked']:
         emit('parser_output', {
             "level": "ERROR",

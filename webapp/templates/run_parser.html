@@ -401,7 +401,6 @@ document.addEventListener("DOMContentLoaded", function() {
     // Always send a string session ID, never an object
     let prevSessionId = localStorage.getItem('session_id');
     try {
-        // If accidentally stored as object, extract session_id
         if (prevSessionId && prevSessionId.startsWith('{')) {
             let parsed = JSON.parse(prevSessionId);
             if (parsed.session_id) prevSessionId = parsed.session_id;
@@ -424,7 +423,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function getSessions() {
         let sessions = JSON.parse(localStorage.getItem('active_sessions') || "[]");
-        // Only keep string session IDs
         sessions = sessions.map(s => (typeof s === 'object' && s.session_id) ? s.session_id : s);
         sessions = Array.from(new Set(sessions));
         localStorage.setItem('active_sessions', JSON.stringify(sessions));
@@ -432,7 +430,6 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function setActiveSession(sid) {
-        // Always use string session ID
         if (typeof sid === 'object' && sid.session_id) {
             sid = sid.session_id;
         }
@@ -464,19 +461,20 @@ document.addEventListener("DOMContentLoaded", function() {
                 highlightActiveSession();
                 outputDiv.innerHTML = '';
                 socket.emit('join', {session_id: sid});
+                loadSessionLogs(sid);
             };
             let removeBtn = document.createElement('span');
             removeBtn.textContent = '✖';
             removeBtn.style.cssText = 'float:right;color:#eb4f43;cursor:pointer;font-weight:bold;margin-left:1em;';
             removeBtn.onclick = function(e) {
                 e.stopPropagation();
+                socket.emit('delete_session', {session_id: sid});
                 let sessions = getSessions().filter(s => s !== sid);
                 localStorage.setItem('active_sessions', JSON.stringify(sessions));
-                renderSessionList();
                 if (localStorage.getItem('session_id') === sid) {
                     setActiveSession(sessions[0] || '');
-                    highlightActiveSession();
                 }
+                renderSessionList();
             };
             btn.appendChild(removeBtn);
             sessionListDiv.appendChild(btn);
@@ -499,13 +497,16 @@ document.addEventListener("DOMContentLoaded", function() {
     // Only create new session when Run Parser is pressed
     document.getElementById('runParserBtn').addEventListener('click', function(e) {
         e.preventDefault();
-        let newSid = 'sess_' + Math.random().toString(36).substr(2, 9);
-        let sessions = getSessions();
-        sessions.push(newSid);
-        localStorage.setItem('active_sessions', JSON.stringify(sessions));
-        setActiveSession(newSid);
-        renderSessionList();
-        socket.emit('join', {session_id: newSid});
+        let sid = localStorage.getItem('session_id');
+        if (!sid) {
+            sid = 'sess_' + Math.random().toString(36).substr(2, 9);
+            let sessions = getSessions();
+            sessions.push(sid);
+            localStorage.setItem('active_sessions', JSON.stringify(sessions));
+            setActiveSession(sid);
+            renderSessionList();
+            socket.emit('join', {session_id: sid});
+        }
         outputDiv.innerHTML = '';
         const rect = this.getBoundingClientRect();
         const x = rect.left + rect.width / 2;
@@ -514,25 +515,16 @@ document.addEventListener("DOMContentLoaded", function() {
         socket.emit('run_parser');
     });
 
-    // Do NOT create new session on connect, just join existing
-    socket.on('connect', function() {
-        let sid = localStorage.getItem('session_id');
-        if (sid) {
-            setActiveSession(sid);
-            renderSessionList();
-            socket.emit('join', {session_id: sid});
-        }
-    });
+    // Load session logs for a session
+    function loadSessionLogs(sid) {
+        socket.emit('get_session_history', { session_id: sid });
+    }
 
-    socket.on('session_id', function(data) {
-        let sid = typeof data === 'string' ? data : data.session_id;
-        let sessions = getSessions();
-        if (!sessions.includes(sid)) {
-            sessions.push(sid);
-            localStorage.setItem('active_sessions', JSON.stringify(sessions));
-        }
-        setActiveSession(sid);
-        renderSessionList();
+    socket.on('session_history', function(data) {
+        if (!data || !data.logs) return;
+        outputDiv.innerHTML = '';
+        data.logs.forEach(renderParserOutput);
+        outputDiv.scrollTop = outputDiv.scrollHeight;
     });
 
     // Log type filter logic
@@ -567,16 +559,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    document.getElementById('runParserBtn').addEventListener('click', function(e) {
-        e.preventDefault();
-        outputDiv.innerHTML = '';
-        const rect = this.getBoundingClientRect();
-        const x = rect.left + rect.width / 2;
-        const y = rect.top + rect.height / 2 + window.scrollY;
-        createExplosion(x, y);
-        socket.emit('run_parser');
-    });
-
     cancelBtn.addEventListener('click', function(e) {
         e.preventDefault();
         if (cancelRequested) return;
@@ -591,14 +573,26 @@ document.addEventListener("DOMContentLoaded", function() {
             cancelBtn.disabled = false;
             cancelBtn.textContent = "Cancel";
             cancelRequested = false;
+            let sid = localStorage.getItem('session_id');
+            if (sid) {
+                let sessions = JSON.parse(localStorage.getItem('active_sessions') || "[]").filter(s => s !== sid);
+                localStorage.setItem('active_sessions', JSON.stringify(sessions));
+                if (sessions.length > 0) {
+                    localStorage.setItem('session_id', sessions[0]);
+                } else {
+                    localStorage.removeItem('session_id');
+                }
+                renderSessionList();
+            }
         }, 5000);
     });
 
     function sendPrompt(event) {
         event.preventDefault();
         var value = promptInput.value.trim();
-        if (value) {
-            socket.emit('parser_prompt', value);
+        var sessionId = localStorage.getItem('session_id');
+        if (value && sessionId) {
+            socket.emit('parser_prompt', { session_id: sessionId, value: value });
             promptInput.value = '';
         }
     }
@@ -610,7 +604,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 
-    // Filtering logic for both level and type
     document.getElementById('logFilterSelect').addEventListener('change', filterLogs);
     logTypeSelect.addEventListener('change', filterLogs);
 
@@ -632,8 +625,8 @@ document.addEventListener("DOMContentLoaded", function() {
         socket.emit('set_output_mode', {mode: mode});
     });
 
-    // Enhanced parser_output handler
-    socket.on('parser_output', function(data) {
+    // Robust parser_output rendering function
+    function renderParserOutput(data) {
         if (outputDiv.innerHTML.includes('Parser output will appear')) {
             outputDiv.innerHTML = '';
         }
@@ -723,15 +716,39 @@ document.addEventListener("DOMContentLoaded", function() {
         outputDiv.scrollTop = outputDiv.scrollHeight;
         window.scrollTo(0, document.body.scrollHeight);
         filterLogs();
+    }
+
+    socket.on('parser_output', renderParserOutput);
+
+    // On connect, restore session and logs
+    socket.on('connect', function() {
+        let sid = localStorage.getItem('session_id');
+        renderSessionList();
+        if (sid) {
+            setActiveSession(sid);
+            socket.emit('join', {session_id: sid});
+            loadSessionLogs(sid);
+        }
+    });
+
+    socket.on('session_id', function(data) {
+        let sid = typeof data === 'string' ? data : data.session_id;
+        let sessions = getSessions();
+        if (!sessions.includes(sid)) {
+            sessions.push(sid);
+            localStorage.setItem('active_sessions', JSON.stringify(sessions));
+        }
+        setActiveSession(sid);
+        renderSessionList();
     });
 
     // Initial render
     renderSessionList();
     setActiveSession(localStorage.getItem('session_id') || '');
     socket.emit('get_sessions');
+
     socket.on('session_list', function(data) {
         if (Array.isArray(data.sessions)) {
-            // Only keep string session IDs
             let sessionIds = data.sessions.map(s => (typeof s === 'object' && s.session_id) ? s.session_id : s);
             localStorage.setItem('active_sessions', JSON.stringify(sessionIds));
             renderSessionList();
@@ -739,6 +756,16 @@ document.addEventListener("DOMContentLoaded", function() {
                 setActiveSession(sessionIds[0] || '');
             }
         }
+    });
+
+    socket.on('session_deleted', function(data) {
+        let sid = data.session_id;
+        let sessions = getSessions().filter(s => s !== sid);
+        localStorage.setItem('active_sessions', JSON.stringify(sessions));
+        if (localStorage.getItem('session_id') === sid) {
+            setActiveSession(sessions[0] || '');
+        }
+        renderSessionList();
     });
 });
 </script>

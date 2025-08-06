@@ -19,7 +19,7 @@ from ..Context_Integration.librarian import (
     clean_for_json
 )
 from .logger_singleton import logger
-from ..config import POSTGRES_URL, CONTEXT_LIBRARY_PATH
+from ..config import POSTGRES_URL
 
 # Set up SQLAlchemy engine and session
 engine = create_engine(POSTGRES_URL, echo=False, future=True)

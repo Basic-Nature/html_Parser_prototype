@@ -73,11 +73,17 @@ POSTGRES_DB = os.environ.get("POSTGRES_DB", "")
 POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "")
 POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "")
 
-# Compose the PostgreSQL URL, preferring the full URL if provided
-POSTGRES_URL = os.environ.get(
-    "POSTGRES_URL",
-    f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-)
+# Compose the PostgreSQL URL, omitting the port if not set
+if POSTGRES_PORT:
+    POSTGRES_URL = os.environ.get(
+        "POSTGRES_URL",
+        f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    )
+else:
+    POSTGRES_URL = os.environ.get(
+        "POSTGRES_URL",
+        f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}/{POSTGRES_DB}"
+    )
 
 # Optional: Service name for Azure App Service deployments
 POSTGRES_SERVICE_NAME = os.environ.get("POSTGRES_SERVICE_NAME", "Check PostgreSQL service name in Azure App Settings")
