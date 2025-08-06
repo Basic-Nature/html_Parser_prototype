@@ -5,6 +5,7 @@ def parse(page, coordinator=None, context=None, session_id=None, logger=None, **
     If no handler is found, uses ML/NLP and user feedback to improve routing, and logs all attempts.
     No extraction is performed here.
     """
+    from __future__ import annotations
     from ...Context_Integration.context_coordinator import ContextCoordinator
     from ...state_router import get_handler, list_available_handlers, fuzzy_match_handler
     from ...utils.shared_logic import normalize_state_name, normalize_county_name, safe_parse, safe_get

@@ -11,12 +11,11 @@
 #   6. SocketIO Event Handlers
 #   7. Main Entrypoint
 # -----------------------------------------------------------
-
+from __future__ import annotations
 # 1. Imports & Environment Setup
 import csv
 from datetime import datetime, timezone
 from difflib import get_close_matches
-from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, session, url_for, flash, send_file, send_from_directory
 from flask_socketio import emit, SocketIO, join_room
 import importlib
@@ -34,9 +33,6 @@ from webapp.parser.web_pipeline import (
 )
 from webapp.parser.config import BASE_DIR, PROJECT_ROOT
 from webapp.parser.utils.logger_singleton import logger, console, prompt
-
-# Load environment variables
-load_dotenv()
 
 # 2. Flask App & SocketIO Initialization
 app = Flask(__name__)

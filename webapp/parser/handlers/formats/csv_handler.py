@@ -1,11 +1,10 @@
 # ==============================================================
 # 🗳️ Smart Elections: Universal CSV Election Results Parser
 # ==============================================================
-
+from __future__ import annotations
 import csv
 import os
 import orjson
-from dotenv import load_dotenv
 from ...config import BASE_DIR
 from ...utils.logger_singleton import logger
 from ...Context_Integration.Context_Library.constants import (
@@ -13,8 +12,6 @@ from ...Context_Integration.Context_Library.constants import (
     MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
 )
 from ...utils.table_core import harmonize_headers_and_data
-
-load_dotenv()
 
 def get_input_folder():
     # Parent of webapp, then 'input'

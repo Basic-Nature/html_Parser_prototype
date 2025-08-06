@@ -1,17 +1,18 @@
+# ==============================================================
+# 🗳️ Smart Elections: HTML Election Results Parser
+# ==============================================================
+from __future__ import annotations
 import os
 import orjson
-import re
 import threading
 import sys
 import psycopg2
-from pathlib import Path
 from datetime import datetime
 from typing import cast, Dict, Any, List
 from multiprocessing import Pool
 
 from playwright.sync_api import sync_playwright, Page
 from sqlalchemy.exc import OperationalError
-from .config import BASE_DIR, CONTEXT_DB_PATH, PROJECT_ROOT
 from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler, preload_handler_map
 from .utils.browser_utils import browser_pipeline, safe_browser_close
