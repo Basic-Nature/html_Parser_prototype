@@ -67,23 +67,21 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
-      - name: Debug rendered app-settings-json
-        run: |
-          echo '{
-              "FLASK_SECRET_KEY": "dummy",
-              "FLASK_COOKIE_SECURE": "True",
-              "POSTGRES_USER": "dummy",
-              "POSTGRES_PASSWORD": "dummy",
-              "POSTGRES_DB": "dummy",
-              "POSTGRES_HOST": "dummy",
-              "POSTGRES_PORT": "dummy",
-              "POSTGRES_SERVICE_NAME": "dummy"
-            }'
+
       - name: Set Azure App Settings (Environment Variables)
-        uses: azure/appservice-settings@v1
-        with:
-          app-name: 'BallotLens'
-          app-settings-json: '{"FLASK_SECRET_KEY":"dummy","FLASK_COOKIE_SECURE":"True","POSTGRES_USER":"dummy","POSTGRES_PASSWORD":"dummy","POSTGRES_DB":"dummy","POSTGRES_HOST":"dummy","POSTGRES_PORT":"dummy","POSTGRES_SERVICE_NAME":"dummy"}'
+        run: |
+          az webapp config appsettings set \
+            --name BallotLens \
+            --resource-group BallotLens_group \
+            --settings \
+              FLASK_SECRET_KEY="${{ secrets.FLASK_SECRET_KEY }}" \
+              FLASK_COOKIE_SECURE="True" \
+              POSTGRES_USER="${{ secrets.POSTGRES_USER }}" \
+              POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" \
+              POSTGRES_DB="${{ secrets.POSTGRES_DB }}" \
+              POSTGRES_HOST="${{ secrets.POSTGRES_HOST }}" \
+              POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}" \
+              POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}"
               
       - name: Set Azure startup command
         run: |
