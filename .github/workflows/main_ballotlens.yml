@@ -72,7 +72,7 @@ jobs:
         uses: azure/appservice-settings@v1
         with:
           app-name: 'BallotLens'
-          settings-json: |
+          app-settings-json: |
             {
               "FLASK_SECRET_KEY": "${{ secrets.FLASK_SECRET_KEY }}",
               "FLASK_COOKIE_SECURE": "True",
