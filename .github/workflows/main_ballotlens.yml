@@ -83,18 +83,8 @@ jobs:
         uses: azure/appservice-settings@v1
         with:
           app-name: 'BallotLens'
-          app-settings-json: |
-            {
-              "FLASK_SECRET_KEY": "dummy",
-              "FLASK_COOKIE_SECURE": "True",
-              "POSTGRES_USER": "dummy",
-              "POSTGRES_PASSWORD": "dummy",
-              "POSTGRES_DB": "dummy",
-              "POSTGRES_HOST": "dummy",
-              "POSTGRES_PORT": "dummy",
-              "POSTGRES_SERVICE_NAME": "dummy"
-            }
-
+          app-settings-json: '{"FLASK_SECRET_KEY":"dummy","FLASK_COOKIE_SECURE":"True","POSTGRES_USER":"dummy","POSTGRES_PASSWORD":"dummy","POSTGRES_DB":"dummy","POSTGRES_HOST":"dummy","POSTGRES_PORT":"dummy","POSTGRES_SERVICE_NAME":"dummy"}'
+              
       - name: Set Azure startup command
         run: |
           az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "python -m webapp.Smart_Elections_Parser_Webapp"
