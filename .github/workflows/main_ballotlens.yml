@@ -74,6 +74,13 @@ jobs:
         run: |
           az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "python -m webapp.Smart_Elections_Parser_Webapp"
 
+      - name: Enable Oryx build during deployment
+        run: |
+          az webapp config appsettings set \
+            --name BallotLens \
+            --resource-group BallotLens_group \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
