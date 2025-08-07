@@ -74,17 +74,10 @@ jobs:
         run: |
           az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "python -m webapp.Smart_Elections_Parser_Webapp"
 
-      - name: Create deployment zip
-        run: |
-          zip -r deploy.zip webapp requirements.txt
-
-      - name: List contents of deploy.zip
-        run: unzip -l deploy.zip
-
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'BallotLens'
           slot-name: 'Production'
-          package: deploy.zip
+          package: .
