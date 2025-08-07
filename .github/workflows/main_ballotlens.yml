@@ -73,6 +73,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install --no-cache-dir --prefer-binary -r requirements.txt
 
+      - name: Install spaCy en-core-web-sm model
+        run: |
+          python -m spacy download en_core_web_sm
+
       - name: Remove unnecessary files from site-packages
         run: |
           site_packages=$(python -c "import site; print(site.getsitepackages()[0])")
@@ -130,9 +134,9 @@ jobs:
               POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}" \
               POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}"
 
-      - name: Set Azure startup command
+      - name: Set Azure startup command (production, gunicorn + eventlet)
         run: |
-          az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "python -m webapp.Smart_Elections_Parser_Webapp"
+          az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:8000 webapp.Smart_Elections_Parser_Webapp:app"
 
       - name: Enable Oryx build during deployment
         run: |
