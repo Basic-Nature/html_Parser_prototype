@@ -66,28 +66,30 @@ CONTEXT_CACHE_PATH = os.path.abspath(os.path.join(CACHE_DIR, "context_cache.json
 
 # === Database Configuration ===
 
-# PostgreSQL connection parameters (used for cloud deployments, e.g., Azure)
-POSTGRES_USER = os.environ.get("POSTGRES_USER", "")
-POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "")
-POSTGRES_DB = os.environ.get("POSTGRES_DB", "")
-POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "")
-POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "")
+DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "").lower()  # "azure" or "local"
 
-# Compose the PostgreSQL URL, omitting the port if not set
-if POSTGRES_PORT:
-    POSTGRES_URL = os.environ.get(
-        "POSTGRES_URL",
+if DEPLOY_ENV == "azure":
+    # Azure PostgreSQL settings
+    POSTGRES_USER = os.environ.get("POSTGRES_USER", "")
+    POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "")
+    POSTGRES_DB = os.environ.get("POSTGRES_DB", "")
+    POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "")
+    POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+    POSTGRES_URL = (
         f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
     )
+    POSTGRES_SERVICE_NAME = None  # Not used in Azure
 else:
-    POSTGRES_URL = os.environ.get(
-        "POSTGRES_URL",
-        f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}/{POSTGRES_DB}"
+    # Local Windows settings (example)
+    POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
+    POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")
+    POSTGRES_DB = os.environ.get("POSTGRES_DB", "postgres")
+    POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+    POSTGRES_URL = (
+        f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
     )
-
-# Optional: Service name for Azure App Service deployments
-POSTGRES_SERVICE_NAME = os.environ.get("POSTGRES_SERVICE_NAME", "Check PostgreSQL service name in Azure App Settings")
-
+    POSTGRES_SERVICE_NAME = os.environ.get("POSTGRES_SERVICE_NAME", "postgresql-x64-17")
 # === LLM & Pipeline Configuration ===
 
 # LLM provider and model (used for OpenAI or other LLM integrations)
