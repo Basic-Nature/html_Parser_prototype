@@ -77,7 +77,6 @@ jobs:
               POSTGRES_HOST="${{ secrets.POSTGRES_HOST }}" \
               POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}" \
               POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}" \
-              WEBSITE_RUN_FROM_PACKAGE=1
 
       - name: Set Azure startup command
         run: |
