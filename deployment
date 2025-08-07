@@ -1,2 +1,0 @@
-[config]
-command = bash post_deploy.sh

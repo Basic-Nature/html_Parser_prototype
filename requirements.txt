@@ -23,7 +23,8 @@ us>=3.2.0
 rapidfuzz>=3.13.0
 matplotlib>=3.7.0
 sentence_transformers>=4.1.0
-torch>=2.7.1
+torch==2.7.1+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
 nltk>=3.9.1
 # For JSON and structured parsing
 orjson>=3.10.18

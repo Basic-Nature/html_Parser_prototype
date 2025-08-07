@@ -16,6 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Show disk usage before build
+        run: df -h
+
+      - name: Show memory usage before build
+        run: free -h
+
       - name: Set up Python version
         uses: actions/setup-python@v5
         with:
@@ -25,6 +31,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y tesseract-ocr poppler-utils libpq-dev
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: List files (recursive)
         run: ls -R
@@ -47,6 +61,47 @@ jobs:
         run: |
           ls -l
           ls -l webapp || true
+
+      - name: Install Python dependencies (no cache, prefer binary)
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir --prefer-binary -r requirements.txt
+
+      - name: Remove unnecessary files from site-packages
+        run: |
+          site_packages=$(python -c "import site; print(site.getsitepackages()[0])")
+          find $site_packages -type d -name "tests" -exec rm -rf {} + || true
+          find $site_packages -type d -name "__pycache__" -exec rm -rf {} + || true
+          find $site_packages -type d -name "docs" -exec rm -rf {} + || true
+
+      - name: Clean pip and build caches
+        run: |
+          rm -rf ~/.cache/pip
+          rm -rf build/
+          rm -rf dist/
+          rm -rf *.egg-info
+
+      - name: Show disk usage after cleanup
+        run: df -h
+
+      - name: Show largest files and directories
+        run: du -ah . | sort -rh | head -30
+
+      - name: Show memory usage after cleanup
+        run: free -h
+
+      - name: Run tests (if present)
+        run: |
+          if [ -d "tests" ]; then
+            echo "Running tests..."
+            python -m unittest discover -s tests
+          else
+            echo "No tests directory found, skipping tests."
+          fi
+
+      - name: Show disk usage before deploy
+        run: df -h
 
       - name: Login to Azure
         uses: azure/login@v2
