@@ -45,6 +45,14 @@ jobs:
         with:
           name: python-app
 
+      - name: List files after download
+        run: ls -lR
+
+      - name: Move artifact contents to root
+        run: |
+          shopt -s dotglob
+          mv python-app/* .
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -88,4 +96,4 @@ jobs:
         with:
           app-name: 'BallotLens'
           slot-name: 'Production'
-          package: python-app
+          package: .
