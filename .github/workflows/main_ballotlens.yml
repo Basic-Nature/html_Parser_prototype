@@ -16,6 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Git LFS Pull
+        run: |
+          git lfs install
+          git lfs pull
+
       - name: Show disk usage before build
         run: df -h
 
