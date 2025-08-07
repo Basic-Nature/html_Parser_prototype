@@ -10,6 +10,7 @@ import os
 import threading
 from pathlib import Path
 import orjson
+import urllib.parse
 
 # === Project Structure & Paths ===
 
@@ -70,26 +71,32 @@ DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "").lower()  # "azure" or "local"
 
 if DEPLOY_ENV == "azure":
     # Azure PostgreSQL settings
-    POSTGRES_USER = os.environ.get("POSTGRES_USER", "")
-    POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "")
+    POSTGRES_USER_RAW = os.environ.get("POSTGRES_USER", "")
+    POSTGRES_PASSWORD_RAW = os.environ.get("POSTGRES_PASSWORD", "")
     POSTGRES_DB = os.environ.get("POSTGRES_DB", "")
     POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "")
-    POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+    POSTGRES_PORT = os.environ.get("POSTGRES_PORT") or "5432"
+    # URL-encode user and password for SQLAlchemy connection string
+    POSTGRES_USER = urllib.parse.quote_plus(POSTGRES_USER_RAW)
+    POSTGRES_PASSWORD = urllib.parse.quote_plus(POSTGRES_PASSWORD_RAW)
     POSTGRES_URL = (
         f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
     )
     POSTGRES_SERVICE_NAME = None  # Not used in Azure
 else:
     # Local Windows settings (example)
-    POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
-    POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")
+    POSTGRES_USER_RAW = os.environ.get("POSTGRES_USER", "postgres")
+    POSTGRES_PASSWORD_RAW = os.environ.get("POSTGRES_PASSWORD", "postgres")
     POSTGRES_DB = os.environ.get("POSTGRES_DB", "postgres")
     POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
-    POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+    POSTGRES_PORT = os.environ.get("POSTGRES_PORT") or "5432"
+    POSTGRES_USER = urllib.parse.quote_plus(POSTGRES_USER_RAW)
+    POSTGRES_PASSWORD = urllib.parse.quote_plus(POSTGRES_PASSWORD_RAW)
     POSTGRES_URL = (
         f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
     )
     POSTGRES_SERVICE_NAME = os.environ.get("POSTGRES_SERVICE_NAME", "postgresql-x64-17")
+    
 # === LLM & Pipeline Configuration ===
 
 # LLM provider and model (used for OpenAI or other LLM integrations)
