@@ -43,13 +43,28 @@ jobs:
           name: python-app
           path: ./python-app
 
-      - name: List files after download
-        run: ls -lR
+      - name: Fail if artifact missing
+        run: |
+          if [ ! -d "python-app" ]; then
+            echo "python-app artifact folder not found!"
+            exit 1
+          fi
+
+      - name: Clean workspace before moving files
+        run: |
+          find . -mindepth 1 -maxdepth 1 ! -name 'python-app' ! -name '.' -exec rm -rf {} +
 
       - name: Move artifact contents to root
         run: |
           shopt -s dotglob
           mv ./python-app/* .
+
+      - name: Check requirements.txt exists
+        run: |
+          if [ ! -f "requirements.txt" ]; then
+            echo "requirements.txt not found!"
+            exit 1
+          fi
 
       - name: Install system dependencies
         run: |
