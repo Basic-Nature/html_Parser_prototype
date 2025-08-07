@@ -1,3 +1,4 @@
+from __future__ import annotations
 # webapp/parser/utils/ml_table_detector.py
 # ---------------------------------------------------------------
 # Advanced ML-based Table Detection for HTML Table Extraction
@@ -21,7 +22,6 @@ Features:
 Exports:
     - detect_tables_ml(html: str, options: dict = None) -> List[dict]
 """
-from __future__ import annotations
 import re
 import orjson
 from typing import List, Dict, Any, Optional, Tuple

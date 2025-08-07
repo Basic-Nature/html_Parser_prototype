@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 dynamic_table_extractor.py
 
@@ -13,7 +14,6 @@ are handled centrally in table_core.py and table_builder.py.
 
 This ensures a single source of truth for table structure and learning.
 """
-from __future__ import annotations
 import os
 import re
 import orjson

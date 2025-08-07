@@ -1,8 +1,8 @@
+from __future__ import annotations
 # webapp/parser/utils/shared_logic.py
 # -----------------------------------------------------------------------------------
 # Common parsing utilities for context-integrated pipeline
 # -----------------------------------------------------------------------------------
-from __future__ import annotations
 import difflib
 import os
 import platform

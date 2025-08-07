@@ -1,8 +1,8 @@
+from __future__ import annotations
 # webapp/parser/utils/download_utils.py
 # ---------------------------------------------------------------
 # Download utility functions for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
-from __future__ import annotations
 import os
 import requests
 import orjson

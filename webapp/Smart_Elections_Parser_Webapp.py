@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Smart_Elections_Parser_Webapp.py
 # -----------------------------------------------------------
 # Web Application for Smart Elections Parser
@@ -11,7 +12,6 @@
 #   6. SocketIO Event Handlers
 #   7. Main Entrypoint
 # -----------------------------------------------------------
-from __future__ import annotations
 # 1. Imports & Environment Setup
 import csv
 from datetime import datetime, timezone

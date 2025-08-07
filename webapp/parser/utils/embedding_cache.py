@@ -1,8 +1,8 @@
+from __future__ import annotations
 # webapp/parser/utils/embedding_cache.py
 # ---------------------------------------------------------------
 # Embedding cache management for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
-from __future__ import annotations
 import os
 import logging
 import threading

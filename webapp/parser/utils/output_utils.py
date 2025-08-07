@@ -1,8 +1,8 @@
+from __future__ import annotations
 # webapp/parser/utils/output_utils.py
 # ---------------------------------------------------------------
 # Output utilities for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
-from __future__ import annotations
 import re
 import csv
 import orjson

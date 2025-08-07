@@ -1,3 +1,4 @@
+from __future__ import annotations
 # webapp/parser/utils/table_core.py
 # -----------------------------------------------------------------------------------
 # This module provides centralized utilities for table extraction, harmonization,
@@ -21,7 +22,6 @@ All high-level orchestration is handled in table_builder.py.
 
 This ensures all table structure learning, harmonization, and feedback are centralized.
 """
-from __future__ import annotations
 import os
 import orjson
 import re

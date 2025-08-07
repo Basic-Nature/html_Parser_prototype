@@ -1,8 +1,8 @@
+from __future__ import annotations
 # webapp/parser/utils/contest_selector.py
 # ---------------------------------------------------------------
 # Contest selection and filtering utilities
 # ---------------------------------------------------------------
-from __future__ import annotations
 import re
 import numpy as np
 from .logger_singleton import logger, prompt

@@ -1,8 +1,8 @@
+from __future__ import annotations
 # webapp/parser/utils/html_scanner.py
 # ---------------------------------------------------------------
 # HTML scanning utilities for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
-from __future__ import annotations
 import hashlib
 import orjson
 import os

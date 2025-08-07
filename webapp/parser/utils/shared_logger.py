@@ -1,10 +1,10 @@
+from __future__ import annotations
 # webapp/parser/utils/shared_logger.py
 # -----------------------------------------------------------------------------------
 # This file contains the SharedLogger class, which provides a unified logging interface
 # for both CLI and web applications. It supports rich output, structured logging,
 # and can emit logs via SocketIO for real-time updates in web applications.
 # -----------------------------------------------------------------------------------
-from __future__ import annotations
 import os
 import re
 import time

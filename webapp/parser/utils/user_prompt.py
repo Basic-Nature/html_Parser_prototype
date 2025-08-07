@@ -1,3 +1,4 @@
+from __future__ import annotations
 # webapp/parser/utils/user_prompt.py
 # -----------------------------------------------------------------------------------
 # This file contains a unified user prompt handler for both CLI and webapp modes.
@@ -5,7 +6,6 @@
 # for user interactions, including advanced features like session management and
 # structured logging.
 # -----------------------------------------------------------------------------------
-from __future__ import annotations
 import time
 import threading
 import datetime

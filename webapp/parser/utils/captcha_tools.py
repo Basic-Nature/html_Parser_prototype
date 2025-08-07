@@ -1,8 +1,8 @@
+from __future__ import annotations
 # utils/captcha_tools.py
 # ---------------------------------------------------------------
 # CAPTCHA detection and user-intervention handler (browser-agnostic)
 # ---------------------------------------------------------------
-from __future__ import annotations
 import time
 import os
 import platform

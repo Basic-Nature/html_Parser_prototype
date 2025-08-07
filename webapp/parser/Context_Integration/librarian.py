@@ -1,4 +1,5 @@
 
+from __future__ import annotations
 # webapp/parser/Context_Integration/librarian.py
 # -----------------------------------------------------------------------------------
 # This file contains functions to manage the context library for the HTML parser,
@@ -6,7 +7,6 @@
 # It also includes utilities for logging unknown HTML tags and attributes,
 # extending context library structures, and handling ML/LLM feedback.
 # -----------------------------------------------------------------------------------
-from __future__ import annotations
 import os
 import re
 import orjson

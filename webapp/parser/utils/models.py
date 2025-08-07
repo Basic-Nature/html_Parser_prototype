@@ -1,8 +1,8 @@
+from __future__ import annotations
 # webapp/parser/utils/models.py
 # ---------------------------------------------------------------
 # Core database models for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
-from __future__ import annotations
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, ForeignKey, Boolean, Float, LargeBinary,
     UniqueConstraint, Index, Enum

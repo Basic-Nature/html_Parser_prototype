@@ -1,3 +1,4 @@
+from __future__ import annotations
 # webapp/parser/utils/spacy_utils.py
 # -----------------------------------------------------------------------------------
 # Advanced spaCy NLP utilities for election data integrity, context validation, and interference mitigation.
@@ -7,7 +8,6 @@ spacy_utils.py
 
 Advanced spaCy NLP utilities for election data integrity, context validation, and interference mitigation.
 """
-from __future__ import annotations
 import spacy
 import sys
 import re

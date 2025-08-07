@@ -1,9 +1,9 @@
+from __future__ import annotations
 # ===================================================================
 # table_builder.py
 # Election Data Cleaner - Table Extraction and Cleaning Orchestrator
 # Centralizes user feedback, ML learning, and structure confirmation.
 # ===================================================================
-from __future__ import annotations
 import copy
 import os
 import orjson

@@ -1,3 +1,18 @@
+from __future__ import annotations
+# webapp/parser/handlers/formats/html_handler.py
+# ---------------------------------------------------------------
+# This file is part of the HTML Parser prototype for BallotLens.
+# It handles the parsing of HTML pages, routing to appropriate state/county handlers,
+# and organizing context for further processing.
+# ---------------------------------------------------------------
+from ...state_router import get_handler, list_available_handlers, fuzzy_match_handler
+from ...utils.shared_logic import normalize_state_name, normalize_county_name, safe_parse, safe_get
+from ...utils.logger_singleton import logger, prompt
+import orjson
+import os
+import importlib
+from ...Context_Integration.Context_Library.constants import KNOWN_COUNTY_TO_PRECINCTS_MAP
+
 def parse(page, coordinator=None, context=None, session_id=None, logger=None, **kwargs):
     """
     Generic HTML handler: organizes context, attempts to route to the correct state/county handler,
@@ -5,15 +20,6 @@ def parse(page, coordinator=None, context=None, session_id=None, logger=None, **
     If no handler is found, uses ML/NLP and user feedback to improve routing, and logs all attempts.
     No extraction is performed here.
     """
-    from __future__ import annotations
-    from ...Context_Integration.context_coordinator import ContextCoordinator
-    from ...state_router import get_handler, list_available_handlers, fuzzy_match_handler
-    from ...utils.shared_logic import normalize_state_name, normalize_county_name, safe_parse, safe_get
-    from ...utils.logger_singleton import logger, prompt
-    import orjson
-    import os
-    import importlib
-    from ...Context_Integration.Context_Library.constants import KNOWN_COUNTY_TO_PRECINCTS_MAP
     from ...Context_Integration.context_coordinator import ContextCoordinator
     
     # 1. Organize and enrich context

@@ -1,9 +1,9 @@
+from __future__ import annotations
 # webapp/parser/utils/seleniumbase_launcher.py
 # -----------------------------------------------------------------------------------
 # This file contains functions to launch and manage SeleniumBase browsers
 # for web scraping and automation tasks, including handling CAPTCHAs and stealth mode.
 # -----------------------------------------------------------------------------------
-from __future__ import annotations
 from seleniumbase import Driver
 import time
 from .logger_singleton import logger

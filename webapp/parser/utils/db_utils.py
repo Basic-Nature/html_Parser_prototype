@@ -1,8 +1,8 @@
+from __future__ import annotations
 # webapp/parser/utils/db_utils.py
 # ---------------------------------------------------------------
 # Database utility functions for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
-from __future__ import annotations
 import orjson
 from typing import Optional, List, Generator
 from sqlalchemy import create_engine, update, select, and_, or_, desc

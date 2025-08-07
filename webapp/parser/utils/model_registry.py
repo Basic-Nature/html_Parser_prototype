@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 model_registry.py
 
@@ -7,7 +8,6 @@ Ensures models are loaded once, cached, and reused across modules.
 Integrates with config.py for model directory paths.
 Optimized for robust, singleton-style loading, device selection, path validation, and logging.
 """
-from __future__ import annotations
 import threading
 import os
 import sys

@@ -1,7 +1,7 @@
+from __future__ import annotations
 # ============================================================
 # 🗳️ Smart Elections: Universal JSON Election Results Parser
 # ============================================================
-from __future__ import annotations
 import orjson
 import os
 import csv

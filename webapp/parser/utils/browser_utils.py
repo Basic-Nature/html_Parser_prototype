@@ -1,10 +1,10 @@
+from __future__ import annotations
 # utils/browser_utils.py
 # ---------------------------------------------------------------
 # Handles launching the Playwright or SeleniumBase browser and applying stealth
 # options and user-agent rotation. Handles recovery from headless mode if CAPTCHA
 # interaction is required, and can relaunch into stealth mode after persistent CAPTCHA.
 # ---------------------------------------------------------------
-from __future__ import annotations
 import os
 import random
 import time

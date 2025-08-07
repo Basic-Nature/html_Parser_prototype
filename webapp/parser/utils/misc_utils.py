@@ -1,8 +1,8 @@
+from __future__ import annotations
 # webapp/parser/utils/misc_utils.py
 # ---------------------------------------------------------------
 # Miscellaneous utility functions for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
-from __future__ import annotations
 import hashlib
 import os
 import orjson

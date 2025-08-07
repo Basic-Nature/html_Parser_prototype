@@ -1,8 +1,8 @@
+from __future__ import annotations
 # webapp/parser/utils/format_router.py
 # ---------------------------------------------------------------
 # Format routing and download handling for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
-from __future__ import annotations
 import os
 import time
 import re
