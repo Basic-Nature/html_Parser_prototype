@@ -26,8 +26,8 @@ jobs:
         with:
           name: python-app
           path: |
-            ./webapp
-            ./requirements.txt
+            webapp
+            requirements.txt
 
   deploy:
     runs-on: ubuntu-latest
