@@ -43,26 +43,10 @@ jobs:
           name: python-app
           path: ./python-app
 
-      - name: Fail if artifact missing
-        run: |
-          if [ ! -d "python-app" ]; then
-            echo "python-app artifact folder not found!"
-            exit 1
-          fi
-
-      - name: Clean workspace before moving files
-        run: |
-          find . -mindepth 1 -maxdepth 1 ! -name 'python-app' ! -name '.' -exec rm -rf {} +
-
-      - name: Move artifact contents to root
-        run: |
-          shopt -s dotglob
-          mv ./python-app/* .
-
       - name: Check requirements.txt exists
         run: |
-          if [ ! -f "requirements.txt" ]; then
-            echo "requirements.txt not found!"
+          if [ ! -f "python-app/requirements.txt" ]; then
+            echo "requirements.txt not found in python-app!"
             exit 1
           fi
 
@@ -71,11 +55,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y tesseract-ocr poppler-utils libpq-dev
 
-      - name: Clear pip cache
-        run: pip cache purge
-
       - name: List files (recursive)
-        run: ls -R
+        run: ls -R python-app
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -109,4 +90,4 @@ jobs:
         with:
           app-name: 'BallotLens'
           slot-name: 'Production'
-          package: .
+          package: python-app
