@@ -16,17 +16,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Git LFS for large files
       - name: Git LFS Pull
         run: |
+          set -e
           git lfs install
           git lfs pull
 
       - name: Show disk usage before build
-        run: df -h
+        run: |
+          set -e
+          df -h
 
       - name: Show memory usage before build
-        run: free -h
+        run: |
+          set -e
+          free -h
 
+      # Use .python-version if present (optional)
       - name: Set up Python version
         uses: actions/setup-python@v5
         with:
@@ -34,6 +41,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
+          set -e
           sudo apt-get update
           sudo apt-get install -y tesseract-ocr poppler-utils libpq-dev
 
@@ -46,10 +54,13 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: List files (recursive)
-        run: ls -R
+        run: |
+          set -e
+          ls -R
 
       - name: Check requirements.txt exists
         run: |
+          set -e
           if [ ! -f "requirements.txt" ]; then
             echo "ERROR: requirements.txt not found at repo root!"
             exit 1
@@ -57,6 +68,7 @@ jobs:
 
       - name: Check webapp folder exists
         run: |
+          set -e
           if [ ! -d "webapp" ]; then
             echo "ERROR: webapp folder not found at repo root!"
             exit 1
@@ -64,6 +76,7 @@ jobs:
 
       - name: List contents to be zipped
         run: |
+          set -e
           ls -l
           ls -l webapp || true
 
@@ -72,13 +85,18 @@ jobs:
           set -e
           python -m pip install --upgrade pip
           pip install --no-cache-dir --prefer-binary -r requirements.txt
+          # Ensure gunicorn and eventlet are present
+          pip show gunicorn eventlet flask-socketio
 
-      - name: Install spaCy en-core-web-sm model
+      # Pin spaCy model version for reproducibility
+      - name: Install spaCy en-core-web-sm==3.8.0 model
         run: |
-          python -m spacy download en_core_web_sm
+          set -e
+          pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 
       - name: Remove unnecessary files from site-packages
         run: |
+          set -e
           site_packages=$(python -c "import site; print(site.getsitepackages()[0])")
           find $site_packages -type d -name "tests" -exec rm -rf {} + || true
           find $site_packages -type d -name "__pycache__" -exec rm -rf {} + || true
@@ -86,22 +104,38 @@ jobs:
 
       - name: Clean pip and build caches
         run: |
+          set -e
           rm -rf ~/.cache/pip
           rm -rf build/
           rm -rf dist/
           rm -rf *.egg-info
 
       - name: Show disk usage after cleanup
-        run: df -h
+        run: |
+          set -e
+          df -h
 
       - name: Show largest files and directories
-        run: du -ah . | sort -rh | head -30
+        run: |
+          set -e
+          du -ah . | sort -rh | head -30
 
       - name: Show memory usage after cleanup
-        run: free -h
+        run: |
+          set -e
+          free -h
+
+      # Optional: Validate gunicorn startup (CI only, not in Azure)
+      - name: Test gunicorn startup (CI only)
+        run: |
+          set -e
+          gunicorn --worker-class eventlet -w 1 -b 127.0.0.1:9000 webapp.Smart_Elections_Parser_Webapp:app &
+          sleep 10
+          kill %1
 
       - name: Run tests (if present)
         run: |
+          set -e
           if [ -d "tests" ]; then
             echo "Running tests..."
             python -m unittest discover -s tests
@@ -110,7 +144,9 @@ jobs:
           fi
 
       - name: Show disk usage before deploy
-        run: df -h
+        run: |
+          set -e
+          df -h
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -119,8 +155,10 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
 
+      # Set environment variables and diagnostics settings
       - name: Set Azure App Settings (Environment Variables)
         run: |
+          set -e
           az webapp config appsettings set \
             --name BallotLens \
             --resource-group BallotLens_group \
@@ -132,23 +170,47 @@ jobs:
               POSTGRES_DB="${{ secrets.POSTGRES_DB }}" \
               POSTGRES_HOST="${{ secrets.POSTGRES_HOST }}" \
               POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}" \
-              POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}"
+              POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}" \
+              FLASK_ENV="production" \
+              FLASK_DEBUG="0" \
+              PYTHONUNBUFFERED="1" \
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE="true" \
+              WEBSITES_CONTAINER_START_TIME_LIMIT="1800" \
+              WEBSITE_HEALTHCHECK_PATH="/health"
 
+      # Set the production startup command using $PORT
       - name: Set Azure startup command (production, gunicorn + eventlet)
         run: |
-          az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:8000 webapp.Smart_Elections_Parser_Webapp:app"
+          set -e
+          az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:\$PORT webapp.Smart_Elections_Parser_Webapp:app"
 
       - name: Enable Oryx build during deployment
         run: |
+          set -e
           az webapp config appsettings set \
             --name BallotLens \
             --resource-group BallotLens_group \
             --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
 
-      - name: 'Deploy to Azure Web App'
-        uses: azure/webapps-deploy@v3
+      # Deploy to Azure Web App with retry logic (up to 2 retries)
+      - name: Deploy to Azure Web App (with retry)
         id: deploy-to-webapp
+        uses: actions/github-script@v7
         with:
-          app-name: 'BallotLens'
-          slot-name: 'Production'
-          package: .
+          script: |
+            const exec = require('child_process').execSync;
+            let success = false;
+            let lastError = '';
+            for (let i = 0; i < 2; i++) {
+              try {
+                exec('npx --yes azure-webapps-deploy@3 --app-name BallotLens --slot-name Production --package .', {stdio: 'inherit'});
+                success = true;
+                break;
+              } catch (err) {
+                lastError = err.message;
+                console.log(`Deploy attempt ${i+1} failed, retrying...`);
+              }
+            }
+            if (!success) {
+              throw new Error('Azure Web App deployment failed after 2 attempts: ' + lastError);
+            }
