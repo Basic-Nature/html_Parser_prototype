@@ -10,6 +10,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       id-token: write
       contents: read
@@ -192,25 +193,10 @@ jobs:
             --resource-group BallotLens_group \
             --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
 
-      # Deploy to Azure Web App with retry logic (up to 2 retries)
-      - name: Deploy to Azure Web App (with retry)
+      - name: 'Deploy to Azure Web App'
+        uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
-        uses: actions/github-script@v7
         with:
-          script: |
-            const myExec = require('child_process').execSync;
-            let success = false;
-            let lastError = '';
-            for (let i = 0; i < 2; i++) {
-              try {
-                myExec('npx --yes azure-webapps-deploy@3 --app-name BallotLens --slot-name Production --package .', {stdio: 'inherit'});
-                success = true;
-                break;
-              } catch (err) {
-                lastError = err.message;
-                console.log(`Deploy attempt ${i+1} failed, retrying...`);
-              }
-            }
-            if (!success) {
-              throw new Error('Azure Web App deployment failed after 2 attempts: ' + lastError);
-            }
+          app-name: 'BallotLens'
+          slot-name: 'Production'
+          package: .

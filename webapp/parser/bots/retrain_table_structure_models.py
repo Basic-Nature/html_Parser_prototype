@@ -45,7 +45,6 @@ from spacy.lookups import Lookups
 import glob
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
-import tqdm
 from sqlalchemy import select, inspect
 from ..utils.models import (
     TableStructure, Base, MetaDataProtocol, DeclarativeBaseProtocol,
@@ -535,8 +534,10 @@ def retrain_spacy_ner_advanced(
     for i in range(epochs):
         losses = {}
         random.shuffle(examples)
-        for batch in tqdm.tqdm([examples[j:j+batch_size] for j in range(0, len(examples), batch_size)], desc=f"spaCy NER epoch {i+1}"):
-            nlp.update(batch, sgd=optimizer, drop=0.2, losses=losses)
+        with logger.progress_bar(f"spaCy NER epoch {i+1}", total=len(range(0, len(examples), batch_size))) as update_progress:
+            for batch_idx, batch in enumerate([examples[j:j+batch_size] for j in range(0, len(examples), batch_size)]):
+                nlp.update(batch, sgd=optimizer, drop=0.2, losses=losses)
+                update_progress(batch_idx + 1)
         epoch_loss = losses.get("ner", 0)
         loss_history.append(epoch_loss)
         logger.info(f"spaCy NER retraining epoch {i+1}, loss: {epoch_loss:.4f}")

@@ -1,7 +1,6 @@
 # Core libraries
 playwright==1.52.0
 rich>=13.3.5
-tqdm>=4.66.1
 flask-socketio>=5.5.1
 gunicorn>=23.0.0
 eventlet>=0.40.2
@@ -17,9 +16,6 @@ pdf2image>=1.17.0
 PyMuPDF>=1.23.0
 sqlalchemy>=2.0.41
 psycopg2>=2.9.10
-fastapi>=0.115.14
-uvicorn>=0.34.3
-us>=3.2.0
 
 # CLI and ML utilities
 rapidfuzz>=3.13.0
@@ -32,9 +28,6 @@ nltk>=3.9.1
 orjson>=3.10.18
 # For browser fingerprint masking (via Playwright)
 fake-useragent>=1.5.1
-
-# CLI-friendly argument parsing (if used in future)
-click>=8.1.7
 
 # NLP and ML enhancements
 spacy>=3.7.0

@@ -22,18 +22,14 @@ from datetime import datetime, timedelta
 import subprocess
 import sys
 import time
-from tempfile import NamedTemporaryFile
-from fastapi import FastAPI
 import openai
-import uvicorn
 # --- Unified logger import ---
 from ..utils.logger_singleton import logger
-from us.states import lookup as us_state_lookup
 import re
 from ..utils.misc_utils import file_hash
 from ..Context_Integration.librarian import (
-    update_context_library,
-    SCHEMA_VERSION,
+    update_context_library, lookup_county,
+    SCHEMA_VERSION, lookup_state, get_state_abbr,
     DEFAULT_STRUCTURE,
     load_context_library,
 )
@@ -44,6 +40,7 @@ from ..config import (
     LLM_API_KEY, LLM_PROVIDER, LLM_MODEL, LLM_SYSTEM_PROMPT, LLM_EXTRA_INSTRUCTIONS, 
     USER_NAME
 )
+from ..Context_Integration.Context_Library.constants import lookup_state
 from webapp.parser.Context_Integration.context_coordinator import ContextCoordinator
 from ..utils.model_registry import ModelRegistry
 
@@ -768,33 +765,40 @@ def extract_state(text):
         doc = nlp(str(text))
         for ent in doc.ents:
             if ent.label_ in {"GPE", "LOC"}:
-                # Try to match US state abbreviations or full names
                 abbrev_match = re.match(r"^[A-Z]{2}$", ent.text.strip())
                 if abbrev_match:
                     return ent.text.strip()
                 # Try to map full state names to abbreviations
-                try:
-                    state_obj = us_state_lookup(ent.text.strip())
-                    if state_obj:
-                        return state_obj.abbr
-                except Exception:
-                    pass
+                state_name = lookup_state(ent.text.strip())
+                if state_name:
+                    abbr = get_state_abbr(state_name)
+                    if abbr:
+                        return abbr
     # Fallback: regex for state abbreviation
     match = re.search(r"\b([A-Z]{2})\b", text)
     return match.group(1) if match else None
 
-def extract_county(text):
+def extract_county(text, state_hint=None):
     # Use spaCy NER for GPE/LOC, fallback to regex for "X County"
     if nlp and text:
         doc = nlp(str(text))
         for ent in doc.ents:
             if ent.label_ in {"GPE", "LOC"} and "county" in ent.text.lower():
-                # Extract just the county name
                 county_match = re.match(r"([A-Za-z ]+) County", ent.text, re.IGNORECASE)
                 if county_match:
-                    return county_match.group(1).strip()
+                    county_name = county_match.group(1).strip()
+                    canonical = lookup_county(county_name, state_hint)
+                    if canonical:
+                        return canonical
+                    return county_name
     match = re.search(r"([A-Za-z ]+) County", text)
-    return match.group(1).strip() if match else None
+    if match:
+        county_name = match.group(1).strip()
+        canonical = lookup_county(county_name, state_hint)
+        if canonical:
+            return canonical
+        return county_name
+    return None
 
 def extract_type(text):
     # Use spaCy NER for EVENT or ORG, fallback to keyword search
@@ -1017,18 +1021,6 @@ def update_database_with_context(library, db_path=None, coordinator=None, enhanc
     except Exception as e:
         logger.error(f"Failed to update DB: {e}")
 
-# --- CLI/REST API hooks (REST stub) ---
-def run_rest_api():
-    try:
-        app = FastAPI()
-        @app.get("/status")
-        def status():
-            return {"status": "ok"}
-        # Add more endpoints as needed
-        uvicorn.run(app, host="127.0.0.1", port=8000)
-    except ImportError:
-        logger.warning("FastAPI/uvicorn not installed.")
-
 # --- Export/Import correction sessions ---
 def export_correction_session(log_paths, export_dir=EXPORT_DIR):
     export_dir = safe_path(export_dir, [LOG_DIR])
@@ -1168,7 +1160,6 @@ def main():
     parser.add_argument("--cache-expire-days", type=int, default=None, help="Expire cache entries older than N days")
     parser.add_argument("--sync-db", action="store_true", help="Sync context library to DB now")
     parser.add_argument("--export-audit-log", type=str, help="Export audit log to given path")
-    parser.add_argument("--rest-api", action="store_true", help="Run REST API server")
     parser.add_argument("--enhanced", action="store_true", help="Enable enhanced learning and automation (spaCy, coordinator, context_organizer, LLM)")
     parser.add_argument("--llm-api-key", type=str, default=None, help="API key for external LLM (e.g., OpenAI)")
     parser.add_argument("--llm-provider", type=str, default="openai", help="LLM provider: openai")
@@ -1187,10 +1178,6 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Preview what would be processed/accepted/removed, but make no changes.")
     parser.add_argument("--fix-corrupt-json", action="store_true", help="Scan and fix (delete) corrupted JSON/JSONL files in log/cache/library dirs")
     args = parser.parse_args()
-
-    if args.rest_api:
-        run_rest_api()
-        return
 
     if args.flush_cache:
         cache = load_cache()

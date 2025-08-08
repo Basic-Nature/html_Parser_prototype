@@ -26,7 +26,7 @@ from typing import Dict, Set, List, Any
 from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT, LOG_DIR, BASE_DIR
 from .Context_Library.constants import (
     BALLOT_TYPES, CANDIDATE_KEYWORDS, CANONICAL_SEGMENT_LABELS, CUSTOM_ATTR_PATTERNS, PANEL_TAGS,
-    HEADING_TAGS, HTML_TAGS, LOCATION_KEYWORDS
+    HEADING_TAGS, HTML_TAGS, LOCATION_KEYWORDS, STATE_ABBR, KNOWN_STATE_TO_COUNTY_MAP, _CANONICAL_STATE_ABBR
 )
 from ..utils.shared_logic import (
     safe_get, safe_merge_defaults, safe_setdefault, safe_startswith, safe_append, safe_filename
@@ -547,6 +547,65 @@ def integrate_llm_feedback(new_panel_tags=None, new_heading_tags=None, new_attr_
     if new_ballot_types:
         extend_ballot_types(new_ballot_types)
     save_context_library()
+
+def lookup_state(name: str) -> str | None:
+    """
+    Lookup a canonical state name from a name or abbreviation.
+    Returns the canonical state name (e.g., 'arizona') or None if not found.
+    """
+    if not name:
+        return None
+    norm = name.strip().lower().replace('.', '').replace('_', ' ').replace('-', ' ')
+    # Try direct match to canonical names
+    if norm in STATE_ABBR.values():
+        return norm
+    # Try abbreviation lookup
+    if norm in STATE_ABBR:
+        return STATE_ABBR[norm]
+    # Try matching after removing spaces
+    norm_nospace = norm.replace(' ', '')
+    for abbr, state in STATE_ABBR.items():
+        if abbr.replace(' ', '') == norm_nospace:
+            return state
+    # Try matching canonical names with spaces removed
+    for state in STATE_ABBR.values():
+        if state.replace('_', ' ').replace(' ', '') == norm_nospace:
+            return state
+    return None
+
+def get_state_abbr(state_name: str) -> str | None:
+    """
+    Given a canonical state name, return its standard two-letter abbreviation.
+    """
+    if not state_name:
+        return None
+    state_name = state_name.lower().replace(' ', '_')
+    abbrs = _CANONICAL_STATE_ABBR.get(state_name)
+    if abbrs:
+        # Return the first (should be the standard two-letter abbr)
+        return abbrs[0].upper()
+    return None
+
+def lookup_county(county_name: str, state_name: str = None) -> str | None:
+    """
+    Lookup a canonical county name, optionally within a given state.
+    Returns the canonical county name (e.g., 'maricopa') or None if not found.
+    """
+    if not county_name:
+        return None
+    norm = county_name.strip().lower().replace('.', '').replace('-', ' ').replace('_', ' ')
+    if state_name:
+        state = lookup_state(state_name)
+        if state and state in KNOWN_STATE_TO_COUNTY_MAP:
+            for county in KNOWN_STATE_TO_COUNTY_MAP[state]:
+                if county.replace('-', ' ').replace('_', ' ') == norm:
+                    return county
+    # Fallback: search all states
+    for state, counties in KNOWN_STATE_TO_COUNTY_MAP.items():
+        for county in counties:
+            if county.replace('-', ' ').replace('_', ' ') == norm:
+                return county
+    return None
 
 # --- Load context library at import time ---
 load_context_library()

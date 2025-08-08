@@ -5,7 +5,6 @@
 # ==============================================================
 import os
 import orjson
-from tqdm import tqdm
 from ....utils.logger_singleton import logger
 from ....Context_Integration.context_organizer import ContextOrganizer
 from ....utils.output_utils import finalize_election_output
@@ -102,7 +101,7 @@ def parse(page, html_context=None):
                 column_names = [h.inner_text().strip() for h in headers]
                 method_names = column_names[1:-1]
                 row_blocks = []
-                for row in tqdm(rows, desc=f"Parsing {current_precinct}"):
+                for row in logger.progress_bar(rows, description=f"Parsing {current_precinct}"):
                     cells = [cell.inner_text().strip() for cell in row.query_selector_all('td')]
                     if len(cells) != len(column_names):
                         continue
