@@ -198,12 +198,12 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const exec = require('child_process').execSync;
+            const myExec = require('child_process').execSync;
             let success = false;
             let lastError = '';
             for (let i = 0; i < 2; i++) {
               try {
-                exec('npx --yes azure-webapps-deploy@3 --app-name BallotLens --slot-name Production --package .', {stdio: 'inherit'});
+                myExec('npx --yes azure-webapps-deploy@3 --app-name BallotLens --slot-name Production --package .', {stdio: 'inherit'});
                 success = true;
                 break;
               } catch (err) {
