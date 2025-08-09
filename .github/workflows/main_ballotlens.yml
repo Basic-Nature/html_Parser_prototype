@@ -10,18 +10,38 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     permissions:
       id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v4
 
-      # Git LFS for large files
-      - name: Git LFS Pull
+      - name: Show disk usage before build
+        run: df -h
+
+      - name: Show memory usage before build
+        run: free -h
+
+      - name: Set up Python version
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system dependencies
         run: |
-          git lfs install
-          git lfs pull
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr poppler-utils libpq-dev
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: List files (recursive)
+        run: ls -R
 
       - name: Check requirements.txt exists
         run: |
@@ -37,9 +57,51 @@ jobs:
             exit 1
           fi
 
-      - name: Archive app for deployment
+      - name: List contents to be zipped
         run: |
-          zip -r app_package.zip webapp requirements.txt
+          ls -l
+          ls -l webapp || true
+
+      - name: Install Python dependencies (no cache, prefer binary)
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir --prefer-binary -r requirements.txt
+
+      - name: Remove unnecessary files from site-packages
+        run: |
+          site_packages=$(python -c "import site; print(site.getsitepackages()[0])")
+          find $site_packages -type d -name "tests" -exec rm -rf {} + || true
+          find $site_packages -type d -name "__pycache__" -exec rm -rf {} + || true
+          find $site_packages -type d -name "docs" -exec rm -rf {} + || true
+
+      - name: Clean pip and build caches
+        run: |
+          rm -rf ~/.cache/pip
+          rm -rf build/
+          rm -rf dist/
+          rm -rf *.egg-info
+
+      - name: Show disk usage after cleanup
+        run: df -h
+
+      - name: Show largest files and directories
+        run: du -ah . | sort -rh | head -30
+
+      - name: Show memory usage after cleanup
+        run: free -h
+
+      - name: Run tests (if present)
+        run: |
+          if [ -d "tests" ]; then
+            echo "Running tests..."
+            python -m unittest discover -s tests
+          else
+            echo "No tests directory found, skipping tests."
+          fi
+
+      - name: Show disk usage before deploy
+        run: df -h
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -61,26 +123,23 @@ jobs:
               POSTGRES_DB="${{ secrets.POSTGRES_DB }}" \
               POSTGRES_HOST="${{ secrets.POSTGRES_HOST }}" \
               POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}" \
-              POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}" \
-              FLASK_ENV="production" \
-              FLASK_DEBUG="0" \
-              PYTHONUNBUFFERED="1" \
-              WEBSITES_ENABLE_APP_SERVICE_STORAGE="true" \
-              WEBSITES_CONTAINER_START_TIME_LIMIT="1800" \
-              WEBSITE_HEALTHCHECK_PATH="/health" \
-              SCM_DO_BUILD_DURING_DEPLOYMENT=true
+              POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}"
 
-      - name: Set Azure startup command (production, gunicorn + eventlet)
+      - name: Set Azure startup command
         run: |
-          az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:\$PORT webapp.Smart_Elections_Parser_Webapp:app"
+          az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "python -m webapp.Smart_Elections_Parser_Webapp"
 
-      - name: Upgrade pip
+      - name: Enable Oryx build during deployment
         run: |
-          python -m pip install --upgrade pip
+          az webapp config appsettings set \
+            --name BallotLens \
+            --resource-group BallotLens_group \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
+        id: deploy-to-webapp
         with:
           app-name: 'BallotLens'
           slot-name: 'Production'
-          package: app_package.zip
+          package: .
