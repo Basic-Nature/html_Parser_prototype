@@ -22,10 +22,7 @@ rapidfuzz>=3.13.0
 matplotlib>=3.10.5
 sentence_transformers>=5.1.0
 # Use CPU-only torch
-torch==2.8.0+cpu
-# For CPU-only torch, use the following index URL:
-# pip install torch==2.8.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
-nltk>=3.9.1
+torch>=2.8.0+cpu
 # For JSON and structured parsing
 orjson>=3.11.1
 # For browser fingerprint masking (via Playwright)
