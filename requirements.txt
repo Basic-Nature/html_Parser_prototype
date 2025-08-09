@@ -32,7 +32,6 @@ orjson>=3.11.1
 spacy>=3.8.7
 spacy-lookups-data>=1.0.5
 # Add a spaCy English model (small, CPU-friendly)
-en_core_web_sm>=3.8.0
 
 # flask-login for user session management, is not used in the current version
 # optional future implementation
