@@ -21,8 +21,9 @@ psycopg2>=2.9.10
 rapidfuzz>=3.13.0
 matplotlib>=3.10.5
 sentence_transformers>=5.1.0
-# Use CPU-only torch
-torch>=2.8.0
+torch==2.7.1+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
+nltk>=3.9.1
 # For JSON and structured parsing
 orjson>=3.11.1
 # For browser fingerprint masking (via Playwright)
@@ -30,8 +31,8 @@ orjson>=3.11.1
 
 # NLP and ML enhancements
 spacy>=3.8.7
+# shap>=0.48.0
 spacy-lookups-data>=1.0.5
-# Add a spaCy English model (small, CPU-friendly)
 
 # flask-login for user session management, is not used in the current version
 # optional future implementation
