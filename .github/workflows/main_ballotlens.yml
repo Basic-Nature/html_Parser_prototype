@@ -40,6 +40,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      - name: Git LFS Pull
+        run: |
+          git lfs install
+          git lfs pull
+
       - name: List files (recursive)
         run: ls -R
 
