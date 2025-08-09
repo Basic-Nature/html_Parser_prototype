@@ -101,6 +101,12 @@ jobs:
           set -e
           pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 
+      # Remove downloaded wheels after pip install
+      - name: Remove downloaded wheels after pip install
+        run: |
+          set -e
+          rm -rf /usr/local/share/pip-cache/wheels || true
+
       # --- FIX: Remove unnecessary files only after all pip installs ---
       - name: Remove unnecessary files from site-packages
         run: |
@@ -200,10 +206,37 @@ jobs:
             --resource-group BallotLens_group \
             --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
 
-      - name: 'Deploy to Azure Web App'
+      - name: Create Python virtualenv
+        run: |
+          set -e
+          python -m venv antenv
+          source antenv/bin/activate
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir --prefer-binary -r requirements.txt
+          pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+
+      # Remove downloaded wheels after pip install in virtualenv (extra thorough)
+      - name: Remove downloaded wheels after pip install in virtualenv
+        run: |
+          set -e
+          rm -rf /usr/local/share/pip-cache/wheels || true
+
+      - name: Remove unnecessary files from virtualenv
+        run: |
+          set -e
+          find antenv -type d -name "tests" -exec rm -rf {} + || true
+          find antenv -type d -name "__pycache__" -exec rm -rf {} + || true
+          find antenv -type d -name "docs" -exec rm -rf {} + || true
+
+      - name: Archive virtualenv and app
+        run: |
+          set -e
+          tar czf app_package.tar.gz antenv webapp
+
+      - name: 'Deploy pre-built artifact to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'BallotLens'
           slot-name: 'Production'
-          package: .
+          package: app_package.tar.gz
