@@ -228,10 +228,15 @@ jobs:
           find antenv -type d -name "__pycache__" -exec rm -rf {} + || true
           find antenv -type d -name "docs" -exec rm -rf {} + || true
 
-      - name: Archive virtualenv and app
+      - name: Archive app package
         run: |
           set -e
-          tar czf app_package.tar.gz antenv webapp
+          zip -r app_package.zip webapp
+
+      - name: List files before deploy
+        run: |
+          set -e
+          ls -lh
 
       - name: 'Deploy pre-built artifact to Azure Web App'
         uses: azure/webapps-deploy@v3
@@ -239,4 +244,4 @@ jobs:
         with:
           app-name: 'BallotLens'
           slot-name: 'Production'
-          package: app_package.tar.gz
+          package: app_package.zip
