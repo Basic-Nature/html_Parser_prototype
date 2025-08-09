@@ -74,10 +74,6 @@ jobs:
         run: |
           az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "gunicorn --worker-class eventlet -w 1 -b 0.0.0.0:\$PORT webapp.Smart_Elections_Parser_Webapp:app"
 
-      - name: Install spaCy English model
-        run: |
-          python -m spacy download en_core_web_sm
-
       - name: Upgrade pip
         run: |
           python -m pip install --upgrade pip
