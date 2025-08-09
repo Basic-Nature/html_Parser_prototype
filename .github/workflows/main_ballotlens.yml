@@ -81,6 +81,12 @@ jobs:
           ls -l
           ls -l webapp || true
 
+      # --- FIX: Install numpy first to avoid missing test modules ---
+      - name: Install numpy (force reinstall, no cache)
+        run: |
+          set -e
+          pip install --force-reinstall --no-cache-dir numpy
+
       - name: Install Python dependencies (no cache, prefer binary)
         run: |
           set -e
@@ -95,6 +101,7 @@ jobs:
           set -e
           pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 
+      # --- FIX: Remove unnecessary files only after all pip installs ---
       - name: Remove unnecessary files from site-packages
         run: |
           set -e

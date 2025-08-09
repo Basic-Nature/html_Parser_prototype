@@ -146,9 +146,9 @@
 <body>
     <nav class="navbar">
         <a href="{{ url_for('index') }}">Dashboard</a>
-        <a href="{{ url_for('manage_data') }}">Manage Data & URL</a>
-        <a href="{{ url_for('history') }}" class="active">History</a>
+        <a href="{{ url_for('data_framework') }}">Data Framework</a>
         <a href="{{ url_for('run_parser') }}">Run Parser</a>
+        <a href="{{ url_for('history') }}" class="active">History</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">About</a>
     </nav>
     <div class="container-main">
@@ -205,6 +205,27 @@
             {% endfor %}
         </div>
         {% endif %}
+        <!-- Commit History Section -->
+        <div class="card mb-4" style="border:2px solid var(--metal-accent); box-shadow:0 2px 8px #bfc9d1;">
+            <div class="card-body">
+                <h3 style="color:var(--main-blue);font-weight:800;letter-spacing:1px;">View Commit History</h3>
+                <p>
+                    For a full record of code changes, you can view the commit history on GitHub.<br>
+                    This includes all code updates, bug fixes, and feature additions for the Smart Elections Parser project.
+                </p>
+                <a href="https://github.com/Basic-Nature/html_Parser_prototype/compare/e97c0e81782701fd45c7ec98343e92ea6405e45f...main"
+                   target="_blank"
+                   class="btn btn-primary"
+                   style="font-weight:700;letter-spacing:1px;">
+                    View Commit History on GitHub
+                </a>
+                <ul style="margin-top:1em;">
+                    <li>This link shows all commits from <code>e97c0e8</code> up to the latest on <code>main</code>.</li>
+                    <li>Use this to audit code changes, review contributions, or track project progress.</li>
+                    <li>For more details, visit the <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">project repository</a>.</li>
+                </ul>
+            </div>
+        </div>
         <hr class="metal-divider">
         <div class="text-center">
             <a href="{{ url_for('index') }}" class="btn btn-primary mt-2">Back to Dashboard</a>

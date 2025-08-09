@@ -16,7 +16,11 @@ from __future__ import annotations
 import csv
 from datetime import datetime, timezone
 from difflib import get_close_matches
-from flask import Flask, render_template, request, redirect, session, url_for, flash, send_file, send_from_directory
+from flask import (
+    Flask, render_template, request, redirect, session, 
+    url_for, flash, send_file, send_from_directory,
+    jsonify
+)   
 from flask_socketio import emit, SocketIO, join_room
 import importlib
 from io import StringIO
@@ -27,11 +31,12 @@ from threading import Thread
 from queue import Queue
 
 # Project-specific imports
+from webapp.parser import data_manager
 from webapp.parser.utils.shared_logic import safe_get, safe_split, safe_lower
 from webapp.parser.web_pipeline import (
     process_urls_for_web, cancel_processing, safe_sid, safe_rsplit, cancellation_manager
 )
-from webapp.parser.config import BASE_DIR, PROJECT_ROOT
+from webapp.parser.config import BASE_DIR, PROJECT_ROOT, URL_LIST_FILE
 from webapp.parser.utils.logger_singleton import logger, console, prompt
 
 # 2. Flask App & SocketIO Initialization
@@ -128,12 +133,16 @@ def allowed_file(filename) -> bool:
     return filename and ext in ALLOWED_EXTENSIONS and len(filename) < 128
 
 def append_history(data) -> None:
+    # Only write if data is not empty
+    if not data:
+        return
     snapshot = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "data": data
     }
+    # Write compact JSON (no indent) for JSONL
     with open(HISTORY_FILE, "ab") as f:
-        f.write(orjson.dumps(snapshot, option=orjson.OPT_INDENT_2) + b"\n")
+        f.write(orjson.dumps(snapshot) + b"\n")
 
 def edit_hint() -> str:
     frag = request.form.get("fragment", "").strip()
@@ -173,6 +182,7 @@ def load_overrides() -> dict:
     return {}
 
 def save_overrides(data) -> None:
+    # Always write a valid JSON object (pretty for hints file is fine)
     with open(HINT_FILE, "wb") as f:
         f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2))
 
@@ -207,10 +217,74 @@ def log_parser_status(msg, session_id=None, rich=False) -> None:
         log_msg = f"{msg} (session_id={session_id})" if session_id else msg
         logger.info(log_msg)
 
+# --- Utility: Validate all override module paths ---
+def get_all_override_validations() -> dict:
+    """
+    Returns a dict mapping each override fragment to (is_valid, suggestion/message)
+    Example: { "electionreturns.pa.gov": (True, None), "badsite.com": (False, "Module not found") }
+    """
+    overrides = load_overrides()
+    return {k: validate_module_path(v) for k, v in overrides.items()}
+
+# --- Utility: List all files in input, output, and uploads folders ---
+def get_all_file_lists() -> dict:
+    """
+    Returns a dict with lists of files in each managed folder.
+    Example: { "input_files": [...], "output_files": [...], "uploaded_files": [...] }
+    """
+    return {
+        "input_files": os.listdir(INPUT_FOLDER),
+        "output_files": os.listdir(OUTPUT_FOLDER),
+        "uploaded_files": os.listdir(UPLOAD_FOLDER),
+    }
+
 # 5. Routes (Flask)
 @app.route("/")
 def index() -> str:
     return render_template("index.html")
+
+@app.route("/api/url_hint_overrides", methods=["GET", "POST", "DELETE"])
+def api_url_hint_overrides():
+    if request.method == "GET":
+        overrides = data_manager.load_overrides()
+        return jsonify({"overrides": overrides})
+    elif request.method == "POST":
+        data = request.get_json()
+        frag = data.get("fragment", "").strip()
+        path = data.get("module_path", "").strip()
+        if not frag or not path:
+            return jsonify({"success": False, "error": "Both fields required."}), 400
+        overrides = data_manager.load_overrides()
+        overrides[frag] = path
+        data_manager.save_overrides(overrides)
+        return jsonify({"success": True})
+    elif request.method == "DELETE":
+        data = request.get_json()
+        frag = data.get("fragment", "").strip()
+        overrides = data_manager.load_overrides()
+        if frag in overrides:
+            del overrides[frag]
+            data_manager.save_overrides(overrides)
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": "Not found."}), 404
+
+@app.route("/api/urls", methods=["GET", "POST"])
+def api_urls():
+    urls_file = str(URL_LIST_FILE)
+    if request.method == "GET":
+        if not os.path.exists(urls_file):
+            return jsonify({"urls": []})
+        with open(urls_file, "r", encoding="utf-8") as f:
+            urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+        return jsonify({"urls": urls})
+    elif request.method == "POST":
+        data = request.get_json()
+        url = data.get("url", "").strip()
+        if not url:
+            return jsonify({"success": False, "error": "URL required."}), 400
+        with open(urls_file, "a", encoding="utf-8") as f:
+            f.write(url + "\n")
+        return jsonify({"success": True})
 
 @app.route("/delete-hint/<frag>", methods=["POST"])
 def delete_hint_route(frag) -> None:
@@ -250,7 +324,7 @@ def delete_input_file(filename) -> str:
         flash(f"Deleted '{filename}' from input folder.", "success")
     else:
         flash(f"File '{filename}' not found in input folder.", "danger")
-    return redirect(request.referrer or url_for("manage_data"))
+    return redirect(request.referrer or url_for("run_parser"))
 
 @app.route("/delete/output/<filename>", methods=["POST"])
 def delete_output_file(filename) -> str:
@@ -260,7 +334,7 @@ def delete_output_file(filename) -> str:
         flash(f"Deleted '{filename}' from output folder.", "success")
     else:
         flash(f"File '{filename}' not found in output folder.", "danger")
-    return redirect(request.referrer or url_for("manage_data"))
+    return redirect(request.referrer or url_for("run_parser"))
 
 @app.route("/delete/uploads/<filename>", methods=["POST"])
 def delete_upload_file(filename) -> str:
@@ -270,7 +344,7 @@ def delete_upload_file(filename) -> str:
         flash(f"Deleted '{filename}' from uploads folder.", "success")
     else:
         flash(f"File '{filename}' not found in uploads folder.", "danger")
-    return redirect(request.referrer or url_for("manage_data"))
+    return redirect(request.referrer or url_for("run_parser"))
 
 @app.route("/download/input/<filename>")
 def download_input_file(filename) -> str:
@@ -279,6 +353,10 @@ def download_input_file(filename) -> str:
 @app.route("/download/output/<filename>")
 def download_output_file(filename) -> str:
     return send_from_directory(OUTPUT_FOLDER, filename, as_attachment=True)
+
+@app.route("/download/uploads/<filename>")
+def download_upload_file(filename) -> str:
+    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
 @app.route("/export-hints")
 def export_hints() -> str:
@@ -302,14 +380,16 @@ def history() -> str:
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "rb") as f:
             for line in f:
+                line = line.strip()
+                if not line:
+                    continue  # Skip empty lines
                 try:
                     snap = orjson.loads(line)
                     timestamp = safe_get(snap, "timestamp")
                     data = safe_get(snap, "data", snap)
                     snapshots.append({"timestamp": timestamp, "data": data})
-                    snapshots.append(snap)
                 except Exception:
-                    continue
+                    continue  # Skip invalid JSON lines
     indexed_snapshots = list(enumerate(snapshots))
     return render_template("history.html", snapshots=indexed_snapshots)
 
@@ -349,19 +429,10 @@ def import_hints() -> str:
     flash("Hints imported.", "success")
     return redirect(url_for("url_hints"))
 
-@app.route("/input-files")
-def input_files() -> str:
-    files = os.listdir(INPUT_FOLDER)
-    return render_template("file_list.html", files=files, folder="Input", download_url="download_input_file")
-
-@app.route("/manage_data", methods=["GET", "POST"])
-def manage_data() -> str:
-    overrides = load_overrides()
-    validations = {k: validate_module_path(v) for k, v in overrides.items()}
-    uploaded_files = os.listdir(UPLOAD_FOLDER)
-    input_files = os.listdir(INPUT_FOLDER)
-    output_files = os.listdir(OUTPUT_FOLDER)
-    if request.method == "POST":
+@app.route("/run_parser", methods=["GET", "POST"])
+def run_parser():
+    # Handle file upload to uploads folder if POST and 'data_file' is present
+    if request.method == "POST" and "data_file" in request.files:
         file = request.files.get("data_file")
         if file and allowed_file(file.filename):
             filename = file.filename
@@ -369,24 +440,19 @@ def manage_data() -> str:
             flash(f"File '{filename}' uploaded successfully.", "success")
         else:
             flash("Invalid file type or no file selected.", "danger")
+
+    file_lists = get_all_file_lists()
+    validations = get_all_override_validations()
+    overrides = load_overrides()
     return render_template(
-        "manage_data.html",
-        overrides=overrides,
+        "run_parser.html",
+        input_files=file_lists["input_files"],
+        output_files=file_lists["output_files"],
+        uploaded_files=file_lists["uploaded_files"],
         validations=validations,
-        uploaded_files=uploaded_files,
-        input_files=input_files,
-        output_files=output_files
+        overrides=overrides,
     )
-
-@app.route("/run_parser", methods=["GET"])
-def run_parser():
-    return render_template("run_parser.html")
-
-@app.route("/output-files")
-def output_files() -> str:
-    files = os.listdir(OUTPUT_FOLDER)
-    return render_template("file_list.html", files=files, folder="Output", download_url="download_output_file")
-
+    
 @app.route("/undo-hints", methods=["POST"])
 def undo_hints() -> str:
     if not os.path.exists(HISTORY_FILE):
@@ -414,7 +480,7 @@ def upload_to_input() -> str:
         flash(f"File '{filename}' uploaded to input folder.", "success")
     else:
         flash("Invalid file type or no file selected.", "danger")
-    return redirect(request.referrer or url_for("manage_data"))
+    return redirect(request.referrer or url_for("run_parser"))
 
 @app.route("/upload/output", methods=["POST"])
 def upload_to_output() -> str:
@@ -425,7 +491,7 @@ def upload_to_output() -> str:
         flash(f"File '{filename}' uploaded to output folder.", "success")
     else:
         flash("Invalid file type or no file selected.", "danger")
-    return redirect(request.referrer or url_for("manage_data"))
+    return redirect(request.referrer or url_for("run_parser"))
 
 @app.route("/upload/uploads", methods=["POST"])
 def upload_to_uploads() -> str:
@@ -436,17 +502,19 @@ def upload_to_uploads() -> str:
         flash(f"File '{filename}' uploaded to uploads folder.", "success")
     else:
         flash("Invalid file type or no file selected.", "danger")
-    return redirect(request.referrer or url_for("manage_data"))
+    return redirect(request.referrer or url_for("run_parser"))
 
 @app.route("/health")
 def health() -> str:
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 # 6. SocketIO Event Handlers
+
 @socketio.on('get_session_history')
 def handle_get_session_history(data) -> None:
     sid = str(data['session_id'])
     if not isinstance(sid, str):
+        # Only log backend/server errors
         logger.warning(f"Invalid session_id type: {type(sid)} value: {sid}")
         return
     logs = session_logs.get(sid, [])
@@ -506,52 +574,19 @@ def handle_get_sessions():
 
 @socketio.on('connect')
 def handle_connect():
-    cleanup_sessions()  # Clean up expired sessions on connect
-    logger.set_mode("webapp")
-    logger.set_format("json")
+    cleanup_sessions()
+    # Do NOT set logger mode or emit_func here!
     session['log_format'] = "json"
-    # Do NOT generate a new session_id here!
     prev_session_id = request.args.get('prev_session_id')
-    # Only update last_active if prev_session_id is known
     if prev_session_id and prev_session_id in session_metadata:
         session_last_active[prev_session_id] = time.time()
     if prev_session_id:
         cancellation_manager.remove(prev_session_id)
         prompt.clear_prompt_session(prev_session_id)
+        # Only log backend/server events
         log_parser_status(f"Cleaned up previous session {prev_session_id}", prev_session_id)
-    # Only emit back the session_id if it exists, otherwise emit nothing
     if prev_session_id:
         emit('session_id', {'session_id': prev_session_id})
-    def emit_to_socketio(line):
-        sid = prev_session_id
-        # Store log for session
-        if sid:
-            if sid not in session_logs:
-                session_logs[sid] = []
-            # Store as dict or string
-            if isinstance(line, str) and line.strip().startswith("{"):
-                try:
-                    obj = orjson.loads(line)
-                    session_logs[sid].append(obj)
-                except Exception:
-                    session_logs[sid].append(line)
-            else:
-                session_logs[sid].append(line)
-        # ...existing emit logic...
-        if isinstance(line, str) and line.strip().startswith("{"):
-            try:
-                obj = orjson.loads(line)
-                socketio.emit('parser_output', obj, room=sid)
-                return
-            except Exception:
-                pass
-        if isinstance(line, dict):
-            socketio.emit('parser_output', line, room=sid)
-        else:
-            socketio.emit('parser_output', line, room=sid)
-    logger.set_socketio_emit_func(emit_to_socketio)
-    prompt.set_mode("webapp")
-    prompt.set_socketio_emit_func(lambda msg: socketio.emit('parser_output', msg, room=prev_session_id))
 
 @socketio.on('disconnect')
 def handle_disconnect(sid) -> None:
@@ -580,32 +615,25 @@ def handle_set_output_mode(data) -> None:
 
 @socketio.on('parser_prompt')
 def handle_parser_prompt(data) -> None:
-    # Accept both string and dict payloads
+    # Only act as a mediator: deliver the prompt value to the waiting prompt session
     session_id = None
     value = data
     if isinstance(data, dict):
         value = data.get("value", "")
         session_id = data.get("session_id")
-    # Only proceed if session_id is valid and exists in session_metadata
     if not session_id or session_id not in session_metadata:
-        logger.warning(f"parser_prompt: Ignoring prompt for unknown session_id: {session_id}")
+        # Optionally emit an error to the frontend
+        emit('parser_output', {
+            "level": "ERROR",
+            "message": "Invalid or unknown session_id for prompt.",
+            "color": "#eb4f43"
+        }, room=session_id)
         return
-    # Store prompt in session_logs
-    if session_id not in session_logs:
-        session_logs[session_id] = []
-    session_logs[session_id].append({
-        "level": "PROMPT",
-        "type": "prompt",
-        "timestamp": time.time(),
-        "message": value
-    })
-    # Deliver the value to the waiting prompt session
+    # Deliver the value to the waiting prompt session (handled in user_prompt.py)
     prompt_session = prompt.prompt_sessions.get(session_id)
     if prompt_session:
         prompt_session.set_response(value)
-        log_parser_status(f"Delivered prompt response to session {session_id}: {value}", session_id)
-    else:
-        log_parser_status(f"No prompt session found for {session_id} (value: {value})", session_id)
+    # No logging, validation, or business logic here; handled downstream
 
 @socketio.on('cancel_parser')
 def handle_cancel_parser() -> None:
@@ -641,7 +669,64 @@ def handle_run_parser() -> None:
     log_parser_status("Parser connected. Starting parser run...", session_id, rich=True)
     cancel_flag = cancellation_manager.get_flag(session_id)
     prompt_queue = get_prompt_queue(session_id)
-    thread = Thread(target=process_urls_for_web, args=(prompt_queue, session_id, cancel_flag))
+
+    # --- Robust, session-aware emit function ---
+    def emit_to_socketio(line):
+        sid = session_id
+        # Store logs for session history display only
+        if sid:
+            if sid not in session_logs:
+                session_logs[sid] = []
+            # Store as dict or string, do not interpret or format
+            if isinstance(line, str) and line.strip().startswith("{"):
+                try:
+                    obj = orjson.loads(line)
+                    session_logs[sid].append(obj)
+                except Exception:
+                    session_logs[sid].append(line)
+            else:
+                session_logs[sid].append(line)
+        # Forward to SocketIO, do not reformat or filter
+        try:
+            if isinstance(line, dict) and line.get("type") == "heartbeat":
+                socketio.emit('session_heartbeat', line, room=sid)
+            elif isinstance(line, str) and line.strip().startswith("{"):
+                try:
+                    obj = orjson.loads(line)
+                    socketio.emit('parser_output', obj, room=sid)
+                    return
+                except Exception:
+                    pass
+            if isinstance(line, dict):
+                socketio.emit('parser_output', line, room=sid)
+            else:
+                socketio.emit('parser_output', {
+                    "level": "INFO",
+                    "message": str(line),
+                    "session_id": sid,
+                    "source": "backend"
+                }, room=sid)
+        except Exception:
+            pass  # Only log backend errors if needed
+
+    # Set logger and prompt to webapp mode for this session
+    logger.set_mode("webapp")
+    logger.set_format("json")
+    logger.set_socketio_emit_func(emit_to_socketio)
+    prompt.set_mode("webapp")
+    prompt.set_socketio_emit_func(
+        lambda msg: socketio.emit(
+            'parser_output',
+            msg if isinstance(msg, dict) else {"level": "PROMPT", "message": str(msg), "session_id": session_id, "source": "prompt"},
+            room=session_id
+        )
+    )
+
+    thread = Thread(
+        target=process_urls_for_web,
+        args=(prompt_queue, session_id, cancel_flag),
+        kwargs={"emit_func": emit_to_socketio}
+    )
     thread.daemon = True
     thread.start()
     session_threads[session_id] = thread

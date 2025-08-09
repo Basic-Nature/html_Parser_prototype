@@ -100,14 +100,17 @@ class CancellationManager(threading.Thread):
 # Instantiate globally
 cancellation_manager = CancellationManager()
 
-def heartbeat(session_id, cancel_flag, interval=10) :
+def heartbeat(session_id, cancel_flag, interval=10, emit_func=None):
     while True:
         time.sleep(interval)
-        logger.info({
-            "level": "HEARTBEAT",
-            "message": "Session is alive.",
-            "session_id": session_id
-        })
+        # Only emit heartbeat to frontend, don't log to terminal
+        if emit_func:
+            emit_func({
+                "type": "heartbeat",
+                "session_id": session_id,
+                "status": "alive",
+                "timestamp": time.time()
+            })
         if safe_is_set(cancel_flag):
             break
 
@@ -127,7 +130,7 @@ def process_urls_for_web(
     session_id,
     cancel_flag,
     max_workers=PIPELINE_MAX_WORKERS,
-    mode="webapp",
+    emit_func=None,
     **kwargs
 ) -> None:
     """
@@ -148,19 +151,20 @@ def process_urls_for_web(
             "session_id": session_id
         })
 
-    # Set logger and prompt mode
-    if mode == "webapp":
-        logger.set_mode("webapp")
-        logger.set_format("json")
-        prompt.set_mode("webapp")
-    else:
-        logger.set_mode("cli")
-        logger.set_format("plain")
-        prompt.set_mode("cli")
+    # Always set logger and prompt to webapp mode
+    logger.set_mode("webapp")
+    logger.set_format("json")
+    logger.set_socketio_emit_func(emit_func)
+    prompt.set_mode("webapp")
+    prompt.set_socketio_emit_func(emit_func)
 
-    # Start heartbeat thread
-    threading.Thread(target=heartbeat, args=(session_id, cancel_flag, HEARTBEAT_INTERVAL), daemon=True).start()
-
+    # Start heartbeat thread with emit_func
+    threading.Thread(
+        target=heartbeat,
+        args=(session_id, cancel_flag, HEARTBEAT_INTERVAL, emit_func),
+        daemon=True
+    ).start()
+    
     pipeline_start = time.time()
     try:
         logger.info({
@@ -316,6 +320,7 @@ def process_urls_for_web(
                             url=url,
                             session_id=session_id,
                             cancel_flag=cancel_flag,
+                            emit_func=emit_func,
                             **kwargs
                         )
                         url_duration = time.time() - url_start

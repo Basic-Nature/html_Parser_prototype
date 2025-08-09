@@ -14,16 +14,23 @@
             --border-radius: 18px;
             --neon: #00ffe7;
             --neon2: #d4af37;
+            --neon-pink: #ff00e7;
+            --neon-green: #39ff14;
+        }
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
         }
         body {
+            display: flex;
+            flex-direction: column;
             min-height: 100vh;
             font-family: 'Segoe UI', Arial, sans-serif;
-            /* Reversed gradient for parser page */
             background: linear-gradient(120deg, var(--main-red) 0%, var(--main-blue) 100%);
             position: relative;
             overflow-x: hidden;
         }
-        /* Glossy ray overlay */
         body::before {
             content: "";
             position: fixed;
@@ -62,16 +69,163 @@
             color: #fff;
             box-shadow: 0 2px 12px var(--neon2);
         }
+        .layout-flex {
+            display: flex;
+            flex: 1 0 auto;
+            align-items: flex-start;
+            justify-content: center;
+            gap: 2.5em;
+            margin-top: 2.5em;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .sidebar {
+            width: 340px;
+            min-width: 260px;
+            background: rgba(30,40,60,0.93);
+            border-radius: var(--border-radius);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+            padding: 2em 1.2em;
+            border: 2.5px solid #bfc9d1;
+            position: sticky;
+            top: 2em;
+            z-index: 3;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        .sidebar .section {
+            background: #fff;
+            border-radius: var(--border-radius);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            padding: 1.2em 1em;
+            margin-bottom: 1.5em;
+        }
+        .sidebar .section h2 {
+            color: var(--main-blue);
+            margin-bottom: 0.7em;
+            font-size: 1.1em;
+        }
+        .collapsible-btn {
+            background: var(--main-blue);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 0.5em 1.1em;
+            margin-bottom: 0.7em;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .collapsible-btn:hover {
+            background: var(--main-red);
+        }
+        .file-list {
+            list-style: none;
+            padding: 0;
+            margin: 0.5em 0 0 0;
+        }
+        .file-list li {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--main-bg);
+            border-radius: 8px;
+            margin-bottom: 0.5em;
+            padding: 0.5em 1em;
+            transition: 
+                transform 0.18s cubic-bezier(.61,-0.01,.7,1.01),
+                box-shadow 0.18s,
+                background 0.18s;
+            box-shadow: 0 2px 8px #00ffe733;
+            cursor: pointer;
+            position: relative;
+            z-index: 1;
+        }
+        .file-list li:hover {
+            transform: scale(1.08) translateX(8px);
+            background: linear-gradient(90deg, #23272b 60%, #00ffe7 100%);
+            box-shadow: 0 4px 24px 2px #00ffe7, 0 2px 12px #bfc9d1;
+            color: #fff;
+            z-index: 2;
+        }
+        .file-list li span {
+            font-size: 1.07em;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            transition: color 0.18s;
+        }
+        .file-list li:hover span {
+            color: #fff;
+            text-shadow: 0 0 8px #00ffe7;
+        }
+        .file-actions {
+            display: flex;
+            gap: 0.5em;
+        }
+        .btn {
+            border: none;
+            border-radius: 6px;
+            padding: 0.4em 0.9em;
+            font-size: 0.98em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .btn-primary {
+            background: var(--main-blue);
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background: var(--main-red);
+        }
+        .btn-success {
+            background: #4caf50;
+            color: #fff;
+        }
+        .btn-success:hover {
+            background: #388e3c;
+        }
+        .btn-danger {
+            background: #eb4f43;
+            color: #fff;
+        }
+        .btn-danger:hover {
+            background: #b71c1c;
+        }
+        .btn-upload {
+            background: #fff;
+            color: var(--main-blue);
+            border: 1px solid var(--main-blue);
+        }
+        .btn-upload:hover {
+            background: var(--main-blue);
+            color: #fff;
+        }
+        .sidebar .flash {
+            margin: 1em auto;
+            max-width: 600px;
+            padding: 1em 1.5em;
+            border-radius: 8px;
+            background: var(--main-red);
+            color: #fff;
+            font-weight: 600;
+            text-align: center;
+        }
         .container-main {
-            max-width: 800px;
-            margin: 3em auto;
+            flex: 1 1 0;
+            max-width: 1000px;
+            min-width: 400px;
+            margin: 0;
             background: var(--glass);
             border-radius: var(--border-radius);
             box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-            padding: 2.5em 2em 2em 2em;
+            padding: 2.5em 2em 6em 2em;
             border: 2.5px solid #bfc9d1;
             position: relative;
             z-index: 2;
+            box-sizing: border-box;
         }
         h1 {
             color: var(--main-blue);
@@ -121,8 +275,8 @@
                 box-shadow 0.3s,
                 color 0.2s,
                 filter 0.2s;
-            /* Futuristic shine pulse */
             animation: shinePulse 2.5s infinite alternate;
+            text-shadow: 0 0 8px var(--neon), 0 0 2px var(--neon2);
         }
         @keyframes shinePulse {
             0% { box-shadow: 0 0 24px 2px var(--neon2), 0 2px 12px #bfc9d1; }
@@ -133,6 +287,7 @@
             color: #fff;
             box-shadow: 0 0 48px 12px var(--neon), 0 2px 24px #bfc9d1;
             filter: brightness(1.18) drop-shadow(0 0 12px var(--neon));
+            text-shadow: 0 0 16px var(--neon-pink), 0 0 8px var(--neon2);
         }
         .run-btn:active {
             filter: brightness(1.3) drop-shadow(0 0 16px var(--neon2));
@@ -150,95 +305,52 @@
             white-space: pre-wrap;
             border: 2px solid #00ffe7;
             position: relative;
-            /* Futuristic glass reflection */
             background-image:
                 linear-gradient(120deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.01) 100%),
                 repeating-linear-gradient(120deg, rgba(255,255,255,0.08) 0 2px, transparent 2px 80px);
+            font-size: 1.13em;
+            max-height: 60vh;
+            overflow-y: auto;
+            resize: vertical;
+            transition: max-height 0.3s;
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: var(--neon) #23272b;
         }
-        .output-section::before {
-            content: '';
-            display: block;
-            position: absolute;
-            top: 0; left: 0; right: 0; height: 8px;
-            border-radius: 14px 14px 0 0;
-            background: linear-gradient(90deg, var(--main-blue), var(--neon2), var(--main-blue));
-            opacity: 0.7;
-        }
-        .prompt-section {
-            text-align: center;
-            margin-top: 1.5em;
-        }
-        .prompt-section input[type="text"] {
-            width: 70%;
-            padding: 0.7em;
-            border-radius: 8px;
-            border: 1.5px solid var(--neon2);
+        .output-section::-webkit-scrollbar,
+        .log-panel::-webkit-scrollbar,
+        #sessionFooter::-webkit-scrollbar,
+        #sessionFooter .footer-full::-webkit-scrollbar,
+        #sessionFooter .footer-preview::-webkit-scrollbar {
+            height: 10px;
+            width: 10px;
             background: #23272b;
-            color: #00ffe7;
-            font-size: 1.08em;
-            font-family: 'Fira Mono', 'Consolas', monospace;
-            margin-right: 0.5em;
-            outline: none;
-            transition: border 0.2s, box-shadow 0.2s;
-        }
-        .prompt-section input[type="text"]:focus {
-            border: 2px solid var(--neon);
-            box-shadow: 0 0 8px var(--neon);
-        }
-        .prompt-section button {
-            padding: 0.7em 2em;
             border-radius: 8px;
-            border: none;
-            background: linear-gradient(90deg, var(--main-blue), var(--neon2));
-            color: #fff;
-            font-weight: 700;
-            font-size: 1.08em;
-            letter-spacing: 1px;
-            cursor: pointer;
-            transition: background 0.2s, box-shadow 0.2s;
         }
-        .prompt-section button:hover {
-            background: linear-gradient(90deg, var(--neon2), var(--main-blue));
-            box-shadow: 0 0 12px var(--neon2);
+        .output-section::-webkit-scrollbar-thumb,
+        .log-panel::-webkit-scrollbar-thumb,
+        #sessionFooter::-webkit-scrollbar-thumb,
+        #sessionFooter .footer-full::-webkit-scrollbar-thumb,
+        #sessionFooter .footer-preview::-webkit-scrollbar-thumb {
+            background: linear-gradient(120deg, var(--neon) 40%, var(--neon2) 60%, var(--neon-pink) 100%);
+            border-radius: 8px;
+            box-shadow: 0 0 8px var(--neon), 0 0 2px var(--neon2), 0 0 12px var(--neon-pink);
         }
-        .flash {
-            margin: 1em auto;
-            max-width: 600px;
-            padding: 1em 1.5em;
-            border-radius: 10px;
-            background: var(--main-red);
-            color: #fff;
-            font-weight: 700;
-            text-align: center;
-            border: 2px solid var(--neon2);
-            box-shadow: 0 2px 8px #bfc9d1;
+        .output-section::-webkit-scrollbar-corner,
+        .log-panel::-webkit-scrollbar-corner {
+            background: #23272b;
         }
-        /* Data particle explosion */
-        .particle {
-            position: absolute;
-            pointer-events: none;
-            border-radius: 50%;
-            opacity: 0.85;
-            z-index: 9999;
-            width: 8px;
-            height: 8px;
-            background: radial-gradient(circle, var(--neon2) 0%, var(--neon) 100%);
-            box-shadow: 0 0 12px 2px var(--neon2), 0 0 24px 4px var(--neon);
-            animation: explode 0.8s cubic-bezier(.61,-0.01,.7,1.01) forwards;
-        }
-        @keyframes explode {
-            to {
-                opacity: 0;
-                transform: translate(var(--dx), var(--dy)) scale(1.8);
-            }
-        }
-        @media (max-width: 700px) {
-            .container-main { padding: 1em; }
-            .navbar { flex-direction: column; }
-            .output-section { font-size: 0.98em; }
+        .log-panel {
+            overflow-x: auto;
+            max-width: 100%;
+            word-break: break-word;
+            white-space: pre-wrap;
+            scrollbar-width: thin;
+            scrollbar-color: var(--neon-pink) #23272b;
         }
         .log-glow {
             animation: logGlow 1.2s cubic-bezier(.61,-0.01,.7,1.01);
+            box-shadow: 0 0 32px 8px var(--neon-pink), 0 0 16px 4px var(--neon-green);
         }
         @keyframes logGlow {
             0% { box-shadow: 0 0 24px 6px var(--neon2), 0 0 0 #fff; filter: brightness(1.2);}
@@ -249,32 +361,50 @@
         .log-level { font-weight: 900; letter-spacing: 1px; }
         .log-msg { font-weight: 700; }
         .log-context { font-style: italic; }
-        .output-section {
-            min-height: 380px !important;
-            font-size: 1.13em !important;
-            max-height: 60vh;
-            overflow-y: auto;
-            resize: vertical;
-            transition: max-height 0.3s;
+        .prompt-section {
+            text-align: center;
+            margin-top: 1.5em;
+        }
+        .prompt-section form {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5em;
+            flex-wrap: wrap;
         }
         .prompt-section input[type="text"] {
-            font-size: 1.18em;
-            padding: 1em;
             width: 80%;
+            padding: 1em;
+            border-radius: 8px;
+            border: 1.5px solid var(--neon2);
+            background: #23272b;
+            color: #00ffe7;
+            font-size: 1.18em;
+            font-family: 'Fira Mono', 'Consolas', monospace;
+            margin-right: 0.5em;
+            outline: none;
+            transition: border 0.2s, box-shadow 0.2s;
+            box-sizing: border-box;
+        }
+        .prompt-section input[type="text"]:focus {
+            border: 2px solid var(--neon);
+            box-shadow: 0 0 8px var(--neon);
         }
         .prompt-section button {
             font-size: 1.18em;
             padding: 1em 2.5em;
+            border-radius: 8px;
+            border: none;
+            background: linear-gradient(90deg, var(--main-blue), var(--neon2));
+            color: #fff;
+            font-weight: 700;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
         }
-        @media (max-width: 700px) {
-            .output-section { font-size: 1.01em !important; min-height: 220px !important; }
-            .prompt-section input[type="text"] { font-size: 1em; }
-        }
-        .log-panel {
-            overflow-x: auto;
-            max-width: 100%;
-            word-break: break-word;
-            white-space: pre-wrap;
+        .prompt-section button:hover {
+            background: linear-gradient(90deg, var(--neon2), var(--main-blue));
+            box-shadow: 0 0 12px var(--neon2);
         }
         .session-btn {
             background: linear-gradient(90deg, #45818e, #d4af37);
@@ -287,21 +417,373 @@
             cursor: pointer;
             box-shadow: 0 2px 8px #bfc9d1;
             transition: background 0.2s, box-shadow 0.2s;
+            max-width: 220px;
+            min-width: 120px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .session-btn:hover {
-            background: linear-gradient(90deg, #d4af37, #45818e);
-            box-shadow: 0 0 12px #00ffe7;
-        }        
+            background: linear-gradient(90deg, var(--neon2), var(--main-blue));
+            box-shadow: 0 0 12px var(--neon), 0 0 8px var(--neon-pink);
+            text-shadow: 0 0 8px var(--neon-pink);
+        }
+        @keyframes heartbeat-pulse {
+            0% { transform: scale(1); color: var(--neon); }
+            30% { transform: scale(1.3); color: var(--neon2); }
+            60% { transform: scale(1); color: var(--neon); }
+            100% { transform: scale(1); color: var(--neon); }
+        }
+        @keyframes ekg-pulse {
+            0% { stroke-dasharray: 0, 100; opacity: 1; }
+            10% { stroke-dasharray: 10, 90; }
+            30% { stroke-dasharray: 36, 64; opacity: 1; }
+            60% { stroke-dasharray: 36, 64; opacity: 1; }
+            100% { stroke-dasharray: 0, 100; opacity: 1; }
+        }
+        .heartbeat-indicator svg {
+            transition: opacity 0.3s;
+            filter: drop-shadow(0 0 8px var(--neon-green));
+        }
+        #sessionFooter {
+            width: 100vw;
+            max-width: 100vw;
+            background: rgba(30,40,60,0.93);
+            border-top: 2px solid var(--neon);
+            padding: 0;
+            margin: 0;
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            z-index: 10;
+            transition: height 0.3s, box-shadow 0.3s;
+            box-shadow: 0 -2px 16px var(--neon)33;
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: var(--neon2) #23272b;
+        }
+        #sessionFooter .footer-preview {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 2.5em;
+            padding: 0.7em 2em;
+            cursor: pointer;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #sessionFooter .footer-full {
+            display: none;
+            padding: 1em 2em 0.5em 2em;
+            align-items: flex-start;
+            justify-content: flex-start;
+            gap: 1em;
+            width: 100%;
+            max-width: 100vw;
+            box-sizing: border-box;
+            flex-wrap: wrap;
+            overflow-x: auto;
+        }
+        #sessionFooter.expanded .footer-preview {
+            display: none;
+        }
+        #sessionFooter.expanded .footer-full {
+            display: flex;
+        }
+        #sessionFooter.minimized .footer-preview {
+            display: flex;
+        }
+        #sessionFooter.minimized .footer-full {
+            display: none;
+        }
+        #sessionFooter.expanded {
+            box-shadow: 0 -4px 32px var(--neon)99;
+        }
+        #sessionFooter .session-btn {
+            margin-bottom: 0;
+        }
+        #sessionFooter #sessionList {
+            flex-wrap: wrap;
+            gap: 0.5em;
+            width: 100%;
+            max-width: 100vw;
+            box-sizing: border-box;
+            display: flex;
+            overflow-x: auto;
+        }
+        /* Responsive styles unchanged... */
+        @media (max-width: 1100px) {
+            .layout-flex {
+                flex-direction: column;
+                gap: 0;
+                width: 100vw;
+                min-width: 0;
+            }
+            .container-main {
+                padding: 1em;
+                padding-bottom: 5em;
+                min-width: 0;
+                max-width: 100vw;
+                box-sizing: border-box;
+            }
+            .sidebar {
+                max-width: 100vw;
+                width: 100%;
+                min-width: 0;
+                padding: 1em;
+                box-sizing: border-box;
+                position: static;
+                top: unset;
+                z-index: 2;
+            }
+        }
+        @media (max-width: 700px) {
+            .sidebar .section h2 {
+                font-size: 1em;
+                word-break: break-word;
+            }
+            .navbar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 0.5em;
+                padding: 0.5em 0;
+            }
+            .navbar a {
+                margin: 0.2em 0;
+                padding: 0.7em 1em;
+                font-size: 1em;
+                width: 100%;
+                box-sizing: border-box;
+                text-align: left;
+            }
+            .output-section {
+                font-size: 1.01em !important;
+                min-height: 220px !important;
+                max-height: 40vh;
+                padding: 1em 0.5em 1em 0.7em;
+                box-sizing: border-box;
+                word-break: break-word;
+            }
+            .file-list li {
+                flex-direction: column;
+                align-items: flex-start;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            .file-actions {
+                margin-top: 0.5em;
+                flex-wrap: wrap;
+                gap: 0.3em;
+            }
+            .prompt-section form {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 0.5em;
+            }
+            .prompt-section input[type="text"] {
+                width: 100%;
+                min-width: 0;
+                margin-right: 0;
+                margin-bottom: 0.5em;
+            }
+            .prompt-section button {
+                width: 100%;
+                margin: 0;
+            }
+            .session-btn {
+                padding: 0.6em 1em;
+                font-size: 1em;
+                margin-right: 0.3em;
+                margin-bottom: 0.3em;
+                width: 100%;
+                min-width: 120px;
+                box-sizing: border-box;
+                text-align: left;
+                max-width: 100vw;
+            }
+            #sessionFooter > div {
+                flex-direction: column;
+                gap: 0.5em;
+                align-items: flex-start;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            #sessionFooter #sessionList {
+                flex-wrap: wrap;
+                gap: 0.5em;
+                width: 100%;
+                box-sizing: border-box;
+                max-width: 100vw;
+            }
+            #sessionFooter .footer-preview,
+            #sessionFooter .footer-full {
+                padding-left: 1em;
+                padding-right: 1em;
+                flex-wrap: wrap;
+                overflow-x: auto;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            .flash, .sidebar .flash {
+                font-size: 0.98em;
+                padding: 0.7em 1em;
+                box-sizing: border-box;
+                word-break: break-word;
+            }
+            .logger-mode-section {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 0.5em !important;
+                font-size: 1em !important;
+                padding: 0.5em 0 !important;
+                box-sizing: border-box;
+            }
+            #sessionInfo {
+                font-size: 1em;
+                word-break: break-all;
+                padding: 0.5em 0;
+            }
+        }
     </style>
 </head>
 <body>
     <nav class="navbar">
         <a href="{{ url_for('index') }}">Dashboard</a>
-        <a href="{{ url_for('manage_data') }}">Manage Data & URL</a>
+        <a href="{{ url_for('data_framework') }}">Data Framework</a>
         <a href="{{ url_for('history') }}">History</a>
         <a href="{{ url_for('run_parser') }}" class="active">Run Parser</a>
         <a href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank">About</a>
     </nav>
+    <div class="layout-flex">
+        <!-- Sidebar: File Management & URL Hint Manager -->
+        <aside class="sidebar">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="flash">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <!-- Input Folder Section -->
+            <div class="section">
+                <button type="button" class="collapsible-btn" onclick="toggleSection('inputSection')">Input Folder Files</button>
+                <div id="inputSection" style="display:none;">
+                    <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
+                        <label for="inputFile" style="display:none;">Choose file for input folder</label>
+                        <input type="file" id="inputFile" name="file" required aria-label="Choose file for input folder">
+                        <button type="submit" class="btn btn-upload">Upload</button>
+                    </form>
+                    <ul class="file-list">
+                        {% for file in input_files %}
+                            <li>
+                                <span>{{ file }}</span>
+                                <div class="file-actions">
+                                    <a href="{{ url_for('download_input_file', filename=file) }}" class="btn btn-success">Download</a>
+                                    <form method="POST" action="{{ url_for('delete_input_file', filename=file) }}" style="display:inline;">
+                                        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                    </form>
+                                </div>
+                            </li>
+                        {% else %}
+                            <li>No files in input folder.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Output Folder Section -->
+            <div class="section">
+                <button type="button" class="collapsible-btn" onclick="toggleSection('outputSection')">Output Folder Files</button>
+                <div id="outputSection" style="display:none;">
+                    <form method="POST" action="{{ url_for('upload_to_output') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
+                        <label for="outputFile" style="display:none;">Choose file for output folder</label>
+                        <input type="file" id="outputFile" name="file" required aria-label="Choose file for output folder">
+                        <button type="submit" class="btn btn-upload">Upload</button>
+                    </form>
+                    <ul class="file-list">
+                        {% for file in output_files %}
+                            <li>
+                                <span>{{ file }}</span>
+                                <div class="file-actions">
+                                    <a href="{{ url_for('download_output_file', filename=file) }}" class="btn btn-success">Download</a>
+                                    <form method="POST" action="{{ url_for('delete_output_file', filename=file) }}" style="display:inline;">
+                                        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                    </form>
+                                </div>
+                            </li>
+                        {% else %}
+                            <li>No files in output folder.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Uploads Folder Section (with upload form at the top) -->
+            <div class="section">
+                <button type="button" class="collapsible-btn" onclick="toggleSection('uploadsSection')">Uploads Folder Files</button>
+                <div id="uploadsSection" style="display:none;">
+                    <form method="POST" action="{{ url_for('run_parser') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
+                        <label for="uploadsFile" style="display:none;">Choose file for uploads folder</label>
+                        <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
+                        <button type="submit" class="btn btn-upload">Upload to Uploads</button>
+                    </form>
+                    <ul class="file-list">
+                        {% for file in uploaded_files %}
+                            <li>
+                                <span>{{ file }}</span>
+                                <div class="file-actions">
+                                    <a href="{{ url_for('download_upload_file', filename=file) }}" class="btn btn-success">Download</a>
+                                    <form method="POST" action="{{ url_for('delete_upload_file', filename=file) }}" style="display:inline;">
+                                        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                    </form>
+                                </div>
+                            </li>
+                        {% else %}
+                            <li>No files in uploads folder.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- URL Hint Overrides Section -->
+            <div class="section">
+                <h2>URL Hint Overrides</h2>
+                <form id="addUrlHintForm" style="margin-bottom:1.2em;display:flex;gap:0.5em;flex-wrap:wrap;">
+                    <input type="text" id="urlFragment" placeholder="URL fragment (e.g. electionreturns.pa.gov)" required style="flex:2;min-width:180px;padding:0.6em;border-radius:8px;border:1.5px solid #00ffe7;">
+                    <input type="text" id="modulePath" placeholder="Module path (e.g. handlers.states.pennsylvania)" required style="flex:3;min-width:220px;padding:0.6em;border-radius:8px;border:1.5px solid #00ffe7;">
+                    <button type="submit" class="btn btn-primary" style="flex:1;min-width:120px;">Add Override</button>
+                </form>
+                <div id="hintOverridesTable" style="overflow-x:auto;">
+                    <!-- Table will be filled by JS -->
+                </div>
+                <hr style="margin:2em 0;">
+                <h3>Add URL to urls.txt</h3>
+                <form id="addUrlForm" style="display:flex;gap:0.5em;flex-wrap:wrap;">
+                    <input type="url" id="newUrl" placeholder="Paste new election results URL here" required style="flex:3;min-width:260px;padding:0.6em;border-radius:8px;border:1.5px solid #00ffe7;">
+                    <button type="submit" class="btn btn-success" style="flex:1;min-width:120px;">Add URL</button>
+                </form>
+                <div id="urlList" style="margin-top:1em;"></div>
+            </div>
+
+            <!-- Override Validations Section -->
+            <div class="section">
+                <h2>Override Validations</h2>
+                <ul>
+                {% for frag, result in validations.items() %}
+                    <li>
+                        <strong>{{ frag }}</strong>:
+                        {% if result[0] %}
+                            <span style="color:green;">Valid</span>
+                        {% else %}
+                            <span style="color:red;">Invalid ({{ result[1] }})</span>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+                </ul>
+            </div>
+        </aside>
+        <!-- Main Parser UI -->
     <div class="container-main">
         <h1>Run the Smart Elections Parser</h1>
         <div class="subtitle">Start a new parsing job and view the results below.</div>
@@ -372,13 +854,8 @@
             <span style="color:#00ffe7;font-weight:700;">Session:</span>
             <span id="activeSessionId" style="color:#ffd166;font-weight:900;"></span>
             <span id="sessionSwitcher" style="margin-left:2em;"></span>
-        </div> 
-        <div id="sessionSidebar" style="float:right;width:220px;margin-left:2em;">
-            <div style="font-weight:700;color:#00ffe7;margin-bottom:0.7em;">Active Sessions</div>
-            <div id="sessionList"></div>
-            <button id="addSessionBtn" class="session-btn" style="margin-top:1em;width:100%;">+ New Session</button>
         </div>       
-        <div class="output-section" id="terminal">
+        <div class="output-section" id="terminal" role="log" aria-live="polite">
             {% if parser_output %}
                 {{ parser_output }}
             {% else %}
@@ -392,382 +869,724 @@
             </form>
         </div>
     </div>
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    if (window.__parserSocketInitialized) return;
-    window.__parserSocketInitialized = true;
-
-    // Always send a string session ID, never an object
-    let prevSessionId = localStorage.getItem('session_id');
-    try {
-        if (prevSessionId && prevSessionId.startsWith('{')) {
-            let parsed = JSON.parse(prevSessionId);
-            if (parsed.session_id) prevSessionId = parsed.session_id;
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        function toggleSection(id) {
+            var el = document.getElementById(id);
+            el.style.display = (el.style.display === "none" || el.style.display === "") ? "block" : "none";
         }
-    } catch {}
-    var socket = io({
-        query: {
-            prev_session_id: prevSessionId || ""
-        }
-    });
 
-    var outputDiv = document.getElementById('terminal');
-    var promptInput = document.getElementById('promptInput');
-    var cancelBtn = document.getElementById('cancelParserBtn');
-    var cancelRequested = false;
+        document.addEventListener("DOMContentLoaded", function() {
+            if (window.__parserSocketInitialized) return;
+            window.__parserSocketInitialized = true;
 
-    var activeSessionIdSpan = document.getElementById('activeSessionId');
-    var sessionListDiv = document.getElementById('sessionList');
-    var addSessionBtn = document.getElementById('addSessionBtn');
+            // --- Enhanced Footer Expand/Collapse Logic ---
+            const footer = document.getElementById('sessionFooter');
+            const preview = document.getElementById('footerPreview');
+            const full = document.getElementById('footerFull');
 
-    function getSessions() {
-        let sessions = JSON.parse(localStorage.getItem('active_sessions') || "[]");
-        sessions = sessions.map(s => (typeof s === 'object' && s.session_id) ? s.session_id : s);
-        sessions = Array.from(new Set(sessions));
-        localStorage.setItem('active_sessions', JSON.stringify(sessions));
-        return sessions;
-    }
-
-    function setActiveSession(sid) {
-        if (typeof sid === 'object' && sid.session_id) {
-            sid = sid.session_id;
-        }
-        localStorage.setItem('session_id', sid);
-        activeSessionIdSpan.textContent = sid;
-        highlightActiveSession();
-    }
-
-    function highlightActiveSession() {
-        let sid = localStorage.getItem('session_id');
-        Array.from(sessionListDiv.children).forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.sid === sid);
-        });
-    }
-
-    function renderSessionList() {
-        let sessions = getSessions();
-        sessionListDiv.innerHTML = '';
-        sessions.forEach(sid => {
-            if (typeof sid === 'object' && sid.session_id) sid = sid.session_id;
-            let btn = document.createElement('button');
-            btn.textContent = sid;
-            btn.className = 'session-btn';
-            btn.dataset.sid = sid;
-            btn.style.width = '100%';
-            btn.style.marginBottom = '0.5em';
-            btn.onclick = function() {
-                setActiveSession(sid);
-                highlightActiveSession();
-                outputDiv.innerHTML = '';
-                socket.emit('join', {session_id: sid});
-                loadSessionLogs(sid);
-            };
-            let removeBtn = document.createElement('span');
-            removeBtn.textContent = '✖';
-            removeBtn.style.cssText = 'float:right;color:#eb4f43;cursor:pointer;font-weight:bold;margin-left:1em;';
-            removeBtn.onclick = function(e) {
-                e.stopPropagation();
-                socket.emit('delete_session', {session_id: sid});
-                let sessions = getSessions().filter(s => s !== sid);
-                localStorage.setItem('active_sessions', JSON.stringify(sessions));
-                if (localStorage.getItem('session_id') === sid) {
-                    setActiveSession(sessions[0] || '');
+            // Particle explosion effect (reuse from run button)
+            function createExplosion(x, y, color) {
+                for (let i = 0; i < 24; i++) {
+                    const particle = document.createElement('div');
+                    particle.className = 'particle';
+                    const angle = Math.random() * 2 * Math.PI;
+                    const radius = 60 + Math.random() * 40;
+                    const dx = Math.cos(angle) * radius;
+                    const dy = Math.sin(angle) * radius;
+                    particle.style.left = x + 'px';
+                    particle.style.top = y + 'px';
+                    particle.style.setProperty('--dx', dx + 'px');
+                    particle.style.setProperty('--dy', dy + 'px');
+                    document.body.appendChild(particle);
+                    setTimeout(() => particle.remove(), 800);
                 }
-                renderSessionList();
-            };
-            btn.appendChild(removeBtn);
-            sessionListDiv.appendChild(btn);
-        });
-        highlightActiveSession();
-    }
+            }
 
-    // Only create new session when Add Session is pressed
-    addSessionBtn.onclick = function() {
-        let newSid = 'sess_' + Math.random().toString(36).substr(2, 9);
-        let sessions = getSessions();
-        sessions.push(newSid);
-        localStorage.setItem('active_sessions', JSON.stringify(sessions));
-        setActiveSession(newSid);
-        renderSessionList();
-        socket.emit('join', {session_id: newSid});
-        outputDiv.innerHTML = '';
-    };
+            preview.addEventListener('click', (e) => {
+                footer.classList.remove('minimized');
+                footer.classList.add('expanded');
+                // Explosion effect at click position
+                const rect = preview.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2 + window.scrollY;
+                createExplosion(x, y);
+            });
 
-    // Only create new session when Run Parser is pressed
-    document.getElementById('runParserBtn').addEventListener('click', function(e) {
-        e.preventDefault();
-        let sid = localStorage.getItem('session_id');
-        if (!sid) {
-            sid = 'sess_' + Math.random().toString(36).substr(2, 9);
-            let sessions = getSessions();
-            sessions.push(sid);
-            localStorage.setItem('active_sessions', JSON.stringify(sessions));
-            setActiveSession(sid);
-            renderSessionList();
-            socket.emit('join', {session_id: sid});
-        }
-        outputDiv.innerHTML = '';
-        const rect = this.getBoundingClientRect();
-        const x = rect.left + rect.width / 2;
-        const y = rect.top + rect.height / 2 + window.scrollY;
-        createExplosion(x, y);
-        socket.emit('run_parser');
-    });
+            // Only collapse when clicking the expanded footer preview area (not session buttons)
+            full.addEventListener('click', (e) => {
+                // Only collapse if the click is NOT on a session button or its children
+                if (e.target.closest('.session-btn')) return;
+                footer.classList.remove('expanded');
+                footer.classList.add('minimized');
+                // Optional: explosion effect on collapse
+                const rect = full.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + 10 + window.scrollY;
+                createExplosion(x, y, '#eb4f43');
+            });
 
-    // Load session logs for a session
-    function loadSessionLogs(sid) {
-        socket.emit('get_session_history', { session_id: sid });
-    }
+            // --- Session Count Update ---
+            const sessionCount = document.getElementById('sessionCount');
+            function updateSessionCount() {
+                let sessions = JSON.parse(localStorage.getItem('active_sessions') || "[]");
+                sessionCount.textContent = `(${sessions.length})`;
+            }
 
-    socket.on('session_history', function(data) {
-        if (!data || !data.logs) return;
-        outputDiv.innerHTML = '';
-        data.logs.forEach(renderParserOutput);
-        outputDiv.scrollTop = outputDiv.scrollHeight;
-    });
+            // --- Robust Socket.IO Reconnect Logic ---
+            let reconnectAttempts = 0;
+            const maxReconnectDelay = 30000;
+            let socket = null;
 
-    // Log type filter logic
-    var seenLogTypes = new Set(["all", "status", "router", "ai_analysis", "stream", "manual_override", "input", "output", "validation", "network", "cancel", "heartbeat", "summary", "cache", "other"]);
-    var logTypeSelect = document.getElementById('logTypeFilterSelect');
-    function addLogTypeOption(type) {
-        type = (type || "other").toLowerCase();
-        if (!seenLogTypes.has(type)) {
-            seenLogTypes.add(type);
-            var opt = document.createElement('option');
-            opt.value = type;
-            opt.textContent = type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ");
-            logTypeSelect.appendChild(opt);
-        }
-    }
+            function showDisconnectedMessage() {
+                let outputDiv = document.getElementById('terminal');
+                let msgId = 'socket-disconnect-msg';
+                if (!document.getElementById(msgId)) {
+                    let div = document.createElement('div');
+                    div.id = msgId;
+                    div.style = "background:#eb4f43;color:#fff;padding:1em;border-radius:8px;margin:1em 0;text-align:center;font-weight:bold;";
+                    div.textContent = "Lost connection to server. Attempting to reconnect...";
+                    outputDiv.appendChild(div);
+                }
+            }
+            function hideDisconnectedMessage() {
+                let msg = document.getElementById('socket-disconnect-msg');
+                if (msg) msg.remove();
+            }
+            function scheduleReconnect() {
+                reconnectAttempts += 1;
+                let delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxReconnectDelay);
+                showDisconnectedMessage();
+                setTimeout(() => {
+                    hideDisconnectedMessage();
+                    connectSocket();
+                }, delay);
+            }
 
-    // Data particle explosion effect
-    function createExplosion(x, y, color) {
-        for (let i = 0; i < 32; i++) {
-            const particle = document.createElement('div');
-            particle.className = 'particle';
-            const angle = Math.random() * 2 * Math.PI;
-            const radius = 80 + Math.random() * 60;
-            const dx = Math.cos(angle) * radius;
-            const dy = Math.sin(angle) * radius;
-            particle.style.left = x + 'px';
-            particle.style.top = y + 'px';
-            particle.style.setProperty('--dx', dx + 'px');
-            particle.style.setProperty('--dy', dy + 'px');
-            document.body.appendChild(particle);
-            setTimeout(() => particle.remove(), 800);
-        }
-    }
-
-    cancelBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        if (cancelRequested) return;
-        cancelRequested = true;
-        socket.emit('cancel_parser');
-        outputDiv.innerHTML += '<br><span style="color:#eb4f43;font-weight:bold;">[CANCEL REQUESTED]</span><br>';
-        outputDiv.scrollTop = outputDiv.scrollHeight;
-        window.scrollTo(0, document.body.scrollHeight);
-        cancelBtn.disabled = true;
-        cancelBtn.textContent = "Canceling...";
-        setTimeout(() => {
-            cancelBtn.disabled = false;
-            cancelBtn.textContent = "Cancel";
-            cancelRequested = false;
-            let sid = localStorage.getItem('session_id');
-            if (sid) {
-                let sessions = JSON.parse(localStorage.getItem('active_sessions') || "[]").filter(s => s !== sid);
-                localStorage.setItem('active_sessions', JSON.stringify(sessions));
-                if (sessions.length > 0) {
-                    localStorage.setItem('session_id', sessions[0]);
+            // --- URL index mapping for prompt ---
+            let urlMap = {};
+            function renderUrlList(urls) {
+                urlMap = {};
+                let html = `<ul style="list-style:none;padding:0;">`;
+                if (urls.length === 0) {
+                    html += `<li style="color:#bfc9d1;">No URLs in urls.txt.</li>`;
                 } else {
-                    localStorage.removeItem('session_id');
+                    urls.forEach((url, idx) => {
+                        let num = idx + 1;
+                        urlMap[num] = url;
+                        html += `<li style="padding:0.3em 0.5em;word-break:break-all;">[${num}] ${url}</li>`;
+                    });
                 }
-                renderSessionList();
+                html += `</ul>`;
+                document.getElementById("urlList").innerHTML = html;
             }
-        }, 5000);
-    });
 
-    function sendPrompt(event) {
-        event.preventDefault();
-        var value = promptInput.value.trim();
-        var sessionId = localStorage.getItem('session_id');
-        if (value && sessionId) {
-            socket.emit('parser_prompt', { session_id: sessionId, value: value });
-            promptInput.value = '';
-        }
-    }
-    document.getElementById('promptForm').addEventListener('submit', sendPrompt);
-
-    promptInput.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape') {
-            this.value = '';
-        }
-    });
-
-    document.getElementById('logFilterSelect').addEventListener('change', filterLogs);
-    logTypeSelect.addEventListener('change', filterLogs);
-
-    function filterLogs() {
-        const levelFilter = document.getElementById('logFilterSelect').value;
-        const typeFilter = logTypeSelect.value;
-        const logLines = document.querySelectorAll('.log-line, .log-panel');
-        logLines.forEach(line => {
-            const level = (line.getAttribute('data-level') || "other").toLowerCase();
-            const type = (line.getAttribute('data-type') || "other").toLowerCase();
-            const showLevel = (levelFilter === 'all' || level === levelFilter);
-            const showType = (typeFilter === 'all' || type === typeFilter);
-            line.style.display = (showLevel && showType) ? '' : 'none';
-        });
-    }
-
-    document.getElementById('outputModeSelect').addEventListener('change', function() {
-        const mode = this.value;
-        socket.emit('set_output_mode', {mode: mode});
-    });
-
-    // Robust parser_output rendering function
-    function renderParserOutput(data) {
-        if (outputDiv.innerHTML.includes('Parser output will appear')) {
-            outputDiv.innerHTML = '';
-        }
-        let msg = '';
-        let obj = data;
-        let isJson = false;
-        if (typeof data === 'string' && data.trim().startsWith('{')) {
-            try {
-                obj = JSON.parse(data);
-                if (typeof obj === 'string' && obj.trim().startsWith('{')) {
-                    obj = JSON.parse(obj);
+            function connectSocket() {
+                if (socket && typeof socket.disconnect === "function") {
+                    socket.disconnect();
                 }
-                isJson = true;
-            } catch (e) {
-                obj = data;
-            }
-        }
-        if (isJson && obj && obj.type === "prompt" && promptInput) {
-            promptInput.placeholder = obj.message || "Type a command...";
-            promptInput.focus();
-        }
-        let logLevel = (isJson && obj && obj.level) ? obj.level.toLowerCase() : "other";
-        let logType = (isJson && obj && obj.type) ? obj.type.toLowerCase() : "other";
-        addLogTypeOption(logType);
-        let mainMsg = '';
-        if (isJson && obj) {
-            if (Array.isArray(obj.message)) {
-                mainMsg = `<ul style="margin:0 0 0 1.5em;padding:0;">` +
-                    obj.message.map(item => `<li style="margin-bottom:0.2em;">${typeof item === 'object' ? JSON.stringify(item) : item}</li>`).join('') +
-                    `</ul>`;
-            } else if (typeof obj.message === 'string' && obj.message.trim().startsWith('[') && obj.message.trim().endsWith(']')) {
+                let prevSessionId = localStorage.getItem('session_id');
                 try {
-                    const arr = JSON.parse(obj.message);
-                    if (Array.isArray(arr)) {
-                        mainMsg = `<ul style="margin:0 0 0 1.5em;padding:0;">` +
-                            arr.map(item => `<li style="margin-bottom:0.2em;">${typeof item === 'object' ? JSON.stringify(item) : item}</li>`).join('') +
-                            `</ul>`;
-                    } else {
-                        mainMsg = `<span class="log-msg" style="color:#fff;text-shadow:0 0 6px #00ffe7;">${obj.message}</span>`;
+                    if (prevSessionId && prevSessionId.startsWith('{')) {
+                        let parsed = JSON.parse(prevSessionId);
+                        if (parsed.session_id) prevSessionId = parsed.session_id;
                     }
-                } catch {
-                    mainMsg = `<span class="log-msg" style="color:#fff;text-shadow:0 0 6px #00ffe7;">${obj.message}</span>`;
+                } catch {}
+                socket = io({
+                    query: {
+                        prev_session_id: prevSessionId || ""
+                    },
+                    reconnection: false
+                });
+
+                // --- All your socket event handlers below ---
+                var outputDiv = document.getElementById('terminal');
+                var promptInput = document.getElementById('promptInput');
+                var cancelBtn = document.getElementById('cancelParserBtn');
+                var cancelRequested = false;
+
+                var activeSessionIdSpan = document.getElementById('activeSessionId');
+                var sessionListDiv = document.getElementById('sessionList');
+                var addSessionBtn = document.getElementById('addSessionBtn');
+
+                function getSessions() {
+                    let sessions = JSON.parse(localStorage.getItem('active_sessions') || "[]");
+                    sessions = sessions.map(s => (typeof s === 'object' && s.session_id) ? s.session_id : s);
+                    sessions = Array.from(new Set(sessions));
+                    localStorage.setItem('active_sessions', JSON.stringify(sessions));
+                    return sessions;
                 }
-            } else if (obj.message !== undefined) {
-                mainMsg = `<span class="log-msg" style="color:#fff;text-shadow:0 0 6px #00ffe7;">${obj.message}</span>`;
-            } else {
-                mainMsg = `<span class="log-msg" style="color:#fff;text-shadow:0 0 6px #00ffe7;">${JSON.stringify(obj)}</span>`;
+
+                function setActiveSession(sid) {
+                    if (typeof sid === 'object' && sid.session_id) {
+                        sid = sid.session_id;
+                    }
+                    localStorage.setItem('session_id', sid);
+                    activeSessionIdSpan.textContent = sid;
+                    highlightActiveSession();
+                }
+
+                function highlightActiveSession() {
+                    let sid = localStorage.getItem('session_id');
+                    Array.from(sessionListDiv.children).forEach(btn => {
+                        btn.classList.toggle('active', btn.dataset.sid === sid);
+                    });
+                }
+
+                function renderSessionList() {
+                    let sessions = getSessions();
+                    sessionListDiv.innerHTML = '';
+                    sessions.forEach(sid => {
+                        if (typeof sid === 'object' && sid.session_id) sid = sid.session_id;
+                        let btn = document.createElement('button');
+                        btn.textContent = sid;
+                        btn.className = 'session-btn';
+                        btn.dataset.sid = sid;
+                        btn.style.width = '100%';
+                        btn.style.marginBottom = '0.5em';
+                        btn.onclick = function() {
+                            setActiveSession(sid);
+                            highlightActiveSession();
+                            outputDiv.innerHTML = '';
+                            socket.emit('join', {session_id: sid});
+                            loadSessionLogs(sid);
+                        };
+                        let removeBtn = document.createElement('span');
+                        removeBtn.textContent = '✖';
+                        removeBtn.style.cssText = 'float:right;color:#eb4f43;cursor:pointer;font-weight:bold;margin-left:1em;';
+                        removeBtn.onclick = function(e) {
+                            e.stopPropagation();
+                            socket.emit('delete_session', {session_id: sid});
+                            let sessions = getSessions().filter(s => s !== sid);
+                            localStorage.setItem('active_sessions', JSON.stringify(sessions));
+                            if (localStorage.getItem('session_id') === sid) {
+                                setActiveSession(sessions[0] || '');
+                            }
+                            renderSessionList();
+                        };
+                        btn.appendChild(removeBtn);
+                        sessionListDiv.appendChild(btn);
+                    });
+                    highlightActiveSession();
+                    updateSessionCount();
+                }
+
+                addSessionBtn.onclick = function() {
+                    let newSid = 'sess_' + Math.random().toString(36).substr(2, 9);
+                    let sessions = getSessions();
+                    sessions.push(newSid);
+                    localStorage.setItem('active_sessions', JSON.stringify(sessions));
+                    setActiveSession(newSid);
+                    renderSessionList();
+                    socket.emit('join', {session_id: newSid});
+                    outputDiv.innerHTML = '';
+                };
+
+                document.getElementById('runParserBtn').addEventListener('click', function(e) {
+                    e.preventDefault();
+                    let sid = localStorage.getItem('session_id');
+                    if (!sid) {
+                        sid = 'sess_' + Math.random().toString(36).substr(2, 9);
+                        let sessions = getSessions();
+                        sessions.push(sid);
+                        localStorage.setItem('active_sessions', JSON.stringify(sessions));
+                        setActiveSession(sid);
+                        renderSessionList();
+                        socket.emit('join', {session_id: sid});
+                    }
+                    outputDiv.innerHTML = '';
+                    const rect = this.getBoundingClientRect();
+                    const x = rect.left + rect.width / 2;
+                    const y = rect.top + rect.height / 2 + window.scrollY;
+                    createExplosion(x, y);
+                    socket.emit('run_parser');
+                });
+
+                function loadSessionLogs(sid) {
+                    socket.emit('get_session_history', { session_id: sid });
+                }
+
+                socket.on('session_history', function(data) {
+                    if (!data || !data.logs) return;
+                    outputDiv.innerHTML = '';
+                    data.logs.forEach(renderParserOutput);
+                    outputDiv.scrollTop = outputDiv.scrollHeight;
+                });
+
+                var seenLogTypes = new Set(["all", "status", "router", "ai_analysis", "stream", "manual_override", "input", "output", "validation", "network", "cancel", "heartbeat", "summary", "cache", "other"]);
+                var logTypeSelect = document.getElementById('logTypeFilterSelect');
+                function addLogTypeOption(type) {
+                    type = (type || "other").toLowerCase();
+                    if (!seenLogTypes.has(type)) {
+                        seenLogTypes.add(type);
+                        var opt = document.createElement('option');
+                        opt.value = type;
+                        opt.textContent = type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ");
+                        logTypeSelect.appendChild(opt);
+                    }
+                }
+
+                function createExplosion(x, y, color) {
+                    for (let i = 0; i < 32; i++) {
+                        const particle = document.createElement('div');
+                        particle.className = 'particle';
+                        const angle = Math.random() * 2 * Math.PI;
+                        const radius = 80 + Math.random() * 60;
+                        const dx = Math.cos(angle) * radius;
+                        const dy = Math.sin(angle) * radius;
+                        particle.style.left = x + 'px';
+                        particle.style.top = y + 'px';
+                        particle.style.setProperty('--dx', dx + 'px');
+                        particle.style.setProperty('--dy', dy + 'px');
+                        document.body.appendChild(particle);
+                        setTimeout(() => particle.remove(), 800);
+                    }
+                }
+
+                cancelBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (cancelRequested) return;
+                    cancelRequested = true;
+                    socket.emit('cancel_parser');
+                    outputDiv.innerHTML += '<br><span style="color:#eb4f43;font-weight:bold;">[CANCEL REQUESTED]</span><br>';
+                    outputDiv.scrollTop = outputDiv.scrollHeight;
+                    window.scrollTo(0, document.body.scrollHeight);
+                    cancelBtn.disabled = true;
+                    cancelBtn.textContent = "Canceling...";
+                    setTimeout(() => {
+                        cancelBtn.disabled = false;
+                        cancelBtn.textContent = "Cancel";
+                        cancelRequested = false;
+                        let sid = localStorage.getItem('session_id');
+                        if (sid) {
+                            let sessions = JSON.parse(localStorage.getItem('active_sessions') || "[]").filter(s => s !== sid);
+                            localStorage.setItem('active_sessions', JSON.stringify(sessions));
+                            if (sessions.length > 0) {
+                                localStorage.setItem('session_id', sessions[0]);
+                            } else {
+                                localStorage.removeItem('session_id');
+                            }
+                            renderSessionList();
+                        }
+                    }, 5000);
+                });
+
+                function sendPrompt(event) {
+                    event.preventDefault();
+                    var value = promptInput.value.trim();
+                    var sessionId = localStorage.getItem('session_id');
+                    // If value is a number or [number], map to URL
+                    let match = value.match(/^\[?(\d+)\]?$/);
+                    if (match && urlMap[match[1]]) {
+                        value = urlMap[match[1]];
+                    }
+                    if (value && sessionId) {
+                        socket.emit('parser_prompt', { session_id: sessionId, value: value });
+                        promptInput.value = '';
+                    }
+                }
+                document.getElementById('promptForm').addEventListener('submit', sendPrompt);
+
+                promptInput.addEventListener('keydown', function(event) {
+                    if (event.key === 'Escape') {
+                        this.value = '';
+                    }
+                });
+
+                document.getElementById('logFilterSelect').addEventListener('change', filterLogs);
+                logTypeSelect.addEventListener('change', filterLogs);
+
+                function filterLogs() {
+                    const levelFilter = document.getElementById('logFilterSelect').value;
+                    const typeFilter = logTypeSelect.value;
+                    const logLines = document.querySelectorAll('.log-line, .log-panel');
+                    logLines.forEach(line => {
+                        const level = (line.getAttribute('data-level') || "other").toLowerCase();
+                        const type = (line.getAttribute('data-type') || "other").toLowerCase();
+                        const showLevel = (levelFilter === 'all' || level === levelFilter);
+                        const showType = (typeFilter === 'all' || type === typeFilter);
+                        line.style.display = (showLevel && showType) ? '' : 'none';
+                    });
+                }
+
+                document.getElementById('outputModeSelect').addEventListener('change', function() {
+                    const mode = this.value;
+                    socket.emit('set_output_mode', {mode: mode});
+                });
+
+                function renderParserOutput(data) {
+                    const outputDiv = document.getElementById('terminal');
+                    if (outputDiv.innerHTML.includes('Parser output will appear')) {
+                        outputDiv.innerHTML = '';
+                    }
+                    let obj = data;
+                    let isJson = false;
+                    if (typeof data === 'string' && data.trim().startsWith('{')) {
+                        try {
+                            obj = JSON.parse(data);
+                            if (typeof obj === 'string' && obj.trim().startsWith('{')) {
+                                obj = JSON.parse(obj);
+                            }
+                            isJson = true;
+                        } catch (e) {
+                            obj = data;
+                        }
+                    }
+                    // Prompt input update for prompt-type logs
+                    if (isJson && obj && obj.type === "prompt" && typeof promptInput !== "undefined" && promptInput) {
+                        promptInput.placeholder = obj.message || "Type a command...";
+                        promptInput.focus();
+                    }
+                    // Level/type for filtering and style
+                    let logLevel = (isJson && obj && obj.level) ? String(obj.level).toUpperCase() : "OTHER";
+                    let logType = (isJson && obj && obj.type) ? String(obj.type).toLowerCase() : "other";
+                    if (typeof addLogTypeOption === "function") addLogTypeOption(logType);
+
+                    let sessionId = (isJson && obj.session_id) ? obj.session_id : '';
+                    let timeStr = '';
+                    if (obj.timestamp) {
+                        const d = new Date(obj.timestamp * 1000);
+                        timeStr = `<span class="log-time">[${d.toLocaleTimeString()}]</span>`;
+                    }
+                    let levelIconMap = {
+                        'INFO': '🛈',
+                        'DEBUG': '⚙️',
+                        'WARNING': '⚠️',
+                        'ERROR': '⛔',
+                        'CRITICAL': '🚨',
+                        'CANCELLED': '🛑',
+                        'CANCEL': '🛑'
+                    };
+                    let levelColorMap = {
+                        'INFO': '#00ffe7',
+                        'DEBUG': '#8ecae6',
+                        'WARNING': '#ffd166',
+                        'ERROR': '#eb4f43',
+                        'CRITICAL': '#ff006e',
+                        'CANCELLED': '#eb4f43',
+                        'CANCEL': '#eb4f43'
+                    };
+                    let levelIcon = levelIconMap[logLevel] || '🛈';
+                    let levelColor = levelColorMap[logLevel] || '#fff';
+
+                    // Extract colors if present
+                    let statusColor = (isJson && obj.status_color) ? obj.status_color : null;
+                    let messageColor = (isJson && obj.message_color) ? obj.message_color : null;
+
+                    // Helper to format values recursively, with color support
+                    function formatValue(val, key) {
+                        if (Array.isArray(val)) {
+                            return `<ul style="margin:0 0 0 1.5em;padding:0;">` +
+                                val.map(item => `<li style="margin-bottom:0.2em;">${formatValue(item)}</li>`).join('') +
+                                `</ul>`;
+                        } else if (typeof val === 'object' && val !== null) {
+                            let keys = Object.keys(val).filter(k => !['level','type','session_id','timestamp'].includes(k));
+                            if (keys.length === 0) return '';
+                            return `<div style="margin:0.5em 0 0 1.5em;padding:0.5em 1em;background:rgba(40,60,80,0.7);border-radius:8px;font-size:0.97em;color:#fff;">
+                                ${keys.map(k => `<div><span style="color:#ffd166;">${k}:</span> ${formatValue(val[k], k)}</div>`).join('')}
+                            </div>`;
+                        } else if (typeof val === 'string') {
+                            // Color for status or message
+                            if (key === 'status' && statusColor) {
+                                return `<span style="color:${statusColor};font-weight:bold;">${val}</span>`;
+                            }
+                            if (key === 'message' && messageColor) {
+                                return `<span style="color:${messageColor};text-shadow:0 0 6px ${messageColor};">${val}</span>`;
+                            }
+                            return `<span style="color:#fff;text-shadow:0 0 6px #00ffe7;">${val}</span>`;
+                        } else {
+                            return `<span style="color:#fff;">${JSON.stringify(val)}</span>`;
+                        }
+                    }
+
+                    // Main message and extra payload
+                    let mainMsg = '';
+                    let extraPayload = '';
+                    if (isJson && obj) {
+                        if (obj.message !== undefined) {
+                            mainMsg = formatValue(obj.message, 'message');
+                        } else {
+                            mainMsg = `<span style="color:#fff;">${JSON.stringify(obj)}</span>`;
+                        }
+                        // Show extra fields (excluding level, type, session_id, timestamp, message)
+                        let extraFields = Object.keys(obj).filter(k => !['level','type','session_id','timestamp','message'].includes(k));
+                        if (extraFields.length > 0) {
+                            extraPayload = `<div style="margin:0.5em 0 0 1.5em;padding:0.5em 1em;background:rgba(40,60,80,0.5);border-radius:8px;font-size:0.97em;color:#bfc9d1;">
+                                ${extraFields.map(k => `<div><span style="color:#ffd166;">${k}:</span> ${formatValue(obj[k], k)}</div>`).join('')}
+                            </div>`;
+                        }
+                    } else {
+                        mainMsg = `<span style="color:#fff;">${typeof obj === 'string' ? obj.replace(/\n/g, '<br>') : JSON.stringify(obj)}</span>`;
+                    }
+
+                    // Hidden info popup (level, type, session_id)
+                    let infoPopup = `
+                        <div class="log-popup" style="display:none;position:absolute;top:100%;left:0;z-index:9999;background:rgba(30,40,60,0.98);color:#fff;border-radius:12px;box-shadow:0 4px 32px #00ffe799;padding:1em 1.5em;min-width:260px;max-width:400px;pointer-events:none;transition:opacity 0.2s;">
+                            <div style="margin-bottom:0.5em;">
+                                <span style="color:#ffd166;font-weight:700;">Level:</span> <span style="color:${levelColor};font-weight:900;">${levelIcon} ${logLevel}</span>
+                            </div>
+                            <div style="margin-bottom:0.5em;">
+                                <span style="color:#ffd166;font-weight:700;">Type:</span> <span style="color:#00ffe7;font-weight:700;">${logType}</span>
+                            </div>
+                            <div style="margin-bottom:0.5em;">
+                                <span style="color:#ffd166;font-weight:700;">Session ID:</span> <span style="color:#bfc9d1;font-family:monospace;">${sessionId}</span>
+                            </div>
+                        </div>
+                    `;
+
+                    // Main log line
+                    let msg = `
+                        <div class="log-line futuristic-log" data-level="${logLevel}" data-type="${logType}" style="margin-bottom:0.3em;padding:1.1em 1.5em 1.1em 1.1em;border-radius:16px;background:linear-gradient(90deg,rgba(30,40,60,0.85),rgba(0,255,231,0.07));box-shadow:0 0 16px 2px ${levelColor}33,0 2px 12px #bfc9d1;overflow-x:auto;position:relative;cursor:pointer;transition:box-shadow 0.2s;">
+                            <span class="log-main" style="font-size:1.13em;display:block;">
+                                ${timeStr}
+                                <span class="log-level" style="color:${levelColor};font-weight:900;text-shadow:0 0 8px ${levelColor};margin-right:0.7em;">${levelIcon} ${logLevel}</span>
+                                ${mainMsg}
+                                ${extraPayload}
+                            </span>
+                            ${infoPopup}
+                        </div>
+                    `;
+
+                    const temp = document.createElement('div');
+                    temp.innerHTML = msg;
+                    const logElem = temp.firstElementChild;
+                    outputDiv.appendChild(logElem);
+
+                    // Hover/click logic for info popup
+                    const popup = logElem.querySelector('.log-popup');
+                    let popupVisible = false;
+                    logElem.addEventListener('click', function(e) {
+                        // Only toggle if not clicking inside the popup itself
+                        if (popup.contains(e.target)) return;
+                        popupVisible = !popupVisible;
+                        if (popupVisible) {
+                            popup.style.display = 'block';
+                            popup.style.opacity = '1';
+                            popup.style.pointerEvents = 'auto';
+                            // Close on outside click
+                            setTimeout(() => {
+                                document.addEventListener('mousedown', outsideClickListener);
+                            }, 0);
+                        } else {
+                            popup.style.opacity = '0';
+                            popup.style.pointerEvents = 'none';
+                            setTimeout(() => { popup.style.display = 'none'; }, 200);
+                            document.removeEventListener('mousedown', outsideClickListener);
+                        }
+                    });
+                    function outsideClickListener(event) {
+                        if (!logElem.contains(event.target)) {
+                            popupVisible = false;
+                            popup.style.opacity = '0';
+                            popup.style.pointerEvents = 'none';
+                            setTimeout(() => { popup.style.display = 'none'; }, 200);
+                            document.removeEventListener('mousedown', outsideClickListener);
+                        }
+                    }
+
+                    logElem.classList.add('log-glow');
+                    setTimeout(() => logElem.classList.remove('log-glow'), 1200);
+                    outputDiv.scrollTop = outputDiv.scrollHeight;
+                    window.scrollTo(0, document.body.scrollHeight);
+                    if (typeof filterLogs === 'function') filterLogs();
+                }
+
+                socket.on('parser_output', renderParserOutput);
+
+                socket.on('connect', function() {
+                    reconnectAttempts = 0;
+                    hideDisconnectedMessage();
+                    let sid = localStorage.getItem('session_id');
+                    renderSessionList();
+                    if (sid) {
+                        setActiveSession(sid);
+                        socket.emit('join', {session_id: sid});
+                        loadSessionLogs(sid);
+                    }
+                });
+
+                socket.on('disconnect', function(reason) {
+                    showDisconnectedMessage();
+                    scheduleReconnect();
+                });
+
+                socket.on('connect_error', function(err) {
+                    showDisconnectedMessage();
+                    scheduleReconnect();
+                });
+
+                socket.on('session_id', function(data) {
+                    let sid = typeof data === 'string' ? data : data.session_id;
+                    let sessions = getSessions();
+                    if (!sessions.includes(sid)) {
+                        sessions.push(sid);
+                        localStorage.setItem('active_sessions', JSON.stringify(sessions));
+                    }
+                    setActiveSession(sid);
+                    renderSessionList();
+                });
+
+                renderSessionList();
+                setActiveSession(localStorage.getItem('session_id') || '');
+                socket.emit('get_sessions');
+
+                socket.on('session_list', function(data) {
+                    if (Array.isArray(data.sessions)) {
+                        let sessionIds = data.sessions.map(s => (typeof s === 'object' && s.session_id) ? s.session_id : s);
+                        localStorage.setItem('active_sessions', JSON.stringify(sessionIds));
+                        renderSessionList();
+                        if (!sessionIds.includes(localStorage.getItem('session_id'))) {
+                            setActiveSession(sessionIds[0] || '');
+                        }
+                    }
+                });
+
+                socket.on('session_deleted', function(data) {
+                    let sid = data.session_id;
+                    let sessions = getSessions().filter(s => s !== sid);
+                    localStorage.setItem('active_sessions', JSON.stringify(sessions));
+                    if (localStorage.getItem('session_id') === sid) {
+                        setActiveSession(sessions[0] || '');
+                    }
+                    renderSessionList();
+                });
+
+                socket.on('session_heartbeat', function(data) {
+                    if (!data || !data.session_id) return;
+                    let sid = data.session_id;
+                    let btn = document.querySelector('.session-btn[data-sid="' + sid + '"]');
+                    if (!btn) return;
+                    let hb = btn.querySelector('.heartbeat-indicator');
+                    if (!hb) {
+                        hb = document.createElement('span');
+                        hb.className = 'heartbeat-indicator';
+                        hb.style.cssText = 'margin-left:0.7em;vertical-align:middle;';
+                        hb.innerHTML = `
+                            <svg width="36" height="18" viewBox="0 0 36 18" style="vertical-align:middle;">
+                                <polyline class="ekg-wave" points="0,9 6,9 9,3 12,15 15,9 18,9 21,6 24,12 27,9 36,9" 
+                                    fill="none" stroke="#00ffe7" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                            </svg>
+                        `;
+                        btn.appendChild(hb);
+                    }
+                    let svg = hb.querySelector('svg');
+                    let wave = hb.querySelector('.ekg-wave');
+                    wave.style.stroke = "#00ffe7";
+                    wave.style.filter = "drop-shadow(0 0 6px #00ffe7)";
+                    svg.style.opacity = "1";
+                    svg.style.transition = "opacity 0.3s";
+                    wave.style.animation = "ekg-pulse 0.7s cubic-bezier(.61,-0.01,.7,1.01)";
+                    clearTimeout(hb._ekgTimeout);
+                    hb._ekgTimeout = setTimeout(() => {
+                        wave.style.animation = "";
+                    }, 700);
+
+                    clearTimeout(hb._flatlineTimeout);
+                    hb._flatlineTimeout = setTimeout(() => {
+                        wave.setAttribute("points", "0,9 36,9");
+                        wave.style.stroke = "#eb4f43";
+                        wave.style.filter = "drop-shadow(0 0 6px #eb4f43)";
+                        svg.style.opacity = "0.7";
+                    }, 3000);
+                });
             }
-            let levelIcon = {
-                'INFO': '🛈',
-                'DEBUG': '⚙️',
-                'WARNING': '⚠️',
-                'ERROR': '⛔',
-                'CRITICAL': '🚨'
-            }[obj.level] || '🛈';
-            let levelColor = {
-                'INFO': '#00ffe7',
-                'DEBUG': '#8ecae6',
-                'WARNING': '#ffd166',
-                'ERROR': '#eb4f43',
-                'CRITICAL': '#ff006e'
-            }[obj.level] || '#fff';
-            let timeStr = '';
-            if (obj.timestamp) {
-                const d = new Date(obj.timestamp * 1000);
-                timeStr = `<span class="log-time">[${d.toLocaleTimeString()}]</span>`;
+
+            // --- URL Hint Overrides and URL List logic ---
+            function fetchOverrides() {
+                fetch("/api/url_hint_overrides")
+                    .then(r => r.json())
+                    .then(data => renderOverridesTable(data.overrides || {}));
             }
-            let levelStr = `<span class="log-level" style="color:${levelColor};text-shadow:0 0 8px ${levelColor};">${levelIcon} ${obj.level}</span>`;
-            let contextStr = '';
-            if (obj.context && obj.context !== "" && obj.context !== "{}") {
-                contextStr = `<br><span class="log-context" style="color:#bfc9d1;font-size:0.97em;">${obj.context}</span>`;
+            function renderOverridesTable(overrides) {
+                let html = `<table style="width:100%;border-collapse:collapse;">
+                    <tr style="background:#23272b;color:#00ffe7;">
+                        <th style="padding:0.5em 1em;">URL Fragment</th>
+                        <th style="padding:0.5em 1em;">Module Path</th>
+                        <th style="padding:0.5em 1em;">Actions</th>
+                    </tr>`;
+                let keys = Object.keys(overrides);
+                if (keys.length === 0) {
+                    html += `<tr><td colspan="3" style="text-align:center;color:#bfc9d1;">No overrides set.</td></tr>`;
+                } else {
+                    for (let frag of keys) {
+                        html += `<tr>
+                            <td style="padding:0.5em 1em;">${frag}</td>
+                            <td style="padding:0.5em 1em;">${overrides[frag]}</td>
+                            <td style="padding:0.5em 1em;">
+                                <button class="btn btn-danger" onclick="deleteOverride('${frag.replace(/'/g,"\\'")}')">Delete</button>
+                            </td>
+                        </tr>`;
+                    }
+                }
+                html += `</table>`;
+                document.getElementById("hintOverridesTable").innerHTML = html;
             }
-            msg = `<div class="log-line" data-level="${logLevel}" data-type="${logType}" style="margin-bottom:0.3em;padding:0.7em 1em 0.7em 0.7em;border-radius:10px;background:rgba(30,40,60,0.55);box-shadow:0 0 8px 1px ${levelColor}33;overflow-x:auto;">
-                ${timeStr} ${levelStr}: ${mainMsg}${contextStr}
-            </div>`;
-        } else {
-            msg = `<div class="log-panel" data-level="other" data-type="other" style="margin:1em 0;padding:1em 1.2em;border-radius:14px;background:rgba(40,60,80,0.85);border:2px solid #00ffe7;box-shadow:0 0 24px 2px #00ffe7,0 2px 12px #bfc9d1;overflow-x:auto;max-width:100%;word-break:break-word;white-space:pre-wrap;">
-                ${typeof obj === 'string' ? obj.replace(/\n/g, '<br>') : JSON.stringify(obj)}
-            </div>`;
-        }
-        const temp = document.createElement('div');
-        temp.innerHTML = msg;
-        const logElem = temp.firstElementChild;
-        outputDiv.appendChild(logElem);
-        logElem.classList.add('log-glow');
-        setTimeout(() => logElem.classList.remove('log-glow'), 1200);
-        outputDiv.scrollTop = outputDiv.scrollHeight;
-        window.scrollTo(0, document.body.scrollHeight);
-        filterLogs();
-    }
-
-    socket.on('parser_output', renderParserOutput);
-
-    // On connect, restore session and logs
-    socket.on('connect', function() {
-        let sid = localStorage.getItem('session_id');
-        renderSessionList();
-        if (sid) {
-            setActiveSession(sid);
-            socket.emit('join', {session_id: sid});
-            loadSessionLogs(sid);
-        }
-    });
-
-    socket.on('session_id', function(data) {
-        let sid = typeof data === 'string' ? data : data.session_id;
-        let sessions = getSessions();
-        if (!sessions.includes(sid)) {
-            sessions.push(sid);
-            localStorage.setItem('active_sessions', JSON.stringify(sessions));
-        }
-        setActiveSession(sid);
-        renderSessionList();
-    });
-
-    // Initial render
-    renderSessionList();
-    setActiveSession(localStorage.getItem('session_id') || '');
-    socket.emit('get_sessions');
-
-    socket.on('session_list', function(data) {
-        if (Array.isArray(data.sessions)) {
-            let sessionIds = data.sessions.map(s => (typeof s === 'object' && s.session_id) ? s.session_id : s);
-            localStorage.setItem('active_sessions', JSON.stringify(sessionIds));
-            renderSessionList();
-            if (!sessionIds.includes(localStorage.getItem('session_id'))) {
-                setActiveSession(sessionIds[0] || '');
+            window.deleteOverride = function(frag) {
+                if (!confirm("Delete override for " + frag + "?")) return;
+                fetch("/api/url_hint_overrides", {
+                    method: "DELETE",
+                    headers: {"Content-Type":"application/json"},
+                    body: JSON.stringify({fragment: frag})
+                }).then(r => r.json()).then(fetchOverrides);
+            };
+            document.getElementById("addUrlHintForm").onsubmit = function(e) {
+                e.preventDefault();
+                let frag = document.getElementById("urlFragment").value.trim();
+                let path = document.getElementById("modulePath").value.trim();
+                if (!frag || !path) return;
+                fetch("/api/url_hint_overrides", {
+                    method: "POST",
+                    headers: {"Content-Type":"application/json"},
+                    body: JSON.stringify({fragment: frag, module_path: path})
+                }).then(r => r.json()).then(res => {
+                    if (res.success) {
+                        fetchOverrides();
+                        this.reset();
+                    } else {
+                        alert(res.error || "Failed to add override.");
+                    }
+                });
+            };
+            function fetchUrls() {
+                fetch("/api/urls")
+                    .then(r => r.json())
+                    .then(data => renderUrlList(data.urls || []));
             }
-        }
-    });
+            document.getElementById("addUrlForm").onsubmit = function(e) {
+                e.preventDefault();
+                let url = document.getElementById("newUrl").value.trim();
+                if (!url) return;
+                fetch("/api/urls", {
+                    method: "POST",
+                    headers: {"Content-Type":"application/json"},
+                    body: JSON.stringify({url: url})
+                }).then(r => r.json()).then(res => {
+                    if (res.success) {
+                        fetchUrls();
+                        this.reset();
+                    } else {
+                        alert(res.error || "Failed to add URL.");
+                    }
+                });
+            };
+            fetchOverrides();
+            fetchUrls();
 
-    socket.on('session_deleted', function(data) {
-        let sid = data.session_id;
-        let sessions = getSessions().filter(s => s !== sid);
-        localStorage.setItem('active_sessions', JSON.stringify(sessions));
-        if (localStorage.getItem('session_id') === sid) {
-            setActiveSession(sessions[0] || '');
-        }
-        renderSessionList();
-    });
-});
-</script>
+            // --- Start socket connection ---
+            connectSocket();
+        });
+    </script>
+    <footer id="sessionFooter" class="minimized">
+        <div class="footer-preview" id="footerPreview">
+            <span style="font-weight:700;color:#00ffe7;">Active Sessions</span>
+            <span id="sessionCount" style="color:#ffd166;font-weight:900;margin-left:1em;"></span>
+            <span style="margin-left:2em;color:#bfc9d1;font-size:0.95em;">(Hover to expand)</span>
+        </div>
+        <div class="footer-full" id="footerFull">
+            <div style="font-weight:700;color:#00ffe7;">Active Sessions</div>
+            <div id="sessionList" style="flex:1;display:flex;gap:0.7em;flex-wrap:wrap;"></div>
+            <button id="addSessionBtn" class="session-btn" style="margin-left:1em;">+ New Session</button>
+        </div>
+    </footer>
 </body>
 </html>

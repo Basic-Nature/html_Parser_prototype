@@ -189,7 +189,7 @@
             background: rgba(255,215,0,0.07);
             
         }
-        .feature[href*="manage_data"] {
+        .feature[href*="data_framework"] {
             border-color: var(--main-blue);
             box-shadow: 0 0 18px 2px var(--main-blue), 0 2px 12px #bfc9d1;
             background: rgba(30,40,60,0.85); 
@@ -199,7 +199,7 @@
                 border 0.22s,
                 background 0.22s;
         }
-        .feature[href*="manage_data"]:hover {
+        .feature[href*="data_framework"]:hover {
             transform: translate(-8px, -8px) scale(1.06) rotate(-2deg);
             box-shadow: 0 0 36px 8px var(--main-blue), 0 2px 24px #bfc9d1;
             border-color: var(--neon);
@@ -217,7 +217,7 @@
             color: var(--gold);
             text-shadow: 0 2px 12px var(--neon2);
         }
-        .feature[href*="manage_data"] h3 {
+        .feature[href*="data_framework"] h3 {
             color: var(--main-blue);
             text-shadow: 0 2px 12px var(--neon);
         }
@@ -355,13 +355,13 @@
             </ul>
         </div>
         <div class="feature-list">
-            <a class="feature" href="{{ url_for('manage_data') }}">
-                <h3>Data & URL Hint Manager</h3>
-                <p>Manage custom URL-to-handler mappings for tricky or new election sites. Import/export hints, undo changes, and validate handler modules.</p>
+            <a class="feature" href="{{ url_for('data_framework') }}">
+                <h3>Data Framework</h3>
+                <p>Upload, view, and manage election data in PostgreSQL.</p>
             </a>
             <a class="feature" href="{{ url_for('run_parser') }}">
                 <h3>Run Parser</h3>
-                <p>Start a new parsing job using the current configuration. CLI and batch automation also supported.</p>
+                <p>Start a new parsing job using the current configuration. Manage custom URL-to-handler mappings for tricky or new election sites. Import/export hints, undo changes, and validate handler modules.</p>
             </a>            
             <a class="feature" href="{{ url_for('history') }}">
                 <h3>Change History</h3>
@@ -509,7 +509,7 @@
 
         // Feature button hover rim tracer
         const featureStyles = {
-            manage_data: {
+            data_framework: {
                 color: "#45818e",
                 transform: "translate(-8px, -8px) scale(1.06) rotate(-2deg)"
             },
@@ -529,8 +529,8 @@
                     color: "#eb4f43", // default red
                     transform: ""
                 };
-                if (this.href.includes('manage_data')) {
-                    style = featureStyles.manage_data;
+                if (this.href.includes('data_framework')) {
+                    style = featureStyles.data_framework;
                 } else if (this.href.includes('run_parser')) {
                     style = featureStyles.run_parser;
                 } else if (this.href.includes('history')) {

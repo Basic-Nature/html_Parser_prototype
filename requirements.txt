@@ -1,38 +1,38 @@
 # Core libraries
-playwright==1.52.0
-rich>=13.3.5
+playwright>=1.54.0
+rich>=14.1.0
 flask-socketio>=5.5.1
 gunicorn>=23.0.0
 eventlet>=0.40.2
-selectolax>=0.3.29
+selectolax>=0.3.32
 langdetect>=1.0.9
 # Optional CAPTCHA visual bypass
-seleniumbase>=4.38.0
+seleniumbase>=4.40.8
 
 # File handling
-pandas>=2.1.4
+pandas>=2.3.1
 pytesseract>=0.3.13
 pdf2image>=1.17.0
-PyMuPDF>=1.23.0
-sqlalchemy>=2.0.41
+PyMuPDF>=1.26.3
+sqlalchemy>=2.0.42
 psycopg2>=2.9.10
 
 # CLI and ML utilities
 rapidfuzz>=3.13.0
-matplotlib>=3.7.0
-sentence_transformers>=4.1.0
-torch==2.7.1+cpu
---extra-index-url https://download.pytorch.org/whl/cpu
+matplotlib>=3.10.5
+sentence_transformers>=5.1.0
+torch>=2.8.0
 nltk>=3.9.1
 # For JSON and structured parsing
-orjson>=3.10.18
+orjson>=3.11.1
 # For browser fingerprint masking (via Playwright)
-fake-useragent>=1.5.1
+# fake-useragent>=2.2.0
 
 # NLP and ML enhancements
-spacy>=3.7.0
-shap>=0.44.0
+spacy>=3.8.7
+# shap>=0.48.0
 spacy-lookups-data>=1.0.5
+
 # flask-login for user session management, is not used in the current version
 # optional future implementation
 # flask-login>=0.6.2

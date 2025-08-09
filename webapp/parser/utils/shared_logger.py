@@ -398,7 +398,7 @@ class SharedLogger(logging.Logger):
             # If structured payload, emit as JSON
             if isinstance(msg, dict):
                 self.socketio_emit_func(orjson.dumps(msg).decode("utf-8"))
-                log_method(str(msg))
+                log_method(orjson.dumps(msg).decode("utf-8"))
             # If format is json, emit structured log object
             elif self.format == "json":
                 log_obj = {
@@ -409,24 +409,18 @@ class SharedLogger(logging.Logger):
                     "context": context_str,
                 }
                 self.socketio_emit_func(orjson.dumps(log_obj).decode("utf-8"))
-                log_method(log_obj["message"])
+                log_method(orjson.dumps(log_obj).decode("utf-8"))
             else:
                 plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
                 self.socketio_emit_func(plain_msg.strip())
                 log_method(plain_msg.strip())
         elif self.mode == "cli":
             try:
-                # If msg is a dict, extract "message" field for display/logging
+                # If msg is a dict, print and log as pretty JSON
                 if isinstance(msg, dict):
-                    message = msg.get("message", "")
-                    # Show a nice panel in the terminal
-                    if isinstance(message, list):
-                        for item in message:
-                            rprint(Panel(str(item), style=color))
-                        log_method("\n".join(str(item) for item in message))
-                    else:
-                        rprint(Panel(str(message), style=color))
-                        log_method(str(message))
+                    json_str = orjson.dumps(msg, option=orjson.OPT_INDENT_2).decode("utf-8")
+                    rprint(Panel(json_str, style=color))
+                    log_method(json_str)
                 else:
                     # Fallback: treat as string
                     rprint(Panel(str(msg_str), style=color))
