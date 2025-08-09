@@ -22,7 +22,7 @@ rapidfuzz>=3.13.0
 matplotlib>=3.10.5
 sentence_transformers>=5.1.0
 # Use CPU-only torch
-torch>=2.8.0+cpu
+torch>=2.8.0
 # For JSON and structured parsing
 orjson>=3.11.1
 # For browser fingerprint masking (via Playwright)
