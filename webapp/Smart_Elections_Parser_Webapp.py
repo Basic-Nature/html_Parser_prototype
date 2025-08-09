@@ -119,6 +119,13 @@ if not app.secret_key:
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "False").lower() == "true"
 
+# --- Add security and cache headers ---
+@app.after_request
+def add_headers(response):
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
 # --- Data Management Utilities ---
 def add_url() -> None:
     url = input("Enter new URL to add: ").strip()
@@ -431,27 +438,31 @@ def import_hints() -> str:
 
 @app.route("/run_parser", methods=["GET", "POST"])
 def run_parser():
-    # Handle file upload to uploads folder if POST and 'data_file' is present
-    if request.method == "POST" and "data_file" in request.files:
-        file = request.files.get("data_file")
-        if file and allowed_file(file.filename):
-            filename = file.filename
-            file.save(os.path.join(UPLOAD_FOLDER, filename))
-            flash(f"File '{filename}' uploaded successfully.", "success")
-        else:
-            flash("Invalid file type or no file selected.", "danger")
+    try:
+        if request.method == "POST" and "data_file" in request.files:
+            file = request.files.get("data_file")
+            if file and allowed_file(file.filename):
+                filename = file.filename
+                file.save(os.path.join(UPLOAD_FOLDER, filename))
+                flash(f"File '{filename}' uploaded successfully.", "success")
+            else:
+                flash("Invalid file type or no file selected.", "danger")
 
-    file_lists = get_all_file_lists()
-    validations = get_all_override_validations()
-    overrides = load_overrides()
-    return render_template(
-        "run_parser.html",
-        input_files=file_lists["input_files"],
-        output_files=file_lists["output_files"],
-        uploaded_files=file_lists["uploaded_files"],
-        validations=validations,
-        overrides=overrides,
-    )
+        file_lists = get_all_file_lists()
+        validations = get_all_override_validations()
+        overrides = load_overrides()
+        return render_template(
+            "run_parser.html",
+            input_files=file_lists["input_files"],
+            output_files=file_lists["output_files"],
+            uploaded_files=file_lists["uploaded_files"],
+            validations=validations,
+            overrides=overrides,
+        )
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return "Internal Server Error", 500
     
 @app.route("/undo-hints", methods=["POST"])
 def undo_hints() -> str:
