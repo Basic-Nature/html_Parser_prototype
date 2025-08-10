@@ -7,9 +7,9 @@ This index links to all core documents and resources for building, extending, an
 
 ## 🧭 Core Docs
 
-- [`README.md`](../README.md): Project overview, install steps, CLI and Web UI usage, and high-level architecture
-- [`CONTRIBUTING.md`](../CONTRIBUTING.md): How to contribute, coding standards, and review process
-- [`LICENSE`](../LICENSE): Open-source licensing and reuse terms
+- [`README.md`](./README.md): Project overview, install steps, CLI and Web UI usage, and high-level architecture
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md): How to contribute, coding standards, and review process
+- [`LICENSE`](./LICENSE): Open-source licensing and reuse terms
 
 ---
 
@@ -40,17 +40,17 @@ The Web UI is ideal for teams, researchers, and those learning to code—**all c
 
 ## 🤖 Automation, Bots & Context
 
-- [`bots/`](../bots/): Correction, retraining, and automation bots (see `bot_router.py`)
-- [`Context_Integration/`](../Context_Integration/): Context, ML/NLP, and integrity modules (`context_coordinator.py`, `context_organizer.py`, `Integrity_check.py`)
-- [`context_library.json`](../context_library.json): Persistent context and feedback for smarter extraction and correction
+- [`bots/`](./webapp/parser/bots/): Correction, retraining, and automation bots (see `bot_router.py`)
+- [`Context_Integration/`](./webapp/parser/Context_Integration/): Context, ML/NLP, and integrity modules (`context_coordinator.py`, `context_organizer.py`, `Integrity_check.py`)
+- [`context_library.json`](./webapp/parser/context_library.json): Persistent context and feedback for smarter extraction and correction
 
 ---
 
 ## 🧩 Extensibility & Utilities
 
-- [`utils/`](../utils/): Shared utilities for browser automation, CAPTCHA, download, contest selection, table extraction, ML/NER, and more
-- [`handlers/`](../handlers/): All state/county and format-specific parsing logic
-- [`shared/`](../handlers/shared/): Shared handler logic for reuse
+- [`utils/`](./webapp/parser/utils/): Shared utilities for browser automation, CAPTCHA, download, contest selection, table extraction, ML/NER, and more
+- [`handlers/`](./webapp/parser/handlers/): All state/county and format-specific parsing logic
+- [`shared/`](./webapp/parser/handlers/shared/): Shared handler logic for reuse
 
 ---
 
