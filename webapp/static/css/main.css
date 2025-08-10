@@ -1,0 +1,276 @@
+:root {
+    --main-blue: #45818e;
+    --main-red: #eb4f43;
+    --main-bg: #1a232a;
+    --glass: rgba(40,60,80,0.82);
+    --glass-soft: rgba(220,230,240,0.13);
+    --neon: #00ffe7;
+    --neon2: #d4af37;
+    --neon3: #eb4f43;
+    --neon4: #45818e;
+    --gold: #ffd700;
+    --cyan: #00ffe7;
+    --faint-cyan: rgba(0,255,231,0.13);
+    --faint-blue: rgba(69,129,142,0.13);
+    --faint-red: rgba(235,79,67,0.13);
+}
+body {
+    min-height: 100vh;
+    margin: 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #222;
+    background: linear-gradient(120deg, var(--main-red) 0%, var(--main-blue) 100%);
+    position: relative;
+    overflow-x: hidden;
+}
+body::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        repeating-linear-gradient(135deg, rgba(255,255,255,0.04) 0 2px, transparent 2px 80px),
+        repeating-linear-gradient(-45deg, rgba(0,0,0,0.07) 0 8px, transparent 8px 80px),
+        linear-gradient(120deg, var(--main-red) 0%, var(--main-blue) 100%);
+    animation: fractalSteps 12s linear infinite;
+    opacity: 0.95;
+}
+@keyframes fractalSteps {
+    0% { background-position: 0 0, 0 0, 0 0; }
+    100% { background-position: 120px 120px, -80px 80px, 0 0; }
+}
+.navbar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: var(--main-blue);
+    padding: 1em 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    z-index: 2;
+    position: relative;
+}
+.navbar a {
+    color: #fff;
+    text-decoration: none;
+    margin: 0 1.5em;
+    font-weight: 600;
+    letter-spacing: 1px;
+    padding: 0.5em 1em;
+    border-radius: 6px;
+    transition: background 0.3s, color 0.3s, box-shadow 0.3s;
+}
+.navbar a:hover, .navbar a.active {
+    background: var(--main-red);
+    color: #fff;
+    box-shadow: 0 2px 12px var(--neon2);
+}
+.container {
+    max-width: 900px;
+    margin: 2em auto;
+    background: var(--glass-soft);
+    border-radius: 22px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    padding: 2.5em 2em;
+    position: relative;
+    z-index: 2;
+}
+h1 {
+    text-align: center;
+    color: #23272b;
+    margin-bottom: 0.5em;
+    font-size: 2.5em;
+    font-weight: 900;
+    letter-spacing: 2px;
+    background: linear-gradient(120deg, #bfc9d1 10%, #e6e8ea 40%, #bfc9d1 90%);
+    -webkit-background-clip: text; /* vendor first */
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 12px #bfc9d1) brightness(0.85);
+    animation: shimmerTitle 3s linear infinite;
+}
+@keyframes shimmerTitle {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 100% 50%; }
+}
+.subtitle {
+    text-align: center;
+    color: var(--main-red);
+    font-size: 1.2em;
+    margin-bottom: 1em;
+}
+.rainbow-text {
+    background: linear-gradient(90deg, #f22, #f2f, #22f, #2ff, #2f2, #ff2, #f22);
+    background-size: 200% auto;
+    color: transparent;
+    -webkit-background-clip: text; /* vendor first */
+    background-clip: text;
+    animation: rainbow 3s linear infinite;
+    font-weight: bold;
+    font-size: 1.5em;
+}
+@keyframes rainbow {
+    to { background-position: 200% center; }
+}
+.mission {
+    transition: box-shadow 0.4s, background 0.4s;
+    background: rgba(30,40,60,0.82);
+    border-radius: 18px;
+    box-shadow: 0 2px 24px 2px var(--faint-cyan), 0 2px 8px rgba(0,0,0,0.07);
+    padding: 1.5em 1.2em 1.5em 1.2em;
+    margin-bottom: 2em;
+    text-align: center;
+    color: #e6e8ea;
+    position: relative;
+    overflow: hidden;
+}
+.mission .rim-tracer {
+    pointer-events: none;
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 0;
+}
+.mission.glossy {
+    box-shadow: 0 0 12px 2px var(--neon), 0 2px 8px #bfc9d1, 0 0 0 2px rgba(0,255,231,0.04);
+    background: linear-gradient(120deg, rgba(40,60,80,0.92) 80%, rgba(0,255,231,0.03) 100%);
+}
+.feature-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2em;
+    justify-content: center;
+    margin-bottom: 2em;
+}
+.feature {
+    background: rgba(30,40,60,0.85);
+    border-radius: 14px;
+    border-width: 5px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.09);
+    padding: 1.5em 1.2em;
+    min-width: 220px;
+    flex: 1 1 220px;
+    text-align: center;
+    transition: 
+        transform 0.22s cubic-bezier(.61,-0.01,.7,1.01),
+        box-shadow 0.22s,
+        border 0.22s,
+        background 0.22s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+.feature[href*="run_parser"] { border-color: var(--main-red); }
+.feature[href*="run_parser"]:hover {
+    transform: translateY(-8px) scale(1.06) rotate(0deg);
+    box-shadow: 0 0 18px 8px var(--neon), 0 2px 12px #bfc9d1;
+    border-color: var(--neon2);
+    background: rgba(0,255,231,0.13);
+}
+.feature[href*="history"] { border-color: var(--gold); }
+.feature[href*="history"]:hover {
+    transform: translate(8px, -8px) scale(1.06) rotate(2deg);
+    box-shadow: 0 0 18px 4px var(--gold), 0 2px 12px #bfc9d1;
+    border-color: var(--neon2);
+    background: rgba(255,215,0,0.07);
+}
+.feature[href*="data_framework"] {
+    border-color: var(--main-blue);
+    box-shadow: 0 0 18px 2px var(--main-blue), 0 2px 12px #bfc9d1;
+    background: rgba(30,40,60,0.85);
+    transition:
+        transform 0.22s cubic-bezier(.61,-0.01,.7,1.01),
+        box-shadow 0.22s,
+        border 0.22s,
+        background 0.22s;
+}
+.feature[href*="data_framework"]:hover {
+    transform: translate(-8px, -8px) scale(1.06) rotate(-2deg);
+    box-shadow: 0 0 36px 8px var(--main-blue), 0 2px 24px #bfc9d1;
+    border-color: var(--neon);
+    background: repeating-linear-gradient(135deg, var(--main-blue) 0 2px, transparent 2px 40px), rgba(30,40,60,0.92);
+}
+.feature h3 {
+    margin-bottom: 0.5em;
+    font-weight: 800;
+    font-size: 1.18em;
+    color: var(--neon);
+    letter-spacing: 1px;
+    text-shadow: 0 2px 8px #23272b;
+}
+.feature[href*="history"] h3 {
+    color: var(--gold);
+    text-shadow: 0 2px 12px var(--neon2);
+}
+.feature[href*="data_framework"] h3 {
+    color: var(--main-blue);
+    text-shadow: 0 2px 12px var(--neon);
+}
+.feature[href*="run_parser"] h3 {
+    color: var(--main-red);
+    text-shadow: 0 2px 12px var(--neon3);
+}
+.feature p {
+    color: #c6e2f7;
+    font-size: 1em;
+}
+.canvas-section { margin: 2em 0 1em 0; text-align: center; position: relative; }
+#container {
+    display: block;
+    margin: 0 auto;
+    background: var(--main-bg);
+    border-radius: 50%;
+    box-shadow: 0 0 0 12px rgba(0,255,231,0.07), 0 0 32px 8px var(--main-blue);
+    width: 300px; height: 300px;
+    filter: drop-shadow(0 0 32px var(--neon));
+    position: relative;
+    z-index: 1;
+    transition: box-shadow 0.3s;
+}
+#container::after {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; width: 100%; height: 100%;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(0,255,231,0.12) 60%, transparent 100%);
+    z-index: 2;
+}
+#container.fade { opacity: 0.3; transition: opacity 0.7s; }
+
+/* Moved inline styles to classes */
+.mission-list {
+    text-align: left;
+    max-width: 700px;
+    margin: 1em auto 0 auto;
+    color: #e6e8ea;
+}
+.footer-contact { text-align: center; margin-top: 2em; }
+.contact-label { color: var(--main-blue); font-weight: 600; }
+.contact-email { color: var(--main-red); font-weight: 600; }
+
+/* Popup container default hidden (replaces inline style) */
+#popup { display: none; }
+
+/* Flash messages */
+.flash {
+    margin: 1em auto;
+    max-width: 600px;
+    padding: 1em 1.5em;
+    border-radius: 8px;
+    background: var(--main-red);
+    color: #fff;
+    font-weight: 600;
+    text-align: center;
+}
+
+@media (max-width: 700px) {
+    .feature-list { flex-direction: column; }
+    .container { padding: 1em; }
+    #container { width: 220px; height: 220px; }
+}
+
+/* Feature title accent classes if used */
+.feature-title.manage-title { color: var(--main-blue); text-shadow: 0 2px 12px var(--neon); }
+.feature-title.parser-title { color: var(--main-red); text-shadow: 0 2px 12px var(--neon3); }
+.feature-title.history-title { color: var(--gold); text-shadow: 0 2px 12px var(--neon2); }

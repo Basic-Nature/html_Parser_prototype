@@ -198,6 +198,9 @@ SPACY_NER_BATCH_SIZE = int(os.environ.get("SPACY_NER_BATCH_SIZE", 32))
 # Manual review bot toggle (used to enable manual correction bot in retraining)
 REVIEW_WITH_MANUAL_BOT = os.environ.get("REVIEW_WITH_MANUAL_BOT", "false").lower() == "true"
 
+# Data Framework API endpoint (configurable)
+DATA_API_URL = os.environ.get("DATA_API_URL", "/api/warehouse_election_results")
+
 # === Helper Functions ===
 
 def get_subprocess_env():

@@ -29,7 +29,7 @@ import os
 import time
 from threading import Thread
 from queue import Queue
-
+import psycopg2
 # Project-specific imports
 from webapp.parser import data_manager
 from webapp.parser.utils.shared_logic import safe_get, safe_split, safe_lower
@@ -38,7 +38,8 @@ from webapp.parser.web_pipeline import (
 )
 from webapp.parser.config import (
     INPUT_DIR, OUTPUT_DIR, UPLOADS_DIR, HINT_FILE, HISTORY_FILE, URL_LIST_FILE, 
-    SUPPORTED_FORMATS
+    SUPPORTED_FORMATS, DATA_API_URL, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT,
+
 )
 from webapp.parser.utils.logger_singleton import logger, console, prompt
 
@@ -106,6 +107,8 @@ if not app.secret_key:
 
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_COOKIE_SECURE", "False").lower() == "true"
+# Cache static aggressively; don't cache HTML
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000 
 
 # --- Add security and cache headers ---
 @app.after_request
@@ -174,7 +177,8 @@ def load_overrides() -> dict:
     if os.path.exists(HINT_FILE):
         with open(HINT_FILE, "rb") as f:
             try:
-                return orjson.loads(f.read())
+                raw = orjson.loads(f.read())
+                return _normalize_overrides(raw)
             except orjson.JSONDecodeError:
                 # Reset file to empty dict if invalid
                 with open(HINT_FILE, "w", encoding="utf-8") as fw:
@@ -184,15 +188,17 @@ def load_overrides() -> dict:
 
 def save_overrides(data) -> None:
     # Always write a valid JSON object (pretty for hints file is fine)
+    normalized = _normalize_overrides(data)
     with open(HINT_FILE, "wb") as f:
-        f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2))
+        f.write(orjson.dumps(normalized, option=orjson.OPT_INDENT_2))
 
 def validate_module_path(path) -> tuple[bool, str | None]:
     try:
         importlib.import_module(path)
         return True, None
     except ModuleNotFoundError:
-        parts = safe_split(os.path, ".")
+        # FIX: use the provided path, not os.path
+        parts = safe_split(path, ".")
         base = parts[-1] if parts else ""
         parent = ".".join(parts[:-1]) if len(parts) > 1 else ""
         try:
@@ -203,6 +209,28 @@ def validate_module_path(path) -> tuple[bool, str | None]:
         except Exception:
             pass
         return False, "Module not found"
+    
+# --- Utility: Normalize and load URL hint overrides ---
+def _normalize_overrides(raw) -> dict:
+    # Accept dict, list of [frag, path], or list of {"fragment","module_path"} or {"frag","path"}
+    if isinstance(raw, dict):
+        # ensure keys/values are strings
+        return {str(k): str(v) for k, v in raw.items()}
+    if isinstance(raw, list):
+        out = {}
+        for item in raw:
+            if isinstance(item, dict):
+                frag = item.get("fragment") or item.get("frag") or item.get("key")
+                path = item.get("module_path") or item.get("path") or item.get("value")
+                if frag and path:
+                    out[str(frag)] = str(path)
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                frag, path = item[0], item[1]
+                if frag and path:
+                    out[str(frag)] = str(path)
+        return out
+    # Fallback to empty
+    return {}
 
 def log_parser_status(msg, session_id=None, rich=False) -> None:
     if logger.mode == "webapp":
@@ -225,6 +253,8 @@ def get_all_override_validations() -> dict:
     Example: { "electionreturns.pa.gov": (True, None), "badsite.com": (False, "Module not found") }
     """
     overrides = load_overrides()
+    if not isinstance(overrides, dict):
+        overrides = _normalize_overrides(overrides)
     return {k: validate_module_path(v) for k, v in overrides.items()}
 
 # --- Utility: List all files in input, output, and uploads folders ---
@@ -313,10 +343,52 @@ def edit_hint_route() -> None:
         flash("Invalid fragment or path.", "danger")
     return redirect(url_for("url_hints"))
 
-@app.route("/data_framework", methods=["GET", "POST"])
-def data_framework() -> str:
-    return render_template("data_framework.html")
+@app.route("/data_framework", methods=["GET"])
+def data_framework():
+    # Inject API URL for the front-end
+    return render_template("data_framework.html", data_api_url=DATA_API_URL)
 
+@app.route("/api/warehouse_election_results", methods=["GET"])
+def api_warehouse_election_results():
+    # Optional filters; UI does client-side paging, so return full rows
+    state = request.args.get("state")
+    county = request.args.get("county")
+    contest = request.args.get("contest")
+
+    where = []
+    params = []
+    if state:
+        where.append("state = %s"); params.append(state)
+    if county:
+        where.append("county = %s"); params.append(county)
+    if contest:
+        where.append("contest ILIKE %s"); params.append(f"%{contest}%")
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+
+    try:
+        conn = psycopg2.connect(
+            dbname=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+        )
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT *
+                FROM warehouse_election_results
+                {where_sql}
+                ORDER BY 1 DESC
+                """
+            , params)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        # Provide both "items" and raw array compatibility
+        return jsonify({"items": rows, "count": len(rows)})
+    except Exception as e:
+        return jsonify({"error": f"Data API error: {e}"}), 500
+    
 @app.route("/delete/input/<filename>", methods=["POST"])
 def delete_input_file(filename) -> str:
     file_path = os.path.join(INPUT_DIR, filename)

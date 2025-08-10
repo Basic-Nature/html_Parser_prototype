@@ -128,7 +128,8 @@ jobs:
               POSTGRES_DB="${{ secrets.POSTGRES_DB }}" \
               POSTGRES_HOST="${{ secrets.POSTGRES_HOST }}" \
               POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}" \
-              POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}"
+              POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}" \
+              DATA_API_URL="/api/warehouse_election_results"
 
       - name: Set Azure startup command
         run: |
