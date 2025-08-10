@@ -15,55 +15,74 @@ import urllib.parse
 # === Project Structure & Paths ===
 
 # Absolute path to the project root (parent of 'webapp')
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Absolute path to the 'webapp' directory
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = PROJECT_ROOT / "webapp"
+
+# Path to the parser directory (where config.py is located)
+PARSER_DIR = BASE_DIR / "parser"
 
 # Path to the SQLite context database (used for local context storage)
-CONTEXT_DB_PATH = os.path.join(BASE_DIR, "parser", "Context_Integration", "Context_Library", "context_elections.db")
+CONTEXT_DB_PATH = PARSER_DIR / "Context_Integration" / "Context_Library" / "context_elections.db"
 
 # Path to the context library JSON file (used for ML/NLP and context enrichment)
-CONTEXT_LIBRARY_PATH = os.path.join(
-    BASE_DIR, "parser", "Context_Integration", "Context_Library", "context_library.json"
-)
-CONTEXT_LIBRARY_DIR = os.path.dirname(CONTEXT_LIBRARY_PATH)
+CONTEXT_LIBRARY_PATH = PARSER_DIR / "Context_Integration" / "Context_Library" / "context_library.json"
+CONTEXT_LIBRARY_DIR = CONTEXT_LIBRARY_PATH.parent
 
 # Directory for all vocabularies used by ML/NLP models
-VOCAB_DIR = os.path.join(BASE_DIR, "parser", "Context_Integration", "vocab")
-os.makedirs(VOCAB_DIR, exist_ok=True)
+VOCAB_DIR = PARSER_DIR / "Context_Integration" / "vocab"
+VOCAB_DIR.mkdir(parents=True, exist_ok=True)
 
 # Input and output directories at the project root
-INPUT_DIR = os.path.join(PROJECT_ROOT, "input")
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
+INPUT_DIR = PROJECT_ROOT / "input"
+INPUT_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR = PROJECT_ROOT / "output"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+UPLOADS_DIR = PROJECT_ROOT / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Path to the download manifest file (used for tracking downloads)
-DOWNLOAD_MANIFEST = os.path.join(INPUT_DIR, ".download_manifest.jsonl")
+DOWNLOAD_MANIFEST = INPUT_DIR / ".download_manifest.jsonl"
 
 # Path to the list of URLs to process
-URL_LIST_FILE = Path(os.path.join(BASE_DIR, "parser", "urls.txt"))
+URL_LIST_FILE = PARSER_DIR / "urls.txt"
+if not URL_LIST_FILE.exists() or URL_LIST_FILE.stat().st_size == 0:
+    with open(URL_LIST_FILE, "w", encoding="utf-8") as f:
+        f.write("# Add your URLs here, one per line.\n")
+
+HISTORY_FILE = PARSER_DIR / "url_hint_history.jsonl"
+if not HISTORY_FILE.exists() or HISTORY_FILE.stat().st_size == 0:
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        f.write("[]")  # Initialize with an empty JSON array
+
+HINT_FILE = PARSER_DIR / "url_hint_overrides.txt"
+# Ensure HINT_FILE exists and is valid JSON
+if not HINT_FILE.exists() or HINT_FILE.stat().st_size == 0:
+    with open(HINT_FILE, "w", encoding="utf-8") as f:
+        f.write("{}")
 
 # Path to the file tracking processed URLs (used for deduplication/caching)
-PROCESSED_URLS_FILE = Path(os.path.join(os.path.dirname(CONTEXT_DB_PATH), ".processed_urls"))
+PROCESSED_URLS_FILE = CONTEXT_DB_PATH.parent / ".processed_urls"
 
 # Log and cache directories (inside Context_Library for consistency)
-LOG_DIR = os.path.join(CONTEXT_LIBRARY_DIR, "log")
-CACHE_DIR = os.path.join(CONTEXT_LIBRARY_DIR, "cache")
-os.makedirs(LOG_DIR, exist_ok=True)
-os.makedirs(CACHE_DIR, exist_ok=True)
+LOG_DIR = CONTEXT_LIBRARY_DIR / "log"
+CACHE_DIR = CONTEXT_LIBRARY_DIR / "cache"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Path to the cache file for processed URLs (used for deduplication)
-OUTPUT_CACHE = os.path.join(CACHE_DIR, "output_cache.json")
+OUTPUT_CACHE = CACHE_DIR / "output_cache.json"
 
 # Path to the disk cache for embeddings (used for caching ML/NLP embeddings)
-DISK_CACHE_PATH = os.path.join(CACHE_DIR, "embedding_disk_cache.pkl")
-MISSING_LOG_PATH = os.path.join(LOG_DIR, "missing_embeddings_log.jsonl")
+DISK_CACHE_PATH = CACHE_DIR / "embedding_disk_cache.pkl"
+MISSING_LOG_PATH = LOG_DIR / "missing_embeddings_log.jsonl"
 
 # Directory for storing ML/NLP models (defaults to parent of webapp)
-MODEL_DIR = os.path.dirname(BASE_DIR)
+MODEL_DIR = PROJECT_ROOT
 
 # Path to the context cache file (used for caching context lookups)
-CONTEXT_CACHE_PATH = os.path.abspath(os.path.join(CACHE_DIR, "context_cache.json"))
+CONTEXT_CACHE_PATH = CACHE_DIR / "context_cache.json"
 
 # === Database Configuration ===
 
@@ -108,7 +127,7 @@ LLM_EXTRA_INSTRUCTIONS = os.environ.get("LLM_EXTRA_INSTRUCTIONS")
 USER_NAME = os.environ.get("USER", "system")
 
 # Path to table detection model (for ML/NLP table structure tasks)
-TABLE_MODEL_PATH = os.environ.get("TABLE_MODEL_PATH", os.path.join(MODEL_DIR, "table_detector.pt"))
+TABLE_MODEL_PATH = os.environ.get("TABLE_MODEL_PATH", str(MODEL_DIR / "table_detector.pt"))
 
 # === Feature Toggles & Pipeline Options ===
 
@@ -205,7 +224,7 @@ def get_supported_formats():
             for ext in env_formats.split(",")
         ]
     try:
-        if os.path.exists(CONTEXT_LIBRARY_PATH):
+        if CONTEXT_LIBRARY_PATH.exists():
             with open(CONTEXT_LIBRARY_PATH, "rb") as f:
                 context_library = orjson.loads(f.read())
             if isinstance(context_library, dict):

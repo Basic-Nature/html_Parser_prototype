@@ -62,20 +62,6 @@ jobs:
             exit 1
           fi
 
-      - name: Ensure input, output, and uploads folders exist
-        run: |
-          mkdir -p input output uploads
-          ls -ld input output uploads
-
-      - name: Verify input, output, and uploads folders exist
-        run: |
-          for d in input output uploads; do
-            if [ ! -d "$d" ]; then
-              echo "ERROR: $d folder not found!"
-              exit 1
-            fi
-          done
-
       - name: List contents to be zipped
         run: |
           ls -l

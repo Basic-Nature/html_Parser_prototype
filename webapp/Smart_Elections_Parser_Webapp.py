@@ -36,7 +36,10 @@ from webapp.parser.utils.shared_logic import safe_get, safe_split, safe_lower
 from webapp.parser.web_pipeline import (
     process_urls_for_web, cancel_processing, safe_sid, safe_rsplit, cancellation_manager
 )
-from webapp.parser.config import BASE_DIR, PROJECT_ROOT, URL_LIST_FILE
+from webapp.parser.config import (
+    INPUT_DIR, OUTPUT_DIR, UPLOADS_DIR, HINT_FILE, HISTORY_FILE, URL_LIST_FILE, 
+    SUPPORTED_FORMATS
+)
 from webapp.parser.utils.logger_singleton import logger, console, prompt
 
 # 2. Flask App & SocketIO Initialization
@@ -97,21 +100,6 @@ def unlock_session(sid):
     session_metadata[sid]['parser_status'] = 'idle'
     broadcast_sessions()
 
-# File & Folder Configurations
-ALLOWED_EXTENSIONS = {"csv", "json", "pdf", "txt"}
-INPUT_FOLDER = os.path.join(PROJECT_ROOT, "input")
-OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "output")
-PARSER_DIR = os.path.join(BASE_DIR, "parser")
-HINT_FILE = os.path.join(PARSER_DIR, "url_hint_overrides.txt")
-HISTORY_FILE = os.path.join(PARSER_DIR, "url_hint_history.jsonl")
-UPLOAD_FOLDER = os.path.join(PROJECT_ROOT, "uploads")
-URLS_FILE = os.path.join(PARSER_DIR, "urls.txt")
-URL_LIST = []
-
-os.makedirs(INPUT_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 if not app.secret_key:
     raise RuntimeError("FLASK_SECRET_KEY not set in environment variables!")
@@ -130,14 +118,14 @@ def add_headers(response):
 def add_url() -> None:
     url = input("Enter new URL to add: ").strip()
     if url:
-        with open(URLS_FILE, "a", encoding="utf-8") as f:
+        with open(URL_LIST_FILE, "a", encoding="utf-8") as f:
             f.write(url + "\n")
         log_parser_status(f"[ADDED] {url}")
 
 def allowed_file(filename) -> bool:
     parts = safe_rsplit(filename, '.', 1)
     ext = safe_lower(parts[1]) if len(parts) > 1 else ''
-    return filename and ext in ALLOWED_EXTENSIONS and len(filename) < 128
+    return filename and ext in SUPPORTED_FORMATS and len(filename) < 128
 
 def append_history(data) -> None:
     # Only write if data is not empty
@@ -165,17 +153,17 @@ def edit_hint() -> str:
     return redirect(url_for("url_hints"))
 
 def get_url_list() -> list[str]:
-    if not os.path.exists(URLS_FILE):
+    if not os.path.exists(URL_LIST_FILE):
         return []
-    with open(URLS_FILE, "r", encoding="utf-8") as f:
+    with open(URL_LIST_FILE, "r", encoding="utf-8") as f:
         urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
     return urls
 
 def list_urls() -> list[str]:
-    if not os.path.exists(URLS_FILE):
+    if not os.path.exists(URL_LIST_FILE):
         log_parser_status("[INFO] No urls.txt found.")
         return []
-    with open(URLS_FILE, "r", encoding="utf-8") as f:
+    with open(URL_LIST_FILE, "r", encoding="utf-8") as f:
         urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
     log_parser_status("\n[URLS.TXT ENTRIES]")
     for i, url in enumerate(urls, 1):
@@ -185,7 +173,13 @@ def list_urls() -> list[str]:
 def load_overrides() -> dict:
     if os.path.exists(HINT_FILE):
         with open(HINT_FILE, "rb") as f:
-            return orjson.loads(f.read())
+            try:
+                return orjson.loads(f.read())
+            except orjson.JSONDecodeError:
+                # Reset file to empty dict if invalid
+                with open(HINT_FILE, "w", encoding="utf-8") as fw:
+                    fw.write("{}")
+                return {}
     return {}
 
 def save_overrides(data) -> None:
@@ -240,9 +234,9 @@ def get_all_file_lists() -> dict:
     Example: { "input_files": [...], "output_files": [...], "uploaded_files": [...] }
     """
     return {
-        "input_files": os.listdir(INPUT_FOLDER),
-        "output_files": os.listdir(OUTPUT_FOLDER),
-        "uploaded_files": os.listdir(UPLOAD_FOLDER),
+        "input_files": os.listdir(INPUT_DIR),
+        "output_files": os.listdir(OUTPUT_DIR),
+        "uploaded_files": os.listdir(UPLOADS_DIR),
     }
 
 # 5. Routes (Flask)
@@ -325,7 +319,7 @@ def data_framework() -> str:
 
 @app.route("/delete/input/<filename>", methods=["POST"])
 def delete_input_file(filename) -> str:
-    file_path = os.path.join(INPUT_FOLDER, filename)
+    file_path = os.path.join(INPUT_DIR, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
         flash(f"Deleted '{filename}' from input folder.", "success")
@@ -335,7 +329,7 @@ def delete_input_file(filename) -> str:
 
 @app.route("/delete/output/<filename>", methods=["POST"])
 def delete_output_file(filename) -> str:
-    file_path = os.path.join(OUTPUT_FOLDER, filename)
+    file_path = os.path.join(OUTPUT_DIR, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
         flash(f"Deleted '{filename}' from output folder.", "success")
@@ -345,7 +339,7 @@ def delete_output_file(filename) -> str:
 
 @app.route("/delete/uploads/<filename>", methods=["POST"])
 def delete_upload_file(filename) -> str:
-    file_path = os.path.join(UPLOAD_FOLDER, filename)
+    file_path = os.path.join(UPLOADS_DIR, filename)
     if os.path.exists(file_path):
         os.remove(file_path)
         flash(f"Deleted '{filename}' from uploads folder.", "success")
@@ -355,15 +349,15 @@ def delete_upload_file(filename) -> str:
 
 @app.route("/download/input/<filename>")
 def download_input_file(filename) -> str:
-    return send_from_directory(INPUT_FOLDER, filename, as_attachment=True)
+    return send_from_directory(INPUT_DIR, filename, as_attachment=True)
 
 @app.route("/download/output/<filename>")
 def download_output_file(filename) -> str:
-    return send_from_directory(OUTPUT_FOLDER, filename, as_attachment=True)
+    return send_from_directory(OUTPUT_DIR, filename, as_attachment=True)
 
 @app.route("/download/uploads/<filename>")
 def download_upload_file(filename) -> str:
-    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
+    return send_from_directory(UPLOADS_DIR, filename, as_attachment=True)
 
 @app.route("/export-hints")
 def export_hints() -> str:
@@ -443,7 +437,7 @@ def run_parser():
             file = request.files.get("data_file")
             if file and allowed_file(file.filename):
                 filename = file.filename
-                file.save(os.path.join(UPLOAD_FOLDER, filename))
+                file.save(os.path.join(UPLOADS_DIR, filename))
                 flash(f"File '{filename}' uploaded successfully.", "success")
             else:
                 flash("Invalid file type or no file selected.", "danger")
@@ -487,7 +481,7 @@ def upload_to_input() -> str:
     log_parser_status(f"Upload to input: {file.filename if file else 'No file'}")
     if file and allowed_file(file.filename):
         filename = file.filename
-        file.save(os.path.join(INPUT_FOLDER, filename))
+        file.save(os.path.join(INPUT_DIR, filename))
         flash(f"File '{filename}' uploaded to input folder.", "success")
     else:
         flash("Invalid file type or no file selected.", "danger")
@@ -498,7 +492,7 @@ def upload_to_output() -> str:
     file = request.files.get("file")
     if file and allowed_file(file.filename):
         filename = file.filename
-        file.save(os.path.join(OUTPUT_FOLDER, filename))
+        file.save(os.path.join(OUTPUT_DIR, filename))
         flash(f"File '{filename}' uploaded to output folder.", "success")
     else:
         flash("Invalid file type or no file selected.", "danger")
@@ -509,7 +503,7 @@ def upload_to_uploads() -> str:
     file = request.files.get("file")
     if file and allowed_file(file.filename):
         filename = file.filename
-        file.save(os.path.join(UPLOAD_FOLDER, filename))
+        file.save(os.path.join(UPLOADS_DIR, filename))
         flash(f"File '{filename}' uploaded to uploads folder.", "success")
     else:
         flash("Invalid file type or no file selected.", "danger")
