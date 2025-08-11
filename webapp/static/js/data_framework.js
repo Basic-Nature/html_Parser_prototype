@@ -1,4 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Enable Bootstrap tooltips and popovers if available
+  if (window.bootstrap) {
+    const tEls = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tEls.forEach(el => bootstrap.Tooltip.getOrCreateInstance(el));
+    const pEls = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+    pEls.forEach(el => bootstrap.Popover.getOrCreateInstance(el));
+  }
+
   // Prefer server-provided URL, fallback to default
   const apiUrl = (window.__DATA_FRAMEWORK__ && window.__DATA_FRAMEWORK__.apiUrl) || '/api/warehouse_election_results';
 
@@ -21,16 +29,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const colBtn = document.getElementById('columnChooserBtn');
   const colMenu = document.getElementById('columnChooserMenu');
   const colWrap = colBtn?.parentElement;
+  const copyVisibleBtn = document.getElementById('copyVisibleCsv');
 
   // Upload form (moved from inline script)
   const uploadStatus = document.getElementById('uploadStatus');
   const uploadForm = document.getElementById('uploadForm');
 
+  // Toast helpers
+  function showInfoToast(message) {
+    const el = document.getElementById('toastInfo'); if (!el) return;
+    const body = el.querySelector('.toast-body'); if (body && message) body.textContent = message;
+    bootstrap?.Toast.getOrCreateInstance(el).show();
+  }
+  function showErrorToast(message) {
+    const el = document.getElementById('toastError'); if (!el) return;
+    const body = el.querySelector('.toast-body'); if (body && message) body.textContent = message;
+    bootstrap?.Toast.getOrCreateInstance(el).show();
+  }
+
   // State
   let rawData = [];
   let visibleColumns = [];
-  let sortBy = null; // column key
-  let sortDir = 'none'; // 'ascending' | 'descending' | 'none'
+  let sortBy = null;
+  let sortDir = 'none';
   let searchTerm = '';
   let page = 1;
   let pageSize = parseInt(pageSizeSelect?.value || '25', 10);
@@ -43,9 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.textContent = text || '';
   }
   function safeGet(v) { return v == null ? '' : String(v); }
-  function debounce(fn, ms) {
-    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-  }
+  function debounce(fn, ms) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
 
   // Upload
   if (uploadForm) {
@@ -58,14 +77,20 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(data => {
           if (data.success) {
             setStatus(uploadStatus, 'ok', 'Upload successful!');
+            showInfoToast('Upload successful.');
             fetchData();
           } else {
             setStatus(uploadStatus, 'error', `Upload failed: ${data.error || 'Unknown error'}`);
+            showErrorToast('Upload failed.');
           }
         })
-        .catch(err => setStatus(uploadStatus, 'error', `Upload failed: ${err}`));
+        .catch(err => {
+          setStatus(uploadStatus, 'error', `Upload failed: ${err}`);
+          showErrorToast('Upload failed.');
+        });
     });
   }
+
 
   // Build columns and header
   function buildColumns() {
@@ -93,9 +118,8 @@ document.addEventListener('DOMContentLoaded', () => {
       th.appendChild(ind);
 
       const toggleSort = () => {
-        if (sortBy !== key) {
-          sortBy = key; sortDir = 'ascending';
-        } else {
+        if (sortBy !== key) { sortBy = key; sortDir = 'ascending'; }
+        else {
           sortDir = sortDir === 'ascending' ? 'descending' : sortDir === 'descending' ? 'none' : 'ascending';
           if (sortDir === 'none') sortBy = null;
         }
@@ -135,16 +159,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function getFilteredSorted() {
     let data = [...rawData];
-
-    // Search
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       data = data.filter(row =>
         visibleColumns.some(col => safeGet(row[col]).toLowerCase().includes(q))
       );
     }
-
-    // Sort
     if (sortBy) {
       data.sort((a, b) => {
         const av = safeGet(a[sortBy]);
@@ -171,15 +191,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function render() {
     const filtered = getFilteredSorted();
-
-    // Pagination
     const total = filtered.length;
     const pages = Math.max(1, Math.ceil(total / pageSize));
     page = Math.min(Math.max(1, page), pages);
     const start = (page - 1) * pageSize;
     const slice = filtered.slice(start, start + pageSize);
 
-    // Body
     tbody.innerHTML = '';
     if (!slice.length) {
       const tr = document.createElement('tr');
@@ -200,14 +217,14 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Pagination UI
     pageInfo.textContent = `Page ${page} of ${pages} • ${total} rows`;
     firstBtn.disabled = page <= 1;
     prevBtn.disabled = page <= 1;
     nextBtn.disabled = page >= pages;
     lastBtn.disabled = page >= pages;
 
-    setStatus(statusEl, slice.length ? 'info' : (rawData.length ? 'info' : 'error'), slice.length ? '' : (rawData.length ? 'No results match the current filters.' : ''));
+    setStatus(statusEl, slice.length ? 'info' : (rawData.length ? 'info' : 'error'),
+      slice.length ? '' : (rawData.length ? 'No results match the current filters.' : ''));
   }
 
   // Events
@@ -241,13 +258,34 @@ document.addEventListener('DOMContentLoaded', () => {
     a.download = `export_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
+    showInfoToast('Export started.');
   });
 
-  resetBtn?.addEventListener('click', () => {
-    if (searchInput) searchInput.value = '';
-    searchTerm = ''; sortBy = null; sortDir = 'none'; page = 1;
-    visibleColumns = []; // reset to all on rebuild
-    buildColumns(); render();
+  // Copy visible as CSV (to clipboard)
+  copyVisibleBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    const data = getFilteredSorted();
+    const cols = visibleColumns;
+    const csv = [
+      cols.join(','),
+      ...data.map(r => cols.map(c => {
+        const v = safeGet(r[c]).replace(/"/g, '""');
+        return /[",\n]/.test(v) ? `"${v}"` : v;
+      }).join(','))
+    ].join('\n');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(csv).then(() => showInfoToast('Copied CSV to clipboard.'))
+        .catch(() => showErrorToast('Copy failed.'));
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = csv; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        showInfoToast('Copied CSV to clipboard.');
+      } catch {
+        showErrorToast('Copy failed.');
+      }
+    }
   });
 
   // Column chooser
@@ -274,53 +312,40 @@ document.addEventListener('DOMContentLoaded', () => {
         const ct = (r.headers.get('content-type') || '').toLowerCase();
         if (!r.ok) {
           const text = await r.text().catch(() => '');
-          // If HTML, show concise hint
-          if (text.trim().startsWith('<')) {
-            throw new Error(`Server error ${r.status}. Received HTML (likely an error page).`);
-          }
+          if (text.trim().startsWith('<')) throw new Error(`Server error ${r.status}. Received HTML (likely an error page).`);
           throw new Error(`Server error ${r.status}: ${text.slice(0,200)}`);
         }
-        // Prefer JSON, but detect HTML
         if (ct.includes('application/json')) {
           try { return await r.json(); }
           catch (e) {
             const text = await r.text().catch(() => '');
-            if (text.trim().startsWith('<')) {
-              throw new Error(`Invalid JSON: received HTML content.`);
-            }
+            if (text.trim().startsWith('<')) throw new Error(`Invalid JSON: received HTML content.`);
             throw new Error(`Invalid JSON from API: ${e.message}`);
           }
         } else {
           const text = await r.text().catch(() => '');
-          if (text.trim().startsWith('<')) {
-            throw new Error(`Unexpected HTML response from API.`);
-          }
+          if (text.trim().startsWith('<')) throw new Error(`Unexpected HTML response from API.`);
           throw new Error(`Unexpected content-type: ${ct || 'unknown'}`);
         }
       })
       .then(data => {
-        // Accept array, {rows: [...]}, or {items: [...]}
-        rawData = Array.isArray(data)
-          ? data
+        rawData = Array.isArray(data) ? data
           : (Array.isArray(data?.rows) ? data.rows
           : (Array.isArray(data?.items) ? data.items : []));
-        if (!rawData.length) {
-          setStatus(statusEl, 'error', 'No data found in the database.');
-        } else {
-          setStatus(statusEl, 'ok', `Loaded ${rawData.length} rows.`);
-        }
+        if (!rawData.length) setStatus(statusEl, 'error', 'No data found in the database.');
+        else setStatus(statusEl, 'ok', `Loaded ${rawData.length} rows.`);
         buildColumns(); render();
       })
       .catch(err => {
         rawData = [];
         buildColumns(); render();
-        // Normalize common JSON parse error shown earlier
         const msg = (err && err.message) ? err.message : String(err);
         if (/Unexpected token .*<!doctype/i.test(msg) || /received html/i.test(msg)) {
           setStatus(statusEl, 'error', 'Error loading data: API returned HTML instead of JSON. Check server logs or endpoint URL.');
         } else {
           setStatus(statusEl, 'error', `Error loading data: ${msg}`);
         }
+        showErrorToast('Failed to load data.');
       });
   }
 

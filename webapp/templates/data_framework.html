@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <title>Data Framework | Smart Elections Parser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap for dropdowns/tooltips/popovers -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css') }}">
 </head>
 <body>
@@ -15,7 +17,18 @@
         <a href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank">About</a>
     </nav>
     <div class="container-main">
-        <h1>Data Framework</h1>
+        <h1>
+          Data Framework
+          <button type="button"
+                  class="btn btn-outline-primary btn-sm ms-2"
+                  data-bs-toggle="popover"
+                  data-bs-trigger="focus"
+                  data-bs-placement="right"
+                  title="How this page works"
+                  data-bs-content="Upload CSVs, filter/sort columns, and export your current view. Use Columns to toggle visibility.">
+            Help
+          </button>
+        </h1>
         <div class="subtitle">Upload, View, and Manage Election Data in PostgreSQL</div>
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
@@ -40,15 +53,24 @@
                     <input id="globalSearch" type="search" placeholder="Search all columns..." aria-label="Search all data">
                 </div>
                 <div class="right-controls">
-                    <button id="refreshBtn" class="btn action">🔄 Refresh</button>
-                    <button id="exportCsvBtn" class="btn action">⬇ Export CSV</button>
-                    <button id="resetFiltersBtn" class="btn action">↺ Reset</button>
+                    <button id="refreshBtn" class="btn action" data-bs-toggle="tooltip" title="Reload data from the API">🔄 Refresh</button>
+                    <button id="exportCsvBtn" class="btn action" data-bs-toggle="tooltip" title="Export filtered results to CSV">⬇ Export CSV</button>
+                    <button id="resetFiltersBtn" class="btn action" data-bs-toggle="tooltip" title="Clear search and sorting">↺ Reset</button>
                     <div class="column-chooser">
-                        <button id="columnChooserBtn" class="btn action" aria-haspopup="true" aria-expanded="false">▦ Columns</button>
+                        <button id="columnChooserBtn" class="btn action" aria-haspopup="true" aria-expanded="false" data-bs-toggle="tooltip" title="Show/hide columns">▦ Columns</button>
                         <div id="columnChooserMenu" class="column-chooser-menu" role="menu" aria-label="Toggle visible columns"></div>
                     </div>
+                    <div class="dropdown">
+                      <button class="btn action dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        More
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        <li><button class="dropdown-item" type="button" id="copyVisibleCsv">Copy visible as CSV</button></li>
+                        <li><a class="dropdown-item" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer">Open docs</a></li>
+                      </ul>
+                    </div>
                     <label for="pageSizeSelect" class="sr-only">Rows per page</label>
-                    <select id="pageSizeSelect" aria-label="Rows per page">
+                    <select id="pageSizeSelect" aria-label="Rows per page" data-bs-toggle="tooltip" title="Rows per page">
                         <option value="10">10 rows</option>
                         <option value="25" selected>25 rows</option>
                         <option value="50">50 rows</option>
@@ -80,6 +102,21 @@
             </div>
         </div>
     </div>
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+      <div id="toastInfo" class="toast border-0" role="alert" aria-live="polite" aria-atomic="true" data-bs-delay="2500">
+        <div class="d-flex">
+          <div class="toast-body">Done.</div>
+          <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+      <div id="toastError" class="toast text-bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="3500">
+        <div class="d-flex">
+          <div class="toast-body">Something went wrong.</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       // Expose env-configured API URL to external JS
       window.__DATA_FRAMEWORK__ = {

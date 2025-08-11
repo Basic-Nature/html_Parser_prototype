@@ -5,6 +5,8 @@
     <meta charset="utf-8">
     <title>Run Parser | Smart Elections Parser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Add Bootstrap for tooltips/popovers/dropdowns -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser.css') }}">
 </head>
 <body>
@@ -150,6 +152,15 @@
         <div class="subtitle">Start a new parsing job and view the results below.</div>
         <div class="instructions">
             <strong>Instructions:</strong>
+            <button type="button"
+                    class="btn btn-outline-primary btn-sm ms-2"
+                    data-bs-toggle="popover"
+                    data-bs-trigger="focus"
+                    data-bs-placement="right"
+                    title="How this works"
+                    data-bs-content="Run a session, track logs live, filter by level/type, and manage multiple sessions in the footer.">
+              Help
+            </button>
             <ul>
                 <li>Click <b>Run Parser</b> to start the election data extraction process.</li>
                 <li>Parser will use the current URL hint configuration and available handlers.</li>
@@ -166,9 +177,26 @@
         {% endwith %}
         <div class="form-section">
             <form method="POST" action="{{ url_for('run_parser') }}" style="display:inline;">
-                <button type="submit" class="run-btn" id="runParserBtn">Run Parser</button>
+                <button type="submit" class="run-btn" id="runParserBtn"
+                        data-bs-toggle="tooltip" title="Start a new parsing session">
+                  Run Parser
+                </button>
             </form>
-            <button type="button" class="run-btn" id="cancelParserBtn" style="background:linear-gradient(90deg, var(--main-red), #333);margin-left:1em;">Cancel</button>
+            <button type="button" class="run-btn" id="cancelParserBtn"
+                    style="background:linear-gradient(90deg, var(--main-red), #333);margin-left:1em;"
+                    data-bs-toggle="tooltip" title="Send cancel request to active session">
+              Cancel
+            </button>
+            <div class="dropdown d-inline-block ms-2">
+              <button class="btn btn-outline-primary dropdown-toggle" type="button"
+                      data-bs-toggle="dropdown" aria-expanded="false">
+                More
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item" type="button" id="actionClearOutput">Clear output</button></li>
+                <li><button class="dropdown-item" type="button" id="actionCopyOutput">Copy output</button></li>
+              </ul>
+            </div>
         </div>
         <div class="logger-mode-section" style="text-align:right;margin-bottom:1em;">
             <label for="logFilterSelect" style="color:#00ffe7;font-weight:700;margin-right:0.7em;letter-spacing:1px;">
@@ -230,7 +258,8 @@
             </form>
         </div>
     </div>
-    <script src="{{ url_for('static', filename='js/socket.io.min.js') }}" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/run_parser.js') }}" defer></script>
     <footer id="sessionFooter" class="minimized">
         <div class="footer-preview" id="footerPreview">

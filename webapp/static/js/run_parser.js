@@ -1,4 +1,31 @@
 document.addEventListener('DOMContentLoaded', function () {
+  // Enable Bootstrap tooltips and popovers (if bundle loaded)
+  if (window.bootstrap) {
+    const tEls = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tEls.forEach(el => bootstrap.Tooltip.getOrCreateInstance(el));
+    const pEls = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+    pEls.forEach(el => bootstrap.Popover.getOrCreateInstance(el));
+  }
+
+  // Quick actions: clear/copy output
+  document.getElementById('actionClearOutput')?.addEventListener('click', () => {
+    const out = document.getElementById('terminal');
+    if (out) out.innerHTML = '';
+  });
+  document.getElementById('actionCopyOutput')?.addEventListener('click', () => {
+    const out = document.getElementById('terminal');
+    const text = out ? out.innerText || '' : '';
+    if (!text) return;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch {}
+      document.body.removeChild(ta);
+    }
+  });
   // Collapsible sections
   function toggleSection(id) {
     const el = document.getElementById(id);

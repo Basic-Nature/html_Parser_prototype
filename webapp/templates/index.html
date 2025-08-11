@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <title>Smart Elections Parser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap first so main.css can override -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
@@ -21,318 +23,78 @@
           {% endif %}
         {% endwith %}
 
-        <h1>Smart Elections Parser</h1>
+        <h1 class="d-flex align-items-center justify-content-between">
+          <span>Smart Elections Parser</span>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button"
+                    class="btn btn-outline-primary btn-sm"
+                    data-bs-toggle="popover"
+                    data-bs-trigger="focus"
+                    data-bs-placement="left"
+                    title="About"
+                    data-bs-content="Explore tools to extract, normalize, and analyze election results.">
+              Help
+            </button>
+            <div class="dropdown">
+              <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                More
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer">Docs</a></li>
+                <li><a class="dropdown-item" href="https://github.com/Basic-Nature/html_Parser_prototype" target="_blank" rel="noreferrer">Repository</a></li>
+              </ul>
+            </div>
+          </div>
+        </h1>
         <div class="subtitle rainbow-text">Open, Transparent, and Modular Election Data Extraction</div>
         <div class="mission" id="missionPanel" style="position:relative;overflow:hidden;">
-            <canvas class="rim-tracer" id="rimTracer" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></canvas>
-            <strong>Mission:</strong> To empower election transparency and civic engagement by providing open-source, modular tools for extracting, normalizing, and analyzing election results from any state or county in the U.S.<br><br>
-            <strong>Goals:</strong>
-            <ul style="text-align:left; max-width:700px; margin:1em auto 0 auto; color:#e6e8ea;">
-                <li>Make election data accessible and comparable across formats and jurisdictions.</li>
-                <li>Enable researchers, journalists, and advocates to analyze results quickly and accurately.</li>
-                <li>Foster a community-driven ecosystem for election data tools and best practices.</li>
-            </ul>
+          <canvas class="rim-tracer" id="rimTracer" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></canvas>
+          <strong>Mission:</strong> To empower election transparency and civic engagement by providing open-source, modular tools for extracting, normalizing, and analyzing election results from any state or county in the U.S.<br><br>
+          <strong>Goals:</strong>
+          <ul class="mission-list">
+            <li>Make election data accessible and comparable across formats and jurisdictions.</li>
+            <li>Enable researchers, journalists, and advocates to analyze results quickly and accurately.</li>
+            <li>Foster a community-driven ecosystem for election data tools and best practices.</li>
+          </ul>
         </div>
         <div class="feature-list">
-            <a class="feature" href="{{ url_for('data_framework') }}">
+            <a class="feature" href="{{ url_for('data_framework') }}" data-bs-toggle="tooltip" title="Upload, view, and manage election data in PostgreSQL.">
                 <h3>Data Framework</h3>
                 <p>Upload, view, and manage election data in PostgreSQL.</p>
             </a>
-            <a class="feature" href="{{ url_for('run_parser') }}">
+            <a class="feature" href="{{ url_for('run_parser') }}" data-bs-toggle="tooltip" title="Run the parser and monitor output live.">
                 <h3>Run Parser</h3>
                 <p>Start a new parsing job using the current configuration. Manage custom URL-to-handler mappings for tricky or new election sites. Import/export hints, undo changes, and validate handler modules.</p>
-            </a>            
-            <a class="feature" href="{{ url_for('history') }}">
+            </a>
+            <a class="feature" href="{{ url_for('history') }}" data-bs-toggle="tooltip" title="Audit prior changes and restore snapshots.">
                 <h3>Change History</h3>
                 <p>View the full history of URL hint changes and parser configuration updates for transparency and auditability.</p>
             </a>
-            <a class="feature" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank">
+            <a class="feature" href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer" data-bs-toggle="tooltip" title="Project overview and contribution guide.">
                 <h3>About & Docs</h3>
                 <p>Learn more about the Smart Elections Parser project, its architecture, and how to contribute.</p>
             </a>
         </div>
         <div class="canvas-section">
-            <canvas id="container" width="300" height="300"></canvas>
+            <canvas id="container" width="300" height="300" aria-label="Solar system animation" role="img"></canvas>
         </div>
-        <div style="text-align:center; margin-top:2em;">
-            <span style="color:var(--main-blue); font-weight:600;">Contact:</span>
-            <a href="smartelectionsact@gmail.com" style="color:var(--main-red); font-weight:600;">smartelectionsact@gmail.com</a>
+        <div class="footer-contact">
+            <span class="contact-label">Contact:</span>
+            <a href="mailto:smartelectionsact@gmail.com" class="contact-email">smartelectionsact@gmail.com</a>
         </div>
     </div>
     <div id="popup" style="display:none;"></div>
     <script>
-        // Rim tracer for mission panel (subtle, smooth, with sparks)
-        const rimCanvas = document.getElementById('rimTracer');
-        const missionPanel = document.getElementById('missionPanel');
-        let sparks = [];
-        function resizeRimCanvas() {
-            rimCanvas.width = missionPanel.offsetWidth;
-            rimCanvas.height = missionPanel.offsetHeight;
-        }
-        function getPos(d, w, h, r) {
-            if (d < w-2*r) return {x:r+d, y:r, a:0};
-            d -= (w-2*r);
-            if (d < r*Math.PI/2) return {x:w-r+r*Math.cos(Math.PI/2-d/r), y:r+r*Math.sin(Math.PI/2-d/r), a:Math.PI/2-d/r};
-            d -= r*Math.PI/2;
-            if (d < h-2*r) return {x:w-r, y:r+d, a:Math.PI/2};
-            d -= (h-2*r);
-            if (d < r*Math.PI/2) return {x:w-r+r*Math.sin(d/r), y:h-r+r*Math.cos(d/r), a:Math.PI+d/r};
-            d -= r*Math.PI/2;
-            if (d < w-2*r) return {x:w-r-d, y:h-r, a:Math.PI};
-            d -= (w-2*r);
-            if (d < r*Math.PI/2) return {x:r+r*Math.cos(3*Math.PI/2+d/r), y:h-r+r*Math.sin(3*Math.PI/2+d/r), a:3*Math.PI/2+d/r};
-            d -= r*Math.PI/2;
-            return {x:r, y:h-r-d, a:3*Math.PI/2};
-        }
-        function animateRimTracer() {
-            const ctx = rimCanvas.getContext('2d');
-            ctx.clearRect(0,0,rimCanvas.width,rimCanvas.height);
-            const w = rimCanvas.width, h = rimCanvas.height;
-            const r = 3; // <-- Corner radius. Lower = closer to edge. Adjust for fit.
-
-            // ---- SPEED CONTROL: adjust divisor for speed (higher = slower) ----
-            const SPEED_DIVISOR = 3;
-            const t = Date.now() / (2200 * SPEED_DIVISOR); // slower
-            const perim = 2*(w+h-4*r) + 2*Math.PI*r;
-            const speed = (t % 1) * perim;
-            // ---- TRAIL PARTICLE SIZE CONTROL ----
-            const TRAIL_HEAD_RADIUS = 5;   // <-- Size of the leading (head) particle
-            const TRAIL_TAIL_RADIUS = 1;   // <-- Size of the last (tail) particle
-            const TRAIL_STEPS = 8;        // <-- Number of trail particles
-            // Afterglow: 
-            for(let i=1;i<=TRAIL_STEPS;i++){
-                let d = (speed - i*7 + perim) % perim;
-                let {x, y} = getPos(d, w, h, r);
-                // Interpolate radius from head to tail
-                let radius = TRAIL_TAIL_RADIUS + (TRAIL_HEAD_RADIUS - TRAIL_TAIL_RADIUS) * ((TRAIL_STEPS - i) / (TRAIL_STEPS - 1));
-                ctx.save();
-                ctx.globalAlpha = 0.03 + 0.04*(TRAIL_STEPS - i + 1);
-                ctx.shadowColor = "#00ffe7";
-                ctx.shadowBlur = 16 + ((TRAIL_STEPS - i + 1)*2); // more blur at trail end
-                ctx.beginPath();
-                ctx.arc(x, y, radius, 0, 2*Math.PI);
-                ctx.fillStyle = "#00ffe7";
-                ctx.fill();
-                ctx.restore();
-            }
-            // Main tracer (laser)
-            let {x, y, a} = getPos(speed, w, h, r);
-            ctx.save();
-            ctx.globalAlpha = 0.18;
-            ctx.shadowColor = "#00ffe7";
-            ctx.shadowBlur = 18;
-            ctx.beginPath();
-            ctx.arc(x, y, TRAIL_HEAD_RADIUS, 0, 2*Math.PI); // <-- Head particle size
-            ctx.fillStyle = "#00ffe7";
-            ctx.fill();
-            ctx.restore();
-
-            // Laser outline (very subtle, behind)
-            ctx.save();
-            ctx.strokeStyle = "rgba(0,255,231,0.08)";
-            ctx.shadowColor = "#00ffe7";
-            ctx.shadowBlur = 6;
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(r,0);
-            ctx.lineTo(w-r,0);
-            ctx.arcTo(w,0,w,r,r);
-            ctx.lineTo(w,h-r);
-            ctx.arcTo(w,h,w-r,h,r);
-            ctx.lineTo(r,h);
-            ctx.arcTo(0,h,0,h-r,r);
-            ctx.lineTo(0,r);
-            ctx.arcTo(0,0,r,0,r);
-            ctx.closePath();
-            ctx.stroke();
-            ctx.restore();
-
-            // Sparks!
-            if (Math.random() < 0.08) {
-                let angle = a + (Math.random()-0.5)*0.7;
-                let len = 12 + Math.random()*12;
-                sparks.push({
-                    x, y,
-                    dx: Math.cos(angle)*len,
-                    dy: Math.sin(angle)*len,
-                    alpha: 0.5 + Math.random()*0.2,
-                    life: 0
-                });
-            }
-            // Draw and update sparks
-            for (let i=sparks.length-1; i>=0; i--) {
-                let s = sparks[i];
-                s.life += 1;
-                let px = s.x + s.dx * (s.life/10);
-                let py = s.y + s.dy * (s.life/10);
-                ctx.save();
-                ctx.globalAlpha = s.alpha * (1-s.life/10);
-                ctx.shadowColor = "#00ffe7";
-                ctx.shadowBlur = 8;
-                ctx.beginPath();
-                ctx.arc(px, py, 1.5, 0, 2*Math.PI);
-                ctx.fillStyle = "#00ffe7";
-                ctx.fill();
-                ctx.restore();
-                if (s.life > 10) sparks.splice(i,1);
-            }
-            requestAnimationFrame(animateRimTracer);
-        }
-        resizeRimCanvas();
-        animateRimTracer();
-        window.addEventListener('resize', resizeRimCanvas);
-
-        // Glossy hover effect (subtle)
-        missionPanel.addEventListener('mouseenter', ()=>missionPanel.classList.add('glossy'));
-        missionPanel.addEventListener('mouseleave', ()=>missionPanel.classList.remove('glossy'));
-
-        // Feature button hover rim tracer
-        const featureStyles = {
-            data_framework: {
-                color: "#45818e",
-                transform: "translate(-8px, -8px) scale(1.06) rotate(-2deg)"
-            },
-            run_parser: {
-                color: "#00ffe7",
-                transform: "translateY(-8px) scale(1.06) rotate(0deg)"
-            },
-            history: {
-                color: "#ffd700",
-                transform: "translate(8px, -8px) scale(1.06) rotate(2deg)"
-            }
-        };
-
-        document.querySelectorAll('.feature').forEach(btn => {
-            btn.addEventListener('mousemove', function(e) {
-                let style = {
-                    color: "#eb4f43", // default red
-                    transform: ""
-                };
-                if (this.href.includes('data_framework')) {
-                    style = featureStyles.data_framework;
-                } else if (this.href.includes('run_parser')) {
-                    style = featureStyles.run_parser;
-                } else if (this.href.includes('history')) {
-                    style = featureStyles.history;
-                }
-                this.style.boxShadow = `0 0 24px 4px ${style.color}, 0 2px 12px #bfc9d1`;
-                this.style.transform = style.transform;
-            });
-            btn.addEventListener('mouseleave', function(e) {
-                this.style.boxShadow = "";
-                this.style.transform = "";
-            });
-        });
-
-        // Canvas animation (solar system) - unchanged
-        var sun = new Image();
-        var moon = new Image();
-        var earth = new Image();
-        var imagesLoaded = 0;
-
-        function tryStart() {
-            imagesLoaded++;
-            if (imagesLoaded === 3) {
-                window.requestAnimationFrame(draw);
-            }
-        }
-
-        // Prefer SVG; fallback to PNG if SVG fails
-        function loadWithFallback(img, svgPath, pngPath) {
-            img.onload = tryStart;
-            img.onerror = function () {
-                if (!img.__triedPng && pngPath) {
-                    img.__triedPng = true;
-                    img.src = pngPath;
-                } else {
-                    console.error("Failed to load image:", svgPath || pngPath);
-                    tryStart(); // prevent hang if both fail
-                }
-            };
-            img.src = svgPath;
-        }
-
-        // Sun and Moon as SVG (with PNG fallback), Earth stays PNG (photo)
-        loadWithFallback(
-            sun,
-            "{{ url_for('static', filename='img/sun.svg') }}",
-            "{{ url_for('static', filename='img/sun.png') }}"
-        );
-        loadWithFallback(
-            moon,
-            "{{ url_for('static', filename='img/moon.svg') }}",
-            "{{ url_for('static', filename='img/moon.png') }}"
-        );
-        earth.onload = tryStart;
-        earth.onerror = function () { console.error("Failed to load earth.png"); tryStart(); };
-        earth.src = "{{ url_for('static', filename='img/earth.png') }}";
-
-        function draw() {
-            var ctx = document.getElementById('container').getContext('2d');
-            ctx.clearRect(0, 0, 300, 300);
-            // Fade out edges
-            var grad = ctx.createRadialGradient(150,150,120,150,150,150);
-            grad.addColorStop(0.8, 'rgba(0,255,231,0)');
-            grad.addColorStop(1, 'rgba(0,255,231,0.13)');
-            ctx.save();
-            ctx.globalAlpha = 0.8;
-            ctx.beginPath();
-            ctx.arc(150,150,150,0,2*Math.PI);
-            ctx.closePath();
-            ctx.clip();
-            ctx.fillStyle = grad;
-            ctx.fillRect(0,0,300,300);
-            ctx.restore();
-            ctx.globalAlpha = 1;
-            ctx.globalCompositeOperation = 'destination-over';
-            ctx.save();
-            ctx.translate(150, 150);
-            var time = new Date();
-            // Earth
-            ctx.rotate(((2 * Math.PI) / 60) * time.getSeconds() + ((2 * Math.PI) / 60000) * time.getMilliseconds());
-            ctx.translate(105, 0);
-            ctx.save();
-            ctx.beginPath();
-            ctx.moveTo(-6, -6);
-            ctx.lineTo(50, 0);
-            ctx.lineTo(-6, 6);
-            ctx.closePath();
-            var grad2 = ctx.createLinearGradient(0, 0, 50, 0);
-            grad2.addColorStop(0, 'rgba(0,0,0,0.18)');
-            grad2.addColorStop(0.08, 'rgba(0,0,0,0.18)');
-            grad2.addColorStop(0.25, 'rgba(0,0,0,0.12)');
-            grad2.addColorStop(0.7, 'rgba(0,0,0,0.08)');
-            grad2.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.fillStyle = grad2;
-            ctx.fill();
-            ctx.restore();
-            ctx.drawImage(earth, -8, -8, 16, 16);
-            // Moon
-            ctx.save();
-            ctx.rotate(((2 * Math.PI) / 6) * time.getSeconds() + ((2 * Math.PI) / 6000) * time.getMilliseconds());
-            ctx.translate(0, 28.5);
-            ctx.drawImage(moon, -2.5, -2.5, 5, 5);
-            ctx.restore();
-            ctx.restore();
-            ctx.beginPath();
-            ctx.arc(150, 150, 105, 0, Math.PI * 2, false); // Earth orbit
-            ctx.strokeStyle = "rgba(0,255,231,0.18)";
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-            ctx.drawImage(sun, 0, 0, 300, 300);
-            window.requestAnimationFrame(draw);
-        }
-        document.getElementById('container').addEventListener('click', function() {
-            showPopup('🌞 You clicked the solar system!<br><br><span style="color:var(--neon);font-size:1.2em;">Keep exploring the universe of transparent data!</span>');
-        });
-        function showPopup(msg) {
-            var popup = document.getElementById('popup');
-            popup.innerHTML = '<div class="custom-popup">'+msg+'<br><button onclick="closePopup()">Close</button></div>';
-            popup.style.display = '';
-        }
-        function closePopup() {
-            document.getElementById('popup').style.display = 'none';
-        }
+      window.STATIC_ASSETS = {
+        sunSvg: "{{ url_for('static', filename='img/sun.svg') }}",
+        sunPng: "{{ url_for('static', filename='img/sun.png') }}",
+        moonSvg: "{{ url_for('static', filename='img/moon.svg') }}",
+        moonPng: "{{ url_for('static', filename='img/moon.png') }}",
+        earth:  "{{ url_for('static', filename='img/earth.png') }}"
+      };
     </script>
+    <!-- Bootstrap bundle for tooltips/popovers -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
 </body>
 </html>

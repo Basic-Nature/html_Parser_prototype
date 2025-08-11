@@ -5,143 +5,10 @@
     <meta charset="UTF-8">
     <title>Change History | Smart Elections Parser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        :root {
-            --main-blue: #45818e;
-            --main-red: #eb4f43;
-            --metal-bg: linear-gradient(120deg, #bfc9d1 0%, #e6e8ea 100%);
-            --metal-border: #a0a8b3;
-            --metal-shadow: 0 4px 24px rgba(80,90,110,0.18);
-            --metal-accent: #d4af37;
-        }
-        body {
-            background: var(--metal-bg);
-            min-height: 100vh;
-            font-family: 'Segoe UI', Arial, sans-serif;
-        }
-        .navbar {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: var(--main-blue);
-            padding: 1em 0;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-        }
-        .navbar a {
-            color: #fff;
-            text-decoration: none;
-            margin: 0 1.5em;
-            font-weight: 700;
-            letter-spacing: 1px;
-            padding: 0.5em 1em;
-            border-radius: 6px;
-            transition: background 0.3s, color 0.3s, box-shadow 0.3s;
-        }
-        .navbar a:hover, .navbar a.active {
-            background: var(--main-red);
-            color: #fff;
-            box-shadow: 0 2px 8px var(--metal-accent);
-        }
-        .container-main {
-            max-width: 1000px;
-            margin: 2em auto;
-            background: rgba(245,245,245,0.98);
-            border-radius: 18px;
-            box-shadow: var(--metal-shadow);
-            padding: 2.5em 2em;
-            border: 2px solid var(--metal-border);
-        }
-        h1 {
-            color: var(--main-blue);
-            text-align: center;
-            margin-bottom: 1.2em;
-            font-weight: 900;
-            letter-spacing: 2px;
-            text-shadow: 1px 2px 0 #fff, 0 1px 8px #bfc9d1;
-        }
-        .flash {
-            margin: 1em auto;
-            max-width: 600px;
-            padding: 1em 1.5em;
-            border-radius: 8px;
-            background: var(--main-red);
-            color: #fff;
-            font-weight: 700;
-            text-align: center;
-            border: 2px solid var(--metal-accent);
-            box-shadow: 0 2px 8px #bfc9d1;
-        }
-        .accordion-button:not(.collapsed) {
-            color: #fff;
-            background: linear-gradient(90deg, var(--main-blue) 80%, var(--metal-accent) 100%);
-            font-weight: 700;
-            border-bottom: 2px solid var(--metal-accent);
-        }
-        .accordion-button.collapsed {
-            color: var(--main-blue);
-            background: #e6e8ea;
-            font-weight: 700;
-        }
-        .accordion-item {
-            border: 2px solid var(--metal-border);
-            border-radius: 12px;
-            margin-bottom: 1em;
-            box-shadow: 0 2px 8px #bfc9d1;
-        }
-        .accordion-body {
-            background: #f8f9fa;
-            border-radius: 0 0 12px 12px;
-            border-top: 1px solid #e6e8ea;
-        }
-        .snapshot-meta {
-            font-size: 1em;
-            color: #555;
-            margin-bottom: 0.7em;
-            font-weight: 600;
-        }
-        .snapshot-json {
-            background: #23272b;
-            color: #e6e8ea;
-            border-radius: 8px;
-            padding: 1em;
-            font-family: 'Fira Mono', 'Consolas', monospace;
-            font-size: 1em;
-            margin-bottom: 1em;
-            box-shadow: 0 2px 8px #bfc9d1;
-            border: 1.5px solid #444;
-        }
-        .btn-danger {
-            background-color: var(--main-red);
-            border-color: var(--main-red);
-            font-weight: 700;
-            letter-spacing: 1px;
-        }
-        .btn-danger:hover {
-            background-color: #c0392b;
-            border-color: #c0392b;
-        }
-        .btn-primary {
-            background: var(--main-blue);
-            border-color: var(--main-blue);
-            font-weight: 700;
-            letter-spacing: 1px;
-        }
-        .btn-primary:hover {
-            background: var(--main-red);
-            border-color: var(--main-red);
-        }
-        .metal-divider {
-            border: none;
-            border-top: 2px solid var(--metal-accent);
-            margin: 2em 0;
-        }
-        @media (max-width: 700px) {
-            .container-main { padding: 1em; }
-            .navbar { flex-direction: column; }
-            .snapshot-json { font-size: 0.95em; }
-        }
-    </style>
+    <!-- Page stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/history.css') }}">
 </head>
 <body>
     <nav class="navbar">
@@ -152,7 +19,47 @@
         <a href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank">About</a>
     </nav>
     <div class="container-main">
-        <h1>Change History</h1>
+        <h1 class="mb-3 d-flex align-items-center justify-content-between">
+          <span>Change History</span>
+          <button type="button"
+                  class="btn btn-outline-primary btn-sm"
+                  data-bs-toggle="popover"
+                  data-bs-trigger="focus"
+                  data-bs-placement="left"
+                  title="About this page"
+                  data-bs-content="Review prior snapshots, restore state, or copy/download snapshot JSON.">
+            Help
+          </button>
+        </h1>
+
+        <!-- Page actions -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <button type="button" class="btn btn-outline-primary btn-sm me-2"
+                    data-action="expand-all"
+                    data-bs-toggle="tooltip" title="Expand all snapshots">
+              Expand all
+            </button>
+            <button type="button" class="btn btn-outline-primary btn-sm"
+                    data-action="collapse-all"
+                    data-bs-toggle="tooltip" title="Collapse all snapshots">
+              Collapse all
+            </button>
+          </div>
+          <div class="dropdown">
+            <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button"
+                    data-bs-toggle="dropdown" aria-expanded="false">
+              Page menu
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" target="_blank"
+                     href="https://github.com/Basic-Nature/html_Parser_prototype">Open repository</a></li>
+              <li><a class="dropdown-item" target="_blank"
+                     href="https://basic-nature.github.io/html_Parser_prototype/">Open docs</a></li>
+            </ul>
+          </div>
+        </div>
+
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -170,7 +77,7 @@
                 <h2 class="accordion-header" id="heading{{ i }}">
                     <button class="accordion-button {% if i != 0 %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ i }}" aria-expanded="{{ 'true' if i == 0 else 'false' }}" aria-controls="collapse{{ i }}">
                         <span style="font-size:1.1em;">
-                            <span style="color:var(--metal-accent); font-weight:900;">&#9733;</span>
+                            <span style="color:var(--neon2); font-weight:900;">&#9733;</span>
                             Snapshot #{{ i + 1 }}
                             {% if snapshot.timestamp %}
                                 <span class="ms-2" style="font-size:0.95em; color:#222;">
@@ -182,6 +89,20 @@
                 </h2>
                 <div id="collapse{{ i }}" class="accordion-collapse collapse {% if i == 0 %}show{% endif %}" aria-labelledby="heading{{ i }}" data-bs-parent="#historyAccordion">
                     <div class="accordion-body">
+                        <!-- Per-snapshot actions -->
+                        <div class="d-flex justify-content-end mb-2">
+                          <div class="dropdown">
+                            <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button"
+                                    data-bs-toggle="dropdown" aria-expanded="false">
+                              Actions
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                              <li><button class="dropdown-item" type="button" data-action="copy-json" data-index="{{ i }}">Copy JSON</button></li>
+                              <li><button class="dropdown-item" type="button" data-action="download-json" data-index="{{ i }}">Download JSON</button></li>
+                            </ul>
+                          </div>
+                        </div>
+
                         <div class="snapshot-meta">
                             {% if snapshot.timestamp %}
                                 <span><b>Timestamp:</b> {{ snapshot.timestamp }}</span><br>
@@ -193,11 +114,14 @@
                                 <span><b>Action:</b> {{ snapshot.data.action }}</span><br>
                             {% endif %}
                         </div>
-                        <div class="snapshot-json">
-                            {{ snapshot.data | tojson(indent=2) }}
-                        </div>
+                        <pre id="snapshot-json-{{ i }}" class="snapshot-json">{{ snapshot.data | tojson(indent=2) }}</pre>
                         <form method="POST" action="{{ url_for('rollback', index=i) }}">
-                            <button type="submit" class="btn btn-sm btn-danger mt-2">Restore This Version</button>
+                            <button type="submit"
+                                    class="btn btn-sm btn-danger mt-2"
+                                    data-bs-toggle="tooltip"
+                                    title="Restore the app state to this snapshot">
+                              Restore This Version
+                            </button>
                         </form>
                     </div>
                 </div>
@@ -241,16 +165,30 @@
                 <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
         </div>
+
+        <!-- Info toast -->
+        <div id="toastInfo" class="toast border-0" role="alert" aria-live="polite" aria-atomic="true" data-bs-delay="2500">
+          <div class="d-flex">
+            <div class="toast-body">
+              Done.
+            </div>
+            <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+          </div>
+        </div>
+
+        <!-- Error toast -->
+        <div id="toastError" class="toast text-bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="3500">
+          <div class="d-flex">
+            <div class="toast-body">
+              Something went wrong.
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+          </div>
+        </div>
     </div>
 
+    <!-- Bootstrap bundle + page script -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        const params = new URLSearchParams(window.location.search);
-        if (params.get("restored") === "1") {
-            const toastEl = document.getElementById("toastSuccess");
-            const toast = new bootstrap.Toast(toastEl);
-            toast.show();
-        }
-    </script>
+    <script src="{{ url_for('static', filename='js/history.js') }}" defer></script>
 </body>
 </html>
