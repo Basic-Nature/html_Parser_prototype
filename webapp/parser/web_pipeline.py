@@ -11,9 +11,10 @@ from .utils.shared_logic import (
     safe_is_set
 )
 from .utils.logger_singleton import logger, prompt
-from flask import session, request
-from typing import Any
-from .config import PIPELINE_MAX_WORKERS, PIPELINE_MAX_ERRORS, PIPELINE_HEARTBEAT_INTERVAL
+from .config import (
+    PIPELINE_MAX_WORKERS, PIPELINE_MAX_ERRORS, PIPELINE_HEARTBEAT_INTERVAL,
+    URL_LIST_FILE
+)
 
 class CancellationManager(threading.Thread):
     """
@@ -23,22 +24,23 @@ class CancellationManager(threading.Thread):
         super().__init__()
         self._flags = {}
         self._lock = threading.Lock()
+        self._unknown_warned = set()
 
     def get_flag(self, session_id) -> threading.Event:
         with self._lock:
             if session_id not in self._flags:
                 self._flags[session_id] = threading.Event()
                 logger.info({
-                    "level": "DEBUG",
-                    "type": "cancellation",
-                    "message": f"New cancellation flag created for session_id={session_id}",
+                    "level": "INFO",
+                    "type": "status",
+                    "message": f"Created cancellation flag for session_id={session_id}",
                     "session_id": session_id
                 })
             else:
                 logger.info({
-                    "level": "DEBUG",
-                    "type": "cancellation",
-                    "message": f"get_flag called for session_id={session_id}",
+                    "level": "INFO",
+                    "type": "status",
+                    "message": f"Reusing cancellation flag for session_id={session_id}",
                     "session_id": session_id
                 })
             return self._flags[session_id]
@@ -50,7 +52,7 @@ class CancellationManager(threading.Thread):
                 logger.info({
                     "level": "CANCELLED",
                     "type": "cancel",
-                    "message": f"Cancellation requested for session_id={session_id}",
+                    "message": f"Cancellation requested (session_id={session_id})",
                     "session_id": session_id
                 })
             else:
@@ -66,15 +68,15 @@ class CancellationManager(threading.Thread):
             if session_id in self._flags:
                 safe_clear(self._flags[session_id])
                 logger.info({
-                    "level": "DEBUG",
-                    "type": "cancellation",
-                    "message": f"Cancellation reset for session_id={session_id}",
+                    "level": "INFO",
+                    "type": "status",
+                    "message": f"Cancellation flag reset (session_id={session_id})",
                     "session_id": session_id
                 })
             else:
                 logger.warning({
                     "level": "WARNING",
-                    "type": "cancellation",
+                    "type": "status",
                     "message": f"Reset requested for unknown session_id={session_id}",
                     "session_id": session_id
                 })
@@ -90,13 +92,16 @@ class CancellationManager(threading.Thread):
                     "session_id": session_id
                 })
             else:
-                logger.warning({
-                    "level": "WARNING",
-                    "type": "cancellation",
-                    "message": f"Remove requested for unknown session_id={session_id}",
-                    "session_id": session_id
-                })
-
+                # Throttle repeated warnings
+                if session_id not in self._unknown_warned:
+                    self._unknown_warned.add(session_id)
+                    logger.debug({
+                        "level": "DEBUG",
+                        "type": "cancellation",
+                        "message": f"Remove requested for unknown session_id={session_id}",
+                        "session_id": session_id
+                    })
+                    
 # Instantiate globally
 cancellation_manager = CancellationManager()
 
@@ -131,16 +136,20 @@ def process_urls_for_web(
     cancel_flag,
     max_workers=PIPELINE_MAX_WORKERS,
     emit_func=None,
+    output_bypass=False,
+    manual_source='input',
+    disable_internal_heartbeat=False,
     **kwargs
 ) -> None:
     """
     Advanced pipeline: per-URL timing, global timing, live progress, error threshold, tracebacks,
-    output file saving, env-configurable workers, heartbeat, and prompt queue handling.
+    output file saving, env-configurable workers, heartbeat, prompt queue handling,
+    plus manual format override (uploads/input) short‑circuit.
     """
     MAX_ERRORS = PIPELINE_MAX_ERRORS
     HEARTBEAT_INTERVAL = PIPELINE_HEARTBEAT_INTERVAL
 
-    # Safeguard: Only reset if the flag is not already set (i.e., not cancelled)
+    # Reset cancellation flag only if not already set
     if not safe_is_set(cancel_flag):
         cancellation_manager.reset(session_id)
     else:
@@ -151,20 +160,20 @@ def process_urls_for_web(
             "session_id": session_id
         })
 
-    # Always set logger and prompt to webapp mode
+    # Logger / prompt web mode
     logger.set_mode("webapp")
     logger.set_format("json")
-    logger.set_socketio_emit_func(emit_func)
-    prompt.set_mode("webapp")
-    prompt.set_socketio_emit_func(emit_func)
+    if emit_func:
+        prompt.set_mode("webapp")
+        prompt.set_socketio_emit_func(emit_func)
 
-    # Start heartbeat thread with emit_func
-    threading.Thread(
-        target=heartbeat,
-        args=(session_id, cancel_flag, HEARTBEAT_INTERVAL, emit_func),
-        daemon=True
-    ).start()
-    
+    if not disable_internal_heartbeat:
+        threading.Thread(
+            target=heartbeat,
+            args=(session_id, cancel_flag, HEARTBEAT_INTERVAL, emit_func),
+            daemon=True
+        ).start()
+
     pipeline_start = time.time()
     try:
         logger.info({
@@ -174,14 +183,79 @@ def process_urls_for_web(
             "session_id": session_id
         })
 
-        # --- Main pipeline logic (initial run) ---
+        # --- Manual format override integration (respects manual_source: 'input' or 'uploads') ---
+        # If FORCE_PARSE_* flags are active in html_election_parser.process_format_override(),
+        # attempt a single-file manual parse and short-circuit the normal URL pipeline on success.
+        try:
+            from .html_election_parser import process_format_override as _proc_fmt_override  # late import avoids circulars
+        except ImportError:
+            _proc_fmt_override = None
+
+        if _proc_fmt_override:
+            try:
+                override_result = _proc_fmt_override(session_id=session_id, source_dir=manual_source)
+                if override_result:
+                    logger.info({
+                        "level": "INFO",
+                        "type": "manual_override",
+                        "message": f"Manual format override completed (source_dir={manual_source}). Skipping standard pipeline.",
+                        "session_id": session_id
+                    })
+                    return
+            except Exception as e:
+                logger.error({
+                    "level": "ERROR",
+                    "type": "manual_override",
+                    "message": f"Manual format override failed: {e}",
+                    "session_id": session_id,
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
+                })
+
+        # --- Main pipeline logic ---
         urls = kwargs.get("urls")
+
         if urls is None:
+            try:
+                if os.path.exists(URL_LIST_FILE):
+                    with open(URL_LIST_FILE, "r", encoding="utf-8") as f:
+                        raw_urls = [
+                            ln.strip() for ln in f
+                            if ln.strip() and not ln.strip().startswith("#")
+                        ]
+                else:
+                    raw_urls = []
+                if not raw_urls:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "input",
+                        "message": "urls.txt has no usable URLs (web run aborted to avoid prompt block).",
+                        "session_id": session_id
+                    })
+                    logger.info({
+                        "level": "INFO",
+                        "type": "input",
+                        "message": f"Edit file at: {URL_LIST_FILE}",
+                        "session_id": session_id
+                    })
+                    return
+            except Exception:
+                pass  # fallback silently to main()
+
             main(
                 session_id=session_id,
                 cancel_flag=cancel_flag,
+                output_bypass=output_bypass,
+                manual_source=manual_source,
                 **kwargs
             )
+
+            # When urls is None and we delegated entirely to main(), define empty aggregates
+            total = 0
+            errors = []
+            results = []
+            url_timings = []
+
         else:
             if isinstance(urls, str):
                 urls = [urls]
@@ -213,6 +287,7 @@ def process_urls_for_web(
                 "total": total,
                 "session_id": session_id
             })
+
             completed = 0
             errors = []
             results = []
@@ -226,17 +301,19 @@ def process_urls_for_web(
                             url=url,
                             session_id=session_id,
                             cancel_flag=cancel_flag,
+                            output_bypass=output_bypass,
+                            manual_source=manual_source,
                             **kwargs
                         ): (idx, url) for idx, url in enumerate(urls)
                     }
-                    for i, future in enumerate(as_completed(future_to_url)):
+                    for future in as_completed(future_to_url):
                         idx, url = future_to_url[future]
                         url_start = time.time()
                         try:
                             result = future.result()
-                            url_duration = time.time() - url_start
+                            duration = time.time() - url_start
                             results.append((url, result))
-                            url_timings.append({"url": url, "index": idx, "duration": url_duration})
+                            url_timings.append({"url": url, "index": idx, "duration": duration})
                             logger.info({
                                 "level": "SUCCESS",
                                 "type": "status",
@@ -244,11 +321,11 @@ def process_urls_for_web(
                                 "url": url,
                                 "result": result,
                                 "index": idx,
-                                "duration": url_duration,
+                                "duration": duration,
                                 "session_id": session_id
                             })
                         except Exception as exc:
-                            url_duration = time.time() - url_start
+                            duration = time.time() - url_start
                             errors.append((url, str(exc)))
                             logger.error({
                                 "level": "ERROR",
@@ -258,7 +335,7 @@ def process_urls_for_web(
                                 "error": str(exc),
                                 "traceback": traceback.format_exc(),
                                 "index": idx,
-                                "duration": url_duration,
+                                "duration": duration,
                                 "session_id": session_id
                             })
                         completed += 1
@@ -320,23 +397,25 @@ def process_urls_for_web(
                             url=url,
                             session_id=session_id,
                             cancel_flag=cancel_flag,
+                            output_bypass=output_bypass,
+                            manual_source=manual_source,
                             emit_func=emit_func,
                             **kwargs
                         )
-                        url_duration = time.time() - url_start
+                        duration = time.time() - url_start
                         results.append((url, "success"))
-                        url_timings.append({"url": url, "index": i, "duration": url_duration})
+                        url_timings.append({"url": url, "index": i, "duration": duration})
                         logger.info({
                             "level": "SUCCESS",
                             "type": "status",
                             "message": f"{url} processed.",
                             "url": url,
                             "index": i,
-                            "duration": url_duration,
+                            "duration": duration,
                             "session_id": session_id
                         })
                     except Exception as exc:
-                        url_duration = time.time() - url_start
+                        duration = time.time() - url_start
                         errors.append((url, str(exc)))
                         logger.error({
                             "level": "ERROR",
@@ -346,7 +425,7 @@ def process_urls_for_web(
                             "error": str(exc),
                             "traceback": traceback.format_exc(),
                             "index": i,
-                            "duration": url_duration,
+                            "duration": duration,
                             "session_id": session_id
                         })
                     completed += 1
@@ -376,7 +455,8 @@ def process_urls_for_web(
                         "errors": errors,
                         "session_id": session_id
                     })
-        # Global Pipeline Timing and Summary
+
+        # --- Summary & report ---
         pipeline_duration = time.time() - pipeline_start
         logger.info({
             "level": "SUMMARY",
@@ -388,17 +468,16 @@ def process_urls_for_web(
             "url_timings": url_timings,
             "session_id": session_id
         })
-        # Output File Saving
         report_path = save_pipeline_report(session_id, results, errors)
         logger.info({
             "level": "INFO",
             "type": "output",
-            "message": f"Pipeline report saved.",
+            "message": "Pipeline report saved.",
             "report_path": report_path,
             "session_id": session_id
         })
 
-        # --- Prompt queue handling loop ---
+        # --- Prompt queue loop ---
         while not safe_is_set(cancel_flag):
             try:
                 prompt_data = prompt_queue.get(timeout=1)
@@ -410,15 +489,16 @@ def process_urls_for_web(
                     "message": f"Processing prompt: {prompt_data}",
                     "session_id": session_id
                 })
-                # Handle prompt (custom logic, e.g. call main, emit output, etc.)
                 main(
                     prompt=prompt_data,
                     session_id=session_id,
                     cancel_flag=cancel_flag,
+                    output_bypass=output_bypass,
+                    manual_source=manual_source,
                     **kwargs
                 )
             except Exception:
-                continue  # Timeout or empty queue, just check cancel_flag again
+                continue
 
     except Exception as e:
         logger.error({
@@ -454,35 +534,3 @@ def cancel_processing(session_id) -> None:
         "session_id": session_id
     })
 
-def safe_sid() -> str:
-    """
-    Returns a valid SocketIO session ID for the current request/session.
-    """
-    sid: Any = session.get('sid')
-    if isinstance(sid, str) and sid:
-        return sid
-    sid = getattr(request, 'sid', None)
-    if isinstance(sid, str) and sid:
-        return sid
-    # Fallback: try flask_socketio's request.sid
-    try:
-        sid = getattr(request, 'sid', None)
-        if isinstance(sid, str) and sid:
-            return sid
-    except Exception:
-        pass
-    raise RuntimeError("No valid session ID found for SocketIO connection.")
-
-def safe_rsplit(val, sep=None, maxsplit=-1):
-    """
-    Safely call .rsplit on a string-like object.
-    Returns a list, or [str(val)] if not a string or error occurs.
-    """
-    try:
-        if isinstance(val, str):
-            return val.rsplit(sep, maxsplit)
-        if isinstance(val, bytes):
-            return val.decode(errors="replace").rsplit(sep, maxsplit)
-        return [str(val)]
-    except Exception:
-        return [str(val)]

@@ -1,5 +1,5 @@
 """
-manual_correction_bot.py
+manual_correction.py
 
 Deep ML/LLM-enhanced batch review and correction bot for all context fields.
 - Reads all *_selection_log.jsonl logs produced by ContextCoordinator.

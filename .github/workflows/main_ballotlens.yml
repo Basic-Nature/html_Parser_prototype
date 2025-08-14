@@ -121,6 +121,7 @@ jobs:
             --name BallotLens \
             --resource-group BallotLens_group \
             --settings \
+              DEPLOY_ENV="azure" \
               FLASK_SECRET_KEY="${{ secrets.FLASK_SECRET_KEY }}" \
               FLASK_COOKIE_SECURE="True" \
               POSTGRES_USER="${{ secrets.POSTGRES_USER }}" \
@@ -129,7 +130,9 @@ jobs:
               POSTGRES_HOST="${{ secrets.POSTGRES_HOST }}" \
               POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}" \
               POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}" \
-              DATA_API_URL="/api/warehouse_election_results"
+              DATA_API_URL="/api/warehouse_election_results" \
+              CSP_MODE="STRICT"
+
 
       - name: Set Azure startup command
         run: |

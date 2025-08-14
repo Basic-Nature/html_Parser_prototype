@@ -6,7 +6,7 @@ from ..utils.models import Contest, Panel, TableStructure, CandidatePanel, Locat
 from ..config import CACHE_DIR, LOG_DIR, CONTEXT_LIBRARY_DIR
 from ..utils.logger_singleton import console
 from ..utils.html_scanner import export_context_cache_for_db
-from ..bots.manual_correction_bot import MAIN_FIELDS, AUX_FIELDS
+from ..bots.manual_correction import MAIN_FIELDS, AUX_FIELDS
 
 ALL_FIELDS = MAIN_FIELDS + AUX_FIELDS
 

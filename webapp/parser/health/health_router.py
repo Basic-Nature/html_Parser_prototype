@@ -187,7 +187,7 @@ class BotPipeline:
 
     def run_manual_correction(self, mode="enhanced", extra_args=None, retries=1, timeout=600):
         """
-        Optimized wrapper for manual_correction_bot for end-of-pipeline use.
+        Optimized wrapper for manual_correction for end-of-pipeline use.
         Runs in enhanced/manual mode for safe, interactive correction.
         """
         args = self.build_correction_args()
@@ -206,28 +206,28 @@ class BotPipeline:
         ])
         # Check for new entries before running
         if not self.has_new_entries(LOG_DIR, CACHE_DIR):
-            logger.info("[BOT_ROUTER] No new entries for manual correction. Skipping enhanced mode and exiting gracefully.")
+            logger.info("[health_router] No new entries for manual correction. Skipping enhanced mode and exiting gracefully.")
             self.results['manual_correction'] = 'skipped'
             return True  # Graceful exit
         # Try running with retries and timeout
         for attempt in range(1, retries + 1):
             try:
-                logger.info(f"[BOT_ROUTER] Running manual_correction_bot (enhanced mode, attempt={attempt}) with args: {args}")
-                cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot"] + args
+                logger.info(f"[health_router] Running manual_correction (enhanced mode, attempt={attempt}) with args: {args}")
+                cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction"] + args
                 result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=timeout)
-                logger.info(f"[BOT_ROUTER] manual_correction_bot stdout:\n{result.stdout[:1000]}")
+                logger.info(f"[health_router] manual_correction stdout:\n{result.stdout[:1000]}")
                 if result.returncode == 0:
-                    logger.info("[BOT_ROUTER] manual_correction_bot completed successfully.")
+                    logger.info("[health_router] manual_correction completed successfully.")
                     self.results['manual_correction'] = 'success'
                     return True
                 else:
-                    logger.warning(f"[BOT_ROUTER] manual_correction_bot failed (attempt {attempt}): {result.stderr}")
+                    logger.warning(f"[health_router] manual_correction failed (attempt {attempt}): {result.stderr}")
                     time.sleep(2)
             except subprocess.TimeoutExpired:
-                logger.error(f"[BOT_ROUTER] manual_correction_bot timed out after {timeout} seconds (attempt {attempt}).")
+                logger.error(f"[health_router] manual_correction timed out after {timeout} seconds (attempt {attempt}).")
             except Exception as e:
-                logger.error(f"[BOT_ROUTER] manual_correction_bot exception: {e}")
-        logger.error("[BOT_ROUTER] manual_correction_bot failed after all retries.")
+                logger.error(f"[health_router] manual_correction exception: {e}")
+        logger.error("[health_router] manual_correction failed after all retries.")
         self.results['manual_correction'] = 'fail'
         return False
 
@@ -240,7 +240,7 @@ class BotPipeline:
             if not dir_path.exists():
                 continue
             cmd = [
-                sys.executable, "-m", "webapp.parser.bots.manual_correction_bot",
+                sys.executable, "-m", "webapp.parser.bots.manual_correction",
                 "--log-dir", str(dir_path),
                 "--fields", "all",
                 "--dry-run"
@@ -305,7 +305,7 @@ class BotPipeline:
             if exit_code == 0:
                 logger.info("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
                 return 0
-            logger.warning(f"[SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
+            logger.warning(f"[SELF-HEAL] Misalignments found. Launching manual_correction...")
             self.manual_correction(args=self.build_correction_args())
             logger.warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
             time.sleep(cooldown)
@@ -340,7 +340,7 @@ class BotPipeline:
 
             # 3. Fix corrupted JSON files before any processing
             try:
-                cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fix-corrupt-json"]
+                cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction", "--fix-corrupt-json"]
                 subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
                 logger.info("[PIPELINE] Corrupted JSON files checked and fixed.")
             except Exception as e:
@@ -358,9 +358,9 @@ class BotPipeline:
             # 5. Optimized orchestration for manual correction (scan_misaligned_ner already handled misalignments)
             has_entries = self.has_new_entries(LOG_DIR, CACHE_DIR)
             if not has_entries:
-                logger.info("[PIPELINE] No new entries for manual correction, but running manual_correction_bot anyway (may update existing entries).")
+                logger.info("[PIPELINE] No new entries for manual correction, but running manual_correction anyway (may update existing entries).")
             else:
-                logger.info("[PIPELINE] New entries detected for manual correction. Running manual_correction_bot.")
+                logger.info("[PIPELINE] New entries detected for manual correction. Running manual_correction.")
 
             extra_args = []
             if str(INTEGRITY_CHECK).lower() == "true":
@@ -377,7 +377,7 @@ class BotPipeline:
                 extra_args.append("--flush-cache")
             if CACHE_EXPIRE_DAYS:
                 extra_args.extend(["--cache-expire-days", CACHE_EXPIRE_DAYS])
-            logger.info("[PIPELINE] Running manual_correction_bot in auto mode for context correction.")
+            logger.info("[PIPELINE] Running manual_correction in auto mode for context correction.")
             self.run_manual_correction(mode="auto", extra_args=extra_args)
 
             # 6. Retrain models (only if previous steps succeeded)
@@ -412,14 +412,14 @@ class BotPipeline:
 
     def manual_correction(self, args=None):
         try:
-            cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot"]
+            cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction"]
             if args:
                 cmd.extend(args)
             subprocess.run(cmd, check=True, cwd=PROJECT_ROOT)
             self.results['manual_correction'] = 'success'
             return True
         except Exception as e:
-            logger.error(f"[PIPELINE] manual_correction_bot failed: {e}")
+            logger.error(f"[PIPELINE] manual_correction failed: {e}")
             self.results['manual_correction'] = 'fail'
             return False
 
@@ -514,7 +514,7 @@ class BotPipeline:
                 logger.error(f"[PIPELINE][LLM] Suggestion failed: {e}")
         else:
             if self.results.get("scan_misaligned") == "misaligned":
-                suggestion = "Consider running manual_correction_bot with --self-heal or retraining models."
+                suggestion = "Consider running manual_correction with --self-heal or retraining models."
             else:
                 suggestion = "Pipeline ran clean. Monitor logs for anomalies."
             logger.info(f"[PIPELINE][STATIC SUGGESTION]: {suggestion}")

@@ -2830,9 +2830,9 @@ class ContextCoordinator(object):
     # --- CLI for reviewing/editing corrections and feedback ---
     def review_and_edit_corrections(self, field_type="buttons") -> None:
         """
-        Launch the manual_correction_bot CLI for reviewing/editing corrections and feedback.
+        Launch the manual_correction CLI for reviewing/editing corrections and feedback.
         """
-        script_path = os.path.join(os.path.dirname(__file__), "..", "bots", "manual_correction_bot.py")
+        script_path = os.path.join(os.path.dirname(__file__), "..", "health", "manual_correction.py")
         subprocess.run(["python", script_path, "--fields", field_type, "--feedback", "--enhanced"], check=True, cwd=PROJECT_ROOT)
 
     # --- Learning mode: auto-apply corrections from log/database ---

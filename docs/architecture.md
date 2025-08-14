@@ -90,12 +90,11 @@ This document provides a high-level overview of the architecture and responsibil
 
 ---
 
-## 🤖 Bots, Context, and Web UI Integration
+## 🤖 ML, Context, and Web UI Integration
 
-- **`bots/`**
-  - Correction, retraining, and automation bots (see `bot_router.py`).
-  - Includes manual correction bot and retraining pipeline.
-  - Bots can be enabled via `.env` (`ENABLE_BOT_TASKS=true`).
+- **`health/`**
+  - Correction, retraining, and automation health (see `health_router.py`).
+  - Includes manual correction and retraining pipeline.
 
 - **`Context_Integration/`**
   - Context, ML/NLP, and integrity modules:
@@ -130,17 +129,17 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 - **Location:**  
   - `webapp/parser/Context_Integration/Context_Library/context_library.json`
 - **Accessed by:**  
-  - `context_coordinator.py`, `context_organizer.py`, `librarian.py`, and ML bots.
+  - `context_coordinator.py`, `context_organizer.py`, `librarian.py`, and ML health.
 
 #### **B. Context Library DB (`context_library_db.json`)**
 
 - **Purpose:**  
   - A more structured or expanded version of the context library, possibly for ML or audit.
-  - Generated/updated by `manual_correction_bot.py` and possibly others.
+  - Generated/updated by `manual_correction.py` and possibly others.
 - **Location:**  
   - Same directory as above.
 - **Accessed by:**  
-  - Correction bots, possibly ML retraining scripts.
+  - Correction, possibly ML retraining scripts.
 
 #### **C. Context DB (`context_elections.db`)**
 
@@ -166,7 +165,7 @@ This project uses a modular, auditable pipeline for election data parsing, conte
   - Store all extraction, correction, feedback, and anomaly logs as `.jsonl` files.
   - Serve as the audit trail and as a source for manual/ML correction and retraining.
 - **Accessed by:**  
-  - `manual_correction_bot.py`, `librarian.py`, retraining scripts, and context bots.
+  - `manual_correction.py`, `librarian.py`, retraining scripts, and context health.
 
 ---
 
@@ -188,7 +187,7 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 #### **Step 3: Logging & Feedback**
 
 - **All field extractions, corrections, and feedback** are logged as `.jsonl` files.
-- **Manual and ML-powered correction bots** (`manual_correction_bot.py`) review these logs, allow user or ML/LLM corrections, and update the context library and/or context_library_db.
+- **Manual and ML-powered correction health** (`manual_correction.py`) review these logs, allow user or ML/LLM corrections, and update the context library and/or context_library_db.
 
 #### **Step 4: Database Update**
 
@@ -206,12 +205,12 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 
 | File/Module                       | Main Role                                                                                   | Reads From                | Writes To                 |
 |------------------------------------|--------------------------------------------------------------------------------------------|---------------------------|---------------------------|
-| `context_library.json`             | Central knowledge base for context, patterns, mappings                                     | Used by all context code  | Updated by librarian/correction bots |
-| `context_library_db.json`          | Structured/expanded context for ML/audit (optional)                                        | Correction bots, ML       | Correction bots           |
+| `context_library.json`             | Central knowledge base for context, patterns, mappings                                     | Used by all context code  | Updated by librarian/correction health |
+| `context_library_db.json`          | Structured/expanded context for ML/audit (optional)                                        | Correction health, ML       | Correction health           |
 | `context_elections.db`             | Legacy SQLite DB (should be phased out)                                                    | Legacy code               | Legacy code               |
 | `POSTGRES_URL` (PostgreSQL)        | Main relational DB for all structured data                                                 | SQLAlchemy models         | SQLAlchemy models         |
-| `log/*.jsonl`                      | All logs: extraction, correction, feedback, anomalies, etc.                                | Correction bots, ML       | All pipeline components   |
-| `manual_correction_bot.py`         | Reviews logs, allows corrections, updates context library and DB                           | log/, context_library     | context_library, DB       |
+| `log/*.jsonl`                      | All logs: extraction, correction, feedback, anomalies, etc.                                | Correction health, ML       | All pipeline components   |
+| `manual_correction.py`         | Reviews logs, allows corrections, updates context library and DB                           | log/, context_library     | context_library, DB       |
 | `librarian.py`                     | Centralizes context knowledge, extends/updates context library                             | context_library           | context_library           |
 | `context_coordinator.py`           | Orchestrates context enrichment, integrity, and ML checks                                 | context_library, DB       | log/                      |
 | `context_organizer.py`             | Organizes parsed context, deduplicates, runs ML, updates DB                               | context_library, DB       | DB, log/                  |
@@ -243,7 +242,7 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 #### **C. Logging and Correction**
 
 - **All logs go to `log/` directory** with clear naming conventions.
-- **Manual/ML correction bots** should always update both the context library and the DB as needed.
+- **Manual/ML correction health** should always update both the context library and the DB as needed.
 
 #### **D. ML/NLP Retraining**
 
@@ -259,7 +258,7 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 
 ### 5. **Summary Diagram**
 
-[HTML/CSV/PDF] | v [Parser/Handlers] ---> [log/*.jsonl] <---+ | | v v [context_organizer.py] <--- [context_library.json] <--- [librarian.py] | | v v [context_coordinator.py] <--- [manual_correction_bot.py] | | v v [PostgreSQL (SQLAlchemy models)] <--- [context_migration.py] | v [ML/NLP Retraining Scripts]
+[HTML/CSV/PDF] | v [Parser/Handlers] ---> [log/*.jsonl] <---+ | | v v [context_organizer.py] <--- [context_library.json] <--- [librarian.py] | | v v [context_coordinator.py] <--- [manual_correction.py] | | v v [PostgreSQL (SQLAlchemy models)] <--- [context_migration.py] | v [ML/NLP Retraining Scripts]
 
 ---
 
@@ -267,7 +266,7 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 
 1. **Audit all code for references to `context_elections.db` and remove/replace with PostgreSQL.**
 2. **Ensure all context knowledge is loaded from and saved to `context_library.json` via `librarian.py`.**
-3. **Make sure all logs are written to `log/` and processed by correction bots.**
+3. **Make sure all logs are written to `log/` and processed by correction health.**
 4. **Use PostgreSQL as the only source of structured, confirmed data for ML and reporting.**
 5. **Document all key paths and their roles in your project.**
 
@@ -317,7 +316,7 @@ Manual parsing is supported if you use the correct naming convention and trigger
 - **Custom contest filtering:**  
   Pass `noisy_labels` and `noisy_label_patterns` to `select_contest()` in your handler.
 - **Bot tasks:**  
-  Add to `bots/bot_router.py` and enable with `ENABLE_BOT_TASKS=true` in `.env`.
+  Add to `health/health_router.py` and enable with `ENABLE_BOT_TASKS=true` in `.env`.
 - **Context and correction:**  
   Add new context patterns or feedback to `context_library.json` or extend `context_organizer.py`.
 - **User prompts:**  
@@ -336,7 +335,7 @@ Manual parsing is supported if you use the correct naming convention and trigger
 - **Audit trails:**  
   Every extraction, correction, and output is logged with metadata for reproducibility.
 - **Human-in-the-loop:**  
-  Manual correction bots and feedback loops ensure continuous improvement and transparency.
+  Manual correction health and feedback loops ensure continuous improvement and transparency.
 
 ---
 

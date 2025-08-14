@@ -642,8 +642,8 @@ def self_heal_context_library(max_retries=3, cooldown=2) -> None:
         if scan_result.returncode == 0:
             logger.info("[LIBRARIAN SELF-HEAL] Data is clean. Exiting self-heal mode.")
             return 0
-        logger.warning("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction_bot...")
-        bot_cmd = [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--enhanced"]
+        logger.warning("[LIBRARIAN SELF-HEAL] Misalignments found. Launching manual_correction...")
+        bot_cmd = [sys.executable, "-m", "webapp.parser.health.manual_correction", "--enhanced"]
         subprocess.run(bot_cmd, check=True, cwd=PROJECT_ROOT)
         logger.warning(f"[LIBRARIAN SELF-HEAL] Sleeping {cooldown}s before rescanning...")
         time.sleep(cooldown)

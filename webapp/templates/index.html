@@ -5,14 +5,14 @@
     <title>Smart Elections Parser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Bootstrap first so main.css can override -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-5.3.0.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
     <nav class="navbar">
-        <a href="https://smartelections.us/" >Home Base</a>
-        <a href="https://discord.gg/your_invite" target="_blank">Community</a>
-        <a href="https://github.com/Basic-Nature/html_Parser_prototype/issues" target="_blank">Feedback</a>
+        <a href="https://smartelections.us/">Home Base</a>
+        <a href="https://discord.gg/your_invite" target="_blank" rel="noreferrer">Community</a>
+        <a href="https://github.com/Basic-Nature/html_Parser_prototype/issues" target="_blank" rel="noreferrer">Feedback</a>
     </nav>
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -47,8 +47,8 @@
           </div>
         </h1>
         <div class="subtitle rainbow-text">Open, Transparent, and Modular Election Data Extraction</div>
-        <div class="mission" id="missionPanel" style="position:relative;overflow:hidden;">
-          <canvas class="rim-tracer" id="rimTracer" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;"></canvas>
+        <div class="mission mission-panel" id="missionPanel">
+          <canvas class="rim-tracer" id="rimTracer" aria-hidden="true"></canvas>
           <strong>Mission:</strong> To empower election transparency and civic engagement by providing open-source, modular tools for extracting, normalizing, and analyzing election results from any state or county in the U.S.<br><br>
           <strong>Goals:</strong>
           <ul class="mission-list">
@@ -83,18 +83,20 @@
             <a href="mailto:smartelectionsact@gmail.com" class="contact-email">smartelectionsact@gmail.com</a>
         </div>
     </div>
-    <div id="popup" style="display:none;"></div>
-    <script>
-      window.STATIC_ASSETS = {
-        sunSvg: "{{ url_for('static', filename='img/sun.svg') }}",
-        sunPng: "{{ url_for('static', filename='img/sun.png') }}",
-        moonSvg: "{{ url_for('static', filename='img/moon.svg') }}",
-        moonPng: "{{ url_for('static', filename='img/moon.png') }}",
-        earth:  "{{ url_for('static', filename='img/earth.png') }}"
-      };
-    </script>
+
+    <div id="assetPaths"
+         data-sun-svg="{{ url_for('static', filename='img/sun.svg') }}"
+         data-sun-png="{{ url_for('static', filename='img/sun.png') }}"
+         data-moon-svg="{{ url_for('static', filename='img/moon.svg') }}"
+         data-moon-png="{{ url_for('static', filename='img/moon.png') }}"
+         data-earth="{{ url_for('static', filename='img/earth.png') }}">
+    </div>
+
+    <div id="popup" class="popup-hidden"></div>
+
     <!-- Bootstrap bundle for tooltips/popovers -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/index_page.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/main.js') }}" defer></script>
 </body>
 </html>

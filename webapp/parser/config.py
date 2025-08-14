@@ -47,20 +47,14 @@ DOWNLOAD_MANIFEST = INPUT_DIR / ".download_manifest.jsonl"
 
 # Path to the list of URLs to process
 URL_LIST_FILE = PARSER_DIR / "urls.txt"
-if not URL_LIST_FILE.exists() or URL_LIST_FILE.stat().st_size == 0:
+SEED_URLS_IF_EMPTY = os.environ.get("SEED_URLS_IF_EMPTY", "true").lower() in ("1","true","yes")
+if not URL_LIST_FILE.exists():
     with open(URL_LIST_FILE, "w", encoding="utf-8") as f:
         f.write("# Add your URLs here, one per line.\n")
-
-HISTORY_FILE = PARSER_DIR / "url_hint_history.jsonl"
-if not HISTORY_FILE.exists() or HISTORY_FILE.stat().st_size == 0:
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        f.write("[]")  # Initialize with an empty JSON array
-
-HINT_FILE = PARSER_DIR / "url_hint_overrides.txt"
-# Ensure HINT_FILE exists and is valid JSON
-if not HINT_FILE.exists() or HINT_FILE.stat().st_size == 0:
-    with open(HINT_FILE, "w", encoding="utf-8") as f:
-        f.write("{}")
+elif URL_LIST_FILE.stat().st_size == 0 and SEED_URLS_IF_EMPTY:
+    # Only seed if env allows; otherwise leave truly empty so we don't “overwrite”
+    with open(URL_LIST_FILE, "w", encoding="utf-8") as f:
+        f.write("# Add your URLs here, one per line.\n")
 
 # Path to the file tracking processed URLs (used for deduplication/caching)
 PROCESSED_URLS_FILE = CONTEXT_DB_PATH.parent / ".processed_urls"
@@ -70,6 +64,15 @@ LOG_DIR = CONTEXT_LIBRARY_DIR / "log"
 CACHE_DIR = CONTEXT_LIBRARY_DIR / "cache"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Run history (NDJSON lines: start/end events for parser runs)
+RUN_HISTORY_FILE = LOG_DIR / "run_history.ndjson"
+# Ensure file exists (optional – create empty if missing)
+if not RUN_HISTORY_FILE.exists():
+    try:
+        RUN_HISTORY_FILE.touch()
+    except Exception:
+        pass
 
 # Path to the cache file for processed URLs (used for deduplication)
 OUTPUT_CACHE = CACHE_DIR / "output_cache.json"
@@ -89,21 +92,19 @@ CONTEXT_CACHE_PATH = CACHE_DIR / "context_cache.json"
 DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "").lower()  # "azure" or "local"
 
 if DEPLOY_ENV == "azure":
-    # Azure PostgreSQL settings
     POSTGRES_USER_RAW = os.environ.get("POSTGRES_USER", "")
     POSTGRES_PASSWORD_RAW = os.environ.get("POSTGRES_PASSWORD", "")
     POSTGRES_DB = os.environ.get("POSTGRES_DB", "")
     POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "")
     POSTGRES_PORT = os.environ.get("POSTGRES_PORT") or "5432"
-    # URL-encode user and password for SQLAlchemy connection string
+    # URL-encoded ONLY for building DSNs that need escaping
     POSTGRES_USER = urllib.parse.quote_plus(POSTGRES_USER_RAW)
     POSTGRES_PASSWORD = urllib.parse.quote_plus(POSTGRES_PASSWORD_RAW)
     POSTGRES_URL = (
         f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
     )
-    POSTGRES_SERVICE_NAME = None  # Not used in Azure
+    POSTGRES_SERVICE_NAME = None
 else:
-    # Local Windows settings (example)
     POSTGRES_USER_RAW = os.environ.get("POSTGRES_USER", "postgres")
     POSTGRES_PASSWORD_RAW = os.environ.get("POSTGRES_PASSWORD", "postgres")
     POSTGRES_DB = os.environ.get("POSTGRES_DB", "postgres")
@@ -243,6 +244,47 @@ def get_supported_formats():
     return [".json", ".csv", ".pdf"]
 
 SUPPORTED_FORMATS = [ext for ext in get_supported_formats() if ext.lower() not in [".html", "html"]]
+
+__all__ = [
+    # Core paths
+    "PROJECT_ROOT","BASE_DIR","PARSER_DIR","INPUT_DIR","OUTPUT_DIR","UPLOADS_DIR",
+    "CONTEXT_DB_PATH","CONTEXT_LIBRARY_PATH","CONTEXT_LIBRARY_DIR","VOCAB_DIR",
+    "DOWNLOAD_MANIFEST","URL_LIST_FILE","PROCESSED_URLS_FILE","LOG_DIR","CACHE_DIR",
+    "RUN_HISTORY_FILE","OUTPUT_CACHE","DISK_CACHE_PATH","MISSING_LOG_PATH",
+    "MODEL_DIR","CONTEXT_CACHE_PATH",
+
+    # DB settings
+    "DEPLOY_ENV","POSTGRES_USER_RAW","POSTGRES_PASSWORD_RAW","POSTGRES_DB",
+    "POSTGRES_HOST","POSTGRES_PORT","POSTGRES_USER","POSTGRES_PASSWORD",
+    "POSTGRES_URL","POSTGRES_SERVICE_NAME",
+
+    # LLM
+    "LLM_PROVIDER","LLM_MODEL","LLM_API_KEY","LLM_SYSTEM_PROMPT",
+    "LLM_EXTRA_INSTRUCTIONS","USER_NAME","TABLE_MODEL_PATH",
+
+    # Feature toggles / options
+    "ENABLE_ENHANCED","CORRECTION_MODE","INTEGRITY_CHECK","UPDATE_DB",
+    "FILTER_CONTEXT_KEY","FILTER_VALUE","FIELDS","CONTEXT_PATH","LOG_DIR_ENV",
+    "DRY_RUN","NO_COORDINATOR","NO_ORGANIZER","BATCH_MODE","FAST_MODE",
+    "FLUSH_CACHE","CACHE_EXPIRE_DAYS","EXPORT_AUDIT_LOG","REST_API","SELF_HEAL",
+    "MAX_RETRIES","COOLDOWN","DB_PATH","ENABLE_SEGMENT_LABEL_PROMPT",
+    "DEFAULT_CAPTCHA_TIMEOUT","ENABLE_OCR","LOG_LEVEL","CACHE_PROCESSED_URLS",
+    "CACHE_LOCK","CACHE_RESET","HEADLESS_DEFAULT","TIMEOUT_SEC",
+    "INCLUDE_TIMESTAMP_IN_FILENAME","ENABLE_PARALLEL","ENABLE_AI_ANALYSIS",
+    "ENABLE_REALTIME_STREAM","FORCE_PARSE_INPUT_FILE","FORCE_PARSE_FORMAT",
+    "MAX_URLS_DISPLAYED","PIPELINE_MAX_WORKERS","PIPELINE_MAX_ERRORS",
+    "PIPELINE_HEARTBEAT_INTERVAL","ENABLE_USER_FEEDBACK",
+
+    # Training params
+    "SBERT_EPOCHS","SBERT_BATCH_SIZE","SPACY_NER_EPOCHS","SPACY_NER_PATIENCE",
+    "SPACY_NER_MIN_DELTA","SPACY_NER_BATCH_SIZE","REVIEW_WITH_MANUAL_BOT",
+
+    # Formats
+    "SUPPORTED_FORMATS","SEED_URLS_IF_EMPTY",
+
+    # Helpers
+    "get_subprocess_env","get_supported_formats",
+]
 
 # === END OF CONFIGURATION ===
 

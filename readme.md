@@ -81,7 +81,7 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 - **Output Sorting**: Results saved in nested folders by state, county, and race.
 - **URL Selection**: Loads URLs from `urls.txt` and lets users select specific targets.
 - **.env Driven**: Easily override behavior such as CAPTCHA timeouts or headless preferences.
-- **Bot Integration**: Enable `/bot` tasks (e.g., notifications, batch scans) via `.env`.
+
 - **Web UI Ready**: All user prompts are modular for future web interface integration.
 
 ---
@@ -115,25 +115,20 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 
 ---
 
-## How to Add a New State/County Handler, Format, or Bot Task
+## How to Add a New State/County Handler, or Format
 
 1. **State/County Handler:**  
    - Create a new handler in `handlers/states/` or `handlers/counties/`.
    - Implement a `parse(page, html_context)` function.
    - Register your handler in `state_router.py`.
 
-2. **Bot Task:**  
-   - Add your bot logic to `bot/bot_router.py`.
-   - Implement a `run_bot_task(task_name, context)` function.
-   - Enable with `ENABLE_BOT_TASKS=true` in `.env`.
-
-3. **Custom Noisy Labels/Patterns:**  
+2. **Custom Noisy Labels/Patterns:**  
    - In your handler, pass `noisy_labels` and `noisy_label_patterns` to `select_contest()` for contest filtering.
 
-4. **Format Handler:**  
+3. **Format Handler:**  
    - Add your handler to `utils/format_router.py` and register it in `route_format_handler`.
 
-5. **User Prompts:**  
+4. **User Prompts:**  
    - Use `prompt_user_input()` for all user input to allow easy web UI integration later.  
    - Example:
 
@@ -170,7 +165,6 @@ html_Parser_prototype/
 │   │   │   ├── states/                     # State/county handlers
 │   │   │   ├── formats/                    # Format handlers (csv, pdf, json, html)
 │   │   │   └── shared/                     # Shared handler logic
-│   │   ├── bots/                           # Correction/retraining bots
 │   │   ├── templates/                      # Web UI templates
 │   │   ├── input/                          # Input data
 │   │   ├── output/                         # Output data
@@ -187,37 +181,17 @@ html_Parser_prototype/
    pip install -r requirements.txt
    python -m spacy download en_core_web_sm
 
-- 2. ## Configure Settings (Optional)
-   Copy `.env.template` to `.env` and modify:
-
-   cp .env.template .env
-   ``
-   Variables include:
-
-   - `HEADLESS=false` (for debugging)
-   - `CAPTCHA_TIMEOUT=300`
-   - `CACHE_PROCESSED=true`
-   - `ENABLE_BOT_TASKS=true` (to enable bot features)
-   - `ENABLE_PARALLEL=true` (to enable multiprocessing)
-
-- 3. ## Add URLs
+- 2. ## Add URLs
    - Populate `urls.txt` with target election result URLs.
-   - `url_hint_overrides.txt` is used in conjunction with 
    `state_router.py` when dynamic state detection fails.
 
-- 4. ## Run the postgreSQL service
-   python -m webapp.postgres_service_manager
-   - Get database specific features to work.
-   - Requires admin privileges
-   - If not wanting to add admin privileges then start service in background manually.
-
-- 5. ## Run Parser (Web UI)
+- 3. ## Run Parser (Web UI)
    python -m webapp.Smart_Elections_Parser_Webapp
    - <Same as above with "" and folder path>
    - \cd ...full path...\html_Parser_prototype\
    - Then visit [http://localhost:5000](http://localhost:5000) in your browser or more likely the printed to terminal IP address pasted into browser of choice. This script activates the postgreSQL database so it must be ran first.
 
-- 6. ## Run Parser (CLI)
+- 4. ## Run Parser (CLI)
    python -m webapp.parser.html_election_parser
    - `(uncomment the "")
    - ``
@@ -225,11 +199,6 @@ html_Parser_prototype/
     (replace full path with the actual path to the folder)
     "cd ...full path...\html_Parser_prototype"
    `
-
-- 7. ## Run Bot_router
-   python -m webapp.parser.bots.bot_router
-   - The bot_router cleans up the .json/.jsonl and preps for 
-   retraining as well as migrating data to postgreSQL
 ---
 
 ## 📦 Output Format
@@ -272,13 +241,11 @@ For each contest, the following files are generated:
 
 Add New Extraction Strategies: Implement in table_core.py or as a plugin.
 Add Handlers: Place new state/county/format handlers in handlers/.
-Improve ML/NER: Retrain models using the correction bot and logs.
 Election Integrity: All new logic should log decisions and support auditability.
 
 - **Add New States**: Create a new file in `handlers/states/` (e.g. `georgia.py`) and implement a `parse()` method.
 - **Add Format Support**: Add new file in `handlers/formats/` and map in `format_router.py`.
 - **Shared Behavior**: Use `utils/shared_logic.py` for common race detection, total extraction, etc.
-- **Add Bot Tasks**: Add new automation/notification logic in `bot/bot_router.py`.
 
 ---
 

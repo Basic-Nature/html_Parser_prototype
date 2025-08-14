@@ -12,8 +12,6 @@ This document tracks the progress and next steps for the Smart Elections Parser 
   Multi-strategy extraction (panel, section, ML/NER, plugin) with scoring and patching is implemented in `table_core.py` and `dynamic_table_extractor.py`.
 - **Persistent Context Library:**  
   `context_library.json` and context enrichment modules are in place for smarter extraction and correction.
-- **Bots & Automation:**  
-  Correction and retraining bots are implemented (`bots/`), with `.env`-driven enable/disable.
 - **Election Integrity Checks:**  
   ML/NER-based anomaly detection and cross-field validation are integrated (`Context_Integration/Integrity_check.py`).
 - **Web UI (Flask):**  

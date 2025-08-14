@@ -16,6 +16,7 @@ import gc
 import collections.abc
 from pathlib import Path
 from sqlalchemy.orm import Session, Query
+from flask import request, session
 from sqlalchemy.engine import ScalarResult
 from urllib.parse import ParseResult, SplitResult
 from ..utils.logger_singleton import logger, console, prompt
@@ -1151,6 +1152,42 @@ def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
             return safe_get_first(matches, "county_match", None, logger)
     # If no match, return normalized input
     return county_norm
+
+def safe_sid() -> str:
+    """
+    Returns a valid SocketIO session ID for the current request/session.
+    Tries request.sid first (SocketIO context), then flask session storage.
+    Raises RuntimeError if none found.
+    """
+    # Prefer request.sid (present in SocketIO event context)
+    try:
+        sid = getattr(request, 'sid', None)
+        if isinstance(sid, str) and sid:
+            return sid
+    except Exception:
+        pass
+    # Fallback: flask session (may not be set)
+    try:
+        sid = session.get('sid')
+        if isinstance(sid, str) and sid:
+            return sid
+    except Exception:
+        pass
+    raise RuntimeError("No valid session ID found for SocketIO connection.")
+
+def safe_rsplit(val, sep=None, maxsplit=-1) -> list[str]:
+    """
+    Safely call .rsplit on a string-like object.
+    Returns a list, or [str(val)] if not a string or error occurs.
+    """
+    try:
+        if isinstance(val, str):
+            return val.rsplit(sep, maxsplit)
+        if isinstance(val, bytes):
+            return val.decode(errors="replace").rsplit(sep, maxsplit)
+        return [str(val)]
+    except Exception:
+        return [str(val)]
 
 def normalize_county_name(name) -> Optional[str]:
     """

@@ -38,9 +38,9 @@ The Web UI is ideal for teams, researchers, and those learning to code—**all c
 
 ---
 
-## 🤖 Automation, Bots & Context
+## 🤖 Automation, health & Context
 
-- [`bots/`](../webapp/parser/bots/): Correction, retraining, and automation bots (see `bot_router.py`)
+- [`health/`](../webapp/parser/health/): Correction, retraining, and automation health (see `health_router.py`)
 - [`Context_Integration/`](../webapp/parser/Context_Integration/): Context, ML/NLP, and integrity modules (`context_coordinator.py`, `context_organizer.py`, `Integrity_check.py`)
 - [`context_library.json`](../webapp/parser/context_library.json): Persistent context and feedback for smarter extraction and correction
 
@@ -70,7 +70,7 @@ The Web UI is ideal for teams, researchers, and those learning to code—**all c
 - Try parsing pre-downloaded HTML or file formats using the `input/` directory
 - Simulate CAPTCHA triggers for state/county sites
 - Modular user prompts (`prompt_user_input`) allow easy CLI or web UI testing
-- Correction and feedback bots help retrain extraction logic and improve future runs
+- Correction and feedback health help retrain extraction logic and improve future runs
 
 ---
 

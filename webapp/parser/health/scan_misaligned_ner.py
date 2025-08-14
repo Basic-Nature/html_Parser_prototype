@@ -82,7 +82,7 @@ def scan_misaligned(jsonl_path=None, verbose=False, output_misaligned=True, top_
             for text, count in counter.most_common(top_n):
                 logger.warning(f"  {repr(text)}: {count} times")
             logger.warning("[MISALIGNED] Consider cleaning or pattern-excluding these from your training data.")
-        logger.warning("Run the manual_correction_bot to review and clean these examples before retraining.")
+        logger.warning("Run the manual_correction to review and clean these examples before retraining.")
         logger.warning("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
         return 2
     elif not misaligned:
@@ -99,7 +99,7 @@ def scan_misaligned(jsonl_path=None, verbose=False, output_misaligned=True, top_
 def self_heal_loop(jsonl_path, verbose, max_retries=3, cooldown=2):
     """
     Loop: scan -> correct -> rescan, until clean or max_retries reached.
-    Calls manual_correction_bot for misaligned NER correction.
+    Calls manual_correction for misaligned NER correction.
     """
     for attempt in range(1, max_retries + 1):
         logger.info(f"\n[SELF-HEAL] Attempt {attempt}...")
@@ -107,14 +107,14 @@ def self_heal_loop(jsonl_path, verbose, max_retries=3, cooldown=2):
         if exit_code == 0:
             logger.info("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
             return 0
-        logger.warning("[SELF-HEAL] Misalignments found. Launching manual_correction_bot for spacy_ner_misaligned...")
+        logger.warning("[SELF-HEAL] Misalignments found. Launching manual_correction for spacy_ner_misaligned...")
         # Always use the special field for misaligned NER
         result = subprocess.run([
-            sys.executable, "-m", "webapp.parser.bots.manual_correction_bot",
+            sys.executable, "-m", "webapp.parser.bots.manual_correction",
             "--fields", "spacy_ner_misaligned", "--enhanced"
         ], cwd=PROJECT_ROOT)
         if result.returncode != 0:
-            logger.warning(f"[SELF-HEAL] manual_correction_bot exited with code {result.returncode}")
+            logger.warning(f"[SELF-HEAL] manual_correction exited with code {result.returncode}")
         logger.warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
         time.sleep(cooldown)
     logger.warning("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
@@ -133,7 +133,7 @@ Scans for misaligned NER examples and optionally runs manual correction."""
     )
     parser.add_argument("--jsonl", type=str, default=None, help="Path to NER training data JSONL (default: LOG_DIR/spacy_ner_train_data.jsonl)")
     parser.add_argument("--verbose", action="store_true", help="Print all misaligned examples")
-    parser.add_argument("--auto-correct", action="store_true", help="Automatically run manual_correction_bot if misaligned examples are found")
+    parser.add_argument("--auto-correct", action="store_true", help="Automatically run manual_correction if misaligned examples are found")
     parser.add_argument("--self-heal", action="store_true", help="Loop: scan -> correct -> rescan until clean or max retries")
     parser.add_argument("--max-retries", type=int, default=3, help="Max self-heal attempts")
     parser.add_argument("--cooldown", type=int, default=2, help="Seconds to wait between self-heal attempts")
@@ -146,9 +146,9 @@ Scans for misaligned NER examples and optionally runs manual correction."""
     else:
         exit_code = scan_misaligned(jsonl_path, args.verbose)
         if args.auto_correct and exit_code == 2:
-            logger.info("\n[INFO] Launching manual_correction_bot for review of misaligned NER...")
+            logger.info("\n[INFO] Launching manual_correction for review of misaligned NER...")
             subprocess.run([
-                sys.executable, "-m", "webapp.parser.bots.manual_correction_bot",
+                sys.executable, "-m", "webapp.parser.bots.manual_correction",
                 "--fields", "spacy_ner_misaligned", "--enhanced"
             ], cwd=PROJECT_ROOT)
     sys.exit(exit_code)

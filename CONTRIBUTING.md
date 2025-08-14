@@ -113,12 +113,12 @@ This project is designed to be scalable, readable, and resilient — please read
 - Expand **race/year/contest detection** logic in `utils/html_scanner.py`.
 - Optimize **CAPTCHA resilience** in `utils/captcha_tools.py`.
 - Strengthen **modularity, orchestration, and UX** in `html_election_parser.py`.
-- Add **bot tasks** in `bots/bot_router.py` for automation, correction, or notifications.
+- Add **bot tasks** in `health/health_router.py` for automation, correction, or notifications.
 - Improve **shared utilities** in `utils/` or `handlers/shared/`.
 - Enhance or document the **Web UI** (Flask app in `webapp/`) for a better user experience, especially for new coders or non-technical users.
 - **Expand the context library**: Add new context patterns, feedback, or corrections in `context_library.json` or contribute to `Context_Integration/context_organizer.py`.
 - **Improve ML/NLP extraction or entity recognition**: See `ml_table_detector.py` and `spacy_utils.py`.
-- **Use or extend the correction bot**: See `bots/manual_correction_bot.py` and retraining scripts.
+- **Use or extend the correction bot**: See `health/manual_correction.py` and retraining scripts.
 - **Tune dynamic table extraction**: Add or improve extraction strategies, scoring, or patching logic in `utils/table_core.py` and `utils/dynamic_table_extractor.py`.
 - All corrections and feedback are logged for auditability and future learning.
 
@@ -128,17 +128,16 @@ This project is designed to be scalable, readable, and resilient — please read
 
 - To add new context patterns or feedback, edit `context_library.json` or contribute to `Context_Integration/context_organizer.py`.
 - To improve ML/NLP extraction or entity recognition, see `utils/ml_table_detector.py` and `utils/spacy_utils.py`.
-- To use or extend the correction bot, see `bots/manual_correction_bot.py` and retraining scripts.
+- To use or extend the correction bot, see `health/manual_correction.py` and retraining scripts.
 - All corrections and feedback are logged for auditability and future learning.
 
 ---
 
-### 🤖 Adding Bots
+### 🤖 Adding ML and NLP
 
-- Place new bot scripts in `bots/` and register them in `bots/bot_router.py`.
-- Bots can automate corrections, retraining, notifications, or data integrity checks.
-- Enable bots via `.env` with `ENABLE_BOT_TASKS=true`.
-- See `bots/manual_correction_bot.py` for an example of a correction/retraining bot.
+- Place new bot scripts in `health/` and register them in `health/health_router.py`.
+- health can automate corrections, retraining, notifications, or data integrity checks.
+- See `health/manual_correction.py` for an example of a correction/retraining bot.
 
 ---
 
@@ -295,7 +294,7 @@ def parse(page, html_context):
 
 - `handlers/`: State and format-specific scrapers.
 - `utils/`: Shared browser, captcha, and format logic.
-- `bots/`: Correction/retraining/automation bots.
+- `health/`: Correction/retraining/automation autonomous service.
 - `Context_Integration/`: Context, ML/NLP, and integrity modules.
 - `input/`: Input files like PDFs or JSONs.
 - `output/`: Where CSVs go.
@@ -311,8 +310,6 @@ def parse(page, html_context):
 - Test your handler with real and edge-case data.
 - Use the troubleshooting guide (`docs/troubleshooting.md`) if you get stuck.
 - Check logs for errors and tuple structure issues.
-- Use `CACHE_RESET=true` in `.env` to clear processed URL cache if needed.
-- For bot/automation, see `bots/bot_router.py` and enable with `ENABLE_BOT_TASKS=true` in `.env`.
 - If contributing to the Web UI, test both CLI and web workflows to ensure compatibility.
 - When contributing to context or correction, ensure your changes are logged and auditable.
 

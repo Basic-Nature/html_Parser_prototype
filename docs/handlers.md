@@ -105,10 +105,9 @@ The file `shared_logic.py` is where general shared election-logic for parsing or
 
 - Always use `prompt_user_input()` for user interactions to ensure seamless CLI and future web UI integration.
 
-### Bot Tasks
+### health Tasks
 
-- Add automation or notification logic in `bots/bot_router.py`.
-- Enable bot tasks by setting `ENABLE_BOT_TASKS=true` in your `.env` file.
+- Add automation or notification logic in `health/health_router.py`.
 
 ### Context-Aware Extraction
 

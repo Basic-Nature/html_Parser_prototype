@@ -26,9 +26,8 @@ from .utils.shared_logic import (
 from .Context_Integration.librarian import safe_join
 from .utils.logger_singleton import logger, console, prompt
 from .config import (
-    BASE_DIR, CONTEXT_DB_PATH, PROJECT_ROOT,
-    LOG_LEVEL, CACHE_PROCESSED_URLS, CACHE_LOCK, CACHE_RESET,
-    HEADLESS_DEFAULT, TIMEOUT_SEC, INCLUDE_TIMESTAMP_IN_FILENAME,
+    UPLOADS_DIR,
+    CACHE_LOCK, CACHE_RESET,
     ENABLE_PARALLEL, ENABLE_AI_ANALYSIS, ENABLE_REALTIME_STREAM,
     FORCE_PARSE_INPUT_FILE, FORCE_PARSE_FORMAT, MAX_URLS_DISPLAYED,
     INPUT_DIR, OUTPUT_DIR, URL_LIST_FILE, PROCESSED_URLS_FILE
@@ -212,110 +211,228 @@ def prompt_url_selection(
     indices = sorted(set(i for i in indices if 0 <= i < len(urls)))
     return [urls[i] for i in indices]
 
-def process_format_override(session_id=None) -> bool:
+def process_format_override(session_id=None, source_dir='input', output_bypass=False) -> bool:
+    """
+    Manual single-file parse override.
+    Engaged only when BOTH FORCE_PARSE_INPUT_FILE and FORCE_PARSE_FORMAT are truthy.
+
+    Returns:
+      True  -> manual parse succeeded (caller should short-circuit)
+      False -> override not engaged (proceed normally)
+      None  -> override attempted but failed
+    """
     from .utils.format_router import route_format_handler
+    from .utils.download_utils import ensure_output_directory
+
     force_parse = FORCE_PARSE_INPUT_FILE
     force_format = FORCE_PARSE_FORMAT
     if not force_parse or not force_format:
-        return False
-    input_folder = INPUT_DIR
-    files = [f for f in os.listdir(input_folder) if f.endswith(f".{force_format}")]
-    if not files:
-        msg = f"[ERROR] No .{force_format} files found in 'input' folder."
-        payload = {
+        return False  # Not engaged
+
+    if not output_bypass:
+        # Ensure output folder exists so handler can write
+        try:
+            ensure_output_directory()
+        except Exception as e:
+            logger.error({
+                "level": "ERROR",
+                "type": "manual_override",
+                "message": f"[ManualOverride] Could not ensure output directory: {e}",
+                "session_id": session_id
+            })
+            return None
+
+    # Normalize format (strip leading dot, lowercase)
+    force_format_norm = str(force_format).lower().lstrip('.').strip()
+    if not force_format_norm:
+        logger.error({
             "level": "ERROR",
-            "type": "input",
-            "message": msg,
-            "session_id": None
-        }
-        logger.error(payload)
+            "type": "manual_override",
+            "message": "[ManualOverride] FORCE_PARSE_FORMAT empty after normalization.",
+            "session_id": session_id
+        })
         return None
-    msg = f"Found {len(files)} .{force_format} files in 'input' folder. Manual override enabled."
-    payload = {
+
+    # Resolve folder
+    input_folder = UPLOADS_DIR if source_dir == 'uploads' else INPUT_DIR
+    if not os.path.isdir(input_folder):
+        logger.error({
+            "level": "ERROR",
+            "type": "manual_override",
+            "message": f"[ManualOverride] Source directory does not exist: {input_folder}",
+            "session_id": session_id,
+            "source_dir": source_dir
+        })
+        return None
+
+    # Discover candidate files (case-insensitive extension match)
+    files = [
+        f for f in os.listdir(input_folder)
+        if f.lower().endswith(f".{force_format_norm}")
+    ]
+    if not files:
+        logger.error({
+            "level": "ERROR",
+            "type": "manual_override",
+            "message": f"[ManualOverride] No .{force_format_norm} files found in '{source_dir}' folder.",
+            "session_id": session_id,
+            "source_dir": source_dir
+        })
+        return None
+
+    logger.warning({
         "level": "INFO",
         "type": "manual_override",
-        "message": msg,
-        "session_id": session_id
-    }
-    logger.warning(payload)
-    for i, f in enumerate(files):
-        payload = {
+        "message": f"[ManualOverride] Found {len(files)} .{force_format_norm} file(s) in '{source_dir}' folder. Override engaged.",
+        "session_id": session_id,
+        "source_dir": source_dir,
+        "format": force_format_norm
+    })
+
+    # List files (stable order)
+    files.sort()
+    for i, fname in enumerate(files):
+        logger.info({
             "level": "INFO",
-            "type": "info",
-            "message": f"[{i}] {f}",
+            "type": "manual_override",
+            "message": f"[{i}] {fname}",
+            "index": i,
+            "file": fname,
             "session_id": session_id
-        }
-        logger.info(payload)
-    try:
-        selection = prompt.prompt_input(
-            "[PROMPT] Select a file index to parse:",
-            session_id=session_id,
-            context={"files": files},
-        ).strip()
-        index = int(selection)
-        if not (0 <= index < len(files)):
-            raise ValueError("Invalid file index")
-        target_file = safe_filename(files[index])
-    except (IndexError, ValueError, EOFError, KeyboardInterrupt):
-        msg = "[ERROR] Invalid selection. Aborting manual parse."
-        payload = {
-            "level": "ERROR",
-            "type": "error",
-            "message": msg,
-            "session_id": session_id
-        }
-        logger.error(payload)
-        return None
-    handler = route_format_handler(force_format)
-    if not handler:
-        msg = f"[ERROR] No format handler found for '{force_format}'"
-        payload = {
-            "level": "ERROR",
-            "type": "error",
-            "message": msg,
-            "session_id": session_id
-        }
-        logger.error(payload)
-        return None
-    full_path = safe_join(input_folder, target_file)
-    html_context = {"manual_file": full_path}
-    dummy_page = cast(Page, None)
-    result = safe_parse(handler, dummy_page, html_context, logger=logger)
-    if result and all(result):
-        *_, metadata = result
-        if "output_file" in metadata:
-            msg = f"Manual override parsing completed for {target_file}"
-            payload = {
+        })
+
+    # Auto-selection logic:
+    # If FORCE_PARSE_INPUT_FILE is:
+    #   - True / 'first': pick index 0
+    #   - Int / numeric string: treat as index
+    #   - Otherwise: prompt user
+    auto_index = None
+    if isinstance(force_parse, bool) and force_parse:
+        auto_index = 0
+    elif isinstance(force_parse, str):
+        if force_parse.lower() == 'first':
+            auto_index = 0
+        elif force_parse.isdigit():
+            auto_index = int(force_parse)
+    elif isinstance(force_parse, (int,)):
+        auto_index = int(force_parse)
+
+    selected_index = None
+    if auto_index is not None:
+        if 0 <= auto_index < len(files):
+            selected_index = auto_index
+            logger.info({
                 "level": "INFO",
                 "type": "manual_override",
-                "message": msg,
-                "session_id": session_id,
-                "output_file": metadata["output_file"],
-                "metadata": metadata
-            }
-            logger.info(payload)
+                "message": f"[ManualOverride] Auto-selected index {auto_index}",
+                "session_id": session_id
+            })
         else:
-            msg = f"Manual override parsing completed for {target_file}, but no output file was generated."
-            payload = {
+            logger.warning({
                 "level": "WARNING",
                 "type": "manual_override",
-                "message": msg,
-                "session_id": session_id,
-                "metadata": metadata
-            }
-            logger.warning(payload)
-        mark_url_processed("manual_override", status="success")
-        return True
-    else:
-        msg = "[ERROR] Manual parsing failed or returned no data."
-        payload = {
+                "message": f"[ManualOverride] Auto index {auto_index} out of range; falling back to prompt.",
+                "session_id": session_id
+            })
+
+    if selected_index is None:
+        try:
+            selection = prompt.prompt_input(
+                "[PROMPT] Select a file index to parse:",
+                session_id=session_id,
+                context={"files": files},
+            )
+            if not isinstance(selection, str):
+                raise ValueError("Non-string selection")
+            selection = selection.strip()
+            selected_index = int(selection)
+            if not (0 <= selected_index < len(files)):
+                raise ValueError("Index out of range")
+        except (ValueError, EOFError, KeyboardInterrupt):
+            logger.error({
+                "level": "ERROR",
+                "type": "manual_override",
+                "message": "[ManualOverride] Invalid selection. Aborting manual parse.",
+                "session_id": session_id
+            })
+            return None
+
+    target_file = safe_filename(files[selected_index])
+    handler = route_format_handler(force_format_norm)
+    if not handler:
+        logger.error({
             "level": "ERROR",
-            "type": "error",
-            "message": msg,
+            "type": "manual_override",
+            "message": f"[ManualOverride] No format handler found for '{force_format_norm}'",
             "session_id": session_id
-        }
-        logger.error(payload)
+        })
         return None
+
+    full_path = safe_join(input_folder, target_file)
+    if not os.path.isfile(full_path):
+        logger.error({
+            "level": "ERROR",
+            "type": "manual_override",
+            "message": f"[ManualOverride] Selected file missing: {full_path}",
+            "session_id": session_id,
+            "file": full_path
+        })
+        return None
+
+    html_context = {
+        "manual_file": full_path,
+        "manual_source_dir": source_dir,
+        "manual_format": force_format_norm
+    }
+    dummy_page = cast(Page, None)
+
+    logger.info({
+        "level": "INFO",
+        "type": "manual_override",
+        "message": f"[ManualOverride] Parsing file: {target_file}",
+        "session_id": session_id,
+        "file_path": full_path
+    })
+
+    result = safe_parse(handler, dummy_page, html_context, logger=logger)
+    if not result or not all(result):
+        logger.error({
+            "level": "ERROR",
+            "type": "manual_override",
+            "message": "[ManualOverride] Parsing failed or returned incomplete result.",
+            "session_id": session_id,
+            "file_path": full_path
+        })
+        return None
+
+    *_, metadata = result
+    if isinstance(metadata, dict) and "output_file" in metadata:
+        output_file_path = metadata.get("output_file")
+        if output_bypass and output_file_path and os.path.exists(output_file_path):
+            try:
+                os.remove(output_file_path)
+                logger.info({
+                    "level": "INFO",
+                    "type": "manual_override",
+                    "message": f"[ManualOverride] Output bypass active — removed {output_file_path}",
+                    "session_id": session_id
+                })
+            except Exception as e:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "manual_override",
+                    "message": f"[ManualOverride] Failed to remove bypassed file: {e}",
+                    "session_id": session_id
+                })
+    # Single-file summary
+    logger.info({
+        "level": "INFO",
+        "type": "summary",
+        "message": {"success": 1, "fail": 0, "partial": 0, "error": 0, "flagged": 0, "mode": "manual_override"},
+        "session_id": session_id
+    })
+    mark_url_processed("manual_override", status="success", file=target_file, format=force_format_norm)
+    return True
 
 def ai_analyze_results(headers, data, contest, metadata, target_url=None, session_id=None):
     if ENABLE_AI_ANALYSIS:
@@ -438,6 +555,7 @@ def orchestrate_url(
     processed_info,
     session_id=None,
     cancel_flag=None,
+    output_bypass=False,
     **kwargs
 ):
     from .Context_Integration.context_coordinator import ContextCoordinator
@@ -516,7 +634,8 @@ def orchestrate_url(
                 "state": state,
                 "county": county,
                 "url": target_url,
-                "session_id": session_id
+                "session_id": session_id,
+                "output_bypass": output_bypass
             }
             if state:
                 preload_handler_map(restrict_to_states=[state])
@@ -608,14 +727,33 @@ def orchestrate_url(
                 output_file = metadata.get("output_file") if isinstance(metadata, dict) else None
                 if output_file:
                     if os.path.exists(output_file):
-                        msg = f"CSV written to: {output_file} (Session: {session_id})"
-                        payload = {
-                            "level": "INFO",
-                            "type": "output",
-                            "message": msg,
-                            "session_id": session_id
-                        }
-                        logger.info(payload)
+                        if output_bypass:
+                            msg = f"Output bypass active — suppressing file: {output_file}"
+                            payload = {
+                                "level": "INFO",
+                                "type": "output",
+                                "message": msg,
+                                "session_id": session_id
+                            }
+                            logger.info(payload)
+                            try:
+                                os.remove(output_file)
+                            except Exception as e:
+                                logger.warning({
+                                    "level": "WARNING",
+                                    "type": "output",
+                                    "message": f"Could not remove suppressed file: {e}",
+                                    "session_id": session_id
+                                })
+                        else:
+                            msg = f"CSV written to: {output_file} (Session: {session_id})"
+                            payload = {
+                                "level": "INFO",
+                                "type": "output",
+                                "message": msg,
+                                "session_id": session_id
+                            }
+                            logger.info(payload)
                     else:
                         msg = f"Output file path returned but file does not exist: {output_file} (Session: {session_id})"
                         payload = {
@@ -675,18 +813,73 @@ def orchestrate_url(
     finally:
         safe_browser_close(browser, session_id)
 
-def main(session_id=None, cancel_flag=None, **kwargs):
+def _orchestrate_url_worker(args):
+    """
+    args tuple:
+      (url, processed_info, session_id, output_bypass, extra_kwargs_dict)
+    cancel_flag intentionally omitted (not pickle-friendly across processes).
+    """
+    (url, processed_info, session_id, output_bypass, extra_kwargs) = args
+    # cancel_flag cannot be shared reliably across processes; ignore here
+    orchestrate_url(
+        url,
+        processed_info,
+        session_id=session_id,
+        cancel_flag=None,
+        output_bypass=output_bypass,
+        **(extra_kwargs or {})
+    )
+
+def main(
+    urls=None,
+    session_id=None,
+    cancel_flag=None,
+    output_bypass=False,
+    manual_source='input',
+    continue_on_override_failure=True,
+    **kwargs
+):
     try:
         payload = {"level": "DEBUG", "message": "Entered main()", "session_id": session_id}
         logger.info(payload)
 
-        if process_format_override(session_id=session_id):
+        override_result = process_format_override(
+            session_id=session_id,
+            source_dir=manual_source,
+            output_bypass=output_bypass
+        )
+        if override_result is True:
             return
+        if override_result is None:
+            if continue_on_override_failure:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "manual_override",
+                    "message": "[ManualOverride] Override failed; continuing with normal URL pipeline.",
+                    "session_id": session_id
+                })
+            else:
+                logger.error({
+                    "level": "ERROR",
+                    "type": "manual_override",
+                    "message": "[ManualOverride] Override failed; aborting as configured.",
+                    "session_id": session_id
+                })
+                return
 
         ensure_input_directory()
-        ensure_output_directory()
+        if not output_bypass:
+            ensure_output_directory()
+        else:
+            logger.info({
+                "level": "INFO",
+                "type": "output",
+                "message": "Output bypass enabled — not creating output directory.",
+                "session_id": session_id
+            })
 
-        urls = load_urls()
+        if urls is None:
+            urls = load_urls()
 
         msg = f"Loaded {len(urls)} raw URLs from urls.txt"
         payload = {
@@ -698,7 +891,7 @@ def main(session_id=None, cancel_flag=None, **kwargs):
         logger.info(payload)
 
         max_urls = MAX_URLS_DISPLAYED
-        if max_urls and str(max_urls).isdigit():
+        if isinstance(max_urls, (int, str)) and str(max_urls).isdigit():
             urls = urls[:int(max_urls)]
 
         if not urls:
@@ -723,7 +916,8 @@ def main(session_id=None, cancel_flag=None, **kwargs):
         logger.warning(payload)
 
         selected_urls = prompt_url_selection(
-            urls, processed_info,
+            urls,
+            processed_info,
             session_id=session_id,
             cancel_flag=cancel_flag
         )
@@ -739,11 +933,31 @@ def main(session_id=None, cancel_flag=None, **kwargs):
             return
 
         if ENABLE_PARALLEL:
+            # Note: cancel_flag not passed to subprocesses (would not sync); single-process mode supports cancellation.
+            arg_list = [
+                (url, processed_info, session_id, output_bypass, kwargs)
+                for url in selected_urls
+            ]
             with Pool() as pool:
-                pool.starmap(orchestrate_url, [(url, processed_info, session_id, cancel_flag, *kwargs.values()) for url in selected_urls])
+                pool.map(_orchestrate_url_worker, arg_list)
         else:
             for url in selected_urls:
-                orchestrate_url(url, processed_info, session_id, cancel_flag, **kwargs)
+                if cancel_flag and hasattr(cancel_flag, "is_set") and cancel_flag.is_set():
+                    logger.info({
+                        "level": "INFO",
+                        "type": "cancel",
+                        "message": "Cancellation requested; stopping remaining URLs.",
+                        "session_id": session_id
+                    })
+                    break
+                orchestrate_url(
+                    url,
+                    processed_info,
+                    session_id,
+                    cancel_flag,
+                    output_bypass=output_bypass,
+                    **kwargs
+                )
 
         summary = {"success": 0, "fail": 0, "partial": 0, "error": 0, "flagged": 0}
         processed = load_processed_urls()

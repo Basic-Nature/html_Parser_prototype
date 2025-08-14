@@ -75,14 +75,6 @@
   - Ensure a handler for the format exists and is registered in `format_router.py`.
   - Use the interactive prompt to select the file.
 
-### ❗ Problem: Bot tasks not running
-
-- **Possible Cause**: Bot integration not enabled or `bot_router.py` missing.
-- **Fix**:
-  - Set `ENABLE_BOT_TASKS=true` in `.env`.
-  - Ensure `bots/bot_router.py` exists and exports `run_bot_task`.
-  - Check logs for bot task execution.
-
 ---
 
 ## 🧪 Debugging Tips

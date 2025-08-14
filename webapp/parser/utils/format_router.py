@@ -53,19 +53,16 @@ def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tu
     return flat_results
 
 def route_format_handler(format_str: str) -> Optional[object]:
-    """
-    Dynamically import and return a format-specific handler based on string keyword.
-    """
+    fmt = format_str.lower().strip().lstrip('.')
     try:
-        if "json" in format_str:
+        if fmt == "json":
             return json_handler
-        elif "pdf" in format_str:
+        if fmt == "pdf":
             return pdf_handler
-        elif "csv" in format_str:
+        if fmt == "csv":
             return csv_handler
-        else:
-            logger.warning(f"[WARN] Unsupported format requested: {format_str}")
-            return None
+        logger.warning(f"[WARN] Unsupported format requested: {format_str}")
+        return None
     except ImportError as e:
         logger.warning(f"[Router] Failed to load handler for format {format_str}: {e}")
         return None

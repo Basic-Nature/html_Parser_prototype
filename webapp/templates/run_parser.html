@@ -1,21 +1,31 @@
 <!-- filepath: webapp/templates/run_parser.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-page="run-parser">
 <head>
-    <meta charset="utf-8">
-    <title>Run Parser | Smart Elections Parser</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Add Bootstrap for tooltips/popovers/dropdowns -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser.css') }}">
+  <meta charset="utf-8">
+  <title>Smart Elections Parser</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="description" content="Election results parsing interface">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="{{ url_for('site_webmanifest') }}?v={{ static_version }}">
+  <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}?v={{ static_version }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}?v={{ static_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser.css') }}?v={{ static_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-5.3.0.min.css') }}">
 </head>
-<body>
+<body data-page="run-parser">
     <nav class="navbar">
         <a href="{{ url_for('index') }}">Dashboard</a>
         <a href="{{ url_for('data_framework') }}">Data Framework</a>
         <a href="{{ url_for('history') }}">History</a>
         <a href="{{ url_for('run_parser') }}" class="active">Run Parser</a>
-        <a href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank">About</a>
+        <a href="https://basic-nature.github.io/html_Parser_prototype/"
+           target="_blank"
+           rel="noopener noreferrer"
+           class="ext-link">About</a>
     </nav>
     <div class="layout-flex">
         <!-- Sidebar: File Management & URL Hint Manager -->
@@ -30,10 +40,17 @@
 
             <!-- Input Folder Section -->
             <div class="section">
-                <button type="button" class="collapsible-btn" data-target="inputSection">Input Folder Files</button>
-                <div id="inputSection" style="display:none;">
-                    <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
-                        <label for="inputFile" style="display:none;">Choose file for input folder</label>
+                <button type="button" class="collapsible-btn" data-target="inputSection">
+                  Input Folder Files
+                  <span class="help-icon" tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus hover"
+                        data-bs-placement="right" title="Input Folder Files"
+                        data-bs-content="Files placed here are standard inputs the parser can consume.">
+                    ?
+                  </span>
+                </button>
+                <div id="inputSection" class="collapsible hidden" data-input-folder>
+                    <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" class="mb-1em">
+                        <label for="inputFile" class="visually-hidden">Choose file for input folder</label>
                         <input type="file" id="inputFile" name="file" required aria-label="Choose file for input folder">
                         <button type="submit" class="btn btn-upload">Upload</button>
                     </form>
@@ -43,7 +60,7 @@
                                 <span>{{ file }}</span>
                                 <div class="file-actions">
                                     <a href="{{ url_for('download_input_file', filename=file) }}" class="btn btn-success">Download</a>
-                                    <form method="POST" action="{{ url_for('delete_input_file', filename=file) }}" style="display:inline;">
+                                    <form method="POST" action="{{ url_for('delete_input_file', filename=file) }}">
                                         <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
                                     </form>
                                 </div>
@@ -57,10 +74,17 @@
 
             <!-- Output Folder Section -->
             <div class="section">
-                <button type="button" class="collapsible-btn" data-target="outputSection">Output Folder Files</button>
-                <div id="outputSection" style="display:none;">
-                    <form method="POST" action="{{ url_for('upload_to_output') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
-                        <label for="outputFile" style="display:none;">Choose file for output folder</label>
+                <button type="button" class="collapsible-btn" data-target="outputSection">
+                  Output Folder Files
+                  <span class="help-icon" tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus hover"
+                        data-bs-placement="right" title="Output Folder Files"
+                        data-bs-content="Parsed result files (CSV/JSON) appear here unless output bypass is enabled.">
+                    ?
+                  </span>
+                </button>
+                <div id="outputSection" class="collapsible hidden">
+                    <form method="POST" action="{{ url_for('upload_to_output') }}" enctype="multipart/form-data" class="mb-1em">
+                        <label for="outputFile" class="visually-hidden">Choose file for output folder</label>
                         <input type="file" id="outputFile" name="file" required aria-label="Choose file for output folder">
                         <button type="submit" class="btn btn-upload">Upload</button>
                     </form>
@@ -70,7 +94,7 @@
                                 <span>{{ file }}</span>
                                 <div class="file-actions">
                                     <a href="{{ url_for('download_output_file', filename=file) }}" class="btn btn-success">Download</a>
-                                    <form method="POST" action="{{ url_for('delete_output_file', filename=file) }}" style="display:inline;">
+                                    <form method="POST" action="{{ url_for('delete_output_file', filename=file) }}">
                                         <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
                                     </form>
                                 </div>
@@ -82,12 +106,19 @@
                 </div>
             </div>
 
-            <!-- Uploads Folder Section (with upload form at the top) -->
+            <!-- Uploads Folder Section -->
             <div class="section">
-                <button type="button" class="collapsible-btn" data-target="uploadsSection">Uploads Folder Files</button>
-                <div id="uploadsSection" style="display:none;">
-                    <form method="POST" action="{{ url_for('run_parser') }}" enctype="multipart/form-data" style="margin-bottom:1em;">
-                        <label for="uploadsFile" style="display:none;">Choose file for uploads folder</label>
+                <button type="button" class="collapsible-btn" data-target="uploadsSection">
+                  Uploads Folder Files
+                  <span class="help-icon" tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus hover"
+                        data-bs-placement="right" title="Uploads Folder Files"
+                        data-bs-content="Temporary uploaded files. Choose 'Uploads' as File Source to force manual format parsing here.">
+                    ?
+                  </span>
+                </button>
+                <div id="uploadsSection" class="collapsible hidden">
+                    <form method="POST" action="{{ url_for('run_parser') }}" enctype="multipart/form-data" class="mb-1em">
+                        <label for="uploadsFile" class="visually-hidden">Choose file for uploads folder</label>
                         <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
                         <button type="submit" class="btn btn-upload">Upload to Uploads</button>
                     </form>
@@ -97,7 +128,7 @@
                                 <span>{{ file }}</span>
                                 <div class="file-actions">
                                     <a href="{{ url_for('download_upload_file', filename=file) }}" class="btn btn-success">Download</a>
-                                    <form method="POST" action="{{ url_for('delete_upload_file', filename=file) }}" style="display:inline;">
+                                    <form method="POST" action="{{ url_for('delete_upload_file', filename=file) }}">
                                         <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
                                     </form>
                                 </div>
@@ -108,169 +139,153 @@
                     </ul>
                 </div>
             </div>
-
-            <!-- URL Hint Overrides Section -->
+            <!-- Add URL Section (now collapsible) -->
             <div class="section">
-                <h2>URL Hint Overrides</h2>
-                <form id="addUrlHintForm" style="margin-bottom:1.2em;display:flex;gap:0.5em;flex-wrap:wrap;">
-                    <input type="text" id="urlFragment" placeholder="URL fragment (e.g. electionreturns.pa.gov)" required style="flex:2;min-width:180px;padding:0.6em;border-radius:8px;border:1.5px solid #00ffe7;">
-                    <input type="text" id="modulePath" placeholder="Module path (e.g. handlers.states.pennsylvania)" required style="flex:3;min-width:220px;padding:0.6em;border-radius:8px;border:1.5px solid #00ffe7;">
-                    <button type="submit" class="btn btn-primary" style="flex:1;min-width:120px;">Add Override</button>
-                </form>
-                <div id="hintOverridesTable" style="overflow-x:auto;">
-                    <!-- Table will be filled by JS -->
+                <button type="button" class="collapsible-btn" data-target="addUrlSection">
+                  Add URL to urls.txt
+                  <span class="help-icon" tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus hover"
+                        data-bs-placement="right" title="Add URL"
+                        data-bs-content="Add election result URLs to be processed. They are stored in urls.txt.">
+                    ?
+                  </span>
+                </button>
+                <div id="addUrlSection" class="collapsible">
+                    <form id="addUrlForm" class="flex-wrap-row">
+                        <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
+                        <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
+                    </form>
+                    <div id="urlList" class="mt-1em"></div>
                 </div>
-                <hr style="margin:2em 0;">
-                <h3>Add URL to urls.txt</h3>
-                <form id="addUrlForm" style="display:flex;gap:0.5em;flex-wrap:wrap;">
-                    <input type="url" id="newUrl" placeholder="Paste new election results URL here" required style="flex:3;min-width:260px;padding:0.6em;border-radius:8px;border:1.5px solid #00ffe7;">
-                    <button type="submit" class="btn btn-success" style="flex:1;min-width:120px;">Add URL</button>
-                </form>
-                <div id="urlList" style="margin-top:1em;"></div>
-            </div>
-
-            <!-- Override Validations Section -->
-            <div class="section">
-                <h2>Override Validations</h2>
-                <ul>
-                {% for frag, result in validations.items() %}
-                    <li>
-                        <strong>{{ frag }}</strong>:
-                        {% if result[0] %}
-                            <span style="color:green;">Valid</span>
-                        {% else %}
-                            <span style="color:red;">Invalid ({{ result[1] }})</span>
-                        {% endif %}
-                    </li>
-                {% endfor %}
-                </ul>
             </div>
         </aside>
+
         <!-- Main Parser UI -->
-    <div class="container-main">
-        <h1>Run the Smart Elections Parser</h1>
-        <div class="subtitle">Start a new parsing job and view the results below.</div>
-        <div class="instructions">
-            <strong>Instructions:</strong>
-            <button type="button"
-                    class="btn btn-outline-primary btn-sm ms-2"
-                    data-bs-toggle="popover"
-                    data-bs-trigger="focus"
-                    data-bs-placement="right"
-                    title="How this works"
-                    data-bs-content="Run a session, track logs live, filter by level/type, and manage multiple sessions in the footer.">
-              Help
-            </button>
-            <ul>
-                <li>Click <b>Run Parser</b> to start the election data extraction process.</li>
-                <li>Parser will use the current URL hint configuration and available handlers.</li>
-                <li>Results and logs will be displayed in the output area below.</li>
-                <li>For advanced options, update your URL hints or handler modules first.</li>
-            </ul>
-        </div>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="flash">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-        <div class="form-section">
-            <form method="POST" action="{{ url_for('run_parser') }}" style="display:inline;">
-                <button type="submit" class="run-btn" id="runParserBtn"
-                        data-bs-toggle="tooltip" title="Start a new parsing session">
-                  Run Parser
+        <div class="container-main">
+            <h1>Run the Smart Elections Parser</h1>
+            <div class="subtitle">Start a new parsing job and view the results below.</div>
+            <div class="instructions">
+                <strong>Instructions:</strong>
+                <button type="button"
+                        class="btn btn-outline-primary btn-sm ms-2"
+                        data-bs-toggle="popover"
+                        data-bs-trigger="focus"
+                        data-bs-placement="right"
+                        title="How this works"
+                        data-bs-content="Run a session, track logs live, filter by level/type, and manage multiple sessions in the footer.">
+                  Help
                 </button>
-            </form>
-            <button type="button" class="run-btn" id="cancelParserBtn"
-                    style="background:linear-gradient(90deg, var(--main-red), #333);margin-left:1em;"
-                    data-bs-toggle="tooltip" title="Send cancel request to active session">
-              Cancel
-            </button>
-            <div class="dropdown d-inline-block ms-2">
-              <button class="btn btn-outline-primary dropdown-toggle" type="button"
-                      data-bs-toggle="dropdown" aria-expanded="false">
-                More
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end">
-                <li><button class="dropdown-item" type="button" id="actionClearOutput">Clear output</button></li>
-                <li><button class="dropdown-item" type="button" id="actionCopyOutput">Copy output</button></li>
-              </ul>
+                <ul>
+                    <li>Click <b>Run Parser</b> to start the election data extraction process.</li>
+                    <li>Parser will use the current URL hint configuration and available handlers.</li>
+                    <li>Results and logs will be displayed in the output area below.</li>
+                    <li>For advanced options, update your URL hints or handler modules first.</li>
+                </ul>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  <div class="flash">{{ message }}</div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <div class="form-section">
+                <button type="button" class="run-btn" id="runParserBtn" data-bs-toggle="tooltip" title="Start a new parsing session">
+                Run Parser
+                </button>
+                <button type="button" class="run-btn" id="cancelParserBtn" data-bs-toggle="tooltip" title="Send cancel request to active session">
+                Cancel
+                </button>
+                <button type="button" class="btn btn-danger ms-1em" id="toggleOutputBypassBtn"
+                        aria-pressed="false" aria-controls="outputSection">
+                Bypass Output
+                </button>
+                <span class="output-badge" id="outputBypassBadge">BYPASS</span>
+
+                <!-- File Source (manual format override source) -->
+                <label for="fileSourceSelect" class="log-label ms-1em">File Source:</label>
+                <select id="fileSourceSelect" class="log-select file-source-select" aria-label="Select file source for manual format parsing">
+                    <option value="input" {{ 'selected' if manual_source == 'input' else '' }}>Input</option>
+                    <option value="uploads" {{ 'selected' if manual_source == 'uploads' else '' }}>Uploads</option>
+                </select>
+
+                <div class="dropdown d-inline-block ms-2">
+                    <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        More
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><button class="dropdown-item" type="button" id="actionClearOutput">Clear output</button></li>
+                        <li><button class="dropdown-item" type="button" id="actionCopyOutput">Copy output</button></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="logger-mode-section text-end mb-1em">
+                <label for="logFilterSelect" class="log-label">Level:</label>
+                <select id="logFilterSelect" class="log-select" aria-label="Filter logs by level">
+                  <option value="all">All</option>
+                </select>
+
+                <label for="logTypeFilterSelect" class="log-label ms-1em">Type:</label>
+                <select id="logTypeFilterSelect" class="log-select" aria-label="Filter logs by type">
+                  <option value="all">All Types</option>
+                </select>
+
+                <div class="filter-preset-controls ms-1em">
+                  <button type="button" id="saveFiltersBtn" class="btn btn-primary btn-sm" title="Save current level/type as preset">Save Preset</button>
+                  <button type="button" id="exportFiltersBtn" class="btn btn-outline-primary btn-sm ms-1em" title="Export selected or current preset JSON">Export</button>
+                  <select id="filterPresetSelect" class="log-select ms-1em" aria-label="Load saved filter preset">
+                     <option value="">Presets...</option>
+                  </select>
+                  <button type="button" id="deletePresetBtn" class="btn btn-danger btn-sm ms-1em" title="Delete selected preset">Del</button>
+                </div>
+
+                <label for="outputModeSelect" class="log-label ms-1em">Output Mode:</label>
+                <select id="outputModeSelect" class="log-select">
+                    <option value="live">Live</option>
+                    <option value="batch">Batch</option>
+                </select>
+            </div>
+
+            <div id="sessionInfo" class="session-info text-end mb-1em">
+                <span class="session-label">Session:</span>
+                <span id="activeSessionId" class="session-id"></span>
+                <span id="sessionSwitcher" class="session-switcher"></span>
+            </div>
+
+            <div class="output-section" id="terminal" role="log" aria-live="polite">
+                {% if parser_output %}
+                    {{ parser_output }}
+                {% else %}
+                    <span class="terminal-hint">Parser output will appear here after you run the parser.</span>
+                {% endif %}
+            </div>
+
+            <div class="prompt-section">
+                <form id="promptForm" autocomplete="off">
+                    <input type="text" id="promptInput" placeholder="Type a command...">
+                    <button type="submit">Send</button>
+                </form>
             </div>
         </div>
-        <div class="logger-mode-section" style="text-align:right;margin-bottom:1em;">
-            <label for="logFilterSelect" style="color:#00ffe7;font-weight:700;margin-right:0.7em;letter-spacing:1px;">
-                Show Logs:
-            </label>
-            <select id="logFilterSelect" style="background:rgba(40,60,80,0.85);color:#00ffe7;border:2px solid #00ffe7;border-radius:10px;padding:0.5em 1.5em;font-size:1.08em;font-weight:700;box-shadow:0 0 8px #00ffe7;">
-                <option value="all">All</option>
-                <option value="info">Info</option>
-                <option value="warning">Warnings</option>
-                <option value="error">Errors</option>
-                <option value="critical">Critical</option>
-                <option value="debug">Debug</option>
-                <option value="other">Other</option>
-            </select>
-            <label for="logTypeFilterSelect" style="color:#00ffe7;font-weight:700;margin-left:2em;margin-right:0.7em;letter-spacing:1px;">
-                Log Type:
-            </label>
-            <select id="logTypeFilterSelect" style="background:rgba(40,60,80,0.85);color:#00ffe7;border:2px solid #00ffe7;border-radius:10px;padding:0.5em 1.5em;font-size:1.08em;font-weight:700;box-shadow:0 0 8px #00ffe7;">
-                <option value="all">All</option>
-                <option value="status">Status</option> <!-- General status/info/warnings/errors -->
-                <option value="router">Router</option> <!-- Routing logic, handler selection -->
-                <option value="ai_analysis">AI Analysis</option> <!-- AI/ML/NLP steps -->
-                <option value="stream">Stream</option> <!-- Streaming/parsing data -->
-                <option value="manual_override">Manual Override</option> <!-- User/manual actions -->
-                <option value="input">Input</option> <!-- Input file/URL checks -->
-                <option value="output">Output</option> <!-- Output file writing/results -->
-                <option value="validation">Validation</option> <!-- Data validation/consistency -->
-                <option value="network">Network</option> <!-- HTTP/networking -->
-                <option value="cancel">Cancel</option> <!-- Cancellation events -->
-                <option value="heartbeat">Heartbeat</option> <!-- Keepalive/session -->
-                <option value="summary">Summary</option> <!-- Final summary/results -->
-                <option value="cache">Cache</option> <!-- General info messages -->
-                <option value="other">Other</option> <!-- Any other logs not fitting above -->
-            </select>
-            <label for="outputModeSelect" style="color:#00ffe7;font-weight:700;margin-left:2em;margin-right:0.7em;letter-spacing:1px;">
-                Output Mode:
-            </label>
-            <select id="outputModeSelect" style="background:rgba(40,60,80,0.85);color:#00ffe7;border:2px solid #00ffe7;border-radius:10px;padding:0.5em 1.5em;font-size:1.08em;font-weight:700;box-shadow:0 0 8px #00ffe7;">
-                <option value="live">Live</option>
-                <option value="batch">Batch</option>
-            </select>
-        </div>
-        <div id="sessionInfo" style="margin-bottom:1em;text-align:right;">
-            <span style="color:#00ffe7;font-weight:700;">Session:</span>
-            <span id="activeSessionId" style="color:#ffd166;font-weight:900;"></span>
-            <span id="sessionSwitcher" style="margin-left:2em;"></span>
-        </div>       
-        <div class="output-section" id="terminal" role="log" aria-live="polite">
-            {% if parser_output %}
-                {{ parser_output }}
-            {% else %}
-                <span style="color:#3ff;">Parser output will appear here after you run the parser.</span>
-            {% endif %}
-        </div>
-        <div class="prompt-section">
-            <form id="promptForm" autocomplete="off">
-                <input type="text" id="promptInput" placeholder="Type a command...">
-                <button type="submit">Send</button>
-            </form>
-        </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="{{ url_for('static', filename='js/run_parser.js') }}" defer></script>
+
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io-4.7.5.min.js') }}"></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/nav_guard.js') }}?v={{ static_version }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/run_parser.js') }}?v={{ static_version }}" defer></script>
+
     <footer id="sessionFooter" class="minimized">
         <div class="footer-preview" id="footerPreview">
-            <span style="font-weight:700;color:#00ffe7;">Active Sessions</span>
-            <span id="sessionCount" style="color:#ffd166;font-weight:900;margin-left:1em;"></span>
-            <span style="margin-left:2em;color:#bfc9d1;font-size:0.95em;">(Hover to expand)</span>
+            <span class="footer-heading">Active Sessions</span>
+            <span id="sessionCount" class="session-count"></span>
+            <span class="footer-hint">(Hover to expand)</span>
         </div>
         <div class="footer-full" id="footerFull">
-            <div style="font-weight:700;color:#00ffe7;">Active Sessions</div>
-            <div id="sessionList" style="flex:1;display:flex;gap:0.7em;flex-wrap:wrap;"></div>
-            <button id="addSessionBtn" class="session-btn" style="margin-left:1em;">+ New Session</button>
+            <div class="footer-heading">Active Sessions</div>
+            <div id="sessionList" class="session-list"></div>
+            <button id="addSessionBtn" class="session-btn ms-1em">+ New Session</button>
         </div>
     </footer>
 </body>

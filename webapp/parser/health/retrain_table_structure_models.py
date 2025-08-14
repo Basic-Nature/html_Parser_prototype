@@ -633,13 +633,13 @@ def get_all_confirmed_structures() -> List[Dict[str, Any]]:
             })
         return result
     
-def run_manual_correction_bot() -> None:
+def run_manual_correction() -> None:
     """
     Run the manual correction bot robustly as a module, capturing output and errors.
     """
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "webapp.parser.bots.manual_correction_bot", "--fields", "tables", "--enhanced"],
+            [sys.executable, "-m", "webapp.parser.bots.manual_correction", "--fields", "tables", "--enhanced"],
             check=True,
             cwd=PROJECT_ROOT,
             capture_output=True,
@@ -816,7 +816,7 @@ def ensure_table_structures_exists() -> None:
 def main() -> None:
     ensure_table_structures_exists()
     if REVIEW_WITH_MANUAL_BOT:
-        run_manual_correction_bot()
+        run_manual_correction()
 
     # --- Self-cleaner for NER training data ---
     ner_train_jsonl = os.path.join(LOG_DIR, "spacy_ner_train_data.jsonl")
@@ -901,7 +901,7 @@ def main() -> None:
     console.log("[INFO] Scanning in-memory NER training data for misalignments before retraining...")
     misaligned = scan_in_memory_ner_examples(train_data, verbose=True)
     if misaligned:
-        console.panel(f"{len(misaligned)} misaligned NER examples found in final training data. Running diagnostics and launching manual_correction_bot. Aborting retraining.")
+        console.panel(f"{len(misaligned)} misaligned NER examples found in final training data. Running diagnostics and launching manual_correction. Aborting retraining.")
         misaligned_path = os.path.join(LOG_DIR, "spacy_ner_misaligned.jsonl")
         with open(misaligned_path, "wb") as f:
             for text, entities in misaligned:
@@ -912,7 +912,7 @@ def main() -> None:
             ], check=True, cwd=PROJECT_ROOT, env=get_subprocess_env())
         except Exception as e:
             console.table(f"scan_misaligned_ner diagnostics failed: {e}")
-        run_manual_correction_bot()
+        run_manual_correction()
         console.log("Please correct misalignments and rerun retraining.")
         sys.exit(2)
 

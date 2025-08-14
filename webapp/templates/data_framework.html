@@ -4,8 +4,10 @@
     <meta charset="utf-8">
     <title>Data Framework | Smart Elections Parser</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Bootstrap for dropdowns/tooltips/popovers -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Config (replaces inline script) -->
+    <meta id="dataFrameworkConfig" data-api-url="{{ data_api_url }}">
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-5.3.0.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/data_framework.css') }}">
 </head>
 <body>
@@ -13,8 +15,8 @@
         <a href="{{ url_for('index') }}">Dashboard</a>
         <a href="{{ url_for('data_framework') }}" class="active">Data Framework</a>
         <a href="{{ url_for('run_parser') }}">Run Parser</a>
-        <a href="{{ url_for('history') }}">History</a>       
-        <a href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank">About</a>
+        <a href="{{ url_for('history') }}">History</a>
+        <a href="https://basic-nature.github.io/html_Parser_prototype/" target="_blank" rel="noreferrer">About</a>
     </nav>
     <div class="container-main">
         <h1>
@@ -30,6 +32,7 @@
           </button>
         </h1>
         <div class="subtitle">Upload, View, and Manage Election Data in PostgreSQL</div>
+
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -81,13 +84,9 @@
 
             <table id="data-table" class="neon-grid" aria-live="polite">
                 <thead>
-                    <tr id="table-header">
-                        <!-- Dynamic headers -->
-                    </tr>
+                    <tr id="table-header"></tr>
                 </thead>
-                <tbody id="table-body">
-                    <!-- Dynamic rows -->
-                </tbody>
+                <tbody id="table-body"></tbody>
             </table>
 
             <div class="table-footer">
@@ -102,7 +101,9 @@
             </div>
         </div>
     </div>
-    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+
+    <!-- Toast stack -->
+    <div class="position-fixed bottom-0 end-0 p-3 toast-stack">
       <div id="toastInfo" class="toast border-0" role="alert" aria-live="polite" aria-atomic="true" data-bs-delay="2500">
         <div class="d-flex">
           <div class="toast-body">Done.</div>
@@ -116,13 +117,8 @@
         </div>
       </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-      // Expose env-configured API URL to external JS
-      window.__DATA_FRAMEWORK__ = {
-        apiUrl: {{ data_api_url|tojson }}
-      };
-    </script>
-    <script src="{{ url_for('static', filename='js/data_framework.js') }}" defer></script>
+
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/data_framework.js') }}" defer></script>
 </body>
 </html>
