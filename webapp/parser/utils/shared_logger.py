@@ -191,10 +191,15 @@ class SharedLogger(logging.Logger):
         self.suppress_rich_logs = suppress_rich_logs
         self.file_path = file_path
         self._warned_sections = set()
+        self.console_echo_webapp = False
         self._setup_python_logger()
 
+    def enable_console_echo_webapp(self, flag: bool):
+        """Optionally mirror webapp emissions to console (off by default to prevent duplicates)."""
+        self.console_echo_webapp = bool(flag)
+
     def _setup_python_logger(self) -> None:
-        """Set up the internal Python logger with RichHandler."""
+        """Set up / update the internal Python logger with RichHandler (idempotent)."""
         self.level_mapping = {
             "TRACE": 5,
             "DEBUG": logging.DEBUG,
@@ -205,18 +210,27 @@ class SharedLogger(logging.Logger):
         }
         logging.addLevelName(5, "TRACE")
         self.logger = logging.getLogger("smart_elections")
+        # Prevent bubbling to root (stops duplicate root handler output)
+        self.logger.propagate = False
+        # If already configured, just update level & return
+        if getattr(self.logger, "_smart_configured", False):
+            self.logger.setLevel(self.level_mapping.get(self.level, logging.INFO))
+            return
         self.logger.setLevel(self.level_mapping.get(self.level, logging.INFO))
-        # Remove all handlers before adding a new one (avoid duplication)
-        self.logger.handlers.clear()
-        handler = RichHandler(rich_tracebacks=True)
-        self.logger.addHandler(handler)
-        # Optional: add file handler if file_path is set
-        if self.file_path:
+        # Add RichHandler only once
+        if not any(isinstance(h, RichHandler) for h in self.logger.handlers):
+            self.logger.addHandler(RichHandler(rich_tracebacks=True))
+        # Optional file handler
+        if self.file_path and not any(isinstance(h, logging.FileHandler) for h in self.logger.handlers):
             file_handler = logging.FileHandler(self.file_path, encoding="utf-8")
             file_handler.setLevel(self.level_mapping.get(self.level, logging.INFO))
             formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
             file_handler.setFormatter(formatter)
             self.logger.addHandler(file_handler)
+        # Mark configured
+        self.logger._smart_configured = True
+        # Debug (one‑time) handler count
+        self.logger.debug(f"[SharedLogger] handlers={len(self.logger.handlers)} (configured once)")
 
     def set_mode(self, mode: Optional[str] = None) -> None:
         """Set the logger mode (cli/webapp)."""
@@ -374,7 +388,6 @@ class SharedLogger(logging.Logger):
         if self.suppress_rich_logs or not self._should_emit(level):
             return
 
-        # Defensive: ensure msg is always a string or dict
         msg_obj = None
         if not isinstance(msg, (str, bytes)):
             msg_obj = msg
@@ -388,47 +401,52 @@ class SharedLogger(logging.Logger):
         context_str = self._format_context(context)
         text_msg = f"[{level}] {msg_str}"
 
-        # Choose the correct Python logger method
         log_method = getattr(self.logger, safe_lower(level), None)
         if not callable(log_method):
-            log_method = self.logger.info  # Default to info
+            log_method = self.logger.info
 
-        # Output logic
+        # WEBAPP MODE: emit ONLY ONCE to socket; optionally echo to console if flag enabled
         if self.mode == "webapp" and self.socketio_emit_func:
-            # If structured payload, emit as JSON
-            if isinstance(msg, dict):
-                self.socketio_emit_func(orjson.dumps(msg).decode("utf-8"))
-                log_method(orjson.dumps(msg).decode("utf-8"))
-            # If format is json, emit structured log object
-            elif self.format == "json":
-                log_obj = {
-                    "timestamp": time.time(),
-                    "level": level,
-                    "color": color,
-                    "message": msg_obj if msg_obj is not None else re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", msg_str).strip(),
-                    "context": context_str,
-                }
-                self.socketio_emit_func(orjson.dumps(log_obj).decode("utf-8"))
-                log_method(orjson.dumps(log_obj).decode("utf-8"))
-            else:
-                plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg)
-                self.socketio_emit_func(plain_msg.strip())
-                log_method(plain_msg.strip())
+            try:
+                if isinstance(msg, dict):
+                    payload_txt = orjson.dumps(msg).decode("utf-8")
+                    self.socketio_emit_func(payload_txt)
+                    if self.console_echo_webapp:
+                        log_method(payload_txt)
+                elif self.format == "json":
+                    log_obj = {
+                        "timestamp": time.time(),
+                        "level": level,
+                        "color": color,
+                        "message": msg_obj if msg_obj is not None else re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", msg_str).strip(),
+                        "context": context_str,
+                    }
+                    payload_txt = orjson.dumps(log_obj).decode("utf-8")
+                    self.socketio_emit_func(payload_txt)
+                    if self.console_echo_webapp:
+                        log_method(payload_txt)
+                else:
+                    plain_msg = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", text_msg).strip()
+                    self.socketio_emit_func(plain_msg)
+                    if self.console_echo_webapp:
+                        log_method(plain_msg)
+            except Exception:
+                # Fallback to console if socket emit fails
+                log_method(str(msg_str))
         elif self.mode == "cli":
             try:
-                # If msg is a dict, print and log as pretty JSON
                 if isinstance(msg, dict):
                     json_str = orjson.dumps(msg, option=orjson.OPT_INDENT_2).decode("utf-8")
                     rprint(Panel(json_str, style=color))
                     log_method(json_str)
                 else:
-                    # Fallback: treat as string
                     rprint(Panel(str(msg_str), style=color))
                     log_method(str(msg_str))
             except Exception:
                 print(str(msg_str))
                 log_method(str(msg_str))
-        # File output (optional)
+
+        # File output (unchanged)
         if self.file_path:
             log_line = {
                 "timestamp": time.time(),

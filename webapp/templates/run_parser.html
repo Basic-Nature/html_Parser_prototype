@@ -2,19 +2,35 @@
 <!DOCTYPE html>
 <html lang="en" data-page="run-parser">
 <head>
+  <!-- Document metadata (character set & viewport first) -->
   <meta charset="utf-8">
-  <title>Smart Elections Parser</title>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+
+  <!-- Title & description -->
+  <title>Smart Elections Parser</title>
   <meta name="description" content="Election results parsing interface">
+
+  <!-- Color / display intents -->
+  <meta name="color-scheme" content="dark light">
   <meta name="theme-color" content="#2563eb">
+  <meta name="theme-color" content="#2563eb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a232a" media="(prefers-color-scheme: dark)"> 
+
+  <!-- PWA / platform capability -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <!-- Manifest & icons -->
   <link rel="manifest" href="{{ url_for('site_webmanifest') }}?v={{ static_version }}">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}?v={{ static_version }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}?v={{ static_version }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser.css') }}?v={{ static_version }}">
+
+  <!-- Vendor Bootstrap -->
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-5.3.0.min.css') }}">
+
+  <!-- Single consolidated app stylesheet (bootstrap_overrides merged) -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser.css') }}">
 </head>
 <body data-page="run-parser">
     <nav class="navbar">

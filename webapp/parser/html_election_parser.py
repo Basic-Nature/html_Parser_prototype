@@ -840,7 +840,12 @@ def main(
     **kwargs
 ):
     try:
-        payload = {"level": "DEBUG", "message": "Entered main()", "session_id": session_id}
+        payload = {
+            "level": "DEBUG", 
+            "type": "status", 
+            "message": "Entered main()", 
+            "session_id": session_id
+        }
         logger.info(payload)
 
         override_result = process_format_override(

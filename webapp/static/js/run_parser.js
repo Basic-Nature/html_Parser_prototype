@@ -1,5 +1,4 @@
 /* run_parser.js
-   Enhanced:
    - Early session room join + queuing (joinedSessions/earlyQueue)
    - Auto history fetch & race protection
    - Prompt auto-response (optional) + numeric index expansion
@@ -206,6 +205,7 @@
         clearOutput();
         joinSession(sid);
         loadSessionLogs(sid);
+        restoreCachedLogs(sid); // show cached immediately
       });
       const remove = document.createElement('span');
       remove.className = 'session-remove';
@@ -215,7 +215,10 @@
         socket?.emit('delete_session', { session_id: sid });
         const filtered = getSessions().filter(s => s !== sid);
         lsSetJSON('active_sessions', filtered);
-        if (activeSessionId === sid) setActiveSession(filtered[0] || '');
+        if (activeSessionId === sid) {
+          setActiveSession(filtered[0] || '');
+          if (filtered[0]) joinSession(filtered[0]);
+        }
         renderSessionList();
       });
       btn.appendChild(remove);
@@ -223,6 +226,27 @@
     });
     highlightActiveSessionBtn();
     updateSessionCount();
+  }
+
+// --- Simple per-session log cache in localStorage (bounded) ---
+  const LOG_CACHE_KEY = 'session_log_cache_v1';
+  function loadCache() { return lsGetJSON(LOG_CACHE_KEY, {}); }
+  function saveCache(cache) { lsSetJSON(LOG_CACHE_KEY, cache); }
+  function appendCacheLog(sid, obj) {
+    if (!sid || !obj) return;
+    const cache = loadCache();
+    const arr = cache[sid] = cache[sid] || [];
+    arr.push(obj);
+    if (arr.length > 400) arr.splice(0, arr.length - 300);
+    saveCache(cache);
+  }
+  function restoreCachedLogs(sid) {
+    const cache = loadCache();
+    const arr = cache[sid];
+    if (!arr || !arr.length || !el.outputDiv) return;
+    clearOutput();
+    arr.forEach(l => renderParserOutput(l));
+    flushBatch();
   }
 
   function addNewSession() {
@@ -788,6 +812,12 @@
 
   function runParser() {
     if (!socket || !el.runBtn) return;
+    // Prefer existing last stored session before auto-creating
+    const stored = localStorage.getItem('session_id');
+    if (!activeSessionId && stored) {
+      setActiveSession(stored);
+      joinSession(stored);
+    }
     if (!activeSessionId) {
       addNewSession();
     } else {
@@ -821,11 +851,26 @@
   }
 
   // -------- URLs --------
-  function fetchUrls() {
-    fetch('/api/urls').then(r=>r.json())
-      .then(d=>renderUrlList(d.urls||[]))
-      .catch(()=>renderUrlList([]));
+
+  function buildUrlSidebarBlock(urls) {
+    let host = document.getElementById('urlSidebarBlock');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'urlSidebarBlock';
+      host.className = 'section';
+      host.innerHTML = '<h2>urls.txt</h2><div class="url-lines" id="urlLinesBox"></div>';
+      const sb = document.querySelector('.sidebar');
+      if (sb) sb.prepend(host);
+    }
+    const box = host.querySelector('#urlLinesBox');
+    if (!box) return;
+    if (!urls.length) {
+      box.innerHTML = '<span>(empty)</span>';
+      return;
+    }
+    box.innerHTML = urls.map((u,i)=>`<span>[${i+1}] ${esc(u)}</span>`).join('');
   }
+
   function renderUrlList(urls) {
     if (!el.urlList) return;
     urlIndexMap = {};
@@ -839,6 +884,20 @@
         return `<li data-url-idx="${idx}">[${idx}] ${esc(u)}</li>`;
       }).join('')
     }</ul>`;
+  }
+
+  function fetchUrls() {
+    fetch('/api/urls')
+      .then(r=>r.json())
+      .then(d=>{
+        const list = d.urls||[];
+        renderUrlList(list);      // existing (center) list
+        buildUrlSidebarBlock(list); // new sidebar block
+      })
+      .catch(()=>{
+        renderUrlList([]);
+        buildUrlSidebarBlock([]);
+      });
   }
 
   // -------- Output Mode --------
@@ -971,18 +1030,30 @@
       query: { prev_session_id: prevSessionId },
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 800
+      reconnectionDelay: 800,
+      transports: ['websocket'],          // force WS (avoid polling duplicates)
+      pingInterval: 20000,                // MUST match server ping_interval (ms)
+      pingTimeout: 60000                  // MUST match server ping_timeout (ms)
     });
 
     socket.on('connect', () => {
       hideDisconnectedMessage();
       joinedSessions.clear();
       renderSessionList();
-      const sid = localStorage.getItem('session_id');
-      if (sid && getSessions().includes(sid)) {
-        setActiveSession(sid);
-        joinSession(sid);
-        socket.emit('get_session_history', { session_id: sid });
+      // Auto-join and fetch history for every remembered session
+      const sessions = getSessions();
+      sessions.forEach(s => {
+        joinSession(s);
+        socket.emit('get_session_history', { session_id: s });
+      });
+      // Prefer previously active
+      const last = localStorage.getItem('session_id');
+      if (last && sessions.includes(last)) {
+        setActiveSession(last);
+        restoreCachedLogs(last);
+      } else if (sessions.length) {
+        setActiveSession(sessions[0]);
+        restoreCachedLogs(sessions[0]);
       }
     });
     socket.on('disconnect', showDisconnectedMessage);
@@ -1005,14 +1076,14 @@
       flushBatch();
     });
 
-    socket.on('parser_output', d => {
+  socket.on('parser_output', d => {
       if (!activeSessionId) {
         earlyQueue.push(d);
         return;
       }
       renderParserOutput(d);
+      if (d && d.session_id) appendCacheLog(d.session_id, d);
       if (d && d.session_id === activeSessionId && d.type === 'status') {
-        // If backend indicates run finished, unlock button proactively
         if (/completed/i.test(d.message||'')) {
           if (el.runBtn) {
             el.runBtn.disabled = false;
@@ -1022,7 +1093,7 @@
           }
         }
       }
-    });
+  });
 
     socket.on('output_bypass_state', ({ output_bypass }) => applyBypassState(!!output_bypass));
     socket.on('manual_source_state', ({ session_id, file_source }) => {

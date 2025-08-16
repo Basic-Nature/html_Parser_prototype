@@ -5,6 +5,7 @@ from __future__ import annotations
 # -----------------------------------------------------------
 # 1. Imports & Environment Setup
 from datetime import datetime, timezone
+from typing import Callable, Iterable, Tuple
 import secrets
 from flask import (
     Flask, render_template, request, redirect, session,
@@ -23,7 +24,11 @@ from queue import Queue
 import psycopg2
 import threading
 import re
+from psycopg2 import sql
+from psycopg2 import errors as pg_errors
 
+# Lazy DB table init flag
+_tables_initialized = False
 
 # Project-specific imports
 from webapp.parser import data_manager
@@ -46,10 +51,53 @@ app = Flask(__name__)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    ping_interval=20,
-    ping_timeout=60,
-    async_mode=None  # let it auto-select, but ensures consistent options
+    ping_interval=20,   # 20s -> matches client pingInterval (20000 ms)
+    ping_timeout=60,    # 60s -> matches client pingTimeout (60000 ms)
+    async_mode=None
 )
+
+# Central textual MIME set (used by header utilities)
+TEXTUAL_MIME_TYPES = {
+    "text/html","text/css","application/javascript","text/javascript",
+    "application/json","text/plain","application/xhtml+xml",
+}
+
+def ensure_utf8(resp: Response) -> Response:
+    """
+    Final safeguard: ensure textual/plain responses have an explicit UTF-8 charset.
+    (Keeps vendor libs / linters like webhint satisfied even after intermediate mutations.)
+    """
+    ct = resp.headers.get("Content-Type", "")
+    # If mimetype was set without charset (Flask may give 'text/plain' etc.)
+    if any(ct.startswith(mt) for mt in TEXTUAL_MIME_TYPES) and "charset=" not in ct.lower():
+        # Preserve original media type portion only
+        media_type = ct.split(";")[0].strip()
+        resp.headers["Content-Type"] = f"{media_type}; charset=utf-8"
+    return resp
+WEBAPP_CONSOLE_LEVELS = set(os.environ.get("WEBAPP_CONSOLE_LEVELS", "ERROR,WARNING").upper().split(","))
+
+class EnsureWsSecurityHeaders:
+    """
+    WSGI middleware to guarantee Cache-Control and X-Content-Type-Options
+    even if Socket.IO / Engine.IO shortcut bypasses Flask after_request.
+    """
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response: Callable):
+        def _sr(status: str, headers: list[Tuple[str,str]], exc_info=None):
+            has_cache = any(h[0].lower() == 'cache-control' for h in headers)
+            has_nosniff = any(h[0].lower() == 'x-content-type-options' for h in headers)
+            # Only add if missing
+            if not has_cache:
+                headers.append(('Cache-Control', 'no-store'))
+            if not has_nosniff:
+                headers.append(('X-Content-Type-Options', 'nosniff'))
+            return start_response(status, headers, exc_info)
+        return self.app(environ, _sr)
+
+# Wrap early (immediately after app creation)
+app.wsgi_app = EnsureWsSecurityHeaders(app.wsgi_app)
 
 # 3. Session & State Management
 session_prompt_queues: dict[str, Queue] = {}
@@ -58,6 +106,9 @@ active_sessions_backend: set[str] = set()
 session_last_active: dict[str, float] = {}
 session_metadata: dict[str, dict] = {}
 session_logs: dict[str, list] = {}
+recent_message_cache: dict[str, dict] = {}  # session_id -> {'seen': {key: ts}, 'order': [keys]}
+LOG_DEDUPE_WINDOW = float(os.environ.get("LOG_DEDUPE_WINDOW_SEC", "2.0"))
+MAX_CACHE_PER_SESSION = 120
 
 SESSION_TIMEOUT = 3600
 MAX_LOGS_PER_SESSION = 2000
@@ -90,6 +141,36 @@ _registry_lock = RLock()
 thread_session_map: dict[int, str] = {}
 
 # 4. Utility Functions
+
+def ensure_db_tables(force: bool = False):
+    """
+    Ensure SQLAlchemy models are created. Safe to call multiple times.
+    Controlled by AUTO_INIT_DB (default true).
+    """
+    global _tables_initialized
+    if _tables_initialized and not force:
+        return
+    if os.environ.get("AUTO_INIT_DB", "true").lower() not in ("1","true","yes"):
+        return
+    try:
+        from webapp.parser.utils.models import Base  # imports metadata
+        from webapp.parser.utils.db_utils import engine
+        Base.metadata.create_all(engine)
+        _tables_initialized = True
+        logger.info({
+            "level": "INFO",
+            "type": "db",
+            "message": "Database tables ensured (create_all executed)",
+            "session_id": None
+        })
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "db",
+            "message": f"Failed to ensure DB tables: {e}",
+            "session_id": None
+        })
+
 def is_owner(sid, username):
     meta = safe_get(session_metadata, sid, {})
     return safe_get(meta, 'username') == username
@@ -318,12 +399,38 @@ def route_logger_emit(line):
         # Force normalization (adds ms timestamp / inference)
         obj = normalize_log_obj(obj)
         sid = obj.get("session_id")
+        # --- Deduplication (server-side) ---
+        msg = str(obj.get("message",""))
+        t_now = time.time()
+        # Only dedupe noisy categories
+        if sid and obj.get("type") in {"input","status","raw"} and len(msg) < 600:
+            cache = recent_message_cache.setdefault(sid, {"seen": {}, "order": []})
+            key = f"{obj.get('type')}|{msg}"
+            last_ts = cache["seen"].get(key)
+            if last_ts and (t_now - last_ts) < LOG_DEDUPE_WINDOW:
+                return  # skip duplicate
+            cache["seen"][key] = t_now
+            cache["order"].append(key)
+            if len(cache["order"]) > MAX_CACHE_PER_SESSION:
+                # trim oldest
+                for _ in range(len(cache["order"]) - MAX_CACHE_PER_SESSION):
+                    old = cache["order"].pop(0)
+                    cache["seen"].pop(old, None)
+        # --- Suppress repeated global URL list enumeration inside per-URL runs ---
+        if sid and obj.get("type") == "input" and "Loaded" in msg and "raw URLs" in msg:
+            # keep only first such line
+            cache = recent_message_cache.setdefault(sid, {"seen": {}, "order": []})
+            if cache["seen"].get("__loaded_urls_once__"):
+                return
+            cache["seen"]["__loaded_urls_once__"] = t_now
         if not sid:
-            # 1) Thread mapping (background worker threads)
-            sid = thread_session_map.get(threading.get_ident())
-            if sid:
+            # Try thread map
+            mapped = thread_session_map.get(threading.get_ident())
+            if mapped:
+                sid = mapped
                 obj["session_id"] = sid
         if not sid:
+            # Try current socket -> logical session
             try:
                 curr_sid = safe_sid()
             except Exception:
@@ -331,12 +438,13 @@ def route_logger_emit(line):
             if isinstance(curr_sid, str):
                 logical = sid_to_session.get(curr_sid)
                 if logical:
-                    obj["session_id"] = sid = logical
+                    sid = logical
+                    obj["session_id"] = sid
         if not sid:
-            # 2) Pattern extraction from message (e.g. "... (session_id=abcd)")
-            msg = obj.get("message")
-            if isinstance(msg, str):
-                m = re.search(r'\bsession_id=([a-zA-Z0-9_\-]{6,40})\b', msg)
+            # Regex extract from message text
+            orig_message = obj.get("message")
+            if isinstance(orig_message, str):
+                m = re.search(r'\bsession_id=([a-zA-Z0-9_\-]{6,40})\b', orig_message)
                 if m:
                     sid = m.group(1)
                     obj["session_id"] = sid
@@ -416,6 +524,7 @@ def log_parser_status(msg, session_id=None, rich=False) -> None:
         status_msg = f"{msg} (session_id={session_id})" if session_id else msg
         logger.info({
             "level": "INFO",
+            "type": "status",  # ensure UI classifies correctly
             "message": status_msg,
             "session_id": session_id
         })
@@ -520,43 +629,21 @@ def build_csp(relaxed: bool, nonce: str) -> str:
     ]
     return "; ".join(f"{k} {v}" for k, v in directives)
 
-
 @app.after_request
 def add_headers(response: Response) -> Response:
     """
-    Harden outbound responses and ensure UTF-8 charset.
+    Harden outbound responses and ensure UTF-8 charset (also applies to socket.io handshake).
+    Order of operations:
+      1. Security / caching headers
+      2. CSP (only for HTML / XHTML)
+      3. Special-case Socket.IO polling (forces text/plain; charset added later)
+      4. Final UTF-8 charset normalization (ensure_utf8)
     """
-    if request.environ.get("wsgi.websocket"):
-        return response
+    # websocket handshake detection (pre-upgrade GET)
+    upgrade_hdr = (request.headers.get("Upgrade") or "").lower()
+    is_ws = 'websocket' in upgrade_hdr or bool(request.environ.get("wsgi.websocket"))
 
-    textual_mimes = {
-        "text/html",
-        "text/css",
-        "application/javascript",
-        "text/javascript",
-        "application/json",
-        "text/plain",
-        "application/xhtml+xml",
-    }
-    if response.mimetype in textual_mimes:
-        ct = (response.content_type or "")
-        if "charset=" not in ct.lower():
-            response.headers["Content-Type"] = f"{response.mimetype}; charset=utf-8"
-
-    if request.endpoint == "static":
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        response.headers.pop("Content-Security-Policy", None)
-        response.headers.pop("X-XSS-Protection", None)
-    else:
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-        response.headers.setdefault("Pragma", "no-cache")
-        response.headers.setdefault("Expires", "0")
-
-    relaxed = os.environ.get("CSP_MODE", "RELAXED").upper() == "RELAXED"
-    nonce = getattr(g, "csp_nonce", "")
-
-    response.headers.pop("X-XSS-Protection", None)
-
+    # Base security headers (also for websocket handshake GET)
     base_headers = {
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
@@ -568,31 +655,54 @@ def add_headers(response: Response) -> Response:
     for k, v in base_headers.items():
         response.headers.setdefault(k, v)
 
+    # In add_headers(), strengthen /socket.io/ handling:
+    if request.path.startswith('/socket.io/'):
+        # Force required headers for handshake + any polling fallback
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+
+    if request.path.startswith('/socket.io/') and 'websocket' in (request.headers.get("Upgrade","").lower()):
+        response.headers['Content-Security-Policy'] = "default-src 'none'; connect-src 'self' ws: wss:;"
+
+    if not is_ws:
+        # Caching & CSP only for non-upgraded HTTP
+        if request.endpoint == "static":
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            response.headers.pop("Content-Security-Policy", None)
+            response.headers.pop("X-XSS-Protection", None)
+        else:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers.setdefault("Pragma", "no-cache")
+            response.headers.setdefault("Expires", "0")
+        relaxed = os.environ.get("CSP_MODE", "RELAXED").upper() == "RELAXED"
+        nonce = getattr(g, "csp_nonce", "")
+        if response.mimetype and response.mimetype.startswith(("text/html", "application/xhtml")):
+            response.headers["Content-Security-Policy"] = build_csp(relaxed, nonce)
+        else:
+            response.headers.pop("Content-Security-Policy", None)
+        pass
+    else:
+        # For websocket handshake only: add Cache-Control so webhint stops warning
+        response.headers.setdefault("Cache-Control", "no-store")
+
+    if request.path.startswith("/socket.io/") and "transport=polling" in request.query_string.decode(errors="ignore"):
+        response.headers["Content-Type"] = "text/plain"
+        response.headers.setdefault("Cache-Control", "no-store")
+
+    # Vary header normalization
+    vary_tokens = {t.strip() for t in (response.headers.get("Vary", "")).split(",") if t.strip()}
+    if "Cookie" not in vary_tokens:
+        vary_tokens.add("Cookie")
+        response.headers["Vary"] = ", ".join(sorted(vary_tokens))
+
     if request.is_secure:
         response.headers.setdefault(
             "Strict-Transport-Security",
             "max-age=63072000; includeSubDomains; preload"
         )
 
-    if response.mimetype and response.mimetype.startswith(("text/html", "application/xhtml")):
-        response.headers["Content-Security-Policy"] = build_csp(relaxed, nonce)
-    else:
-        response.headers.pop("Content-Security-Policy", None)
-
-    vary = response.headers.get("Vary", "")
-    vary_tokens = {t.strip() for t in vary.split(",") if t.strip()}
-    if "Cookie" not in vary_tokens:
-        vary_tokens.add("Cookie")
-        response.headers["Vary"] = ", ".join(sorted(vary_tokens))
-    # Normalize Engine.IO polling content-type (webhint wants lowercase utf-8)
-    if request.path.startswith("/socket.io/"):
-        ct = response.headers.get("Content-Type","")
-        if ct.lower().startswith("text/plain"):
-            # force lowercase utf-8
-            if "charset=" in ct.lower():
-                response.headers["Content-Type"] = "text/plain; charset=utf-8"
-            else:
-                response.headers["Content-Type"] = ct.split(";")[0] + "; charset=utf-8"
+    # Final charset / textual normalization (single point of truth)
+    response = ensure_utf8(response)
     return response
 
 # Data Management Utilities
@@ -749,6 +859,7 @@ def api_warehouse_election_results():
     if county: where.append("county = %s"); params.append(county)
     if contest: where.append("contest ILIKE %s"); params.append(f"%{contest}%")
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    ensure_db_tables()  # attempt upfront (idempotent)
     try:
         conn = psycopg2.connect(
             dbname=POSTGRES_DB,
@@ -777,6 +888,43 @@ def api_warehouse_election_results():
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         return jsonify({"items": rows, "count": len(rows)})
     except Exception as e:
+        # Detect missing table; try one retry after creating tables
+        msg = str(e)
+        missing = ("does not exist" in msg.lower()) or isinstance(e, getattr(pg_errors, "UndefinedTable", tuple()))
+        if missing:
+            logger.warning({
+                "level": "WARNING",
+                "type": "db",
+                "message": f"Detected missing tables, attempting auto-create then retry: {e}",
+                "session_id": None
+            })
+            ensure_db_tables(force=True)
+            try:
+                conn = psycopg2.connect(
+                    dbname=POSTGRES_DB,
+                    user=POSTGRES_USER_RAW,
+                    password=POSTGRES_PASSWORD_RAW,
+                    host=POSTGRES_HOST,
+                    port=POSTGRES_PORT,
+                    sslmode="require" if (POSTGRES_HOST not in ("localhost","127.0.0.1")
+                        and os.environ.get("PG_REQUIRE_SSL","true").lower() == "true") else "prefer"
+                )
+                with conn, conn.cursor() as cur:
+                    cur.execute(
+                        f"""
+                        SELECT *
+                        FROM warehouse_election_results
+                        {where_sql}
+                        ORDER BY 1 DESC
+                        """,
+                        params
+                    )
+                    cols = [d[0] for d in cur.description]
+                    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+                return jsonify({"items": rows, "count": len(rows), "auto_created": True})
+            except Exception as e2:
+                log_parser_status(f"DB error after retry: {e2}")
+                return jsonify({"error": f"Data API error after init attempt: {e2}"}), 500
         log_parser_status(f"DB error: {e}")
         return jsonify({"error": f"Data API error: {e}"}), 500
 
@@ -883,7 +1031,8 @@ def site_webmanifest():
     etag = f'W/"m-{len(payload)}"'
     if etag in (request.if_none_match or []):
         return Response(status=304)
-    resp = Response(payload, mimetype="application/manifest+json")
+    # Add explicit utf-8 charset for linting tools
+    resp = Response(payload, mimetype="application/manifest+json; charset=utf-8")
     resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     resp.headers["ETag"] = etag
     return resp
@@ -1065,17 +1214,27 @@ def handle_connect(auth=None):
             prompt.clear_prompt_session(revived)
             log_parser_status("Re-associated socket with existing session", revived)
             emit('session_id', {'session_id': revived})
-        # DO NOT create a new session automatically here
+        else:
+            # attempt cookie-based resurrection if logical_session_id exists but not active
+            cookie_sid = session.get('logical_session_id')
+            if cookie_sid and cookie_sid in session_metadata and cookie_sid not in active_sessions_backend:
+                active_sessions_backend.add(cookie_sid)
+                session_last_active[cookie_sid] = time.time()
+                revived = cookie_sid
+                emit('session_id', {'session_id': revived})
+                log_parser_status("Resurrected prior session after reload", revived)
+
         resolved = resolve_session_id({'session_id': revived} if revived else {}, create_if_missing=False)
         if resolved:
             session_last_active[resolved] = time.time()
-        # Send currently active sessions (only those explicitly joined earlier)
+
         active = [session_metadata[sid] for sid in active_sessions_backend if sid in session_metadata]
         emit('session_list', {'sessions': active})
         log_parser_status("Socket connected (no auto session creation)", resolved)
     except Exception as e:
         emit('parser_output', {
             "level": "ERROR",
+            "type": "error",
             "message": f"Connect error: {e}",
             "session_id": None
         }, room=getattr(request, 'sid', None))
@@ -1112,6 +1271,8 @@ def handle_set_output_mode(data) -> None:
 
 @socketio.on('parser_prompt')
 def handle_parser_prompt(data) -> None:
+    print("Received parser_prompt:", data)
+    print("Current prompt sessions:", list(prompt.prompt_sessions.keys()))
     session_id = resolve_session_id(data, create_if_missing=False)
     value = data.get("value", "") if isinstance(data, dict) else data
     if not session_id or session_id not in session_metadata:
@@ -1252,7 +1413,20 @@ def handle_run_parser(data=None) -> None:
     # Install dispatcher only ONCE globally (idempotent)
     logger.set_mode("webapp")
     logger.set_format("json")
-    logger.set_socketio_emit_func(route_logger_emit)
+    # Mirror only higher-priority levels to console (simple filter wrapper)
+    original_emit = getattr(logger, "socketio_emit_func", None)
+    def filtered_emit(line):
+        try:
+            obj = orjson.loads(line) if isinstance(line, str) and line.strip().startswith("{") else None
+        except Exception:
+            obj = None
+        lvl = (obj or {}).get("level") or ""
+        if lvl.upper() in WEBAPP_CONSOLE_LEVELS:
+            logger.enable_console_echo_webapp(True)
+        else:
+            logger.enable_console_echo_webapp(False)
+        route_logger_emit(line)
+    logger.set_socketio_emit_func(filtered_emit)
     prompt.set_mode("webapp")
     prompt.set_socketio_emit_func(lambda msg: socketio.emit(
         'parser_output',
@@ -1329,6 +1503,9 @@ if 'heartbeat_thread' not in globals() or not isinstance(globals().get('heartbea
     if HEARTBEAT_ENABLED:
         heartbeat_thread = Thread(target=_heartbeat_loop, name="heartbeat-loop", daemon=True)
         heartbeat_thread.start()
+
+# Proactively ensure tables at startup (non-fatal if fails)
+ensure_db_tables()
         
 # 7. Main Entrypoint
 if __name__ == "__main__":

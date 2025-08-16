@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const cfgEl = document.getElementById('dataFrameworkConfig');
   const hydratedUrl = cfgEl?.dataset.apiUrl;
   const apiUrl =
-    hydratedUrl ||
+    hydratedUrl ||  // server now injects absolute path via url_for
     (window.__DATA_FRAMEWORK__ && window.__DATA_FRAMEWORK__.apiUrl) ||
     '/api/warehouse_election_results';
 
@@ -464,7 +464,11 @@ document.addEventListener('DOMContentLoaded', () => {
         buildColumns();
         render();
         const msg = err?.message || String(err);
-        setStatus(el.status, 'error', msg);
+        if (/does not exist/i.test(msg)) {
+          setStatus(el.status, 'error', 'Backend table missing. Waiting for initialization (reload shortly).');
+        } else {
+          setStatus(el.status, 'error', msg);
+        }
         showErrorToast('Failed to load data.');
       });
   }

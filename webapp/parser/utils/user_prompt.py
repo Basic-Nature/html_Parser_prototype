@@ -100,6 +100,9 @@ class UserPrompt(ContextManager):
         self.socketio_emit_func = socketio_emit_func
         self.prompt_sessions: Dict[str, PromptSession] = {}
         self.file_path = file_path
+        self._pending_delete: Dict[str, float] = {}  # session_id -> delete_at timestamp
+        self._cleanup_thread_started = False
+        self._cleanup_lock = threading.Lock()        
         
     def __enter__(self) -> 'UserPrompt':
         """
@@ -221,10 +224,28 @@ class UserPrompt(ContextManager):
         else:
             logger.warning("[Webapp Prompt] socketio_emit_func not set.")
 
-    def clear_prompt_session(self, session_id: str) -> None:
-        """Clear a prompt session by session_id."""
+    def clear_prompt_session(self, session_id: str, delay: float = 30.0) -> None:
+        """Mark a prompt session for deletion after a delay (seconds)."""
         if session_id in self.prompt_sessions:
-            del self.prompt_sessions[session_id]
+            with self._cleanup_lock:
+                self._pending_delete[session_id] = time.time() + delay
+            self._start_cleanup_thread()
+
+    def _start_cleanup_thread(self):
+        if self._cleanup_thread_started:
+            return
+        self._cleanup_thread_started = True
+        def cleanup_loop():
+            while True:
+                now = time.time()
+                with self._cleanup_lock:
+                    to_delete = [sid for sid, t in self._pending_delete.items() if now >= t]
+                    for sid in to_delete:
+                        self.prompt_sessions.pop(sid, None)
+                        self._pending_delete.pop(sid, None)
+                time.sleep(5)
+        t = threading.Thread(target=cleanup_loop, daemon=True)
+        t.start()
 
     def print_header(self, title: str = "USER INPUT REQUIRED", char: str = "=", width: int = 60) -> None:
         """Print a formatted header for prompts."""
@@ -348,6 +369,7 @@ class UserPrompt(ContextManager):
         Returns the validated input or raises PromptCancelled if cancelled.
         """
         from .logger_singleton import logger
+        print("Creating prompt session for", session_id)
         self.cleanup_sessions()
         def input_with_timeout(prompt: str, timeout: float) -> Optional[str]:
             result = [None]
