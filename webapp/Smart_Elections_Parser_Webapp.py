@@ -1075,6 +1075,16 @@ def upload_to_uploads() -> str:
 def health() -> str:
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
+@app.route("/clear_history", methods=["POST"])
+def clear_history():
+    try:
+        if RUN_HISTORY_FILE.exists():
+            RUN_HISTORY_FILE.unlink()
+        flash("Run history cleared.", "success")
+    except Exception as e:
+        flash(f"Failed to clear history: {e}", "danger")
+    return redirect(url_for("history"))
+
 @app.route("/history")
 def history() -> str:
     """
@@ -1095,15 +1105,24 @@ def history() -> str:
                         continue
         except Exception:
             pass
-    # Derive aggregated runs: pair start/end by run_id
+    # --- prefer "end" event for each run_id ---
     aggregated = {}
     for evt in runs:
         rid = evt.get("run_id")
         if not rid:
             continue
+        # Always update with new event, but prefer "end" event for status
         slot = aggregated.setdefault(rid, {"run_id": rid})
-        slot.update(evt)
-    # Sort by latest timestamp descending
+        if evt.get("type") == "end":
+            # End event: overwrite all relevant fields
+            slot.update(evt)
+            slot["completed"] = True
+        else:
+            # Start or other event: only update if no end event seen yet
+            if not slot.get("completed"):
+                slot.update(evt)
+
+    # No need to force status to "ok" -- just use the status from the end event if present
     def _ts(v):
         return v.get("ts","")
     ordered = sorted(aggregated.values(), key=_ts, reverse=True)

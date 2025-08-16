@@ -321,71 +321,6 @@
   #container.fade { opacity:.3; }
   canvas#container { pointer-events:auto; }
 
-  /* Popup */
-  #assetPaths { display:none; }
-  #popup,
-  .popup-hidden { display:none; }
-  #popup {
-    position:fixed;
-    inset:0;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:16px;
-    background:
-      radial-gradient(120% 120% at 50% 20%,rgba(0 255 231 /.10),transparent 60%),
-      rgba(2 8 16 /.55);
-    backdrop-filter:blur(4px) saturate(1.1);
-    -webkit-backdrop-filter:blur(4px) saturate(1.1);
-    z-index:var(--z-overlay);
-  }
-  #popup.is-open { display:flex; }
-  #popup .custom-popup {
-    position:relative;
-    max-width:560px;
-    width:min(92vw,560px);
-    padding:20px 24px;
-    background:linear-gradient(180deg,rgba(30 40 60 /.96) 0%,rgba(16 24 36 /.94) 100%);
-    color:#e6e8ea;
-    border:1px solid rgba(0 255 231 /.30);
-    border-radius:16px;
-    box-shadow:0 12px 40px rgba(0 0 0 /.45),0 0 28px rgba(0 255 231 /.18);
-  }
-  #popup .custom-popup::after {
-    content:"";
-    position:absolute;
-    inset:-1px;
-    border-radius:inherit;
-    pointer-events:none;
-    box-shadow:0 0 0 1px rgba(0 255 231 /.12),inset 0 0 40px rgba(0 255 231 /.06);
-  }
-  #popup .custom-popup button {
-    margin-top:12px;
-    padding:8px 14px;
-    font-weight:600;
-    color:#fff;
-    background:var(--main-red);
-    border:1px solid rgba(235 79 67 /.65);
-    border-radius:8px;
-    cursor:pointer;
-    box-shadow:0 4px 16px rgba(235 79 67 /.25);
-    transition:transform .15s ease,box-shadow .15s ease,background .2s ease;
-  }
-  #popup .custom-popup button:hover {
-    transform:translateY(-1px);
-    box-shadow:0 6px 20px rgba(235 79 67 /.32);
-    background:#f06257;
-  }
-  .popup-highlight {
-    color:var(--neon);
-    font-size:1.2em;
-    font-weight:600;
-    letter-spacing:.5px;
-    display:inline-block;
-    margin-top:.5em;
-    text-shadow:0 0 8px rgba(0 255 231 /.4);
-  }
-
   /* Footer / Flash */
   .footer-contact { text-align:center; margin-top:2em; }
   .contact-label { color:var(--main-blue); font-weight:600; }
@@ -559,6 +494,74 @@
     border-top-right-radius:12px;
   }
   .popover-body { color:#222; }
+  
+  /* Popup */
+  #assetPaths { display:none; }
+  #popup,
+  .popup-hidden {
+    display: none !important;
+  }
+  #popup.is-open {
+    display: flex !important;
+  }
+  #popup {
+    position:fixed;
+    inset:0;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    background:
+      radial-gradient(120% 120% at 50% 20%,rgba(0 255 231 /.10),transparent 60%),
+      rgba(2 8 16 /.55);
+    -webkit-backdrop-filter:blur(4px) saturate(1.1);
+    backdrop-filter:blur(4px) saturate(1.1);
+    z-index:var(--z-overlay);
+  }
+  #popup .custom-popup {
+    position:relative;
+    max-width:560px;
+    width:min(92vw,560px);
+    padding:20px 24px;
+    background:linear-gradient(180deg,rgba(30 40 60 /.96) 0%,rgba(16 24 36 /.94) 100%);
+    color:#e6e8ea;
+    border:1px solid rgba(0 255 231 /.30);
+    border-radius:16px;
+    box-shadow:0 12px 40px rgba(0 0 0 /.45),0 0 28px rgba(0 255 231 /.18);
+  }
+  #popup .custom-popup::after {
+    content:"";
+    position:absolute;
+    inset:-1px;
+    border-radius:inherit;
+    pointer-events:none;
+    box-shadow:0 0 0 1px rgba(0 255 231 /.12),inset 0 0 40px rgba(0 255 231 /.06);
+  }
+  #popup .custom-popup button {
+    margin-top:12px;
+    padding:8px 14px;
+    font-weight:600;
+    color:#fff;
+    background:var(--main-red);
+    border:1px solid rgba(235 79 67 /.65);
+    border-radius:8px;
+    cursor:pointer;
+    box-shadow:0 4px 16px rgba(235 79 67 /.25);
+    transition:transform .15s ease,box-shadow .15s ease,background .2s ease;
+  }
+  #popup .custom-popup button:hover {
+    transform:translateY(-1px);
+    box-shadow:0 6px 20px rgba(235 79 67 /.32);
+    background:#f06257;
+  }
+  .popup-highlight {
+    color:var(--neon);
+    font-size:1.2em;
+    font-weight:600;
+    letter-spacing:.5px;
+    display:inline-block;
+    margin-top:.5em;
+    text-shadow:0 0 8px rgba(0 255 231 /.4);
+  }
 }
 
 /* ===================== 4. Utilities ===================== */

@@ -51,6 +51,11 @@
       </select>
       <button id="clearFilters" class="btn btn-sm btn-outline-secondary" type="button">Reset</button>
     </form>
+    <form method="POST" action="{{ url_for('clear_history') }}" style="display:inline;">
+      <button class="btn btn-sm btn-danger" type="submit" onclick="return confirm('Clear all run history? This cannot be undone.');">
+        Clear History
+      </button>
+    </form>
     <div class="dropdown">
       <button class="btn btn-outline-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown" type="button">
         Page menu
