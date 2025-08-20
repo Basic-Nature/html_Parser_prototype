@@ -68,6 +68,15 @@ class PromptSession(ContextManager):
             traceback.print_tb(exc_tb)
         return False
 
+    def is_resolved(self) -> bool:
+        """Return True if the prompt session has a response, was cancelled, timed out, or expired."""
+        return (
+            self.response is not None
+            or self.cancelled
+            or self.timed_out
+            or self.is_expired()
+        )
+
     def wait_for_response(self, timeout: Optional[float] = None) -> Any:
         """Wait for a response with optional timeout."""
         self.last_active = datetime.datetime.now(timezone.utc)

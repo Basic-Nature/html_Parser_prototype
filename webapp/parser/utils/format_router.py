@@ -219,39 +219,62 @@ def prompt_and_handle_download(
 
 def prompt_user_for_format(
     confirmed,
-    session_id=None
+    session_id=None,
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Prompts the user to select a format from the confirmed list.
     Returns (fmt, file_url) or (None, None) if skipped or denied.
     """
-
-    if not confirmed:
-        logger.warning(f"[WARN][Session:{session_id}] No downloadable formats detected.")
+    if not confirmed or not isinstance(confirmed, list) or not all(isinstance(x, (list, tuple)) and len(x) == 2 for x in confirmed):
+        logger.warning(f"[WARN][Session:{session_id}] No downloadable formats detected or invalid input.")
         return None, None
 
+    # Remove duplicates and sanitize
+    seen = set()
+    unique_confirmed = []
+    for fmt, file_url in confirmed:
+        key = (str(fmt).lower().strip(), str(file_url).strip())
+        if key not in seen:
+            seen.add(key)
+            unique_confirmed.append((fmt, file_url))
+
     format_options = [
-        f"{fmt.upper()} ({os.path.basename(file_url)})"
-        for fmt, file_url in confirmed
+        f"{str(fmt).upper()} ({os.path.basename(str(file_url))})"
+        for fmt, file_url in unique_confirmed
     ]
-    logger.info(f"\n[FORMATS][Session:{session_id}] Available formats:")
+
+    # Build the options string for the prompt message
+    options_lines = []
     for i, opt in enumerate(format_options):
-        logger.info(f"  [{i}] {opt}")
-    logger.info("  [n or Enter] Skip download")
+        options_lines.append(f"  [{i}] {opt}")
+    options_lines.append("  [n or Enter] Skip download")
+    options_str = "\n".join(options_lines)
+
+    logger.info(f"\n[FORMATS][Session:{session_id}] Available formats:")
+    for line in options_lines:
+        logger.info(line)
 
     def validator(x) -> bool:
         x = str(x).strip().lower()
         return (
             x == "" or x == "n" or
-            (x.isdigit() and 0 <= int(x) < len(format_options))
+            (x.isdigit() and 0 <= int(x) < len(format_options)) or
+            (x in [opt.lower() for opt in format_options])
         )
+
+    prompt_message = (
+        f"[PROMPT][Session:{session_id}] Select a format to download:\n"
+        f"{options_str}\n"
+        f"Enter the number of your choice (0-{len(format_options)-1}) or 'n' to skip: [n] (type 'cancel' to abort)"
+    )
 
     try:
         selection = prompt.prompt_input(
-            f"[PROMPT][Session:{session_id}] Select a format to download (0-{len(format_options)-1}) or 'n' to skip:",
+            prompt_message,
             default="n",
             validator=validator,
-            session_id=session_id
+            session_id=session_id,
+            context={"options": format_options, "confirmed": unique_confirmed}
         )
     except Exception as e:
         logger.error(f"[Prompt] Exception during prompt: {e}")
@@ -261,11 +284,19 @@ def prompt_user_for_format(
         logger.info(f"[INFO][Session:{session_id}] User chose to skip format download.")
         return None, None
 
+    # Robust mapping: handle index or option string
     try:
-        selected_index = int(selection)
-        fmt, file_url = confirmed[selected_index]
-        logger.info(f"[INFO][Session:{session_id}] User selected format: {fmt.upper()}")
+        sel = str(selection).strip()
+        if sel.isdigit() and 0 <= int(sel) < len(unique_confirmed):
+            idx = int(sel)
+        else:
+            idx = next(
+                i for i, opt in enumerate(format_options)
+                if opt.lower() == sel.lower()
+            )
+        fmt, file_url = unique_confirmed[idx]
+        logger.info(f"[INFO][Session:{session_id}] User selected format: {str(fmt).upper()}")
         return fmt, file_url
-    except (IndexError, ValueError, Exception) as e:
+    except Exception as e:
         logger.warning(f"[WARN][Session:{session_id}] Invalid selection. Skipping format download. ({e})")
         return None, None
