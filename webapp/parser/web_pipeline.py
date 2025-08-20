@@ -30,19 +30,10 @@ class CancellationManager(threading.Thread):
         with self._lock:
             if session_id not in self._flags:
                 self._flags[session_id] = threading.Event()
-                logger.info({
-                    "level": "INFO",
-                    "type": "status",
-                    "message": f"Created cancellation flag for session_id={session_id}",
-                    "session_id": session_id
-                })
+                # Only log to backend, not frontend
+                print(f"[DEBUG] Created cancellation flag for session_id={session_id}")
             else:
-                logger.info({
-                    "level": "INFO",
-                    "type": "status",
-                    "message": f"Reusing cancellation flag for session_id={session_id}",
-                    "session_id": session_id
-                })
+                print(f"[DEBUG] Reusing cancellation flag for session_id={session_id}")
             return self._flags[session_id]
 
     def cancel(self, session_id) -> None:
@@ -69,17 +60,12 @@ class CancellationManager(threading.Thread):
                 ev = self._flags[session_id]
                 if ev.is_set():
                     safe_clear(ev)
-                    logger.info({
-                        "level": "INFO",
-                        "type": "status",
-                        "message": f"Cancellation flag reset (session_id={session_id})",
-                        "session_id": session_id
-                    })
+                    print(f"[DEBUG] Cancellation flag reset for session_id={session_id}")
             else:
                 if session_id not in self._unknown_warned:
                     self._unknown_warned.add(session_id)
-                    logger.debug({
-                        "level": "DEBUG",
+                    logger.warning({
+                        "level": "WARNING",
                         "type": "cancellation",
                         "message": f"Reset requested for unknown session_id={session_id}",
                         "session_id": session_id
@@ -89,18 +75,14 @@ class CancellationManager(threading.Thread):
         with self._lock:
             if session_id in self._flags:
                 del self._flags[session_id]
-                logger.info({
-                    "level": "DEBUG",
-                    "type": "cancellation",
-                    "message": f"Cancellation flag removed for session_id={session_id}",
-                    "session_id": session_id
-                })
+                # Only log to backend, not frontend
+                print(f"[DEBUG] Cancellation flag removed for session_id={session_id}")
             else:
-                # Throttle repeated warnings
+                # Only emit to frontend if something is wrong
                 if session_id not in self._unknown_warned:
                     self._unknown_warned.add(session_id)
-                    logger.debug({
-                        "level": "DEBUG",
+                    logger.warning({
+                        "level": "WARNING",
                         "type": "cancellation",
                         "message": f"Remove requested for unknown session_id={session_id}",
                         "session_id": session_id

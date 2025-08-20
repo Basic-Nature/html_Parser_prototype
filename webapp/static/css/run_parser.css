@@ -703,11 +703,27 @@
     gap:.25ch;
     transition:background .25s,color .25s,box-shadow .25s;
   }
-  .log-line[data-type="status"] {--pill-bg:#264653;--pill-fg:#fff;}
-  .log-line[data-type="input"] {--pill-bg:#2563eb;--pill-fg:#fff;}
-  .log-line[data-type="output"] {--pill-bg:#7c3aed;--pill-fg:#fff;}
-  .log-line[data-type="manual_override"] {--pill-bg:#fb923c;--pill-fg:#111;}
-  .log-line[data-type="other"] {--pill-bg:#555;--pill-fg:#fff;}
+.log-line[data-type="status"]           { --pill-bg: #264653; --pill-fg: #fff; }
+.log-line[data-type="input"]            { --pill-bg: #38bdf8; --pill-fg: #fff; }
+.log-line[data-type="output"]           { --pill-bg: #c084fc; --pill-fg: #fff; }
+.log-line[data-type="manual_override"]  { --pill-bg: #fb923c; --pill-fg: #111; }
+.log-line[data-type="ai_analysis"]      { --pill-bg: #f472b6; --pill-fg: #111; }
+.log-line[data-type="stream"]           { --pill-bg: #34d399; --pill-fg: #111; }
+.log-line[data-type="router"]           { --pill-bg: #fde047; --pill-fg: #111; }
+.log-line[data-type="handler"]          { --pill-bg: #f9a8d4; --pill-fg: #111; }
+.log-line[data-type="batch"]            { --pill-bg: #67e8f9; --pill-fg: #111; }
+.log-line[data-type="download"]         { --pill-bg: #93c5fd; --pill-fg: #111; }
+.log-line[data-type="browser"]          { --pill-bg: #d8b4fe; --pill-fg: #111; }
+.log-line[data-type="validation"]       { --pill-bg: #fcd34d; --pill-fg: #111; }
+.log-line[data-type="exception"]        { --pill-bg: #ff7b00; --pill-fg: #fff; }
+.log-line[data-type="cancel"]           { --pill-bg: #f87171; --pill-fg: #fff; }
+.log-line[data-type="summary"]          { --pill-bg: #a78bfa; --pill-fg: #fff; }
+.log-line[data-type="cache"]            { --pill-bg: #a3a3a3; --pill-fg: #111; }
+.log-line[data-type="prompt"]           { --pill-bg: #d4af37; --pill-fg: #111; }
+.log-line[data-type="heartbeat"]        { --pill-bg: #60a5fa; --pill-fg: #fff; }
+.log-line[data-type="database"]         { --pill-bg: #86efac; --pill-fg: #111; }
+.log-line[data-type="delete"]           { --pill-bg: #f87171; --pill-fg: #fff; }
+.log-line[data-type="other"]            { --pill-bg: #555;     --pill-fg: #fff; }
 
   .log-more-hint { color:#ffd166; font-weight:700; font-size:.75rem; margin-left:.25em; }
   .log-details.hidden { display:none; }

@@ -1,4 +1,8 @@
 from __future__ import annotations
+
+import eventlet
+eventlet.monkey_patch()
+
 # Smart_Elections_Parser_Webapp.py
 # -----------------------------------------------------------
 # Web Application for Smart Elections Parser
@@ -42,18 +46,25 @@ from webapp.parser.web_pipeline import (
 from webapp.parser.config import (
     INPUT_DIR, OUTPUT_DIR, UPLOADS_DIR, URL_LIST_FILE,
     SUPPORTED_FORMATS, DATA_API_URL, POSTGRES_DB, POSTGRES_USER_RAW, POSTGRES_PASSWORD_RAW,
-    POSTGRES_HOST, POSTGRES_PORT, RUN_HISTORY_FILE
+    POSTGRES_HOST, POSTGRES_PORT, RUN_HISTORY_FILE, LOG_DIR
 )
 from webapp.parser.utils.logger_singleton import logger, console, prompt
+
+try:
+    import dotenv
+    dotenv.load_dotenv()
+except ImportError:
+    # python-dotenv not installed (e.g., on Azure), skip loading .env
+    pass
 
 # 2. Flask App & SocketIO Initialization
 app = Flask(__name__)
 socketio = SocketIO(
     app,
+    async_mode='eventlet',
     cors_allowed_origins="*",
-    ping_interval=20,   # 20s -> matches client pingInterval (20000 ms)
+    ping_interval=10,   # 10s -> matches client pingInterval (10000 ms)
     ping_timeout=60,    # 60s -> matches client pingTimeout (60000 ms)
-    async_mode=None
 )
 
 # Central textual MIME set (used by header utilities)
@@ -142,35 +153,6 @@ thread_session_map: dict[int, str] = {}
 
 # 4. Utility Functions
 
-def ensure_db_tables(force: bool = False):
-    """
-    Ensure SQLAlchemy models are created. Safe to call multiple times.
-    Controlled by AUTO_INIT_DB (default true).
-    """
-    global _tables_initialized
-    if _tables_initialized and not force:
-        return
-    if os.environ.get("AUTO_INIT_DB", "true").lower() not in ("1","true","yes"):
-        return
-    try:
-        from webapp.parser.utils.models import Base  # imports metadata
-        from webapp.parser.utils.db_utils import engine
-        Base.metadata.create_all(engine)
-        _tables_initialized = True
-        logger.info({
-            "level": "INFO",
-            "type": "db",
-            "message": "Database tables ensured (create_all executed)",
-            "session_id": None
-        })
-    except Exception as e:
-        logger.error({
-            "level": "ERROR",
-            "type": "db",
-            "message": f"Failed to ensure DB tables: {e}",
-            "session_id": None
-        })
-
 def is_owner(sid, username):
     meta = safe_get(session_metadata, sid, {})
     return safe_get(meta, 'username') == username
@@ -195,8 +177,36 @@ def cleanup_sessions():
             del session_last_active[sid]
             session_metadata.pop(sid, None)
             session_logs.pop(sid, None)
+            # Remove log file from disk
+            try:
+                log_path = os.path.join(LOG_DIR, f"sess_{sid}.ndjson")
+                if os.path.exists(log_path):
+                    os.remove(log_path)
+            except Exception:
+                pass
     if expired:
         emit('session_expired', {'expired_sessions': expired}, broadcast=True)
+
+def cleanup_old_log_files(log_dir, active_sessions, keep_days=7):
+    """
+    Remove session log files not in active_sessions and older than keep_days.
+    Never deletes RUN_HISTORY_FILE.
+    """
+    now = time.time()
+    cutoff = now - keep_days * 86400
+    for fname in os.listdir(log_dir):
+        if not fname.startswith("sess_") or not fname.endswith(".ndjson"):
+            continue
+        sid = fname[5:-7]
+        if sid in active_sessions:
+            continue
+        fpath = os.path.join(log_dir, fname)
+        try:
+            stat = os.stat(fpath)
+            if stat.st_mtime < cutoff:
+                os.remove(fpath)
+        except Exception:
+            pass
 
 def client_fingerprint():
     try:
@@ -266,8 +276,81 @@ def _promote_inner(obj: dict) -> dict:
         return promoted
     return obj
 
+def ensure_db_tables(force: bool = False):
+    """
+    Ensure SQLAlchemy models are created. Safe to call multiple times.
+    Controlled by AUTO_INIT_DB (default true).
+    """
+    global _tables_initialized
+    if _tables_initialized and not force:
+        return
+    if os.environ.get("AUTO_INIT_DB", "true").lower() not in ("1","true","yes"):
+        return
+    try:
+        from webapp.parser.utils.models import Base  # imports metadata
+        from webapp.parser.utils.db_utils import engine
+        Base.metadata.create_all(engine)
+        _tables_initialized = True
+        logger.info({
+            "level": "INFO",
+            "type": "db",
+            "message": "Database tables ensured (create_all executed)",
+            "session_id": None
+        })
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "db",
+            "message": f"Failed to ensure DB tables: {e}",
+            "session_id": None
+        })
+
 def normalize_log_obj(raw) -> dict:
+    """
+    Normalize a log object to ensure canonical level/type, timestamp, and message structure.
+    Levels: INFO, DEBUG, WARNING, ERROR, CRITICAL, TRACE
+    Types: status, input, output, manual_override, ai_analysis, stream, router, handler, batch,
+           download, browser, validation, exception, cancel, summary, cache, prompt, heartbeat,
+           database, delete, other
+    """
+    # Canonical type mapping
+    TYPE_CANON = {
+        "status": "status",
+        "input": "input",
+        "output": "output",
+        "manual": "manual_override",
+        "manualoverride": "manual_override",
+        "manual_override": "manual_override",
+        "ai": "ai_analysis",
+        "analysis": "ai_analysis",
+        "ai_analysis": "ai_analysis",
+        "anomalies": "ai_analysis",
+        "streamresults": "stream",
+        "stream": "stream",
+        "router": "router",
+        "handler": "handler",
+        "batch": "batch",
+        "download": "download",
+        "dl": "download",
+        "browser": "browser",
+        "validation": "validation",
+        "exception": "exception",
+        "cancel": "cancel",
+        "cancellation": "cancel",
+        "summary": "summary",
+        "cache": "cache",
+        "prompt": "prompt",
+        "heartbeat": "heartbeat",
+        "database": "database",
+        "db": "database",
+        "delete": "delete",
+        "other": "other",
+        "fatal": "exception"
+    }
+    LEVELS = {"INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL", "TRACE"}
+
     obj = raw
+    # Parse string input
     if isinstance(obj, str):
         s = obj.strip()
         if s.startswith("{"):
@@ -297,11 +380,11 @@ def normalize_log_obj(raw) -> dict:
             if "heartbeat" in mlow:
                 obj["type"] = "heartbeat"
             elif "cancellation" in mlow:
-                obj["type"] = "cancellation"
+                obj["type"] = "cancel"
             elif "error" in mlow:
-                obj["type"] = "error"
+                obj["type"] = "exception"
             elif "warning" in mlow:
-                obj["type"] = "warning"
+                obj["type"] = "status"
             elif "session started" in mlow or "launching parser" in mlow:
                 obj["type"] = "status"
 
@@ -321,9 +404,15 @@ def normalize_log_obj(raw) -> dict:
     if (obj.get("type") == "heartbeat" or obj.get("status") == "alive") and not obj.get("message"):
         obj["message"] = f"[heartbeat] {obj.get('session_id','')}".strip()
 
-    # Normalize level/type
-    obj["level"] = str(obj.get("level", "INFO")).upper()
-    obj["type"] = str(obj.get("type", "other")).lower()
+    # Normalize level
+    level = str(obj.get("level", "INFO")).upper()
+    if level not in LEVELS:
+        level = "INFO"
+    obj["level"] = level
+
+    # Normalize type
+    raw_type = str(obj.get("type", "other")).lower().replace("-", "_")
+    obj["type"] = TYPE_CANON.get(raw_type, "other")
 
     # Timestamp normalization (force int ms)
     ts = obj.get("timestamp")
@@ -355,22 +444,13 @@ def store_log(session_id: str, log_obj: dict):
     logs.append(log_obj)
     if len(logs) > MAX_LOGS_PER_SESSION:
         del logs[0: len(logs) - TRIM_TO]
-
-def emit_log(level: str, type_: str, message: str, session_id: str | None, **extra):
-    base = {
-        "level": level.upper(),
-        "type": (type_ or "status").lower(),
-        "message": message,
-        "session_id": session_id,
-        "timestamp": int(time.time() * 1000)
-    }
-    base.update(extra)
-    norm = normalize_log_obj(base)
-    if session_id:
-        store_log(session_id, norm)
-        socketio.emit('parser_output', norm, room=session_id)
-    else:
-        socketio.emit('parser_output', norm)
+    # Persist to disk using orjson
+    try:
+        log_path = os.path.join(LOG_DIR, f"sess_{session_id}.ndjson")
+        with open(log_path, "ab") as f:
+            f.write(orjson.dumps(log_obj) + b"\n")
+    except Exception:
+        pass
 
 def _heartbeat_loop():
     if not HEARTBEAT_ENABLED:
@@ -387,8 +467,13 @@ def _heartbeat_loop():
             except Exception:
                 pass
             
-def route_logger_emit(line):
+def socketio_emit_func(line):
+    """
+    Normalize, deduplicate, store, and emit log lines to Socket.IO.
+    Used as the SocketIO emit function for SharedLogger.
+    """
     try:
+        # Parse or wrap the log line as a dict
         if isinstance(line, str) and not line.strip().startswith("{"):
             obj = {"level": "INFO", "type": "raw", "message": line}
         else:
@@ -396,14 +481,15 @@ def route_logger_emit(line):
                 obj = orjson.loads(line) if isinstance(line, str) else line
             except Exception:
                 obj = {"level": "INFO", "type": "raw", "message": str(line)}
-        # Force normalization (adds ms timestamp / inference)
+
+        # Normalize log object (adds ms timestamp, infers type, etc.)
         obj = normalize_log_obj(obj)
         sid = obj.get("session_id")
-        # --- Deduplication (server-side) ---
-        msg = str(obj.get("message",""))
+
+        # --- Deduplication (server-side, for noisy categories) ---
+        msg = str(obj.get("message", ""))
         t_now = time.time()
-        # Only dedupe noisy categories
-        if sid and obj.get("type") in {"input","status","raw"} and len(msg) < 600:
+        if sid and obj.get("type") in {"input", "status", "raw"} and len(msg) < 600:
             cache = recent_message_cache.setdefault(sid, {"seen": {}, "order": []})
             key = f"{obj.get('type')}|{msg}"
             last_ts = cache["seen"].get(key)
@@ -412,17 +498,18 @@ def route_logger_emit(line):
             cache["seen"][key] = t_now
             cache["order"].append(key)
             if len(cache["order"]) > MAX_CACHE_PER_SESSION:
-                # trim oldest
                 for _ in range(len(cache["order"]) - MAX_CACHE_PER_SESSION):
                     old = cache["order"].pop(0)
                     cache["seen"].pop(old, None)
+
         # --- Suppress repeated global URL list enumeration inside per-URL runs ---
         if sid and obj.get("type") == "input" and "Loaded" in msg and "raw URLs" in msg:
-            # keep only first such line
             cache = recent_message_cache.setdefault(sid, {"seen": {}, "order": []})
             if cache["seen"].get("__loaded_urls_once__"):
                 return
             cache["seen"]["__loaded_urls_once__"] = t_now
+
+        # --- Session ID fallback logic ---
         if not sid:
             # Try thread map
             mapped = thread_session_map.get(threading.get_ident())
@@ -448,12 +535,15 @@ def route_logger_emit(line):
                 if m:
                     sid = m.group(1)
                     obj["session_id"] = sid
+
+        # --- Store and emit ---
         if sid:
             store_log(sid, obj)
             socketio.emit('parser_output', obj, room=sid)
         else:
             socketio.emit('parser_output', obj)
     except Exception:
+        # Optionally, log this error somewhere else if needed
         pass
 
 def get_prompt_queue(session_id):
@@ -518,21 +608,6 @@ def is_output_bypassed(session_id: str) -> bool:
 
 def get_manual_source(session_id: str) -> str:
     return manual_source_sessions.get(session_id, 'input')
-
-def log_parser_status(msg, session_id=None, rich=False) -> None:
-    if logger.mode == "webapp":
-        status_msg = f"{msg} (session_id={session_id})" if session_id else msg
-        logger.info({
-            "level": "INFO",
-            "type": "status",  # ensure UI classifies correctly
-            "message": status_msg,
-            "session_id": session_id
-        })
-    elif rich:
-        console.panel(f"{msg}\nSession: {session_id}", title="Parser Status")
-    else:
-        log_msg = f"{msg} (session_id={session_id})" if session_id else msg
-        logger.info(log_msg)
 
 def get_all_file_lists() -> dict:
     return {
@@ -711,7 +786,12 @@ def add_url() -> None:
     if url:
         with open(URL_LIST_FILE, "a", encoding="utf-8") as f:
             f.write(url + "\n")
-        log_parser_status(f"[ADDED] {url}")
+        logger.info({
+            "level": "INFO",
+            "type": "status",
+            "message": f"[ADDED] {url}",
+            "session_id": None
+        })
 
 def allowed_file(filename) -> bool:
     parts = safe_rsplit(filename, '.', 1)
@@ -727,13 +807,28 @@ def get_url_list() -> list[str]:
 
 def list_urls() -> list[str]:
     if not os.path.exists(URL_LIST_FILE):
-        log_parser_status("[INFO] No urls.txt found.")
+        logger.info({
+            "level": "INFO",
+            "type": "status",
+            "message": "No urls.txt found.",
+            "session_id": None
+        })
         return []
     with open(URL_LIST_FILE, "r", encoding="utf-8") as f:
         urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
-    log_parser_status("\n[URLS.TXT ENTRIES]")
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "[URLS.TXT ENTRIES]",
+        "session_id": None
+    })
     for i, url in enumerate(urls, 1):
-        log_parser_status(f"{i}. {url}")
+        logger.info({
+            "level": "INFO",
+            "type": "status",
+            "message": f"{i}. {url}",
+            "session_id": None
+        })
     return urls
 
 def log_run_event(event: dict):
@@ -888,7 +983,6 @@ def api_warehouse_election_results():
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         return jsonify({"items": rows, "count": len(rows)})
     except Exception as e:
-        # Detect missing table; try one retry after creating tables
         msg = str(e)
         missing = ("does not exist" in msg.lower()) or isinstance(e, getattr(pg_errors, "UndefinedTable", tuple()))
         if missing:
@@ -923,9 +1017,19 @@ def api_warehouse_election_results():
                     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
                 return jsonify({"items": rows, "count": len(rows), "auto_created": True})
             except Exception as e2:
-                log_parser_status(f"DB error after retry: {e2}")
+                logger.error({
+                    "level": "ERROR",
+                    "type": "db",
+                    "message": f"DB error after retry: {e2}",
+                    "session_id": None
+                })
                 return jsonify({"error": f"Data API error after init attempt: {e2}"}), 500
-        log_parser_status(f"DB error: {e}")
+        logger.error({
+            "level": "ERROR",
+            "type": "db",
+            "message": f"DB error: {e}",
+            "session_id": None
+        })
         return jsonify({"error": f"Data API error: {e}"}), 500
 
 @app.route("/delete/input/<filename>", methods=["POST"])
@@ -1040,7 +1144,12 @@ def site_webmanifest():
 @app.route("/upload/input", methods=["POST"])
 def upload_to_input() -> str:
     file = request.files.get("file")
-    log_parser_status(f"Upload to input: {file.filename if file else 'No file'}")
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": f"Upload to input: {file.filename if file else 'No file'}",
+        "session_id": None
+    })
     if file and allowed_file(file.filename):
         filename = file.filename
         file.save(os.path.join(INPUT_DIR, filename))
@@ -1052,6 +1161,12 @@ def upload_to_input() -> str:
 @app.route("/upload/output", methods=["POST"])
 def upload_to_output() -> str:
     file = request.files.get("file")
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": f"Upload to output: {file.filename if file else 'No file'}",
+        "session_id": None
+    })
     if file and allowed_file(file.filename):
         filename = file.filename
         file.save(os.path.join(OUTPUT_DIR, filename))
@@ -1170,15 +1285,28 @@ def handle_get_session_history(data) -> None:
         emit('session_history', {'session_id': None, 'logs': []}, room=socket_room)
         return
     logs = session_logs.get(sid, [])
-    if not isinstance(logs, list):
-        logs = []
+    # If missing in memory, try to load from disk (orjson)
+    if (not logs or not isinstance(logs, list)) and os.path.exists(os.path.join(LOG_DIR, f"sess_{sid}.ndjson")):
+        try:
+            log_path = os.path.join(LOG_DIR, f"sess_{sid}.ndjson")
+            with open(log_path, "rb") as f:
+                logs = [orjson.loads(line) for line in f if line.strip()]
+            session_logs[sid] = logs  # restore to memory for future
+        except Exception:
+            logs = []
     emit('session_history', {'session_id': sid, 'logs': logs}, room=socket_room)
 
 @socketio.on('clone_session')
 def handle_clone_session(data) -> None:
     old_sid = str(data['session_id'])
     if not isinstance(old_sid, str):
-        logger.warning(f"Invalid session_id type: {type(old_sid)} value: {old_sid}")
+        logger.warning(
+            {
+                "level": "WARNING",
+                "type": "status",
+                "message": f"Invalid session_id type: {type(old_sid)} value: {old_sid}"
+            }
+        )
         return
     new_sid = 'sess_' + os.urandom(6).hex()
     session_metadata[new_sid] = dict(session_metadata[old_sid])
@@ -1201,19 +1329,28 @@ def handle_clone_session(data) -> None:
 def on_join(data):
     sid = resolve_session_id(data)
     if not isinstance(sid, str):
-        logger.warning(f"Invalid session_id resolved: {sid}")
+        logger.warning(
+            {
+                "level": "WARNING",
+                "type": "status",
+                "message": f"Invalid session_id resolved: {sid}"
+            }
+        )
         return
     join_room(sid)
     active_sessions_backend.add(sid)
     session_last_active[sid] = time.time()
     if sid not in session_metadata:
         create_session_metadata(sid, safe_get(data, 'username'))
+    # Notify client that join is complete (for real-time log delivery sync)
+    emit('joined', {'session_id': sid}, room=request.sid)
 
 @socketio.on('get_sessions')
 def handle_get_sessions():
     cleanup_sessions()
     sessions = [session_metadata[sid] for sid in active_sessions_backend if sid in session_metadata]
     emit('session_list', {'sessions': sessions}, broadcast=True)
+
 
 @socketio.on('connect')
 def handle_connect(auth=None):
@@ -1230,18 +1367,27 @@ def handle_connect(auth=None):
             revived = requested
             session_last_active[revived] = time.time()
             cancellation_manager.remove(revived)
-            prompt.clear_prompt_session(revived)
-            log_parser_status("Re-associated socket with existing session", revived)
+            # Do NOT clear prompt session here; let it persist for timeout
+            logger.info({
+                "level": "INFO",
+                "type": "status",
+                "message": "Re-associated socket with existing session",
+                "session_id": revived
+            })
             emit('session_id', {'session_id': revived})
         else:
-            # attempt cookie-based resurrection if logical_session_id exists but not active
             cookie_sid = session.get('logical_session_id')
             if cookie_sid and cookie_sid in session_metadata and cookie_sid not in active_sessions_backend:
                 active_sessions_backend.add(cookie_sid)
                 session_last_active[cookie_sid] = time.time()
                 revived = cookie_sid
                 emit('session_id', {'session_id': revived})
-                log_parser_status("Resurrected prior session after reload", revived)
+                logger.info({
+                    "level": "INFO",
+                    "type": "status",
+                    "message": "Resurrected prior session after reload",
+                    "session_id": revived
+                })
 
         resolved = resolve_session_id({'session_id': revived} if revived else {}, create_if_missing=False)
         if resolved:
@@ -1249,7 +1395,12 @@ def handle_connect(auth=None):
 
         active = [session_metadata[sid] for sid in active_sessions_backend if sid in session_metadata]
         emit('session_list', {'sessions': active})
-        log_parser_status("Socket connected (no auto session creation)", resolved)
+        logger.info({
+            "level": "INFO",
+            "type": "status",
+            "message": "Socket connected (no auto session creation)",
+            "session_id": resolved
+        })
     except Exception as e:
         emit('parser_output', {
             "level": "ERROR",
@@ -1267,9 +1418,15 @@ def handle_disconnect() -> None:
         if not isinstance(req_sid, str):
             req_sid = None
     logical = sid_to_session.pop(req_sid, None)
-    log_parser_status(f"Client disconnected (socket_sid={req_sid}, session_id={logical})", logical)
-    prompt.clear_prompt_session(logical or req_sid)
-    cancellation_manager.remove(logical or req_sid)
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": f"Client disconnected (socket_sid={req_sid}, session_id={logical})",
+        "session_id": logical
+    })
+    # Do NOT clear prompt session or cancel immediately; let prompt timeout handle it
+    # prompt.clear_prompt_session(logical or req_sid)
+    # cancellation_manager.remove(logical or req_sid)
     with _registry_lock:
         if logical in session_emitters:
             session_emitters.pop(logical, None)
@@ -1280,13 +1437,28 @@ def handle_set_output_mode(data) -> None:
     valid_modes = {"live", "batch"}
     session_id = resolve_session_id(data, create_if_missing=False)
     if not session_id:
-        emit_log("ERROR", "status", "No session_id provided.", None)
+        logger.error({
+            "level": "ERROR",
+            "type": "status",
+            "message": "No session_id provided.",
+            "session_id": None
+        })
         return
     if mode in valid_modes:
         session['output_mode'] = mode
-        emit_log("INFO", "status", f"Output mode set to {mode}.", session_id)
+        logger.info({
+            "level": "INFO",
+            "type": "status",
+            "message": f"Output mode set to {mode}.",
+            "session_id": session_id
+        })
     else:
-        emit_log("ERROR", "status", "Invalid output mode.", session_id)
+        logger.error({
+            "level": "ERROR",
+            "type": "status",
+            "message": "Invalid output mode.",
+            "session_id": session_id
+        })
 
 @socketio.on('parser_prompt')
 def handle_parser_prompt(data) -> None:
@@ -1295,7 +1467,12 @@ def handle_parser_prompt(data) -> None:
     session_id = resolve_session_id(data, create_if_missing=False)
     value = data.get("value", "") if isinstance(data, dict) else data
     if not session_id or session_id not in session_metadata:
-        emit_log("ERROR", "prompt", "Invalid or unknown session_id for prompt.", None, color="#eb4f43")
+        logger.error({
+            "level": "ERROR",
+            "type": "prompt",
+            "message": "Invalid or unknown session_id for prompt.",
+            "session_id": None,
+        })
         return
     prompt_session = prompt.prompt_sessions.get(session_id)
     if prompt_session:
@@ -1305,10 +1482,20 @@ def handle_parser_prompt(data) -> None:
 def handle_cancel_parser(data=None) -> None:
     session_id = resolve_session_id(data or {}, create_if_missing=False)
     if not session_id:
-        emit_log("ERROR", "cancel", "No session_id provided for cancel.", None)
+        logger.error({
+            "level": "ERROR",
+            "type": "cancel",
+            "message": "No session_id provided for cancel.",
+            "session_id": None
+        })
         return
     cancel_processing(session_id)
-    emit_log("CANCELLED", "cancel", "Cancellation requested", session_id)
+    logger.info({
+        "level": "INFO",
+        "type": "cancel",
+        "message": "Cancellation requested",
+        "session_id": session_id
+    })
     if session_id in session_threads:
         session_threads.pop(session_id, None)
     if session_id in session_prompt_queues:
@@ -1322,7 +1509,12 @@ def handle_cancel_parser(data=None) -> None:
 def handle_toggle_output_bypass(data=None):
     sid = resolve_session_id(data or {}, create_if_missing=False)
     if not sid:
-        emit_log("ERROR", "error", "No session_id for output bypass toggle.", None)
+        logger.error({
+            "level": "ERROR",
+            "type": "status",
+            "message": "No session_id for output bypass toggle.",
+            "session_id": None
+        })
         return
     if sid in output_bypass_sessions:
         output_bypass_sessions.remove(sid)
@@ -1331,24 +1523,43 @@ def handle_toggle_output_bypass(data=None):
         output_bypass_sessions.add(sid)
         state = True
     emit('output_bypass_state', {"session_id": sid, "output_bypass": state}, room=sid)
-    emit_log("INFO", "status", f"Output bypass {'ENABLED' if state else 'DISABLED'}", sid)
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": f"Output bypass {'ENABLED' if state else 'DISABLED'}",
+        "session_id": sid
+    })
 
 @socketio.on('set_manual_source')
 def handle_set_manual_source(data=None):
     sid = resolve_session_id(data or {}, create_if_missing=False)
     source = safe_lower(safe_get(data or {}, 'file_source', ''))
     if not sid or source not in {'input', 'uploads'}:
-        emit_log("ERROR", "input", "Invalid manual source update.", sid)
+        logger.error({
+            "level": "ERROR",
+            "type": "input",
+            "message": "Invalid manual source update.",
+            "session_id": sid
+        })
         return
     manual_source_sessions[sid] = source
-    emit_log("INFO", "status", f"Manual file source set to '{source}'.", sid)
-    socketio.emit('manual_source_state', {"session_id": sid, "file_source": source}, room=sid)
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": f"Manual file source set to '{source}'.",
+        "session_id": sid
+    })
 
 @socketio.on('delete_session')
 def handle_delete_session(data) -> None:
     sid = resolve_session_id(data or {}, create_if_missing=False)
     if not isinstance(sid, str):
-        logger.warning(f"Invalid session_id type in delete: {type(sid)} value: {sid}")
+        logger.warning({
+            "level": "WARNING",
+            "type": "delete",
+            "message": f"Invalid session_id type in delete: {type(sid)} value: {sid}",
+            "session_id": sid
+        })
         return
     active_sessions_backend.discard(sid)
     session_last_active.pop(sid, None)
@@ -1356,84 +1567,85 @@ def handle_delete_session(data) -> None:
     session_prompt_queues.pop(sid, None)
     session_threads.pop(sid, None)
     session_logs.pop(sid, None)
+    # Remove log file from disk
+    try:
+        log_path = os.path.join(LOG_DIR, f"sess_{sid}.ndjson")
+        if os.path.exists(log_path):
+            os.remove(log_path)
+    except Exception:
+        pass
     with _registry_lock:
         session_emitters.pop(sid, None)
     emit('session_deleted', {'session_id': sid}, broadcast=True)
 
 @socketio.on('run_parser')
 def handle_run_parser(data=None) -> None:
+    """
+    Ensures session join is fully propagated before emitting any logs,
+    synchronizes session/thread state, and launches the parser pipeline.
+    """
     cleanup_sessions()
     payload = data if isinstance(data, dict) else {}
     session_id = resolve_session_id(payload, create_if_missing=True)
     if not isinstance(session_id, str):
-        emit_log("ERROR", "status", "Unable to resolve session_id.", None)
+        logger.error({
+            "level": "ERROR",
+            "type": "status",
+            "message": "Unable to resolve session_id.",
+            "session_id": None
+        })
         return
+
+    # --- Ensure join_room is fully propagated before any log emission ---
     join_room(session_id)
+    socketio.sleep(0.25)  # More robust than time.sleep for Flask-SocketIO (yields event loop)
+
+    # --- Sync socket/session mapping ---
     try:
         socket_sid = safe_sid()
     except Exception:
         socket_sid = getattr(request, 'sid', None)
     if isinstance(socket_sid, str):
         sid_to_session[socket_sid] = session_id
+
+    # --- Ensure session metadata exists ---
     if session_id not in session_metadata:
         create_session_metadata(session_id)
     meta = safe_get(session_metadata, session_id, {})
+
+    # --- Prevent concurrent runs ---
     if safe_get(meta, 'locked') and safe_is_alive(session_id):
-        emit_log("ERROR", "status", "Session is locked. Wait for current job to finish.", session_id)
+        logger.error({
+            "level": "ERROR",
+            "type": "status",
+            "message": "Session is locked. Wait for current job to finish.",
+            "session_id": session_id
+        })
         return
     if safe_is_alive(session_id):
-        emit_log("WARNING", "status", "Parser already running for this session.", session_id)
+        logger.warning({
+            "level": "WARNING",
+            "type": "status",
+            "message": "Parser already running for this session.",
+            "session_id": session_id
+        })
         return
+
+    # --- Session config ---
     requested_source = safe_lower(safe_get(payload, 'file_source', get_manual_source(session_id)))
     if requested_source not in {'input', 'uploads'}:
         requested_source = 'input'
     manual_source_sessions[session_id] = requested_source
     output_bypass_flag = is_output_bypassed(session_id)
     lock_session(session_id)
-    log_parser_status("Parser connected. Starting parser run...", session_id, rich=True)
-    cancel_flag = cancellation_manager.get_flag(session_id)
-    prompt_queue = get_prompt_queue(session_id)
 
-    def emit_to_socketio(line):
-        sid = session_id
-        try:
-            if isinstance(line, dict):
-                raw_obj = line
-            elif isinstance(line, str):
-                txt = line.strip()
-                if txt.startswith("{"):
-                    try:
-                        raw_obj = orjson.loads(txt)
-                    except Exception:
-                        raw_obj = {"level": "INFO", "type": "raw", "message": line}
-                else:
-                    raw_obj = {"level": "INFO", "type": "raw", "message": line}
-            else:
-                raw_obj = {"level": "INFO", "type": "raw", "message": str(line)}
-            raw_obj.setdefault("session_id", sid)
-            norm = normalize_log_obj(raw_obj)
-            if norm.get("type") == "heartbeat":
-                store_log(sid, norm)
-                socketio.emit('session_heartbeat', {"session_id": sid, "timestamp": norm["timestamp"]}, room=sid)
-                return
-            store_log(sid, norm)
-            socketio.emit('parser_output', norm, room=sid)
-        except Exception as e:
-            # Log the emit failure via dispatcher (so you can see it in CLI & UI)
-            logger.error({
-                "level": "ERROR",
-                "type": "exception",
-                "message": f"emit_to_socketio failure: {e}",
-                "session_id": sid
-            })
-    # Register per-session emitter (used by prompt / manual emits)
+    # --- Register per-session emitter (used by prompt/manual emits) ---
     with _registry_lock:
-        session_emitters[session_id] = emit_to_socketio
-    # Install dispatcher only ONCE globally (idempotent)
+        session_emitters[session_id] = socketio_emit_func
+
+    # --- Install dispatcher only ONCE globally (idempotent) ---
     logger.set_mode("webapp")
     logger.set_format("json")
-    # Mirror only higher-priority levels to console (simple filter wrapper)
-    original_emit = getattr(logger, "socketio_emit_func", None)
     def filtered_emit(line):
         try:
             obj = orjson.loads(line) if isinstance(line, str) and line.strip().startswith("{") else None
@@ -1444,13 +1656,13 @@ def handle_run_parser(data=None) -> None:
             logger.enable_console_echo_webapp(True)
         else:
             logger.enable_console_echo_webapp(False)
-        route_logger_emit(line)
+        socketio_emit_func(line)
     logger.set_socketio_emit_func(filtered_emit)
     prompt.set_mode("webapp")
     prompt.set_socketio_emit_func(lambda msg: socketio.emit(
         'parser_output',
         normalize_log_obj(msg if isinstance(msg, dict) else {
-            "level": "PROMPT",
+            "level": "info",
             "type": "prompt",
             "message": str(msg),
             "session_id": session_id
@@ -1458,12 +1670,21 @@ def handle_run_parser(data=None) -> None:
         room=session_id
     ))
 
-    emit_log(
-        "INFO",
-        "status",
-        f"Launching parser (source={requested_source}, output_bypass={'on' if output_bypass_flag else 'off'})",
-        session_id
-    )
+    # --- Now emit initial logs (client is guaranteed in room) ---
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": "Parser connected. Starting parser run...",
+        "session_id": session_id
+    })
+    logger.info({
+        "level": "INFO",
+        "type": "status",
+        "message": f"Launching parser (source={requested_source}, output_bypass={'on' if output_bypass_flag else 'off'})",
+        "session_id": session_id
+    })
+
+    # --- Run event logging ---
     run_id = f"run_{int(time.time()*1000)}"
     start_ts = datetime.now(timezone.utc).isoformat()
     log_run_event({
@@ -1475,26 +1696,40 @@ def handle_run_parser(data=None) -> None:
         "output_bypass": output_bypass_flag,
         "status": "running"
     })
-    
+
+    # --- Prepare cancellation and prompt queue ---
+    cancel_flag = cancellation_manager.get_flag(session_id)
+    prompt_queue = get_prompt_queue(session_id)
+
+    # --- Launch parser in a dedicated thread ---
     def worker_wrapper():
         start_time = time.time()
-        # Map this worker thread to session for logger emits lacking session_id
         thread_session_map[threading.get_ident()] = session_id
         try:
             process_urls_for_web(
                 prompt_queue,
                 session_id,
                 cancel_flag,
-                emit_func=emit_to_socketio,
+                emit_func=socketio_emit_func,
                 output_bypass=output_bypass_flag,
                 manual_source=requested_source,
                 disable_internal_heartbeat=True
             )
-            emit_log("INFO", "status", "Parser run completed.", session_id)
+            logger.info({
+                "level": "INFO",
+                "type": "status",
+                "message": "Parser run completed.",
+                "session_id": session_id
+            })
             status = "ok"
             err = None
         except Exception as e:
-            emit_log("ERROR", "exception", f"Parser run failed: {e}", session_id)
+            logger.error({
+                "level": "ERROR",
+                "type": "exception",
+                "message": f"Parser run failed: {e}",
+                "session_id": session_id
+            })
             status = "error"
             err = str(e)
         finally:
@@ -1513,8 +1748,7 @@ def handle_run_parser(data=None) -> None:
             unlock_session(session_id)
             thread_session_map.pop(threading.get_ident(), None)
 
-    thread = Thread(target=worker_wrapper, name=f"parser-{session_id}", daemon=True)
-    thread.start()
+    thread = socketio.start_background_task(worker_wrapper)
     session_threads[session_id] = thread
 
 # Heartbeat thread startup (idempotent)
@@ -1525,11 +1759,14 @@ if 'heartbeat_thread' not in globals() or not isinstance(globals().get('heartbea
 
 # Proactively ensure tables at startup (non-fatal if fails)
 ensure_db_tables()
+
+# Clean up old session log files on startup (keep only active or recent)
+cleanup_old_log_files(LOG_DIR, active_sessions_backend, keep_days=7)
         
 # 7. Main Entrypoint
 if __name__ == "__main__":
     try:
         port = int(os.environ.get("PORT", 5000))
-        socketio.run(app, host="0.0.0.0", port=port)
+        socketio.run(app, host="0.0.0.0", port=port, debug=False, use_reloader=False)
     finally:
         _shutdown_event.set()

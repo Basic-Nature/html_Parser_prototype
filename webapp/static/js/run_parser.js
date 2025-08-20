@@ -14,11 +14,6 @@
   const DISPLAY_TRUNCATE = 160;
   const DUP_WINDOW_MS = 600;
 
-  // Auto prompt (respond "all" to selection prompt if user does nothing)
-  const AUTO_PROMPT_ENABLED = true;
-  const AUTO_PROMPT_PATTERN = /enter indices.*(all)/i;
-  const AUTO_PROMPT_RESPONSE = 'all';
-
   // -------- Utilities --------
   const $  = sel => document.querySelector(sel);
   const $$ = sel => Array.from(document.querySelectorAll(sel));
@@ -77,7 +72,6 @@
   let lastFlush = 0;
   const BATCH_INTERVAL = 40;
   const dupMap = new Map();
-  const seenLogTypes = new Set(['all']);
   const typeCounts = { all: 0 }; 
   let urlIndexMap = {};
   let lastSentSourceBySession = {};
@@ -154,6 +148,32 @@
   }
   el.outputModeSelect?.setAttribute('aria-label','Select output delivery mode');
   el.logFilterSelect?.setAttribute('aria-label','Filter logs by level');
+
+  // Canonical levels and types
+  const CANONICAL_LEVELS = [
+    'INFO', 'DEBUG', 'WARNING', 'ERROR', 'CRITICAL', 'TRACE'
+  ];
+  const CANONICAL_TYPES = [
+    'status', 'input', 'output', 'manual_override', 'ai_analysis', 'stream', 'router',
+    'handler', 'batch', 'download', 'browser', 'validation', 'exception', 'cancel',
+    'summary', 'cache', 'prompt', 'heartbeat', 'database', 'delete', 'other'
+  ];
+
+  // Pre-populate log level filter
+  if (el.logFilterSelect) {
+    el.logFilterSelect.innerHTML = '<option value="all">All</option>' +
+      CANONICAL_LEVELS.map(lvl => `<option value="${lvl.toLowerCase()}">${lvl}</option>`).join('');
+  }
+
+  // Pre-populate log type filter
+  if (logTypeSelect) {
+    logTypeSelect.innerHTML = '<option value="all">All Types</option>' +
+      CANONICAL_TYPES.map(type => `<option value="${type}">${type.replace(/_/g, ' ')}</option>`).join('');
+  }
+
+  // Use these sets for filter option tracking
+  const seenLogTypes = new Set(['all', ...CANONICAL_TYPES]);
+  const dynamicLevels = new Set(['all', ...CANONICAL_LEVELS.map(l => l.toLowerCase())]);
 
   // -------- Sessions --------
   function getSessions() {
@@ -443,36 +463,34 @@
 
   const levelIconMap = {
     INFO:'🛈', DEBUG:'⚙️', WARNING:'⚠️', ERROR:'⛔', CRITICAL:'🚨',
-    SUCCESS:'✅', CANCELLED:'🛑', CANCEL:'🛑', EXCEPTION:'⛔',
-    PROGRESS:'⏳', PROMPT:'💬', SUMMARY:'🧾', FATAL:'💥'
+    TRACE:'🔍'
   };
   const levelColorMap = {
     INFO:'#00ffe7', DEBUG:'#8ecae6', WARNING:'#ffd166', ERROR:'#eb4f43', CRITICAL:'#ff006e',
-    SUCCESS:'#74c69d', CANCELLED:'#eb4f43', CANCEL:'#eb4f43', EXCEPTION:'#ff7b00',
-    PROGRESS:'#5fa8d3', PROMPT:'#d4af37', SUMMARY:'#9d4edd', FATAL:'#ff2e2e', OTHER:'#ffffff'
+    TRACE:'#ff8c00'
   };
   const typeColorMap = {
-    status:'#86efac',
-    input:'#38bdf8',
-    output:'#c084fc',
-    manual_override:'#fb923c',
-    ai_analysis:'#f472b6',
-    stream:'#34d399',
-    router:'#fde047',
-    validation:'#fcd34d',
-    cancel:'#f87171',
-    heartbeat:'#60a5fa',
-    summary:'#a78bfa',
-    cache:'#a3a3a3',
-    handler:'#f9a8d4',
-    batch:'#67e8f9',
-    download:'#93c5fd',
-    browser:'#d8b4fe',
-    exception:'#ff7b00',
-    error:'#eb4f43',
-    fatal:'#ff006e',
-    other:'#ffffff',
-    prompt:'#d4af37'
+    status:           '#264653',
+    input:            '#38bdf8',
+    output:           '#c084fc',
+    manual_override:  '#fb923c',
+    ai_analysis:      '#f472b6',
+    stream:           '#34d399',
+    router:           '#fde047',
+    handler:          '#f9a8d4',
+    batch:            '#67e8f9',
+    download:         '#93c5fd',
+    browser:          '#d8b4fe',
+    validation:       '#fcd34d',
+    exception:        '#ff7b00',
+    cancel:           '#f87171',
+    summary:          '#a78bfa',
+    cache:            '#a3a3a3',
+    prompt:           '#d4af37',
+    heartbeat:        '#60a5fa',
+    database:         '#86efac',
+    delete:           '#f87171',
+    other:            '#555'
   };
   function hashColor(seed) {
     let h = 0;
@@ -482,8 +500,6 @@
     const light = 45 + (h >> 6) % 20;
     return `hsl(${hue} ${sat}% ${light}%)`;
   }
-
-  const dynamicLevels = new Set(['all']);
 
   function ensureFilterOptions(selectEl, valueSet, incoming) {
     const v = (incoming||'').toLowerCase();
@@ -532,16 +548,6 @@
     });
   }
 
-  function maybeAutoRespondPrompt(obj) {
-    if (!AUTO_PROMPT_ENABLED) return;
-    if (obj.type === 'prompt' && AUTO_PROMPT_PATTERN.test(obj.full_text || '')) {
-      setTimeout(() => {
-        if (!el.promptInput || el.promptInput.value.trim()) return;
-        socket.emit('parser_prompt', { session_id: activeSessionId, value: AUTO_PROMPT_RESPONSE });
-      }, 500);
-    }
-  }
-
   function renderParserOutput(raw) {
     if (!el.outputDiv) return;
     // If empty-URL condition appears, inject hint once
@@ -562,7 +568,7 @@
     }
 
     const obj = normalizeLog(raw);
-    maybeAutoRespondPrompt(obj);
+    if (!obj || typeof obj !== 'object' || !obj.type || !obj.level) return;
 
     if (obj.type === 'heartbeat' && !SHOW_HEARTBEAT_LINES) return;
 
@@ -591,8 +597,12 @@
       if (!isNaN(d.getTime())) timeStr = d.toLocaleTimeString();
     }
 
-    if (obj.type === 'prompt' && el.promptInput)
+    if (obj.type === 'prompt' && el.promptInput) {
       el.promptInput.placeholder = obj.full_text || 'Type a command...';
+      el.promptInput.parentElement?.classList.remove('hidden');
+      el.promptInput.disabled = false;
+      el.promptInput.focus();
+    }
 
     const levelIcon = levelIconMap[obj.level] || '🛈';
 
@@ -817,11 +827,29 @@
     if (!activeSessionId && stored) {
       setActiveSession(stored);
       joinSession(stored);
+      // Flush any early logs immediately after session is set/joined
+      if (earlyQueue.length && el.outputDiv) {
+        earlyQueue.forEach(d => renderParserOutput(d));
+        flushBatch();
+        earlyQueue = [];
+      }
     }
     if (!activeSessionId) {
       addNewSession();
+      // addNewSession calls setActiveSession, so flush earlyQueue here too
+      if (earlyQueue.length && el.outputDiv) {
+        earlyQueue.forEach(d => renderParserOutput(d));
+        flushBatch();
+        earlyQueue = [];
+      }
     } else {
       joinSession(activeSessionId);
+      // Ensure logs are flushed after join
+      if (earlyQueue.length && el.outputDiv) {
+        earlyQueue.forEach(d => renderParserOutput(d));
+        flushBatch();
+        earlyQueue = [];
+      }
     }
     emitManualFileSource();
     clearOutput();
@@ -829,9 +857,15 @@
     el.runBtn.disabled = true;
     el.runBtn.setAttribute('data-running','true');
     el.runBtn.textContent = 'Running...';
-    socket.emit('run_parser', { session_id: activeSessionId, file_source: currentFileSource() });
-    setTimeout(() => socket && socket.emit('get_session_history', { session_id: activeSessionId }), 600);
-    // Re-enable only after a session_list shows unlocked
+    // --- Wait for 'joined' event before emitting 'run_parser' ---
+    socket.once('joined', function(data) {
+      if (data.session_id === activeSessionId) {
+        socket.emit('run_parser', { session_id: activeSessionId, file_source: currentFileSource() });
+        setTimeout(() => socket && socket.emit('get_session_history', { session_id: activeSessionId }), 600);
+      }
+    });
+    joinSession(activeSessionId); // Ensure join is called (again, safe)
+    // -----------------------------------------------------------
     setTimeout(() => { if (!el.runBtn.getAttribute('data-running')) el.runBtn.disabled = false; }, 4000);
   }
 
@@ -1018,7 +1052,10 @@
   function loadSessionLogs(sid) { socket && socket.emit('get_session_history', { session_id: sid }); }
 
   function connectSocket() {
+    // Disconnect any existing socket cleanly
     if (socket && typeof socket.disconnect === 'function') socket.disconnect();
+
+    // Restore previous session ID if available
     let prevSessionId = localStorage.getItem('session_id') || '';
     try {
       if (prevSessionId.startsWith('{')) {
@@ -1026,63 +1063,114 @@
         if (parsed.session_id) prevSessionId = parsed.session_id;
       }
     } catch {}
+
+    // Create new socket connection
     socket = window.socket = io({
       query: { prev_session_id: prevSessionId },
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 800,
-      transports: ['websocket'],          // force WS (avoid polling duplicates)
-      pingInterval: 20000,                // MUST match server ping_interval (ms)
-      pingTimeout: 60000                  // MUST match server ping_timeout (ms)
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
+      transports: ['websocket'],
+      pingInterval: 10000,
+      pingTimeout: 60000
     });
 
-    socket.on('connect', () => {
+    // --- Socket Event Handlers ---
+
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleConnectError);
+    socket.on('session_id', handleSessionId);
+    socket.on('session_history', handleSessionHistory);
+    socket.on('parser_output', handleParserOutput);
+    socket.on('output_bypass_state', ({ output_bypass }) => applyBypassState(!!output_bypass));
+    socket.on('manual_source_state', handleManualSourceState);
+    socket.on('session_list', handleSessionList);
+    socket.on('session_deleted', handleSessionDeleted);
+    socket.on('session_heartbeat', handleSessionHeartbeat);
+
+    // Initial fetch of sessions
+    socket.emit('get_sessions');
+
+    // --- Handler Functions ---
+
+    function handleConnect() {
       hideDisconnectedMessage();
       joinedSessions.clear();
       renderSessionList();
-      // Auto-join and fetch history for every remembered session
+      // Restore or join active session and fetch history
       const sessions = getSessions();
-      sessions.forEach(s => {
-        joinSession(s);
-        socket.emit('get_session_history', { session_id: s });
-      });
-      // Prefer previously active
-      const last = localStorage.getItem('session_id');
-      if (last && sessions.includes(last)) {
-        setActiveSession(last);
-        restoreCachedLogs(last);
+      if (activeSessionId && sessions.includes(activeSessionId)) {
+        joinSession(activeSessionId);
+        socket.emit('get_session_history', { session_id: activeSessionId });
       } else if (sessions.length) {
         setActiveSession(sessions[0]);
-        restoreCachedLogs(sessions[0]);
+        joinSession(sessions[0]);
+        socket.emit('get_session_history', { session_id: sessions[0] });
       }
-    });
-    socket.on('disconnect', showDisconnectedMessage);
-    socket.on('connect_error', showDisconnectedMessage);
+    }
 
-    socket.on('session_id', data => {
+    function handleDisconnect(reason) {
+      showDisconnectedMessage();
+      console.warn('Socket disconnected:', reason);
+    }
+
+    function handleConnectError(err) {
+      showDisconnectedMessage();
+      console.error('Socket connect error:', err);
+    }
+
+    function handleSessionId(data) {
       const sid = typeof data === 'string' ? data : (data && data.session_id) || '';
       const sessions = getSessions();
-      if (sid && !sessions.includes(sid)) { sessions.push(sid); lsSetJSON('active_sessions', sessions); }
+      if (sid && !sessions.includes(sid)) {
+        sessions.push(sid);
+        lsSetJSON('active_sessions', sessions);
+      }
       setActiveSession(sid);
       joinSession(sid);
       renderSessionList();
       socket.emit('get_session_history', { session_id: sid });
-    });
+    }
 
-    socket.on('session_history', data => {
+    function handleSessionHistory(data) {
       if (!data || !Array.isArray(data.logs)) return;
       clearOutput();
       data.logs.forEach(l => renderParserOutput(l));
       flushBatch();
-    });
+      // Prompt recovery: if last log is a prompt, re-show prompt input
+      const lastPrompt = data.logs.slice().reverse().find(l => l.type === 'prompt');
+      if (lastPrompt && el.promptInput) {
+        el.promptInput.placeholder = lastPrompt.full_text || 'Type a command...';
+        el.promptInput.parentElement?.classList.remove('hidden');
+        el.promptInput.disabled = false;
+        el.promptInput.focus();
+      }
+    }
 
-  socket.on('parser_output', d => {
+    function handleParserOutput(d) {
+      console.log('[LIVE LOG]', d);
       if (!activeSessionId) {
         earlyQueue.push(d);
         return;
       }
+
+      // --- Prompt handling ---
+      if (d && d.type === 'prompt' && d.session_id === activeSessionId) {
+        showPromptModal(d.message, function(userInput) {
+          socket.emit('parser_prompt', { session_id: activeSessionId, value: userInput });
+        });
+        renderParserOutput(d);
+        if (d.session_id) appendCacheLog(d.session_id, d);
+        return;
+      }
+
+      // --- Normal log handling ---
       renderParserOutput(d);
       if (d && d.session_id) appendCacheLog(d.session_id, d);
+
+      // --- Status: completed logic ---
       if (d && d.session_id === activeSessionId && d.type === 'status') {
         if (/completed/i.test(d.message||'')) {
           if (el.runBtn) {
@@ -1093,36 +1181,36 @@
           }
         }
       }
-  });
+    }
 
-    socket.on('output_bypass_state', ({ output_bypass }) => applyBypassState(!!output_bypass));
-    socket.on('manual_source_state', ({ session_id, file_source }) => {
+    function handleManualSourceState({ session_id, file_source }) {
       if (session_id === activeSessionId && el.fileSourceSelect) {
         el.fileSourceSelect.value = file_source;
         syncSourceClass();
       }
-    });
-    socket.on('session_list', data => {
-      if (Array.isArray(data.sessions)) {
-        const ids = data.sessions.map(s => (s && typeof s === 'object' && s.session_id) ? s.session_id : s);
-        sessionMetaIndex = {};
-        data.sessions.forEach(s => {
-          if (s && s.session_id) sessionMetaIndex[s.session_id] = s;
-        });
-        lsSetJSON('active_sessions', ids);
-        renderSessionList();
-        if (!ids.includes(activeSessionId)) setActiveSession(ids[0] || '');
-        updateRunButtonLock();
-      }
-    });
-    socket.on('session_deleted', ({ session_id }) => {
+    }
+
+    function handleSessionList(data) {
+      if (!Array.isArray(data.sessions)) return;
+      const ids = data.sessions.map(s => (s && typeof s === 'object' && s.session_id) ? s.session_id : s);
+      sessionMetaIndex = {};
+      data.sessions.forEach(s => {
+        if (s && s.session_id) sessionMetaIndex[s.session_id] = s;
+      });
+      lsSetJSON('active_sessions', ids);
+      renderSessionList();
+      if (!ids.includes(activeSessionId)) setActiveSession(ids[0] || '');
+      updateRunButtonLock();
+    }
+
+    function handleSessionDeleted({ session_id }) {
       const filtered = getSessions().filter(s => s !== session_id);
       lsSetJSON('active_sessions', filtered);
       if (activeSessionId === session_id) setActiveSession(filtered[0] || '');
       renderSessionList();
-    });
+    }
 
-    socket.on('session_heartbeat', ({ session_id }) => {
+    function handleSessionHeartbeat({ session_id }) {
       const btn = document.querySelector(`.session-btn[data-sid="${session_id}"]`);
       if (!btn) return;
       let hb = btn.querySelector('.heartbeat-indicator');
@@ -1144,9 +1232,39 @@
         wave.classList.remove('pulse');
         wave.classList.add('flatline');
       }, 3000);
-    });
+    }
 
-    socket.emit('get_sessions');
+    // --- Prompt Modal (replace with your own UI as needed) ---
+    function showPromptModal(message, callback) {
+      if (!el.promptInput) return;
+      el.promptInput.placeholder = message || "Enter value:";
+      el.promptInput.disabled = false;
+      el.promptInput.value = '';
+      el.promptInput.parentElement?.classList.remove('hidden');
+      el.promptInput.focus();
+
+      // Remove any previous handler
+      el.promptInput.onkeydown = null;
+      el.promptInput.onkeyup = null;
+
+      // Submit on Enter
+      el.promptInput.onkeydown = function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const val = el.promptInput.value.trim();
+          el.promptInput.value = '';
+          el.promptInput.disabled = true;
+          el.promptInput.parentElement?.classList.add('hidden');
+          callback(val);
+        }
+        if (e.key === 'Escape') {
+          el.promptInput.value = '';
+          el.promptInput.disabled = true;
+          el.promptInput.parentElement?.classList.add('hidden');
+          callback('');
+        }
+      };
+    }
   }
 
   // -------- Init sub-blocks --------

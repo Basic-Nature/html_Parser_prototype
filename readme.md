@@ -105,13 +105,90 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
      - **Accessible:** Designed for both technical and non-technical users, making it ideal for teams, researchers, and those learning to code.
    - **How to Use the Web UI:**
      1. Install requirements:  
-        `pip install -r requirements.txt`
+        `pip install -r requirements.txt`  
         `python -m spacy download en_core_web_sm`
-     2. Set up your `.env` file as needed.
+     2. **Set up your `.env` file** (or set environment variables in your shell or IDE launch configuration):  
+        - Required variables include:  
+          - `FLASK_SECRET_KEY`
+          - `POSTGRES_USER`
+          - `POSTGRES_PASSWORD`
+          - `POSTGRES_DB`
+          - `POSTGRES_HOST`
+          - `POSTGRES_PORT`
+          - `DATA_API_URL`
+          - `CSP_MODE`
+        - You can copy `.env.template` to `.env` and fill in your values.
+        - **For local development:**  
+          - Install [python-dotenv](https://pypi.org/project/python-dotenv/) to automatically load variables from `.env`:
+
+            ```sh
+
+            pip install python-dotenv
+
+            ```
+
+          - **Note:** `python-dotenv` is not included in `requirements.txt` and is not needed in production or on Azure.
      3. Start the web server:  
-        `python -m webapp.Smart_Elections_Parser_Webapp`
+        `python -m webapp.Smart_Elections_Parser_Webapp`  
+        *(or use the VS Code launch configuration "Python Debugger: Eventlet Entrypoint")*
      4. Open your browser to `http://localhost:5000`
+   - **Note:**  
+     If you run `python -m webapp.Smart_Elections_Parser_Webapp` directly, you must ensure all required environment variables are set, or the app will not start.
    - The web UI is optional—**all core parser features remain available via the CLI**.
+
+---
+
+### ⚙️ Setting Environment Variables
+
+Before running the web server, you must set the required environment variables. You can do this in several ways:
+
+**Option 1: Use a `.env` file (recommended for local development):**
+
+- Copy `.env.template` to `.env` and fill in your values.
+- Install `python-dotenv` locally:
+
+  ```sh
+
+  pip install python-dotenv
+
+  ```
+
+- The app will automatically load variables from `.env` if present.
+
+**Option 2: Set environment variables in your shell before running (Windows Command Prompt):**
+
+```sh
+set FLASK_SECRET_KEY=yourkey
+set POSTGRES_USER=postgres
+set POSTGRES_PASSWORD=yourpassword
+set POSTGRES_DB=warehouse_election_results
+set POSTGRES_HOST=localhost
+set POSTGRES_PORT=5432
+set DATA_API_URL=/api/warehouse_election_results
+set CSP_MODE=STRICT
+python webapp/run_eventlet.py
+```
+
+**Or, on Linux/macOS:**
+
+```sh
+export FLASK_SECRET_KEY=yourkey
+export POSTGRES_USER=postgres
+export POSTGRES_PASSWORD=yourpassword
+export POSTGRES_DB=warehouse_election_results
+export POSTGRES_HOST=localhost
+export POSTGRES_PORT=5432
+export DATA_API_URL=/api/warehouse_election_results
+export CSP_MODE=STRICT
+python webapp/run_eventlet.py
+```
+
+Alternatively, you can set these variables in your IDE launch configuration.
+
+**Production (Azure):**
+
+- Set environment variables in the Azure App Service configuration panel.
+- Do **not** include `.env` or `python-dotenv` in your production deployment.
 
 ---
 

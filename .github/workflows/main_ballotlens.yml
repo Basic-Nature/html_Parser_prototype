@@ -73,6 +73,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install --no-cache-dir --prefer-binary -r requirements.txt
 
+      - name: Install Playwright browsers
+        run: |
+          python -m playwright install --with-deps
+
       - name: Remove unnecessary files from site-packages
         run: |
           site_packages=$(python -c "import site; print(site.getsitepackages()[0])")
@@ -131,7 +135,8 @@ jobs:
               POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}" \
               POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}" \
               DATA_API_URL="/api/warehouse_election_results" \
-              CSP_MODE="STRICT"
+              CSP_MODE="STRICT" \
+              HEADLESS_DEFAULT="True" \
 
 
       - name: Set Azure startup command
@@ -145,10 +150,17 @@ jobs:
             --resource-group BallotLens_group \
             --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
 
+      - name: Create deployment package (webapp only)
+        run: |
+          zip -r webapp.zip webapp requirements.txt
+
+      - name: List contents of deployment package
+        run: unzip -l webapp.zip          
+
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'BallotLens'
           slot-name: 'Production'
-          package: .
+          package: webapp.zip

@@ -176,7 +176,7 @@ def prompt_url_selection(
         session_id=session_id,
         context={"urls": urls, "processed": processed}
     )
-
+    print("TRACE: prompt_url_selection user_input:", user_input)
     # Check cancel_flag after prompt
     if cancel_flag is not None and hasattr(cancel_flag, "is_set") and callable(cancel_flag.is_set):
         if cancel_flag.is_set():
@@ -919,13 +919,14 @@ def main(
             "session_id": session_id
         }
         logger.warning(payload)
-
+        print("TRACE: About to prompt for URL selection. urls:", urls)
         selected_urls = prompt_url_selection(
             urls,
             processed_info,
             session_id=session_id,
             cancel_flag=cancel_flag
         )
+        print("TRACE: prompt_url_selection returned:", selected_urls)
         if not selected_urls:
             msg = "No URLs selected. Exiting."
             payload = {

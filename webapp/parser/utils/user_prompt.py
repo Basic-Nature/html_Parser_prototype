@@ -36,45 +36,75 @@ class PromptCancelled(Exception):
 
 class PromptSession(ContextManager):
     """Session object for webapp prompt responses."""
-    def __init__(self, session_id: Optional[str] = None, context: Optional[dict] = None, expiry_seconds: int = 600):
+    def __init__(
+        self,
+        session_id: Optional[str] = None,
+        context: Optional[dict] = None,
+        expiry_seconds: int = 600
+    ):
         self.event = threading.Event()
         self.response = None
         self.session_id = session_id
         self.context = context or {}
         self.created_at = datetime.datetime.now(timezone.utc)
+        self.last_active = self.created_at
         self.expiry_seconds = expiry_seconds
+        self.cancelled = False
+        self.timed_out = False
 
     def __enter__(self) -> 'PromptSession':
-        # Reset state for new session
         self.response = None
         self.event.clear()
         self.created_at = datetime.datetime.now(timezone.utc)
+        self.last_active = self.created_at
+        self.cancelled = False
+        self.timed_out = False
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
-        # Always set the event to unblock any waiting threads
         self.event.set()
-        # Optionally log exceptions for debugging
         if exc_type is not None:
             print(f"[PromptSession] Exception in context: {exc_type.__name__}: {exc_val}")
             traceback.print_tb(exc_tb)
-        # Return False to propagate exceptions
         return False
 
     def wait_for_response(self, timeout: Optional[float] = None) -> Any:
         """Wait for a response with optional timeout."""
-        self.event.wait(timeout)
+        self.last_active = datetime.datetime.now(timezone.utc)
+        finished = self.event.wait(timeout)
+        if not finished:
+            self.timed_out = True
         return self.response
 
     def set_response(self, response: Any) -> None:
         """Set the response and notify waiting thread."""
         self.response = response
+        self.last_active = datetime.datetime.now(timezone.utc)
+        self.event.set()
+
+    def cancel(self) -> None:
+        """Cancel the prompt session."""
+        self.cancelled = True
+        self.last_active = datetime.datetime.now(timezone.utc)
         self.event.set()
 
     def is_expired(self, now: Optional[datetime.datetime] = None) -> bool:
         """Check if the session has expired."""
         now = now or datetime.datetime.now(timezone.utc)
-        return (now - self.created_at).total_seconds() > self.expiry_seconds      
+        return (now - self.last_active).total_seconds() > self.expiry_seconds
+
+    @property
+    def status(self) -> str:
+        """Return the current status of the prompt session."""
+        if self.cancelled:
+            return "cancelled"
+        if self.timed_out:
+            return "timed_out"
+        if self.response is not None:
+            return "responded"
+        if self.is_expired():
+            return "expired"
+        return "pending"      
 
 class UserPrompt(ContextManager):
     """
@@ -89,20 +119,96 @@ class UserPrompt(ContextManager):
 
     def __init__(
         self,
+        timeout_sec: int = 180,
         mode: Optional[str] = None,
         socketio_emit_func: Optional[Callable[[str], None]] = None,
         file_path: Optional[str] = None,
     ) -> None:
-        """
-        Initialize the UserPrompt.
-        """
         self.mode = mode
         self.socketio_emit_func = socketio_emit_func
         self.prompt_sessions: Dict[str, PromptSession] = {}
+        self.timeout_sec = timeout_sec
         self.file_path = file_path
         self._pending_delete: Dict[str, float] = {}  # session_id -> delete_at timestamp
+        self._cleanup_lock = threading.Lock()
         self._cleanup_thread_started = False
-        self._cleanup_lock = threading.Lock()        
+        self._start_cleanup_thread()      
+
+    def _start_cleanup_thread(self):
+        if self._cleanup_thread_started:
+            return
+        self._cleanup_thread_started = True
+        def cleanup_loop():
+            while True:
+                now = time.time()
+                with self._cleanup_lock:
+                    # Remove sessions marked for delayed deletion
+                    to_delete = [sid for sid, t in self._pending_delete.items() if now >= t]
+                    for sid in to_delete:
+                        self.prompt_sessions.pop(sid, None)
+                        self._pending_delete.pop(sid, None)
+                    # Remove sessions expired by inactivity
+                    expired = [sid for sid, ps in self.prompt_sessions.items() if ps.is_expired()]
+                    for sid in expired:
+                        self.prompt_sessions.pop(sid, None)
+                time.sleep(5)
+        t = threading.Thread(target=cleanup_loop, daemon=True)
+        t.start()
+
+    def create_prompt_session(self, session_id: str, context: Optional[dict] = None) -> PromptSession:
+        with self._cleanup_lock:
+            ps = PromptSession(session_id, self.timeout_sec, context)
+            self.prompt_sessions[session_id] = ps
+            return ps
+
+    def get_prompt_session(self, session_id: str, context: Optional[dict] = None) -> PromptSession:
+        """
+        Get or create a prompt session by session_id, with optional context.
+        Expired sessions are replaced.
+        """
+        with self._cleanup_lock:
+            session = self.prompt_sessions.get(session_id)
+            if session is None or session.is_expired():
+                session = PromptSession(session_id, self.timeout_sec, context)
+                self.prompt_sessions[session_id] = session
+            return session
+
+    def clear_prompt_session(self, session_id: str, delay: float = 30.0) -> None:
+        """Mark a prompt session for deletion after a delay (seconds)."""
+        with self._cleanup_lock:
+            if session_id in self.prompt_sessions:
+                self._pending_delete[session_id] = time.time() + delay
+
+    def cleanup_sessions(self) -> None:
+        """Immediate cleanup of expired or completed sessions."""
+        now = time.time()
+        with self._cleanup_lock:
+            to_remove = [
+                sid for sid, sess in self.prompt_sessions.items()
+                if sess._event.is_set() or sess.is_expired()
+            ]
+            for sid in to_remove:
+                self.prompt_sessions.pop(sid, None)
+            # Also remove any pending deletes that are now expired
+            expired_pending = [sid for sid, t in self._pending_delete.items() if now >= t]
+            for sid in expired_pending:
+                self._pending_delete.pop(sid, None)
+
+    def _start_cleanup_thread(self):
+        if self._cleanup_thread_started:
+            return
+        self._cleanup_thread_started = True
+        def cleanup_loop():
+            while True:
+                now = time.time()
+                with self._cleanup_lock:
+                    to_delete = [sid for sid, t in self._pending_delete.items() if now >= t]
+                    for sid in to_delete:
+                        self.prompt_sessions.pop(sid, None)
+                        self._pending_delete.pop(sid, None)
+                time.sleep(5)
+        t = threading.Thread(target=cleanup_loop, daemon=True)
+        t.start()
         
     def __enter__(self) -> 'UserPrompt':
         """
@@ -167,30 +273,6 @@ class UserPrompt(ContextManager):
         """Set the file path for prompt logging."""
         self.file_path = file_path
 
-    def get_prompt_session(self, session_id: str, context: Optional[dict] = None) -> PromptSession:
-        """
-        Get or create a prompt session by session_id, with optional context.
-        Expired sessions are replaced.
-        """
-        session = self.prompt_sessions.get(session_id)
-        if session is None or session.is_expired():
-            self.prompt_sessions[session_id] = PromptSession(session_id, context)
-        return self.prompt_sessions[session_id]
-
-    def cleanup_sessions(self) -> None:
-        """
-        Remove all sessions that are done or expired.
-        """
-        from .logger_singleton import logger
-        now = datetime.datetime.now(timezone.utc)
-        to_remove = [
-            sid for sid, sess in self.prompt_sessions.items()
-            if sess.event.is_set() or sess.is_expired(now)
-        ]
-        for sid in to_remove:
-            logger.info(f"[UserPrompt] Cleaning up session: {sid}")
-            del self.prompt_sessions[sid]
-
     def _emit_cli_prompt(self, message: str, default: Optional[str] = None) -> str:
         """
         Centralized CLI prompt logic with consistent logging.
@@ -223,29 +305,6 @@ class UserPrompt(ContextManager):
             self.socketio_emit_func(orjson.dumps(payload).decode("utf-8"))
         else:
             logger.warning("[Webapp Prompt] socketio_emit_func not set.")
-
-    def clear_prompt_session(self, session_id: str, delay: float = 30.0) -> None:
-        """Mark a prompt session for deletion after a delay (seconds)."""
-        if session_id in self.prompt_sessions:
-            with self._cleanup_lock:
-                self._pending_delete[session_id] = time.time() + delay
-            self._start_cleanup_thread()
-
-    def _start_cleanup_thread(self):
-        if self._cleanup_thread_started:
-            return
-        self._cleanup_thread_started = True
-        def cleanup_loop():
-            while True:
-                now = time.time()
-                with self._cleanup_lock:
-                    to_delete = [sid for sid, t in self._pending_delete.items() if now >= t]
-                    for sid in to_delete:
-                        self.prompt_sessions.pop(sid, None)
-                        self._pending_delete.pop(sid, None)
-                time.sleep(5)
-        t = threading.Thread(target=cleanup_loop, daemon=True)
-        t.start()
 
     def print_header(self, title: str = "USER INPUT REQUIRED", char: str = "=", width: int = 60) -> None:
         """Print a formatted header for prompts."""
@@ -408,7 +467,9 @@ class UserPrompt(ContextManager):
                     self.socketio_emit_func(orjson.dumps(payload).decode("utf-8"))
                     # Wait for frontend response
                     prompt_session = self.get_prompt_session(session_id, context)
+                    print("TRACE: Waiting for frontend response for session", session_id)
                     response = prompt_session.wait_for_response(timeout)
+                    print("TRACE: Received response from frontend:", response)
                     if response is None:
                         self._emit_prompt(
                             f"Prompt timed out or cancelled. Using default: {default}",

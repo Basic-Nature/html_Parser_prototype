@@ -11,6 +11,13 @@ import threading
 from pathlib import Path
 import orjson
 import urllib.parse
+try:
+    import dotenv
+    dotenv.load_dotenv()
+except ImportError:
+    # python-dotenv not installed (e.g., on Azure), skip loading .env
+    pass
+
 
 # === Project Structure & Paths ===
 
