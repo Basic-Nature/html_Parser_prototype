@@ -2,6 +2,7 @@ from __future__ import annotations
 # ==============================================================
 # 🗳️ Smart Elections: HTML Election Results Parser
 # ==============================================================
+import re
 import os
 import orjson
 import threading
@@ -123,18 +124,19 @@ def prompt_url_selection(
     processed: Dict[str, Any],
     cancel_flag: threading.Event = None,
     session_id=None,
+    max_display=20,  # Limit for log display
 ) -> List[str]:
     msg = "URLs loaded"
     payload = {
         "level": "INFO",
         "type": "input",
         "message": msg,
-        "urls": urls,
+        "urls": urls[:max_display] + (["... (truncated)"] if len(urls) > max_display else []),
         "processed": processed,
         "session_id": session_id
     }
     logger.info(payload)
-    for i, url in enumerate(urls):
+    for i, url in enumerate(urls[:max_display]):
         proc_entry = processed.get(url)
         status = "unprocessed"
         if isinstance(proc_entry, dict):
@@ -156,6 +158,13 @@ def prompt_url_selection(
             "status": status,
         }
         logger.info(payload)
+    if len(urls) > max_display:
+        logger.info({
+            "level": "INFO",
+            "type": "input",
+            "message": f"...and {len(urls) - max_display} more URLs not shown.",
+            "session_id": session_id
+        })
 
     # Check cancel_flag before prompting
     if cancel_flag is not None and hasattr(cancel_flag, "is_set") and callable(cancel_flag.is_set):
@@ -170,9 +179,13 @@ def prompt_url_selection(
             logger.info(payload)
             return []
 
-    prompt_text = "\nEnter indices (comma-separated), 'all', or leave empty to cancel: "
+    prompt_text = (
+        "\nEnter indices (comma-separated), 'all', a full/partial URL, "
+        "'state:<name>', or 'county:<name>' to filter. Leave empty to cancel: "
+    )
     user_input = prompt.prompt_input(
-        prompt_text,
+        "\nEnter indices (comma-separated), 'all', a full/partial URL, "
+        "'state:<name>', or 'county:<name>' to filter. Leave empty to cancel: ",
         session_id=session_id,
         context={"urls": urls, "processed": processed}
     )
@@ -192,13 +205,69 @@ def prompt_url_selection(
 
     if not isinstance(user_input, str):
         return []
-    user_input = user_input.strip().lower()
-    if not user_input:
+    user_input_stripped = user_input.strip()
+    if not user_input_stripped:
         return []
-    if user_input == 'all':
+    if user_input_stripped.lower() == 'all':
         return urls
+
+    # --- State/county search (regex, fuzzy, or substring) ---
+    def search_urls(query, prefix):
+        q = query.strip().lower()
+        # Try regex match first
+        try:
+            regex = re.compile(q, re.I)
+            matches = [u for u in urls if regex.search(u)]
+        except Exception:
+            matches = [u for u in urls if q in u.lower()]
+        return matches
+
+    if user_input_stripped.lower().startswith("state:"):
+        state_query = user_input_stripped[6:]
+        matches = search_urls(state_query, "state")
+        if matches:
+            logger.info({
+                "level": "INFO",
+                "type": "input",
+                "message": f"Matched {len(matches)} URLs for state search: '{state_query}'",
+                "session_id": session_id,
+                "matches": matches[:max_display] + (["... (truncated)"] if len(matches) > max_display else [])
+            })
+        return matches
+    if user_input_stripped.lower().startswith("county:"):
+        county_query = user_input_stripped[7:]
+        matches = search_urls(county_query, "county")
+        if matches:
+            logger.info({
+                "level": "INFO",
+                "type": "input",
+                "message": f"Matched {len(matches)} URLs for county search: '{county_query}'",
+                "session_id": session_id,
+                "matches": matches[:max_display] + (["... (truncated)"] if len(matches) > max_display else [])
+            })
+        return matches
+
+    # --- Exact URL match (case-insensitive) ---
+    for u in urls:
+        if user_input_stripped.lower() == u.lower():
+            return [u]
+
+    # --- Partial URL match (case-insensitive substring) ---
+    partial_matches = [u for u in urls if user_input_stripped.lower() in u.lower()]
+    if len(partial_matches) == 1:
+        return partial_matches
+    elif len(partial_matches) > 1:
+        logger.info({
+            "level": "INFO",
+            "type": "input",
+            "message": f"Multiple matches found for '{user_input_stripped}': {partial_matches}",
+            "session_id": session_id
+        })
+        return partial_matches
+
+    # --- Otherwise, try indices/ranges ---
     indices = []
-    for part in user_input.split(','):
+    for part in user_input_stripped.split(','):
         part = part.strip()
         if '-' in part:
             start, end = part.split('-', 1)

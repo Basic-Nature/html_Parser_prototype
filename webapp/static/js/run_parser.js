@@ -574,6 +574,8 @@
 
     if (obj.type === 'cancel' && (obj.level === 'DEBUG' || obj.level === 'INFO')) {
       if (!levelIconMap[obj.level]) levelIconMap[obj.level] = '🛑';
+    
+    if (obj.type === 'prompt') return;  
     }
 
     if (!levelIconMap[obj.level]) {
@@ -595,13 +597,6 @@
     if (obj.timestamp && !isNaN(obj.timestamp)) {
       const d = new Date(obj.timestamp);
       if (!isNaN(d.getTime())) timeStr = d.toLocaleTimeString();
-    }
-
-    if (obj.type === 'prompt' && el.promptInput) {
-      el.promptInput.placeholder = obj.full_text || 'Type a command...';
-      el.promptInput.parentElement?.classList.remove('hidden');
-      el.promptInput.disabled = false;
-      el.promptInput.focus();
     }
 
     const levelIcon = levelIconMap[obj.level] || '🛈';
@@ -872,6 +867,7 @@
   // -------- Prompt --------
   function handlePromptSubmit(e) {
     e.preventDefault();
+    console.log('[DEBUG] handlePromptSubmit fired', el.promptInput.value);
     if (!socket || !el.promptInput || !activeSessionId) return;
     let raw = el.promptInput.value.trim(); // allow empty (backend may treat as cancel)
     if (/^\d+(,\s*\d+)*$/.test(raw)) {
@@ -920,17 +916,70 @@
     }</ul>`;
   }
 
+  function renderUrlSidebar(urls) {
+    const sidebar = document.getElementById('urlSidebarBlock');
+    if (!sidebar) return;
+    const searchBox = sidebar.querySelector('.url-search-box') ||
+      (() => {
+        const box = document.createElement('input');
+        box.type = 'search';
+        box.className = 'url-search-box';
+        box.placeholder = 'Search state, county, or URL...';
+        sidebar.prepend(box);
+        return box;
+      })();
+    const listBox = sidebar.querySelector('.url-lines') ||
+      (() => {
+        const box = document.createElement('div');
+        box.className = 'url-lines';
+        sidebar.appendChild(box);
+        return box;
+      })();
+
+    function updateList(filter = '') {
+      let filtered = urls;
+      const q = filter.trim().toLowerCase();
+      if (q) {
+        if (q.startsWith('state:')) {
+          filtered = urls.filter(u => u.toLowerCase().includes(q.slice(6).trim()));
+        } else if (q.startsWith('county:')) {
+          filtered = urls.filter(u => u.toLowerCase().includes(q.slice(7).trim()));
+        } else {
+          filtered = urls.filter(u => u.toLowerCase().includes(q));
+        }
+      }
+      listBox.innerHTML = filtered.slice(0, 40).map((u, i) => {
+        const short = u.length > 60 ? u.slice(0, 57) + '…' : u;
+        return `<div class="url-sidebar-item" title="${u}" data-url="${encodeURIComponent(u)}">[${i+1}] ${short}</div>`;
+      }).join('') +
+        (filtered.length > 40 ? `<div class="url-sidebar-more">...and ${filtered.length-40} more</div>` : '');
+      // Click handler
+      listBox.querySelectorAll('.url-sidebar-item').forEach(el => {
+        el.onclick = () => {
+          const url = decodeURIComponent(el.getAttribute('data-url'));
+          if (window.socket && window.getActiveSessionId) {
+            socket.emit('parser_prompt', { session_id: getActiveSessionId(), value: url });
+          }
+        };
+      });
+    }
+    on(searchBox, 'input', e => updateList(e.target.value));
+    updateList();
+  }
+
   function fetchUrls() {
     fetch('/api/urls')
       .then(r=>r.json())
       .then(d=>{
         const list = d.urls||[];
-        renderUrlList(list);      // existing (center) list
-        buildUrlSidebarBlock(list); // new sidebar block
+        renderUrlList(list);
+        buildUrlSidebarBlock(list);
+        renderUrlSidebar(list);
       })
       .catch(()=>{
         renderUrlList([]);
         buildUrlSidebarBlock([]);
+        renderUrlSidebar([]);
       });
   }
 
@@ -1236,6 +1285,7 @@
 
     // --- Prompt Modal (replace with your own UI as needed) ---
     function showPromptModal(message, callback) {
+      console.log('[DEBUG] showPromptModal called with:', message);
       if (!el.promptInput) return;
       el.promptInput.placeholder = message || "Enter value:";
       el.promptInput.disabled = false;

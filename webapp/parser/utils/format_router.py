@@ -219,19 +219,19 @@ def prompt_and_handle_download(
 
 def prompt_user_for_format(
     confirmed,
-    logger=logger,
     session_id=None
-) -> tuple[Optional[str], Optional[str]]:
+) -> Tuple[Optional[str], Optional[str]]:
     """
     Prompts the user to select a format from the confirmed list.
     Returns (fmt, file_url) or (None, None) if skipped or denied.
     """
+
     if not confirmed:
         logger.warning(f"[WARN][Session:{session_id}] No downloadable formats detected.")
         return None, None
 
     format_options = [
-        f"{safe_lower(fmt).upper()} ({os.path.basename(file_url)})"
+        f"{fmt.upper()} ({os.path.basename(file_url)})"
         for fmt, file_url in confirmed
     ]
     logger.info(f"\n[FORMATS][Session:{session_id}] Available formats:")
@@ -240,25 +240,32 @@ def prompt_user_for_format(
     logger.info("  [n or Enter] Skip download")
 
     def validator(x) -> bool:
+        x = str(x).strip().lower()
         return (
-            safe_lower(x) == "" or safe_lower(x) == "n" or
-            (safe_isdigit(x) and 0 <= int(x) < len(format_options))
+            x == "" or x == "n" or
+            (x.isdigit() and 0 <= int(x) < len(format_options))
         )
 
-    selection = prompt.prompt_input(
-        f"[PROMPT][Session:{session_id}] Select a format to download (0-{len(format_options)-1}) or 'n' to skip:",
-        default="n",
-        validator=validator,
-        session_id=session_id
-    )
-    if safe_lower(selection) == "" or safe_lower(selection) == "n":
+    try:
+        selection = prompt.prompt_input(
+            f"[PROMPT][Session:{session_id}] Select a format to download (0-{len(format_options)-1}) or 'n' to skip:",
+            default="n",
+            validator=validator,
+            session_id=session_id
+        )
+    except Exception as e:
+        logger.error(f"[Prompt] Exception during prompt: {e}")
+        return None, None
+
+    if selection is None or str(selection).strip().lower() in ("", "n"):
         logger.info(f"[INFO][Session:{session_id}] User chose to skip format download.")
         return None, None
+
     try:
         selected_index = int(selection)
         fmt, file_url = confirmed[selected_index]
-        logger.info(f"[INFO][Session:{session_id}] User selected format: {safe_lower(fmt).upper()}")
+        logger.info(f"[INFO][Session:{session_id}] User selected format: {fmt.upper()}")
         return fmt, file_url
-    except (IndexError, ValueError):
-        logger.warning(f"[WARN][Session:{session_id}] Invalid selection. Skipping format download.")
+    except (IndexError, ValueError, Exception) as e:
+        logger.warning(f"[WARN][Session:{session_id}] Invalid selection. Skipping format download. ({e})")
         return None, None

@@ -157,7 +157,7 @@ class UserPrompt(ContextManager):
 
     def create_prompt_session(self, session_id: str, context: Optional[dict] = None) -> PromptSession:
         with self._cleanup_lock:
-            ps = PromptSession(session_id, self.timeout_sec, context)
+            ps = PromptSession(session_id, context, self.timeout_sec)
             self.prompt_sessions[session_id] = ps
             return ps
 
@@ -169,7 +169,7 @@ class UserPrompt(ContextManager):
         with self._cleanup_lock:
             session = self.prompt_sessions.get(session_id)
             if session is None or session.is_expired():
-                session = PromptSession(session_id, self.timeout_sec, context)
+                session = PromptSession(session_id, context, self.timeout_sec)
                 self.prompt_sessions[session_id] = session
             return session
 
@@ -185,7 +185,7 @@ class UserPrompt(ContextManager):
         with self._cleanup_lock:
             to_remove = [
                 sid for sid, sess in self.prompt_sessions.items()
-                if sess._event.is_set() or sess.is_expired()
+                if sess.event.is_set() or sess.is_expired()
             ]
             for sid in to_remove:
                 self.prompt_sessions.pop(sid, None)
@@ -193,22 +193,6 @@ class UserPrompt(ContextManager):
             expired_pending = [sid for sid, t in self._pending_delete.items() if now >= t]
             for sid in expired_pending:
                 self._pending_delete.pop(sid, None)
-
-    def _start_cleanup_thread(self):
-        if self._cleanup_thread_started:
-            return
-        self._cleanup_thread_started = True
-        def cleanup_loop():
-            while True:
-                now = time.time()
-                with self._cleanup_lock:
-                    to_delete = [sid for sid, t in self._pending_delete.items() if now >= t]
-                    for sid in to_delete:
-                        self.prompt_sessions.pop(sid, None)
-                        self._pending_delete.pop(sid, None)
-                time.sleep(5)
-        t = threading.Thread(target=cleanup_loop, daemon=True)
-        t.start()
         
     def __enter__(self) -> 'UserPrompt':
         """

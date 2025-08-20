@@ -371,6 +371,32 @@
   .sidebar .section .url-lines .url-item:last-child { border-bottom:none; }
   .sidebar .section .url-lines span::first-line { font-variant-numeric:tabular-nums; }
 
+ .url-sidebar-item {
+   cursor: pointer;
+   padding: 2px 6px;
+   border-radius: 3px;
+   margin-bottom: 2px;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+ }
+ .url-sidebar-item:hover {
+   background: #2563eb;
+   color: #fff;
+ }
+ .url-search-box {
+   width: 98%;
+   margin-bottom: 0.5em;
+   padding: 4px 8px;
+   border-radius: 4px;
+   border: 1px solid #aaa;
+ }
+ .url-sidebar-more {
+   color: #888;
+   font-size: 0.95em;
+   margin-top: 4px;
+ }
+
   /* Collapsible */
   .collapsible-btn {
     background:var(--main-blue);

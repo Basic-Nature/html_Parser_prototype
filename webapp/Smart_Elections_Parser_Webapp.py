@@ -1294,6 +1294,26 @@ def handle_get_session_history(data) -> None:
             session_logs[sid] = logs  # restore to memory for future
         except Exception:
             logs = []
+    # --- Ensure latest prompt log is present if prompt is still active ---
+    prompt_session = getattr(prompt, "prompt_sessions", {}).get(sid)
+    if prompt_session and not prompt_session.is_resolved():
+        # Check if the last log is already a prompt log with the same message
+        last_prompt = None
+        for log in reversed(logs):
+            if log.get("type") == "prompt":
+                last_prompt = log
+                break
+        prompt_msg = prompt_session.prompt_message if hasattr(prompt_session, "prompt_message") else None
+        # Only append if not already present or message differs
+        if not last_prompt or (prompt_msg and last_prompt.get("message") != prompt_msg):
+            logs = list(logs)  # copy to avoid mutating shared state
+            logs.append({
+                "level": "INFO",
+                "type": "prompt",
+                "message": prompt_msg or "",
+                "session_id": sid,
+                "timestamp": int(time.time() * 1000)
+            })
     emit('session_history', {'session_id': sid, 'logs': logs}, room=socket_room)
 
 @socketio.on('clone_session')
