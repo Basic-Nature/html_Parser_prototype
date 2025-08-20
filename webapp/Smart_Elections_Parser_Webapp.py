@@ -1430,7 +1430,7 @@ def handle_connect(auth=None):
         }, room=getattr(request, 'sid', None))
 
 @socketio.on('disconnect')
-def handle_disconnect() -> None:
+def handle_disconnect(arg=None) -> None:
     try:
         req_sid = safe_sid()
     except Exception:
@@ -1725,6 +1725,8 @@ def handle_run_parser(data=None) -> None:
     def worker_wrapper():
         start_time = time.time()
         thread_session_map[threading.get_ident()] = session_id
+        status = "error"  # Default to error
+        err = None
         try:
             process_urls_for_web(
                 prompt_queue,

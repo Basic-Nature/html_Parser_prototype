@@ -91,6 +91,18 @@ jobs:
           rm -rf dist/
           rm -rf *.egg-info
 
+      - name: Copy Playwright browsers into webapp for deployment
+        run: |
+          mkdir -p webapp/ms-playwright
+          cp -r ~/.cache/ms-playwright/* webapp/ms-playwright/ || true
+
+      - name: Set Playwright to use bundled browsers
+        run: |
+          az webapp config appsettings set \
+            --name BallotLens \
+            --resource-group BallotLens_group \
+            --settings PLAYWRIGHT_BROWSERS_PATH=0          
+
       - name: Show disk usage after cleanup
         run: df -h
 

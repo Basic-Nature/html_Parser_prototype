@@ -847,7 +847,6 @@
       }
     }
     emitManualFileSource();
-    clearOutput();
     animateButton(el.runBtn);
     el.runBtn.disabled = true;
     el.runBtn.setAttribute('data-running','true');
@@ -1185,7 +1184,6 @@
 
     function handleSessionHistory(data) {
       if (!data || !Array.isArray(data.logs)) return;
-      clearOutput();
       data.logs.forEach(l => renderParserOutput(l));
       flushBatch();
       // Prompt recovery: if last log is a prompt, re-show prompt input
