@@ -74,7 +74,7 @@ def download_file(page_url, href, context_info=None, check_hash=False):
     filename = os.path.basename(href)
     save_path = os.path.join(INPUT_DIR, filename)
     file_url = urljoin(page_url, href)
-
+    logger.info(f"[DEBUG][download_file] page_url={page_url}, href={href}, file_url={file_url}, save_path={save_path}")
     # Prevent re-download if already present
     if is_already_downloaded(file_url, save_path, check_hash=check_hash):
         logger.info(f"[DOWNLOAD] Skipping already downloaded file: {filename}")

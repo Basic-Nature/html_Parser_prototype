@@ -298,8 +298,8 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
     if not force_parse or not force_format:
         return False  # Not engaged
 
+    # Ensure output directory exists if needed
     if not output_bypass:
-        # Ensure output folder exists so handler can write
         try:
             ensure_output_directory()
         except Exception as e:
@@ -311,7 +311,7 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
             })
             return None
 
-    # Normalize format (strip leading dot, lowercase)
+    # Normalize format
     force_format_norm = str(force_format).lower().lstrip('.').strip()
     if not force_format_norm:
         logger.error({
@@ -349,7 +349,7 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         })
         return None
 
-    logger.warning({
+    logger.info({
         "level": "INFO",
         "type": "manual_override",
         "message": f"[ManualOverride] Found {len(files)} .{force_format_norm} file(s) in '{source_dir}' folder. Override engaged.",
@@ -358,7 +358,6 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         "format": force_format_norm
     })
 
-    # List files (stable order)
     files.sort()
     for i, fname in enumerate(files):
         logger.info({
@@ -370,11 +369,7 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
             "session_id": session_id
         })
 
-    # Auto-selection logic:
-    # If FORCE_PARSE_INPUT_FILE is:
-    #   - True / 'first': pick index 0
-    #   - Int / numeric string: treat as index
-    #   - Otherwise: prompt user
+    # Auto-selection logic
     auto_index = None
     if isinstance(force_parse, bool) and force_parse:
         auto_index = 0
@@ -383,40 +378,33 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
             auto_index = 0
         elif force_parse.isdigit():
             auto_index = int(force_parse)
-    elif isinstance(force_parse, (int,)):
-        auto_index = int(force_parse)
+    elif isinstance(force_parse, int):
+        auto_index = force_parse
 
     selected_index = None
-    if auto_index is not None:
-        if 0 <= auto_index < len(files):
-            selected_index = auto_index
-            logger.info({
-                "level": "INFO",
-                "type": "manual_override",
-                "message": f"[ManualOverride] Auto-selected index {auto_index}",
-                "session_id": session_id
-            })
-        else:
-            logger.warning({
-                "level": "WARNING",
-                "type": "manual_override",
-                "message": f"[ManualOverride] Auto index {auto_index} out of range; falling back to prompt.",
-                "session_id": session_id
-            })
-
-    if selected_index is None:
+    if auto_index is not None and 0 <= auto_index < len(files):
+        selected_index = auto_index
+        logger.info({
+            "level": "INFO",
+            "type": "manual_override",
+            "message": f"[ManualOverride] Auto-selected index {auto_index}",
+            "session_id": session_id
+        })
+    else:
+        # Prompt user for file index
         try:
+            prompt_message = "[PROMPT] Select a file index to parse:"
+            def validator(x):
+                return x.isdigit() and 0 <= int(x) < len(files)
             selection = prompt.prompt_input(
-                "[PROMPT] Select a file index to parse:",
+                prompt_message,
+                validator=validator,
                 session_id=session_id,
-                context={"files": files},
+                context={"files": files}
             )
             if not isinstance(selection, str):
                 raise ValueError("Non-string selection")
-            selection = selection.strip()
-            selected_index = int(selection)
-            if not (0 <= selected_index < len(files)):
-                raise ValueError("Index out of range")
+            selected_index = int(selection.strip())
         except (ValueError, EOFError, KeyboardInterrupt):
             logger.error({
                 "level": "ERROR",
@@ -453,7 +441,7 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         "manual_source_dir": source_dir,
         "manual_format": force_format_norm
     }
-    dummy_page = cast(Page, None)
+    dummy_page = None  # Not used by format handlers
 
     logger.info({
         "level": "INFO",
@@ -463,7 +451,15 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         "file_path": full_path
     })
 
-    result = safe_parse(handler, dummy_page, html_context, logger=logger)
+    # Call the handler's parse function robustly
+    result = safe_parse(
+        handler,
+        page=dummy_page,
+        html_context=html_context,
+        manual_file=full_path,
+        session_id=session_id,
+        logger=logger
+    )
     if not result or not all(result):
         logger.error({
             "level": "ERROR",

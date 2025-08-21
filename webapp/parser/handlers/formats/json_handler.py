@@ -5,126 +5,164 @@ from __future__ import annotations
 import orjson
 import os
 import csv
+import time
 from collections import defaultdict
-from ...config import BASE_DIR
+from ...config import (
+    OUTPUT_DIR
+)
 from ...Context_Integration.Context_Library.constants import (
-    LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
+    GROUP_RENAME_MAP, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
 )
-from ...utils.logger_singleton import logger, console
+from ...utils.logger_singleton import logger, console, prompt
 from ...utils.table_core import harmonize_headers_and_data
-def get_input_folder():
-    # Parent of webapp, then 'input'
-    return os.path.join(os.path.dirname(BASE_DIR), "input")
 
-def get_output_folder():
-    # Parent of webapp, then 'output'
-    return os.path.join(os.path.dirname(BASE_DIR), "output")
-
-def list_json_files(input_folder):
-    return [f for f in os.listdir(input_folder) if f.lower().endswith(".json")]
-
-def prompt_for_json_file(input_folder):
-    json_files = list_json_files(input_folder)
-    if not json_files:
-        logger.error("[ERROR] No JSON files found in the input directory.")
-        return None
-    logger.info("\nAvailable JSON files in 'input' folder:")
-    for i, fname in enumerate(json_files):
-        logger.info(f"  [{i}] {fname}")
-    console.print("\n[PROMPT] Enter file index or press Enter to cancel:", end=" ")
-    user_input = input().strip()
-    if not user_input:
-        return None
-    if user_input.isdigit():
-        idx = int(user_input)
-        if 0 <= idx < len(json_files):
-            return os.path.join(input_folder, json_files[idx])
-    logger.error("[ERROR] Invalid selection.")
+def find_key_by_keywords(obj, keywords):
+    """Find the first key in obj that matches any keyword (case-insensitive, partial match allowed)."""
+    for key in obj.keys():
+        for kw in keywords:
+            if kw.lower() in key.lower():
+                return key
     return None
 
-def parse_json_election_results(json_path, output_dir=None):
-    # === Load JSON ===
+def parse_json_election_results(json_path, session_id=None):
     with open(json_path, "rb") as f:
         data = orjson.loads(f.read())
 
-    # === List Available Contests ===
+    # --- Dynamic contest extraction ---
+    ballot_items_key = find_key_by_keywords(data.get("results", {}), CONTEST_KEYWORDS | {"ballotitem", "ballotitems"})
+    ballot_items = data.get("results", {}).get(ballot_items_key, []) if ballot_items_key else []
+
     contests = set()
-    for item in data.get("results", {}).get("ballotItems", []):
-        name = item.get("name", "").strip()
+    contest_name_key = find_key_by_keywords(ballot_items[0], CONTEST_KEYWORDS | {"name"}) if ballot_items else "name"
+    for item in ballot_items:
+        name = item.get(contest_name_key, "").strip()
         if name:
             contests.add(name)
 
-    logger.info("\nAvailable contests:")
+    logger.info({
+        "level": "INFO",
+        "type": "input",
+        "message": "\nAvailable contests:",
+        "session_id": session_id
+    })
     for i, name in enumerate(sorted(contests), 1):
-        logger.info(f" {i:2d}. {name}")
+        logger.info({
+            "level": "INFO",
+            "type": "input",
+            "message": f" {i:2d}. {name}",
+            "session_id": session_id
+        })
 
-    # === Prompt for Contest Name ===
-    logger.info("\nEnter the contest name (exactly as shown), or type its number:")
-    user_input = input("> ").strip()
+    prompt_message = "\nEnter the contest name (exactly as shown), or type its number: "
+    def validator(x):
+        x = str(x).strip()
+        if x.isdigit():
+            idx = int(x)
+            return 1 <= idx <= len(contests)
+        return x in contests
 
-    # Resolve numeric index to name
-    if user_input.isdigit():
+    try:
+        user_input = prompt.prompt_input(
+            prompt_message,
+            validator=validator,
+            session_id=session_id,
+            context={"contests": sorted(contests)}
+        )
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "input",
+            "message": f"Exception during contest selection: {e}",
+            "session_id": session_id
+        })
+        return None, None, None, {"error": "Contest selection failed"}
+
+    if user_input is None:
+        logger.error({
+            "level": "ERROR",
+            "type": "input",
+            "message": "No contest selected.",
+            "session_id": session_id
+        })
+        return None, None, None, {"error": "No contest selected"}
+
+    if str(user_input).isdigit():
         idx = int(user_input)
         try:
             target_contest = sorted(contests)[idx - 1]
         except IndexError:
-            raise ValueError("Invalid contest number.")
+            logger.error({
+                "level": "ERROR",
+                "type": "input",
+                "message": "Invalid contest number.",
+                "session_id": session_id
+            })
+            return None, None, None, {"error": "Invalid contest number"}
     else:
         if user_input not in contests:
-            raise ValueError("Contest name not found.")
+            logger.error({
+                "level": "ERROR",
+                "type": "input",
+                "message": "Contest name not found.",
+                "session_id": session_id
+            })
+            return None, None, None, {"error": "Contest name not found"}
         target_contest = user_input
 
-    logger.info(f"\n🔍 Parsing contest: {target_contest}\n")
+    logger.info({
+        "level": "INFO",
+        "type": "input",
+        "message": f"\n🔍 Parsing contest: {target_contest}\n",
+        "session_id": session_id
+    })
 
-    # === Setup Output Paths ===
-    if output_dir is None:
-        output_dir = get_output_folder()
-    os.makedirs(output_dir, exist_ok=True)
-    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in target_contest).replace(" ", "_")
-    output_csv = os.path.join(output_dir, f"{safe_title}_parsed.csv")
-    output_meta = os.path.join(output_dir, f"{safe_title}_metadata.json")
+    # --- Dynamic candidate/party/ballot type/precinct key detection ---
+    contest_item = next((item for item in ballot_items if item.get(contest_name_key, "").strip() == target_contest), None)
+    if not contest_item:
+        logger.error({
+            "level": "ERROR",
+            "type": "input",
+            "message": "Selected contest not found in data.",
+            "session_id": session_id
+        })
+        return None, None, None, {"error": "Selected contest not found"}
 
-    # === Group Rename Map ===
-    group_rename = {
-        "Election Day": "Election Day",
-        "Early Voting": "Early",
-        "Absentee Mail": "Mail-In",
-        "Provisional": "Provisional"
-    }
-    vote_methods = list(group_rename.values())
+    ballot_options_key = find_key_by_keywords(contest_item, CANDIDATE_KEYWORDS | {"ballotoption", "ballotoptions"})
+    ballot_options = contest_item.get(ballot_options_key, []) if ballot_options_key else []
 
-    # === Candidate Normalization ===
+    candidate_name_key = find_key_by_keywords(ballot_options[0], CANDIDATE_KEYWORDS | {"name"}) if ballot_options else "name"
+    party_key = find_key_by_keywords(ballot_options[0], PARTY_KEYWORDS | {"politicalparty"}) if ballot_options else "politicalParty"
+    precinct_results_key = find_key_by_keywords(ballot_options[0], LOCATION_KEYWORDS | {"precinctresult", "precinctresults"})
+    group_results_key = find_key_by_keywords(ballot_options[0], BALLOT_TYPES | {"groupresult", "groupresults"})
+
+    # --- Build normalization map for candidates/parties ---
     raw_candidates = {}
-    for item in data["results"]["ballotItems"]:
-        if item["name"].strip() != target_contest:
-            continue
-        for opt in item["ballotOptions"]:
-            raw = opt["name"].strip()
-            party = opt.get("politicalParty", "Unknown")
-            label = f"{raw} ({party})"
-            raw_candidates[raw] = label
+    for opt in ballot_options:
+        raw = opt.get(candidate_name_key, "").strip()
+        party = opt.get(party_key, "Unknown")
+        label = f"{raw} ({party})"
+        raw_candidates[raw] = label
 
     normalization_map = {k: v for k, v in raw_candidates.items()}
-    candidate_order = sorted(set(normalization_map.values()))
 
-    # === Parse JSON Data ===
+    # --- Build results ---
     results_nested = defaultdict(lambda: defaultdict(dict))
+    for opt in ballot_options:
+        raw_label = opt.get(candidate_name_key, "").strip()
+        precinct_results = opt.get(precinct_results_key, []) if precinct_results_key else []
+        for precinct in precinct_results:
+            precinct_name_key = find_key_by_keywords(precinct, LOCATION_KEYWORDS | {"name"})
+            p = precinct.get(precinct_name_key, "").strip()
+            results_nested[p][raw_label]["Total"] = precinct.get("voteCount")
+            group_results = precinct.get(group_results_key, []) if group_results_key else []
+            for grp in group_results:
+                group_name_key = find_key_by_keywords(grp, BALLOT_TYPES | {"groupname"})
+                g = grp.get(group_name_key, "").strip()
+                norm_g = GROUP_RENAME_MAP.get(g.lower(), g)
+                results_nested[p][raw_label][norm_g] = grp.get("voteCount")
 
-    for item in data["results"]["ballotItems"]:
-        if item["name"].strip() != target_contest:
-            continue
-        for opt in item["ballotOptions"]:
-            raw_label = opt["name"].strip()
-            for precinct in opt["precinctResults"]:
-                p = precinct["name"].strip()
-                results_nested[p][raw_label]["Total"] = precinct.get("voteCount")
-                for grp in precinct.get("groupResults", []):
-                    g = grp["groupName"].strip()
-                    norm_g = group_rename.get(g, g)
-                    results_nested[p][raw_label][norm_g] = grp.get("voteCount")
-
-    # === Build Wide-format Rows (harmonized with librarian context) ===
+    # --- Build rows and headers dynamically ---
     rows = []
     all_keys = set()
     for precinct, cands in results_nested.items():
@@ -138,18 +176,18 @@ def parse_json_election_results(json_path, output_dir=None):
         rows.append(row)
 
     headers = ["Precinct"] + sorted(all_keys)
-
-    # Harmonize and add grand total if needed
     headers, rows = harmonize_headers_and_data(headers, rows)
 
-    # === Write Output CSV ===
+    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in target_contest).replace(" ", "_")
+    output_csv = os.path.join(OUTPUT_DIR, f"{safe_title}_parsed.csv")
+    output_meta = os.path.join(OUTPUT_DIR, f"{safe_title}_metadata.json")
+
     with open(output_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
 
-    # === Write Metadata JSON ===
     metadata = {
         "race": target_contest,
         "input_file": os.path.basename(json_path),
@@ -161,44 +199,44 @@ def parse_json_election_results(json_path, output_dir=None):
     with open(output_meta, "w") as jf:
         jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
-    logger.info("✅ Completed!")
-    logger.info(" - Output CSV:", output_csv)
-    logger.info(" - Metadata:", output_meta)
+    logger.info({
+        "level": "INFO",
+        "type": "output",
+        "message": f"✅ Completed! Output CSV: {output_csv}, Metadata: {output_meta}",
+        "session_id": session_id
+    })
 
     return headers, rows, target_contest, metadata
 
-# --- Entry point for pipeline integration ---
-def parse(page=None, coordinator=None, html_context=None, manual_file=None, **kwargs):
+def parse(page=None, coordinator=None, html_context=None, manual_file=None, session_id=None, **kwargs):
     """
-    Universal pipeline entry: Accepts a JSON file path (manual_file) from the format router,
-    or prompts user to select a file from the input folder.
+    Universal pipeline entry: Accepts a JSON file path (manual_file) from the format router.
     Returns: headers, data, contest, metadata
     """
     html_context = html_context or {}
     if html_context.get("skip_format") or html_context.get("manual_skip"):
+        logger.info({
+            "level": "INFO",
+            "type": "handler",
+            "message": "[SKIP] JSON parsing intentionally skipped via context flag.",
+            "session_id": session_id
+        })
         return None, None, None, {"skipped": True}
 
-    input_folder = get_input_folder()
-    json_path = None
+    if not manual_file or not os.path.isfile(manual_file):
+        logger.error({
+            "level": "ERROR",
+            "type": "handler",
+            "message": "[ERROR] No JSON file provided to parse().",
+            "session_id": session_id
+        })
+        return None, None, None, {"skipped": True}
 
-    # 1. Use file handed over from format router if provided
-    if manual_file and os.path.isfile(manual_file):
-        json_path = manual_file
-    else:
-        # 2. Otherwise, prompt user to select from input folder
-        json_path = prompt_for_json_file(input_folder)
-        if not json_path:
-            logger.info("[INFO] No file selected. Exiting JSON parser.")
-            return None, None, None, {"skipped": True}
+    logger.info({
+        "level": "INFO",
+        "type": "handler",
+        "message": f"[INFO] Using JSON file: {manual_file}",
+        "session_id": session_id
+    })
 
-    logger.info(f"\n[INFO] Using JSON file: {json_path}")
-
-    # Run the contest parser pipeline
-    return parse_json_election_results(json_path)
-
-# If run as a script, allow standalone use
-if __name__ == "__main__":
-    input_folder = get_input_folder()
-    json_path = prompt_for_json_file(input_folder)
-    if json_path:
-        parse_json_election_results(json_path)
+    return parse_json_election_results(manual_file, session_id=session_id)
