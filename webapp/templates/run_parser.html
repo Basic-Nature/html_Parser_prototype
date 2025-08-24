@@ -46,131 +46,112 @@
     <div class="layout-flex">
         <!-- Sidebar: File Management & URL Hint Manager -->
         <aside class="sidebar">
-            {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                <div class="flash">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-            {% endwith %}
-
-            <!-- Input Folder Section -->
-            <div class="section">
-                <button type="button" class="collapsible-btn" data-target="inputSection">
-                  Input Folder Files
-                  <span class="help-icon" tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus hover"
-                        data-bs-placement="right" title="Input Folder Files"
-                        data-bs-content="Files placed here are standard inputs the parser can consume.">
-                    ?
-                  </span>
-                </button>
-                <div id="inputSection" class="collapsible hidden" data-input-folder>
-                    <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" class="mb-1em">
-                        <label for="inputFile" class="visually-hidden">Choose file for input folder</label>
-                        <input type="file" id="inputFile" name="file" required aria-label="Choose file for input folder">
-                        <button type="submit" class="btn btn-upload">Upload</button>
-                    </form>
-                    <ul class="file-list">
-                        {% for file in input_files %}
-                            <li>
-                                <span>{{ file }}</span>
-                                <div class="file-actions">
-                                    <a href="{{ url_for('download_input_file', filename=file) }}" class="btn btn-success">Download</a>
-                                    <form method="POST" action="{{ url_for('delete_input_file', filename=file) }}">
-                                        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
-                                    </form>
-                                </div>
-                            </li>
-                        {% else %}
-                            <li>No files in input folder.</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </div>
-
-            <!-- Output Folder Section -->
-            <div class="section">
-                <button type="button" class="collapsible-btn" data-target="outputSection">
-                  Output Folder Files
-                  <span class="help-icon" tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus hover"
-                        data-bs-placement="right" title="Output Folder Files"
-                        data-bs-content="Parsed result files (CSV/JSON) appear here unless output bypass is enabled.">
-                    ?
-                  </span>
-                </button>
-                <div id="outputSection" class="collapsible hidden">
-                    <form method="POST" action="{{ url_for('upload_to_output') }}" enctype="multipart/form-data" class="mb-1em">
-                        <label for="outputFile" class="visually-hidden">Choose file for output folder</label>
-                        <input type="file" id="outputFile" name="file" required aria-label="Choose file for output folder">
-                        <button type="submit" class="btn btn-upload">Upload</button>
-                    </form>
-                    <ul class="file-list">
-                        {% for file in output_files %}
-                            <li>
-                                <span>{{ file }}</span>
-                                <div class="file-actions">
-                                    <a href="{{ url_for('download_output_file', filename=file) }}" class="btn btn-success">Download</a>
-                                    <form method="POST" action="{{ url_for('delete_output_file', filename=file) }}">
-                                        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
-                                    </form>
-                                </div>
-                            </li>
-                        {% else %}
-                            <li>No files in output folder.</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </div>
-
-            <!-- Uploads Folder Section -->
-            <div class="section">
-                <button type="button" class="collapsible-btn" data-target="uploadsSection">
-                  Uploads Folder Files
-                  <span class="help-icon" tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus hover"
-                        data-bs-placement="right" title="Uploads Folder Files"
-                        data-bs-content="Temporary uploaded files. Choose 'Uploads' as File Source to force manual format parsing here.">
-                    ?
-                  </span>
-                </button>
-                <div id="uploadsSection" class="collapsible hidden">
-                    <form method="POST" action="{{ url_for('run_parser') }}" enctype="multipart/form-data" class="mb-1em">
-                        <label for="uploadsFile" class="visually-hidden">Choose file for uploads folder</label>
-                        <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
-                        <button type="submit" class="btn btn-upload">Upload to Uploads</button>
-                    </form>
-                    <ul class="file-list">
-                        {% for file in uploaded_files %}
-                            <li>
-                                <span>{{ file }}</span>
-                                <div class="file-actions">
-                                    <a href="{{ url_for('download_upload_file', filename=file) }}" class="btn btn-success">Download</a>
-                                    <form method="POST" action="{{ url_for('delete_upload_file', filename=file) }}">
-                                        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
-                                    </form>
-                                </div>
-                            </li>
-                        {% else %}
-                            <li>No files in uploads folder.</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </div>
-            <!-- Add URL Section (now collapsible) -->
-            <div class="section">
-                <button type="button" class="collapsible-btn" data-target="addUrlSection">
-                  Add URL to urls.txt
-                  <span class="help-icon" tabindex="0" data-bs-toggle="popover" data-bs-trigger="focus hover"
-                        data-bs-placement="right" title="Add URL"
-                        data-bs-content="Add election result URLs to be processed. They are stored in urls.txt.">
-                    ?
-                  </span>
-                </button>
-                <div id="addUrlSection" class="collapsible">
-                    <form id="addUrlForm" class="flex-wrap-row">
+            <div class="sidebar-content">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="flash">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+                {% endwith %}
+                <div id="urlSidebarBlock" class="section">
+                    <input type="search" class="url-search-box" placeholder="Search state, county, or URL...">
+                    <h2>
+                        urls.txt
+                        </span>
+                    </h2>
+                    <div class="url-lines" id="urlLinesBox"></div>
+                    <form id="addUrlForm" class="flex-wrap-row mb-1em mt-1em">
                         <input type="url" id="newUrl" class="url-add-input" placeholder="Paste new election results URL here" required aria-label="New URL">
                         <button type="submit" class="btn btn-success url-add-btn">Add URL</button>
+                        <button type="button" class="btn btn-primary ms-1em" id="refreshUrlListBtn" title="Refresh URL list">⟳</button>
                     </form>
-                    <div id="urlList" class="mt-1em"></div>
+                </div>
+                <!-- Input Folder Section -->
+                <div class="section">
+                    <button type="button" class="collapsible-btn" data-target="inputSection">
+                    Input Folder Files
+                    </button>
+                    <div id="inputSection" class="collapsible hidden" data-input-folder>
+                        <form method="POST" action="{{ url_for('upload_to_input') }}" enctype="multipart/form-data" class="mb-1em">
+                            <label for="inputFile" class="visually-hidden">Choose file for input folder</label>
+                            <input type="file" id="inputFile" name="file" required aria-label="Choose file for input folder">
+                            <button type="submit" class="btn btn-upload">Upload</button>
+                        </form>
+                        <ul class="file-list">
+                            {% for file in input_files %}
+                                <li>
+                                    <span>{{ file }}</span>
+                                    <div class="file-actions">
+                                        <a href="{{ url_for('download_input_file', filename=file) }}" class="btn btn-success">Download</a>
+                                        <form method="POST" action="{{ url_for('delete_input_file', filename=file) }}">
+                                            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                        </form>
+                                    </div>
+                                </li>
+                            {% else %}
+                                <li>No files in input folder.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Output Folder Section -->
+                <div class="section">
+                    <button type="button" class="collapsible-btn" data-target="outputSection">
+                    Output Folder Files
+                    </button>
+                    <div id="outputSection" class="collapsible hidden" data-output-folder>
+                        <form method="POST" action="{{ url_for('upload_to_output') }}" enctype="multipart/form-data" class="mb-1em">
+                            <label for="outputFile" class="visually-hidden">Choose file for output folder</label>
+                            <input type="file" id="outputFile" name="file" required aria-label="Choose file for output folder">
+                            <button type="submit" class="btn btn-upload">Upload</button>
+                        </form>
+                        <ul class="file-list">
+                            {% for file in output_files %}
+                                <li>
+                                    <span>{{ file }}</span>
+                                    <div class="file-actions">
+                                        <a href="{{ url_for('download_output_file', filename=file) }}" class="btn btn-success">Download</a>
+                                        <form method="POST" action="{{ url_for('delete_output_file', filename=file) }}">
+                                            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                        </form>
+                                    </div>
+                                </li>
+                            {% else %}
+                                <li>No files in output folder.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Uploads Folder Section -->
+                <div class="section">
+                    <button type="button" class="collapsible-btn" data-target="uploadsSection">
+                    Uploads Folder Files
+                    </button>
+                    <div id="uploadsSection" class="collapsible hidden">
+                        <form method="POST" action="{{ url_for('run_parser') }}" enctype="multipart/form-data" class="mb-1em">
+                            <label for="uploadsFile" class="visually-hidden">Choose file for uploads folder</label>
+                            <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
+                            <button type="submit" class="btn btn-upload">Upload to Uploads</button>
+                        </form>
+                        <ul class="file-list">
+                            {% for file in uploaded_files %}
+                                <li>
+                                    <span>{{ file }}</span>
+                                    <div class="file-actions">
+                                        <a href="{{ url_for('download_upload_file', filename=file) }}" class="btn btn-success">Download</a>
+                                        <form method="POST" action="{{ url_for('delete_upload_file', filename=file) }}">
+                                            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
+                                        </form>
+                                    </div>
+                                </li>
+                            {% else %}
+                                <li>No files in uploads folder.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -179,22 +160,34 @@
         <div class="container-main">
             <h1>Run the Smart Elections Parser</h1>
             <div class="subtitle">Start a new parsing job and view the results below.</div>
-            <div class="instructions">
+
+            <!-- Collapsible Instructions Panel -->
+            <button type="button"
+                    class="btn btn-outline-primary btn-sm mb-1em"
+                    id="toggleInstructionsBtn"
+                    aria-expanded="false"
+                    aria-controls="instructionsPanel">
+                📖 Show Instructions
+            </button>
+            <div class="instructions hidden" id="instructionsPanel" tabindex="-1">
                 <strong>Instructions:</strong>
-                <button type="button"
-                        class="btn btn-outline-primary btn-sm ms-2"
-                        data-bs-toggle="popover"
-                        data-bs-trigger="focus"
-                        data-bs-placement="right"
-                        title="How this works"
-                        data-bs-content="Run a session, track logs live, filter by level/type, and manage multiple sessions in the footer.">
-                  Help
-                </button>
                 <ul>
-                    <li>Click <b>Run Parser</b> to start the election data extraction process.</li>
-                    <li>Parser will use the current URL hint configuration and available handlers.</li>
-                    <li>Results and logs will be displayed in the output area below.</li>
-                    <li>For advanced options, update your URL hints or handler modules first.</li>
+                    <li>Click <b>Run Parser</b> to start the election data extraction process for the selected files or URLs.</li>
+                    <li>
+                        The parser will automatically process the files or URLs you provide, using built-in logic for supported states and formats.
+                    </li>
+                    <li>
+                        Results and detailed logs will be displayed in the output area below. You can filter logs by level or type using the dropdowns.
+                    </li>
+                    <li>
+                        <b>Advanced:</b> To add support for new states or custom formats, contribute a handler module on <a href="https://github.com/basic-nature/html_Parser_prototype" target="_blank" rel="noopener">GitHub</a>. See the repository for contribution guidelines and instructions.
+                    </li>
+                    <li>
+                        Use the <b>Bypass Output</b> option to stream results directly for download, instead of saving them to the Output Folder.
+                    </li>
+                    <li>
+                        Manage multiple parsing sessions using the session controls in the footer.
+                    </li>
                 </ul>
             </div>
 
@@ -215,53 +208,91 @@
                 </button>
                 <button type="button" class="btn btn-danger ms-1em" id="toggleOutputBypassBtn"
                         aria-pressed="false" aria-controls="outputSection">
-                Bypass Output
+                    Bypass Output
+                    <span class="help-icon" tabindex="0" aria-label="Bypass Output Help">
+                        ?
+                        <span class="custom-tooltip">
+                            When enabled, parsed results are streamed directly to you and NOT saved to the Output Folder.
+                            Use this for quick downloads or previews.
+                        </span>
+                    </span>
                 </button>
                 <span class="output-badge" id="outputBypassBadge">BYPASS</span>
 
-                <!-- File Source (manual format override source) -->
-                <label for="fileSourceSelect" class="log-label ms-1em">File Source:</label>
+                <!-- File Source Dropdown -->
+                <div class="dropdown-group">
+                <label for="fileSourceSelect" class="dropdown-label">
+                    File Source:
+                    <span class="help-icon" tabindex="0" aria-label="File Source">
+                    ?
+                    <span class="custom-tooltip">
+                      Choose where the parser should get its input files. 'Input Folder' uses standard downloads or files, 'Manual Uploads' lets you select a file you uploaded.
+                    </span>
+                    </span>
+                </label>
                 <select id="fileSourceSelect" class="log-select file-source-select" aria-label="Select file source for manual format parsing">
-                    <option value="input" {{ 'selected' if manual_source == 'input' else '' }}>Input</option>
-                    <option value="uploads" {{ 'selected' if manual_source == 'uploads' else '' }}>Uploads</option>
+                    <option value="input" {{ 'selected' if manual_source == 'input' else '' }}>Input Folder (auto-detect/download)</option>
+                    <option value="uploads" {{ 'selected' if manual_source == 'uploads' else '' }}>Manual Uploads (select & parse uploaded file)</option>
                 </select>
-
-                <div class="dropdown d-inline-block ms-2">
-                    <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        More
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li><button class="dropdown-item" type="button" id="actionClearOutput">Clear output</button></li>
-                        <li><button class="dropdown-item" type="button" id="actionCopyOutput">Copy output</button></li>
-                    </ul>
                 </div>
-            </div>
 
-            <div class="logger-mode-section text-end mb-1em">
-                <label for="logFilterSelect" class="log-label">Level:</label>
+                <!-- Level Dropdown -->
+                <div class="dropdown-group">
+                <label for="logFilterSelect" class="dropdown-label">
+                    Level:
+                    <span class="help-icon" tabindex="0" aria-label="Log Level">
+                    ?
+                    <span class="custom-tooltip">
+                      Filter logs by severity: INFO, WARNING, ERROR, etc.
+                    </span>
+                    </span>
+                </label>
                 <select id="logFilterSelect" class="log-select" aria-label="Filter logs by level">
-                  <option value="all">All</option>
+                    <option value="all">All</option>
                 </select>
-
-                <label for="logTypeFilterSelect" class="log-label ms-1em">Type:</label>
-                <select id="logTypeFilterSelect" class="log-select" aria-label="Filter logs by type">
-                  <option value="all">All Types</option>
-                </select>
-
-                <div class="filter-preset-controls ms-1em">
-                  <button type="button" id="saveFiltersBtn" class="btn btn-primary btn-sm" title="Save current level/type as preset">Save Preset</button>
-                  <button type="button" id="exportFiltersBtn" class="btn btn-outline-primary btn-sm ms-1em" title="Export selected or current preset JSON">Export</button>
-                  <select id="filterPresetSelect" class="log-select ms-1em" aria-label="Load saved filter preset">
-                     <option value="">Presets...</option>
-                  </select>
-                  <button type="button" id="deletePresetBtn" class="btn btn-danger btn-sm ms-1em" title="Delete selected preset">Del</button>
                 </div>
 
-                <label for="outputModeSelect" class="log-label ms-1em">Output Mode:</label>
+                <!-- Type Dropdown -->
+                <div class="dropdown-group">
+                <label for="logTypeFilterSelect" class="dropdown-label">
+                    Type:
+                    <span class="help-icon" tabindex="0" aria-label="Log Type">
+                    ?
+                    <span class="custom-tooltip">
+                      Filter logs by type, such as input, output, validation, etc.
+                    </span>
+                    </span>
+                </label>
+                <select id="logTypeFilterSelect" class="log-select" aria-label="Filter logs by type">
+                    <option value="all">All Types</option>
+                </select>
+                </div>
+
+                <!-- Output Mode Dropdown -->
+                <div class="dropdown-group">
+                <label for="outputModeSelect" class="dropdown-label">
+                    Output Mode:
+                    <span class="help-icon" tabindex="0" aria-label="Output Mode">
+                    ?
+                    <span class="custom-tooltip">
+                      Choose how results are delivered: 'Live' streams results as they are parsed, 'Batch' delivers all results at the end.
+                    </span>
+                </label>
                 <select id="outputModeSelect" class="log-select">
                     <option value="live">Live</option>
                     <option value="batch">Batch</option>
                 </select>
+                </div>
+
+                <div class="dropdown d-inline-block ms-2">
+                <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    More
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><button class="dropdown-item" type="button" id="actionClearOutput">Clear output</button></li>
+                    <li><button class="dropdown-item" type="button" id="actionCopyOutput">Copy output</button></li>
+                </ul>
+                </div>
             </div>
 
             <div id="sessionInfo" class="session-info text-end mb-1em">
@@ -276,6 +307,15 @@
                 {% else %}
                     <span class="terminal-hint">Parser output will appear here after you run the parser.</span>
                 {% endif %}
+                <div id="bypassDownloadHint" class="hidden">
+                    <span class="help-icon" tabindex="0" aria-label="Direct Download">
+                        ?
+                        <span class="custom-tooltip">
+                          Output bypass is ON. Results will be streamed directly for download and will NOT appear in the Output Folder.
+                        </span>
+                    </span>
+                    <span>Output bypass is enabled. Results will be streamed directly for download.</span>
+                </div>
             </div>
 
             <div class="prompt-section">

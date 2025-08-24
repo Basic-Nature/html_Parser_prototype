@@ -789,7 +789,22 @@
     return (el.fileSourceSelect && el.fileSourceSelect.value === 'uploads') ? 'uploads' : 'input';
   }
   function syncSourceClass() {
-    document.body.classList.toggle('source-uploads', currentFileSource() === 'uploads');
+      const inputSection = document.getElementById('inputSection');
+      const uploadsSection = document.getElementById('uploadsSection');
+      const fileSource = currentFileSource();
+
+      document.body.classList.toggle('source-uploads', fileSource === 'uploads');
+      document.body.classList.toggle('source-input', fileSource === 'input');
+
+      // Show/hide and open/close the correct collapsible
+      if (inputSection) {
+          inputSection.parentElement.style.display = fileSource === 'input' ? '' : 'none';
+          inputSection.classList.toggle('hidden', fileSource !== 'input');
+      }
+      if (uploadsSection) {
+          uploadsSection.parentElement.style.display = fileSource === 'uploads' ? '' : 'none';
+          uploadsSection.classList.toggle('hidden', fileSource !== 'uploads');
+      }
   }
   function emitManualFileSource() {
     if (!socket || !activeSessionId) return;
@@ -881,59 +896,12 @@
 
   // -------- URLs --------
 
-  function buildUrlSidebarBlock(urls) {
-    let host = document.getElementById('urlSidebarBlock');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'urlSidebarBlock';
-      host.className = 'section';
-      host.innerHTML = '<h2>urls.txt</h2><div class="url-lines" id="urlLinesBox"></div>';
-      const sb = document.querySelector('.sidebar');
-      if (sb) sb.prepend(host);
-    }
-    const box = host.querySelector('#urlLinesBox');
-    if (!box) return;
-    if (!urls.length) {
-      box.innerHTML = '<span>(empty)</span>';
-      return;
-    }
-    box.innerHTML = urls.map((u,i)=>`<span>[${i+1}] ${esc(u)}</span>`).join('');
-  }
-
-  function renderUrlList(urls) {
-    if (!el.urlList) return;
-    urlIndexMap = {};
-    if (!urls.length) {
-      el.urlList.innerHTML = `<ul class="url-list empty"><li>No URLs in urls.txt.</li></ul>`;
-      return;
-    }
-    el.urlList.innerHTML = `<ul class="url-list">${
-      urls.map((u,i)=> {
-        const idx = i+1; urlIndexMap[idx] = u;
-        return `<li data-url-idx="${idx}">[${idx}] ${esc(u)}</li>`;
-      }).join('')
-    }</ul>`;
-  }
-
   function renderUrlSidebar(urls) {
     const sidebar = document.getElementById('urlSidebarBlock');
     if (!sidebar) return;
-    const searchBox = sidebar.querySelector('.url-search-box') ||
-      (() => {
-        const box = document.createElement('input');
-        box.type = 'search';
-        box.className = 'url-search-box';
-        box.placeholder = 'Search state, county, or URL...';
-        sidebar.prepend(box);
-        return box;
-      })();
-    const listBox = sidebar.querySelector('.url-lines') ||
-      (() => {
-        const box = document.createElement('div');
-        box.className = 'url-lines';
-        sidebar.appendChild(box);
-        return box;
-      })();
+    const searchBox = sidebar.querySelector('.url-search-box');
+    const listBox = sidebar.querySelector('#urlLinesBox');
+    if (!searchBox || !listBox) return;
 
     function updateList(filter = '') {
       let filtered = urls;
@@ -962,22 +930,20 @@
         };
       });
     }
-    on(searchBox, 'input', e => updateList(e.target.value));
+    searchBox.removeEventListener('input', searchBox._urlSearchHandler || (() => {}));
+    searchBox._urlSearchHandler = e => updateList(e.target.value);
+    searchBox.addEventListener('input', searchBox._urlSearchHandler);
     updateList();
   }
 
   function fetchUrls() {
     fetch('/api/urls')
-      .then(r=>r.json())
-      .then(d=>{
-        const list = d.urls||[];
-        renderUrlList(list);
-        buildUrlSidebarBlock(list);
+      .then(r => r.json())
+      .then(d => {
+        const list = d.urls || [];
         renderUrlSidebar(list);
       })
-      .catch(()=>{
-        renderUrlList([]);
-        buildUrlSidebarBlock([]);
+      .catch(() => {
         renderUrlSidebar([]);
       });
   }
@@ -1418,6 +1384,12 @@
         .catch(()=> alert('Network error adding URL.'));
       });
     }
+    const refreshBtn = document.getElementById('refreshUrlListBtn');
+    if (refreshBtn) {
+      on(refreshBtn, 'click', () => {
+        fetchUrls();
+      });
+    }
   }
   function isUserSuppliedSafeHttpUrl(u) {
     try {
@@ -1433,6 +1405,64 @@
     if (document.body.dataset.allowStyleAttr !== "1") return;
     $$('[data-bs-toggle="tooltip"]').forEach(n => window.bootstrap.Tooltip.getOrCreateInstance(n));
     $$('[data-bs-toggle="popover"]').forEach(n => window.bootstrap.Popover.getOrCreateInstance(n));
+  }
+
+  function portalTooltip(icon) {
+    let portal = null;
+
+    function showPortal() {
+      const tt = icon.querySelector('.custom-tooltip');
+      if (!tt) return;
+      if (!portal) {
+        portal = tt.cloneNode(true);
+        portal.style.position = 'fixed';
+        portal.style.zIndex = 99999;
+        portal.style.display = 'block';
+        portal.style.pointerEvents = 'auto';
+        document.body.appendChild(portal);
+      }
+      const rect = icon.getBoundingClientRect();
+      // Mobile: if screen is small or not enough space right, show below
+      const isMobile = window.innerWidth < 700;
+      const spaceRight = window.innerWidth - rect.right;
+      const tooltipWidth = Math.min(340, window.innerWidth - 32);
+      portal.style.maxWidth = tooltipWidth + 'px';
+      portal.style.minWidth = '180px';
+      portal.style.width = isMobile ? '96vw' : '';
+      portal.style.margin = '0';
+      portal.style.visibility = 'visible';
+      portal.style.opacity = '1';
+      portal.style.pointerEvents = 'auto';
+
+      if (isMobile || spaceRight < tooltipWidth + 16) {
+        // Show below, centered
+        portal.style.left = Math.max(8, rect.left + rect.width / 2 - tooltipWidth / 2) + 'px';
+        portal.style.top = (rect.bottom + 8) + 'px';
+      } else {
+        // Show to the right
+        portal.style.left = (rect.right + 8) + 'px';
+        portal.style.top = rect.top + 'px';
+      }
+      portal.style.right = '';
+      portal.style.bottom = '';
+    }
+    function hidePortal() {
+      if (portal) {
+        portal.style.display = 'none';
+        portal.style.visibility = 'hidden';
+        portal.style.opacity = '0';
+      }
+    }
+    icon.addEventListener('mouseenter', showPortal);
+    icon.addEventListener('focus', showPortal);
+    icon.addEventListener('mouseleave', hidePortal);
+    icon.addEventListener('blur', hidePortal);
+    // Touch support for mobile
+    icon.addEventListener('touchstart', e => { showPortal(); e.preventDefault(); }, {passive:false});
+    document.addEventListener('touchstart', e => {
+      if (portal && !icon.contains(e.target) && !portal.contains(e.target)) hidePortal();
+    });
+    window.addEventListener('unload', () => { if (portal) portal.remove(); });
   }
 
   // -------- Init master --------
@@ -1452,6 +1482,21 @@
     initFilterPresets();
     fetchUrls();
     connectSocket();
+
+    // Instructions toggle logic
+    var btn = document.getElementById('toggleInstructionsBtn');
+    var panel = document.getElementById('instructionsPanel');
+    if (btn && panel) {
+      btn.addEventListener('click', function() {
+        var expanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', !expanded);
+        panel.classList.toggle('hidden');
+        btn.textContent = expanded ? '📖 Show Instructions' : '📖 Hide Instructions';
+        if (!expanded) panel.focus();
+      });
+    }
+
+    $$('.help-icon').forEach(portalTooltip);
 
     if (!activeSessionId && el.outputDiv) {
       el.outputDiv.innerHTML = `<div class="no-session-hint">

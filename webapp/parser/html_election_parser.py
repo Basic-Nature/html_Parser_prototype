@@ -16,7 +16,7 @@ from playwright.sync_api import sync_playwright, Page
 from sqlalchemy.exc import OperationalError
 from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler, preload_handler_map
-from .utils.browser_utils import browser_pipeline, safe_browser_close
+from .utils.browser_utils import sync_browser_pipeline, sync_safe_browser_close
 from .utils.misc_utils import load_processed_urls
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.format_router import prompt_and_handle_download
@@ -290,7 +290,7 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
       False -> override not engaged (proceed normally)
       None  -> override attempted but failed
     """
-    from .utils.format_router import route_format_handler
+    from .utils.format_router import prompt_and_handle_download
     from .utils.download_utils import ensure_output_directory
 
     force_parse = FORCE_PARSE_INPUT_FILE
@@ -334,10 +334,10 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         })
         return None
 
-    # Discover candidate files (case-insensitive extension match)
+    # Filter files by extension (case-insensitive)
     files = [
         f for f in os.listdir(input_folder)
-        if f.lower().endswith(f".{force_format_norm}")
+        if f.lower().endswith(f".{force_format_norm}") and os.path.isfile(os.path.join(input_folder, f))
     ]
     if not files:
         logger.error({
@@ -369,110 +369,24 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
             "session_id": session_id
         })
 
-    # Auto-selection logic
-    auto_index = None
-    if isinstance(force_parse, bool) and force_parse:
-        auto_index = 0
-    elif isinstance(force_parse, str):
-        if force_parse.lower() == 'first':
-            auto_index = 0
-        elif force_parse.isdigit():
-            auto_index = int(force_parse)
-    elif isinstance(force_parse, int):
-        auto_index = force_parse
-
-    selected_index = None
-    if auto_index is not None and 0 <= auto_index < len(files):
-        selected_index = auto_index
-        logger.info({
-            "level": "INFO",
-            "type": "manual_override",
-            "message": f"[ManualOverride] Auto-selected index {auto_index}",
-            "session_id": session_id
-        })
-    else:
-        # Prompt user for file index
-        try:
-            prompt_message = "[PROMPT] Select a file index to parse:"
-            def validator(x):
-                return x.isdigit() and 0 <= int(x) < len(files)
-            selection = prompt.prompt_input(
-                prompt_message,
-                validator=validator,
-                session_id=session_id,
-                context={"files": files}
-            )
-            if not isinstance(selection, str):
-                raise ValueError("Non-string selection")
-            selected_index = int(selection.strip())
-        except (ValueError, EOFError, KeyboardInterrupt):
-            logger.error({
-                "level": "ERROR",
-                "type": "manual_override",
-                "message": "[ManualOverride] Invalid selection. Aborting manual parse.",
-                "session_id": session_id
-            })
-            return None
-
-    target_file = safe_filename(files[selected_index])
-    handler = route_format_handler(force_format_norm)
-    if not handler:
-        logger.error({
-            "level": "ERROR",
-            "type": "manual_override",
-            "message": f"[ManualOverride] No format handler found for '{force_format_norm}'",
-            "session_id": session_id
-        })
-        return None
-
-    full_path = safe_join(input_folder, target_file)
-    if not os.path.isfile(full_path):
-        logger.error({
-            "level": "ERROR",
-            "type": "manual_override",
-            "message": f"[ManualOverride] Selected file missing: {full_path}",
-            "session_id": session_id,
-            "file": full_path
-        })
-        return None
-
-    html_context = {
-        "manual_file": full_path,
-        "manual_source_dir": source_dir,
-        "manual_format": force_format_norm
-    }
-    dummy_page = None  # Not used by format handlers
-
-    logger.info({
-        "level": "INFO",
-        "type": "manual_override",
-        "message": f"[ManualOverride] Parsing file: {target_file}",
-        "session_id": session_id,
-        "file_path": full_path
-    })
-
-    # Call the handler's parse function robustly
-    result = safe_parse(
-        handler,
-        page=dummy_page,
-        html_context=html_context,
-        manual_file=full_path,
+    # Use prompt_and_handle_download for consistent prompting and handler logic
+    result, handled = prompt_and_handle_download(
+        page=None,
+        target_url="manual_override",
+        rejected_downloads=None,
         session_id=session_id,
-        logger=logger
+        manual_upload_mode=True,
+        uploads_dir=input_folder
     )
-    if not result or not all(result):
-        logger.error({
-            "level": "ERROR",
-            "type": "manual_override",
-            "message": "[ManualOverride] Parsing failed or returned incomplete result.",
-            "session_id": session_id,
-            "file_path": full_path
-        })
-        return None
 
-    *_, metadata = result
-    if isinstance(metadata, dict) and "output_file" in metadata:
-        output_file_path = metadata.get("output_file")
+    # If handled, optionally remove output file if output_bypass is set
+    if handled:
+        output_file_path = None
+        if result and isinstance(result, (list, tuple)) and len(result) > 0:
+            # Try to extract output_file from metadata (last element)
+            metadata = result[-1]
+            if isinstance(metadata, dict):
+                output_file_path = metadata.get("output_file")
         if output_bypass and output_file_path and os.path.exists(output_file_path):
             try:
                 os.remove(output_file_path)
@@ -489,15 +403,22 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
                     "message": f"[ManualOverride] Failed to remove bypassed file: {e}",
                     "session_id": session_id
                 })
-    # Single-file summary
-    logger.info({
-        "level": "INFO",
-        "type": "summary",
-        "message": {"success": 1, "fail": 0, "partial": 0, "error": 0, "flagged": 0, "mode": "manual_override"},
-        "session_id": session_id
-    })
-    mark_url_processed("manual_override", status="success", file=target_file, format=force_format_norm)
-    return True
+        logger.info({
+            "level": "INFO",
+            "type": "manual_override",
+            "message": "[ManualOverride] Manual upload parse succeeded via prompt_and_handle_download.",
+            "session_id": session_id
+        })
+        mark_url_processed("manual_override", status="success")
+        return True
+    else:
+        logger.error({
+            "level": "ERROR",
+            "type": "manual_override",
+            "message": "[ManualOverride] Manual upload parse failed via prompt_and_handle_download.",
+            "session_id": session_id
+        })
+        return None
 
 def ai_analyze_results(headers, data, contest, metadata, target_url=None, session_id=None):
     if ENABLE_AI_ANALYSIS:
@@ -638,7 +559,7 @@ def orchestrate_url(
     browser = page = None
     try:
         with sync_playwright() as p:
-            browser, _, page, _ = browser_pipeline(
+            browser, _, page, _ = sync_browser_pipeline(
                 p, target_url, cache_exit_callback=mark_url_processed, session_id=session_id
             )
             if cancel_flag is not None and safe_is_set(cancel_flag):
@@ -652,7 +573,7 @@ def orchestrate_url(
                             "session_id": session_id
                         }
                         logger.info(payload)
-                        safe_browser_close(browser, session_id)
+                        sync_safe_browser_close(browser, session_id)
                         return
                 except Exception as e:
                     msg = f"Exception during cancel_flag check: {e}"
@@ -663,7 +584,7 @@ def orchestrate_url(
                         "session_id": session_id
                     }
                     logger.warning(payload)
-                    safe_browser_close(browser, session_id)
+                    sync_safe_browser_close(browser, session_id)
                     return
 
             if not page:
@@ -675,7 +596,7 @@ def orchestrate_url(
                     "session_id": session_id
                 }
                 logger.error(payload)
-                safe_browser_close(browser, session_id)
+                sync_safe_browser_close(browser, session_id)
                 return
 
             result, handled = prompt_and_handle_download(
@@ -691,7 +612,7 @@ def orchestrate_url(
                     "session_id": session_id
                 }
                 logger.info(payload)
-                safe_browser_close(browser, session_id)
+                sync_safe_browser_close(browser, session_id)
                 return
 
             state, county = infer_state_county_from_url(target_url)
@@ -753,7 +674,7 @@ def orchestrate_url(
                 }
                 logger.error(payload)
                 mark_url_processed(target_url, status="fail", session_id=session_id)
-                safe_browser_close(browser, session_id)
+                sync_safe_browser_close(browser, session_id)
                 return
 
             headers, data, contest, metadata = result
@@ -783,7 +704,7 @@ def orchestrate_url(
                     }
                     logger.error(payload)
                     mark_url_processed(target_url, status="error", session_id=session_id)
-                safe_browser_close(browser, session_id)
+                sync_safe_browser_close(browser, session_id)
                 return
 
             if all([headers, data, contest, metadata]):
@@ -876,7 +797,7 @@ def orchestrate_url(
         logger.error(payload)
         mark_url_processed(target_url, status="error", session_id=session_id)
     finally:
-        safe_browser_close(browser, session_id)
+        sync_safe_browser_close(browser, session_id)
 
 def _orchestrate_url_worker(args):
     """
@@ -904,39 +825,57 @@ def main(
     continue_on_override_failure=True,
     **kwargs
 ):
-    try:
-        payload = {
-            "level": "DEBUG", 
-            "type": "status", 
-            "message": "Entered main()", 
-            "session_id": session_id
-        }
-        logger.info(payload)
+    """
+    Main orchestration entrypoint for the HTML Election Parser.
 
-        override_result = process_format_override(
-            session_id=session_id,
-            source_dir=manual_source,
-            output_bypass=output_bypass
-        )
-        if override_result is True:
-            return
-        if override_result is None:
-            if continue_on_override_failure:
-                logger.warning({
-                    "level": "WARNING",
+    - If manual_source is 'uploads', always attempt manual override (parse from uploads folder).
+      - If override succeeds, short-circuit and exit.
+      - If override fails, continue or abort based on continue_on_override_failure.
+    - Otherwise, proceed with normal pipeline (input folder or download).
+    - Handles parallel and sequential processing.
+    - Logs all major steps and errors.
+    """
+    try:
+        logger.info({
+            "level": "DEBUG",
+            "type": "status",
+            "message": "Entered main()",
+            "session_id": session_id
+        })
+
+        # --- 1. Manual Upload Override Path ---
+        if manual_source == 'uploads':
+            override_result = process_format_override(
+                session_id=session_id,
+                source_dir='uploads',
+                output_bypass=output_bypass
+            )
+            if override_result is True:
+                logger.info({
+                    "level": "INFO",
                     "type": "manual_override",
-                    "message": "[ManualOverride] Override failed; continuing with normal URL pipeline.",
-                    "session_id": session_id
-                })
-            else:
-                logger.error({
-                    "level": "ERROR",
-                    "type": "manual_override",
-                    "message": "[ManualOverride] Override failed; aborting as configured.",
+                    "message": "[ManualOverride] Manual upload parse succeeded. Exiting main().",
                     "session_id": session_id
                 })
                 return
+            if override_result is None:
+                if continue_on_override_failure:
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": "manual_override",
+                        "message": "[ManualOverride] Override failed; continuing with normal URL pipeline.",
+                        "session_id": session_id
+                    })
+                else:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "manual_override",
+                        "message": "[ManualOverride] Override failed; aborting as configured.",
+                        "session_id": session_id
+                    })
+                    return
 
+        # --- 2. Ensure Directories ---
         ensure_input_directory()
         if not output_bypass:
             ensure_output_directory()
@@ -948,63 +887,57 @@ def main(
                 "session_id": session_id
             })
 
+        # --- 3. Load URLs ---
         if urls is None:
             urls = load_urls()
-
-        msg = f"Loaded {len(urls)} raw URLs from urls.txt"
-        payload = {
+        logger.info({
             "level": "INFO",
             "type": "input",
-            "message": msg,
+            "message": f"Loaded {len(urls)} raw URLs from urls.txt",
             "session_id": session_id
-        }
-        logger.info(payload)
+        })
 
+        # --- 4. Limit URLs if needed ---
         max_urls = MAX_URLS_DISPLAYED
         if isinstance(max_urls, (int, str)) and str(max_urls).isdigit():
             urls = urls[:int(max_urls)]
 
         if not urls:
-            msg = "No URLs to process. Exiting."
-            payload = {
+            logger.error({
                 "level": "ERROR",
                 "type": "input",
-                "message": msg,
+                "message": "No URLs to process. Exiting.",
                 "session_id": session_id
-            }
-            logger.error(payload)
+            })
             return
 
+        # --- 5. Load Processed Info ---
         processed_info = load_processed_urls()
-        msg = f"{len(urls)} URLs remain after filtering .processed_urls"
-        payload = {
+        logger.warning({
             "level": "WARNING",
             "type": "status",
-            "message": msg,
+            "message": f"{len(urls)} URLs remain after filtering .processed_urls",
             "session_id": session_id
-        }
-        logger.warning(payload)
-        print("TRACE: About to prompt for URL selection. urls:", urls)
+        })
+
+        # --- 6. Prompt for URL Selection ---
         selected_urls = prompt_url_selection(
             urls,
             processed_info,
             session_id=session_id,
             cancel_flag=cancel_flag
         )
-        print("TRACE: prompt_url_selection returned:", selected_urls)
         if not selected_urls:
-            msg = "No URLs selected. Exiting."
-            payload = {
+            logger.info({
                 "level": "INFO",
                 "type": "input",
-                "message": msg,
+                "message": "No URLs selected. Exiting.",
                 "session_id": session_id
-            }
-            logger.info(payload)
+            })
             return
 
+        # --- 7. Process URLs (Parallel or Sequential) ---
         if ENABLE_PARALLEL:
-            # Note: cancel_flag not passed to subprocesses (would not sync); single-process mode supports cancellation.
             arg_list = [
                 (url, processed_info, session_id, output_bypass, kwargs)
                 for url in selected_urls
@@ -1030,6 +963,7 @@ def main(
                     **kwargs
                 )
 
+        # --- 8. Summarize Results ---
         summary = {"success": 0, "fail": 0, "partial": 0, "error": 0, "flagged": 0}
         processed = load_processed_urls()
         for url in selected_urls:
@@ -1042,30 +976,27 @@ def main(
             if proc_entry.get("flagged_for_review"):
                 summary["flagged"] += 1
 
-        payload = {
+        logger.info({
             "level": "INFO",
             "type": "summary",
             "message": summary,
             "session_id": session_id
-        }
-        logger.info(payload)
+        })
 
     except (OperationalError, psycopg2.OperationalError) as db_err:
         msg = f"DB ERROR: Could not connect to the database: {db_err}"
-        payload = {
+        logger.error({
             "level": "ERROR",
             "type": "error",
             "message": msg,
             "session_id": session_id
-        }
-        logger.error(payload)
-        payload = {
+        })
+        logger.error({
             "level": "ERROR",
             "type": "fatal",
             "message": "Database connection failed. Exiting pipeline.",
             "session_id": session_id
-        }
-        logger.error(payload)
+        })
         sys.exit(1)
 
 if __name__ == "__main__":

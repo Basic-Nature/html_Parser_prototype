@@ -23,4 +23,5 @@ https://results.elections.myflorida.com/
 # https://www.elections.virginia.gov/resultsreports/election-results/
 # https://electionresults.iowa.gov/IA/122322/web.345435/#/summary
 
-# === End of File ===
+
+https://www.vote.nyc/page/election-results-summary

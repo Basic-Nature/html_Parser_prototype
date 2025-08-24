@@ -119,7 +119,9 @@ def prompt_and_handle_download(
     page,
     target_url,
     rejected_downloads=None,
-    session_id=None
+    session_id=None,
+    manual_upload_mode=False,
+    uploads_dir=None  
 ) -> Tuple[Optional[dict], bool]:
     """
     Extracts download links (from context library, DOM, and HTML), prompts user for format,
@@ -128,6 +130,71 @@ def prompt_and_handle_download(
     """
     if rejected_downloads is None:
         rejected_downloads = set()
+
+    # --- Manual Upload Mode ---
+    if manual_upload_mode and uploads_dir:
+        files = [f for f in os.listdir(uploads_dir) if os.path.isfile(os.path.join(uploads_dir, f))]
+        if not files:
+            logger.error({
+                "level": "ERROR",
+                "type": "manual_override",
+                "message": "[ManualOverride] No files found in uploads folder.",
+                "session_id": session_id
+            })
+            return None, False
+
+        # Prompt user to select file
+        prompt_message = "[PROMPT] Select a file to parse from uploads:"
+        def validator(x):
+            return x.isdigit() and 0 <= int(x) < len(files)
+        try:
+            selection = prompt.prompt_input(
+                prompt_message,
+                validator=validator,
+                session_id=session_id,
+                context={"files": files}
+            )
+            if not isinstance(selection, str):
+                raise ValueError("Non-string selection")
+            selected_index = int(selection.strip())
+        except (ValueError, EOFError, KeyboardInterrupt):
+            logger.error({
+                "level": "ERROR",
+                "type": "manual_override",
+                "message": "[ManualOverride] Invalid selection. Aborting manual parse.",
+                "session_id": session_id
+            })
+            return None, False
+
+        target_file = files[selected_index]
+        full_path = os.path.join(uploads_dir, target_file)
+        fmt = os.path.splitext(target_file)[1].lower().lstrip('.')
+        handler = route_format_handler(fmt)
+        if not handler:
+            logger.error({
+                "level": "ERROR",
+                "type": "manual_override",
+                "message": f"[ManualOverride] No handler for format: {fmt}",
+                "session_id": session_id
+            })
+            return None, False
+
+        logger.info({
+            "level": "INFO",
+            "type": "manual_override",
+            "message": f"[ManualOverride] Parsing file: {target_file}",
+            "session_id": session_id,
+            "file_path": full_path
+        })
+        result = safe_parse(
+            handler,
+            page=None,
+            manual_file=full_path,
+            source_url=target_url,
+            logger=logger,
+            session_id=session_id
+        )
+        return result, True
 
     html = safe_content(page, session_id=session_id)
 
