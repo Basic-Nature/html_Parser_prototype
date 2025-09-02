@@ -28,7 +28,6 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
 
-      # Debug info for image reference
       - name: Show resolved image reference (debug)
         run: |
           echo "ACR_NAME=${{ secrets.ACR_NAME }}"
@@ -37,7 +36,6 @@ jobs:
           echo "IMAGE_TAG=${{ env.IMAGE_TAG }}"
           echo "Resolved image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
-      # Keep your local debug/cleanup/test steps on the runner
       - name: Show disk usage before build
         run: df -h
 
@@ -91,8 +89,7 @@ jobs:
           pip install --no-cache-dir --prefer-binary -r requirements.txt
 
       - name: Install Playwright browsers (runner)
-        run: |
-          python -m playwright install --with-deps
+        run: python -m playwright install --with-deps
 
       - name: Remove unnecessary files from site-packages
         run: |
@@ -131,7 +128,6 @@ jobs:
       - name: Show disk usage before container build
         run: df -h
 
-      # Ensure a Dockerfile exists at repo root; auto-rename .Dockerfile if found
       - name: Verify Dockerfile
         run: |
           if [ ! -f "Dockerfile" ] && [ -f ".Dockerfile" ]; then
@@ -144,27 +140,50 @@ jobs:
           fi
           head -n 10 Dockerfile || true
 
-      # Build container image directly in ACR (no local Docker needed)
-      - name: ACR server-side build
+      - name: Set up Docker Buildx (for fallback runner build)
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ACR (docker) for fallback
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      # Try ACR Tasks first; if blocked, fall back to runner-side build/push
+      - name: Build image (prefer ACR Tasks, fallback to runner build)
+        shell: bash
         run: |
           set -e
-          if [ -z "${{ secrets.ACR_NAME }}" ] || [ -z "${{ secrets.ACR_LOGIN_SERVER }}" ]; then
-            echo "ACR_NAME and ACR_LOGIN_SERVER secrets are required (e.g., ACR_NAME=myregistry, ACR_LOGIN_SERVER=myregistry.azurecr.io)."
-            exit 1
-          fi
+          echo "Attempting ACR Tasks build..."
+          set +e
           az acr build \
-            --registry ${{ secrets.ACR_NAME }} \
-            --image ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            --registry "${{ secrets.ACR_NAME }}" \
+            --image "${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}" \
             --file Dockerfile \
             .
+          ACR_RC=$?
+          set -e
+          if [ $ACR_RC -ne 0 ]; then
+            echo "ACR Tasks build failed (likely policy). Falling back to runner build/push."
+            docker buildx build \
+              --platform linux/amd64 \
+              -f Dockerfile \
+              -t "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}" \
+              -t "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest" \
+              --push \
+              .
+          else
+            echo "ACR Tasks build succeeded. Tagging latest via ACR import."
+            az acr import \
+              --name "${{ secrets.ACR_NAME }}" \
+              --source "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}" \
+              --image "${{ env.IMAGE_NAME }}:latest" \
+              --force
+          fi
 
-      # Configure Web App to pull image from ACR (using admin credentials)
       - name: Configure Web App to use custom container
         run: |
-          if [ -z "${{ secrets.ACR_USERNAME }}" ] || [ -z "${{ secrets.ACR_PASSWORD }}" ]; then
-            echo "ACR_USERNAME and ACR_PASSWORD secrets are required for the Web App to pull from ACR (or switch to Managed Identity)."
-            exit 1
-          fi
           az webapp config container set \
             --name BallotLens \
             --resource-group BallotLens_group \
@@ -173,7 +192,6 @@ jobs:
             --docker-registry-server-user ${{ secrets.ACR_USERNAME }} \
             --docker-registry-server-password ${{ secrets.ACR_PASSWORD }}
 
-      # App settings to enable OCR and verbose logging
       - name: Set Azure App Settings (Environment Variables)
         run: |
           az webapp config appsettings set \
@@ -195,5 +213,4 @@ jobs:
               SCM_DO_BUILD_DURING_DEPLOYMENT="false"
 
       - name: Restart Web App
-        run: |
-          az webapp restart --name BallotLens --resource-group BallotLens_group
+        run: az webapp restart --name BallotLens --resource-group BallotLens_group
