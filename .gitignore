@@ -15,6 +15,11 @@ env/
 .python-version
 .env
 
+# VCS/CI
+.git
+.github
+.gitignore
+
 # ----------------------------
 # Node / JavaScript
 # ----------------------------
@@ -85,6 +90,8 @@ msedge_driver.log
 chromedriver.log
 selenium-screenshots/
 .playwright/
+.ms-playwright/
+webapp/ms-playwright/
 
 # ----------------------------
 # IDE / Editor settings
@@ -120,6 +127,10 @@ local.settings.json
 *.tar.gz
 *.zip
 *.7z
+
+# Local data/tests (exclude unless you truly need them in the image)
+data/
+tests/
 
 # ----------------------------
 # Dev configuration notes

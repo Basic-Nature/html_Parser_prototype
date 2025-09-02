@@ -140,47 +140,26 @@ jobs:
           fi
           head -n 10 Dockerfile || true
 
-      - name: Set up Docker Buildx (for fallback runner build)
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to ACR (docker) for fallback
+      - name: Log in to ACR (docker)
         uses: docker/login-action@v3
         with:
           registry: ${{ secrets.ACR_LOGIN_SERVER }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      # Try ACR Tasks first; if blocked, fall back to runner-side build/push
-      - name: Build image (prefer ACR Tasks, fallback to runner build)
-        shell: bash
-        run: |
-          set -e
-          echo "Attempting ACR Tasks build..."
-          set +e
-          az acr build \
-            --registry "${{ secrets.ACR_NAME }}" \
-            --image "${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}" \
-            --file Dockerfile \
-            .
-          ACR_RC=$?
-          set -e
-          if [ $ACR_RC -ne 0 ]; then
-            echo "ACR Tasks build failed (likely policy). Falling back to runner build/push."
-            docker buildx build \
-              --platform linux/amd64 \
-              -f Dockerfile \
-              -t "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}" \
-              -t "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest" \
-              --push \
-              .
-          else
-            echo "ACR Tasks build succeeded. Tagging latest via ACR import."
-            az acr import \
-              --name "${{ secrets.ACR_NAME }}" \
-              --source "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}" \
-              --image "${{ env.IMAGE_NAME }}:latest" \
-              --force
-          fi
+      - name: Build and push image (no ACR Tasks)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+          platforms: linux/amd64
 
       - name: Configure Web App to use custom container
         run: |

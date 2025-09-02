@@ -1,13 +1,15 @@
-# Base image for Azure App Service (Python 3.12)
-FROM mcr.microsoft.com/azure-app-service/python:3.12
+# Use a stable, public base
+FROM python:3.12-slim-bookworm
 
-# System deps for OCR
+# System deps for OCR and Playwright
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    poppler-utils tesseract-ocr && \
-    rm -rf /var/lib/apt/lists/*
+    ca-certificates curl git \
+    tesseract-ocr poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
 
 # App directory
-WORKDIR /home/site/wwwroot
+WORKDIR /app
 
 # Install Python deps
 COPY requirements.txt .
@@ -19,11 +21,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy source
 COPY . .
 
-# Enable OCR in container
-ENV ENABLE_OCR=True
+# Environment
 ENV PYTHONUNBUFFERED=1
+ENV ENABLE_OCR=True
 
-# Expose default port used by Azure images (App Service sets PORT)
+# App Service listens on WEBSITES_PORT (set via app settings). Expose for local runs.
 EXPOSE 8000
 
 # Start the app
