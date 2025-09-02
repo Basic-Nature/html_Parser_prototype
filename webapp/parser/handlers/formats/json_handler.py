@@ -30,11 +30,17 @@ def parse_json_election_results(json_path, session_id=None):
         data = orjson.loads(f.read())
 
     # --- Dynamic contest extraction ---
-    ballot_items_key = find_key_by_keywords(data.get("results", {}), CONTEST_KEYWORDS | {"ballotitem", "ballotitems"})
+    ballot_items_key = find_key_by_keywords(
+        data.get("results", {}),
+        set(CONTEST_KEYWORDS) | {"ballotitem", "ballotitems"}
+    )
     ballot_items = data.get("results", {}).get(ballot_items_key, []) if ballot_items_key else []
 
     contests = set()
-    contest_name_key = find_key_by_keywords(ballot_items[0], CONTEST_KEYWORDS | {"name"}) if ballot_items else "name"
+    contest_name_key = (
+        find_key_by_keywords(ballot_items[0], set(CONTEST_KEYWORDS) | {"name"})
+        if ballot_items else "name"
+    )
     for item in ballot_items:
         name = item.get(contest_name_key, "").strip()
         if name:
@@ -128,13 +134,25 @@ def parse_json_election_results(json_path, session_id=None):
         })
         return None, None, None, {"error": "Selected contest not found"}
 
-    ballot_options_key = find_key_by_keywords(contest_item, CANDIDATE_KEYWORDS | {"ballotoption", "ballotoptions"})
+    ballot_options_key = find_key_by_keywords(contest_item, set(CANDIDATE_KEYWORDS) | {"ballotoption", "ballotoptions"})
     ballot_options = contest_item.get(ballot_options_key, []) if ballot_options_key else []
 
-    candidate_name_key = find_key_by_keywords(ballot_options[0], CANDIDATE_KEYWORDS | {"name"}) if ballot_options else "name"
-    party_key = find_key_by_keywords(ballot_options[0], PARTY_KEYWORDS | {"politicalparty"}) if ballot_options else "politicalParty"
-    precinct_results_key = find_key_by_keywords(ballot_options[0], LOCATION_KEYWORDS | {"precinctresult", "precinctresults"})
-    group_results_key = find_key_by_keywords(ballot_options[0], BALLOT_TYPES | {"groupresult", "groupresults"})
+    candidate_name_key = (
+        find_key_by_keywords(ballot_options[0], set(CANDIDATE_KEYWORDS) | {"name"})
+        if ballot_options else "name"
+    )
+    party_key = (
+        find_key_by_keywords(ballot_options[0], set(PARTY_KEYWORDS) | {"politicalparty"})
+        if ballot_options else "politicalParty"
+    )
+    precinct_results_key = find_key_by_keywords(
+        ballot_options[0],
+        set(LOCATION_KEYWORDS) | {"precinctresult", "precinctresults"}
+    )
+    group_results_key = find_key_by_keywords(
+        ballot_options[0],
+        set(BALLOT_TYPES) | {"groupresult", "groupresults"}
+    )
 
     # --- Build normalization map for candidates/parties ---
     raw_candidates = {}
@@ -152,14 +170,14 @@ def parse_json_election_results(json_path, session_id=None):
         raw_label = opt.get(candidate_name_key, "").strip()
         precinct_results = opt.get(precinct_results_key, []) if precinct_results_key else []
         for precinct in precinct_results:
-            precinct_name_key = find_key_by_keywords(precinct, LOCATION_KEYWORDS | {"name"})
+            precinct_name_key = find_key_by_keywords(precinct, set(LOCATION_KEYWORDS) | {"name"})
             p = precinct.get(precinct_name_key, "").strip()
             results_nested[p][raw_label]["Total"] = precinct.get("voteCount")
             group_results = precinct.get(group_results_key, []) if group_results_key else []
             for grp in group_results:
-                group_name_key = find_key_by_keywords(grp, BALLOT_TYPES | {"groupname"})
+                group_name_key = find_key_by_keywords(grp, set(BALLOT_TYPES) | {"groupname"})
                 g = grp.get(group_name_key, "").strip()
-                norm_g = GROUP_RENAME_MAP.get(g.lower(), g)
+                norm_g = GROUP_RENAME_MAP.get(g.lower(), g) if g else g
                 results_nested[p][raw_label][norm_g] = grp.get("voteCount")
 
     # --- Build rows and headers dynamically ---

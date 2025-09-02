@@ -16,6 +16,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
+
+      - name: Show resolved image reference (debug)
+        run: |
+          echo "ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }}"
+          echo "IMAGE_NAME=${{ env.IMAGE_NAME }}"
+          echo "IMAGE_TAG=${{ env.IMAGE_TAG }}"
+          echo "Resolved image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+
+      # Build the image in Azure Container Registry (server-side)
+      - name: ACR server-side build
+        run: |
+          if [ -z "${{ secrets.ACR_NAME }}" ] || [ -z "${{ secrets.ACR_LOGIN_SERVER }}" ]; then
+            echo "ACR_NAME and ACR_LOGIN_SERVER secrets are required (e.g., ACR_NAME=myregistry, ACR_LOGIN_SERVER=myregistry.azurecr.io)."
+            exit 1
+          fi
+          az acr build \
+            --registry ${{ secrets.ACR_NAME }} \
+            --image ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            .
+
+      - name: Configure Web App to use custom container
+        run: |
+          if [ -z "${{ secrets.ACR_USERNAME }}" ] || [ -z "${{ secrets.ACR_PASSWORD }}" ]; then
+            echo "ACR_USERNAME and ACR_PASSWORD secrets are required for the Web App to pull from ACR (or use Managed Identity)."
+            exit 1
+          fi
+          az webapp config container set \
+            --name BallotLens \
+            --resource-group BallotLens_group \
+            --docker-custom-image-name ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            --docker-registry-server-url https://${{ secrets.ACR_LOGIN_SERVER }} \
+            --docker-registry-server-user ${{ secrets.ACR_USERNAME }} \
+            --docker-registry-server-password ${{ secrets.ACR_PASSWORD }}
+
       - name: Show disk usage before build
         run: df -h
 
@@ -117,13 +157,7 @@ jobs:
       - name: Show disk usage before deploy
         run: df -h
 
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B566CEC09D3C4CF7BCF8B92816B2E49B }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
-
+      # App Settings for container runtime (enable OCR and debug-friendly flags)
       - name: Set Azure App Settings (Environment Variables)
         run: |
           az webapp config appsettings set \
@@ -131,6 +165,11 @@ jobs:
             --resource-group BallotLens_group \
             --settings \
               DEPLOY_ENV="azure" \
+              ENABLE_OCR="True" \
+              ENABLE_OCR_FORCE="False" \
+              LOG_LEVEL="DEBUG" \
+              WEBSITES_PORT="8000" \
+              PLAYWRIGHT_BROWSERS_PATH="0" \
               FLASK_SECRET_KEY="${{ secrets.FLASK_SECRET_KEY }}" \
               FLASK_COOKIE_SECURE="True" \
               POSTGRES_USER="${{ secrets.POSTGRES_USER }}" \
@@ -142,7 +181,12 @@ jobs:
               DATA_API_URL="/api/warehouse_election_results" \
               CSP_MODE="STRICT" \
               HEADLESS_DEFAULT="True" \
-              DISABLE_HTML_FALLBACK="1"
+              DISABLE_HTML_FALLBACK="1" \
+              SCM_DO_BUILD_DURING_DEPLOYMENT="false"
+
+      - name: Restart Web App
+        run: |
+          az webapp restart --name BallotLens --resource-group BallotLens_group
 
       - name: Set Playwright to use bundled browsers
         run: |

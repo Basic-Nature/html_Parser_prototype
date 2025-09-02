@@ -1177,10 +1177,13 @@ def upload_to_output() -> str:
 
 @app.route("/upload/uploads", methods=["POST"])
 def upload_to_uploads() -> str:
-    file = request.files.get("file")
+    file = request.files.get("data_file") or request.files.get("file")
     if file and allowed_file(file.filename):
         filename = file.filename
         file.save(os.path.join(UPLOADS_DIR, filename))
+        session['FORCE_PARSE_INPUT_FILE'] = filename
+        session['FORCE_PARSE_FORMAT'] = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        session['manual_source_pref'] = 'uploads'  # default UI to uploads after upload
         flash(f"File '{filename}' uploaded to uploads folder.", "success")
     else:
         flash("Invalid file type or no file selected.", "danger")
@@ -1579,6 +1582,8 @@ def handle_set_manual_source(data=None):
         "message": f"Manual file source set to '{source}'.",
         "session_id": sid
     })
+    # Notify client so UI stays in sync
+    emit('manual_source_state', {"session_id": sid, "file_source": source}, room=sid)
 
 @socketio.on('delete_session')
 def handle_delete_session(data) -> None:
@@ -1669,6 +1674,13 @@ def handle_run_parser(data=None) -> None:
     output_bypass_flag = is_output_bypassed(session_id)
     lock_session(session_id)
 
+    force_parse_input_file = None
+    force_parse_format = None
+    if requested_source == 'uploads':
+        force_parse_input_file = session.get('FORCE_PARSE_INPUT_FILE')
+        force_parse_format = session.get('FORCE_PARSE_FORMAT')
+
+
     # --- Register per-session emitter (used by prompt/manual emits) ---
     with _registry_lock:
         session_emitters[session_id] = socketio_emit_func
@@ -1745,7 +1757,9 @@ def handle_run_parser(data=None) -> None:
                 emit_func=socketio_emit_func,
                 output_bypass=output_bypass_flag,
                 manual_source=requested_source,
-                disable_internal_heartbeat=True
+                disable_internal_heartbeat=True,
+                force_parse_input_file=force_parse_input_file,
+                force_parse_format=force_parse_format
             )
             logger.info({
                 "level": "INFO",

@@ -59,3 +59,18 @@ def file_hash(filepath, algo="sha256", blocksize=65536):
         logger.error(f"[file_hash] Error hashing file '{filepath}': {e}")
         return None
 
+def is_safe_path(basedir: str, path: str) -> bool:
+    """
+    Returns True if 'path' is within 'basedir' (prevents path traversal).
+    Accepts either a string or Path for basedir and path.
+    """
+    basedir = str(basedir)
+    path = str(path)
+    try:
+        # Python 3.9+: use is_relative_to
+        return Path(os.path.abspath(path)).resolve().is_relative_to(Path(basedir).resolve())
+    except AttributeError:
+        # For Python <3.9, fallback:
+        basedir = os.path.abspath(basedir)
+        path = os.path.abspath(path)
+        return os.path.commonpath([basedir]) == os.path.commonpath([basedir, path])

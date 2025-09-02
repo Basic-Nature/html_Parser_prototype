@@ -120,18 +120,20 @@ def process_urls_for_web(
     prompt_queue,
     session_id,
     cancel_flag,
-    max_workers=PIPELINE_MAX_WORKERS,   # kept for signature compatibility (unused now)
+    max_workers=PIPELINE_MAX_WORKERS,
     emit_func=None,
     output_bypass=False,
     manual_source='input',
     disable_internal_heartbeat=False,
+    force_parse_format=None,
+    force_parse_input_file=None,
     **kwargs
 ) -> None:
     """
     Single-run (interactive) pipeline:
       - Sets up logging / heartbeat
-      - Attempts manual format override
       - Invokes main() exactly once (interactive or with provided urls)
+      - Passes prompt_queue and max_workers to main()
       - No per-URL threading, batching, summary aggregation, or prompt queue loop here.
       Batch / parallel logic is delegated to main() internally.
     """
@@ -158,35 +160,22 @@ def process_urls_for_web(
     })
 
     try:
-        # --- Manual format override (single file short-circuit) ---
-        try:
-            from .html_election_parser import process_format_override as _proc_fmt_override
-        except ImportError:
-            _proc_fmt_override = None
-
-        if _proc_fmt_override:
-            try:
-                override_result = _proc_fmt_override(session_id=session_id, source_dir=manual_source)
-                if override_result:
-                    logger.info({
-                        "level": "INFO",
-                        "type": "manual_override",
-                        "message": f"Manual format override completed (source_dir={manual_source}).",
-                        "session_id": session_id
-                    })
-                    cancellation_manager.remove(session_id)
-                    return
-            except Exception as e:
-                logger.error({
-                    "level": "ERROR",
-                    "type": "manual_override",
-                    "message": f"Manual format override failed: {e}",
-                    "session_id": session_id,
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
-                })
-
         urls = kwargs.get("urls")
+
+        # Always pass prompt_queue and max_workers to main()
+        main_kwargs = dict(
+            session_id=session_id,
+            cancel_flag=cancel_flag,
+            output_bypass=output_bypass,
+            manual_source=manual_source,
+            force_parse_input_file=force_parse_input_file,
+            force_parse_format=force_parse_format,
+            # If uploads is selected, do not fall back to URL list on failure
+            continue_on_override_failure=False if manual_source == 'uploads' else True,
+            prompt_queue=prompt_queue,
+            max_workers=max_workers,
+            **kwargs
+        )
 
         if urls is None:
             # Interactive / internal URL selection path (main() handles listing & prompts)
@@ -226,18 +215,12 @@ def process_urls_for_web(
                 cancellation_manager.remove(session_id)
                 return
 
-            main(
-                session_id=session_id,
-                cancel_flag=cancel_flag,
-                output_bypass=output_bypass,
-                manual_source=manual_source,
-                **kwargs
-            )
+            main(**main_kwargs)
         else:
             # Explicit URLs provided (pass through to main; let it batch internally)
             if isinstance(urls, str):
                 urls = [urls]
-            if (not isinstance(urls, list)) or (not all(isinstance(u, str) for u in urls)):
+            if not isinstance(urls, list) or not all(isinstance(u, str) for u in urls):
                 logger.error({
                     "level": "ERROR",
                     "type": "input",
@@ -255,15 +238,7 @@ def process_urls_for_web(
                 "session_id": session_id
             })
 
-            main(
-                urls=urls,
-                session_id=session_id,
-                cancel_flag=cancel_flag,
-                output_bypass=output_bypass,
-                manual_source=manual_source,
-                emit_func=emit_func,
-                **kwargs
-            )
+            main(urls=urls, emit_func=emit_func, **main_kwargs)
 
         # Completion (single-run)
         if safe_is_set(cancel_flag):

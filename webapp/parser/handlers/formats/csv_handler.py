@@ -103,7 +103,8 @@ def parse_csv_election_results(csv_path, session_id=None):
 
     candidate_cols = [col for col in headers if any(k in col.lower() for k in CANDIDATE_KEYWORDS)]
     precinct_cols = [col for col in headers if any(k in col.lower() for k in LOCATION_KEYWORDS)]
-    method_cols = [col for col in headers if any(m in col.lower() for m in BALLOT_TYPES | TOTAL_KEYWORDS | MISC_FOOTER_KEYWORDS)]
+    method_keys = set(BALLOT_TYPES) | set(TOTAL_KEYWORDS) | set(MISC_FOOTER_KEYWORDS)
+    method_cols = [col for col in headers if any(m in col.lower() for m in method_keys)]
 
     wide_data = []
     reporting_unit_col = precinct_cols[0] if precinct_cols else headers[0]

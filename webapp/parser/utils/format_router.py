@@ -1,12 +1,8 @@
-from __future__ import annotations
-# webapp/parser/utils/format_router.py
-# ---------------------------------------------------------------
-# Format routing and download handling for Smart Elections Parser Webapp
-# ---------------------------------------------------------------
 import os
 import time
 import re
 from typing import Optional, Tuple
+from difflib import get_close_matches
 from ..handlers.formats import json_handler, pdf_handler, csv_handler
 from .logger_singleton import logger, prompt
 from .shared_logic import (
@@ -20,6 +16,54 @@ from urllib.parse import urljoin
 from ..config import SUPPORTED_FORMATS, DISABLE_HTML_FALLBACK
 from .download_utils import download_file
 from .html_scanner import load_pattern_kb, append_pattern_kb
+from ..Context_Integration.Context_Library.constants import CONTEST_KEYWORDS
+
+def extract_contest_from_filename(filename: str) -> str:
+    """
+    Extracts contest/race/type from a filename using canonical keywords, regex, and fuzzy matching.
+    Returns the best match or "Other".
+    """
+    name = filename.lower().replace("_", " ").replace("-", " ")
+    # 1. Exact/substring match (prefer longest keyword)
+    best_kw = ""
+    for kw in CONTEST_KEYWORDS:
+        if kw.lower() in name and len(kw) > len(best_kw):
+            best_kw = kw
+    if best_kw:
+        return best_kw.title()
+    # 2. Regex: match any keyword as a whole word (prefer longest)
+    pattern = r"\b(" + "|".join(sorted((re.escape(kw) for kw in CONTEST_KEYWORDS), key=len, reverse=True)) + r")\b"
+    m = re.search(pattern, name)
+    if m:
+        return m.group(1).title()
+    # 3. Fuzzy match: allow for typos, abbreviations, etc.
+    words = set(name.split())
+    candidates = []
+    for word in words:
+        matches = get_close_matches(word, CONTEST_KEYWORDS, n=1, cutoff=0.85)
+        if matches:
+            candidates.append(matches[0])
+    if candidates:
+        # Prefer the longest candidate (most specific)
+        return max(candidates, key=len).title()
+    # 4. Fallback: common contest/race patterns
+    m2 = re.search(
+        r"(mayor|council(?: member|man|woman|men|women)?|president|comptroller|public advocate|district attorney|borough(?: president)?|senator|judge|delegate|leader|committee|recap|edlevel)",
+        name
+    )
+    if m2:
+        return m2.group(1).title()
+    return "Other"
+
+def summarize_downloads(options):
+    """
+    Summarizes the available downloads by format.
+    """
+    summary = {}
+    for fmt, url in options:
+        ext = fmt.upper()
+        summary[ext] = summary.get(ext, 0) + 1
+    return ", ".join(f"{k}: {v}" for k, v in summary.items())
 
 def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tuple[str, str]]:
     """
@@ -133,6 +177,12 @@ def prompt_and_handle_download(
 
     # --- Manual Upload Mode ---
     if manual_upload_mode and uploads_dir:
+        logger.info({
+            "level": "INFO",
+            "type": "manual_override",
+            "message": f"[ManualOverride] Entering manual upload mode with uploads_dir={uploads_dir}",
+            "session_id": session_id
+        })
         files = [f for f in os.listdir(uploads_dir) if os.path.isfile(os.path.join(uploads_dir, f))]
         if not files:
             logger.error({
@@ -146,7 +196,7 @@ def prompt_and_handle_download(
         # Prompt user to select file
         prompt_message = "[PROMPT] Select a file to parse from uploads:"
         def validator(x):
-            return x.isdigit() and 0 <= int(x) < len(files)
+            return safe_isdigit(x) and 0 <= int(x) < len(files)
         try:
             selection = prompt.prompt_input(
                 prompt_message,
@@ -194,7 +244,24 @@ def prompt_and_handle_download(
             logger=logger,
             session_id=session_id
         )
+        valid = isinstance(result, tuple) and len(result) == 4
+        if not valid:
+            logger.error({
+                "level": "ERROR",
+                "type": "manual_override",
+                "message": "[ManualOverride] Invalid result format.",
+                "session_id": session_id
+            })
+            return None, False
         return result, True
+
+    # --- Not in manual upload mode: fallback to DOM/HTML logic ---
+    logger.info({
+        "level": "INFO",
+        "type": "manual_override",
+        "message": "[ManualOverride] Manual upload mode not engaged or failed. Falling back to DOM/HTML scan.",
+        "session_id": session_id
+    })
 
     html = safe_content(page, session_id=session_id)
 
@@ -208,7 +275,7 @@ def prompt_and_handle_download(
     # 2. Extract links from DOM (anchor tags) for supported formats
     dom_links = []
     try:
-        anchors = safe_query_selector_all(page, "a", session_id=session_id)
+        anchors = safe_query_selector_all(page, "a")
         for a in anchors:
             href = safe_get_attribute(a, "href", logger)
             if not href:
@@ -295,148 +362,36 @@ def prompt_and_handle_download(
         "session_id": session_id
     })
 
-    # 8. Prompt user for format
-    available_files = [
-        f"{os.path.basename(safe_get(link, 'href', ''))} ({safe_lower(safe_get(link, 'format', ''))})"
-        for link in new_links if isinstance(link, dict)
-    ]
-    logger.info({
-        "level": "INFO",
-        "type": "download",
-        "message": f"Downloadable file(s) found: {', '.join(available_files)}.",
-        "session_id": session_id
-    })
+    # 8. Prompt user for format (with contest context)
     confirmed = [
         (safe_lower(safe_get(link, "format", "")), safe_get(link, "href", ""))
         for link in new_links if isinstance(link, dict)
     ]
+    # Attach contest context for each file
+    context_options = []
+    for fmt, url in confirmed:
+        fname = os.path.basename(url)
+        contest = extract_contest_from_filename(fname)
+        context_options.append((fmt, url, contest, fname))
 
-    fmt, file_url = prompt_user_for_format(
-        confirmed,
-        session_id=session_id
-    )
-    logger.debug({
-        "level": "DEBUG",
+    summary = summarize_downloads([(fmt, url) for fmt, url, _, _ in context_options])
+    logger.info({
+        "level": "INFO",
         "type": "prompt",
-        "message": f"prompt_user_for_format returned: fmt={fmt}, file_url={file_url}",
+        "message": f"Summary of detected downloads: {summary}",
         "session_id": session_id
     })
-    if not fmt or not file_url:
-        logger.error({
-            "level": "ERROR",
-            "type": "prompt",
-            "message": f"No format selected or invalid file_url after prompt. fmt={fmt}, file_url={file_url}",
-            "session_id": session_id
-        })
-        # User skipped or invalid
-        for link in new_links:
-            if isinstance(link, dict):
-                rejected_downloads.add(safe_get(link, "href", ""))
-        return None, False
 
-    # 9. Download and handle
-    try:
-        logger.info({
-            "level": "INFO",
-            "type": "download",
-            "message": f"About to download: base_url={safe_url(page)}, file_url={file_url}",
-            "session_id": session_id
-        })
-        local_file = download_file(safe_url(page), file_url)
-        logger.info({
-            "level": "INFO",
-            "type": "download",
-            "message": f"Downloaded file saved to: {local_file}",
-            "session_id": session_id
-        })
-    except Exception as e:
-        logger.error({
-            "level": "ERROR",
-            "type": "download",
-            "message": f"Exception during download_file: {e}",
-            "session_id": session_id
-        })
-        return None, False
-    if not local_file:
-        logger.error({
-            "level": "ERROR",
-            "type": "download",
-            "message": f"Failed to download file: {file_url}",
-            "session_id": session_id
-        })
-        return None, False
-
-    try:
-        format_handler = route_format_handler(fmt)
-        logger.debug({
-            "level": "DEBUG",
-            "type": "router",
-            "message": f"route_format_handler returned: {format_handler}",
-            "session_id": session_id
-        })
-        if format_handler and hasattr(format_handler, "parse"):
-            result = safe_parse(
-                format_handler,
-                page=None,
-                manual_file=local_file,
-                source_url=target_url,
-                logger=logger,
-                session_id=session_id
-            )
-            logger.info({
-                "level": "INFO",
-                "type": "handler",
-                "message": f"Format handler completed. KB size: {len(format_kb) if format_kb else 'N/A'}",
-                "session_id": session_id
-            })
-            return result, True
-    except Exception as e:
-        logger.error({
-            "level": "ERROR",
-            "type": "handler",
-            "message": f"Exception during format_handler: {e}",
-            "session_id": session_id
-        })
-        return None, False
-
-def prompt_user_for_format(
-    confirmed,
-    session_id=None,
-) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Prompts the user to select a format from the confirmed list.
-    Returns (fmt, file_url) or (None, None) if skipped, denied, or invalid.
-    Honors DISABLE_HTML_FALLBACK env: if set, user cannot skip to HTML parsing.
-    """
-    if not confirmed or not isinstance(confirmed, list) or not all(isinstance(x, (list, tuple)) and len(x) == 2 for x in confirmed):
-        logger.warning({
-            "level": "WARNING",
-            "type": "prompt",
-            "message": f"No downloadable formats detected or invalid input.",
-            "session_id": session_id
-        })
-        return None, None
-
-    seen = set()
-    unique_confirmed = []
-    for fmt, file_url in confirmed:
-        key = (str(fmt).lower().strip(), str(file_url).strip())
-        if key not in seen:
-            seen.add(key)
-            unique_confirmed.append((fmt, file_url))
-
+    # Build prompt message with contest context
     format_options = [
-        f"{str(fmt).upper()} ({os.path.basename(str(file_url))})"
-        for fmt, file_url in unique_confirmed
+        f"{str(fmt).upper()} ({fname}) [{contest}]"
+        for fmt, url, contest, fname in context_options
     ]
-
-    # Build prompt message
     options_lines = [f"  [{i}] {opt}" for i, opt in enumerate(format_options)]
     if not DISABLE_HTML_FALLBACK:
         options_lines.append("  [n or Enter] Skip download")
     options_str = "\n".join(options_lines)
 
-    # Emit prompt log for frontend
     prompt_message = (
         f"[PROMPT][Session:{session_id}] Select a format to download:\n"
         f"{options_str}\n"
@@ -444,19 +399,15 @@ def prompt_user_for_format(
         + ("" if DISABLE_HTML_FALLBACK else " or 'n' to skip")
         + " (type 'cancel' to abort): "
     )
+
     def validator(x) -> bool:
         x = str(x).strip().lower()
+        valid_indices = [str(i) for i in range(len(format_options))]
+        valid_options = [opt.lower() for opt in format_options]
         if DISABLE_HTML_FALLBACK:
-            return (
-                (x.isdigit() and 0 <= int(x) < len(format_options)) or
-                (x in [opt.lower() for opt in format_options])
-            )
+            return x in valid_indices or x in valid_options
         else:
-            return (
-                x == "" or x == "n" or
-                (x.isdigit() and 0 <= int(x) < len(format_options)) or
-                (x in [opt.lower() for opt in format_options])
-            )
+            return x in ("", "n") or x in valid_indices or x in valid_options
 
     try:
         selection = prompt.prompt_input(
@@ -464,7 +415,7 @@ def prompt_user_for_format(
             default=None if DISABLE_HTML_FALLBACK else "n",
             validator=validator,
             session_id=session_id,
-            context={"options": format_options, "confirmed": unique_confirmed}
+            context={"options": format_options, "confirmed": context_options, "summary": summary}
         )
     except Exception as e:
         logger.error({
@@ -475,41 +426,79 @@ def prompt_user_for_format(
         })
         return None, None
 
+    # Handle skip/none
     if selection is None or (not DISABLE_HTML_FALLBACK and str(selection).strip().lower() in ("", "n")):
-        if DISABLE_HTML_FALLBACK:
-            logger.info({
-                "level": "INFO",
-                "type": "prompt",
-                "message": f"No selection made. Aborting as HTML fallback is disabled.",
-                "session_id": session_id
-            })
-            return None, None
-        else:
-            logger.info({
-                "level": "INFO",
-                "type": "prompt",
-                "message": f"User chose to skip format download.",
-                "session_id": session_id
-            })
-            return None, None
+        msg = (
+            "No selection made. Aborting as HTML fallback is disabled."
+            if DISABLE_HTML_FALLBACK else
+            "User chose to skip format download."
+        )
+        logger.info({
+            "level": "INFO",
+            "type": "prompt",
+            "message": msg,
+            "session_id": session_id
+        })
+        return None, None
 
+    # Resolve selection
     try:
         sel = str(selection).strip()
-        if sel.isdigit() and 0 <= int(sel) < len(unique_confirmed):
+        idx = None
+        if sel.isdigit() and 0 <= int(sel) < len(context_options):
             idx = int(sel)
         else:
             idx = next(
                 i for i, opt in enumerate(format_options)
                 if opt.lower() == sel.lower()
             )
-        fmt, file_url = unique_confirmed[idx]
+        fmt, file_url, _, _ = context_options[idx]
         logger.info({
             "level": "INFO",
             "type": "prompt",
             "message": f"User selected format: {str(fmt).upper()}",
             "session_id": session_id
         })
-        return fmt, file_url
+        # --- Actually download the file here ---
+        # Use the page's URL as the base for relative links
+        page_url = getattr(page, "url", target_url) if page is not None else target_url
+        local_file_path = download_file(page_url, file_url)
+        if not local_file_path or not os.path.exists(local_file_path):
+            logger.error({
+                "level": "ERROR",
+                "type": "download",
+                "message": f"Failed to download file: {file_url}",
+                "session_id": session_id
+            })
+            return None, None
+        # Route to handler as before, but now with local_file_path
+        handler = route_format_handler(fmt)
+        if not handler:
+            logger.error({
+                "level": "ERROR",
+                "type": "router",
+                "message": f"No handler for format: {fmt}",
+                "session_id": session_id
+            })
+            return None, None
+        result = safe_parse(
+            handler,
+            page=None,
+            manual_file=local_file_path,
+            source_url=file_url,
+            logger=logger,
+            session_id=session_id
+        )
+        valid = isinstance(result, tuple) and len(result) == 4
+        if not valid:
+            logger.error({
+                "level": "ERROR",
+                "type": "manual_override",
+                "message": "[ManualOverride] Invalid result format.",
+                "session_id": session_id
+            })
+            return None, False
+        return result, True
     except Exception as e:
         logger.warning({
             "level": "WARNING",

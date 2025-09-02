@@ -94,7 +94,7 @@
       if (!locked) el.runBtn.removeAttribute('data-running');
     }
   }
-  // New: track joined rooms & early log queue
+  // Track joined rooms & early log queue
   let joinedSessions = new Set();
   let earlyQueue = [];
 
@@ -126,6 +126,72 @@
     deletePresetBtn: $('#deletePresetBtn')
   };
 
+  // --- Download Selection Modal Logic ---
+  function showDownloadModal(options, summary, callback) {
+    const modal = document.getElementById('downloadModal');
+    const search = document.getElementById('downloadSearch');
+    const optionsDiv = document.getElementById('downloadOptions');
+    const summaryDiv = document.getElementById('downloadSummary');
+    const closeBtn = document.getElementById('closeDownloadModal');
+    const cancelBtn = document.getElementById('cancelDownloadModal');
+    let filtered = options.slice();
+
+    function renderList(filter = '') {
+      const q = filter.trim().toLowerCase();
+      filtered = options.filter(opt =>
+        opt.format.toLowerCase().includes(q) ||
+        opt.filename.toLowerCase().includes(q) ||
+        opt.contest.toLowerCase().includes(q)
+      );
+      // Group by contest/type
+      const groups = {};
+      filtered.forEach(opt => {
+        const key = opt.contest || 'Other';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(opt);
+      });
+      optionsDiv.innerHTML = '';
+      Object.keys(groups).sort().forEach(group => {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'download-group';
+        groupDiv.innerHTML = `<div class="download-group-header"><b>${group}</b> (${groups[group].length})</div>`;
+        groups[group].forEach((opt, idx) => {
+          const item = document.createElement('div');
+          item.className = 'download-option';
+          item.tabIndex = 0;
+          item.innerHTML = `<span class="badge bg-primary me-2">${opt.format.toUpperCase()}</span>
+            <span class="download-filename">${highlight(opt.filename, q)}</span>
+            <span class="download-type ms-2">${highlight(opt.contest, q)}</span>`;
+          item.onclick = () => { hide(); callback(opt.index); };
+          item.onkeydown = e => { if (e.key === 'Enter') { hide(); callback(opt.index); } };
+          groupDiv.appendChild(item);
+        });
+        optionsDiv.appendChild(groupDiv);
+      });
+    }
+    function highlight(text, q) {
+      if (!q) return esc(text);
+      return esc(text).replace(new RegExp(q, 'gi'), m => `<mark>${m}</mark>`);
+    }
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+    function hide() {
+      modal.style.display = 'none';
+      document.body.classList.remove('modal-open');
+    }
+    search.value = '';
+    summaryDiv.textContent = summary || '';
+    renderList();
+    search.oninput = e => renderList(e.target.value);
+    closeBtn.onclick = cancelBtn.onclick = () => { hide(); callback(null); };
+    modal.style.display = 'block';
+    document.body.classList.add('modal-open');
+    search.focus();
+  }  
+  
   // Dynamic type selector
   let logTypeSelect = $('#logTypeFilterSelect');
   if (!logTypeSelect) {
@@ -796,14 +862,14 @@
       document.body.classList.toggle('source-uploads', fileSource === 'uploads');
       document.body.classList.toggle('source-input', fileSource === 'input');
 
-      // Show/hide and open/close the correct collapsible
+      // Avoid inline styles (CSP). Use class toggles only.
       if (inputSection) {
-          inputSection.parentElement.style.display = fileSource === 'input' ? '' : 'none';
           inputSection.classList.toggle('hidden', fileSource !== 'input');
+          inputSection.parentElement?.classList.toggle('hidden', fileSource !== 'input');
       }
       if (uploadsSection) {
-          uploadsSection.parentElement.style.display = fileSource === 'uploads' ? '' : 'none';
           uploadsSection.classList.toggle('hidden', fileSource !== 'uploads');
+          uploadsSection.parentElement?.classList.toggle('hidden', fileSource !== 'uploads');
       }
   }
   function emitManualFileSource() {
@@ -1171,6 +1237,25 @@
 
       // --- Prompt handling ---
       if (d && d.type === 'prompt' && d.session_id === activeSessionId) {
+        const ctx = d.context || {};
+        if (Array.isArray(ctx.options) && ctx.confirmed) {
+          // Show the file picker modal for file selection prompts
+          const opts = ctx.options.map((opt, i) => ({
+            index: i,
+            format: opt.format || '',
+            filename: opt.filename || '',
+            contest: opt.contest || ''
+          }));
+          showDownloadModal(opts, ctx.summary || '', function(selectedIdx) {
+            if (selectedIdx == null) {
+              socket.emit('parser_prompt', { session_id: activeSessionId, value: 'n' }); // skip
+            } else {
+              socket.emit('parser_prompt', { session_id: activeSessionId, value: String(selectedIdx) });
+            }
+          });
+          return;
+        }
+        // Fallback: show a plain input prompt for other prompts
         showPromptModal(d.message, function(userInput) {
           socket.emit('parser_prompt', { session_id: activeSessionId, value: userInput });
         });
@@ -1249,19 +1334,49 @@
 
     // --- Prompt Modal (replace with your own UI as needed) ---
     function showPromptModal(message, callback) {
-      console.log('[DEBUG] showPromptModal called with:', message);
+      // Try to detect if this is a download selection prompt
+      // The backend should send context.options and context.confirmed for download prompts
+      let context = null;
+      try {
+        context = typeof message === 'object' ? message : null;
+      } catch {}
+      // Fallback: try to extract from last prompt log if available
+      if (!context && window.lastPromptContext) context = window.lastPromptContext;
+
+      // If context.options is an array of download options, show modal
+      if (context && Array.isArray(context.options) && context.confirmed) {
+        // Parse options into [{index, format, filename, contest}]
+        const opts = context.options.map((opt, i) => {
+          // Example: "CSV (results.csv) [Mayor]"
+          const m = /^(\w+)\s+\(([^)]+)\)\s+\[([^\]]*)\]/.exec(opt);
+          return {
+            index: i,
+            format: m ? m[1] : '',
+            filename: m ? m[2] : opt,
+            contest: m ? m[3] : '',
+            raw: opt
+          };
+        });
+        // Show summary if available
+        const summary = context.summary || '';
+        showDownloadModal(opts, summary, function(selectedIdx) {
+          if (selectedIdx == null) {
+            callback('n'); // skip
+          } else {
+            callback(String(selectedIdx));
+          }
+        });
+        window.lastPromptContext = context;
+        return;
+      }
+
+      // Fallback: show plain input
       if (!el.promptInput) return;
-      el.promptInput.placeholder = message || "Enter value:";
+      el.promptInput.placeholder = typeof message === 'string' ? message : "Enter value:";
       el.promptInput.disabled = false;
       el.promptInput.value = '';
       el.promptInput.parentElement?.classList.remove('hidden');
       el.promptInput.focus();
-
-      // Remove any previous handler
-      el.promptInput.onkeydown = null;
-      el.promptInput.onkeyup = null;
-
-      // Submit on Enter
       el.promptInput.onkeydown = function(e) {
         if (e.key === 'Enter') {
           e.preventDefault();

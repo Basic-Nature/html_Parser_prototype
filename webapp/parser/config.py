@@ -164,8 +164,17 @@ COOLDOWN = os.environ.get("COOLDOWN")
 DB_PATH = os.environ.get("DB_PATH")
 ENABLE_SEGMENT_LABEL_PROMPT = os.environ.get("ENABLE_SEGMENT_LABEL_PROMPT", "true").lower() == "true"
 DEFAULT_CAPTCHA_TIMEOUT = int(os.environ.get("CAPTCHA_TIMEOUT", "300"))
-ENABLE_OCR = os.environ.get("ENABLE_OCR", "true").lower() == "true"
 DISABLE_HTML_FALLBACK = os.environ.get("DISABLE_HTML_FALLBACK", "0").lower() in ("1", "true", "yes")
+
+ENABLE_OCR = os.environ.get("ENABLE_OCR", "true").lower() in ("1","true","yes")
+# Force OCR even if PyMuPDF returns text (for debugging tricky PDFs)
+ENABLE_OCR_FORCE = os.environ.get("ENABLE_OCR_FORCE", "false").lower() in ("1","true","yes")
+# Optional binaries (Windows)
+POPPLER_PATH = os.environ.get("POPPLER_PATH") or None
+TESSERACT_CMD = os.environ.get("TESSERACT_CMD") or None
+# OCR debug output folder
+OCR_DEBUG_DIR = OUTPUT_DIR / "ocr_debug"
+OCR_DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
 # Logging and cache options
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
@@ -276,12 +285,12 @@ __all__ = [
     "DRY_RUN","NO_COORDINATOR","NO_ORGANIZER","BATCH_MODE","FAST_MODE",
     "FLUSH_CACHE","CACHE_EXPIRE_DAYS","EXPORT_AUDIT_LOG","REST_API","SELF_HEAL",
     "MAX_RETRIES","COOLDOWN","DB_PATH","ENABLE_SEGMENT_LABEL_PROMPT",
-    "DEFAULT_CAPTCHA_TIMEOUT","ENABLE_OCR","LOG_LEVEL","CACHE_PROCESSED_URLS",
+    "DEFAULT_CAPTCHA_TIMEOUT","LOG_LEVEL","CACHE_PROCESSED_URLS",
     "CACHE_LOCK","CACHE_RESET","HEADLESS_DEFAULT","TIMEOUT_SEC",
     "INCLUDE_TIMESTAMP_IN_FILENAME","ENABLE_PARALLEL","ENABLE_AI_ANALYSIS",
     "ENABLE_REALTIME_STREAM","FORCE_PARSE_INPUT_FILE","FORCE_PARSE_FORMAT",
     "MAX_URLS_DISPLAYED","PIPELINE_MAX_WORKERS","PIPELINE_MAX_ERRORS",
-    "PIPELINE_HEARTBEAT_INTERVAL","ENABLE_USER_FEEDBACK", "DISABLE_HTML_FALLBACK"
+    "PIPELINE_HEARTBEAT_INTERVAL","ENABLE_USER_FEEDBACK", "DISABLE_HTML_FALLBACK",
 
     # Training params
     "SBERT_EPOCHS","SBERT_BATCH_SIZE","SPACY_NER_EPOCHS","SPACY_NER_PATIENCE",
@@ -292,6 +301,9 @@ __all__ = [
 
     # Helpers
     "get_subprocess_env","get_supported_formats",
+    
+    # OCR paths
+    "ENABLE_OCR","ENABLE_OCR_FORCE","POPPLER_PATH","TESSERACT_CMD","OCR_DEBUG_DIR",
 ]
 
 # === END OF CONFIGURATION ===

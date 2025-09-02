@@ -24,6 +24,7 @@ from .utils.shared_logic import (
     infer_state_county_from_url, safe_parse, safe_is_set, safe_filename,
     safe_strip
 )
+from .utils.misc_utils import is_safe_path
 from .Context_Integration.librarian import safe_join
 from .utils.logger_singleton import logger, console, prompt
 from .config import (
@@ -280,10 +281,10 @@ def prompt_url_selection(
     indices = sorted(set(i for i in indices if 0 <= i < len(urls)))
     return [urls[i] for i in indices]
 
-def process_format_override(session_id=None, source_dir='input', output_bypass=False) -> bool:
+def process_format_override(session_id=None, source_dir='input', output_bypass=False, force_parse_input_file=None, force_parse_format=None) -> bool:
     """
     Manual single-file parse override.
-    Engaged only when BOTH FORCE_PARSE_INPUT_FILE and FORCE_PARSE_FORMAT are truthy.
+    If source_dir == 'uploads', always prompt for file selection from uploads folder.
 
     Returns:
       True  -> manual parse succeeded (caller should short-circuit)
@@ -291,39 +292,12 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
       None  -> override attempted but failed
     """
     from .utils.format_router import prompt_and_handle_download
-    from .utils.download_utils import ensure_output_directory
 
-    force_parse = FORCE_PARSE_INPUT_FILE
-    force_format = FORCE_PARSE_FORMAT
-    if not force_parse or not force_format:
-        return False  # Not engaged
-
-    # Ensure output directory exists if needed
-    if not output_bypass:
-        try:
-            ensure_output_directory()
-        except Exception as e:
-            logger.error({
-                "level": "ERROR",
-                "type": "manual_override",
-                "message": f"[ManualOverride] Could not ensure output directory: {e}",
-                "session_id": session_id
-            })
-            return None
-
-    # Normalize format
-    force_format_norm = str(force_format).lower().lstrip('.').strip()
-    if not force_format_norm:
-        logger.error({
-            "level": "ERROR",
-            "type": "manual_override",
-            "message": "[ManualOverride] FORCE_PARSE_FORMAT empty after normalization.",
-            "session_id": session_id
-        })
-        return None
-
-    # Resolve folder
-    input_folder = UPLOADS_DIR if source_dir == 'uploads' else INPUT_DIR
+    # Engage only when 'uploads' is selected
+    if source_dir != 'uploads':
+        return False
+        # Always prompt for file selection from uploads folder
+    input_folder = os.path.abspath(UPLOADS_DIR)
     if not os.path.isdir(input_folder):
         logger.error({
             "level": "ERROR",
@@ -334,28 +308,22 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         })
         return None
 
-    # Filter files by extension (case-insensitive)
-    files = [
-        f for f in os.listdir(input_folder)
-        if f.lower().endswith(f".{force_format_norm}") and os.path.isfile(os.path.join(input_folder, f))
-    ]
+    files = [f for f in os.listdir(input_folder) if os.path.isfile(os.path.join(input_folder, f))]
     if not files:
         logger.error({
             "level": "ERROR",
             "type": "manual_override",
-            "message": f"[ManualOverride] No .{force_format_norm} files found in '{source_dir}' folder.",
-            "session_id": session_id,
-            "source_dir": source_dir
+            "message": f"[ManualOverride] No files found in uploads folder.",
+            "session_id": session_id
         })
         return None
 
     logger.info({
         "level": "INFO",
         "type": "manual_override",
-        "message": f"[ManualOverride] Found {len(files)} .{force_format_norm} file(s) in '{source_dir}' folder. Override engaged.",
+        "message": f"[ManualOverride] Found {len(files)} file(s) in 'uploads' folder. Override engaged.",
         "session_id": session_id,
-        "source_dir": source_dir,
-        "format": force_format_norm
+        "source_dir": source_dir
     })
 
     files.sort()
@@ -369,7 +337,6 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
             "session_id": session_id
         })
 
-    # Use prompt_and_handle_download for consistent prompting and handler logic
     result, handled = prompt_and_handle_download(
         page=None,
         target_url="manual_override",
@@ -379,11 +346,9 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         uploads_dir=input_folder
     )
 
-    # If handled, optionally remove output file if output_bypass is set
     if handled:
         output_file_path = None
         if result and isinstance(result, (list, tuple)) and len(result) > 0:
-            # Try to extract output_file from metadata (last element)
             metadata = result[-1]
             if isinstance(metadata, dict):
                 output_file_path = metadata.get("output_file")
@@ -411,14 +376,14 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         })
         mark_url_processed("manual_override", status="success")
         return True
-    else:
-        logger.error({
-            "level": "ERROR",
-            "type": "manual_override",
-            "message": "[ManualOverride] Manual upload parse failed via prompt_and_handle_download.",
-            "session_id": session_id
-        })
-        return None
+
+    logger.error({
+        "level": "ERROR",
+        "type": "manual_override",
+        "message": "[ManualOverride] Manual upload parse failed via prompt_and_handle_download.",
+        "session_id": session_id
+    })
+    return None
 
 def ai_analyze_results(headers, data, contest, metadata, target_url=None, session_id=None):
     if ENABLE_AI_ANALYSIS:
@@ -839,7 +804,7 @@ def main(
         logger.info({
             "level": "DEBUG",
             "type": "status",
-            "message": "Entered main()",
+            "message": f"main() called with manual_source={manual_source}",
             "session_id": session_id
         })
 
@@ -848,7 +813,9 @@ def main(
             override_result = process_format_override(
                 session_id=session_id,
                 source_dir='uploads',
-                output_bypass=output_bypass
+                output_bypass=output_bypass,
+                force_parse_input_file=kwargs.get("force_parse_input_file"),
+                force_parse_format=kwargs.get("force_parse_format")
             )
             if override_result is True:
                 logger.info({

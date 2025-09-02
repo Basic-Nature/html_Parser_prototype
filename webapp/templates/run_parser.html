@@ -4,7 +4,7 @@
 <head>
   <!-- Document metadata (character set & viewport first) -->
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
   <!-- Title & description -->
   <title>Smart Elections Parser</title>
@@ -131,7 +131,7 @@
                     Uploads Folder Files
                     </button>
                     <div id="uploadsSection" class="collapsible hidden">
-                        <form method="POST" action="{{ url_for('run_parser') }}" enctype="multipart/form-data" class="mb-1em">
+                        <form method="POST" action="{{ url_for('upload_to_uploads') }}" enctype="multipart/form-data" class="mb-1em">
                             <label for="uploadsFile" class="visually-hidden">Choose file for uploads folder</label>
                             <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
                             <button type="submit" class="btn btn-upload">Upload to Uploads</button>
@@ -326,7 +326,25 @@
             </div>
         </div>
     </div>
-
+    <!-- Download Selection Modal -->
+    <div id="downloadModal" class="modal" tabindex="-1" style="display:none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">Select Download</h5>
+            <button type="button" class="btn-close" id="closeDownloadModal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <input type="search" id="downloadSearch" class="form-control mb-2" placeholder="Filter by keyword, type, or format...">
+            <div id="downloadSummary" class="mb-2"></div>
+            <div id="downloadOptions"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="cancelDownloadModal">Cancel</button>
+        </div>
+        </div>
+    </div>
+    </div>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io-4.7.5.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/nav_guard.js') }}?v={{ static_version }}" defer></script>

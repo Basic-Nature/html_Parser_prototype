@@ -31,8 +31,7 @@ from .Context_Library.constants import (
 from ..utils.shared_logic import (
     safe_get, safe_merge_defaults, safe_setdefault, safe_startswith, safe_append, safe_filename
 )
-
-from ..utils.misc_utils import file_hash
+from ..utils.misc_utils import file_hash, is_safe_path
 from ..utils.logger_singleton import logger
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
@@ -61,7 +60,7 @@ def get_safe_log_path(filename: str) -> Path:
     safe_name = safe_filename(os.path.basename(filename))
     log_path = Path(log_dir) / safe_name
     # Ensure the resolved path is inside LOG_DIR
-    if not str(log_path.resolve()).startswith(str(Path(log_dir).resolve())):
+    if not is_safe_path(log_dir, log_path):
         raise ValueError("Unsafe log path detected!")
     return log_path
 
@@ -276,7 +275,6 @@ def update_context_library(path, update_fn) -> None:
     Safely update the context library at `path` by applying `update_fn(library)`.
     If a dict is passed instead of a function, it will update the library with that dict.
     """
-    from .context_organizer import clean_for_json
     with _CONTEXT_LOCK:
         lib = load_context_library(path)
         # Accept either a function or a dict
