@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
-name: Build and deploy Python app to Azure Web App - BallotLens
+name: Build and deploy container with OCR - BallotLens
 
 on:
   push:
@@ -7,12 +7,17 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  IMAGE_NAME: ballotlens
+  IMAGE_TAG: ${{ github.sha }}
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,51 +28,28 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_45A19DCEBB104A13899B398979A13C7C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_C02E93E542F546278A8CA28E381AB4F9 }}
 
+      # Debug info for image reference
       - name: Show resolved image reference (debug)
         run: |
+          echo "ACR_NAME=${{ secrets.ACR_NAME }}"
           echo "ACR_LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }}"
           echo "IMAGE_NAME=${{ env.IMAGE_NAME }}"
           echo "IMAGE_TAG=${{ env.IMAGE_TAG }}"
           echo "Resolved image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
-      # Build the image in Azure Container Registry (server-side)
-      - name: ACR server-side build
-        run: |
-          if [ -z "${{ secrets.ACR_NAME }}" ] || [ -z "${{ secrets.ACR_LOGIN_SERVER }}" ]; then
-            echo "ACR_NAME and ACR_LOGIN_SERVER secrets are required (e.g., ACR_NAME=myregistry, ACR_LOGIN_SERVER=myregistry.azurecr.io)."
-            exit 1
-          fi
-          az acr build \
-            --registry ${{ secrets.ACR_NAME }} \
-            --image ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
-            .
-
-      - name: Configure Web App to use custom container
-        run: |
-          if [ -z "${{ secrets.ACR_USERNAME }}" ] || [ -z "${{ secrets.ACR_PASSWORD }}" ]; then
-            echo "ACR_USERNAME and ACR_PASSWORD secrets are required for the Web App to pull from ACR (or use Managed Identity)."
-            exit 1
-          fi
-          az webapp config container set \
-            --name BallotLens \
-            --resource-group BallotLens_group \
-            --docker-custom-image-name ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
-            --docker-registry-server-url https://${{ secrets.ACR_LOGIN_SERVER }} \
-            --docker-registry-server-user ${{ secrets.ACR_USERNAME }} \
-            --docker-registry-server-password ${{ secrets.ACR_PASSWORD }}
-
+      # Keep your local debug/cleanup/test steps on the runner
       - name: Show disk usage before build
         run: df -h
 
       - name: Show memory usage before build
         run: free -h
 
-      - name: Set up Python version
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install system dependencies
+      - name: Install system dependencies (runner)
         run: |
           sudo apt-get update
           sudo apt-get install -y tesseract-ocr poppler-utils libpq-dev
@@ -102,36 +84,28 @@ jobs:
             exit 1
           fi
 
-      - name: List contents to be zipped
-        run: |
-          ls -l
-          ls -l webapp || true
-
       - name: Install Python dependencies (no cache, prefer binary)
         run: |
           set -e
           python -m pip install --upgrade pip
           pip install --no-cache-dir --prefer-binary -r requirements.txt
 
-      - name: Install Playwright browsers
+      - name: Install Playwright browsers (runner)
         run: |
           python -m playwright install --with-deps
 
       - name: Remove unnecessary files from site-packages
         run: |
           site_packages=$(python -c "import site; print(site.getsitepackages()[0])")
-          find $site_packages -type d -name "tests" -exec rm -rf {} + || true
-          find $site_packages -type d -name "__pycache__" -exec rm -rf {} + || true
-          find $site_packages -type d -name "docs" -exec rm -rf {} + || true
+          find "$site_packages" -type d -name "tests" -exec rm -rf {} + || true
+          find "$site_packages" -type d -name "__pycache__" -exec rm -rf {} + || true
+          find "$site_packages" -type d -name "docs" -exec rm -rf {} + || true
 
       - name: Clean pip and build caches
         run: |
-          rm -rf ~/.cache/pip
-          rm -rf build/
-          rm -rf dist/
-          rm -rf *.egg-info
+          rm -rf ~/.cache/pip build/ dist/ *.egg-info
 
-      - name: Copy Playwright browsers into webapp for deployment
+      - name: Copy Playwright browsers into webapp for deployment (if needed elsewhere)
         run: |
           mkdir -p webapp/ms-playwright
           cp -r ~/.cache/ms-playwright/* webapp/ms-playwright/ || true
@@ -154,10 +128,52 @@ jobs:
             echo "No tests directory found, skipping tests."
           fi
 
-      - name: Show disk usage before deploy
+      - name: Show disk usage before container build
         run: df -h
 
-      # App Settings for container runtime (enable OCR and debug-friendly flags)
+      # Ensure a Dockerfile exists at repo root; auto-rename .Dockerfile if found
+      - name: Verify Dockerfile
+        run: |
+          if [ ! -f "Dockerfile" ] && [ -f ".Dockerfile" ]; then
+            echo "Found .Dockerfile, renaming to Dockerfile..."
+            mv .Dockerfile Dockerfile
+          fi
+          if [ ! -f "Dockerfile" ]; then
+            echo "ERROR: Dockerfile not found at repo root. Create Dockerfile (not .Dockerfile)."
+            exit 1
+          fi
+          head -n 10 Dockerfile || true
+
+      # Build container image directly in ACR (no local Docker needed)
+      - name: ACR server-side build
+        run: |
+          set -e
+          if [ -z "${{ secrets.ACR_NAME }}" ] || [ -z "${{ secrets.ACR_LOGIN_SERVER }}" ]; then
+            echo "ACR_NAME and ACR_LOGIN_SERVER secrets are required (e.g., ACR_NAME=myregistry, ACR_LOGIN_SERVER=myregistry.azurecr.io)."
+            exit 1
+          fi
+          az acr build \
+            --registry ${{ secrets.ACR_NAME }} \
+            --image ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            --file Dockerfile \
+            .
+
+      # Configure Web App to pull image from ACR (using admin credentials)
+      - name: Configure Web App to use custom container
+        run: |
+          if [ -z "${{ secrets.ACR_USERNAME }}" ] || [ -z "${{ secrets.ACR_PASSWORD }}" ]; then
+            echo "ACR_USERNAME and ACR_PASSWORD secrets are required for the Web App to pull from ACR (or switch to Managed Identity)."
+            exit 1
+          fi
+          az webapp config container set \
+            --name BallotLens \
+            --resource-group BallotLens_group \
+            --docker-custom-image-name ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            --docker-registry-server-url https://${{ secrets.ACR_LOGIN_SERVER }} \
+            --docker-registry-server-user ${{ secrets.ACR_USERNAME }} \
+            --docker-registry-server-password ${{ secrets.ACR_PASSWORD }}
+
+      # App settings to enable OCR and verbose logging
       - name: Set Azure App Settings (Environment Variables)
         run: |
           az webapp config appsettings set \
@@ -172,12 +188,6 @@ jobs:
               PLAYWRIGHT_BROWSERS_PATH="0" \
               FLASK_SECRET_KEY="${{ secrets.FLASK_SECRET_KEY }}" \
               FLASK_COOKIE_SECURE="True" \
-              POSTGRES_USER="${{ secrets.POSTGRES_USER }}" \
-              POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" \
-              POSTGRES_DB="${{ secrets.POSTGRES_DB }}" \
-              POSTGRES_HOST="${{ secrets.POSTGRES_HOST }}" \
-              POSTGRES_PORT="${{ secrets.POSTGRES_PORT }}" \
-              POSTGRES_SERVICE_NAME="${{ secrets.POSTGRES_SERVICE_NAME }}" \
               DATA_API_URL="/api/warehouse_election_results" \
               CSP_MODE="STRICT" \
               HEADLESS_DEFAULT="True" \
@@ -187,36 +197,3 @@ jobs:
       - name: Restart Web App
         run: |
           az webapp restart --name BallotLens --resource-group BallotLens_group
-
-      - name: Set Playwright to use bundled browsers
-        run: |
-          az webapp config appsettings set \
-            --name BallotLens \
-            --resource-group BallotLens_group \
-            --settings PLAYWRIGHT_BROWSERS_PATH=0          
-
-      - name: Set Azure startup command
-        run: |
-          az webapp config set --name BallotLens --resource-group BallotLens_group --startup-file "python -m webapp.Smart_Elections_Parser_Webapp"
-
-      - name: Enable Oryx build during deployment
-        run: |
-          az webapp config appsettings set \
-            --name BallotLens \
-            --resource-group BallotLens_group \
-            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true
-
-      - name: Create deployment package (webapp only)
-        run: |
-          zip -r webapp.zip webapp requirements.txt
-
-      - name: List contents of deployment package
-        run: unzip -l webapp.zip          
-
-      - name: 'Deploy to Azure Web App'
-        uses: azure/webapps-deploy@v3
-        id: deploy-to-webapp
-        with:
-          app-name: 'BallotLens'
-          slot-name: 'Production'
-          package: webapp.zip
