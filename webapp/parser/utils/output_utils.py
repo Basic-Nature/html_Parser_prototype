@@ -8,14 +8,15 @@ import csv
 import orjson
 import os
 from datetime import datetime
-from typing import Optional
+import datetime as dt
+from typing import List, Dict, Any, Optional
 from .logger_singleton import logger
 from .shared_logic import (
     safe_get_first, safe_items, safe_get, safe_lower,
     safe_filename
 )
 from ..config import (
-    BASE_DIR, LOG_DIR, ENABLE_USER_FEEDBACK, OUTPUT_CACHE
+    BASE_DIR, OUTPUT_DIR, ENABLE_USER_FEEDBACK, OUTPUT_CACHE
 )
 
 def get_project_root() -> str:
@@ -215,169 +216,129 @@ def deep_merge_dicts(dest, src) -> dict:
             dest[k] = v
     return dest
 
+def _slug(value: Optional[str], max_len: int = 80) -> str:
+    if not isinstance(value, str):
+        return "na"
+    stem = value.strip()
+    stem = re.sub(r"[^\w\s-]+", "_", stem, flags=re.UNICODE)
+    stem = re.sub(r"[\s_-]+", " ", stem).strip()
+    stem = stem.replace(" ", "_")
+    stem = re.sub(r"_+", "_", stem)
+    return stem[:max_len] or "na"
+
+def _ensure_dir(p: str) -> None:
+    try:
+        os.makedirs(p, exist_ok=True)
+    except Exception:
+        pass
+
+def _coerce_headers(headers: List[str], rows: List[Dict[str, Any]]) -> List[str]:
+    base = [h for h in (headers or []) if isinstance(h, str) and h.strip()]
+    seen = set(base)
+    # Append any additional keys discovered in data, stable order
+    for row in rows or []:
+        if isinstance(row, dict):
+            for k in row.keys():
+                if k not in seen:
+                    base.append(k)
+                    seen.add(k)
+    return base
+
 def finalize_election_output(
-    headers,
-    data,
-    coordinator,
-    contest,
-    state,
-    county,
-    context=None,
-    enable_user_feedback=False,
-    session_id=None
-) -> dict:
+    *,
+    headers: List[str],
+    data: List[Dict[str, Any]],
+    coordinator=None,
+    contest: Optional[str] = None,
+    state: Optional[str] = None,
+    county: Optional[str] = None,
+    context: Optional[dict] = None,
+    enable_user_feedback: bool = False,
+    session_id: Optional[str] = None
+) -> Dict[str, str]:
     """
-    Finalize and write election output to CSV and metadata JSON.
-    Output is always placed in a subfolder of the project root (parent of webapp).
-    Handles path-injection risks and robustly includes coordinator/session_id.
+    Centralized writer for CSV + metadata.
+    Returns: {"csv_path": ..., "metadata_path": ...}
     """
-    from ..Context_Integration.context_organizer import ContextOrganizer
+    context = context or {}
+    ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = OUTPUT_DIR or os.path.join(os.getcwd(), "outputs")
+    _ensure_dir(out_dir)
 
-    if context is None:
-        context = {}
+    # Build filenames
+    state_slug = _slug(state)
+    county_slug = _slug(county)
+    contest_slug = _slug(contest, max_len=120)
+    base_name = f"{state_slug}__{county_slug}__{contest_slug}__{ts}"
+    csv_path = os.path.join(out_dir, f"{base_name}.csv")
+    meta_path = os.path.join(out_dir, f"{base_name}.metadata.json")
 
-    logger.info(f"[OUTPUT_UTILS] finalize_election_output called with contest: '{contest}'")
+    # Normalize headers and rows
+    headers_final = _coerce_headers(headers or [], data or [])
+    safe_rows: List[Dict[str, Any]] = []
+    for row in (data or []):
+        if not isinstance(row, dict):
+            # Coerce non-dict rows to a single-column dict
+            safe_rows.append({"value": str(row)})
+            if "value" not in headers_final:
+                headers_final = ["value"] + headers_final
+            continue
+        safe = {}
+        for h in headers_final:
+            val = row.get(h, "")
+            # Keep scalars as-is, stringify complex structures
+            if isinstance(val, (str, int, float)) or val is None:
+                safe[h] = "" if val is None else val
+            else:
+                try:
+                    safe[h] = orjson.dumps(val).decode("utf-8", errors="ignore")
+                except Exception:
+                    safe[h] = str(val)
+        safe_rows.append(safe)
 
+    # Write CSV
+    try:
+        with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=headers_final, extrasaction="ignore")
+            writer.writeheader()
+            for r in safe_rows:
+                writer.writerow(r)
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "output",
+            "message": f"[ERROR] Failed to write CSV: {e}",
+            "session_id": session_id,
+            "path": csv_path
+        })
+        # Best-effort path stub on failure
+        return {"csv_path": "", "metadata_path": ""}
+
+    # Build metadata
     meta = {
-        "contests": contest or "Unknown",
-        "year": "Unknown",
-        "state": state or "Unknown",
-        "county": county or "Unknown"
+        "created_at": dt.datetime.now().isoformat(timespec="seconds"),
+        "session_id": session_id,
+        "handler": context.get("handler"),
+        "input_file": context.get("input_file"),
+        "contest": contest,
+        "state": state,
+        "county": county,
+        "row_count": len(safe_rows),
+        "headers": headers_final,
+        "csv_path": csv_path,
+        "context": context,
+        "user_feedback_enabled": bool(enable_user_feedback),
     }
-    match = re.search(r"\b(19|20)\d{2}\b", contest or "")
-    if match:
-        meta["year"] = match.group(0)
+    try:
+        with open(meta_path, "wb") as f:
+            f.write(orjson.dumps(meta, option=orjson.OPT_INDENT_2))
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "output",
+            "message": f"[ERROR] Failed to write metadata: {e}",
+            "session_id": session_id,
+            "path": meta_path
+        })
 
-    organized = ContextOrganizer.organize_context(meta)
-    enriched_meta = safe_get(organized, "metadata", meta)
-
-    # Defensive: ensure required fields
-    if not safe_get(enriched_meta, "contests", []):
-        enriched_meta["contests"] = contest or "Unknown"
-    if not safe_get(enriched_meta, "year", []) or not (str(safe_get(enriched_meta, "year", "")).isdigit() and len(str(safe_get(enriched_meta, "year", ""))) == 4):
-        enriched_meta["year"] = safe_get(meta, "year", "Unknown")
-    if not safe_get(enriched_meta, "state", []):
-        enriched_meta["state"] = state or "Unknown"
-    if not safe_get(enriched_meta, "county", []):
-        enriched_meta["county"] = county or "Unknown"
-    if session_id is not None:
-        enriched_meta["session_id"] = session_id
-    if coordinator is not None:
-        enriched_meta["coordinator"] = str(type(coordinator).__name__)
-
-    organizer = ContextOrganizer()
-    organizer.append_to_context_library({"metadata": enriched_meta})
-
-    year = safe_get(enriched_meta, "year", "")
-    state = safe_get(enriched_meta, "state", "")
-    county = safe_get(enriched_meta, "county", "")
-    election_types = safe_get(enriched_meta, "election_types", "")
-    contests = safe_get(enriched_meta, "contests", "")
-
-    parts = [
-        safe_filename(state).lower() if state else "",
-        safe_filename(county).lower() if county else "",
-        str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "Unknown",
-        safe_filename(election_types).lower() if election_types else "",
-        safe_filename(contests).replace(" ", "_") if contests else "unknown_contests",
-        "parsed"
-    ]
-    # Remove any empty or dangerous parts
-    parts = [p for p in parts if p and p != "." and p != ".."]
-
-    output_root = get_output_root()
-    output_path = safe_join(output_root, *parts)
-
-    # Ensure output_path is inside output_root (redundant with safe_join, but double-check)
-    abs_output_root = os.path.abspath(output_root)
-    abs_output_path = os.path.abspath(output_path)
-    if not abs_output_path.startswith(abs_output_root):
-        raise ValueError("Unsafe output path detected.")
-
-    os.makedirs(output_path, exist_ok=True)
-
-    timestamp = format_timestamp()
-    safe_title = safe_filename(contest or contests or "results").replace(" ", "_")
-    filename_parts = [
-        str(year) if year and str(year).isdigit() and len(str(year)) == 4 else "",
-        safe_filename(state).lower() if state else "",
-        safe_filename(county).lower() if county else "",
-        safe_filename(election_types).lower() if election_types else "",
-        safe_title,
-        "results",
-        timestamp
-    ]
-    filename = "_".join([p for p in filename_parts if p and p != "." and p != ".."]).replace("__", "_") + ".csv"
-    # Path-injection mitigation for filename
-    filename = safe_filename(filename)
-    # Final filename validation
-    if ".." in filename or "/" in filename or "\\" in filename:
-        raise ValueError("Unsafe filename detected.")
-
-    filepath = safe_join(output_path, filename)
-
-    # --- Write CSV ---
-    with open(filepath, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
-        writer.writeheader()
-        for row in data:
-            writer.writerow(row)
-        f.write(f"\n# Generated at: {timestamp}")
-
-    # --- Write metadata JSON ---
-    json_meta_path = filepath.replace(".csv", "_metadata.json")
-    metadata_out = dict(enriched_meta)
-    metadata_out["timestamp"] = timestamp
-    metadata_out["output_folder"] = output_path
-    metadata_out["csv_file"] = filename
-    metadata_out["headers"] = headers
-    metadata_out["row_count"] = len(data)
-    if county:
-        metadata_out["batch_manifest"] = county
-    if session_id is not None:
-        metadata_out["session_id"] = session_id
-    if coordinator is not None:
-        metadata_out["coordinator"] = str(type(coordinator).__name__)
-
-    # --- Deep merge in any extra context/meta ---
-    if context:
-        metadata_out = deep_merge_dicts(metadata_out, context)
-
-    # Remove any absolute paths or sensitive info
-    for k in list(metadata_out.keys()):
-        if isinstance(metadata_out[k], str) and os.path.isabs(metadata_out[k]):
-            del metadata_out[k]
-    if "cwd" in metadata_out:
-        del metadata_out["cwd"]
-    if "environment" in metadata_out and isinstance(metadata_out["environment"], dict):
-        metadata_out["environment"].pop("cwd", None)
-
-    with open(json_meta_path, "wb") as jf:
-        metadata_out = convert_sets_to_lists(metadata_out)
-        jf.write(orjson.dumps(metadata_out, option=orjson.OPT_INDENT_2))
-
-    update_output_cache(metadata_out, filepath)
-
-    logger.info(f"[bold green][OUTPUT][/bold green] Wrote [bold]{len(data)}[/bold] rows to:\n  [cyan]{filepath}[/cyan]")
-    logger.info(f"[bold green][OUTPUT][/bold green] Metadata written to:\n  [cyan]{json_meta_path}[/cyan]")
-
-    if enable_user_feedback or ENABLE_USER_FEEDBACK:
-        feedback_log_path = safe_join(LOG_DIR, "user_feedback_log.jsonl")
-        os.makedirs(LOG_DIR, exist_ok=True)
-        feedback = input("\n[Feedback] Would you like to provide feedback or corrections for this output? (Leave blank to skip):\n> ").strip()
-        if feedback:
-            feedback_entry = {
-                "timestamp": format_timestamp(),
-                "file": filepath,
-                "metadata": metadata_out,
-                "feedback": feedback
-            }
-            with open(feedback_log_path, "ab") as fb:
-                fb.write(orjson.dumps(feedback_entry) + b"\n")
-            logger.info(f"[bold blue][FEEDBACK][/bold blue] Feedback logged to {feedback_log_path}")
-
-    return {
-        "csv_path": filepath,
-        "metadata_path": json_meta_path,
-        "output_file": filepath
-    }
+    return {"csv_path": csv_path, "metadata_path": meta_path}

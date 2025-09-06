@@ -27,7 +27,6 @@ import orjson
 import re
 import unicodedata
 import glob
-import re
 import string
 import difflib
 import types
@@ -45,7 +44,6 @@ from .shared_logic import (
     safe_extract, safe_scheme, safe_netloc, safe_geturl, safe_strip,
     safe_translate, safe_isdigit, safe_split, safe_startswith, safe_keys
 )
-from difflib import SequenceMatcher
 from collections import Counter
 from typing import List, Dict, Any, Tuple, TYPE_CHECKING
 import time
@@ -54,7 +52,6 @@ import hashlib
 from .logger_singleton import logger, console, prompt
 from .ml_table_detector import detect_tables_ml
 from ..config import CACHE_DIR, LOG_DIR
-from difflib import get_close_matches
 from ..Context_Integration.Context_Library.constants import (
     PARTY_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES_SORT_ORDER, 
     CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, CONTEST_TITLE_KEYWORDS,
@@ -72,6 +69,32 @@ TABLE_STRUCTURE_CACHE_PATH = os.path.join(CACHE_DIR, "table_structure_cache.json
 
 context_cache = {}
 
+# -------------------------------------------------------------------
+# Structured logging helper aligned with SharedLogger and frontend
+# -------------------------------------------------------------------
+from typing import Optional
+
+def _emit(level: str, msg_type: str, message: str, session_id: Optional[str] = None, **fields):
+    """
+    Emit a structured log payload. Keys:
+      - level: uppercased level
+      - type: short subsystem label (e.g., "table_core")
+      - message: human-readable message
+      - session_id: passthrough for frontend correlation
+      - any additional fields included as provided (non-None)
+    """
+    payload = {
+        "level": level.upper(),
+        "type": msg_type,
+        "message": message,
+        "session_id": session_id,
+    }
+    for k, v in fields.items():
+        if v is not None:
+            payload[k] = v
+    getattr(logger, level.lower(), logger.info)(payload)
+# -------------------------------------------------------------------
+
 # ===================================================================
 # MAIN EXTRACTION ENTRY POINT
 # ===================================================================
@@ -83,6 +106,12 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = ContextCoordinator()
+
+    # Thread session_id for structured logging
+    session_id = safe_get(extraction_context, "session_id", None) if extraction_context else None
+    _emit("info", "table_core", "[TABLE BUILDER] Starting robust table extraction", session_id,
+          has_existing=bool(existing_headers and existing_data))
+
     def safe_json(obj):
         if isinstance(obj, dict):
             result = {}
@@ -117,6 +146,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
             cached = get_cached_table_structure(domain, existing_headers)
             if cached:
                 logger.info(f"[TABLE BUILDER] Using cached table structure for domain: {domain}")
+                _emit("info", "table_core", "[TABLE BUILDER] Using cached table structure", session_id, domain=str(domain))
                 if isinstance(cached, dict):
                     return cached.get("headers", []), cached.get("data", [])
                 else:
@@ -356,6 +386,15 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         })
 
     logger.info(f"[TABLE BUILDER] Extraction summary: {orjson.dumps(safe_json(extraction_logs), option=orjson.OPT_INDENT_2)}")
+    try:
+        _emit(
+            "info", "table_core", "[TABLE BUILDER] Extraction summary", session_id,
+            steps=len(extraction_logs),
+            successes=sum(1 for s in extraction_logs if s.get("success")),
+            failures=sum(1 for s in extraction_logs if s.get("success") is False)
+        )
+    except Exception:
+        pass
 
     # --- Deduplicate tables by header signature ---
     unique_tables = {}
@@ -396,7 +435,10 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
                 "context": extraction_context
             })
             logger.info(f"[TABLE BUILDER] Cached table structure for domain: {domain}")
+            _emit("info", "table_core", "[TABLE BUILDER] Cached table structure", session_id, domain=str(domain))
 
+        _emit("info", "table_core", "[TABLE BUILDER] Extraction complete", session_id,
+              rows=len(combined_data), cols=len(combined_headers))
         return combined_headers, combined_data
 
     # --- Only now try fallback NLP extraction ---
@@ -412,6 +454,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         })
         if headers and data:
             logger.warning("[TABLE BUILDER] Fallback NLP extraction used. Only candidate/vote pairs extracted.")
+            _emit("warning", "table_core", "[TABLE BUILDER] Fallback NLP extraction used", session_id)
             return headers, data
     except Exception as e:
         logger.error(f"[TABLE BUILDER] NLP fallback extraction failed: {e}")
@@ -423,6 +466,7 @@ def robust_table_extraction(page, extraction_context=None, existing_headers=None
         })
 
     logger.warning("[TABLE BUILDER] No extraction method succeeded.")
+    _emit("warning", "table_core", "[TABLE BUILDER] No extraction method succeeded.", session_id)
     return [], []
 
 # ===================================================================
@@ -471,6 +515,10 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
     )
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = coordinator or ContextCoordinator()
+
+    session_id = safe_get(context, "session_id", None) if context else None
+    _emit("info", "table_core", "[TABLE BUILDER] Extracting tables with headings", session_id)
+
     extraction_types = [
         ("panel", find_tables_with_panel_headings(page)),
         ("section", find_tables_with_section_headings(page)),
@@ -575,6 +623,11 @@ def extract_all_tables_with_location(page, coordinator=None, context=None):
     extraction_results.sort(key=lambda r: r["score"], reverse=True)
     best = extraction_results[0] if extraction_results else None
 
+    if best:
+        _emit("info", "table_core", "[TABLE BUILDER] Selected best heading-based extraction", session_id,
+              method=best.get("method"), rows=len(best.get("data", [])), cols=len(best.get("headers", [])),
+              score=round(best.get("score", 0.0), 3))
+
     # Patch all others into best, not just the second-best
     if best and len(extraction_results) > 1:
         for other in extraction_results[1:]:
@@ -608,6 +661,11 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
     if table is None:
         logger.error("[TABLE BUILDER][extract_table_data] Table locator is None.")
         return [], [], {}
+
+    # Session for structured logs
+    context = safe_get(structure_info, "context", {}) if structure_info else {}
+    session_id = safe_get(context, "session_id", None)
+    _emit("info", "table_core", "[TABLE BUILDER] Starting extract_table_data", session_id)
 
     logger.info("[TABLE BUILDER][extract_table_data] Starting table extraction.")
     headers = []
@@ -653,7 +711,6 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
                 data.append(row)
 
         # --- After extracting headers and data ---
-        context = safe_get(structure_info, "context", {}) if structure_info else {}
         panel_heading = (
             safe_get(context, "panel_heading", None)
             or safe_get(context, "Precinct", None)
@@ -784,6 +841,8 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
 
         if not location_col or len(entity_preview["locations"]) == 0:
             logger.warning(f"[TABLE BUILDER][extract_table_data] No valid location column {location_col} or values detected {entity_preview['locations']}. Consider user/ML feedback.")
+            _emit("warning", "table_core", "[TABLE BUILDER] Location column not detected or empty", session_id,
+                  location_col=location_col, locations=len(entity_preview.get("locations", [])))
 
         percent_value = ""
         if percent_col:
@@ -854,6 +913,8 @@ def extract_table_data(table, coordinator=None, structure_info=None) -> Tuple[Li
         return [], [], {}
 
     logger.info(f"[TABLE BUILDER][extract_table_data] Finished: {len(data)} rows, {len(headers)} columns.")
+    _emit("info", "table_core", "[TABLE BUILDER] Finished extract_table_data", session_id,
+          rows=len(data), cols=len(headers))
     return headers, data, entity_preview
 
 def guess_headers_from_row(row, known_keywords=None, context=None):
@@ -1343,11 +1404,17 @@ def ml_based_table_detection(page, extraction_context=None):
     Enhanced: uses safe_content, robust error handling, and logs more diagnostics.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = (extraction_context or {}).get("coordinator") if extraction_context else None
+    coordinator = coordinator or ContextCoordinator()
+
+    session_id = safe_get(extraction_context, "session_id", None) if extraction_context else None
+    _emit("info", "table_core", "[ML TABLE DETECTION] Starting ML table detection", session_id)
+
     try:
         html = safe_content(page)
         if not html or not isinstance(html, str) or len(html) < 100:
             logger.error("[ML TABLE DETECTION] Empty or invalid HTML content for ML table detection.")
+            _emit("warning", "table_core", "[ML TABLE DETECTION] Invalid HTML, skipping", session_id)
             return []
         ml_tables = detect_tables_ml(html)
         results = []
@@ -1368,9 +1435,9 @@ def ml_based_table_detection(page, extraction_context=None):
                 "extraction_context": context,
                 "source": "ml_based_table_detection"
             }
-            # Optionally, attach context to each row for downstream traceability
+            # Optionally, attach context to each row for traceability and debugging
             if headers and data and isinstance(headers, list) and isinstance(data, list):
-                # Attach context and diagnostics to each row for traceability and debugging
+                # Attach context and diagnostics to each row for traceability
                 for row in data:
                     # Only attach if row is a dict (defensive)
                     if isinstance(row, dict):
@@ -1388,12 +1455,16 @@ def ml_based_table_detection(page, extraction_context=None):
                 logger.warning(f"[ML TABLE DETECTION] Skipping table {idx}: invalid headers or data.")
         if not results:
             logger.warning("[ML TABLE DETECTION] No tables detected by ML model.")
+            _emit("warning", "table_core", "[ML TABLE DETECTION] No tables detected", session_id)
+        else:
+            _emit("info", "table_core", "[ML TABLE DETECTION] Tables detected", session_id, count=len(results))
         return results
     except Exception as e:
         logger.error(f"[ML TABLE DETECTION] Error: {e}")
+        _emit("error", "table_core", "[ML TABLE DETECTION] Error during detection", session_id, error=str(e))
         return []
     
-# 2. Nested table extraction (see handle_nested_tables)
+# 2. Nested table extraction (using Playwright to find tables within tables)
 def nested_table_extraction(page):
     """
     Extract tables that are nested within other tables or complex DOM structures.
@@ -1506,29 +1577,10 @@ def feedback_correction_loop(headers, data, extraction_context=None):
                 new_headers = input("Enter corrected headers as comma-separated values: ").strip().split(",")
                 headers = [h.strip() for h in new_headers]
                 # Optionally, allow editing data as well
-                # For brevity, only headers are corrected here
         return headers, data
     except Exception as e:
         logger.error(f"[FEEDBACK LOOP] Error: {e}")
         return headers, data
-
-# --- CLIENT-SIDE UNVALIDATED URL REDIRECTION MITIGATION ---
-def safe_redirect_url(user_url, allowed_domains=None):
-    """
-    Prevent unvalidated redirects by checking user-supplied URLs against a whitelist.
-    """
-    if allowed_domains is None:
-        allowed_domains = {"yourdomain.com"}
-    try:
-        parsed = urlparse(user_url)
-        if safe_scheme(parsed) not in {"http", "https"}:
-            return "/"
-        if safe_netloc(parsed) and safe_netloc(parsed) not in allowed_domains:
-            return "/"
-        # Optionally, further sanitize the path
-        return safe_geturl(parsed)
-    except Exception:
-        return "/"
 
 def find_best_header(headers, keywords):
     """Find the best matching header from a set of keywords (case-insensitive, fuzzy)."""
@@ -1542,11 +1594,11 @@ def find_best_header(headers, keywords):
     # Fuzzy match if no substring match
     for kw in keywords:
         kw_lower = safe_lower(kw)
-        matches = get_close_matches(kw_lower, headers_lower, n=1, cutoff=0.7)
+        matches = difflib.get_close_matches(kw_lower, headers_lower, n=1, cutoff=0.7)
         if matches:
             return headers[headers_lower.index(matches[0])]
     return None
-    
+
 # ===================================================================
 # HARMONIZATION & CLEANING
 # ===================================================================
@@ -1620,7 +1672,6 @@ def harmonize_headers_and_data(headers: list, data: list, context: dict = None) 
 
     # 8. Log unique locations and warn if only one unique value
     unique_locations = set(safe_get(row, location_col, "") for row in harmonized if location_col and location_col in row)
-    logger.info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
     logger.info(f"[HARMONIZE] Unique values in location column '{location_col}': {sorted(unique_locations)}")
     if location_col and len(unique_locations) <= 1:
         logger.warning(f"[HARMONIZE] WARNING: Only one unique value found in location column '{location_col}'. Extraction may be incorrect.")
@@ -2098,9 +2149,6 @@ def progressive_table_verification(headers, data, coordinator, context) -> Tuple
         "verified": all([location_header, ballot_types_headers, candidate_headers, total_header])
     }
     logger.info(f"[TABLE_BUILDER][progressive_table_verification] Structure summary: {structure_info}")
-
-    # Optionally: prompt for correction or fallback if not verified
-    # Optionally: persist structure_info for feedback learning
 
     return headers, data, structure_info
 
@@ -2675,146 +2723,181 @@ def pivot_precinct_major_to_wide(
     """
     Pivot a precinct-major table to wide format:
     Precinct | Percent Reported | [Candidate (Party) - BallotType ... Total Votes] | [Misc Totals] | Grand Total
-    Handles variable ballot types and miscellaneous columns.
-    Context is used for fallback values and robust header/entity detection.
-    Returns (output_headers, output_rows, info_dict) where info_dict includes location_entity_value.
+
+    Refactor highlights:
+      - Reuse provided coordinator (instantiate only if None).
+      - Robust header parsing for Candidate (Party) - BallotType and Candidate - BallotType.
+      - Omit empty () when party is missing.
+      - Use safe_to_int for numeric parsing/summing.
+      - Preserve misc columns, add totals row, and return info dict with detected headers.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
-    # Use context for robust header/entity detection
+    coordinator = coordinator or ContextCoordinator()
+
+    # Detect location and percent headers with context-aware fallback
     location_header, percent_header, location_entity_value = dynamic_detect_location_header(headers, coordinator)
     if not percent_header:
         percent_header = safe_get(context, "percent_header", "Percent Reported")
     if not location_header:
         location_header = safe_get(context, "location_header", "Precinct")
 
-    # Parse headers
-    candidate_party_ballot = {}  # (candidate, party) -> {ballot_types: header}
+    # Parse headers into candidate/party/ballotType and collect misc columns
+    candidate_party_ballot: Dict[Tuple[str, str], Dict[str, str]] = {}
     ballot_types_set = set()
-    misc_columns = []
-    candidate_party_set = set()
+    misc_columns: List[str] = []
+    candidate_party_set: set[Tuple[str, str]] = set()
 
+    def add_cand_party_bt(candidate: str, party: str, bt: str, original_header: str):
+        c = safe_strip(candidate)
+        p = safe_strip(party or "")
+        b = safe_strip(bt)
+        if not c or not b:
+            return
+        candidate_party_set.add((c, p))
+        ballot_types_set.add(b)
+        candidate_party_ballot.setdefault((c, p), {})[b] = original_header
+
+    # Header parsing
     for h in headers:
-        m = re.match(r"(.+?)\s*\((.+?)\)\s*-\s*(.+)", h)
+        hs = h if isinstance(h, str) else str(h)
+        # Candidate (Party) - BallotType
+        m = re.match(r"^(?P<cand>.+?)\s*\((?P<party>.+?)\)\s*-\s*(?P<bt>.+)$", hs)
         if m:
-            candidate, party, ballot_types = m.groups()
-            candidate = candidate.strip()
-            party = party.strip()
-            ballot_types = ballot_types.strip()
-            candidate_party_set.add((candidate, party))
-            ballot_types_set.add(ballot_types)
-            candidate_party_ballot.setdefault((candidate, party), {})[ballot_types] = h
-        else:
-            # Try: Candidate - BallotType
-            m = re.match(r"(.+?)\s*-\s*(.+)", h)
-            if m:
-                candidate, ballot_types = m.groups()
-                candidate = candidate.strip()
-                party = ""
-                ballot_types = ballot_types.strip()
-                candidate_party_set.add((candidate, party))
-                ballot_types_set.add(ballot_types)
-                candidate_party_ballot.setdefault((candidate, party), {})[ballot_types] = h
-            else:
-                # Try: BallotType only (miscellaneous totals)
-                ballot_types = h.strip()
-                ballot_types_set.add(ballot_types)
-                misc_columns.append(h)
+            add_cand_party_bt(m.group("cand"), m.group("party"), m.group("bt"), hs)
+            continue
+        # Candidate - BallotType
+        m = re.match(r"^(?P<cand>.+?)\s*-\s*(?P<bt>.+)$", hs)
+        if m:
+            add_cand_party_bt(m.group("cand"), "", m.group("bt"), hs)
+            continue
+        # Otherwise treat as misc/other header
+        misc_columns.append(hs)
+        ballot_types_set.add(hs)
 
-    # Remove location and percent headers from ballot_types/misc
+    # Remove location and percent headers from ballotTypes/misc
     for col in [location_header, percent_header]:
         if col in ballot_types_set:
-            ballot_types_set.remove(col)
+            ballot_types_set.discard(col)
         if col in misc_columns:
-            misc_columns.remove(col)
+            try:
+                misc_columns.remove(col)
+            except ValueError:
+                pass
 
-    # Remove candidate columns from misc_columns
-    for (candidate, party), bt_map in candidate_party_ballot.items():
-        for bt, h in safe_items(bt_map):
-            if h in misc_columns:
-                misc_columns.remove(h)
+    # Ensure we don't keep candidate-derived headers inside misc
+    for (_cand, _party), bt_map in candidate_party_ballot.items():
+        for _bt, original in safe_items(bt_map):
+            if original in misc_columns:
+                try:
+                    misc_columns.remove(original)
+                except ValueError:
+                    pass
 
-    # Sort ballot types: Election Day, Early Voting, Absentee, ...rest alphabetically
-    ballot_types = []
-    for bt in BALLOT_TYPES_SORT_ORDER:
-        if bt in ballot_types_set:
-            ballot_types.append(bt)
+    # Sort ballot types by canonical order, then alphabetical for unknowns
+    ballot_types: List[str] = [bt for bt in BALLOT_TYPES_SORT_ORDER if bt in ballot_types_set]
     for bt in sorted(ballot_types_set):
         if bt not in ballot_types:
             ballot_types.append(bt)
 
-    # 3. Build output headers
-    output_headers = [location_header, percent_header]
-    candidate_columns = []
-    for candidate, party in sorted(candidate_party_set):
+    # Column label helper (omit () when no party)
+    def cand_bt_label(candidate: str, party: str, bt: str) -> str:
+        return f"{candidate} ({party}) - {bt}" if party else f"{candidate} - {bt}"
+
+    def cand_total_label(candidate: str, party: str) -> str:
+        return f"{candidate} ({party}) - Total Votes" if party else f"{candidate} - Total Votes"
+
+    # Build output headers
+    output_headers: List[str] = [location_header, percent_header]
+    candidate_columns: List[str] = []
+    for cand, party in sorted(candidate_party_set):
         for bt in ballot_types:
-            candidate_columns.append(f"{candidate} ({party}) - {bt}")
-        candidate_columns.append(f"{candidate} ({party}) - Total Votes")
+            candidate_columns.append(cand_bt_label(cand, party, bt))
+        candidate_columns.append(cand_total_label(cand, party))
+    # Dedup preserving order
+    seen = set()
+    candidate_columns = [c for c in candidate_columns if not (c in seen or seen.add(c))]
     output_headers.extend(candidate_columns)
+    # Dedup misc while preserving original order
+    seen = set()
+    misc_columns = [m for m in misc_columns if not (m in seen or seen.add(m))]
     output_headers.extend(misc_columns)
     output_headers.append("Grand Total")
 
     # Build output rows
-    output_rows = []
+    output_rows: List[Dict[str, Any]] = []
     for row in data:
-        if len(row) != len(headers):
-            logger.warning(f"[TABLE BUILDER] pivot_precinct_major_to_wide Row length mismatch: {row}")
-        out_row = {}
-        # Use context fallback for location/percent if missing
-        # --- Robustly use location_entity_value if location is missing ---
+        out_row: Dict[str, Any] = {}
+
+        # Location value (prefer row value, else entity value, else context)
         location_val = safe_get(row, location_header, None)
         if not location_val and location_entity_value:
             location_val = location_entity_value
         out_row[location_header] = location_val if location_val is not None else safe_get(context, "location_value", "")
+
+        # Percent value fallback
         out_row[percent_header] = safe_get(row, percent_header, safe_get(context, "percent_value", "Fully Reported"))
+
         grand_total = 0
-        # Candidate columns
-        for candidate, party in sorted(candidate_party_set):
+
+        # Candidate cells
+        for cand, party in sorted(candidate_party_set):
             cand_total = 0
-            bt_map = candidate_party_ballot.get((candidate, party), {})
+            bt_map = candidate_party_ballot.get((cand, party), {})
             for bt in ballot_types:
-                col = f"{candidate} ({party}) - {bt}"
-                val = safe_get(row, safe_get(bt_map, bt, ""), "")
-                try:
-                    ival = int(safe_replace(val, ",", "")) if val else 0
-                except Exception:
-                    ival = 0
-                out_row[col] = str(ival) if val != "" else ""
+                col_label = cand_bt_label(cand, party, bt)
+                source_header = safe_get(bt_map, bt, "")
+                raw_val = safe_get(row, source_header, "") if source_header else ""
+                # Keep blank if truly blank
+                if raw_val in ("", None):
+                    out_row[col_label] = ""
+                    continue
+                ival = safe_to_int(raw_val, None)
+                if ival is None:
+                    # Non-numeric content: keep as text, do not add to totals
+                    out_row[col_label] = str(raw_val)
+                    continue
+                out_row[col_label] = str(ival)
                 cand_total += ival
-            out_row[f"{candidate} ({party}) - Total Votes"] = str(cand_total)
+            out_row[cand_total_label(cand, party)] = str(cand_total)
             grand_total += cand_total
-        # Misc columns
+
+        # Misc columns (preserve text, sum if numeric)
         for h in misc_columns:
-            out_row[h] = safe_get(row, h, "")
-            try:
-                misc_val = safe_get(row, h, "0")
-                misc_val_clean = safe_replace(misc_val, ",", "")
-                if misc_val_clean and (safe_isdigit(misc_val_clean) or (safe_startswith(misc_val_clean, "-") and safe_isdigit(misc_val_clean[1:]))):
-                    grand_total += int(misc_val_clean)
-            except Exception:
-                pass
+            raw = safe_get(row, h, "")
+            out_row[h] = raw
+            ival = safe_to_int(raw, None)
+            if ival is not None:
+                grand_total += ival
+
         out_row["Grand Total"] = str(grand_total)
         output_rows.append(out_row)
 
-    # Add a single totals row at the end
+    # Totals row at the end
     totals_row = {h: "" for h in output_headers}
     totals_row[location_header] = "TOTAL"
     totals_row[percent_header] = ""
-    for h in candidate_columns + misc_columns + ["Grand Total"]:
-        try:
-            values = [safe_replace(safe_get(r, h, "0"), ",", "") for r in output_rows]
-            if all(v == "" or safe_isdigit(v) or (safe_startswith(v, "-") and safe_isdigit(v[1:])) for v in values):
-                totals_row[h] = str(sum(int(v) for v in values if v != ""))
-            else:
-                totals_row[h] = ""
-        except Exception:
-            totals_row[h] = ""
+    sum_candidate_like = candidate_columns + misc_columns + ["Grand Total"]
+    for h in sum_candidate_like:
+        values = [safe_get(r, h, "") for r in output_rows]
+        # If all non-empty values are numeric-like, sum them; else leave blank
+        numericizable = True
+        total = 0
+        for v in values:
+            if v in ("", None):
+                continue
+            iv = safe_to_int(v, None)
+            if iv is None:
+                numericizable = False
+                break
+            total += iv
+        totals_row[h] = str(total) if numericizable else ""
     output_rows.append(totals_row)
+
     logger.info(
-        f"[TABLE BUILDER] Build dynamic tables Final table: {len(output_rows)} rows, {len(output_headers)} columns. "
+        f"[TABLE BUILDER] pivot_precinct_major_to_wide: {len(output_rows)} rows, {len(output_headers)} columns. "
         f"Location entity value used: {location_entity_value}"
     )
-    # Return info dict for downstream use
+
     info_dict = {
         "location_header": location_header,
         "percent_header": percent_header,
@@ -2822,95 +2905,81 @@ def pivot_precinct_major_to_wide(
     }
     return output_headers, output_rows, info_dict
 
-def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoordinator") -> Tuple[str, str, str]:
+def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoordinator" = None) -> Tuple[str, str, str]:
     """
-    Dynamically detect the first and second location columns (e.g., precinct, ward, city, district, municipal).
-    Uses context, regex, NER, and library.
-    Returns (location_header, percent_reported_header, location_entity_value)
+    Dynamically detect the location and percent headers.
+    Returns (location_header, percent_reported_header, location_entity_value).
+    Reuses provided coordinator; only instantiates if None.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
-    # Use patterns from the context library if available, else fall back to librarian
-    location_patterns = set()
-    percent_patterns = set()
-    if coordinator and hasattr(coordinator, "library"):
-        location_patterns = set()
-        percent_patterns = set()
+    coordinator = coordinator or ContextCoordinator()
+
+    # Load patterns from coordinator if available, else fall back to constants
+    location_patterns: set[str] = set()
+    percent_patterns: set[str] = set()
+
+    try:
         if coordinator and hasattr(coordinator, "get_dom_parts"):
             dom_parts = coordinator.get_dom_parts()
-            location_patterns = set(dom_parts.get("location_patterns", []))
-            percent_patterns = set(dom_parts.get("percent_patterns", []))
-        if not location_patterns and hasattr(coordinator, "get_known_counties"):
-            location_patterns = set(LOCATION_KEYWORDS)
-        if not percent_patterns:
-            percent_patterns = set(PERCENT_KEYWORDS)
+            location_patterns = set(safe_get(dom_parts, "location_patterns", []))
+            percent_patterns = set(safe_get(dom_parts, "percent_patterns", []))
+    except Exception:
+        pass
+
     if not location_patterns:
         location_patterns = set(LOCATION_KEYWORDS)
     if not percent_patterns:
         percent_patterns = set(PERCENT_KEYWORDS)
 
     norm_headers = [normalize_text(h) for h in headers]
-    location_header = None
-    percent_header = None
-    location_entity_value = None
+    location_header: str | None = None
+    percent_header: str | None = None
+    location_entity_value: str | None = None
 
-    # 1. Try exact match (case-insensitive)
+    # 1) Exact match
     for idx, h in enumerate(norm_headers):
-        for pat in location_patterns:
-            if normalize_text(pat) == h:
-                location_header = headers[idx]
-                break
-        if location_header:
+        if any(normalize_text(pat) == h for pat in location_patterns):
+            location_header = headers[idx]
             break
 
-    # 2. Try substring match
+    # 2) Substring match
     if not location_header:
         for idx, h in enumerate(norm_headers):
-            for pat in location_patterns:
-                if normalize_text(pat) in h:
-                    location_header = headers[idx]
-                    break
-            if location_header:
+            if any(normalize_text(pat) in h for pat in location_patterns):
+                location_header = headers[idx]
                 break
 
-    # 3. Try spaCy NER if available, and store entity value
-    if not location_header and coordinator:
+    # 3) NER on headers (capture entity value)
+    if not location_header and coordinator and hasattr(coordinator, "extract_entities"):
         for idx, h in enumerate(headers):
-            entities = coordinator.extract_entities(h)
-            for ent, label in entities:
-                if label in {"GPE", "LOC", "FAC"}:
-                    location_header = headers[idx]
-                    location_entity_value = ent  # <-- Store the entity value
+            try:
+                entities = coordinator.extract_entities(h)
+                for ent, label in entities:
+                    if label in {"GPE", "LOC", "FAC"}:
+                        location_header = headers[idx]
+                        location_entity_value = ent
+                        break
+                if location_header:
                     break
-            if location_header:
-                break
+            except Exception:
+                continue
 
-    # 4. Fallback to first column
+    # 4) Fallback to first column
     if not location_header and headers:
         location_header = headers[0]
 
-    # Percent header: exact match first
+    # Percent header detection
     for idx, h in enumerate(norm_headers):
-        for pat in percent_patterns:
-            if normalize_text(pat) == h:
-                percent_header = headers[idx]
-                break
-        if percent_header:
+        if any(normalize_text(pat) == h for pat in percent_patterns):
+            percent_header = headers[idx]
             break
-
-    # Percent header: substring match
     if not percent_header:
         for idx, h in enumerate(norm_headers):
-            for pat in percent_patterns:
-                if normalize_text(pat) in h:
-                    percent_header = headers[idx]
-                    break
-            if percent_header:
+            if any(normalize_text(pat) in h for pat in percent_patterns):
+                percent_header = headers[idx]
                 break
-
-    # Fallback: any header with '%' in it
     if not percent_header and headers:
-        percent_header = next((h for h in headers if "%" in h), None)
+        percent_header = next((h for h in headers if "%" in h or "reported" in safe_lower(h)), None)
 
     logger.info(f"[TABLE BUILDER] Location header detected: {location_header}, Percent header detected: {percent_header}, Location entity: {location_entity_value}")
     return location_header, percent_header, location_entity_value
@@ -3358,33 +3427,6 @@ def log_decision(decision, context=None) -> None:
     """
     logger.info(f"[DECISION] {decision} | Context: {context}")
 
-def handle_nested_tables(page) -> list[tuple[list[str], list[list[str]], dict]]:
-    """
-    Handle tables within tables or complex nested DOM structures.
-    Returns a list of (headers, data, diagnostics) tuples.
-    Enhanced: attaches diagnostics, skips empty tables, logs extraction.
-    """
-    try:
-        results = []
-        tables = safe_locator(page, "table table", logger)
-        table_count = safe_count(tables, logger)
-        for i in range(table_count):
-            table = safe_nth(tables, i, logger)
-            if table is not None:
-                headers, data, diagnostics = extract_table_data(table)
-                diagnostics = diagnostics or {}
-                diagnostics["nested_table_index"] = i
-                if headers and data:
-                    results.append((headers, data, diagnostics))
-                else:
-                    logger.warning(f"[HANDLE NESTED TABLES] Skipping empty or malformed nested table at index {i}.")
-        if not results:
-            logger.warning("[HANDLE NESTED TABLES] No nested tables extracted.")
-        return results
-    except Exception as e:
-        logger.error(f"[HANDLE NESTED TABLES] Error: {e}")
-        return []
-
 def fuzzy_in(word, text, threshold=0.7) -> bool:
     """Return True if word is in text by substring or fuzzy match."""
     word = safe_strip(safe_lower(word))
@@ -3392,7 +3434,7 @@ def fuzzy_in(word, text, threshold=0.7) -> bool:
     if word in text:
         return True
     # Fuzzy match: allow for partials (e.g., "town" in "orangetown")
-    ratio = SequenceMatcher(None, word, text).ratio()
+    ratio = difflib.SequenceMatcher(None, word, text).ratio()
     return ratio >= threshold
 
 def normalize_for_matching(text) -> str:
@@ -3426,3 +3468,275 @@ def is_location_header(header) -> bool:
     if header_norm in LOCATION_ABBREVIATIONS:
         return True
     return False
+
+# ===================================================================
+# OUTPUT, SANITIZATION, AND FINALIZATION UTILITIES
+# ===================================================================
+import csv
+from io import StringIO
+
+def sanitize_headers(headers: List[str]) -> List[str]:
+    """
+    Trim, de-dup, and normalize headers minimally for output.
+    Keeps original order and first occurrence on collisions by normalized name.
+    """
+    seen = set()
+    out = []
+    for h in headers or []:
+        hs = safe_strip(h) if isinstance(h, str) else str(h)
+        norm = normalize_header(hs)
+        if norm not in seen:
+            out.append(hs)
+            seen.add(norm)
+    return out
+
+def safe_to_int(val: Any, default: int = 0) -> int:
+    """
+    Convert a value to int safely, handling commas, percentages, and blanks.
+    Never raises; returns default on failure.
+    """
+    try:
+        if val is None:
+            return default
+        s = str(val).strip()
+        if not s:
+            return default
+        # Remove percent sign for numeric conversion; caller decides semantic meaning
+        s = s.replace("%", "")
+        s = s.replace(",", "")
+        if s.startswith("+"):
+            s = s[1:]
+        return int(s) if s.lstrip("-").isdigit() else default
+    except Exception:
+        return default
+
+def safe_to_float(val: Any, default: float = 0.0) -> float:
+    """
+    Convert a value to float safely, handling commas, percentages, and blanks.
+    Never raises; returns default on failure.
+    """
+    try:
+        if val is None:
+            return default
+        s = str(val).strip().replace(",", "")
+        s = s.replace("%", "")
+        return float(s)
+    except Exception:
+        return default
+
+def coerce_numeric_columns(headers: List[str], data: List[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    For columns that appear numeric in most rows, normalize numbers to strings of integers (no commas).
+    Leaves non-numeric text untouched. Returns new headers, data.
+    """
+    if not headers or not data:
+        return headers, data
+    numeric_like = set()
+    for h in headers:
+        vals = [safe_get(r, h, "") for r in data]
+        # Consider numeric-like if at least half of non-empty values are numeric when commas removed
+        non_empty = [v for v in vals if v not in ("", None)]
+        if not non_empty:
+            continue
+        numeric_count = 0
+        for v in non_empty:
+            s = str(v).replace(",", "").strip()
+            # Accept integers or floats (e.g., percents)
+            if s.replace(".", "", 1).lstrip("-").isdigit():
+                numeric_count += 1
+        if numeric_count >= max(1, int(0.5 * len(non_empty))):
+            numeric_like.add(h)
+    # Normalize numeric-like columns
+    norm_data = []
+    for row in data:
+        new_row = dict(row)
+        for h in numeric_like:
+            v = safe_get(row, h, "")
+            if v in ("", None):
+                continue
+            # Keep percent sign if original has it, but normalize digits
+            has_percent = isinstance(v, str) and "%" in v
+            iv = safe_to_int(v, None)
+            fv = None if iv is None else float(iv)
+            # Fallback to float if int failed but is float-like
+            if iv is None:
+                try:
+                    fv = safe_to_float(v, None)
+                except Exception:
+                    fv = None
+            if fv is not None:
+                # Store as plain integer if it is integral, else as original with commas removed
+                if abs(fv - int(fv)) < 1e-9:
+                    new_row[h] = f"{int(fv)}" + ("%" if has_percent else "")
+                else:
+                    new_row[h] = f"{fv}" + ("%" if has_percent else "")
+        norm_data.append(new_row)
+    return headers, norm_data
+
+def preview_table(headers: List[str], data: List[Dict[str, Any]], max_rows: int = 5) -> None:
+    """
+    Log a small preview table using Rich for quick inspection.
+    """
+    try:
+        if not headers:
+            return
+        t = RichTable(show_header=True, header_style="bold cyan")
+        for h in headers:
+            t.add_column(str(h))
+        for row in data[:max_rows]:
+            t.add_row(*(str(safe_get(row, h, "")) for h in headers))
+        logger.alert(t)
+    except Exception:
+        # Non-fatal; continue silently
+        pass
+
+def to_csv_string(headers: List[str], data: List[Dict[str, Any]]) -> str:
+    """
+    Produce a CSV string from headers and data. Headers are sanitized, data coerced for consistency.
+    """
+    headers = sanitize_headers(headers)
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=headers, extrasaction="ignore")
+    writer.writeheader()
+    for row in data:
+        # Ensure all keys exist
+        writer.writerow({h: safe_get(row, h, "") for h in headers})
+    return output.getvalue()
+
+def write_csv(headers: List[str], data: List[Dict[str, Any]], out_path: str) -> str:
+    """
+    Write CSV file to out_path. Returns path on success, empty string on failure.
+    """
+    try:
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        csv_str = to_csv_string(headers, data)
+        with open(out_path, "w", encoding="utf-8", newline="") as f:
+            f.write(csv_str)
+        logger.info(f"[TABLE_CORE][write_csv] Wrote CSV: {out_path}")
+        return out_path
+    except Exception as e:
+        logger.error(f"[TABLE_CORE][write_csv] Failed to write CSV: {e}")
+        return ""
+
+def write_json(headers: List[str], data: List[Dict[str, Any]], out_path: str) -> str:
+    """
+    Write JSON data to out_path. Returns path on success, empty string on failure.
+    """
+    try:
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        payload = {
+            "headers": headers,
+            "rows": data
+        }
+        with open(out_path, "wb") as f:
+            f.write(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
+        logger.info(f"[TABLE_CORE][write_json] Wrote JSON: {out_path}")
+        return out_path
+    except Exception as e:
+        logger.error(f"[TABLE_CORE][write_json] Failed to write JSON: {e}")
+        return ""
+
+def finalize_table_output(
+    headers: List[str],
+    data: List[Dict[str, Any]],
+    out_dir: str = None,
+    basename: str = "extracted_table"
+) -> Dict[str, str]:
+    """
+    Final pass to:
+      - sanitize headers,
+      - coerce numeric columns,
+      - emit a preview,
+      - optionally write CSV and JSON to out_dir if provided.
+
+    Returns dict with optional 'csv' and 'json' file paths.
+    """
+    headers = sanitize_headers(headers)
+    headers, data = coerce_numeric_columns(headers, data)
+    preview_table(headers, data, max_rows=5)
+
+    outputs = {}
+    if out_dir:
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except Exception:
+            pass
+        csv_path = os.path.join(out_dir, f"{basename}.csv")
+        json_path = os.path.join(out_dir, f"{basename}.json")
+        csv_written = write_csv(headers, data, csv_path)
+        json_written = write_json(headers, data, json_path)
+        if csv_written:
+            outputs["csv"] = csv_written
+        if json_written:
+            outputs["json"] = json_written
+    return outputs
+
+# ===================================================================
+# PUBLIC API SHORTCUT
+# ===================================================================
+
+def build_table_from_page(page, extraction_context: dict | None = None) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    High-level convenience: run robust extraction, then finalize.
+    If extraction_context includes 'output_dir' and 'output_basename', files are written.
+    """
+    headers, data = robust_table_extraction(page, extraction_context)
+    out_dir = safe_get(extraction_context, "output_dir", None) if extraction_context else None
+    base = safe_get(extraction_context, "output_basename", "extracted_table") if extraction_context else "extracted_table"
+    if headers and data:
+        finalize_table_output(headers, data, out_dir, base)
+    return headers, data
+
+__all__ = [
+    # Main
+    "robust_table_extraction",
+    "build_table_from_page",
+    # Extraction strategies
+    "extract_table_data",
+    "extract_with_patterns",
+    "extract_rows_and_headers_from_dom",
+    "extract_all_tables_with_location",
+    "ml_based_table_detection",
+    "nested_table_extraction",
+    "custom_plugin_extraction",
+    "robust_html_fallback_extraction",
+    "fallback_nlp_candidate_vote_scan",
+    # Harmonization and merging
+    "harmonize_headers_and_data",
+    "deduplicate_headers",
+    "remove_low_signal_columns",
+    "merge_table_data",
+    "merge_multiline_candidate_rows",
+    "combine_panel_tables_by_precinct",
+    # NLP and verification
+    "nlp_entity_annotate_table",
+    "verify_table_structure",
+    "progressive_table_verification",
+    "rescan_and_verify",
+    # Structure and pivoting
+    "detect_table_structure",
+    "force_fully_wide_format",
+    "handle_candidate_major",
+    "handle_precinct_major",
+    "handle_ambiguous",
+    "pivot_to_wide_format",
+    "pivot_precinct_major_to_wide",
+    "dynamic_detect_location_header",
+    # Helpers and utils
+    "is_location_header",
+    "is_likely_header",
+    "normalize_text",
+    "normalize_header",
+    "normalize_for_matching",
+    "fuzzy_in",
+    "contains_location_keyword",
+    "extract_percent_reported_from_page",
+    "extract_percent_reported_from_heading",
+    # Output helpers
+    "finalize_table_output",
+    "write_csv",
+    "write_json",
+    "to_csv_string",
+    "sanitize_headers",
+    "coerce_numeric_columns",
+]

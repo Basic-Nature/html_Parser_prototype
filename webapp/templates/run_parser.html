@@ -32,7 +32,7 @@
   <!-- Single consolidated app stylesheet (bootstrap_overrides merged) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/run_parser.css') }}">
 </head>
-<body data-page="run-parser">
+<body data-page="run-parser" data-allow-style="1">
     <nav class="navbar">
         <a href="{{ url_for('index') }}">Dashboard</a>
         <a href="{{ url_for('data_framework') }}">Data Framework</a>
@@ -43,9 +43,11 @@
            rel="noopener noreferrer"
            class="ext-link">About</a>
     </nav>
+    <button id="sidebarToggleBtn" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="false">☰ Menu</button>
+    <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
     <div class="layout-flex">
         <!-- Sidebar: File Management & URL Hint Manager -->
-        <aside class="sidebar">
+        <aside id="sidebar" class="sidebar">
             <div class="sidebar-content">
                 {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
@@ -78,21 +80,7 @@
                             <input type="file" id="inputFile" name="file" required aria-label="Choose file for input folder">
                             <button type="submit" class="btn btn-upload">Upload</button>
                         </form>
-                        <ul class="file-list">
-                            {% for file in input_files %}
-                                <li>
-                                    <span>{{ file }}</span>
-                                    <div class="file-actions">
-                                        <a href="{{ url_for('download_input_file', filename=file) }}" class="btn btn-success">Download</a>
-                                        <form method="POST" action="{{ url_for('delete_input_file', filename=file) }}">
-                                            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
-                                        </form>
-                                    </div>
-                                </li>
-                            {% else %}
-                                <li>No files in input folder.</li>
-                            {% endfor %}
-                        </ul>
+                        <div id="inputFolderPanel" class="folder-panel" data-root="input" aria-live="polite"></div>
                     </div>
                 </div>
 
@@ -107,21 +95,7 @@
                             <input type="file" id="outputFile" name="file" required aria-label="Choose file for output folder">
                             <button type="submit" class="btn btn-upload">Upload</button>
                         </form>
-                        <ul class="file-list">
-                            {% for file in output_files %}
-                                <li>
-                                    <span>{{ file }}</span>
-                                    <div class="file-actions">
-                                        <a href="{{ url_for('download_output_file', filename=file) }}" class="btn btn-success">Download</a>
-                                        <form method="POST" action="{{ url_for('delete_output_file', filename=file) }}">
-                                            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
-                                        </form>
-                                    </div>
-                                </li>
-                            {% else %}
-                                <li>No files in output folder.</li>
-                            {% endfor %}
-                        </ul>
+                        <div id="outputFolderPanel" class="folder-panel" data-root="output" aria-live="polite"></div>
                     </div>
                 </div>
 
@@ -136,21 +110,7 @@
                             <input type="file" id="uploadsFile" name="data_file" required aria-label="Choose file for uploads folder">
                             <button type="submit" class="btn btn-upload">Upload to Uploads</button>
                         </form>
-                        <ul class="file-list">
-                            {% for file in uploaded_files %}
-                                <li>
-                                    <span>{{ file }}</span>
-                                    <div class="file-actions">
-                                        <a href="{{ url_for('download_upload_file', filename=file) }}" class="btn btn-success">Download</a>
-                                        <form method="POST" action="{{ url_for('delete_upload_file', filename=file) }}">
-                                            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete {{ file }}?')">Delete</button>
-                                        </form>
-                                    </div>
-                                </li>
-                            {% else %}
-                                <li>No files in uploads folder.</li>
-                            {% endfor %}
-                        </ul>
+                        <div id="uploadsFolderPanel" class="folder-panel" data-root="uploads" aria-live="polite"></div>
                     </div>
                 </div>
             </div>
@@ -327,7 +287,7 @@
         </div>
     </div>
     <!-- Download Selection Modal -->
-    <div id="downloadModal" class="modal" tabindex="-1" style="display:none;">
+    <div id="downloadModal" class="modal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
         <div class="modal-header">

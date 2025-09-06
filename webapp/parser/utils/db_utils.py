@@ -19,10 +19,10 @@ from ..Context_Integration.librarian import (
     clean_for_json
 )
 from .logger_singleton import logger
-from ..config import POSTGRES_URL
+from ..config import get_sqlalchemy_engine
 
 # Set up SQLAlchemy engine and session
-engine = create_engine(POSTGRES_URL, echo=False, future=True)
+engine = get_sqlalchemy_engine()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 _engine = None  # for lazy initialization if needed
 
@@ -52,7 +52,7 @@ def get_session() -> Generator[Session, None, None]:
 def get_engine() -> create_engine:
     global _engine
     if _engine is None:
-        _engine = create_engine(POSTGRES_URL, echo=False, future=True)
+        _engine = get_sqlalchemy_engine()
     return _engine
 
 # --- Contest Operations ---

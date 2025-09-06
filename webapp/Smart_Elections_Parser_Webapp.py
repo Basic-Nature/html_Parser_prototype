@@ -883,6 +883,142 @@ def api_urls():
 def data_framework():
     return render_template("data_framework.html", data_api_url=DATA_API_URL)
 
+@app.route("/api/fs/list", methods=["GET"])
+def api_fs_list():
+    import os, time
+    root = (request.args.get("root") or "").lower().strip()
+    subpath = (request.args.get("path") or "").strip().replace("\\", "/")
+    roots = {"input": INPUT_DIR, "output": OUTPUT_DIR, "uploads": UPLOADS_DIR}
+    base = roots.get(root)
+    if not base:
+        return jsonify({"root": root, "path": subpath, "entries": []}), 400
+
+    abs_base = os.path.abspath(base)
+    want = os.path.normpath(os.path.join(abs_base, subpath))
+    if not want.startswith(abs_base):
+        return jsonify({"root": root, "path": subpath, "entries": []}), 400
+    if not os.path.isdir(want):
+        return jsonify({"root": root, "path": subpath, "entries": []})
+
+    entries = []
+    try:
+        with os.scandir(want) as it:
+            for de in it:
+                try:
+                    st = de.stat(follow_symlinks=False)
+                    entries.append({
+                        "name": de.name,
+                        "type": "dir" if de.is_dir(follow_symlinks=False) else "file",
+                        "size": None if de.is_dir(follow_symlinks=False) else int(st.st_size),
+                        "modified": int(st.st_mtime * 1000)
+                    })
+                except Exception:
+                    entries.append({
+                        "name": de.name,
+                        "type": "dir" if de.is_dir(follow_symlinks=False) else "file",
+                        "size": None,
+                        "modified": None
+                    })
+        entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "browser",
+            "message": f"Failed to list dir {root}:{subpath} -> {e}",
+            "session_id": None
+        })
+        entries = []
+    return jsonify({"root": root, "path": subpath, "entries": entries})
+
+@app.route("/api/list_dir", methods=["GET"])
+def api_list_dir_compat():
+    return api_fs_list()
+
+@app.route("/api/fs/mkdir", methods=["POST"])
+def api_fs_mkdir():
+    import os
+    data = request.get_json(force=True) or {}
+    root = (data.get("root") or "").lower().strip()
+    subpath = (data.get("path") or "").strip().replace("\\", "/")
+    name = (data.get("name") or "").strip()
+    if not name or "/" in name or "\\" in name:
+        return jsonify({"success": False, "error": "Invalid folder name."}), 400
+    roots = {"input": INPUT_DIR, "output": OUTPUT_DIR, "uploads": UPLOADS_DIR}
+    base = roots.get(root)
+    if not base:
+        return jsonify({"success": False, "error": "Invalid root."}), 400
+    abs_base = os.path.abspath(base)
+    parent = os.path.normpath(os.path.join(abs_base, subpath))
+    if not parent.startswith(abs_base):
+        return jsonify({"success": False, "error": "Path escape blocked."}), 400
+    try:
+        target = os.path.normpath(os.path.join(parent, name))
+        if not target.startswith(abs_base):
+            return jsonify({"success": False, "error": "Path escape blocked."}), 400
+        os.makedirs(target, exist_ok=False)
+        return jsonify({"success": True})
+    except FileExistsError:
+        return jsonify({"success": False, "error": "Folder already exists."}), 409
+    except Exception as e:
+        logger.error({"level":"ERROR","type":"browser","message":f"mkdir failed: {e}","session_id":None})
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/fs/delete", methods=["POST"])
+def api_fs_delete():
+    import os, shutil
+    data = request.get_json(force=True) or {}
+    root = (data.get("root") or "").lower().strip()
+    subpath = (data.get("path") or "").strip().replace("\\", "/")
+    name = (data.get("name") or "").strip()
+    recursive = bool(data.get("recursive"))
+    roots = {"input": INPUT_DIR, "output": OUTPUT_DIR, "uploads": UPLOADS_DIR}
+    base = roots.get(root)
+    if not base or not name:
+        return jsonify({"success": False, "error": "Invalid parameters."}), 400
+    abs_base = os.path.abspath(base)
+    parent = os.path.normpath(os.path.join(abs_base, subpath))
+    target = os.path.normpath(os.path.join(parent, name))
+    if not parent.startswith(abs_base) or not target.startswith(abs_base):
+        return jsonify({"success": False, "error": "Path escape blocked."}), 400
+    if not os.path.exists(target):
+        return jsonify({"success": False, "error": "Not found."}), 404
+    try:
+        if os.path.isfile(target):
+            os.remove(target)
+        elif os.path.isdir(target):
+            if recursive:
+                shutil.rmtree(target)
+            else:
+                os.rmdir(target)  # only if empty
+        else:
+            return jsonify({"success": False, "error": "Unsupported type."}), 400
+        return jsonify({"success": True})
+    except OSError as e:
+        # Common “directory not empty”
+        return jsonify({"success": False, "error": str(e)}), 409
+    except Exception as e:
+        logger.error({"level":"ERROR","type":"browser","message":f"delete failed: {e}","session_id":None})
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/download_fs")
+def download_fs():
+    import os
+    root = (request.args.get("root") or "").lower().strip()
+    subpath = (request.args.get("path") or "").strip().replace("\\", "/")
+    name = request.args.get("name") or ""
+    roots = {"input": INPUT_DIR, "output": OUTPUT_DIR, "uploads": UPLOADS_DIR}
+    base = roots.get(root)
+    if not base or not name:
+        raise NotFound()
+    abs_base = os.path.abspath(base)
+    want_dir = os.path.normpath(os.path.join(abs_base, subpath))
+    if not want_dir.startswith(abs_base):
+        raise NotFound()
+    fpath = os.path.normpath(os.path.join(want_dir, name))
+    if not fpath.startswith(abs_base) or not os.path.isfile(fpath):
+        raise NotFound()
+    return send_file(fpath, as_attachment=True)
+
 @app.route("/favicon.ico")
 def favicon():
     static_root = app.static_folder or "static"

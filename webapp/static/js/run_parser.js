@@ -2,6 +2,8 @@
    - Early session room join + queuing (joinedSessions/earlyQueue)
    - Auto history fetch & race protection
    - Prompt auto-response (optional) + numeric index expansion
+   - Contest selection menu detection + modal
+   - Folder browser: uploads, input, output (search + nested navigation)
    - Retains prior normalization & UI logic
 */
 (function () {
@@ -13,6 +15,9 @@
   const ENABLE_META_STRIP = true;
   const DISPLAY_TRUNCATE = 160;
   const DUP_WINDOW_MS = 600;
+  const SHOW_BROWSE_TOOLBAR = false;
+  // Respect OS "reduced motion" setting (used by particle effects)
+  const PREFERS_REDUCED_MOTION = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   // -------- Utilities --------
   const $  = sel => document.querySelector(sel);
@@ -23,7 +28,7 @@
   const uniq = arr => Array.from(new Set(arr));
   const nowPerf = () => performance.now();
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-
+  const debounce = (fn, wait = 200) => { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); }; };
   function extractFirstJSONObject(str) {
     if (typeof str !== 'string') return null;
     let depth = 0, start = -1, inStr = false, escNext = false;
@@ -72,10 +77,39 @@
   let lastFlush = 0;
   const BATCH_INTERVAL = 40;
   const dupMap = new Map();
-  const typeCounts = { all: 0 }; 
+  const typeCounts = { all: 0 };
   let urlIndexMap = {};
+  let contestIndexMap = {};
+  // Contest options store (per session) + helpers
+  const CONTEST_STORE_KEY = 'contest_opts_by_session_v1';
+  let contestOptionsBySession = lsGetJSON(CONTEST_STORE_KEY, {});
+  let lastContestOptions = contestOptionsBySession[activeSessionId] || []; // [{index,label,meta}]
+  function getContestOptions(sessionId = activeSessionId) {
+    return (contestOptionsBySession[sessionId] || []).slice();
+  }
+  function setContestOptions(sessionId, opts) {
+    contestOptionsBySession[sessionId] = (opts || []).slice();
+    lsSetJSON(CONTEST_STORE_KEY, contestOptionsBySession);
+    if (sessionId === activeSessionId) lastContestOptions = contestOptionsBySession[sessionId];
+  }
+  // Handy globals for console/UI hooks
+  window.getLastContestOptions = () => getContestOptions();
+  window.showContestPicker = function(sessionId = activeSessionId) {
+    const opts = getContestOptions(sessionId);
+    if (!opts.length) return false;
+    showIndexedSelectionModal('Select Contest', opts, (selection) => {
+      if (!selection) return;
+      if (socket) socket.emit('parser_prompt', { session_id: sessionId, value: selection.join(',') });
+    });
+    return true;
+  };
+  let lastPromptContext = null;
   let lastSentSourceBySession = {};
   let sessionMetaIndex = {};
+
+  // Folder browser state
+  const ROOT_LABELS = { uploads: 'Uploads', input: 'Input', output: 'Output' };
+
   // Keep Run button in sync with backend session lock state
   function updateRunButtonLock() {
     if (!el.runBtn) return;
@@ -86,7 +120,6 @@
       el.runBtn.classList.add('btn-locked');
       el.runBtn.setAttribute('data-running','true');
     } else {
-      // Only re-enable if not currently marked running by a fresh click
       if (!el.runBtn.getAttribute('data-running')) {
         el.runBtn.disabled = false;
       }
@@ -126,14 +159,54 @@
     deletePresetBtn: $('#deletePresetBtn')
   };
 
+  // Modal helper (single reusable modal shell)
+  const Modal = {
+    get() {
+      let modal = document.getElementById('downloadModal');
+      // Auto-create a minimal modal if missing (fallback)
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'downloadModal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+          <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Select</h5>
+                <button type="button" class="btn-close" id="closeDownloadModal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <input type="search" id="downloadSearch" class="form-control mb-2" placeholder="Filter...">
+                <div id="downloadSummary" class="mb-2"></div>
+                <div id="downloadOptions"></div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="cancelDownloadModal">Cancel</button>
+              </div>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+      }
+      return {
+        modal,
+        titleEl: modal.querySelector('.modal-title'),
+        searchEl: document.getElementById('downloadSearch'),
+        optionsDiv: document.getElementById('downloadOptions'),
+        summaryDiv: document.getElementById('downloadSummary'),
+        closeBtn: document.getElementById('closeDownloadModal'),
+        cancelBtn: document.getElementById('cancelDownloadModal')
+      };
+    },
+    open() { document.body.classList.add('modal-open'); },
+    close() { document.body.classList.remove('modal-open'); }
+  };
+
   // --- Download Selection Modal Logic ---
   function showDownloadModal(options, summary, callback) {
-    const modal = document.getElementById('downloadModal');
-    const search = document.getElementById('downloadSearch');
-    const optionsDiv = document.getElementById('downloadOptions');
-    const summaryDiv = document.getElementById('downloadSummary');
-    const closeBtn = document.getElementById('closeDownloadModal');
-    const cancelBtn = document.getElementById('cancelDownloadModal');
+    const refs = Modal.get();
+    if (!refs) return callback?.(null);
+    const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
+    if (titleEl) titleEl.textContent = 'Select Download';
     let filtered = options.slice();
 
     function renderList(filter = '') {
@@ -143,7 +216,6 @@
         opt.filename.toLowerCase().includes(q) ||
         opt.contest.toLowerCase().includes(q)
       );
-      // Group by contest/type
       const groups = {};
       filtered.forEach(opt => {
         const key = opt.contest || 'Other';
@@ -155,7 +227,7 @@
         const groupDiv = document.createElement('div');
         groupDiv.className = 'download-group';
         groupDiv.innerHTML = `<div class="download-group-header"><b>${group}</b> (${groups[group].length})</div>`;
-        groups[group].forEach((opt, idx) => {
+        groups[group].forEach((opt) => {
           const item = document.createElement('div');
           item.className = 'download-option';
           item.tabIndex = 0;
@@ -173,25 +245,576 @@
       if (!q) return esc(text);
       return esc(text).replace(new RegExp(q, 'gi'), m => `<mark>${m}</mark>`);
     }
-    function esc(s) {
-      return String(s).replace(/[&<>"']/g, c => ({
-        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-      }[c]));
-    }
-    function hide() {
-      modal.style.display = 'none';
-      document.body.classList.remove('modal-open');
-    }
-    search.value = '';
+    function hide() { Modal.close(); }
+    searchEl.value = '';
     summaryDiv.textContent = summary || '';
     renderList();
-    search.oninput = e => renderList(e.target.value);
+    searchEl.oninput = e => renderList(e.target.value);
     closeBtn.onclick = cancelBtn.onclick = () => { hide(); callback(null); };
-    modal.style.display = 'block';
-    document.body.classList.add('modal-open');
-    search.focus();
-  }  
-  
+    Modal.open();
+    searchEl.focus();
+  }
+
+  // Parse “[i] Label (meta)” lines from a backend menu string
+  function parseIndexedMenu(message) {
+    const opts = [];
+    const lines = String(message || '').split(/\r?\n/);
+    for (const line of lines) {
+      const m = line.match(/^\s*\[(\d+)\]\s+(.+?)\s*$/);
+      if (!m) continue;
+      const idx = Number(m[1]);
+      let label = m[2];
+      let meta = '';
+      const mm = label.match(/^(.+?)\s+\((.+)\)\s*$/);
+      if (mm) { label = mm[1]; meta = mm[2]; }
+      opts.push({ index: idx, label, meta });
+    }
+    return opts;
+  }
+
+  // Generic selection modal reusing download modal shell
+  function showIndexedSelectionModal(title, options, onSelect) {
+    const refs = Modal.get();
+    if (!refs) return onSelect(null);
+    const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
+
+    titleEl.textContent = title || 'Select';
+    summaryDiv.textContent = `${options.length} option(s)`;
+
+    function renderList(q = '') {
+      const query = (q || '').toLowerCase().trim();
+      const filtered = !query
+        ? options
+        : options.filter(o =>
+            String(o.index).includes(query) ||
+            o.label.toLowerCase().includes(query) ||
+            (o.meta || '').toLowerCase().includes(query)
+          );
+
+      optionsDiv.innerHTML = '';
+      filtered.forEach(o => {
+        const item = document.createElement('div');
+        item.className = 'download-option';
+        item.tabIndex = 0;
+        item.innerHTML = `<b>[${o.index}]</b> ${esc(o.label)}${o.meta ? ` <small>(${esc(o.meta)})</small>` : ''}`;
+        item.onclick = () => { hide(); onSelect([o.index]); };
+        item.onkeydown = (e) => { if (e.key === 'Enter') { hide(); onSelect([o.index]); } };
+        optionsDiv.appendChild(item);
+      });
+    }
+
+    function hide() { Modal.close(); }
+    searchEl.value = '';
+    renderList('');
+    searchEl.oninput = e => renderList(e.target.value);
+    closeBtn.onclick = cancelBtn.onclick = () => { hide(); onSelect(null); };
+    Modal.open();
+    searchEl.focus();
+  }
+
+  // Folder browser (uploads, input, output) with search + breadcrumbs
+  async function apiListDir(root, path = '') {
+    const qs = new URLSearchParams({ root, path });
+    const urls = [
+      `/api/fs/list?${qs.toString()}`,   // preferred
+      `/api/list_dir?${qs.toString()}`   // fallback
+    ];
+    for (const u of urls) {
+      try {
+        const r = await fetch(u, { method: 'GET' });
+        if (!r.ok) continue;
+        const d = await r.json();
+        if (d && Array.isArray(d.entries)) return d;
+      } catch { /* ignore */ }
+    }
+    throw new Error('Directory listing API not available');
+  }
+  // Top-level styled folder panel (used in sidebar sections)
+  function mountFolderPanel(root, panelEl) {
+    if (!panelEl) return;
+    panelEl.innerHTML = '';
+    const toolbar = document.createElement('div');
+    toolbar.className = 'folder-toolbar';
+
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'form-control folder-search';
+    search.placeholder = `Search ${ROOT_LABELS[root] || root}…`;
+    search.setAttribute('aria-label', `Search ${root} files`);
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.className = 'btn btn-primary btn-ghost';
+    refreshBtn.title = 'Refresh';
+    refreshBtn.innerHTML = '⟳';
+
+    // Minimal controls
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'btn btn-secondary btn-ghost';
+    upBtn.title = 'Up one folder';
+    upBtn.innerHTML = '⬆️';
+    upBtn.style.display = 'none'; // hidden at root
+
+    const newBtn = document.createElement('button');
+    newBtn.type = 'button';
+    newBtn.className = 'btn btn-secondary btn-ghost';
+    newBtn.title = 'New Folder';
+    newBtn.innerHTML = '＋';
+
+    const pathSpan = document.createElement('span');
+    pathSpan.className = 'folder-count folder-path';
+    pathSpan.textContent = '/';
+    pathSpan.title = `/${ROOT_LABELS[root] || root}`;
+    pathSpan.addEventListener('click', () => { cwd = ''; refresh(); });
+
+    const results = document.createElement('div');
+    results.className = 'folder-results';
+    results.innerHTML = `<div class="download-option">Loading…</div>`;
+
+    toolbar.appendChild(search);
+    toolbar.appendChild(refreshBtn);
+    toolbar.appendChild(upBtn);
+    toolbar.appendChild(newBtn);
+    toolbar.appendChild(pathSpan);
+    panelEl.appendChild(toolbar);
+    panelEl.appendChild(results);
+
+    let cwd = ''; // track current path for inline navigation
+    let allEntries = [];
+    let viewEntries = [];
+    let page = 0;
+    const PAGE_SIZE = 50;
+
+    function joinPath(base, name) {
+      return base ? `${base}/${name}` : name;
+    }
+
+    function render() {
+      const end = Math.min(viewEntries.length, (page + 1) * PAGE_SIZE);
+      const slice = viewEntries.slice(0, end);
+
+      results.innerHTML = '';
+      if (!slice.length) {
+        results.innerHTML = `<div class="download-option">No files found.</div>`;
+      } else {
+        slice.forEach(ent => {
+          const row = document.createElement('div');
+          row.className = 'download-option folder-row';
+          row.tabIndex = 0;
+          row.setAttribute('role','button');
+
+          const name = document.createElement('div');
+          name.className = 'item-name';
+          const icon = ent.type === 'dir' ? '📁' : '📄';
+          name.title = ent.name;
+          name.innerText = `${icon} ${ent.name}`;
+
+          const actions = document.createElement('div');
+          actions.className = 'file-actions';
+
+          if (ent.type === 'file') {
+            const useBtn = document.createElement('button');
+            useBtn.type = 'button';
+            useBtn.className = 'btn btn-primary btn-sm btn-ghost';
+            useBtn.textContent = 'Use';
+            useBtn.title = `Use ${ent.name}`;
+            useBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const rel = joinPath(cwd, ent.name);
+              if (socket && activeSessionId) {
+                socket.emit('parser_prompt', { session_id: activeSessionId, value: rel });
+              }
+            });
+
+            const dl = document.createElement('a');
+            dl.href = `/download_fs?root=${encodeURIComponent(root)}&path=${encodeURIComponent(cwd)}&name=${encodeURIComponent(ent.name)}`;
+            dl.className = 'btn btn-success btn-sm btn-ghost';
+            dl.innerText = 'Download';
+            dl.title = `Download ${ent.name}`;
+            dl.addEventListener('click', e => e.stopPropagation());
+
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'btn btn-danger btn-sm btn-ghost';
+            del.innerText = 'Delete';
+            del.title = `Delete ${ent.name}`;
+            del.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              if (!confirm(`Delete ${ent.name}?`)) return;
+              try {
+                const r = await fetch('/api/fs/delete', {
+                  method: 'POST',
+                  headers: { 'Content-Type':'application/json; charset=utf-8' },
+                  body: JSON.stringify({ root, path: cwd, name: ent.name })
+                });
+                const d = await r.json().catch(()=>({}));
+                if (!r.ok || !d.success) alert(d.error || 'Failed to delete file.');
+                await refresh();
+              } catch { alert('Network error.'); }
+            });
+
+            actions.appendChild(useBtn);
+            actions.appendChild(dl);
+            actions.appendChild(del);
+            // Clicking the row uses the file (quick action)
+            row.addEventListener('click', () => {
+              const rel = joinPath(cwd, ent.name);
+              if (socket && activeSessionId) {
+                socket.emit('parser_prompt', { session_id: activeSessionId, value: rel });
+              }
+            });
+          } else {
+            // Directory: click to open
+            row.addEventListener('click', async () => {
+              cwd = joinPath(cwd, ent.name);
+              await refresh();
+            });
+
+            // Folder delete (Shift = recursive)
+            const delDir = document.createElement('button');
+            delDir.type = 'button';
+            delDir.className = 'btn btn-danger btn-sm btn-ghost';
+            delDir.innerText = 'Delete';
+            delDir.title = 'Delete folder (Shift for recursive)';
+            delDir.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              const recursive = e.shiftKey;
+              const ok = confirm(`Delete folder "${ent.name}"${recursive ? ' and all its contents' : ''}?`);
+              if (!ok) return;
+              try {
+                const r = await fetch('/api/fs/delete', {
+                  method: 'POST',
+                  headers: { 'Content-Type':'application/json; charset=utf-8' },
+                  body: JSON.stringify({ root, path: cwd, name: ent.name, recursive })
+                });
+                const d = await r.json().catch(()=>({}));
+                if (!r.ok || !d.success) alert(d.error || 'Failed to delete folder.');
+                await refresh();
+              } catch { alert('Network error.'); }
+            });
+            actions.appendChild(delDir);
+          }
+
+          row.appendChild(name);
+          row.appendChild(actions);
+          results.appendChild(row);
+        });
+      }
+
+      if (end < viewEntries.length) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'btn btn-primary btn-sm mt-1em';
+        more.innerText = `Show more (${viewEntries.length - end} remaining)`;
+        more.onclick = () => { page++; render(); };
+        results.appendChild(more);
+      }
+    }
+
+    function applyFilter() {
+      const q = (search.value || '').toLowerCase().trim();
+      page = 0;
+      viewEntries = !q ? allEntries.slice()
+                       : allEntries.filter(e => e.name.toLowerCase().includes(q) || (e.type || '').toLowerCase().includes(q));
+      // Sort: dirs first, then by name
+      viewEntries.sort((a,b) => (a.type !== b.type) ? (a.type === 'dir' ? -1 : 1) : a.name.localeCompare(b.name));
+      render();
+    }
+
+    async function refresh() {
+      results.innerHTML = `<div class="download-option">Loading…</div>`;
+      try {
+        const listing = await apiListDir(root, cwd);
+        allEntries = Array.isArray(listing.entries) ? listing.entries : [];
+      } catch {
+        allEntries = [];
+      }
+      pathSpan.textContent = `/${cwd || ''}`;
+      upBtn.style.display = cwd ? '' : 'none'; // show Up only when not root
+      applyFilter();
+    }
+
+    // Persist search per-root
+    const LS_KEY = `folder_search_${root}`;
+    search.value = localStorage.getItem(LS_KEY) || '';
+    search.addEventListener('input', debounce(() => {
+      localStorage.setItem(LS_KEY, search.value);
+      applyFilter();
+    }, 200));
+
+    refreshBtn.addEventListener('click', refresh);
+    upBtn.addEventListener('click', async () => {
+      if (!cwd) return;
+      const parts = cwd.split('/').filter(Boolean);
+      parts.pop();
+      cwd = parts.join('/');
+      await refresh();
+    });
+    newBtn.addEventListener('click', async () => {
+      const name = prompt('New folder name:');
+      if (!name) return;
+      try {
+        const r = await fetch('/api/fs/mkdir', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json; charset=utf-8' },
+          body: JSON.stringify({ root, path: cwd, name })
+        });
+        const d = await r.json().catch(()=>({}));
+        if (!r.ok || !d.success) alert(d.error || 'Failed to create folder.');
+        await refresh();
+      } catch { alert('Network error.'); }
+    });
+
+    // Expose refresh so collapsible open can refresh list
+    panelEl._refresh = refresh;
+    refresh();
+  }
+
+  function initFolderPanels() {
+    const inputPanel   = document.querySelector('#inputSection  #inputFolderPanel');
+    const outputPanel  = document.querySelector('#outputSection #outputFolderPanel');
+    const uploadsPanel = document.querySelector('#uploadsSection #uploadsFolderPanel');
+    if (inputPanel)  mountFolderPanel('input', inputPanel);
+    if (outputPanel) mountFolderPanel('output', outputPanel);
+    if (uploadsPanel) mountFolderPanel('uploads', uploadsPanel);
+  }
+  // Folder browser (uploads, input, output) with search + breadcrumbs
+  function showFolderBrowser(root, initialPath = '', onSelect) {
+    const refs = Modal.get();
+    if (!refs) return onSelect(null);
+    const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
+
+    let cwd = initialPath || '';
+    let allEntries = []; // {name,type:'dir'|'file', size, modified}
+
+    titleEl.textContent = `Browse ${ROOT_LABELS[root] || root}`;
+    summaryDiv.textContent = '';
+
+    function makeCrumb(path) {
+      const parts = path.split('/').filter(Boolean);
+      const spans = [];
+      let acc = '';
+      const rootSpan = document.createElement('span');
+      rootSpan.className = 'crumb';
+      rootSpan.textContent = ROOT_LABELS[root] || root;
+      rootSpan.onclick = () => { cwd = ''; refresh(); };
+      spans.push(rootSpan);
+      for (let i=0;i<parts.length;i++) {
+        const sep = document.createElement('span');
+        sep.textContent = ' / ';
+        spans.push(sep);
+        acc += (acc ? '/' : '') + parts[i];
+        const s = document.createElement('span');
+        s.className = 'crumb';
+        s.textContent = parts[i];
+        s.onclick = () => { cwd = acc; refresh(); };
+        spans.push(s);
+      }
+      const wrap = document.createElement('div');
+      wrap.className = 'folder-breadcrumb';
+      spans.forEach(n => wrap.appendChild(n));
+      return wrap;
+    }
+    function renderList(filter = '') {
+      const q = (filter||'').toLowerCase().trim();
+      let entries = allEntries.slice();
+      if (q) {
+        entries = entries.filter(e =>
+          e.name.toLowerCase().includes(q) || (e.type||'').toLowerCase().includes(q)
+        );
+      }
+      entries.sort((a,b) => {
+        if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      optionsDiv.innerHTML = '';
+      optionsDiv.appendChild(makeCrumb(cwd));
+
+      const tools = document.createElement('div');
+      tools.className = 'folder-actions-bar';
+      const newBtn = document.createElement('button');
+      newBtn.type = 'button';
+      newBtn.className = 'btn btn-sm btn-primary ms-2';
+      newBtn.textContent = 'New Folder';
+      newBtn.onclick = async () => {
+        const name = prompt('New folder name:');
+        if (!name) return;
+        try {
+          const r = await fetch('/api/fs/mkdir', {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json; charset=utf-8' },
+            body: JSON.stringify({ root, path: cwd, name })
+          });
+          const d = await r.json().catch(()=>({}));
+          if (!r.ok || !d.success) alert(d.error || 'Failed to create folder.');
+          await refresh();
+        } catch { alert('Network error.'); }
+      };
+      tools.appendChild(newBtn);
+      optionsDiv.appendChild(tools);
+
+      if (cwd) {
+        const up = document.createElement('div');
+        up.className = 'download-option';
+        up.innerHTML = `⬆️ <b>[..]</b> <small>Up one level</small>`;
+        up.onclick = () => {
+          const parts = cwd.split('/').filter(Boolean);
+          parts.pop();
+          cwd = parts.join('/');
+          refresh();
+        };
+        optionsDiv.appendChild(up);
+      }
+
+      entries.forEach(ent => {
+        const item = document.createElement('div');
+        item.className = 'download-option';
+        item.tabIndex = 0;
+        if (ent.type === 'dir') {
+          // Folder row
+          const label = document.createElement('span');
+          label.innerHTML = `📁 <b>${esc(ent.name)}</b>`;
+          item.appendChild(label);
+
+          const actions = document.createElement('span');
+          actions.className = 'ms-2';
+          const openBtn = document.createElement('button');
+          openBtn.type = 'button';
+          openBtn.className = 'btn btn-sm btn-secondary me-1';
+          openBtn.textContent = 'Open';
+          openBtn.onclick = (e) => { e.stopPropagation(); cwd = (cwd ? cwd + '/' : '') + ent.name; refresh(); };
+
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'btn btn-sm btn-danger';
+          delBtn.textContent = 'Delete';
+          delBtn.title = 'Delete folder (empty folders only; hold Shift for recursive)';
+          delBtn.onclick = async (e) => {
+            e.stopPropagation();
+            const recursive = e.shiftKey; // Shift+Click -> recursive delete
+            const ok = confirm(`Delete folder "${ent.name}"${recursive ? ' and all its contents' : ''}?`);
+            if (!ok) return;
+            try {
+              const r = await fetch('/api/fs/delete', {
+                method: 'POST',
+                headers: { 'Content-Type':'application/json; charset=utf-8' },
+                body: JSON.stringify({ root, path: cwd, name: ent.name, recursive })
+              });
+              const d = await r.json().catch(()=>({}));
+              if (!r.ok || !d.success) alert(d.error || 'Failed to delete folder.');
+              await refresh();
+            } catch { alert('Network error.'); }
+          };
+
+          actions.appendChild(openBtn);
+          actions.appendChild(delBtn);
+          item.appendChild(actions);
+
+          // Also allow clicking whole row to open
+          item.onclick = () => { cwd = (cwd ? cwd + '/' : '') + ent.name; refresh(); };
+          item.onkeydown = (e) => { if (e.key === 'Enter') { cwd = (cwd ? cwd + '/' : '') + ent.name; refresh(); } };
+        } else {
+          // File row
+          const meta = [];
+          if (ent.size != null) meta.push(`${ent.size} bytes`);
+          if (ent.modified) meta.push(new Date(ent.modified).toLocaleString());
+          const metaStr = meta.length ? ` <small>(${esc(meta.join(' • '))})</small>` : '';
+
+          const label = document.createElement('span');
+          label.innerHTML = `📄 ${esc(ent.name)}${metaStr}`;
+          item.appendChild(label);
+
+          const actions = document.createElement('span');
+          actions.className = 'ms-2';
+
+          const useBtn = document.createElement('button');
+          useBtn.type = 'button';
+          useBtn.className = 'btn btn-sm btn-primary me-1';
+          useBtn.textContent = 'Use';
+          useBtn.title = `Use ${ent.name}`;
+          useBtn.onclick = (e) => {
+            e.stopPropagation();
+            const rel = cwd ? `${cwd}/${ent.name}` : ent.name;
+            hide();
+            onSelect({ root, path: cwd, name: ent.name });
+            if (socket && activeSessionId) {
+              socket.emit('parser_prompt', { session_id: activeSessionId, value: rel });
+            }
+          };
+
+          const dl = document.createElement('a');
+          dl.href = `/download_fs?root=${encodeURIComponent(root)}&path=${encodeURIComponent(cwd)}&name=${encodeURIComponent(ent.name)}`;
+          dl.className = 'btn btn-sm btn-success me-1';
+          dl.textContent = 'Download';
+          dl.onclick = (e) => e.stopPropagation();
+
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'btn btn-sm btn-danger';
+          delBtn.textContent = 'Delete';
+          delBtn.onclick = async (e) => {
+            e.stopPropagation();
+            if (!confirm(`Delete file "${ent.name}"?`)) return;
+            try {
+              const r = await fetch('/api/fs/delete', {
+                method: 'POST',
+                headers: { 'Content-Type':'application/json; charset=utf-8' },
+                body: JSON.stringify({ root, path: cwd, name: ent.name })
+              });
+              const d = await r.json().catch(()=>({}));
+              if (!r.ok || !d.success) alert(d.error || 'Failed to delete file.');
+              await refresh();
+            } catch { alert('Network error.'); }
+          };
+
+          actions.appendChild(useBtn);
+          actions.appendChild(dl);
+          actions.appendChild(delBtn);
+          item.appendChild(actions);
+
+          // Keep row click as "Use"
+          item.onclick = () => {
+            const rel = cwd ? `${cwd}/${ent.name}` : ent.name;
+            hide();
+            onSelect({ root, path: cwd, name: ent.name });
+            if (socket && activeSessionId) {
+              socket.emit('parser_prompt', { session_id: activeSessionId, value: rel });
+            }
+          };
+          item.onkeydown = (e) => { if (e.key === 'Enter') { item.onclick(); } };
+        }
+
+        optionsDiv.appendChild(item);
+      });
+
+      summaryDiv.textContent = `${entries.length} item(s)`;
+    }
+
+    async function refresh() {
+      optionsDiv.innerHTML = `<div class="download-option">Loading…</div>`;
+      try {
+        const listing = await apiListDir(root, cwd);
+        allEntries = Array.isArray(listing.entries) ? listing.entries : [];
+      } catch (e) {
+        allEntries = [];
+        optionsDiv.innerHTML = `<div class="download-option">Folder API not available.</div>`;
+      }
+      renderList(searchEl.value);
+    }
+
+    function hide() { Modal.close(); }
+
+    searchEl.value = '';
+    searchEl.oninput = e => renderList(e.target.value);
+    closeBtn.onclick = cancelBtn.onclick = () => { hide(); onSelect(null); };
+
+    Modal.open();
+    searchEl.focus();
+    refresh();
+  }
+
   // Dynamic type selector
   let logTypeSelect = $('#logTypeFilterSelect');
   if (!logTypeSelect) {
@@ -210,6 +833,36 @@
     if (container) {
       container.appendChild(label);
       container.appendChild(logTypeSelect);
+
+      if (SHOW_BROWSE_TOOLBAR) {
+        // Folder browser buttons (optional)
+        const browseWrap = document.createElement('div');
+        browseWrap.className = 'browse-toolbar';
+        browseWrap.style.display = 'flex';
+        browseWrap.style.gap = '8px';
+        browseWrap.style.marginLeft = '12px';
+
+        const mkBtn = (txt, root) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'btn btn-sm btn-secondary';
+          b.textContent = txt;
+          b.onclick = () => {
+            showFolderBrowser(root, '', (sel) => {
+              if (!sel) return;
+              const rel = sel.path ? `${sel.path}/${sel.name}` : sel.name;
+              if (socket && activeSessionId) {
+                socket.emit('parser_prompt', { session_id: activeSessionId, value: rel });
+              }
+            });
+          };
+          return b;
+        };
+        browseWrap.appendChild(mkBtn('Browse Uploads', 'uploads'));
+        browseWrap.appendChild(mkBtn('Browse Input', 'input'));
+        browseWrap.appendChild(mkBtn('Browse Output', 'output'));
+        container.appendChild(browseWrap);
+      }
     }
   }
   el.outputModeSelect?.setAttribute('aria-label','Select output delivery mode');
@@ -222,7 +875,7 @@
   const CANONICAL_TYPES = [
     'status', 'input', 'output', 'manual_override', 'ai_analysis', 'stream', 'router',
     'handler', 'batch', 'download', 'browser', 'validation', 'exception', 'cancel',
-    'summary', 'cache', 'prompt', 'heartbeat', 'database', 'delete', 'other'
+    'summary', 'cache', 'prompt', 'heartbeat', 'database', 'delete', 'selector', 'other'
   ];
 
   // Pre-populate log level filter
@@ -260,7 +913,8 @@
     localStorage.setItem('session_id', activeSessionId);
     if (el.activeSessionSpan) el.activeSessionSpan.textContent = activeSessionId;
     highlightActiveSessionBtn();
-    // Flush any early queued logs
+    // sync lastContestOptions for this session
+    lastContestOptions = getContestOptions(activeSessionId);
     if (earlyQueue.length && el.outputDiv) {
       earlyQueue.forEach(d => renderParserOutput(d));
       flushBatch();
@@ -291,7 +945,7 @@
         clearOutput();
         joinSession(sid);
         loadSessionLogs(sid);
-        restoreCachedLogs(sid); // show cached immediately
+        restoreCachedLogs(sid);
       });
       const remove = document.createElement('span');
       remove.className = 'session-remove';
@@ -314,7 +968,7 @@
     updateSessionCount();
   }
 
-// --- Simple per-session log cache in localStorage (bounded) ---
+  // --- Simple per-session log cache in localStorage (bounded) ---
   const LOG_CACHE_KEY = 'session_log_cache_v1';
   function loadCache() { return lsGetJSON(LOG_CACHE_KEY, {}); }
   function saveCache(cache) { lsSetJSON(LOG_CACHE_KEY, cache); }
@@ -496,7 +1150,6 @@
     }
 
     let t = deriveType();
-    // Fallback to legacy heuristic if still other
     if (t === 'other') {
       const alt = inferType(lowerMsg);
       if (alt && alt !== 'other') t = alt;
@@ -586,7 +1239,6 @@
   function bumpTypeCount(v) {
     if (!v) return;
     typeCounts[v] = (typeCounts[v] || 0) + 1;
-    // update option label if it exists
     const opt = logTypeSelect?.querySelector(`option[value="${v}"]`);
     if (opt) opt.textContent = formatTypeLabel(v);
   }
@@ -616,7 +1268,6 @@
 
   function renderParserOutput(raw) {
     if (!el.outputDiv) return;
-    // If empty-URL condition appears, inject hint once
     if (typeof raw === 'object' && raw && /no usable urls/i.test(String(raw.message||'')) && !document.getElementById('empty-url-hint')) {
       const hint = document.createElement('div');
       hint.id = 'empty-url-hint';
@@ -638,12 +1289,6 @@
 
     if (obj.type === 'heartbeat' && !SHOW_HEARTBEAT_LINES) return;
 
-    if (obj.type === 'cancel' && (obj.level === 'DEBUG' || obj.level === 'INFO')) {
-      if (!levelIconMap[obj.level]) levelIconMap[obj.level] = '🛑';
-    
-    if (obj.type === 'prompt') return;  
-    }
-
     if (!levelIconMap[obj.level]) {
       levelIconMap[obj.level] = '🧩';
       levelColorMap[obj.level] = hashColor(obj.level);
@@ -656,7 +1301,7 @@
     ensureFilterOptions(logTypeSelect, seenLogTypes, normType);
     bumpTypeCount(normType);
 
-    const sig = ['v5', obj.level, obj.type, obj.session_id || '', obj.full_text].join('|');
+    const sig = ['v6', obj.level, obj.type, obj.session_id || '', obj.full_text].join('|');
     if (shouldSuppressDuplicate(sig)) return;
 
     let timeStr = '';
@@ -704,7 +1349,7 @@
         <div class="log-detail-grid">
           <div><span class="ld-k">Session:</span><span class="ld-v">${esc(obj.session_id||'—')}</span></div>
           <div><span class="ld-k">Timestamp:</span><span class="ld-v">${esc(String(obj.timestamp))}</span></div>
-            <div><span class="ld-k">Level:</span><span class="ld-v">${esc(obj.level)}</span></div>
+          <div><span class="ld-k">Level:</span><span class="ld-v">${esc(obj.level)}</span></div>
           <div><span class="ld-k">Type:</span><span class="ld-v">${esc(obj.type)}</span></div>
           <div class="ld-span"><span class="ld-k">Message:</span><span class="ld-v">${esc(obj.full_text)}</span></div>
           <div class="ld-span"><span class="ld-k">Original Raw:</span><span class="ld-v">${esc(obj.original_raw)}</span></div>
@@ -828,7 +1473,6 @@
     a.click();
     setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 400);
   }
-  // Wire preset functions to UI
   function initFilterPresets() {
     populatePresetSelect();
     if (el.saveFiltersBtn) on(el.saveFiltersBtn,'click', () => {
@@ -850,27 +1494,27 @@
       exportPreset(cur);
     });
   }
+
   // -------- Source / Bypass --------
   function currentFileSource() {
     return (el.fileSourceSelect && el.fileSourceSelect.value === 'uploads') ? 'uploads' : 'input';
   }
   function syncSourceClass() {
-      const inputSection = document.getElementById('inputSection');
-      const uploadsSection = document.getElementById('uploadsSection');
-      const fileSource = currentFileSource();
+    const inputSection = document.getElementById('inputSection');
+    const uploadsSection = document.getElementById('uploadsSection');
+    const fileSource = currentFileSource();
 
-      document.body.classList.toggle('source-uploads', fileSource === 'uploads');
-      document.body.classList.toggle('source-input', fileSource === 'input');
+    document.body.classList.toggle('source-uploads', fileSource === 'uploads');
+    document.body.classList.toggle('source-input', fileSource === 'input');
 
-      // Avoid inline styles (CSP). Use class toggles only.
-      if (inputSection) {
-          inputSection.classList.toggle('hidden', fileSource !== 'input');
-          inputSection.parentElement?.classList.toggle('hidden', fileSource !== 'input');
-      }
-      if (uploadsSection) {
-          uploadsSection.classList.toggle('hidden', fileSource !== 'uploads');
-          uploadsSection.parentElement?.classList.toggle('hidden', fileSource !== 'uploads');
-      }
+    if (inputSection) {
+      inputSection.classList.toggle('hidden', fileSource !== 'input');
+      inputSection.parentElement?.classList.toggle('hidden', fileSource !== 'input');
+    }
+    if (uploadsSection) {
+      uploadsSection.classList.toggle('hidden', fileSource !== 'uploads');
+      uploadsSection.parentElement?.classList.toggle('hidden', fileSource !== 'uploads');
+    }
   }
   function emitManualFileSource() {
     if (!socket || !activeSessionId) return;
@@ -898,12 +1542,10 @@
 
   function runParser() {
     if (!socket || !el.runBtn) return;
-    // Prefer existing last stored session before auto-creating
     const stored = localStorage.getItem('session_id');
     if (!activeSessionId && stored) {
       setActiveSession(stored);
       joinSession(stored);
-      // Flush any early logs immediately after session is set/joined
       if (earlyQueue.length && el.outputDiv) {
         earlyQueue.forEach(d => renderParserOutput(d));
         flushBatch();
@@ -912,7 +1554,6 @@
     }
     if (!activeSessionId) {
       addNewSession();
-      // addNewSession calls setActiveSession, so flush earlyQueue here too
       if (earlyQueue.length && el.outputDiv) {
         earlyQueue.forEach(d => renderParserOutput(d));
         flushBatch();
@@ -920,7 +1561,6 @@
       }
     } else {
       joinSession(activeSessionId);
-      // Ensure logs are flushed after join
       if (earlyQueue.length && el.outputDiv) {
         earlyQueue.forEach(d => renderParserOutput(d));
         flushBatch();
@@ -932,36 +1572,53 @@
     el.runBtn.disabled = true;
     el.runBtn.setAttribute('data-running','true');
     el.runBtn.textContent = 'Running...';
-    // --- Wait for 'joined' event before emitting 'run_parser' ---
     socket.once('joined', function(data) {
       if (data.session_id === activeSessionId) {
         socket.emit('run_parser', { session_id: activeSessionId, file_source: currentFileSource() });
         setTimeout(() => socket && socket.emit('get_session_history', { session_id: activeSessionId }), 600);
       }
     });
-    joinSession(activeSessionId); // Ensure join is called (again, safe)
-    // -----------------------------------------------------------
+    joinSession(activeSessionId);
     setTimeout(() => { if (!el.runBtn.getAttribute('data-running')) el.runBtn.disabled = false; }, 4000);
   }
 
   // -------- Prompt --------
   function handlePromptSubmit(e) {
     e.preventDefault();
-    console.log('[DEBUG] handlePromptSubmit fired', el.promptInput.value);
     if (!socket || !el.promptInput || !activeSessionId) return;
-    let raw = el.promptInput.value.trim(); // allow empty (backend may treat as cancel)
-    if (/^\d+(,\s*\d+)*$/.test(raw)) {
-      raw = raw.split(/,\s*/).map(n => urlIndexMap[n] || n).join(',');
-    } else {
-      const mSingle = raw.match(/^\[?(\d+)\]?$/);
-      if (mSingle && urlIndexMap[mSingle[1]]) raw = urlIndexMap[mSingle[1]];
+    let raw = el.promptInput.value.trim();
+
+    // Quick command: reopen last contest picker
+    if (/^\/?contests$/i.test(raw)) {
+      if (!window.showContestPicker()) alert('No cached contest options for this session yet.');
+      el.promptInput.value = '';
+      return;
     }
+    // Expand comma-separated numbers for contests (or URLs if present)
+    if (/^\d+(?:\s*,\s*\d+)*$/.test(raw)) {
+      const nums = raw.split(/\s*,\s*/);
+      if (lastPromptContext && lastPromptContext.kind === 'contest' && Object.keys(contestIndexMap).length) {
+        raw = nums.filter(n => contestIndexMap[n] != null).join(',');
+      } else {
+        raw = nums.map(n => urlIndexMap[n] || n).join(',');
+      }
+    } else {
+      const m = raw.match(/^\[?(\d+)\]?$/);
+      if (m) {
+        const n = m[1];
+        if (lastPromptContext && lastPromptContext.kind === 'contest' && contestIndexMap[n] != null) {
+          raw = n;
+        } else if (urlIndexMap[n]) {
+          raw = urlIndexMap[n];
+        }
+      }
+    }
+
     socket.emit('parser_prompt', { session_id: activeSessionId, value: raw });
     el.promptInput.value = '';
   }
 
   // -------- URLs --------
-
   function renderUrlSidebar(urls) {
     const sidebar = document.getElementById('urlSidebarBlock');
     if (!sidebar) return;
@@ -986,7 +1643,6 @@
         return `<div class="url-sidebar-item" title="${u}" data-url="${encodeURIComponent(u)}">[${i+1}] ${short}</div>`;
       }).join('') +
         (filtered.length > 40 ? `<div class="url-sidebar-more">...and ${filtered.length-40} more</div>` : '');
-      // Click handler
       listBox.querySelectorAll('.url-sidebar-item').forEach(el => {
         el.onclick = () => {
           const url = decodeURIComponent(el.getAttribute('data-url'));
@@ -1037,6 +1693,7 @@
     particleCanvas.height = window.innerHeight;
   }
   function spawnParticleBurst(x, y, count = 28, color = '#00ffe7') {
+    if (PREFERS_REDUCED_MOTION) return;
     ensureParticleCanvas();
     const rectTop = window.scrollY;
     const originY = y - rectTop;
@@ -1075,7 +1732,7 @@
           const t = p.life / p.maxLife;
           p.x += p.vx * 0.016;
           p.y += p.vy * 0.016 + 40 * 0.016 * t;
-            const alpha = 1 - (t*t);
+          const alpha = 1 - (t*t);
           const grad = pctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size*3);
           grad.addColorStop(0, hexToRgba(p.baseColor, alpha));
           grad.addColorStop(1, hexToRgba(p.baseColor, 0));
@@ -1132,10 +1789,8 @@
   function loadSessionLogs(sid) { socket && socket.emit('get_session_history', { session_id: sid }); }
 
   function connectSocket() {
-    // Disconnect any existing socket cleanly
     if (socket && typeof socket.disconnect === 'function') socket.disconnect();
 
-    // Restore previous session ID if available
     let prevSessionId = localStorage.getItem('session_id') || '';
     try {
       if (prevSessionId.startsWith('{')) {
@@ -1144,7 +1799,6 @@
       }
     } catch {}
 
-    // Create new socket connection
     socket = window.socket = io({
       query: { prev_session_id: prevSessionId },
       reconnection: true,
@@ -1155,8 +1809,6 @@
       pingInterval: 10000,
       pingTimeout: 60000
     });
-
-    // --- Socket Event Handlers ---
 
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
@@ -1170,16 +1822,12 @@
     socket.on('session_deleted', handleSessionDeleted);
     socket.on('session_heartbeat', handleSessionHeartbeat);
 
-    // Initial fetch of sessions
     socket.emit('get_sessions');
-
-    // --- Handler Functions ---
 
     function handleConnect() {
       hideDisconnectedMessage();
       joinedSessions.clear();
       renderSessionList();
-      // Restore or join active session and fetch history
       const sessions = getSessions();
       if (activeSessionId && sessions.includes(activeSessionId)) {
         joinSession(activeSessionId);
@@ -1218,7 +1866,6 @@
       if (!data || !Array.isArray(data.logs)) return;
       data.logs.forEach(l => renderParserOutput(l));
       flushBatch();
-      // Prompt recovery: if last log is a prompt, re-show prompt input
       const lastPrompt = data.logs.slice().reverse().find(l => l.type === 'prompt');
       if (lastPrompt && el.promptInput) {
         el.promptInput.placeholder = lastPrompt.full_text || 'Type a command...';
@@ -1229,17 +1876,30 @@
     }
 
     function handleParserOutput(d) {
-      console.log('[LIVE LOG]', d);
       if (!activeSessionId) {
         earlyQueue.push(d);
         return;
       }
 
-      // --- Prompt handling ---
+      // Detect and render backend contest menus (“Available contests:”)
+      if (d && typeof d.message === 'string' && /available contests:/i.test(d.message)) {
+        const options = parseIndexedMenu(d.message);
+        if (options.length) {
+          contestIndexMap = Object.fromEntries(options.map(o => [String(o.index), o.label]));
+          setContestOptions(d.session_id, options);
+          lastPromptContext = { kind: 'contest', options: options.map(o => `[${o.index}] ${o.label}`), session_id: d.session_id };
+          showIndexedSelectionModal('Select Contest', options, (selection) => {
+            if (!selection) return;
+            const val = selection.join(',');
+            socket && socket.emit('parser_prompt', { session_id: d.session_id, value: val });
+          });
+        }
+      }
+
+      // Prompt handling
       if (d && d.type === 'prompt' && d.session_id === activeSessionId) {
         const ctx = d.context || {};
         if (Array.isArray(ctx.options) && ctx.confirmed) {
-          // Show the file picker modal for file selection prompts
           const opts = ctx.options.map((opt, i) => ({
             index: i,
             format: opt.format || '',
@@ -1248,27 +1908,23 @@
           }));
           showDownloadModal(opts, ctx.summary || '', function(selectedIdx) {
             if (selectedIdx == null) {
-              socket.emit('parser_prompt', { session_id: activeSessionId, value: 'n' }); // skip
+              socket.emit('parser_prompt', { session_id: activeSessionId, value: 'n' });
             } else {
               socket.emit('parser_prompt', { session_id: activeSessionId, value: String(selectedIdx) });
             }
           });
-          return;
+        } else {
+          showPromptModal(d.message, function(userInput) {
+            socket.emit('parser_prompt', { session_id: activeSessionId, value: userInput });
+          });
         }
-        // Fallback: show a plain input prompt for other prompts
-        showPromptModal(d.message, function(userInput) {
-          socket.emit('parser_prompt', { session_id: activeSessionId, value: userInput });
-        });
-        renderParserOutput(d);
-        if (d.session_id) appendCacheLog(d.session_id, d);
-        return;
       }
 
-      // --- Normal log handling ---
+      // Normal log handling
       renderParserOutput(d);
       if (d && d.session_id) appendCacheLog(d.session_id, d);
 
-      // --- Status: completed logic ---
+      // Status: completed logic
       if (d && d.session_id === activeSessionId && d.type === 'status') {
         if (/completed/i.test(d.message||'')) {
           if (el.runBtn) {
@@ -1332,22 +1988,16 @@
       }, 3000);
     }
 
-    // --- Prompt Modal (replace with your own UI as needed) ---
+    // Prompt Modal (basic)
     function showPromptModal(message, callback) {
-      // Try to detect if this is a download selection prompt
-      // The backend should send context.options and context.confirmed for download prompts
       let context = null;
       try {
         context = typeof message === 'object' ? message : null;
       } catch {}
-      // Fallback: try to extract from last prompt log if available
       if (!context && window.lastPromptContext) context = window.lastPromptContext;
 
-      // If context.options is an array of download options, show modal
       if (context && Array.isArray(context.options) && context.confirmed) {
-        // Parse options into [{index, format, filename, contest}]
         const opts = context.options.map((opt, i) => {
-          // Example: "CSV (results.csv) [Mayor]"
           const m = /^(\w+)\s+\(([^)]+)\)\s+\[([^\]]*)\]/.exec(opt);
           return {
             index: i,
@@ -1357,11 +2007,10 @@
             raw: opt
           };
         });
-        // Show summary if available
         const summary = context.summary || '';
         showDownloadModal(opts, summary, function(selectedIdx) {
           if (selectedIdx == null) {
-            callback('n'); // skip
+            callback('n');
           } else {
             callback(String(selectedIdx));
           }
@@ -1370,7 +2019,6 @@
         return;
       }
 
-      // Fallback: show plain input
       if (!el.promptInput) return;
       el.promptInput.placeholder = typeof message === 'string' ? message : "Enter value:";
       el.promptInput.disabled = false;
@@ -1395,7 +2043,12 @@
       };
     }
   }
-
+  // Add a single cleanup for navigation/close instead of 'unload'
+  function cleanupOnPageHide() {
+    try { if (window.socket && window.socket.connected) window.socket.disconnect(); } catch {}
+  }
+  // Prefer pagehide (fires on bfcache) instead of unload/beforeunload
+  window.addEventListener('pagehide', cleanupOnPageHide, { once: true });
   // -------- Init sub-blocks --------
   function initFileSource() {
     if (!el.fileSourceSelect) return;
@@ -1418,7 +2071,13 @@
       on(btn,'click', () => {
         const id = btn.getAttribute('data-target');
         const panel = id && document.getElementById(id);
-        panel && panel.classList.toggle('hidden');
+        if (!panel) return;
+        const wasHidden = panel.classList.contains('hidden');
+        panel.classList.toggle('hidden');
+        // If becoming visible, refresh any mounted folder panels inside
+        if (wasHidden) {
+          panel.querySelectorAll('.folder-panel').forEach(fp => fp._refresh && fp._refresh());
+        }
       });
     });
   }
@@ -1515,74 +2174,154 @@
     } catch { return false; }
   }
   function initOutputMode() { on(el.outputModeSelect,'change', setOutputMode); }
+  function initFolderBrowseButtons() {
+    // Remove any header-level “Browse” buttons; inline panel replaces the modal.
+    $$('.collapsible-btn[data-target]').forEach(btn => {
+      let sib = btn.nextElementSibling;
+      while (sib) {
+        const isBtn = sib.tagName === 'BUTTON';
+        const looksBrowse = /browse/i.test((sib.textContent || '') + ' ' + (sib.title || ''));
+        if (isBtn && looksBrowse) {
+          const next = sib.nextElementSibling;
+          sib.remove();
+          sib = next;
+          continue;
+        }
+        break;
+      }
+    });
+    // Also remove any leftover preview elements we might have injected previously
+    document.querySelectorAll('.folder-preview')?.forEach(n => n.remove());
+  }
+  function initSidebarToggle() {
+    const aside = document.getElementById('sidebar') || document.querySelector('aside.sidebar');
+    const section = document.getElementById('urlSidebarBlock');           // inner section (desktop collapse)
+    const drawerBtn = document.getElementById('sidebarToggleBtn');        // mobile drawer toggle
+    const backdrop = document.getElementById('sidebarBackdrop');          // mobile drawer backdrop
+    const collapseBtn = document.getElementById('toggleUrlSidebarBtn');   // optional desktop collapse button
+    const main = document.querySelector('.container-main');
+    const nav = document.querySelector('.navbar');
+    const footer = document.getElementById('sessionFooter');
+    const mql = window.matchMedia('(max-width: 900px)');
+    let lastFocus = null;
+    let untrap = null;
+
+    const getFocusable = (root) =>
+      Array.from(root.querySelectorAll('a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])'))
+        .filter(el => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
+
+    function trapFocus(container) {
+      const nodes = getFocusable(container);
+      if (!nodes.length) return () => {};
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      function onKey(e) {
+        if (e.key !== 'Tab') return;
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+      document.addEventListener('keydown', onKey);
+      return () => document.removeEventListener('keydown', onKey);
+    }
+
+    function setInert(on) {
+      // Prefer inert when available; fall back to aria-hidden
+      [nav, main, footer].forEach(el => {
+        if (!el) return;
+        if (on) {
+          if ('inert' in el) el.inert = true;
+          el.setAttribute('aria-hidden', 'true');
+        } else {
+          if ('inert' in el) el.inert = false;
+          el.removeAttribute('aria-hidden');
+        }
+      });
+    }
+
+    // Mobile drawer behavior (off-canvas)
+    if (aside && drawerBtn && backdrop) {
+      const open = () => {
+        lastFocus = document.activeElement;
+        document.body.classList.add('sidebar-open');
+        drawerBtn.setAttribute('aria-expanded', 'true');
+        setInert(true);
+        untrap = trapFocus(aside);
+        setTimeout(() => aside.querySelector('.url-search-box')?.focus(), 0);
+      };
+      const close = () => {
+        document.body.classList.remove('sidebar-open');
+        drawerBtn.setAttribute('aria-expanded', 'false');
+        setInert(false);
+        if (untrap) { untrap(); untrap = null; }
+        (lastFocus && typeof lastFocus.focus === 'function') ? lastFocus.focus() : drawerBtn.focus();
+      };
+      const toggle = () => (document.body.classList.contains('sidebar-open') ? close() : open());
+
+      drawerBtn.addEventListener('click', toggle);
+      backdrop.addEventListener('click', close);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.body.classList.contains('sidebar-open')) close();
+      });
+      mql.addEventListener?.('change', (e) => { if (!e.matches) close(); });
+    }
+
+    // Desktop: collapse/expand the URL section
+    if (collapseBtn && section) {
+      collapseBtn.addEventListener('click', () => {
+        if (mql.matches) { drawerBtn?.click(); return; }
+        const hidden = section.classList.toggle('hidden');
+        collapseBtn.setAttribute('aria-expanded', String(!hidden));
+        collapseBtn.textContent = hidden ? '➡️' : '⬅️';
+        if (!hidden) section.querySelector('.url-search-box')?.focus();
+      });
+    }
+  }
   function initBootstrapUI() {
     if (!window.bootstrap) return;
     if (document.body.dataset.allowStyleAttr !== "1") return;
     $$('[data-bs-toggle="tooltip"]').forEach(n => window.bootstrap.Tooltip.getOrCreateInstance(n));
     $$('[data-bs-toggle="popover"]').forEach(n => window.bootstrap.Popover.getOrCreateInstance(n));
   }
-
+  function initConfirmDelegation() {
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-confirm]');
+      if (!btn) return;
+      const msg = btn.getAttribute('data-confirm') || 'Are you sure?';
+      if (!window.confirm(msg)) e.preventDefault();
+    });
+  }
   function portalTooltip(icon) {
-    let portal = null;
-
-    function showPortal() {
-      const tt = icon.querySelector('.custom-tooltip');
-      if (!tt) return;
-      if (!portal) {
-        portal = tt.cloneNode(true);
-        portal.style.position = 'fixed';
-        portal.style.zIndex = 99999;
-        portal.style.display = 'block';
-        portal.style.pointerEvents = 'auto';
-        document.body.appendChild(portal);
-      }
+    function open() {
       const rect = icon.getBoundingClientRect();
-      // Mobile: if screen is small or not enough space right, show below
       const isMobile = window.innerWidth < 700;
       const spaceRight = window.innerWidth - rect.right;
       const tooltipWidth = Math.min(340, window.innerWidth - 32);
-      portal.style.maxWidth = tooltipWidth + 'px';
-      portal.style.minWidth = '180px';
-      portal.style.width = isMobile ? '96vw' : '';
-      portal.style.margin = '0';
-      portal.style.visibility = 'visible';
-      portal.style.opacity = '1';
-      portal.style.pointerEvents = 'auto';
 
-      if (isMobile || spaceRight < tooltipWidth + 16) {
-        // Show below, centered
-        portal.style.left = Math.max(8, rect.left + rect.width / 2 - tooltipWidth / 2) + 'px';
-        portal.style.top = (rect.bottom + 8) + 'px';
-      } else {
-        // Show to the right
-        portal.style.left = (rect.right + 8) + 'px';
-        portal.style.top = rect.top + 'px';
-      }
-      portal.style.right = '';
-      portal.style.bottom = '';
+      icon.classList.add('is-open');
+      const useBelow = isMobile || spaceRight < tooltipWidth + 16;
+      icon.classList.toggle('tooltip-below', useBelow);
+      icon.classList.toggle('tooltip-right', !useBelow);
     }
-    function hidePortal() {
-      if (portal) {
-        portal.style.display = 'none';
-        portal.style.visibility = 'hidden';
-        portal.style.opacity = '0';
-      }
+    function close() {
+      icon.classList.remove('is-open', 'tooltip-below', 'tooltip-right');
     }
-    icon.addEventListener('mouseenter', showPortal);
-    icon.addEventListener('focus', showPortal);
-    icon.addEventListener('mouseleave', hidePortal);
-    icon.addEventListener('blur', hidePortal);
-    // Touch support for mobile
-    icon.addEventListener('touchstart', e => { showPortal(); e.preventDefault(); }, {passive:false});
-    document.addEventListener('touchstart', e => {
-      if (portal && !icon.contains(e.target) && !portal.contains(e.target)) hidePortal();
-    });
-    window.addEventListener('unload', () => { if (portal) portal.remove(); });
+
+    icon.addEventListener('mouseenter', open);
+    icon.addEventListener('focus', open);
+    icon.addEventListener('mouseleave', close);
+    icon.addEventListener('blur', close);
+    icon.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      icon.classList.contains('is-open') ? close() : open();
+    }, { passive: false });
+    document.addEventListener('touchstart', (e) => { if (!icon.contains(e.target)) close(); });
+    document.addEventListener('click', (e) => { if (!icon.contains(e.target)) close(); });
+    icon.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
   }
 
   // -------- Init master --------
   function init() {
     initBootstrapUI();
+    initConfirmDelegation();
     initFileSource();
     initOutputBypass();
     initCollapsibles();
@@ -1594,17 +2333,19 @@
     initLogFilters();
     initUrlList();
     initOutputMode();
+    initSidebarToggle();
+    initFolderPanels();
+    initFolderBrowseButtons();
     initFilterPresets();
     fetchUrls();
     connectSocket();
 
-    // Instructions toggle logic
-    var btn = document.getElementById('toggleInstructionsBtn');
-    var panel = document.getElementById('instructionsPanel');
+    const btn = document.getElementById('toggleInstructionsBtn');
+    const panel = document.getElementById('instructionsPanel');
     if (btn && panel) {
-      btn.addEventListener('click', function() {
-        var expanded = btn.getAttribute('aria-expanded') === 'true';
-        btn.setAttribute('aria-expanded', !expanded);
+      btn.addEventListener('click', function () {
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!expanded));
         panel.classList.toggle('hidden');
         btn.textContent = expanded ? '📖 Show Instructions' : '📖 Hide Instructions';
         if (!expanded) panel.focus();

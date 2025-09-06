@@ -32,10 +32,10 @@ from ..utils.misc_utils import _safe_db_path
 from ..utils.db_utils import get_session, create_engine
 from ..utils.logger_singleton import logger, console
 from ..config import (
-    CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, POSTGRES_URL, LOG_DIR,
+    CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, LOG_DIR,
     SBERT_EPOCHS, SBERT_BATCH_SIZE,
     SPACY_NER_EPOCHS, SPACY_NER_PATIENCE, SPACY_NER_MIN_DELTA, SPACY_NER_BATCH_SIZE,
-    REVIEW_WITH_MANUAL_BOT, get_subprocess_env    
+    REVIEW_WITH_MANUAL_BOT, get_subprocess_env, get_sqlalchemy_engine    
 )
 import numpy as np
 import spacy
@@ -786,7 +786,7 @@ def ensure_table_structures_exists() -> None:
     If not, create all tables defined in models.
     Enhanced for clarity and robust error handling.
     """
-    engine = create_engine(POSTGRES_URL)
+    engine = get_sqlalchemy_engine()
     inspector = inspect(engine)
 
     try:

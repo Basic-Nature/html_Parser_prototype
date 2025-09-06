@@ -178,6 +178,11 @@ jobs:
             --resource-group BallotLens_group \
             --settings \
               DEPLOY_ENV="azure" \
+              POSTGRES_AUTH="aad" \
+              POSTGRES_HOST="ballotlens-server.postgres.database.azure.com" \
+              POSTGRES_DB="ballotlens-database" \
+              POSTGRES_PORT="5432" \
+              POSTGRES_AAD_USER="BallotLens" \
               ENABLE_OCR="True" \
               ENABLE_OCR_FORCE="False" \
               LOG_LEVEL="DEBUG" \

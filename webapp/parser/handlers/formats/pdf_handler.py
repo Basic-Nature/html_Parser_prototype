@@ -13,7 +13,7 @@ from PIL import Image, ImageOps, ImageFilter, ImageEnhance
 from ...config import (
     ENABLE_OCR, OUTPUT_DIR
 )
-
+import html
 # Optional flags/paths; provide safe defaults if missing
 try:
     from ...config import ENABLE_OCR_FORCE, OCR_DEBUG_DIR
@@ -34,10 +34,14 @@ except Exception:
 from ...utils.logger_singleton import logger, prompt
 from ...Context_Integration.Context_Library.constants import (
     LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
-    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
+    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS, CONTEST_TITLE_SKIP_PHRASES,
+    CONTEST_HEADER_KEYWORDS, CONTEST_HEADER_PREFERENCE
 )
 from ...utils.table_core import harmonize_headers_and_data
 import orjson
+from ...utils.contest_selector import select_contest
+from ...utils.table_builder import build_table_noninteractive
+from ...utils.output_utils import finalize_election_output
 try:
     import fitz  # PyMuPDF
 except ImportError:
@@ -110,6 +114,116 @@ def _detect_poppler_path() -> str | None:
         if shutil.which("pdftoppm") or shutil.which("pdftocairo"):
             return None
         return None
+
+def _detect_contest_titles_from_text(lines):
+    """
+    Heuristic detection of contest titles from plain PDF text using constants.
+    - Keep lines containing contest/office keywords
+    - Drop known skip phrases and very short/noisy lines
+    """
+    titles = []
+    skip_set = {s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())}
+    for line in lines:
+        raw = (line or "").strip()
+        low = raw.lower()
+        if not raw or len(raw) < 6:
+            continue
+        if any(s in low for s in skip_set):
+            continue
+        if any(kw in low for kw in CONTEST_KEYWORDS):
+            titles.append(raw)
+    # Deduplicate while preserving order
+    seen = set()
+    uniq = []
+    for t in titles:
+        k = t.lower()
+        if k not in seen:
+            seen.add(k)
+            uniq.append(t)
+    return uniq[:50]
+
+def _is_mostly_markup(text: str) -> bool:
+    """
+    Return True if the extracted 'text' is actually markup-wrappers (e.g., <img> tags) with little real text.
+    """
+    if not isinstance(text, str):
+        return False
+    s = text.strip().lower()
+    if not s:
+        return False
+    # Heuristics: presence of HTML tags + low alphabetic character count
+    has_tags = any(tok in s for tok in ("<img", "<div", "<span", "<html", "<svg", "<p", "<table", "data:image/"))
+    if not has_tags:
+        return False
+    alpha = sum(1 for ch in s[:8000] if ch.isalpha())
+    return alpha < 200
+
+def _sanitize_extracted_text(text: str) -> str:
+    """
+    Convert raw extracted content (which may contain XHTML, <img src="data:image..."> etc.)
+    into neat, readable lines for downstream steps.
+    - Remove data:image/base64 payloads and HTML tags
+    - Unescape entities
+    - Collapse whitespace
+    - Drop extremely noisy/empty lines
+    """
+    if not isinstance(text, str):
+        return ""
+    # Remove data:image base64 attributes entirely
+    text = re.sub(r'src\s*=\s*"data:image/[^"]+"', 'src="[image]"', text, flags=re.IGNORECASE)
+    # Remove long base64-like runs that may appear outside attributes
+    text = re.sub(r'[A-Za-z0-9+/=]{200,}', ' ', text)
+    # Strip all HTML tags
+    text = re.sub(r'<[^>]+>', ' ', text)
+    # Unescape HTML entities
+    try:
+        text = html.unescape(text)
+    except Exception:
+        pass
+    # Normalize whitespace but keep line structure
+    lines = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s:
+            continue
+        # Collapse internal whitespace
+        s = re.sub(r'\s+', ' ', s)
+        # Heuristics: keep lines that have some alphanum signal
+        alnum = sum(ch.isalnum() for ch in s)
+        if alnum < 2:
+            continue
+        # Drop bracket-only image placeholders
+        if s in {"[image]", "[data]"}:
+            continue
+        # Avoid lines that are mostly punctuation
+        punct = sum(not ch.isalnum() and not ch.isspace() for ch in s)
+        if alnum and punct / max(1, len(s)) > 0.6:
+            continue
+        lines.append(s)
+    # Deduplicate consecutive duplicates
+    neat = []
+    last = None
+    for l in lines:
+        if l != last:
+            neat.append(l)
+            last = l
+    return "\n".join(neat)
+
+def _safe_slug(text: str, max_len: int = 100) -> str:
+    """
+    Make a filesystem-friendly slug:
+    - Keep alnum, space, underscore, hyphen; replace others with '_'
+    - Collapse repeated underscores/spaces; convert spaces to underscores
+    - Trim length to max_len
+    """
+    if not isinstance(text, str):
+        return ""
+    stem = os.path.splitext(text)[0]
+    s = "".join(c if c.isalnum() or c in " _-" else "_" for c in stem)
+    s = re.sub(r"[ _]+", " ", s).strip()
+    s = s.replace(" ", "_")
+    s = re.sub(r"_+", "_", s)
+    return s[:max_len] or "untitled"
 
 def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200):
     """
@@ -371,21 +485,25 @@ def ocr_multi_pass(images, passes=3, confidence_threshold=30, session_id=None):
 def _extract_text_multi(pdf_path, session_id=None):
     """
     Try multiple PyMuPDF extract modes and pick the longest.
+    Only use modes that return strings.
     """
     try:
         doc = fitz.open(pdf_path)
         texts = {}
-        modes = ["text", "blocks", "raw", "xhtml"]
+        # use string-returning modes only
+        modes = ["text", "raw", "html", "xhtml"]
         for m in modes:
             buf = []
             for i in range(len(doc)):
                 try:
-                    buf.append(doc[i].get_text(m))
+                    t = doc[i].get_text(m)
+                    if not isinstance(t, str):
+                        t = ""
+                    buf.append(t)
                 except Exception:
                     continue
             texts[m] = "\n".join(buf)
         doc.close()
-        # pick the mode with most characters
         best_mode = max(texts, key=lambda k: len(texts.get(k) or ""))
         return texts.get(best_mode) or "", best_mode
     except Exception as e:
@@ -430,7 +548,8 @@ def infer_headers_and_methods(lines, table_hints):
         headers = [h.strip() for h in headers if h.strip()]
     return headers, header_candidates
 
-def parse_pdf_election_results(pdf_path, session_id=None):
+def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> tuple[list[str], list[dict], str, dict]:
+    """ Main PDF handler function."""
     _log_ocr_environment(session_id=session_id)
     all_text = ""
     metadata = {}
@@ -460,10 +579,31 @@ def parse_pdf_election_results(pdf_path, session_id=None):
             all_text = alt_text
             metadata["fitz_mode_used"] = mode_used
 
+    # If the "text" is markup-only, treat as empty to force OCR
+    if _is_mostly_markup(all_text):
+        logger.info({
+            "level": "INFO",
+            "type": "handler",
+            "message": "[INFO] Detected markup-only PDF text — switching to OCR.",
+            "session_id": session_id
+        })
+        all_text = ""
+
     # OCR fallback (adaptive, cross‑platform)
-    need_ocr = (not all_text.strip()) and bool(pytesseract) and ENABLE_OCR
-    if need_ocr or ENABLE_OCR_FORCE:
-        if not all_text.strip():
+    has_text = bool((all_text or "").strip())
+    need_ocr = (not has_text) and bool(pytesseract) and ENABLE_OCR
+
+    # If forcing OCR but pytesseract is unavailable, log and skip the loop
+    if (not pytesseract) and ENABLE_OCR_FORCE:
+        logger.warning({
+            "level": "WARNING",
+            "type": "handler",
+            "message": "[WARN] ENABLE_OCR_FORCE is set but Tesseract is unavailable; skipping OCR fallback.",
+            "session_id": session_id
+        })
+
+    if need_ocr or (ENABLE_OCR_FORCE and pytesseract):
+        if not has_text:
             logger.info({
                 "level": "INFO",
                 "type": "handler",
@@ -479,7 +619,7 @@ def parse_pdf_election_results(pdf_path, session_id=None):
             max_runs=28
         )
         # Prefer OCR text if we had none, or if significantly better
-        if (not all_text.strip()) or (len(best_text) > len(all_text) * 1.25):
+        if (not has_text) or (len(best_text) > len(all_text) * 1.25):
             all_text = best_text or all_text
             ocr_score = best_conf or 0.0
             ocr_runs = runs_summary or []
@@ -489,62 +629,125 @@ def parse_pdf_election_results(pdf_path, session_id=None):
         else:
             metadata["ocr_used"] = False
 
+    clean_text = _sanitize_extracted_text(all_text)
+    if not clean_text and all_text:
+        # If sanitization nuked everything (e.g., fully-tagged), keep minimal fallback
+        clean_text = os.path.splitext(os.path.basename(pdf_path))[0]
+
     logger.debug({
         "level": "DEBUG",
         "type": "handler",
-        "message": "[DEBUG] PDF extracted text preview (first 500 chars):" + (all_text[:500] if isinstance(all_text, str) else str(all_text)[:500]),
+        "message": "[DEBUG] PDF extracted text preview (first 500 chars):" + (clean_text[:500] if isinstance(clean_text, str) else str(clean_text)[:500]),
         "session_id": session_id
     })
 
-    # Fix set|list union TypeError by casting to set(...)
     table_hints = list(
         set(LOCATION_KEYWORDS) | set(CANDIDATE_KEYWORDS) | set(BALLOT_TYPES) |
         set(PARTY_KEYWORDS) | set(TOTAL_KEYWORDS) | set(MISC_FOOTER_KEYWORDS) | set(CONTEST_KEYWORDS)
     )
-    lines = all_text.splitlines()
+    # Use sanitized text from here on
+    lines = clean_text.splitlines()
     headers, header_candidates = infer_headers_and_methods(lines, table_hints)
 
+    # Detect potential contests from text as hints
+    detected_titles = _detect_contest_titles_from_text(lines)
+    if not detected_titles:
+        detected_titles = [os.path.basename(pdf_path).replace(".pdf", "")]
+
+    # Derive light context from filename for better selection (before prompting)
+    fname = os.path.basename(pdf_path).lower()
     state = "Unknown"
     county = "Unknown"
-    fname = os.path.basename(pdf_path).lower()
+    year = None
     for part in fname.replace(".pdf", "").split("_"):
         if "county" in part:
             county = part.replace("county", "").strip().title() + " County"
         if len(part) == 2 and part.isalpha():
             state = part.upper()
+    m = re.search(r"(19|20)\d{2}", fname)
+    if m:
+        try:
+            year = int(m.group(0))
+        except Exception:
+            year = None
+
+    # Single contest fast-path or unified selector pass (no duplicate prompts)
+    if len(detected_titles) == 1:
+        selected_contest_title = detected_titles[0]
+    else:
+        selector_data = {
+            "contests": [{"title": t} for t in detected_titles],
+            "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())]
+        }
+        selected = select_contest(
+            coordinator=coordinator,
+            state=state, county=county, year=year,
+            session_id=session_id,
+            context={"selector_data": selector_data},
+            allow_multiple=False,
+            prompt_message="[PROMPT] Select contest (index, text, or 'cancel'): ",
+            force_interactive=True,
+            disable_ml_verify=False
+        )
+        if not selected:
+            logger.warning({
+                "level": "WARNING",
+                "type": "handler",
+                "message": "[WARN] No contest selected. Using filename as fallback.",
+                "session_id": session_id
+            })
+            selected_contest_title = os.path.basename(pdf_path).replace(".pdf", "")
+        else:
+            selected_contest_title = (selected[0] or {}).get("title") or detected_titles[0]
+
+    # Update metadata using derived context
     metadata.update({
         "source_file": os.path.basename(pdf_path),
         "state": state,
         "county": county,
-        "handler": "pdf_handler"
+        "handler": "pdf_handler",
+        "contest": selected_contest_title
     })
 
     contest_column = None
     if headers:
-        logger.info({
-            "level": "INFO",
-            "type": "input",
-            "message": "[INFO] Inferred Columns:",
-            "session_id": session_id
-        })
-        for i, col in enumerate(headers):
+        # Auto-detect a contest-like column; avoid interactive re-prompt
+        contest_header_keywords = CONTEST_HEADER_KEYWORDS
+        candidates = [h for h in headers if any(kw in h.lower() for kw in contest_header_keywords)]
+
+        if len(candidates) == 1:
+            contest_column = candidates[0]
             logger.info({
                 "level": "INFO",
-                "type": "input",
-                "message": f"  [{i}]: {col}",
+                "type": "handler",
+                "message": f"[INFO] Auto-selected contest column: {contest_column}",
                 "session_id": session_id
             })
-        prompt_message = "[PROMPT] Select contest column index (or leave blank to skip): "
-        def validator(x):
-            return x == "" or (x.isdigit() and 0 <= int(x) < len(headers))
-        selection = prompt.prompt_input(
-            prompt_message,
-            validator=validator,
-            session_id=session_id,
-            context={"headers": headers}
-        )
-        if selection and selection.isdigit():
-            contest_column = headers[int(selection)]
+        elif len(candidates) > 1:
+            # Rank by preference order from constants
+            pref = CONTEST_HEADER_PREFERENCE
+            def rank(h):
+                low = h.lower()
+                for i, kw in enumerate(pref):
+                    if kw in low:
+                        return i
+                return len(pref)
+            candidates.sort(key=rank)
+            if rank(candidates[0]) < rank(candidates[1]):
+                contest_column = candidates[0]
+                logger.info({
+                    "level": "INFO",
+                    "type": "handler",
+                    "message": f"[INFO] Auto-selected contest column (ranked): {contest_column}",
+                    "session_id": session_id
+                })
+            else:
+                logger.info({
+                    "level": "INFO",
+                    "type": "handler",
+                    "message": "[INFO] Multiple possible contest columns detected; skipping auto-selection to avoid extra prompts.",
+                    "session_id": session_id
+                })
 
     data = []
     if headers:
@@ -570,134 +773,134 @@ def parse_pdf_election_results(pdf_path, session_id=None):
                 row_dict = dict(zip(headers, row))
                 data.append(row_dict)
 
-        contest = None
+        # If we have a contest column, filter to the selected contest
+        contest = selected_contest_title
         if contest_column:
-            contests = sorted({row[contest_column].strip() for row in data if row.get(contest_column)})
-            if len(contests) > 1:
+            def _norm_title(s: str) -> str:
+                s = (s or "").lower().strip()
+                s = re.sub(r'[\s\-_/]+', ' ', s)
+                s = re.sub(r'[^a-z0-9 ]+', '', s)
+                return re.sub(r'\s+', ' ', s).strip()
+
+            def _tokens(s: str) -> set[str]:
+                return set(re.findall(r'[a-z0-9]+', (s or "").lower()))
+
+            norm_selected = _norm_title(contest)
+            present_values = sorted({(r.get(contest_column, "") or "").strip() for r in data if r.get(contest_column)})
+            norm_map = {v: _norm_title(v) for v in present_values}
+
+            # 1) exact normalized match
+            exact = [v for v, nv in norm_map.items() if nv == norm_selected]
+            chosen_value = exact[0] if exact else None
+
+            # 2) token-overlap fallback if no exact
+            if not chosen_value:
+                sel_tok = _tokens(contest)
+                scored = []
+                for v in present_values:
+                    vt = _tokens(v)
+                    inter = len(sel_tok & vt)
+                    union = len(sel_tok | vt) or 1
+                    jacc = inter / union
+                    # small boost for prefix/substring matches
+                    if norm_selected and norm_map[v].startswith(norm_selected):
+                        jacc += 0.15
+                    if norm_selected and norm_selected in norm_map[v]:
+                        jacc += 0.10
+                    scored.append((jacc, v))
+                scored.sort(reverse=True)
+                if scored and scored[0][0] >= 0.45:
+                    chosen_value = scored[0][1]
+
+            if chosen_value:
+                data = [r for r in data if _norm_title(r.get(contest_column, "")) == _norm_title(chosen_value)]
                 logger.info({
                     "level": "INFO",
-                    "type": "input",
-                    "message": "\nMultiple contests detected:",
+                    "type": "handler",
+                    "message": f"[INFO] Filtered rows to contest '{chosen_value}' via column '{contest_column}'.",
                     "session_id": session_id
                 })
-                for i, name in enumerate(contests, 1):
-                    logger.info({
-                        "level": "INFO",
-                        "type": "input",
-                        "message": f" {i:2d}. {name}",
-                        "session_id": session_id
-                    })
-                prompt_message = "\nEnter the contest name (exactly as shown), or type its number: "
-                def validator(x):
-                    x = str(x).strip()
-                    if x.isdigit():
-                        idx = int(x)
-                        return 1 <= idx <= len(contests)
-                    return x in contests
-                user_input = prompt.prompt_input(
-                    prompt_message,
-                    validator=validator,
-                    session_id=session_id,
-                    context={"contests": contests}
-                )
-                if user_input is None:
-                    logger.error({
-                        "level": "ERROR",
-                        "type": "input",
-                        "message": "No contest selected.",
-                        "session_id": session_id
-                    })
-                    return None, None, None, {"error": "No contest selected"}
-                if str(user_input).isdigit():
-                    idx = int(user_input)
-                    try:
-                        contest = contests[idx - 1]
-                    except IndexError:
-                        logger.error({
-                            "level": "ERROR",
-                            "type": "input",
-                            "message": "Invalid contest number.",
-                            "session_id": session_id
-                        })
-                        return None, None, None, {"error": "Invalid contest number"}
-                else:
-                    if user_input not in contests:
-                        logger.error({
-                            "level": "ERROR",
-                            "type": "input",
-                            "message": f"[ERROR] Contest name '{user_input}' not found.",
-                            "session_id": session_id
-                        })
-                        return None, None, None, {"error": "Contest name not found"}
-                    contest = user_input
-                data = [row for row in data if row.get(contest_column, "").strip() == contest]
-            elif contests:
-                contest = contests[0]
-        else:
-            contest = os.path.basename(pdf_path).replace(".pdf", "")
+            else:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "handler",
+                    "message": f"[WARN] Selected contest '{contest}' not found in column '{contest_column}'. Skipping row filter.",
+                    "session_id": session_id,
+                    "present": present_values[:25]
+                })
 
         if data:
-            candidate_cols = [col for col in headers if any(k in col.lower() for k in CANDIDATE_KEYWORDS)]
-            precinct_cols = [col for col in headers if any(k in col.lower() for k in LOCATION_KEYWORDS)]
-            method_keys = set(BALLOT_TYPES) | set(TOTAL_KEYWORDS) | set(MISC_FOOTER_KEYWORDS)
-            method_cols = [col for col in headers if any(m in col.lower() for m in method_keys)]
+            # Harmonize headers/data and build table
+            headers, data = harmonize_headers_and_data(
+                headers,
+                data,
+                context={
+                    "contest": selected_contest_title,
+                    "state": state,
+                    "county": county,
+                }
+            )
+            domain = os.path.basename(pdf_path)
+            context = {
+                "contest": selected_contest_title,
+                "state": state,
+                "county": county,
+                "year": year,
+                "session_id": session_id,
+                "handler": "pdf_handler",
+                "ocr_confidence_avg": metadata.get("ocr_confidence_avg"),
+                "ocr_used": metadata.get("ocr_used"),
+            }
+            headers_final, data_final, _entity_info = build_table_noninteractive(
+                domain=domain,
+                headers=headers,
+                data=data,
+                coordinator=coordinator,
+                context=context,
+                pivot_to_wide=True,
+                debug=False
+            )
 
-            wide_data = []
-            reporting_unit_col = precinct_cols[0] if precinct_cols else headers[0]
-            for row in data:
-                wide_row = {reporting_unit_col: row.get(reporting_unit_col, "")}
-                for cand_col in candidate_cols:
-                    candidate = row.get(cand_col, "")
-                    for method_col in method_cols:
-                        val = row.get(method_col, "")
-                        col_name = f"{candidate} - {method_col}"
-                        wide_row[col_name] = val
-                if not candidate_cols:
-                    for method_col in method_cols:
-                        wide_row[method_col] = row.get(method_col, "")
-                for col in headers:
-                    if col not in candidate_cols + method_cols + [reporting_unit_col]:
-                        wide_row[col] = row.get(col, "")
-                wide_data.append(wide_row)
-
-            all_keys = set()
-            for row in wide_data:
-                all_keys.update(row.keys())
-            headers = [reporting_unit_col] + sorted([k for k in all_keys if k != reporting_unit_col])
-            headers, wide_data = harmonize_headers_and_data(headers, wide_data)
-
-            safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in os.path.basename(pdf_path).replace(".pdf", "")).replace(" ", "_")
-            output_csv = os.path.join(OUTPUT_DIR, f"{safe_title}_parsed.csv")
-            output_meta = os.path.join(OUTPUT_DIR, f"{safe_title}_metadata.json")
-
-            with open(output_csv, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=headers)
-                writer.writeheader()
-                for row in wide_data:
-                    writer.writerow(row)
+            result = finalize_election_output(
+                headers=headers_final,
+                data=data_final,
+                coordinator=coordinator,
+                contest=selected_contest_title,
+                state=state,
+                county=county,
+                context={
+                    "handler": "pdf_handler",
+                    "input_file": os.path.basename(pdf_path),
+                    "session_id": session_id,
+                    "ocr_confidence_avg": metadata.get("ocr_confidence_avg"),
+                    "ocr_used": metadata.get("ocr_used")
+                },
+                enable_user_feedback=False,
+                session_id=session_id
+            )
 
             metadata.update({
-                "output_file": os.path.basename(output_csv),
-                "headers": headers,
-                "row_count": len(wide_data)
+                "output_file": os.path.basename(result.get("csv_path", "")),
+                "headers": headers_final,
+                "row_count": len(data_final),
+                "csv_path": result.get("csv_path"),
+                "metadata_path": result.get("metadata_path"),
             })
-            with open(output_meta, "w") as jf:
-                jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             logger.info({
                 "level": "INFO",
                 "type": "output",
-                "message": f"[OUTPUT] Wrote {len(wide_data)} rows to: {output_csv}",
+                "message": f"[OUTPUT] Wrote {len(data_final)} rows to: {result.get('csv_path')}",
                 "session_id": session_id
             })
             logger.info({
                 "level": "INFO",
                 "type": "output",
-                "message": f"[OUTPUT] Metadata written to: {output_meta}",
+                "message": f"[OUTPUT] Metadata written to: {result.get('metadata_path')}",
                 "session_id": session_id
             })
 
-            return headers, wide_data, safe_title, metadata
+            return headers_final, data_final, selected_contest_title, metadata
 
         else:
             unmatched_count = len(lines[header_line_idx + 1:])
@@ -708,50 +911,73 @@ def parse_pdf_election_results(pdf_path, session_id=None):
                 "session_id": session_id
             })
             fallback_rows = [{"raw_line": line} for line in lines[header_line_idx + 1:]]
-            safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in os.path.basename(pdf_path).replace(".pdf", "")).replace(" ", "_")
-            output_csv = os.path.join(OUTPUT_DIR, f"{safe_title}_parsed.csv")
-            output_meta = os.path.join(OUTPUT_DIR, f"{safe_title}_metadata.json")
-            with open(output_csv, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["raw_line"])
-                writer.writeheader()
-                for row in fallback_rows:
-                    writer.writerow(row)
+            result = finalize_election_output(
+                headers=["raw_line"],
+                data=fallback_rows,
+                coordinator=coordinator,
+                contest=selected_contest_title,
+                state=state,
+                county=county,
+                context={
+                    "handler": "pdf_handler",
+                    "input_file": os.path.basename(pdf_path),
+                    "session_id": session_id,
+                    "fallback": True
+                },
+                enable_user_feedback=False,
+                session_id=session_id
+            )
             metadata.update({
-                "output_file": os.path.basename(output_csv),
+                "output_file": os.path.basename(result.get("csv_path", "")),
                 "headers": ["raw_line"],
-                "row_count": len(fallback_rows)
+                "row_count": len(fallback_rows),
+                "csv_path": result.get("csv_path"),
+                "metadata_path": result.get("metadata_path"),
             })
-            with open(output_meta, "w") as jf:
-                jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
             logger.warning({
                 "level": "WARNING",
                 "type": "output",
-                "message": f"[OUTPUT] Wrote fallback rows to: {output_csv}",
+                "message": f"[OUTPUT] Wrote fallback rows to: {result.get('csv_path')}",
                 "session_id": session_id
             })
-            return ["raw_line"], fallback_rows, safe_title, metadata
+            return ["raw_line"], fallback_rows, selected_contest_title, metadata
 
-    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in os.path.basename(pdf_path).replace(".pdf", "")).replace(" ", "_")
-    output_csv = os.path.join(OUTPUT_DIR, f"{safe_title}_parsed.csv")
-    output_meta = os.path.join(OUTPUT_DIR, f"{safe_title}_metadata.json")
-    with open(output_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["text"])
-        writer.writeheader()
-        writer.writerow({"text": all_text})
+    # Plain text fallback
+    result = finalize_election_output(
+        headers=["text"],
+        data=[{"text": clean_text}],
+        coordinator=coordinator,
+        contest=selected_contest_title,
+        state=state,
+        county=county,
+        context={
+            "handler": "pdf_handler",
+            "input_file": os.path.basename(pdf_path),
+            "session_id": session_id,
+            "text_sanitized": True,
+            "raw_text_len": len(all_text or ""),
+            "clean_text_len": len(clean_text or "")
+        },
+        enable_user_feedback=False,
+        session_id=session_id
+    )
     metadata.update({
-        "output_file": os.path.basename(output_csv),
+        "output_file": os.path.basename(result.get("csv_path", "")),
         "headers": ["text"],
-        "row_count": 1
+        "row_count": 1,
+        "text_sanitized": True,
+        "raw_text_len": len(all_text or ""),
+        "clean_text_len": len(clean_text or ""),
+        "csv_path": result.get("csv_path"),
+        "metadata_path": result.get("metadata_path")
     })
-    with open(output_meta, "w") as jf:
-        jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
     logger.warning({
         "level": "WARNING",
         "type": "output",
-        "message": f"[OUTPUT] Wrote plain text to: {output_csv}",
+        "message": f"[OUTPUT] Wrote plain text to: {result.get('csv_path')}",
         "session_id": session_id
     })
-    return ["text"], [{"text": all_text}], safe_title, metadata
+    return ["text"], [{"text": clean_text}], selected_contest_title, metadata
 
 def parse(page=None, coordinator=None, html_context=None, manual_file=None, session_id=None, **kwargs):
     """
@@ -777,4 +1003,16 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
         })
         return None, None, None, {"skipped": True}
 
-    return parse_pdf_election_results(manual_file, session_id=session_id)
+    result = parse_pdf_election_results(manual_file, session_id=session_id, coordinator=coordinator)
+
+    # Defensive: always return a 4-tuple, never a bool
+    if not (isinstance(result, tuple) and len(result) == 4):
+        logger.error({
+            "level": "ERROR",
+            "type": "handler",
+            "message": "[ERROR] Invalid result from parse_pdf_election_results (expected 4-tuple).",
+            "session_id": session_id,
+            "got_type": type(result).__name__
+        })
+        return None, None, None, {"error": "Invalid parse result"}
+    return result

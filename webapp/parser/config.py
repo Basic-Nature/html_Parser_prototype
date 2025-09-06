@@ -11,6 +11,9 @@ import threading
 from pathlib import Path
 import orjson
 import urllib.parse
+import psycopg2
+from sqlalchemy import create_engine
+from azure.identity import DefaultAzureCredential
 try:
     import dotenv
     dotenv.load_dotenv()
@@ -124,6 +127,10 @@ else:
     )
     POSTGRES_SERVICE_NAME = os.environ.get("POSTGRES_SERVICE_NAME", "postgresql-x64-17")
     
+# Auth mode: "password" (default) or "aad"
+POSTGRES_AUTH = os.environ.get("POSTGRES_AUTH", "password").lower()
+POSTGRES_AAD_USER = os.environ.get("POSTGRES_AAD_USER")  # DB role name created for your MI/user
+ 
 # === LLM & Pipeline Configuration ===
 
 # LLM provider and model (used for OpenAI or other LLM integrations)
@@ -262,6 +269,38 @@ def get_supported_formats():
 
 SUPPORTED_FORMATS = [ext for ext in get_supported_formats() if ext.lower() not in [".html", "html"]]
 
+def get_sqlalchemy_engine():
+    """
+    Returns an SQLAlchemy engine that uses:
+    - Password auth when POSTGRES_AUTH=password
+    - Entra (AAD) token when POSTGRES_AUTH=aad
+    """
+
+    if POSTGRES_AUTH == "aad":
+        # Acquire token from Managed Identity / Azure environment
+        def _connect_with_aad():
+            
+            cred = DefaultAzureCredential(exclude_interactive_browser_credential=True)
+            token = cred.get_token("https://ossrdbms-aad.database.windows.net/.default").token
+            return psycopg2.connect(
+                host=POSTGRES_HOST,
+                dbname=POSTGRES_DB,
+                user=POSTGRES_AAD_USER,  # must exist in DB and be mapped to your Entra principal
+                password=token,          # token goes in password field
+                port=int(POSTGRES_PORT or 5432),
+                sslmode="require",
+            )
+
+        return create_engine(
+            "postgresql+psycopg2://",
+            creator=_connect_with_aad,
+            pool_pre_ping=True,
+            future=True,
+        )
+
+    # Fallback: classic user/password
+    return create_engine(POSTGRES_URL, pool_pre_ping=True, future=True)
+
 __all__ = [
     # Core paths
     "PROJECT_ROOT","BASE_DIR","PARSER_DIR","INPUT_DIR","OUTPUT_DIR","UPLOADS_DIR",
@@ -273,7 +312,8 @@ __all__ = [
     # DB settings
     "DEPLOY_ENV","POSTGRES_USER_RAW","POSTGRES_PASSWORD_RAW","POSTGRES_DB",
     "POSTGRES_HOST","POSTGRES_PORT","POSTGRES_USER","POSTGRES_PASSWORD",
-    "POSTGRES_URL","POSTGRES_SERVICE_NAME",
+    "POSTGRES_URL","POSTGRES_SERVICE_NAME", "POSTGRES_AUTH",
+    "POSTGRES_AAD_USER","get_sqlalchemy_engine",
 
     # LLM
     "LLM_PROVIDER","LLM_MODEL","LLM_API_KEY","LLM_SYSTEM_PROMPT",

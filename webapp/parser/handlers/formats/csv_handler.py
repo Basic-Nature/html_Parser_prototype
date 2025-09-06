@@ -12,18 +12,28 @@ from ...config import (
 from ...utils.logger_singleton import logger, prompt
 from ...Context_Integration.Context_Library.constants import (
     LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
-    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
+    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS, CONTEST_TITLE_SKIP_PHRASES
 )
 from ...utils.table_core import harmonize_headers_and_data
+from ...utils.contest_selector import select_contest
+from ...utils.table_builder import build_table_noninteractive
+from ...utils.output_utils import finalize_election_output
+import re
 
-def parse_csv_election_results(csv_path, session_id=None):
+def parse_csv_election_results(csv_path, session_id=None, coordinator=None):
     data = []
     headers = []
     contest_column = None
 
-    with open(csv_path, newline='', encoding='utf-8') as f:
+    # Robust file open with encoding fallback
+    try:
+        f = open(csv_path, newline='', encoding='utf-8')
+    except Exception:
+        f = open(csv_path, newline='', encoding='latin-1')
+
+    with f:
         reader = csv.DictReader(f)
-        headers = [h.strip() for h in reader.fieldnames or []]
+        headers = [h.strip() for h in (reader.fieldnames or [])]
 
         # Dynamic contest column detection
         possible_contest_cols = [col for col in headers if any(k in col.lower() for k in CONTEST_KEYWORDS)]
@@ -31,140 +41,127 @@ def parse_csv_election_results(csv_path, session_id=None):
             contest_column = possible_contest_cols[0]
 
         for row in reader:
-            row = {k.strip(): v for k, v in row.items()}
-            if any(val.strip() for val in row.values() if val):
+            row = { (k or "").strip(): (v if v is not None else "") for k, v in (row.items() if row else []) }
+            if any((val or "").strip() for val in row.values()):
                 data.append(row)
 
-        contest = None
-        if contest_column:
-            contests = sorted({row[contest_column].strip() for row in data if row.get(contest_column)})
-            if len(contests) > 1:
-                logger.info({
-                    "level": "INFO",
-                    "type": "input",
-                    "message": "\nMultiple contests detected:",
-                    "session_id": session_id
-                })
-                for i, name in enumerate(contests, 1):
-                    logger.info({
-                        "level": "INFO",
-                        "type": "input",
-                        "message": f" {i:2d}. {name}",
-                        "session_id": session_id
-                    })
-                prompt_message = "\nEnter the contest name (exactly as shown), or type its number: "
-                def validator(x):
-                    x = str(x).strip()
-                    if x.isdigit():
-                        idx = int(x)
-                        return 1 <= idx <= len(contests)
-                    return x in contests
-                user_input = prompt.prompt_input(
-                    prompt_message,
-                    validator=validator,
-                    session_id=session_id,
-                    context={"contests": contests}
-                )
-                if user_input is None:
-                    logger.error({
-                        "level": "ERROR",
-                        "type": "input",
-                        "message": "No contest selected.",
-                        "session_id": session_id
-                    })
-                    return None, None, None, {"error": "No contest selected"}
-                if str(user_input).isdigit():
-                    idx = int(user_input)
-                    try:
-                        contest = contests[idx - 1]
-                    except IndexError:
-                        logger.error({
-                            "level": "ERROR",
-                            "type": "input",
-                            "message": "Invalid contest number.",
-                            "session_id": session_id
-                        })
-                        return None, None, None, {"error": "Invalid contest number"}
-                else:
-                    if user_input not in contests:
-                        logger.error({
-                            "level": "ERROR",
-                            "type": "input",
-                            "message": f"[ERROR] Contest name '{user_input}' not found.",
-                            "session_id": session_id
-                        })
-                        return None, None, None, {"error": "Contest name not found"}
-                    contest = user_input
-                data = [row for row in data if row.get(contest_column, "").strip() == contest]
-            elif contests:
-                contest = contests[0]
-        else:
-            contest = os.path.basename(csv_path).replace(".csv", "")
+    # Build contest candidates
+    contest_names = []
+    if contest_column:
+        contest_names = sorted({(row.get(contest_column, "") or "").strip() for row in data if row.get(contest_column)})
+        contest_names = [c for c in contest_names if c]  # drop blanks
+    if not contest_names:
+        contest_names = [os.path.basename(csv_path).replace(".csv", "")]
 
-    candidate_cols = [col for col in headers if any(k in col.lower() for k in CANDIDATE_KEYWORDS)]
-    precinct_cols = [col for col in headers if any(k in col.lower() for k in LOCATION_KEYWORDS)]
-    method_keys = set(BALLOT_TYPES) | set(TOTAL_KEYWORDS) | set(MISC_FOOTER_KEYWORDS)
-    method_cols = [col for col in headers if any(m in col.lower() for m in method_keys)]
+    # Light context from filename
+    fname = os.path.basename(csv_path).lower()
+    state = "Unknown"
+    county = "Unknown"
+    for part in fname.replace(".csv", "").split("_"):
+        if "county" in part:
+            county = part.replace("county", "").strip().title() + " County"
+        if len(part) == 2 and part.isalpha():
+            state = part.upper()
 
-    wide_data = []
-    reporting_unit_col = precinct_cols[0] if precinct_cols else headers[0]
-    for row in data:
-        wide_row = {reporting_unit_col: row.get(reporting_unit_col, "")}
-        for cand_col in candidate_cols:
-            candidate = row.get(cand_col, "")
-            for method_col in method_cols:
-                val = row.get(method_col, "")
-                col_name = f"{candidate} - {method_col}"
-                wide_row[col_name] = val
-        if not candidate_cols:
-            for method_col in method_cols:
-                wide_row[method_col] = row.get(method_col, "")
-        for col in headers:
-            if col not in candidate_cols + method_cols + [reporting_unit_col]:
-                wide_row[col] = row.get(col, "")
-        wide_data.append(wide_row)
+    # Fast-path if only one contest
+    if len(contest_names) == 1:
+        contest = contest_names[0]
+    else:
+        selector_data = {
+            "contests": [{"title": name} for name in contest_names],
+            "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())]
+        }
+        selected = select_contest(
+            coordinator=coordinator,
+            state=state, county=county, year=None,
+            session_id=session_id,
+            context={"selector_data": selector_data},
+            allow_multiple=False,
+            prompt_message="[PROMPT] Select contest (index, text, or 'cancel'): ",
+            force_interactive=True,
+            disable_ml_verify=False
+        )
+        if not selected:
+            logger.error({
+                "level": "ERROR",
+                "type": "input",
+                "message": "No contest selected.",
+                "session_id": session_id
+            })
+            return None, None, None, {"error": "No contest selected"}
+        contest = (selected[0] or {}).get("title") or contest_names[0]
 
-    all_keys = set()
-    for row in wide_data:
-        all_keys.update(row.keys())
-    headers = [reporting_unit_col] + sorted([k for k in all_keys if k != reporting_unit_col])
-    headers, wide_data = harmonize_headers_and_data(headers, wide_data)
+    # Filter rows by selected contest if we have a contest column
+    if contest_column:
+        data = [row for row in data if (row.get(contest_column, "") or "").strip() == contest]
 
-    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in contest).replace(" ", "_")
-    output_csv = os.path.join(OUTPUT_DIR, f"{safe_title}_parsed.csv")
-    output_meta = os.path.join(OUTPUT_DIR, f"{safe_title}_metadata.json")
+    # Build table via non-interactive builder
+    m = re.search(r"(19|20)\d{2}", fname)
+    year = int(m.group(0)) if m else None
+    domain = os.path.basename(csv_path)
+    context = {
+        "contest": contest,
+        "state": state,
+        "county": county,
+        "year": year,
+        "session_id": session_id,
+        "handler": "csv_handler"
+    }
+    headers_final, data_final, _entity_info = build_table_noninteractive(
+        domain=domain,
+        headers=headers,
+        data=data,
+        coordinator=coordinator,
+        context=context,
+        pivot_to_wide=True,
+        debug=False
+    )
 
-    with open(output_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
-        writer.writeheader()
-        for row in wide_data:
-            writer.writerow(row)
+    result = finalize_election_output(
+        headers=headers_final,
+        data=data_final,
+        coordinator=coordinator,
+        contest=contest,
+        state=state,
+        county=county,
+        context={
+            "handler": "csv_handler",
+            "input_file": os.path.basename(csv_path),
+            "session_id": session_id,
+            "race": contest
+        },
+        enable_user_feedback=False,
+        session_id=session_id
+    )
 
     metadata = {
         "race": contest,
         "input_file": os.path.basename(csv_path),
-        "output_file": os.path.basename(output_csv),
-        "headers": headers,
-        "row_count": len(wide_data),
-        "handler": "csv_handler"
+        "output_file": os.path.basename(result.get("csv_path", "")),
+        "headers": headers_final,
+        "row_count": len(data_final),
+        "handler": "csv_handler",
+        "state": state,
+        "county": county,
+        "year": year,
+        "csv_path": result.get("csv_path"),
+        "metadata_path": result.get("metadata_path")
     }
-    with open(output_meta, "w") as jf:
-        jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
     logger.info({
         "level": "INFO",
         "type": "output",
-        "message": f"[OUTPUT] Wrote {len(wide_data)} rows to: {output_csv}",
+        "message": f"[OUTPUT] Wrote {len(data_final)} rows to: {result.get('csv_path')}",
         "session_id": session_id
     })
     logger.info({
         "level": "INFO",
         "type": "output",
-        "message": f"[OUTPUT] Metadata written to: {output_meta}",
+        "message": f"[OUTPUT] Metadata written to: {result.get('metadata_path')}",
         "session_id": session_id
     })
 
-    return headers, wide_data, contest, metadata
+    return headers_final, data_final, contest, metadata
 
 def parse(page=None, coordinator=None, html_context=None, manual_file=None, session_id=None, **kwargs):
     """
@@ -189,5 +186,24 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
             "session_id": session_id
         })
         return None, None, None, {"skipped": True}
-    
-    return parse_csv_election_results(manual_file, session_id=session_id)
+
+    logger.info({
+        "level": "INFO",
+        "type": "handler",
+        "message": f"[INFO] Using CSV file: {manual_file}",
+        "session_id": session_id
+    })
+
+    result = parse_csv_election_results(manual_file, session_id=session_id, coordinator=coordinator)
+
+    # Defensive: always return a 4-tuple, never a bool
+    if not (isinstance(result, tuple) and len(result) == 4):
+        logger.error({
+            "level": "ERROR",
+            "type": "handler",
+            "message": "[ERROR] Invalid result from parse_csv_election_results (expected 4-tuple).",
+            "session_id": session_id,
+            "got_type": type(result).__name__
+        })
+        return None, None, None, {"error": "Invalid parse result"}
+    return result

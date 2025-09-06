@@ -6,115 +6,114 @@ import orjson
 import os
 import csv
 import time
+import re
 from collections import defaultdict
 from ...config import (
     OUTPUT_DIR
 )
 from ...Context_Integration.Context_Library.constants import (
     GROUP_RENAME_MAP, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
-    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS
+    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS, CONTEST_TITLE_SKIP_PHRASES
 )
 from ...utils.logger_singleton import logger, console, prompt
 from ...utils.table_core import harmonize_headers_and_data
+from ...utils.contest_selector import select_contest
+from ...utils.table_builder import build_table_noninteractive
+from ...utils.output_utils import finalize_election_output
+
 
 def find_key_by_keywords(obj, keywords):
     """Find the first key in obj that matches any keyword (case-insensitive, partial match allowed)."""
+    if not isinstance(obj, dict):
+        return None
     for key in obj.keys():
+        try:
+            key_s = key.lower()
+        except Exception:
+            continue
         for kw in keywords:
-            if kw.lower() in key.lower():
+            if isinstance(kw, str) and kw and kw.lower() in key_s:
                 return key
     return None
 
-def parse_json_election_results(json_path, session_id=None):
+def _is_dict_list(x) -> bool:
+    return isinstance(x, list) and x and all(isinstance(i, dict) for i in x)
+
+def parse_json_election_results(json_path, session_id=None, coordinator=None):
     with open(json_path, "rb") as f:
         data = orjson.loads(f.read())
 
-    # --- Dynamic contest extraction ---
-    ballot_items_key = find_key_by_keywords(
-        data.get("results", {}),
-        set(CONTEST_KEYWORDS) | {"ballotitem", "ballotitems"}
-    )
-    ballot_items = data.get("results", {}).get(ballot_items_key, []) if ballot_items_key else []
-
-    contests = set()
-    contest_name_key = (
-        find_key_by_keywords(ballot_items[0], set(CONTEST_KEYWORDS) | {"name"})
-        if ballot_items else "name"
-    )
-    for item in ballot_items:
-        name = item.get(contest_name_key, "").strip()
-        if name:
-            contests.add(name)
-
-    logger.info({
-        "level": "INFO",
-        "type": "input",
-        "message": "\nAvailable contests:",
-        "session_id": session_id
-    })
-    for i, name in enumerate(sorted(contests), 1):
-        logger.info({
-            "level": "INFO",
-            "type": "input",
-            "message": f" {i:2d}. {name}",
-            "session_id": session_id
-        })
-
-    prompt_message = "\nEnter the contest name (exactly as shown), or type its number: "
-    def validator(x):
-        x = str(x).strip()
-        if x.isdigit():
-            idx = int(x)
-            return 1 <= idx <= len(contests)
-        return x in contests
-
-    try:
-        user_input = prompt.prompt_input(
-            prompt_message,
-            validator=validator,
-            session_id=session_id,
-            context={"contests": sorted(contests)}
+    # --- Resolve where "ballot items/contests" live ---
+    results_obj = data.get("results")
+    ballot_items = []
+    if isinstance(results_obj, dict):
+        ballot_items_key = find_key_by_keywords(
+            results_obj,
+            set(CONTEST_KEYWORDS) | {"ballotitem", "ballotitems", "contests", "races"}
         )
-    except Exception as e:
-        logger.error({
-            "level": "ERROR",
-            "type": "input",
-            "message": f"Exception during contest selection: {e}",
-            "session_id": session_id
-        })
-        return None, None, None, {"error": "Contest selection failed"}
+        ballot_items = results_obj.get(ballot_items_key, []) if ballot_items_key else []
+    elif isinstance(results_obj, list):
+        ballot_items = results_obj
+    elif isinstance(data, dict):
+        # Some exports put contests at the top level
+        top_key = find_key_by_keywords(data, {"ballotitems", "contests", "races"})
+        if top_key:
+            ballot_items = data.get(top_key, []) or []
 
-    if user_input is None:
-        logger.error({
-            "level": "ERROR",
-            "type": "input",
-            "message": "No contest selected.",
-            "session_id": session_id
-        })
-        return None, None, None, {"error": "No contest selected"}
+    if not isinstance(ballot_items, list):
+        ballot_items = []
 
-    if str(user_input).isdigit():
-        idx = int(user_input)
-        try:
-            target_contest = sorted(contests)[idx - 1]
-        except IndexError:
-            logger.error({
-                "level": "ERROR",
-                "type": "input",
-                "message": "Invalid contest number.",
-                "session_id": session_id
-            })
-            return None, None, None, {"error": "Invalid contest number"}
+    # --- Build contest name set robustly ---
+    contests = set()
+    if _is_dict_list(ballot_items):
+        exemplar = ballot_items[0]
+        contest_name_key = find_key_by_keywords(exemplar, set(CONTEST_KEYWORDS) | {"name", "title", "contest"})
+        for item in ballot_items:
+            name = (item.get(contest_name_key, "") or "").strip()
+            if name:
+                contests.add(name)
     else:
-        if user_input not in contests:
+        # If items are strings, assume contest titles directly
+        for item in ballot_items:
+            if isinstance(item, str) and item.strip():
+                contests.add(item.strip())
+
+    if not contests:
+        logger.error({
+            "level": "ERROR",
+            "type": "input",
+            "message": "No contests found in JSON.",
+            "session_id": session_id
+        })
+        return None, None, None, {"error": "No contests found"}
+
+    # Select contest
+    if len(contests) == 1:
+        target_contest = next(iter(contests))
+    else:
+        selector_data = {
+            "contests": [{"title": name} for name in sorted(contests)],
+            "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())]
+        }
+        selected = select_contest(
+            coordinator=coordinator,
+            state=None, county=None, year=None,
+            session_id=session_id,
+            context={"selector_data": selector_data},
+            allow_multiple=False,
+            prompt_message="[PROMPT] Select contest (index, text, or 'cancel'): ",
+            force_interactive=True,
+            disable_ml_verify=False
+        )
+        if not selected:
             logger.error({
                 "level": "ERROR",
                 "type": "input",
-                "message": "Contest name not found.",
+                "message": "No contest selected.",
                 "session_id": session_id
             })
-            return None, None, None, {"error": "Contest name not found"}
-        target_contest = user_input
+            return None, None, None, {"error": "No contest selected"}
+        target_contest = (selected[0] or {}).get("title") or next(iter(contests))
 
     logger.info({
         "level": "INFO",
@@ -123,108 +122,168 @@ def parse_json_election_results(json_path, session_id=None):
         "session_id": session_id
     })
 
-    # --- Dynamic candidate/party/ballot type/precinct key detection ---
-    contest_item = next((item for item in ballot_items if item.get(contest_name_key, "").strip() == target_contest), None)
-    if not contest_item:
-        logger.error({
-            "level": "ERROR",
-            "type": "input",
-            "message": "Selected contest not found in data.",
-            "session_id": session_id
-        })
-        return None, None, None, {"error": "Selected contest not found"}
+    # Locate the chosen contest item (dict if available)
+    contest_item = None
+    if _is_dict_list(ballot_items):
+        for item in ballot_items:
+            name_key = find_key_by_keywords(item, set(CONTEST_KEYWORDS) | {"name", "title", "contest"})
+            if (item.get(name_key, "") or "").strip() == target_contest:
+                contest_item = item
+                break
 
-    ballot_options_key = find_key_by_keywords(contest_item, set(CANDIDATE_KEYWORDS) | {"ballotoption", "ballotoptions"})
-    ballot_options = contest_item.get(ballot_options_key, []) if ballot_options_key else []
-
-    candidate_name_key = (
-        find_key_by_keywords(ballot_options[0], set(CANDIDATE_KEYWORDS) | {"name"})
-        if ballot_options else "name"
-    )
-    party_key = (
-        find_key_by_keywords(ballot_options[0], set(PARTY_KEYWORDS) | {"politicalparty"})
-        if ballot_options else "politicalParty"
-    )
-    precinct_results_key = find_key_by_keywords(
-        ballot_options[0],
-        set(LOCATION_KEYWORDS) | {"precinctresult", "precinctresults"}
-    )
-    group_results_key = find_key_by_keywords(
-        ballot_options[0],
-        set(BALLOT_TYPES) | {"groupresult", "groupresults"}
-    )
-
-    # --- Build normalization map for candidates/parties ---
-    raw_candidates = {}
-    for opt in ballot_options:
-        raw = opt.get(candidate_name_key, "").strip()
-        party = opt.get(party_key, "Unknown")
-        label = f"{raw} ({party})"
-        raw_candidates[raw] = label
-
-    normalization_map = {k: v for k, v in raw_candidates.items()}
-
-    # --- Build results ---
-    results_nested = defaultdict(lambda: defaultdict(dict))
-    for opt in ballot_options:
-        raw_label = opt.get(candidate_name_key, "").strip()
-        precinct_results = opt.get(precinct_results_key, []) if precinct_results_key else []
-        for precinct in precinct_results:
-            precinct_name_key = find_key_by_keywords(precinct, set(LOCATION_KEYWORDS) | {"name"})
-            p = precinct.get(precinct_name_key, "").strip()
-            results_nested[p][raw_label]["Total"] = precinct.get("voteCount")
-            group_results = precinct.get(group_results_key, []) if group_results_key else []
-            for grp in group_results:
-                group_name_key = find_key_by_keywords(grp, set(BALLOT_TYPES) | {"groupname"})
-                g = grp.get(group_name_key, "").strip()
-                norm_g = GROUP_RENAME_MAP.get(g.lower(), g) if g else g
-                results_nested[p][raw_label][norm_g] = grp.get("voteCount")
-
-    # --- Build rows and headers dynamically ---
+    # --- Extract options/candidates and nested results when schema supports it ---
     rows = []
-    all_keys = set()
-    for precinct, cands in results_nested.items():
-        row = {"Precinct": precinct}
-        for raw_label, methods in cands.items():
-            norm_label = normalization_map.get(raw_label, raw_label)
-            for method, count in methods.items():
-                col_name = f"{norm_label} - {method}"
-                row[col_name] = count
-                all_keys.add(col_name)
-        rows.append(row)
+    headers = []
+    if isinstance(contest_item, dict):
+        ballot_options_key = find_key_by_keywords(contest_item, set(CANDIDATE_KEYWORDS) | {"ballotoption", "ballotoptions", "candidates"})
+        ballot_options = contest_item.get(ballot_options_key, []) if ballot_options_key else []
+        if _is_dict_list(ballot_options):
+            candidate_name_key = find_key_by_keywords(ballot_options[0], set(CANDIDATE_KEYWORDS) | {"name"})
+            party_key = find_key_by_keywords(ballot_options[0], set(PARTY_KEYWORDS) | {"politicalparty"})
+            precinct_results_key = find_key_by_keywords(
+                ballot_options[0],
+                set(LOCATION_KEYWORDS) | {"precinctresult", "precinctresults"}
+            )
+            group_results_key = find_key_by_keywords(
+                ballot_options[0],
+                set(BALLOT_TYPES) | {"groupresult", "groupresults"}
+            )
 
-    headers = ["Precinct"] + sorted(all_keys)
+            # Build normalization map for candidates/parties
+            raw_candidates = {}
+            for opt in ballot_options:
+                raw = (opt.get(candidate_name_key, "") or "").strip()
+                party = (opt.get(party_key, "") or "") if party_key else ""
+                label = f"{raw} ({party})" if party else raw
+                if raw:
+                    raw_candidates[raw] = label
+
+            normalization_map = {k: v for k, v in raw_candidates.items()}
+
+            # Build nested results -> flat rows
+            from collections import defaultdict
+            results_nested = defaultdict(lambda: defaultdict(dict))
+            for opt in ballot_options:
+                raw_label = (opt.get(candidate_name_key, "") or "").strip()
+                if not raw_label:
+                    continue
+                precinct_results = opt.get(precinct_results_key, []) if precinct_results_key else []
+                for precinct in precinct_results or []:
+                    if not isinstance(precinct, dict):
+                        continue
+                    precinct_name_key = find_key_by_keywords(precinct, set(LOCATION_KEYWORDS) | {"name"})
+                    p = (precinct.get(precinct_name_key, "") or "").strip()
+                    if not p:
+                        continue
+                    results_nested[p][raw_label]["Total"] = precinct.get("voteCount")
+                    group_results = precinct.get(group_results_key, []) if group_results_key else []
+                    for grp in group_results or []:
+                        if not isinstance(grp, dict):
+                            continue
+                        group_name_key = find_key_by_keywords(grp, set(BALLOT_TYPES) | {"groupname", "name"})
+                        g = (grp.get(group_name_key, "") or "").strip()
+                        norm_g = GROUP_RENAME_MAP.get(g.lower(), g) if g else g
+                        results_nested[p][raw_label][norm_g or "Subtotal"] = grp.get("voteCount")
+
+            all_keys = set()
+            for precinct, cands in results_nested.items():
+                row = {"Precinct": precinct}
+                for raw_label, methods in cands.items():
+                    norm_label = normalization_map.get(raw_label, raw_label)
+                    for method, count in methods.items():
+                        col_name = f"{norm_label} - {method}"
+                        row[col_name] = count
+                        all_keys.add(col_name)
+                rows.append(row)
+            headers = ["Precinct"] + sorted(all_keys)
+
+    # --- Fallback when schema isn't the expected nested structure ---
+    if not rows:
+        # Try to emit something useful rather than crash
+        try:
+            raw_blob = contest_item if contest_item is not None else ballot_items
+            blob_str = orjson.dumps(raw_blob, option=orjson.OPT_INDENT_2)
+            blob_str = blob_str.decode("utf-8", errors="ignore")
+        except Exception:
+            blob_str = str(contest_item or ballot_items)
+        # Limit very large strings
+        if len(blob_str) > 100_000:
+            blob_str = blob_str[:100_000] + "\n... [truncated]"
+        headers = ["Contest", "RawJSON"]
+        rows = [{"Contest": target_contest, "RawJSON": blob_str}]
+
+    # Harmonize/pivot via non-interactive builder
     headers, rows = harmonize_headers_and_data(headers, rows)
 
-    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in target_contest).replace(" ", "_")
-    output_csv = os.path.join(OUTPUT_DIR, f"{safe_title}_parsed.csv")
-    output_meta = os.path.join(OUTPUT_DIR, f"{safe_title}_metadata.json")
+    fname = os.path.basename(json_path).lower()
+    state = "Unknown"
+    county = "Unknown"
+    for part in fname.replace(".json", "").split("_"):
+        if "county" in part:
+            county = part.replace("county", "").strip().title() + " County"
+        if len(part) == 2 and part.isalpha():
+            state = part.upper()
+    m = re.search(r"(19|20)\d{2}", fname)
+    year = int(m.group(0)) if m else None
 
-    with open(output_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(row)
+    domain = os.path.basename(json_path)
+    context = {
+        "contest": target_contest,
+        "state": state,
+        "county": county,
+        "year": year,
+        "session_id": session_id,
+        "handler": "json_handler"
+    }
+    headers_final, data_final, _entity_info = build_table_noninteractive(
+        domain=domain,
+        headers=headers,
+        data=rows,
+        coordinator=coordinator,
+        context=context,
+        pivot_to_wide=True,
+        debug=False
+    )
+
+    result = finalize_election_output(
+        headers=headers_final,
+        data=data_final,
+        coordinator=coordinator,
+        contest=target_contest,
+        state=state,
+        county=county,
+        context={
+            "handler": "json_handler",
+            "input_file": os.path.basename(json_path),
+            "session_id": session_id,
+            "race": target_contest
+        },
+        enable_user_feedback=False,
+        session_id=session_id
+    )
 
     metadata = {
         "race": target_contest,
         "input_file": os.path.basename(json_path),
-        "output_file": os.path.basename(output_csv),
-        "headers": headers,
-        "row_count": len(rows),
-        "handler": "json_handler"
+        "output_file": os.path.basename(result.get("csv_path", "")),
+        "headers": headers_final,
+        "row_count": len(data_final),
+        "handler": "json_handler",
+        "state": state,
+        "county": county,
+        "year": year,
+        "csv_path": result.get("csv_path"),
+        "metadata_path": result.get("metadata_path")
     }
-    with open(output_meta, "w") as jf:
-        jf.write(orjson.dumps(metadata, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
     logger.info({
         "level": "INFO",
         "type": "output",
-        "message": f"✅ Completed! Output CSV: {output_csv}, Metadata: {output_meta}",
+        "message": f"✅ Completed! Output CSV: {result.get('csv_path')}, Metadata: {result.get('metadata_path')}",
         "session_id": session_id
     })
 
-    return headers, rows, target_contest, metadata
+    return headers_final, data_final, target_contest, metadata
 
 def parse(page=None, coordinator=None, html_context=None, manual_file=None, session_id=None, **kwargs):
     """
@@ -257,4 +316,16 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
         "session_id": session_id
     })
 
-    return parse_json_election_results(manual_file, session_id=session_id)
+    result = parse_json_election_results(manual_file, session_id=session_id, coordinator=coordinator)
+
+    # Defensive: always return a 4-tuple, never a bool
+    if not (isinstance(result, tuple) and len(result) == 4):
+        logger.error({
+            "level": "ERROR",
+            "type": "handler",
+            "message": "[ERROR] Invalid result from parse_json_election_results (expected 4-tuple).",
+            "session_id": session_id,
+            "got_type": type(result).__name__
+        })
+        return None, None, None, {"error": "Invalid parse result"}
+    return result

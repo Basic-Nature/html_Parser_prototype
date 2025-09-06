@@ -6,6 +6,7 @@ gunicorn>=23.0.0
 eventlet>=0.40.2
 selectolax>=0.3.32
 langdetect>=1.0.9
+azure_identity>=1.24.0
 # Optional CAPTCHA visual bypass
 seleniumbase>=4.40.8
 

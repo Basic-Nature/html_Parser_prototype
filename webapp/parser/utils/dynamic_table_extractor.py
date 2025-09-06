@@ -33,7 +33,7 @@ from .shared_logic import (
     safe_replace,
     safe_lower,
     safe_values,
-    safe_replace
+    safe_split
 )
 from ..Context_Integration.librarian import (
     extend_panel_tags, extend_heading_tags, log_unknown_tag, get_safe_log_path
@@ -49,7 +49,7 @@ from ..Context_Integration.Context_Library.constants import (
     MISC_FOOTER_KEYWORDS, PANEL_TAGS,
     CONTAINER_EXTRA_KEYWORDS, CONTAINER_FALLBACK_SELECTORS
 )
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Tuple, Any, Optional
 from .logger_singleton import logger
 from typing import TYPE_CHECKING
 from .table_core import ( 
@@ -62,12 +62,36 @@ from .table_core import (
     robust_table_extraction,
     is_date_like,
     is_location_header,
-    normalize_header,
-    safe_split
+    normalize_header
 )
 
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
+
+# -------------------------------------------------------------------
+# Structured logging helper aligned with SharedLogger and frontend
+# -------------------------------------------------------------------
+
+def _emit(level: str, msg_type: str, message: str, session_id: Optional[str] = None, **fields):
+    """
+    Emit a structured log payload. Keys:
+      - level: uppercased level
+      - type: short subsystem label (e.g., "extractor")
+      - message: human-readable message
+      - session_id: passthrough for frontend correlation
+      - additional fields included as provided (non-None)
+    """
+    payload = {
+        "level": level.upper(),
+        "type": msg_type,
+        "message": message,
+        "session_id": session_id,
+    }
+    for k, v in fields.items():
+        if v is not None:
+            payload[k] = v
+    # Delegate to SharedLogger (CLI/webapp aware)
+    getattr(logger, level.lower(), logger.info)(payload)
 
 # --- Main Candidate Generator/Scorer ---
 
@@ -77,62 +101,85 @@ def dynamic_table_extractor(page, context, coordinator, table_html=None) -> Tupl
     Does NOT run harmonization, annotation, or feedback loop.
     Uses selectolax for HTML parsing if table_html is provided.
     """
-    
-    if table_html:
-        soup = HTMLParser(table_html)
-        table = soup.css_first("table")
-        if not table:
-            logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No <table> found in provided table_html.")
-            return [], []
-        # Find all rows (tr) in the table
-        rows = table.css("tr")
-        if not rows:
-            logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No <tr> rows found in table_html.")
-            return [], []
-        # Extract headers from first row (th or td)
-        header_cells = rows[0].css("th") or rows[0].css("td")
-        headers = [cell.text(strip=True) for cell in header_cells]
-        data = []
-        for row in rows[1:]:
-            cells = row.css("td") or row.css("th")
-            row_dict = {}
-            for i in range(len(headers)):
-                val = cells[i].text(strip=True) if i < len(cells) else ""
-                row_dict[headers[i]] = val
-            data.append(row_dict)
-        # --- Attach context to each row if Precinct/panel_heading is present ---
-        precinct = safe_get(context, "panel_heading") or safe_get(context, "Precinct")
-        if precinct:
-            if "Precinct" not in headers:
-                headers = ["Precinct"] + headers
-            for row in data:
-                row["Precinct"] = precinct
-        logger.info(f"[DYNAMIC_TABLE_EXTRACTOR] Extracted {len(data)} rows from HTML table (selectolax).")
-        return headers, data
+    session_id = safe_get(context, "session_id", None)
+    _emit("info", "extractor", "[EXTRACTOR] Starting dynamic table extraction", session_id,
+          has_table_html=bool(table_html))
 
-    candidates = find_tabular_candidates(page, context=context)
+    # HTML string path (selectolax)
+    if table_html:
+        try:
+            soup = HTMLParser(table_html)
+            table = soup.css_first("table")
+            if not table:
+                _emit("warning", "extractor", "[EXTRACTOR] No <table> found in provided table_html.", session_id)
+                return [], []
+            # Find all rows (tr) in the table
+            rows = table.css("tr")
+            if not rows:
+                _emit("warning", "extractor", "[EXTRACTOR] No <tr> rows found in table_html.", session_id)
+                return [], []
+            # Extract headers from first row (th or td)
+            header_cells = rows[0].css("th") or rows[0].css("td")
+            headers = [cell.text(strip=True) for cell in header_cells]
+            data = []
+            for row in rows[1:]:
+                cells = row.css("td") or row.css("th")
+                row_dict = {}
+                for i in range(len(headers)):
+                    val = cells[i].text(strip=True) if i < len(cells) else ""
+                    row_dict[headers[i]] = val
+                data.append(row_dict)
+            # Attach context to each row if Precinct/panel_heading present
+            precinct = safe_get(context, "panel_heading") or safe_get(context, "Precinct")
+            if precinct:
+                if "Precinct" not in headers:
+                    headers = ["Precinct"] + headers
+                for row in data:
+                    row["Precinct"] = precinct
+            _emit("info", "extractor", "[EXTRACTOR] Extracted rows from HTML table", session_id,
+                  rows=len(data), cols=len(headers))
+            return headers, data
+        except Exception as e:
+            _emit("error", "extractor", "[EXTRACTOR] Failed to parse table_html with selectolax", session_id, error=str(e))
+            return [], []
+
+    # Playwright/DOM path
+    try:
+        candidates = find_tabular_candidates(page, context=context, session_id=session_id)
+    except Exception as e:
+        _emit("error", "extractor", "[EXTRACTOR] Candidate discovery failed", session_id, error=str(e))
+        candidates = []
+
     enriched_candidates = []
     for cand in candidates:
-        cand = analyze_candidate_nlp(cand, coordinator)
-        cand['score'], cand['rationale'] = score_candidate(cand, context, coordinator)
-        enriched_candidates.append(cand)
-    enriched_candidates.sort(key=lambda c: c['score'], reverse=True)
+        try:
+            cand = analyze_candidate_nlp(cand, coordinator, session_id=session_id)
+            score, rationale = score_candidate(cand, context, coordinator, session_id=session_id)
+            cand["score"], cand["rationale"] = score, rationale
+            enriched_candidates.append(cand)
+        except Exception as e:
+            _emit("warning", "extractor", "[EXTRACTOR] Candidate NLP/score step failed", session_id, error=str(e))
+
+    enriched_candidates.sort(key=lambda c: c.get("score", 0.0), reverse=True)
     best = enriched_candidates[0] if enriched_candidates else None
     if best:
-        logger.info(f"[DYNAMIC_TABLE_EXTRACTOR] Best candidate source: {safe_get(best, 'source')}, score: {safe_get(best, 'score'):.2f}")
-        # --- Attach context to each row if Precinct/panel_heading is present ---
+        _emit("info", "extractor", "[EXTRACTOR] Best candidate selected", session_id,
+              source=safe_get(best, "source"), score=round(safe_get(best, "score", 0.0), 3),
+              rows=len(safe_get(best, "rows", [])), cols=len(safe_get(best, "headers", [])))
+        # Attach context to each row if Precinct/panel_heading is present
         precinct = safe_get(context, "panel_heading") or safe_get(context, "Precinct")
         if precinct and "Precinct" not in safe_get(best, "headers", []):
-            best['headers'] = ["Precinct"] + best['headers']
-            for row in best['rows']:
+            best["headers"] = ["Precinct"] + best["headers"]
+            for row in best["rows"]:
                 row["Precinct"] = precinct
-        return best['headers'], best['rows']
-    logger.warning("[DYNAMIC_TABLE_EXTRACTOR] No suitable table candidates found.")
+        return best["headers"], best["rows"]
+
+    _emit("warning", "extractor", "[EXTRACTOR] No suitable table candidates found.", session_id)
     return [], []
 
 # --- Candidate Generation & Scoring ---
 
-def find_tabular_candidates(page, context=None) -> List[Dict[str, Any]]:
+def find_tabular_candidates(page, context=None, session_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Find all DOM elements that look like tables or repeated row structures.
     Returns a list of candidate dicts with 'headers' and 'rows'.
@@ -140,19 +187,25 @@ def find_tabular_candidates(page, context=None) -> List[Dict[str, Any]]:
     """
     candidates = []
     # 1. Standard HTML tables
-    tables = safe_locator(page, "table", logger)
-    for i in range(safe_count(tables, logger)):
-        table = safe_nth(tables, i, logger)
-        if table is None:
-            continue
-        # --- Pass context to extract_table_data ---
-        headers, data, _ = extract_table_data(table, structure_info={"context": context or {}})
-        if headers and data:
-            # --- Attach context to candidate ---
-            candidate = {"headers": headers, "rows": data, "source": "table"}
-            if context:
-                candidate["context"] = safe_copy(context)
-            candidates.append(candidate)
+    try:
+        tables = safe_locator(page, "table", logger)
+        table_count = safe_count(tables, logger)
+        _emit("debug", "extractor", "[EXTRACTOR] Scanning <table> elements", session_id, count=table_count)
+        for i in range(table_count):
+            table = safe_nth(tables, i, logger)
+            if table is None:
+                continue
+            # Pass context to extract_table_data for consistency
+            headers, data, _ = extract_table_data(table, structure_info={"context": context or {}})
+            if headers and data:
+                candidate = {"headers": headers, "rows": data, "source": "table"}
+                if context:
+                    candidate["context"] = safe_copy(context)
+                candidates.append(candidate)
+        _emit("debug", "extractor", "[EXTRACTOR] Table candidates collected", session_id, found=len(candidates))
+    except Exception as e:
+        _emit("warning", "extractor", "[EXTRACTOR] Error while scanning <table> elements", session_id, error=str(e))
+
     # 2. Repeated DOM structures (divs, lists, etc.)
     try:
         headers, data, _ = extract_rows_and_headers_from_dom(page, context=context)
@@ -161,8 +214,10 @@ def find_tabular_candidates(page, context=None) -> List[Dict[str, Any]]:
             if context:
                 candidate["context"] = safe_copy(context)
             candidates.append(candidate)
+            _emit("debug", "extractor", "[EXTRACTOR] Repeated DOM candidate added", session_id, rows=len(data), cols=len(headers))
     except Exception as e:
-        logger.warning(f"[DYNAMIC_TABLE_EXTRACTOR] DOM extraction failed: {e}")
+        _emit("warning", "extractor", "[EXTRACTOR] DOM extraction failed", session_id, error=str(e))
+
     # 3. Pattern-based extraction (if any patterns are approved)
     try:
         pattern_rows = extract_with_patterns(page, context=context)
@@ -188,10 +243,9 @@ def find_tabular_candidates(page, context=None) -> List[Dict[str, Any]]:
                     for idx in range(safe_count(cells, logger)):
                         cell = safe_nth(cells, idx, logger)
                         val = cell.inner_text().strip() if cell else ""
-                        # Optionally, use heading and pat for context or diagnostics
                         col_name = headers[idx] if idx < len(headers) else f"Column {idx+1}"
                         row_data[col_name] = val
-                    # Attach pattern/heading info for diagnostics or advanced use
+                    # Attach pattern/heading info (diagnostics)
                     if heading is not None:
                         row_data["_pattern_heading"] = heading
                     if pat is not None:
@@ -203,40 +257,49 @@ def find_tabular_candidates(page, context=None) -> List[Dict[str, Any]]:
                     if context:
                         candidate["context"] = safe_copy(context)
                     candidates.append(candidate)
+                    _emit("debug", "extractor", "[EXTRACTOR] Pattern-based candidate added", session_id, rows=len(data), cols=len(headers))
     except Exception as e:
-        logger.warning(f"[DYNAMIC_TABLE_EXTRACTOR] Pattern extraction failed: {e}")
+        _emit("warning", "extractor", "[EXTRACTOR] Pattern extraction failed", session_id, error=str(e))
+
+    _emit("info", "extractor", "[EXTRACTOR] Candidate discovery complete", session_id, candidates=len(candidates))
     return candidates
 
-def analyze_candidate_nlp(candidate, coordinator) -> Dict[str, Any]:
+def analyze_candidate_nlp(candidate, coordinator, session_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Enrich a candidate dict with NLP/NER analysis for headers.
     Adds 'header_entities' and 'header_scores' fields.
-    Uses safe_get for robustness.
+    Uses the provided coordinator; falls back to default if None.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
     headers = safe_get(candidate, "headers", [])
     header_entities = []
     header_scores = []
     for h in headers:
-        ents = coordinator.extract_entities(h)
+        try:
+            ents = coordinator.extract_entities(h)
+        except Exception:
+            ents = []
         header_entities.append(ents)
-        score = coordinator.score_header(h, {})
+        try:
+            score = coordinator.score_header(h, {})
+        except Exception:
+            score = 0.0
         header_scores.append(score)
     candidate["header_entities"] = header_entities
     candidate["header_scores"] = header_scores
     return candidate
 
-def score_candidate(candidate, context, coordinator) -> Tuple[float, str]:
+def score_candidate(candidate, context, coordinator, session_id: Optional[str] = None) -> Tuple[float, str]:
     """
     Score a candidate table structure using ML/NLP and heuristics.
     Returns (score, rationale).
     Adds a bonus if a location column is present (using is_location_header),
     and penalizes if missing when context expects one.
-    Uses safe_get for robustness.
+    Uses provided coordinator; falls back if None.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
     headers = safe_get(candidate, "headers", [])
     rows = safe_get(candidate, "rows", [])
     rationale = []
@@ -244,9 +307,12 @@ def score_candidate(candidate, context, coordinator) -> Tuple[float, str]:
     # 1. ML/NLP header confidence
     ml_scores = []
     for h in headers:
-        score = coordinator.score_header(h, context)
+        try:
+            score = coordinator.score_header(h, context or {})
+        except Exception:
+            score = 0.0
         ml_scores.append(score)
-    avg_ml_score = sum(ml_scores) / len(ml_scores) if ml_scores else 0
+    avg_ml_score = sum(ml_scores) / len(ml_scores) if ml_scores else 0.0
     rationale.append(f"ML header avg score: {avg_ml_score:.2f}")
 
     # 2. Heuristic: prefer more rows and columns (but not too many)
@@ -267,18 +333,21 @@ def score_candidate(candidate, context, coordinator) -> Tuple[float, str]:
     entity_bonus = 0.0
     entity_hits = 0
     for h in headers:
-        ents = coordinator.extract_entities(h)
+        try:
+            ents = coordinator.extract_entities(h)
+        except Exception:
+            ents = []
         if ents:
             entity_hits += 1
     if headers:
         entity_bonus = 0.2 * (entity_hits / len(headers))
     rationale.append(f"Entity bonus: {entity_bonus:.2f} ({entity_hits}/{len(headers)} headers)")
 
-    # 4b. [NEW] Bonus for location column, penalty if missing and context expects one
+    # 4b. Bonus for location column, penalty if missing and context expects one
     has_location_col = any(is_location_header(h) for h in headers)
     location_bonus = 0.15 if has_location_col else 0.0
     location_penalty = 0.0
-    if not has_location_col and context and safe_get(context, "require_location_column", True):
+    if not has_location_col and (context and safe_get(context, "require_location_column", True)):
         location_penalty = -0.15
     if location_bonus:
         rationale.append("Location column bonus: +0.15 (location column detected)")
@@ -287,7 +356,7 @@ def score_candidate(candidate, context, coordinator) -> Tuple[float, str]:
 
     # 5. Penalty for generic headers (Column 1, etc.)
     generic_headers = sum(1 for h in headers if re.match(r"Column \d+", h))
-    generic_penalty = -0.2 * (generic_headers / len(headers)) if headers else 0
+    generic_penalty = -0.2 * (generic_headers / len(headers)) if headers else 0.0
     if generic_penalty:
         rationale.append(f"Generic header penalty: {generic_penalty:.2f}")
 
@@ -332,7 +401,6 @@ def infer_column_types(headers, data) -> Dict[str, str]:
     """
     types = {}
     for h in headers:
-        # Use safe_get and safe_replace to normalize values
         col_vals = [safe_replace(safe_get(row, h, ""), ",", "") for row in data]
         non_empty = [v for v in col_vals if v not in ("", None, "NA", "N/A", "-")]
 
@@ -397,7 +465,7 @@ def advanced_party_candidate_detection(headers, coordinator) -> Dict[str, List[T
     Returns a dict with lists of (index, entity) tuples for each type.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
     result = {"candidate": [], "party": [], "location": []}
     for idx, h in enumerate(headers):
         ents = coordinator.extract_entities(h)
@@ -416,7 +484,7 @@ def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoor
     Uses safe_append for robust list appending.
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
     known_parties = PARTY_KEYWORDS
     ballot_types = BALLOT_TYPES
 
@@ -436,11 +504,17 @@ def extract_candidates_and_parties(headers: List[str], coordinator: "ContextCoor
         party = party.strip()
         ballot_types = ballot_types.strip()
         if party:
-            best_party, score = max(((p, coordinator.fuzzy_score(party, p)) for p in known_parties), key=lambda x: x[1])
+            try:
+                best_party, score = max(((p, coordinator.fuzzy_score(party, p)) for p in known_parties), key=lambda x: x[1])
+            except Exception:
+                best_party, score = party, 0
             if score > 80:
                 party = best_party
         else:
-            entities = coordinator.extract_entities(candidate)
+            try:
+                entities = coordinator.extract_entities(candidate)
+            except Exception:
+                entities = []
             for ent, label in entities:
                 if label in {"ORG", "NORP"}:
                     party = ent
@@ -473,7 +547,7 @@ def entity_linking(header, known_entities, threshold=0.8, return_score=False, al
                 return ent, 1.0
             return ent
 
-    # 2. Token-based match (all tokens in entity must be in header or vice versa)
+    # 2. Token-based match
     if allow_token_match:
         header_tokens = set(header_norm.split())
         for ent in known_entities:
@@ -519,13 +593,9 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
         - Strips all tags and returns the concatenated text.
         - Handles nested tags and ignores script/style.
         """
-        # Remove script and style blocks
         html = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
-        # Replace <br> and <br/> with newlines
         html = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
-        # Remove all other tags, keeping their content
         text = re.sub(r"<[^>]+>", "", html)
-        # Collapse whitespace
         text = re.sub(r"\s+", " ", text)
         return safe_strip(text)
 
@@ -572,18 +642,15 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
                         section_context = tag
                         break
                     parent_idx = safe_get(parent_seg, "_parent_idx")
-            # 3. Compose heading with section context if desired
             if not heading:
                 heading = f"Precinct {i+1}"
             if include_section_context and section_context:
                 heading = f"{section_context}: {heading}"
-            # Use Playwright to get the table locator by index
             table_locator = safe_locator(page, "table")
             table_nth = safe_nth(table_locator, i, logger) if table_locator else None
             if table_nth is not None:
                 results.append((heading, table_nth))
     else:
-        # Fallback: Use Playwright only
         tables = safe_locator(page, "table")
         for i in range(safe_count(tables, logger)):
             table = safe_nth(tables, i, logger)
@@ -620,7 +687,7 @@ def find_tables_with_headings(page, dom_segments=None, heading_tags=None, includ
             except Exception:
                 pass
             if not heading:
-                heading = f"Precinct {i+1}"
+                heading = f"Section {i+1}"
             if include_section_context and section_context:
                 heading = f"{section_context}: {heading}"
             results.append((heading, table))
@@ -696,22 +763,21 @@ def review_dom_patterns(log_path=None):
     if log_path is None:
         log_path = get_safe_log_path()
     if not os.path.exists(log_path):
-        logger.warning("No learned DOM patterns found.")
+        _emit("warning", "extractor", "No learned DOM patterns found.")
         return
 
     with open(log_path, "rb") as f:
         entries = [orjson.loads(line) for line in f if line.strip()]
 
     for idx, entry in enumerate(entries):
-        logger.info(f"\n[{idx}] Selector: {safe_get(entry, 'selector')}")
+        _emit("info", "extractor", f"[{idx}] Selector preview", selector=safe_get(entry, "selector"))
         example_html = safe_get(entry, "example_html", "")
-        logger.info(f"    Example HTML: {example_html[:200]}...")
-        logger.info(f"    Context: {safe_get(entry, 'context')}")
-        logger.info("-" * 40)
+        _emit("info", "extractor", "Example HTML (truncated)", preview=example_html[:200] + "...")
+        _emit("info", "extractor", "Context", context=safe_get(entry, "context"))
+        _emit("info", "extractor", "-" * 40)
 
     while True:
         cmd = input("\nEnter entry number to approve/delete, or 'q' to quit: ")
-
         cmd = cmd.strip()
         if cmd.lower() == "q":
             break
@@ -721,19 +787,19 @@ def review_dom_patterns(log_path=None):
                 action = input("Approve (a) or Delete (d) this entry? [a/d]: ").strip().lower()
                 if action == "d":
                     entries.pop(idx)
-                    logger.warning("Entry deleted.")
+                    _emit("warning", "extractor", "Entry deleted.")
                 elif action == "a":
                     entries[idx]["approved"] = True
-                    logger.info("Entry approved.")
+                    _emit("info", "extractor", "Entry approved.")
                 else:
-                    logger.warning("Unknown action.")
+                    _emit("warning", "extractor", "Unknown action.")
             else:
-                logger.warning("Invalid entry number.")
+                _emit("warning", "extractor", "Invalid entry number.")
         # Save changes
         with open(log_path, "wb") as f:
             for entry in entries:
                 f.write(orjson.dumps(entry) + b"\n")
-        logger.info("Changes saved.")
+        _emit("info", "extractor", "Changes saved.")
 
 def auto_approve_dom_pattern(selector, log_path=None, min_count=2):
     """
@@ -925,7 +991,6 @@ def is_candidate_major_row(headers, data, coordinator, context):
         first_col_norm in (normalize_text(k) for k in CANDIDATE_KEYWORDS)
         or first_col_norm in (normalize_text(k) for k in CONTEST_KEYWORDS)
     )
-    # Accept if header is a person or matches candidate/contest keywords
     if is_person_header or is_candidate_keyword:
         non_candidate_headers = headers[1:]
         ballot_type_hits = 0
@@ -958,7 +1023,6 @@ def is_candidate_major_col(headers, data, context):
         headers, data = robust_table_extraction(page, context)
         if not headers or not data:
             return False
-    # Check that headers are not locations/parties and at least one is a candidate/person
     no_location_or_party = all(
         normalize_text(h) not in LOCATION_KEYWORDS
         and normalize_text(h) not in PARTY_KEYWORDS
@@ -989,7 +1053,6 @@ def is_precinct_major(headers, coordinator):
         normalize_text(p) for p in coordinator.library.get("location_patterns", LOCATION_KEYWORDS)
     )
     first_col = normalize_text(headers[0])
-    # Use NER as well for location detection
     ents = coordinator.extract_entities(headers[0])
     is_location = any(label in {"GPE", "LOC", "FAC"} for _, label in ents)
     return first_col in location_patterns or is_location
@@ -1006,13 +1069,11 @@ def is_flat_candidate_table(headers, coordinator=None):
         logger.error("[red][ERROR] No headers extracted from table. Skipping this table.[/red]")
         return False
     first_col = normalize_text(headers[0])
-    # Must be a candidate/person
     ents = coordinator.extract_entities(headers[0])
     is_candidate = (
         first_col in (normalize_text(k) for k in CANDIDATE_KEYWORDS)
         or any(label == "PERSON" for _, label in ents)
     )
-    # All columns must be candidate or total
     all_valid = all(
         any(
             kw in normalize_text(h)
@@ -1070,8 +1131,6 @@ def classify_ambiguous_tables(headers, data, coordinator):
     has_location = bool(col_types["location"])
     has_party = bool(col_types["party"])
 
-    # --- Data-driven heuristics ---
-    # 1. Check if first column values look like locations (GPE, LOC, FAC, or match LOCATION_KEYWORDS)
     first_col = headers[0] if headers else ""
     first_col_values = [row.get(first_col, "") for row in data if first_col]
     location_like_count = 0
@@ -1085,7 +1144,6 @@ def classify_ambiguous_tables(headers, data, coordinator):
             candidate_like_count += 1
         if any(label in {"ORG", "NORP"} for _, label in ents):
             party_like_count += 1
-        # Also check against canonical keywords
         norm_val = normalize_text(val)
         if norm_val in (normalize_text(k) for k in LOCATION_KEYWORDS):
             location_like_count += 1
@@ -1099,15 +1157,12 @@ def classify_ambiguous_tables(headers, data, coordinator):
     candidate_ratio = candidate_like_count / n_rows if n_rows else 0
     party_ratio = party_like_count / n_rows if n_rows else 0
 
-    # 2. If most first column values are locations, prefer precinct-major
     if location_ratio > 0.5:
         return "precinct-major"
-    # 3. If most first column values are candidates, prefer candidate-major
     if candidate_ratio > 0.5:
         if party_ratio > 0.3:
             return "candidate-major-with-party"
         return "candidate-major"
-    # 4. If both candidate and location columns detected by NER, prefer precinct-major
     if has_candidate and has_location:
         return "precinct-major"
     elif has_candidate and not has_location and has_party:
