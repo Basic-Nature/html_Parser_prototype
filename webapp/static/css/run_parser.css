@@ -337,6 +337,80 @@
     max-width: 100%;
     overflow: auto;
   }
+  /* New Folder button (neon gradient pill) */
+  .btn-new-folder {
+    display: inline-flex;
+    align-items: center;
+    gap: .45em;
+    padding: .45em .85em;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--main-blue), var(--neon2));
+    color: #fff;
+    border: 1px solid var(--neon-a28);
+    box-shadow: 0 2px 10px rgba(0,0,0,.25), 0 0 10px var(--neon-a12);
+    letter-spacing: .3px;
+  }
+  .btn-new-folder::before {
+    content: "＋";
+    font-weight: 900;
+  }
+  .btn-new-folder:hover {
+    background: linear-gradient(90deg, var(--neon2), var(--main-blue));
+    box-shadow: 0 0 12px var(--neon), 0 0 6px var(--neon2);
+    transform: translateY(-1px);
+  }
+
+  /* Icon-only variant for tight toolbars */
+  .btn-new-folder.icon-only {
+    width: 2.25em;
+    height: 2.25em;
+    padding: 0;
+    justify-content: center;
+    border-radius: 999px;
+    font-size: 1.1em;
+  }
+  .btn-new-folder.icon-only::before { content: none; } /* we'll supply '+' as text */
+  .browse-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-left: 12px;
+  }
+
+  /* Name prompt modal (compact) */
+  #nameModal { 
+    --bs-modal-color: #e6e8ea;
+    --bs-body-color: #e6e8ea;
+    --bs-modal-bg: transparent;
+  }
+  #downloadModal {
+    --bs-modal-color: #e6e8ea;
+    --bs-body-color: #e6e8ea;
+    --bs-modal-bg: transparent;
+  }
+  #nameModal .modal-content,
+  #downloadModal .modal-content {
+    color: var(--bs-modal-color);
+    background: linear-gradient(180deg, rgba(20 30 40 /.98), rgba(12 18 28 /.98));
+    border: 2px solid var(--neon);
+    border-radius: 14px;
+    box-shadow: 0 12px 32px rgba(0 0 0 /.45), 0 0 24px var(--blue-a28);
+  }
+  #nameModal .modal-title,
+  #downloadModal .modal-title { color: var(--neon); font-weight: 900; letter-spacing: .5px; }
+  #nameModal .form-label { color: #cfe6ff; }
+  .neon-input {
+    background: var(--metal-2);
+    color: #e6e8ea;
+    border: 2px solid var(--neon);
+    border-radius: 10px;
+    outline: none;
+    width: 100%;
+    padding: .6em .8em;
+    box-shadow: 0 0 0 2px var(--neon-a12) inset;
+  }
+  .neon-input:focus { box-shadow: 0 0 0 3px var(--neon-a28), 0 0 10px var(--neon-a12) inset; }
+  .form-hint { color: #9fb5c4; font-size: .85em; margin-top: .35em; }
+  .form-error { color: #ff9aa2; font-weight: 700; font-size: .88em; margin-top: .5em; }
   /* Help Icon & Tooltip */
   .help-icon {
     position: relative;
@@ -1253,7 +1327,7 @@
 
   /* Modal / Bootstrap overrides (scoped) */
   .modal { position: fixed; top:0; left:0; width:100vw; height: 100dvh; height: 100svh; height: 100vh; background:rgba(0,0,0,0.5); z-index:9999; display:none; }
-  .modal-open .modal { display:block; }
+  .modal.show { display:block; }
   .modal-dialog { margin: 5vh auto; }
   .download-group { margin-bottom: 1em; }
   .download-group-header { font-weight: 900; margin-bottom: 0.5em; color: var(--neon); }
@@ -1508,7 +1582,6 @@
       flex-wrap: wrap;
       gap: .3em;
     }
-    .file-actions { margin-top: .5em; flex-wrap: wrap; gap: .3em; }
     .prompt-section form { flex-direction: column; }
     .prompt-section input[type="text"] { width: 100%; }
     .prompt-section button { width: 100%; }

@@ -13,6 +13,7 @@ import orjson
 import urllib.parse
 import psycopg2
 from sqlalchemy import create_engine
+from .utils.logger_singleton import logger
 from azure.identity import DefaultAzureCredential
 try:
     import dotenv
@@ -274,31 +275,31 @@ def get_sqlalchemy_engine():
     Returns an SQLAlchemy engine that uses:
     - Password auth when POSTGRES_AUTH=password
     - Entra (AAD) token when POSTGRES_AUTH=aad
+    Falls back to password if AAD fails and creds exist.
     """
-
     if POSTGRES_AUTH == "aad":
-        # Acquire token from Managed Identity / Azure environment
         def _connect_with_aad():
-            
             cred = DefaultAzureCredential(exclude_interactive_browser_credential=True)
             token = cred.get_token("https://ossrdbms-aad.database.windows.net/.default").token
             return psycopg2.connect(
                 host=POSTGRES_HOST,
                 dbname=POSTGRES_DB,
-                user=POSTGRES_AAD_USER,  # must exist in DB and be mapped to your Entra principal
-                password=token,          # token goes in password field
+                user=POSTGRES_AAD_USER,
+                password=token,
                 port=int(POSTGRES_PORT or 5432),
                 sslmode="require",
             )
-
-        return create_engine(
-            "postgresql+psycopg2://",
-            creator=_connect_with_aad,
-            pool_pre_ping=True,
-            future=True,
-        )
-
-    # Fallback: classic user/password
+        try:
+            logger.info("DB auth mode=aad user=%s host=%s db=%s", POSTGRES_AAD_USER, POSTGRES_HOST, POSTGRES_DB)
+            return create_engine("postgresql+psycopg2://", creator=_connect_with_aad, pool_pre_ping=True, future=True)
+        except Exception as e:
+            logger.error("AAD DB auth failed: %s", e)
+            if POSTGRES_USER_RAW and POSTGRES_PASSWORD_RAW:
+                logger.warning("Falling back to password auth.")
+                return create_engine(POSTGRES_URL, pool_pre_ping=True, future=True)
+            raise
+    # Password
+    logger.info("DB auth mode=password user=%s host=%s db=%s", POSTGRES_USER_RAW, POSTGRES_HOST, POSTGRES_DB)
     return create_engine(POSTGRES_URL, pool_pre_ping=True, future=True)
 
 __all__ = [

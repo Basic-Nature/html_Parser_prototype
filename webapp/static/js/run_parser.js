@@ -167,12 +167,12 @@
       if (!modal) {
         modal = document.createElement('div');
         modal.id = 'downloadModal';
-        modal.className = 'modal';
+        modal.className = 'modal fade';
         modal.innerHTML = `
           <div class="modal-dialog modal-lg">
             <div class="modal-content">
               <div class="modal-header">
-                <h5 class="modal-title">Select</h5>
+                <h5 class="modal-title" id="downloadModalTitle">Select</h5>
                 <button type="button" class="btn-close" id="closeDownloadModal" aria-label="Close"></button>
               </div>
               <div class="modal-body">
@@ -197,10 +197,116 @@
         cancelBtn: document.getElementById('cancelDownloadModal')
       };
     },
-    open() { document.body.classList.add('modal-open'); },
-    close() { document.body.classList.remove('modal-open'); }
+    open() {
+      const { modal } = this.get();
+      const inst = window.bootstrap?.Modal.getOrCreateInstance(modal, { keyboard: true, backdrop: true });
+      inst.show();
+    },
+    close() {
+      const { modal } = this.get();
+      const inst = window.bootstrap?.Modal.getOrCreateInstance(modal);
+      inst?.hide();
+    }
   };
 
+  // Compact text-input modal for naming folders
+  const NameModal = {
+    get() {
+      let modal = document.getElementById('nameModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'nameModal';
+        modal.className = 'modal fade';
+        modal.innerHTML = `
+          <div class="modal-dialog modal-sm" role="dialog" aria-modal="true" aria-labelledby="nameModalTitle">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="nameModalTitle">New Folder</h5>
+                <button type="button" class="btn-close" id="nameModalClose" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <label for="nameModalInput" class="form-label">Folder name</label>
+                <input type="text" id="nameModalInput" class="neon-input" placeholder="e.g. 2024_results">
+                <div class="form-hint">Avoid / \\ : * ? " < > | and trailing dots.</div>
+                <div id="nameModalError" class="form-error hidden"></div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="nameModalCancel">Cancel</button>
+                <button type="button" class="btn btn-primary btn-gradient-neon" id="nameModalOk">Create</button>
+              </div>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+      }
+      return {
+        modal,
+        titleEl: modal.querySelector('.modal-title'),
+        inputEl: document.getElementById('nameModalInput'),
+        errEl: document.getElementById('nameModalError'),
+        closeBtn: document.getElementById('nameModalClose'),
+        cancelBtn: document.getElementById('nameModalCancel'),
+        okBtn: document.getElementById('nameModalOk')
+      };
+    },
+    open() {
+      const { modal } = this.get();
+      const inst = window.bootstrap?.Modal.getOrCreateInstance(modal, { keyboard: true, backdrop: true });
+      inst.show();
+    },
+    close() {
+      const { modal } = this.get();
+      const inst = window.bootstrap?.Modal.getOrCreateInstance(modal);
+      inst?.hide();
+    }
+  };
+
+  function sanitizeFolderName(s) {
+    if (typeof s !== 'string') return '';
+    // Strip invalid filesystem chars, trim spaces, disallow trailing dots
+    let v = s.replace(/[\\/:*?"<>|]/g, '').trim();
+    while (v.endsWith('.')) v = v.slice(0, -1);
+    return v.slice(0, 80);
+  }
+
+  function askFolderName({ title = 'New Folder', placeholder = 'e.g. reports_2024', defaultValue = '' } = {}, cb) {
+    const refs = NameModal.get();
+    refs.titleEl.textContent = title;
+    refs.inputEl.value = defaultValue || '';
+    refs.inputEl.placeholder = placeholder || '';
+    refs.errEl.classList.add('hidden');
+    refs.errEl.textContent = '';
+
+    const done = (val) => { NameModal.close(); cb && cb(val); cleanup(); };
+    const fail = (msg) => { refs.errEl.textContent = msg; refs.errEl.classList.remove('hidden'); };
+
+    function onConfirm() {
+      const raw = refs.inputEl.value;
+      const name = sanitizeFolderName(raw);
+      if (!name) return fail('Please enter a valid folder name.');
+      done(name);
+    }
+    function onKey(e) {
+      if (e.key === 'Enter') { e.preventDefault(); onConfirm(); }
+      if (e.key === 'Escape') { e.preventDefault(); done(null); }
+    }
+    function cleanup() {
+      refs.okBtn.removeEventListener('click', onConfirm);
+      refs.cancelBtn.removeEventListener('click', () => done(null));
+      refs.closeBtn.removeEventListener('click', () => done(null));
+      refs.inputEl.removeEventListener('keydown', onKey);
+      refs.modal.removeEventListener('hidden.bs.modal', onHidden);
+    }
+    function onCancel() { done(null); }
+    function onHidden() { cleanup(); }
+    refs.okBtn.addEventListener('click', onConfirm);
+    refs.cancelBtn.addEventListener('click', onCancel);
+    refs.closeBtn.addEventListener('click', onCancel);
+    refs.inputEl.addEventListener('keydown', onKey);
+    refs.modal.addEventListener('hidden.bs.modal', onHidden);
+
+    NameModal.open();
+    setTimeout(() => refs.inputEl.focus(), 0);
+  }
   // --- Download Selection Modal Logic ---
   function showDownloadModal(options, summary, callback) {
     const refs = Modal.get();
@@ -351,16 +457,16 @@
     // Minimal controls
     const upBtn = document.createElement('button');
     upBtn.type = 'button';
-    upBtn.className = 'btn btn-secondary btn-ghost';
+    upBtn.className = 'btn btn-secondary btn-ghost hidden';
     upBtn.title = 'Up one folder';
     upBtn.innerHTML = '⬆️';
-    upBtn.style.display = 'none'; // hidden at root
 
     const newBtn = document.createElement('button');
     newBtn.type = 'button';
-    newBtn.className = 'btn btn-secondary btn-ghost';
+    newBtn.className = 'btn btn-new-folder icon-only btn-gradient-neon';
     newBtn.title = 'New Folder';
-    newBtn.innerHTML = '＋';
+    newBtn.setAttribute('aria-label', 'New Folder');
+    newBtn.textContent = '+';
 
     const pathSpan = document.createElement('span');
     pathSpan.className = 'folder-count folder-path';
@@ -531,7 +637,7 @@
         allEntries = [];
       }
       pathSpan.textContent = `/${cwd || ''}`;
-      upBtn.style.display = cwd ? '' : 'none'; // show Up only when not root
+      upBtn.classList.toggle('hidden', !cwd);
       applyFilter();
     }
 
@@ -552,18 +658,19 @@
       await refresh();
     });
     newBtn.addEventListener('click', async () => {
-      const name = prompt('New folder name:');
-      if (!name) return;
-      try {
-        const r = await fetch('/api/fs/mkdir', {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json; charset=utf-8' },
-          body: JSON.stringify({ root, path: cwd, name })
-        });
-        const d = await r.json().catch(()=>({}));
-        if (!r.ok || !d.success) alert(d.error || 'Failed to create folder.');
-        await refresh();
-      } catch { alert('Network error.'); }
+      askFolderName({ title: `New ${ROOT_LABELS[root] || root} Folder`, placeholder: 'e.g. results_2024' }, async (name) => {
+        if (!name) return;
+        try {
+          const r = await fetch('/api/fs/mkdir', {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json; charset=utf-8' },
+            body: JSON.stringify({ root, path: cwd, name })
+          });
+          const d = await r.json().catch(()=>({}));
+          if (!r.ok || !d.success) alert(d.error || 'Failed to create folder.');
+          await refresh();
+        } catch { alert('Network error.'); }
+      });
     });
 
     // Expose refresh so collapsible open can refresh list
@@ -634,23 +741,27 @@
 
       const tools = document.createElement('div');
       tools.className = 'folder-actions-bar';
+
       const newBtn = document.createElement('button');
       newBtn.type = 'button';
-      newBtn.className = 'btn btn-sm btn-primary ms-2';
-      newBtn.textContent = 'New Folder';
+      newBtn.className = 'btn btn-sm btn-new-folder icon-only btn-gradient-neon ms-2';
+      newBtn.title = 'New Folder';
+      newBtn.setAttribute('aria-label', 'New Folder');
+      newBtn.textContent = '+';
       newBtn.onclick = async () => {
-        const name = prompt('New folder name:');
-        if (!name) return;
-        try {
-          const r = await fetch('/api/fs/mkdir', {
-            method: 'POST',
-            headers: { 'Content-Type':'application/json; charset=utf-8' },
-            body: JSON.stringify({ root, path: cwd, name })
-          });
-          const d = await r.json().catch(()=>({}));
-          if (!r.ok || !d.success) alert(d.error || 'Failed to create folder.');
-          await refresh();
-        } catch { alert('Network error.'); }
+        askFolderName({ title: `New ${ROOT_LABELS[root] || root} Folder`, placeholder: 'e.g. reports' }, async (name) => {
+          if (!name) return;
+          try {
+            const r = await fetch('/api/fs/mkdir', {
+              method: 'POST',
+              headers: { 'Content-Type':'application/json; charset=utf-8' },
+              body: JSON.stringify({ root, path: cwd, name })
+            });
+            const d = await r.json().catch(()=>({}));
+            if (!r.ok || !d.success) alert(d.error || 'Failed to create folder.');
+            await refresh();
+          } catch { alert('Network error.'); }
+        });
       };
       tools.appendChild(newBtn);
       optionsDiv.appendChild(tools);
@@ -838,9 +949,6 @@
         // Folder browser buttons (optional)
         const browseWrap = document.createElement('div');
         browseWrap.className = 'browse-toolbar';
-        browseWrap.style.display = 'flex';
-        browseWrap.style.gap = '8px';
-        browseWrap.style.marginLeft = '12px';
 
         const mkBtn = (txt, root) => {
           const b = document.createElement('button');

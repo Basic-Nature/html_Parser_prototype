@@ -15,7 +15,6 @@ import os
 import orjson
 from collections import Counter
 from typing import List, Tuple, Dict, Any, Set
-from ..config import PROJECT_ROOT
 from ..Context_Integration.Context_Library.constants import (
     KNOWN_STATE_TO_COUNTY_MAP
 )
@@ -23,13 +22,12 @@ from .logger_singleton import logger
 from .shared_logic import (
     safe_get, safe_lower
 )
-# Load spaCy model globally for efficiency, auto-download if missing
+# Load spaCy model globally for efficiency; no runtime download
 try:
     nlp = spacy.load("en_core_web_sm")
-except OSError:
-    import subprocess
-    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=True, cwd=PROJECT_ROOT)
-    nlp = spacy.load("en_core_web_sm")
+except OSError as e:
+    logger.error("spaCy model 'en_core_web_sm' is not installed. Rebuild the image with the model baked in.", exc_info=e)
+    raise
 
 # --- Core NLP Utilities ---
 

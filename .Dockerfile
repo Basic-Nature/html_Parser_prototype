@@ -7,24 +7,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl git \
     tesseract-ocr poppler-utils \
     libpq-dev build-essential gcc \
-    && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/*
 
 # App directory
 WORKDIR /app
 
+# Environment
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+ENV ENABLE_OCR=True
+# Store Playwright browsers in the image filesystem (also set in App Settings)
+ENV PLAYWRIGHT_BROWSERS_PATH=0
+
 # Install Python deps
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
+RUN python -m pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
+    # Ensure spaCy and the small English model are present even if not in requirements.txt
+    pip install --no-cache-dir "spacy>=3.8,<3.9" \
+      "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" && \
+    # Install Playwright and browsers
     pip install --no-cache-dir playwright && \
-    python -m playwright install --with-deps
+    python -m playwright install --with-deps && \
+    # Build-time verification that spaCy model is loadable
+    python - <<'PY'
+import spacy
+nlp = spacy.load("en_core_web_sm")
+print("spaCy model ready:", nlp.meta.get("version"))
+PY
 
 # Copy source
 COPY . .
-
-# Environment
-ENV PYTHONUNBUFFERED=1
-ENV ENABLE_OCR=True
 
 # App Service listens on WEBSITES_PORT (set via app settings). Expose for local runs.
 EXPOSE 8000
