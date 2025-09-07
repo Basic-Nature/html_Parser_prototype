@@ -184,8 +184,7 @@ TESSERACT_CMD = os.environ.get("TESSERACT_CMD") or None
 OCR_DEBUG_DIR = OUTPUT_DIR / "ocr_debug"
 OCR_DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-# Logging and cache options
-LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").split(",")[0].strip().upper()
+# Cache options
 CACHE_PROCESSED_URLS = os.environ.get("CACHE_PROCESSED", "true").lower() == "true"
 CACHE_LOCK = threading.Lock()
 CACHE_RESET = os.environ.get("CACHE_RESET", "false").lower() == "true"
@@ -290,16 +289,16 @@ def get_sqlalchemy_engine():
                 sslmode="require",
             )
         try:
-            logger.info("DB auth mode=aad user=%s host=%s db=%s", POSTGRES_AAD_USER, POSTGRES_HOST, POSTGRES_DB)
+            logger.info(f"DB auth mode=aad user={POSTGRES_AAD_USER} host={POSTGRES_HOST} db={POSTGRES_DB}")
             return create_engine("postgresql+psycopg2://", creator=_connect_with_aad, pool_pre_ping=True, future=True)
         except Exception as e:
-            logger.error("AAD DB auth failed: %s", e)
+            logger.error(f"AAD DB auth failed: {e}")
             if POSTGRES_USER_RAW and POSTGRES_PASSWORD_RAW:
                 logger.warning("Falling back to password auth.")
                 return create_engine(POSTGRES_URL, pool_pre_ping=True, future=True)
             raise
     # Password
-    logger.info("DB auth mode=password user=%s host=%s db=%s", POSTGRES_USER_RAW, POSTGRES_HOST, POSTGRES_DB)
+    logger.info(f"DB auth mode=password user={POSTGRES_USER_RAW} host={POSTGRES_HOST} db={POSTGRES_DB}")
     return create_engine(POSTGRES_URL, pool_pre_ping=True, future=True)
 
 __all__ = [
@@ -326,7 +325,7 @@ __all__ = [
     "DRY_RUN","NO_COORDINATOR","NO_ORGANIZER","BATCH_MODE","FAST_MODE",
     "FLUSH_CACHE","CACHE_EXPIRE_DAYS","EXPORT_AUDIT_LOG","REST_API","SELF_HEAL",
     "MAX_RETRIES","COOLDOWN","DB_PATH","ENABLE_SEGMENT_LABEL_PROMPT",
-    "DEFAULT_CAPTCHA_TIMEOUT","LOG_LEVEL","CACHE_PROCESSED_URLS",
+    "DEFAULT_CAPTCHA_TIMEOUT", "CACHE_PROCESSED_URLS",
     "CACHE_LOCK","CACHE_RESET","HEADLESS_DEFAULT","TIMEOUT_SEC",
     "INCLUDE_TIMESTAMP_IN_FILENAME","ENABLE_PARALLEL","ENABLE_AI_ANALYSIS",
     "ENABLE_REALTIME_STREAM","FORCE_PARSE_INPUT_FILE","FORCE_PARSE_FORMAT",
@@ -395,7 +394,6 @@ __all__ = [
 # - ENABLE_SEGMENT_LABEL_PROMPT
 # - CAPTCHA_TIMEOUT
 # - ENABLE_OCR
-# - LOG_LEVEL
 # - CACHE_PROCESSED
 # - CACHE_RESET
 # - HEADLESS
