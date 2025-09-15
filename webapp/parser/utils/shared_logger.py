@@ -482,15 +482,23 @@ class SharedLogger(logging.Logger):
                     update_progress(i + 1)
         """
         if self.mode == "webapp" and self.socketio_emit_func:
+            desc_clean = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", description or "").strip()
             last_emit = 0
-
             def update_progress(completed: int, extra: Optional[dict] = None) -> None:
+                nonlocal last_emit
+                # clamp to sane bounds
+                if completed < 0:
+                    completed = 0
+                if total and completed > total:
+                    completed = total
                 now = time.time()
-                if now - update_progress.last_emit >= emit_interval or completed == total:
+                if now - last_emit >= emit_interval or completed == total:
                     percent = (completed / total) * 100 if total else 0
                     payload = {
+                        "level": "INFO",
                         "type": "progress",
-                        "description": description,
+                        "message": f"{desc_clean} {completed}/{total} ({percent:.2f}%)",
+                        "description": desc_clean,
                         "completed": completed,
                         "total": total,
                         "percent": percent,
@@ -502,8 +510,7 @@ class SharedLogger(logging.Logger):
                     self.socketio_emit_func(msg)
                     if progress_callback:
                         progress_callback(payload)
-                    update_progress.last_emit = now
-            update_progress.last_emit = 0
+                    last_emit = now
             try:
                 yield update_progress
             finally:
@@ -520,9 +527,19 @@ class SharedLogger(logging.Logger):
                 expand=True,
                 transient=True
             ) as progress:
-                task_id = progress.add_task(description, total=total)
+                # Sanitize rich markup in description for CLI too
+                desc_clean = re.sub(r"\[/?[a-zA-Z0-9_ ]+\]", "", description or "").strip()
+                task_id = progress.add_task(desc_clean or "Processing", total=total)
                 def update_progress(completed: int, extra: Optional[dict] = None) -> None:
-                    progress.update(task_id, completed=completed)
+                    # Clamp and update both completion and (optionally) description
+                    if completed < 0: completed = 0
+                    if total and completed > total: completed = total
+                    kwargs = {"completed": completed}
+                    if extra and isinstance(extra, dict):
+                        new_desc = extra.get("message") or extra.get("description")
+                        if isinstance(new_desc, str) and new_desc.strip():
+                            kwargs["description"] = new_desc.strip()
+                    progress.update(task_id, **kwargs)
                 yield update_progress
 
     # --- Log File Discovery and Safe JSONL Reading ---

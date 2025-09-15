@@ -20,7 +20,40 @@ from ...utils.table_core import harmonize_headers_and_data
 from ...utils.contest_selector import select_contest
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.output_utils import finalize_election_output
+from ...utils.shared_logic import safe_slug
 
+# Add robust regex builder for contest keywords
+def _build_contest_regex(keywords) -> re.Pattern:
+    """
+    Build a tolerant regex that matches keyword phrases even with dots, hyphens, or extra separators.
+    - Treat '.' as optional (e.g., 'u.s.' ~ 'us')
+    - Treat '-' or space as interchangeable
+    - Allow small separators between tokens
+    """
+    parts = []
+    for phrase in (keywords or []):
+        if not isinstance(phrase, str) or not phrase.strip():
+            continue
+        # token-wise transform
+        toks = re.split(r"\s+", phrase.strip().lower())
+        xtoks = []
+        for t in toks:
+            t = re.escape(t)
+            t = t.replace(r"\.", r"\.?")     # periods optional (U.S. -> US)
+            t = t.replace(r"\-", r"[-\s]?")  # hyphen/space optional
+            xtoks.append(t)
+        # allow flexible separators between tokens
+        pat = r"(?:[\s\-_\/]*?)".join(xtoks)
+        # wordish boundaries (letters/digits)
+        pat = rf"(?<![A-Za-z0-9]){pat}(?![A-Za-z0-9])"
+        parts.append(pat)
+    if not parts:
+        # fallback that never matches
+        return re.compile(r"(?!x)x", re.I)
+    return re.compile("|".join(parts), re.I)
+
+# Precompile regex once
+_CONTEST_RX = _build_contest_regex(CONTEST_KEYWORDS)
 
 def find_key_by_keywords(obj, keywords):
     """Find the first key in obj that matches any keyword (case-insensitive, partial match allowed)."""
@@ -31,6 +64,10 @@ def find_key_by_keywords(obj, keywords):
             key_s = key.lower()
         except Exception:
             continue
+        # First, regex hit for contest keywords if provided
+        if _CONTEST_RX.search(key_s):
+            return key
+        # Fallback to simple substring for provided keywords
         for kw in keywords:
             if isinstance(kw, str) and kw and kw.lower() in key_s:
                 return key
@@ -67,16 +104,31 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
     contests = set()
     if _is_dict_list(ballot_items):
         exemplar = ballot_items[0]
-        contest_name_key = find_key_by_keywords(exemplar, set(CONTEST_KEYWORDS) | {"name", "title", "contest"})
+        # prefer name/title keys, but let contest regex help when schema uses office-like keys
+        contest_name_key = find_key_by_keywords(
+            exemplar,
+            set(CONTEST_KEYWORDS) | {"name", "title", "contest"}
+        )
         for item in ballot_items:
-            name = (item.get(contest_name_key, "") or "").strip()
+            # try chosen key; otherwise scan likely name-like fields with regex
+            name = (item.get(contest_name_key, "") or "").strip() if contest_name_key else ""
+            if not name:
+                # scan first stringy fields to find one containing a contest keyword
+                for k, v in item.items():
+                    if isinstance(v, str) and v.strip() and _CONTEST_RX.search(v.lower()):
+                        name = v.strip()
+                        break
             if name:
                 contests.add(name)
     else:
         # If items are strings, assume contest titles directly
         for item in ballot_items:
             if isinstance(item, str) and item.strip():
-                contests.add(item.strip())
+                s = item.strip()
+                if _CONTEST_RX.search(s.lower()):
+                    contests.add(s)
+                else:
+                    contests.add(s)
 
     if not contests:
         logger.error({
@@ -226,14 +278,16 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
     m = re.search(r"(19|20)\d{2}", fname)
     year = int(m.group(0)) if m else None
 
-    domain = os.path.basename(json_path)
+    domain = safe_slug(os.path.basename(json_path))
     context = {
         "contest": target_contest,
         "state": state,
         "county": county,
         "year": year,
         "session_id": session_id,
-        "handler": "json_handler"
+        "handler": "json_handler",
+        "contest_slug": safe_slug(target_contest, 80),
+        "source_slug": domain
     }
     headers_final, data_final, _entity_info = build_table_noninteractive(
         domain=domain,

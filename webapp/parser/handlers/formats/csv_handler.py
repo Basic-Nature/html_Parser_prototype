@@ -18,7 +18,27 @@ from ...utils.table_core import harmonize_headers_and_data
 from ...utils.contest_selector import select_contest
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.output_utils import finalize_election_output
+from ...utils.shared_logic import safe_slug
 import re
+
+def _build_contest_regex(keywords) -> re.Pattern:
+    parts = []
+    for phrase in (keywords or []):
+        if not isinstance(phrase, str) or not phrase.strip():
+            continue
+        toks = re.split(r"\s+", phrase.strip().lower())
+        xtoks = []
+        for t in toks:
+            t = re.escape(t)
+            t = t.replace(r"\.", r"\.?")
+            t = t.replace(r"\-", r"[-\s]?")
+            xtoks.append(t)
+        pat = r"(?:[\s\-_\/]*?)".join(xtoks)
+        pat = rf"(?<![A-Za-z0-9]){pat}(?![A-Za-z0-9])"
+        parts.append(pat)
+    return re.compile("|".join(parts), re.I) if parts else re.compile(r"(?!x)x", re.I)
+
+_CONTEST_RX = _build_contest_regex(CONTEST_KEYWORDS)
 
 def parse_csv_election_results(csv_path, session_id=None, coordinator=None):
     data = []
@@ -35,9 +55,11 @@ def parse_csv_election_results(csv_path, session_id=None, coordinator=None):
         reader = csv.DictReader(f)
         headers = [h.strip() for h in (reader.fieldnames or [])]
 
-        # Dynamic contest column detection
-        possible_contest_cols = [col for col in headers if any(k in col.lower() for k in CONTEST_KEYWORDS)]
+        # Dynamic contest column detection (regex-tolerant)
+        possible_contest_cols = [col for col in headers if _CONTEST_RX.search((col or "").lower())]
         if possible_contest_cols:
+            # prefer the most specific (longest) column name
+            possible_contest_cols.sort(key=lambda c: len(c or ""), reverse=True)
             contest_column = possible_contest_cols[0]
 
         for row in reader:
@@ -98,14 +120,16 @@ def parse_csv_election_results(csv_path, session_id=None, coordinator=None):
     # Build table via non-interactive builder
     m = re.search(r"(19|20)\d{2}", fname)
     year = int(m.group(0)) if m else None
-    domain = os.path.basename(csv_path)
+    domain = safe_slug(os.path.basename(csv_path))
     context = {
         "contest": contest,
         "state": state,
         "county": county,
         "year": year,
         "session_id": session_id,
-        "handler": "csv_handler"
+        "handler": "csv_handler",
+        # include slugs in context so downstream naming is stable
+        "source_slug": domain
     }
     headers_final, data_final, _entity_info = build_table_noninteractive(
         domain=domain,

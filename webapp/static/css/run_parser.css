@@ -389,14 +389,95 @@
   }
   #nameModal .modal-content,
   #downloadModal .modal-content {
-    color: var(--bs-modal-color);
+    /* keep themed dark background; ensure text contrast */
+    color: #e6e8ea;
     background: linear-gradient(180deg, rgba(20 30 40 /.98), rgba(12 18 28 /.98));
     border: 2px solid var(--neon);
     border-radius: 14px;
     box-shadow: 0 12px 32px rgba(0 0 0 /.45), 0 0 24px var(--blue-a28);
   }
+  #downloadModal .modal-header,
+  #downloadModal .modal-footer {
+    border-color: var(--neon-a28);
+  }
   #nameModal .modal-title,
-  #downloadModal .modal-title { color: var(--neon); font-weight: 900; letter-spacing: .5px; }
+  #downloadModal .modal-title {
+    color: var(--neon);
+    font-weight: 900;
+    letter-spacing: .5px;
+  }
+  #downloadModal #downloadSearch {
+    background: var(--metal-2);
+    color: #e6e8ea;
+    border: 2px solid var(--neon);
+    border-radius: 10px;
+    outline: none;
+    box-shadow: 0 0 0 2px var(--neon-a12) inset;
+  }
+  #downloadModal #downloadSearch::placeholder { color: #9fb5c4; }
+  #downloadModal #downloadSearch:focus {
+    border-color: var(--neon);
+    box-shadow: 0 0 0 3px var(--neon-a28), 0 0 10px var(--neon-a12) inset;
+  }
+
+  #downloadModal #downloadSummary {
+    color: var(--neon);
+    font-weight: 800;
+  }
+
+  #downloadModal .download-group-header {
+    font-weight: 900;
+    margin-bottom: .5em;
+    color: var(--neon);
+  }
+
+  /* Download options: readable text on dark, strong focus/hover */
+  #downloadModal .download-option {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .6rem .8rem;
+    border-radius: 10px;
+    background: rgba(12 20 28 /.55);
+    color: #e6e8ea;
+    border: 1px solid rgba(0 255 231 /.15);
+    transition: background var(--transition-fast), border var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  #downloadModal .download-option:hover,
+  #downloadModal .download-option:focus {
+    background: rgba(20 32 44 /.9);
+    border-color: rgba(0 255 231 /.35);
+    box-shadow: 0 0 10px rgba(0,255,231,.15);
+    outline: none;
+  }
+
+  #downloadModal .download-filename {
+    font-weight: 800;
+    color: #eaf9ff;
+  }
+  #downloadModal .download-type {
+    color: #9fb5c4;
+    font-weight: 600;
+  }
+
+  /* Badge for format (CSV/JSON/etc.) */
+  #downloadModal .download-option .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.2ch;
+    padding: .15rem .45rem;
+    border-radius: 999px;
+    font-size: .75rem;
+    font-weight: 900;
+    letter-spacing: .4px;
+    background: var(--neon);
+    color: #111;
+    box-shadow: 0 0 0 2px var(--neon-a12);
+  }
+
+  /* Avoid aria-hidden focus outline warnings on close */
+  #downloadModal[aria-hidden="true"] *:focus { outline: none !important; }
   #nameModal .form-label { color: #cfe6ff; }
   .neon-input {
     background: var(--metal-2);

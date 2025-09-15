@@ -42,6 +42,7 @@ import orjson
 from ...utils.contest_selector import select_contest
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.output_utils import finalize_election_output
+from ...utils.shared_logic import safe_slug
 try:
     import fitz  # PyMuPDF
 except ImportError:
@@ -115,10 +116,30 @@ def _detect_poppler_path() -> str | None:
             return None
         return None
 
+# Build tolerant contest regex (same logic as JSON handler)
+def _build_contest_regex(keywords) -> re.Pattern:
+    parts = []
+    for phrase in (keywords or []):
+        if not isinstance(phrase, str) or not phrase.strip():
+            continue
+        toks = re.split(r"\s+", phrase.strip().lower())
+        xtoks = []
+        for t in toks:
+            t = re.escape(t)
+            t = t.replace(r"\.", r"\.?")
+            t = t.replace(r"\-", r"[-\s]?")
+            xtoks.append(t)
+        pat = r"(?:[\s\-_\/]*?)".join(xtoks)
+        pat = rf"(?<![A-Za-z0-9]){pat}(?![A-Za-z0-9])"
+        parts.append(pat)
+    return re.compile("|".join(parts), re.I) if parts else re.compile(r"(?!x)x", re.I)
+
+_CONTEST_RX = _build_contest_regex(CONTEST_KEYWORDS)
+
 def _detect_contest_titles_from_text(lines):
     """
     Heuristic detection of contest titles from plain PDF text using constants.
-    - Keep lines containing contest/office keywords
+    - Keep lines containing contest/office keywords (regex tolerant)
     - Drop known skip phrases and very short/noisy lines
     """
     titles = []
@@ -130,7 +151,8 @@ def _detect_contest_titles_from_text(lines):
             continue
         if any(s in low for s in skip_set):
             continue
-        if any(kw in low for kw in CONTEST_KEYWORDS):
+        # Use robust regex to detect contest references
+        if _CONTEST_RX.search(low):
             titles.append(raw)
     # Deduplicate while preserving order
     seen = set()
@@ -208,22 +230,6 @@ def _sanitize_extracted_text(text: str) -> str:
             neat.append(l)
             last = l
     return "\n".join(neat)
-
-def _safe_slug(text: str, max_len: int = 100) -> str:
-    """
-    Make a filesystem-friendly slug:
-    - Keep alnum, space, underscore, hyphen; replace others with '_'
-    - Collapse repeated underscores/spaces; convert spaces to underscores
-    - Trim length to max_len
-    """
-    if not isinstance(text, str):
-        return ""
-    stem = os.path.splitext(text)[0]
-    s = "".join(c if c.isalnum() or c in " _-" else "_" for c in stem)
-    s = re.sub(r"[ _]+", " ", s).strip()
-    s = s.replace(" ", "_")
-    s = re.sub(r"_+", "_", s)
-    return s[:max_len] or "untitled"
 
 def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200):
     """
@@ -519,10 +525,11 @@ def _save_ocr_debug_images(pdf_path, session_id=None, dpi=300, limit=2):
     try:
         imgs = _pdf_to_images(pdf_path, session_id=session_id, dpi=dpi)[:limit]
         saved = []
+        base = safe_slug(os.path.basename(pdf_path))
         for idx, img in enumerate(imgs):
             out = os.path.join(
                 OCR_DEBUG_DIR,
-                f"{os.path.splitext(os.path.basename(pdf_path))[0]}_p{idx+1}_{dpi}dpi.png"
+                f"{base}_p{idx+1}_{dpi}dpi.png"
             )
             try:
                 img.save(out)
@@ -699,7 +706,8 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             selected_contest_title = os.path.basename(pdf_path).replace(".pdf", "")
         else:
             selected_contest_title = (selected[0] or {}).get("title") or detected_titles[0]
-
+    contest_slug = safe_slug(selected_contest_title, 80)
+    
     # Update metadata using derived context
     metadata.update({
         "source_file": os.path.basename(pdf_path),
@@ -840,7 +848,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                     "county": county,
                 }
             )
-            domain = os.path.basename(pdf_path)
+            domain = safe_slug(os.path.basename(pdf_path))
             context = {
                 "contest": selected_contest_title,
                 "state": state,
@@ -850,6 +858,8 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 "handler": "pdf_handler",
                 "ocr_confidence_avg": metadata.get("ocr_confidence_avg"),
                 "ocr_used": metadata.get("ocr_used"),
+                "contest_slug": contest_slug,
+                "source_slug": domain
             }
             headers_final, data_final, _entity_info = build_table_noninteractive(
                 domain=domain,

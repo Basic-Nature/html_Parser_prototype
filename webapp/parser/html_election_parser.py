@@ -16,7 +16,7 @@ from playwright.sync_api import sync_playwright, Page
 from sqlalchemy.exc import OperationalError
 from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler, preload_handler_map
-from .utils.browser_utils import sync_browser_pipeline, sync_safe_browser_close
+from .utils.browser_utils import sync_browser_pipeline, sync_safe_browser_close, autoscroll_until_stable
 from .utils.misc_utils import load_processed_urls
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.format_router import prompt_and_handle_download
@@ -171,51 +171,57 @@ def prompt_url_selection(
     if cancel_flag is not None and hasattr(cancel_flag, "is_set") and callable(cancel_flag.is_set):
         if cancel_flag.is_set():
             msg = "Selection cancelled before prompt."
-            payload = {
-                "level": "INFO",
-                "type": "cancel",
-                "message": msg,
-                "session_id": session_id
-            }
+            payload = {"level": "INFO","type": "cancel","message": msg,"session_id": session_id}
             logger.info(payload)
             return []
 
-    prompt_text = (
-        "\nEnter indices (comma-separated), 'all', a full/partial URL, "
-        "'state:<name>', or 'county:<name>' to filter. Leave empty to cancel: "
-    )
-    user_input = prompt.prompt_input(
-        "\nEnter indices (comma-separated), 'all', a full/partial URL, "
-        "'state:<name>', or 'county:<name>' to filter. Leave empty to cancel: ",
-        session_id=session_id,
-        context={"urls": urls, "processed": processed}
-    )
-    print("TRACE: prompt_url_selection user_input:", user_input)
+    # Changed prompt text + strip early
+    try:
+        user_input_stripped = prompt.prompt_input(
+            "[PROMPT] Enter URL indices (e.g., 1,3-5) or filter (state:/county: or text): ",
+            session_id=session_id,
+            context={"urls": urls, "processed": processed}
+        ).strip()
+    except Exception:
+        return []
+
     # Check cancel_flag after prompt
     if cancel_flag is not None and hasattr(cancel_flag, "is_set") and callable(cancel_flag.is_set):
         if cancel_flag.is_set():
             msg = "Selection cancelled after prompt."
-            payload = {
-                "level": "INFO",
-                "type": "cancel",
-                "message": msg,
-                "session_id": session_id
-            }
+            payload = {"level": "INFO","type": "cancel","message": msg,"session_id": session_id}
             logger.info(payload)
             return []
 
-    if not isinstance(user_input, str):
+    if not isinstance(user_input_stripped, str):
         return []
-    user_input_stripped = user_input.strip()
     if not user_input_stripped:
         return []
     if user_input_stripped.lower() == 'all':
         return urls
 
+    # Prioritize pure numeric indices/ranges to avoid "Multiple matches" noise
+    # Matches "2", "1,3,5", "1-3", "1,3-5,7"
+    if re.fullmatch(r"\d+(?:\s*(?:,\s*\d+|\-\s*\d+))*", user_input_stripped):
+        indices = []
+        for part in user_input_stripped.split(','):
+            part = part.strip()
+            if not part:
+                continue
+            if '-' in part:
+                s, e = [p.strip() for p in part.split('-', 1)]
+                if s.isdigit() and e.isdigit():
+                    indices.extend(range(int(s)-1, int(e)))
+            elif part.isdigit():
+                idx = int(part) - 1
+                if 0 <= idx < len(urls):
+                    indices.append(idx)
+        indices = sorted(set(i for i in indices if 0 <= i < len(urls)))
+        return [urls[i] for i in indices]
+
     # --- State/county search (regex, fuzzy, or substring) ---
     def search_urls(query, prefix):
         q = query.strip().lower()
-        # Try regex match first
         try:
             regex = re.compile(q, re.I)
             matches = [u for u in urls if regex.search(u)]
@@ -235,6 +241,7 @@ def prompt_url_selection(
                 "matches": matches[:max_display] + (["... (truncated)"] if len(matches) > max_display else [])
             })
         return matches
+
     if user_input_stripped.lower().startswith("county:"):
         county_query = user_input_stripped[7:]
         matches = search_urls(county_query, "county")
@@ -266,7 +273,7 @@ def prompt_url_selection(
         })
         return partial_matches
 
-    # --- Otherwise, try indices/ranges ---
+    # Fallback indices/ranges (kept for mixed inputs)
     indices = []
     for part in user_input_stripped.split(','):
         part = part.strip()
@@ -564,6 +571,17 @@ def orchestrate_url(
                 sync_safe_browser_close(browser, session_id)
                 return
 
+            try:
+                autoscroll_until_stable(
+                    page,
+                    wait_for_selector='table, a[href$=".csv"], a[href$=".json"], [role="table"]',
+                    max_total_time=20000,
+                    delay_ms=250
+                )
+            except Exception:
+                # Soft-fail: continue; downstream will warn if nothing found
+                pass
+
             result, handled = prompt_and_handle_download(
                 page, target_url, rejected_downloads, session_id=session_id
             )
@@ -753,13 +771,26 @@ def orchestrate_url(
 
     except Exception as e:
         msg = f"Exception while processing {target_url}: {e}"
-        payload = {
-            "level": "ERROR",
-            "type": "exception",
-            "message": msg,
-            "session_id": session_id
-        }
+        payload = {"level": "ERROR","type": "exception","message": msg,"session_id": session_id}
         logger.error(payload)
+        try:
+            choice = prompt.prompt_input(
+                "[PROMPT] Error encountered. Retry (r) / Skip (s) ? ",
+                validator=lambda x: str(x).lower().strip() in ("r","s"),
+                session_id=session_id
+            ).strip().lower()
+        except Exception:
+            choice = "s"
+        if choice == "r":
+            # simple one-shot retry
+            return orchestrate_url(
+                target_url,
+                processed_info,
+                session_id=session_id,
+                cancel_flag=cancel_flag,
+                output_bypass=output_bypass,
+                **kwargs
+            )
         mark_url_processed(target_url, status="error", session_id=session_id)
     finally:
         sync_safe_browser_close(browser, session_id)

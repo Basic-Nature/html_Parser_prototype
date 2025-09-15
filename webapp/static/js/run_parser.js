@@ -168,6 +168,9 @@
         modal = document.createElement('div');
         modal.id = 'downloadModal';
         modal.className = 'modal fade';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'downloadModalTitle');
         modal.innerHTML = `
           <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -314,7 +317,15 @@
     const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
     if (titleEl) titleEl.textContent = 'Select Download';
     let filtered = options.slice();
-
+    let submitted = false;
+    function submitOnce(val) {
+      if (submitted) return;
+      submitted = true;
+      // Accessibility: move focus out of modal before hiding to avoid aria-hidden warnings
+      try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch {}
+      Modal.close();
+      callback(val);
+    }
     function renderList(filter = '') {
       const q = filter.trim().toLowerCase();
       filtered = options.filter(opt =>
@@ -340,8 +351,8 @@
           item.innerHTML = `<span class="badge bg-primary me-2">${opt.format.toUpperCase()}</span>
             <span class="download-filename">${highlight(opt.filename, q)}</span>
             <span class="download-type ms-2">${highlight(opt.contest, q)}</span>`;
-          item.onclick = () => { hide(); callback(opt.index); };
-          item.onkeydown = e => { if (e.key === 'Enter') { hide(); callback(opt.index); } };
+          item.onclick = () => { submitOnce(opt.index); };
+          item.onkeydown = e => { if (e.key === 'Enter') { submitOnce(opt.index); } };
           groupDiv.appendChild(item);
         });
         optionsDiv.appendChild(groupDiv);
@@ -356,7 +367,7 @@
     summaryDiv.textContent = summary || '';
     renderList();
     searchEl.oninput = e => renderList(e.target.value);
-    closeBtn.onclick = cancelBtn.onclick = () => { hide(); callback(null); };
+    closeBtn.onclick = cancelBtn.onclick = hide;
     Modal.open();
     searchEl.focus();
   }
@@ -1989,6 +2000,16 @@
         return;
       }
 
+      // Normalize message for display (fallback to context/description if message is blank)
+      const msg = (d && typeof d.message === 'string' && d.message.trim())
+        ? d.message
+        : (d && typeof d.context === 'string' && d.context.trim())
+          ? d.context
+          : (d && typeof d.description === 'string' && d.description.trim())
+            ? d.description
+            : '';
+      if (msg && d) d.message = msg;
+      
       // Detect and render backend contest menus (“Available contests:”)
       if (d && typeof d.message === 'string' && /available contests:/i.test(d.message)) {
         const options = parseIndexedMenu(d.message);
@@ -2007,19 +2028,41 @@
       // Prompt handling
       if (d && d.type === 'prompt' && d.session_id === activeSessionId) {
         const ctx = d.context || {};
-        if (Array.isArray(ctx.options) && ctx.confirmed) {
-          const opts = ctx.options.map((opt, i) => ({
+        // Prefer confirmed (shape: [[fmt, href, group, filename], ...])
+        if (Array.isArray(ctx.confirmed) && ctx.confirmed.length) {
+          const opts = ctx.confirmed.map((arr, i) => ({
             index: i,
-            format: opt.format || '',
-            filename: opt.filename || '',
-            contest: opt.contest || ''
+            format: String(arr?.[0] || ''),
+            filename: String(arr?.[3] || ''),
+            contest: String(arr?.[2] || 'Other'),
+            href: String(arr?.[1] || '')
           }));
+          // Hide inline prompt while modal is used
+          if (el.promptInput && el.promptInput.parentElement) el.promptInput.parentElement.classList.add('hidden');
           showDownloadModal(opts, ctx.summary || '', function(selectedIdx) {
-            if (selectedIdx == null) {
-              socket.emit('parser_prompt', { session_id: activeSessionId, value: 'n' });
-            } else {
-              socket.emit('parser_prompt', { session_id: activeSessionId, value: String(selectedIdx) });
-            }
+            socket.emit('parser_prompt', {
+              session_id: activeSessionId,
+              value: selectedIdx == null ? 'n' : String(selectedIdx)
+            });
+          });
+        } else if (Array.isArray(ctx.options) && ctx.options.length) {
+          // Fallback: ctx.options as display strings (parse best-effort)
+          const opts = ctx.options.map((opt, i) => {
+            const s = String(opt || '');
+            const m = /^(\w+)\s+\(([^)]+)\)\s+\[([^\]]*)\]/.exec(s) || [];
+            return {
+              index: i,
+              format: m[1] || s.split(' ')[0] || '',
+              filename: m[2] || s,
+              contest: m[3] || ''
+            };
+          });
+          if (el.promptInput && el.promptInput.parentElement) el.promptInput.parentElement.classList.add('hidden');
+          showDownloadModal(opts, ctx.summary || '', function(selectedIdx) {
+            socket.emit('parser_prompt', {
+              session_id: activeSessionId,
+              value: selectedIdx == null ? 'n' : String(selectedIdx)
+            });
           });
         } else {
           showPromptModal(d.message, function(userInput) {

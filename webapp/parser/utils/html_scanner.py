@@ -902,6 +902,7 @@ def _extract_segments_by_label(
     custom_validator=None,
     diagnostics: bool = False,
     logger=logger,
+    **kwargs
 ) -> List[Dict[str, Any]]:
     """
     Advanced extraction and cleaning of segments by label.

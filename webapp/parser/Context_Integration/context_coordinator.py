@@ -33,6 +33,7 @@ from ..utils.shared_logic import (
 from .Context_Library.constants import (
     STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, PARTY_KEYWORDS,
     ELECTION_TYPES, STATE_ABBR, LOCATION_KEYWORDS, TABLE_TAGS, PANEL_TAGS, STATE_TAGS, BUTTON_TAGS,
+    BALLOT_TYPES
 )
 from .librarian import (    
     atomic_write_json 
@@ -210,6 +211,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
         context = {}
     raw_county = safe_get(context, "county", None)
     raw_state = safe_get(context, "state", None)
+    session_id = safe_get(context, "session_id", None)
     county = normalize_county_name(raw_county) if raw_county else None
     state = normalize_state_name(raw_state) if raw_state else None
 
@@ -217,6 +219,13 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
     if county:
         if county in all_counties:
             detection_log.append(f"County found in context: {county} (validated as county)")
+            # Webapp-friendly structured log with a message (avoid empty message field)
+            logger.info({
+                "level": "INFO",
+                "type": "router",
+                "message": f"[Context Detection] County found in context: {county} (validated as county)",
+                "session_id": session_id
+            })
         elif county in all_precincts:
             # Map up to parent county
             parent_county = None
@@ -228,17 +237,41 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                     break
             if parent_county:
                 detection_log.append(f"County '{county}' found in context, but is a precinct. Mapped to parent county '{parent_county}'.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] County '{county}' mapped to parent '{parent_county}'",
+                    "session_id": session_id
+                })               
                 county = parent_county
             else:
                 detection_log.append(f"County '{county}' found in context, but is a precinct with no parent mapping.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] County '{county}' is a precinct with no parent mapping",
+                    "session_id": session_id
+                })
         else:
             detection_log.append(f"County '{county}' found in context, but not recognized as county or precinct.")
+            logger.info({
+                "level": "INFO",
+                "type": "router",
+                "message": f"[Context Detection] County '{county}' not recognized as county or precinct",
+                "session_id": session_id
+            })
             county = None
 
     # Validate state: is it a real state?
     if state:
         if state in known_states:
             detection_log.append(f"State found in context: {state} (validated as state)")
+            logger.info({
+                "level": "INFO",
+                "type": "router",
+                "message": f"[Context Detection] State found in context: {state} (validated as state)",
+                "session_id": session_id
+            })
         else:
             # Try to map via state_module_map (handle abbreviations and fuzzy)
             mapped_state = state_module_map.get(state)
@@ -248,17 +281,41 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                 mapped_state = STATE_ABBR.get(abbr)
                 if mapped_state:
                     detection_log.append(f"State '{state}' mapped from abbreviation to '{mapped_state}'.")
+                    logger.info({
+                        "level": "INFO",
+                        "type": "router",
+                        "message": f"[Context Detection] State '{state}' mapped from abbreviation to '{mapped_state}'.",
+                        "session_id": session_id
+                    })
             if mapped_state:
                 state = normalize_state_name(mapped_state)
                 detection_log.append(f"State '{state}' found in context, mapped via state_module_map/abbr.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] State '{state}' mapped via state_module_map/abbr.",
+                    "session_id": session_id
+                })
             else:
                 # Fuzzy match as last resort
                 match = difflib.get_close_matches(state, known_states, n=1, cutoff=0.8)
                 if match:
                     state = safe_get_first(match, "state_match", None, logger)
                     detection_log.append(f"State '{state}' fuzzy-matched from context.")
+                    logger.info({
+                        "level": "INFO",
+                        "type": "router",
+                        "message": f"[Context Detection] State '{state}' fuzzy-matched from context.",
+                        "session_id": session_id
+                    })
                 else:
                     detection_log.append(f"State '{state}' found in context, but not recognized.")
+                    logger.info({
+                        "level": "INFO",
+                        "type": "router",
+                        "message": f"[Context Detection] State '{state}' found in context, but not recognized.",
+                        "session_id": session_id
+                    })
                     state = None
 
     # --- 2. Try to extract county from URL ---
@@ -270,6 +327,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if c in url_lower:
                 county = c
                 detection_log.append(f"County '{county}' detected from URL.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] County '{county}' detected from URL.",
+                    "session_id": session_id
+                })
                 break
         # precinct in URL
         if not county:
@@ -281,6 +344,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                         if d in {normalize_county_name(x) for x in precincts}:
                             county = normalize_county_name(c)
                             detection_log.append(f"precinct '{d}' detected from URL, mapped to county '{county}'")
+                            logger.info({
+                                "level": "INFO",
+                                "type": "router",
+                                "message": f"[Context Detection] Precinct '{d}' detected from URL, mapped to county '{county}'.",
+                                "session_id": session_id
+                            })
                             break
                     if county:
                         break
@@ -291,6 +360,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if matches:
                 county = safe_get_first(matches, "county_match", None, logger)
                 detection_log.append(f"County '{county}' fuzzy-matched from URL tokens.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] County '{county}' fuzzy-matched from URL tokens.",
+                    "session_id": session_id
+                })
             else:
                 matches = difflib.get_close_matches(" ".join(url_tokens), all_precincts, n=1, cutoff=0.7)
                 if matches:
@@ -301,6 +376,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                         if match_val in {normalize_county_name(x) for x in precincts}:
                             county = normalize_county_name(c)
                             detection_log.append(f"precinct '{match_val}' fuzzy-matched from URL tokens, mapped to county '{county}'")
+                            logger.info({
+                                "level": "INFO",
+                                "type": "router",
+                                "message": f"[Context Detection] Precinct '{match_val}' fuzzy-matched from URL tokens, mapped to county '{county}'.",
+                                "session_id": session_id
+                            })
                             break
 
     # --- 3. Try to extract county from contest titles ---
@@ -315,6 +396,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                 if re.search(rf"\b{re.escape(c)}\b", title_lower):
                     county = c
                     detection_log.append(f"County '{county}' detected from contest title: '{title}'")
+                    logger.info({
+                        "level": "INFO",
+                        "type": "router",
+                        "message": f"[Context Detection] County '{county}' detected from contest title: '{title}'.",
+                        "session_id": session_id
+                    })
                     break
             if county:
                 break
@@ -326,6 +413,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                         if d in {normalize_county_name(x) for x in precincts}:
                             county = normalize_county_name(c)
                             detection_log.append(f"precinct '{d}' detected from contest title: '{title}', mapped to county '{county}'")
+                            logger.info({
+                                "level": "INFO",
+                                "type": "router",
+                                "message": f"[Context Detection] Precinct '{d}' detected from contest title: '{title}', mapped to county '{county}'.",
+                                "session_id": session_id
+                            })
                             break
                     if county:
                         break
@@ -340,6 +433,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if ent in all_counties:
                 county = ent
                 detection_log.append(f"County '{county}' detected from HTML NLP entity.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] County '{county}' detected from HTML NLP entity.",
+                    "session_id": session_id
+                })
                 break
             elif ent in all_precincts:
                 for c, precincts in county_to_precinct.items():
@@ -348,6 +447,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                     if ent in {normalize_county_name(x) for x in precincts}:
                         county = normalize_county_name(c)
                         detection_log.append(f"precinct '{ent}' detected from HTML NLP entity, mapped to county '{county}'")
+                        logger.info({
+                            "level": "INFO",
+                            "type": "router",
+                            "message": f"[Context Detection] Precinct '{ent}' detected from HTML NLP entity, mapped to county '{county}'.",
+                            "session_id": session_id
+                        })
                         break
                 if county:
                     break
@@ -360,6 +465,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if county in {normalize_county_name(x) for x in counties}:
                 state = normalize_state_name(s)
                 detection_log.append(f"State '{state}' inferred from county '{county}'.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] State '{state}' inferred from county '{county}'.",
+                    "session_id": session_id
+                })
                 break
 
     # --- 6. Try to extract state from URL ---
@@ -369,6 +480,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if s in url_lower:
                 state = s
                 detection_log.append(f"State '{state}' detected from URL.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] State '{state}' detected from URL.",
+                    "session_id": session_id
+                })
                 break
         # Fuzzy match state in URL
         if not state:
@@ -377,6 +494,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if matches:
                 state = safe_get_first(matches, "state_match", None, logger)
                 detection_log.append(f"State '{state}' fuzzy-matched from URL tokens.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] State '{state}' fuzzy-matched from URL tokens.",
+                    "session_id": session_id
+                })
 
     # --- 7. Try to extract state from contest titles ---
     if not state and contests:
@@ -389,6 +512,12 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                 if s in title_lower:
                     state = s
                     detection_log.append(f"State '{state}' detected from contest title: '{title}'")
+                    logger.info({
+                        "level": "INFO",
+                        "type": "router",
+                        "message": f"[Context Detection] State '{state}' detected from contest title: '{title}'.",
+                        "session_id": session_id
+                    })
                     break
             if state:
                 break
@@ -401,12 +530,24 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if ent in known_states:
                 state = ent
                 detection_log.append(f"State '{state}' detected from HTML NLP entity.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] State '{state}' detected from HTML NLP entity.",
+                    "session_id": session_id
+                })
                 break
 
     # --- 9. Special case: DC and other non-county states ---
     if state == "district_of_columbia":
         county = "district of columbia"
         detection_log.append("Special case: DC detected, setting county to 'district of columbia'.")
+        logger.info({
+            "level": "INFO",
+            "type": "router",
+            "message": "Special case: DC detected, setting county to 'district of columbia'.",
+            "session_id": session_id
+        })
 
     # --- 10. If state found but no county, check for available county handlers ---
     handler_path = None
@@ -424,12 +565,24 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                     county_name = fname[:-3]
                     available_counties.append(county_name)
             detection_log.append(f"Available county handlers for state '{normalized_state}': {available_counties}")
+            logger.info({
+                "level": "INFO",
+                "type": "router",
+                "message": f"[Context Detection] Available county handlers for state '{normalized_state}': {available_counties}",
+                "session_id": session_id
+            })
             url_and_html = safe_lower((url or "") + " " + (html or ""))
             # Try exact match in URL/HTML
             for c in available_counties:
                 if c in url_and_html:
                     normalized_county = c
                     detection_log.append(f"County '{normalized_county}' matched to available handler from URL/HTML context.")
+                    logger.info({
+                        "level": "INFO",
+                        "type": "router",
+                        "message": f"[Context Detection] County '{normalized_county}' matched to available handler from URL/HTML context.",
+                        "session_id": session_id
+                    })
                     break
             # Try fuzzy match in URL/HTML
             if not normalized_county and available_counties:
@@ -438,14 +591,38 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                 if matches:
                     normalized_county = safe_get_first(matches, "county_handler_match", None, logger)
                     detection_log.append(f"County '{normalized_county}' fuzzy-matched to available handler from URL/HTML context.")
+                    logger.info({
+                        "level": "INFO",
+                        "type": "router",
+                        "message": f"[Context Detection] County '{normalized_county}' fuzzy-matched to available handler from URL/HTML context.",
+                        "session_id": session_id
+                    })
             # If only one county handler is available, use it as a fallback
             if not normalized_county and len(available_counties) == 1:
                 normalized_county = safe_get_first(available_counties, "only_county_handler", None, logger)
                 detection_log.append(f"Only one county handler available ('{normalized_county}'); using as fallback.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": f"[Context Detection] Only one county handler available ('{normalized_county}'); using as fallback.",
+                    "session_id": session_id
+                })
             elif not normalized_county:
                 detection_log.append("No matching county handler found in URL/HTML; will use state handler.")
+                logger.info({
+                    "level": "INFO",
+                    "type": "router",
+                    "message": "No matching county handler found in URL/HTML; will use state handler.",
+                    "session_id": session_id
+                })
         else:
             detection_log.append(f"No county handler directory found for state '{normalized_state}'.")
+            logger.info({
+                "level": "INFO",
+                "type": "router",
+                "message": f"No county handler directory found for state '{normalized_state}'.",
+                "session_id": session_id
+            })
 
     # --- Set handler path based on what was found ---
     if normalized_state and normalized_county:
@@ -462,12 +639,29 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
     # --- Final fallback ---
     if not normalized_county:
         detection_log.append("County could not be detected.")
+        logger.info({
+            "level": "INFO",
+            "type": "router",
+            "message": "County could not be detected.",
+            "session_id": session_id
+        })
     if not normalized_state:
         detection_log.append("State could not be detected.")
+        logger.info({
+            "level": "INFO",
+            "type": "router",
+            "message": "State could not be detected.",
+            "session_id": session_id
+        })
 
     if debug:
         for log in detection_log:
-            logger.info("[dynamic_state_county_detection]", log)
+            logger.debug({
+                "level": "DEBUG",
+                "type": "router",
+                "message": f"[Context Detection] {log}",
+                "session_id": session_id
+            })
     return normalized_county, normalized_state, handler_path, detection_log
 
 # --- Core Coordinator Class ---
@@ -1913,11 +2107,16 @@ class ContextCoordinator(object):
             "election_types": [("regex", regex_election_type), ("nlp", nlp_election_type), ("direct_lookup", direct_election_type)],
             "years": [("regex", regex_year), ("nlp", nlp_year), ("direct_lookup", direct_year)],
             "buttons": [("regex", regex_button), ("nlp", nlp_button), ("direct_lookup", direct_button)],
+            # Vote_methods (uses BALLOT_TYPES as the base vocabulary)
+            "vote_methods": [("regex", lambda t: (
+                [kw for kw in BALLOT_TYPES if isinstance(t, str) and kw.lower() in t.lower()] or None,
+                None, 0.85, "regex", "pass"
+            ))],
         }
 
         # --- Extraction ---
         if field_type not in strategies:
-            logger.error(f"[extract_field] Unknown field_type: {field_type}")
+            logger.warning(f"[extract_field] Unknown field_type: {field_type}")
             return None
 
         # For types that may use multiple sources (like buttons), try all

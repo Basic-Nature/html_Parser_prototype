@@ -105,15 +105,17 @@ def safe_url(page: Optional[PageType]) -> str:
 
 def safe_inner_text(obj: Optional[ElementType | PageType], logger=logger) -> str:
     """
-    Safely get inner text from a Playwright element or page.
-    Only calls .inner_text() on known Playwright ElementHandle or Page types.
+    Safely get inner text from a Playwright element/page/locator.
     """
     try:
+        # NEW: support Locator directly
+        if isinstance(obj, (SyncLocator, AsyncLocator)):
+            return obj.inner_text()
         if isinstance(obj, (SyncElementHandle, AsyncElementHandle)):
             return obj.inner_text()
         if isinstance(obj, (SyncPage, AsyncPage)) and hasattr(obj, "inner_text"):
             return obj.inner_text()
-        logger and logger.error(f"[safe_inner_text] Object is not a Playwright ElementHandle or Page: {type(obj)}")
+        logger and logger.error(f"[safe_inner_text] Object is not a Playwright ElementHandle, Locator, or Page: {type(obj)}")
         return ""
     except Exception as e:
         if logger: logger.error(f"[safe_inner_text] Error: {e}")
@@ -637,7 +639,7 @@ def autoscroll_until_stable(
         except Exception:
             return ""
 
-    with logger.progress_bar("[cyan]Scrolling page...", total=max_scrolls) as update_progress:
+    with logger.progress_bar("Scrolling page...", total=max_scrolls) as update_progress:
         while stable < max_stable_frames and scroll_attempts < max_scrolls:
             current_height = safe_evaluate(page, "document.body.scrollHeight", logger)
             current_text = get_main_text()
@@ -693,3 +695,4 @@ def scan_buttons_with_progress(buttons, scan_callback=None) -> None:
             update_progress(idx + 1, extra={"label": label})
             if scan_callback:
                 scan_callback(btn, idx)
+                

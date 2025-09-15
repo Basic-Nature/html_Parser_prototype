@@ -63,31 +63,26 @@ def is_already_downloaded(url, filename=None, check_hash=False):
                     return True
     return False
 
-def download_file(page_url, href, context_info=None, check_hash=False):
+def download_file(page_url, href, headers=None, context_info=None, check_hash=False):
     """
     Download the linked file and save it into the input directory.
-    Returns the full path of the saved file, or None on failure.
-    Prevents re-downloading if already present (by URL or filename/hash).
-    Optionally updates the context library with download info.
     """
     ensure_input_directory()
     filename = os.path.basename(href)
     save_path = os.path.join(INPUT_DIR, filename)
     file_url = urljoin(page_url, href)
     logger.info(f"[DEBUG][download_file] page_url={page_url}, href={href}, file_url={file_url}, save_path={save_path}")
-    # Prevent re-download if already present
     if is_already_downloaded(file_url, save_path, check_hash=check_hash):
         logger.info(f"[DOWNLOAD] Skipping already downloaded file: {filename}")
         return save_path
 
     try:
-        response = requests.get(file_url)
+        response = requests.get(file_url, headers=headers or {})
         response.raise_for_status()
         with open(save_path, "wb") as f:
             f.write(response.content)
         filehash = file_hash(save_path)
         logger.info(f"[DOWNLOAD] Downloaded: {filename} -> {INPUT_DIR}/")
-        # Update manifest
         entry = {
             "url": file_url,
             "filename": save_path,
@@ -96,7 +91,6 @@ def download_file(page_url, href, context_info=None, check_hash=False):
             "status": "success"
         }
         update_download_manifest(entry)
-        # Optionally update context library
         if context_info:
             organizer = ContextOrganizer()
             organizer.append_to_context_library({"downloads": [entry]})

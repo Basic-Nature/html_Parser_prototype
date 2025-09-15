@@ -180,6 +180,22 @@ def safe_filename(
 
 T = TypeVar("T")
 
+def safe_slug(text: str, max_len: int = 100) -> str:
+    """
+    Make a filesystem-friendly slug:
+    - Keep alnum, space, underscore, hyphen; replace others with '_'
+    - Collapse repeated underscores/spaces; convert spaces to underscores
+    - Trim length to max_len
+    """
+    if not isinstance(text, str):
+        return ""
+    stem = os.path.splitext(text)[0]
+    s = "".join(c if c.isalnum() or c in " _-" else "_" for c in stem)
+    s = re.sub(r"[ _]+", " ", s).strip()
+    s = s.replace(" ", "_")
+    s = re.sub(r"_+", "_", s)
+    return s[:max_len] or "untitled"
+
 def safe_query(session: Session, model: Type[T]) -> Optional[Query]:
     """
     Safely create a SQLAlchemy query for a model.

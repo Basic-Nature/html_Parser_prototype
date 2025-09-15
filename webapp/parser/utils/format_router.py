@@ -1,7 +1,7 @@
 import os
 import time
 import re
-from typing import Optional, Tuple
+from typing import Tuple, Optional, Any, Dict, List
 from difflib import get_close_matches
 from ..handlers.formats import json_handler, pdf_handler, csv_handler
 from .logger_singleton import logger, prompt
@@ -12,11 +12,55 @@ from .browser_utils import (
     safe_content, safe_query_selector_all, safe_context_library, safe_context_result,
     safe_get_attribute, safe_url
 )
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
+import requests
+import tempfile 
 from ..config import SUPPORTED_FORMATS, DISABLE_HTML_FALLBACK
-from .download_utils import download_file
+from .download_utils import download_file, ensure_input_directory
 from .html_scanner import load_pattern_kb, append_pattern_kb
 from ..Context_Integration.Context_Library.constants import CONTEST_KEYWORDS
+
+def _browser_headers(page, referer: str) -> dict:
+    try:
+        ua = page.evaluate("() => navigator.userAgent") if page else None
+    except Exception:
+        ua = None
+    origin = ""
+    try:
+        if referer:
+            u = urlparse(referer)
+            origin = f"{u.scheme}://{u.netloc}"
+    except Exception:
+        origin = ""
+    return {
+        "User-Agent": ua or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Referer": referer or "",
+        "Origin": origin or "",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    
+def _build_download_url(base_url: str, href: str) -> str:
+    """Resolve href against base_url safely."""
+    try:
+        return urljoin(base_url or "", href or "")
+    except Exception:
+        return (href or "")
+
+def _cookies_header_from_page(page) -> dict:
+    """Return {'Cookie': 'k=v; ...'} header synthesized from Playwright page.context cookies."""
+    try:
+        ctx = getattr(page, "context", None)
+        if not ctx:
+            return {}
+        cookies = ctx.cookies() or []
+        if not cookies:
+            return {}
+        cookie_str = "; ".join(f"{c.get('name','')}={c.get('value','')}" for c in cookies if c.get('name'))
+        return {"Cookie": cookie_str}
+    except Exception:
+        return {}
 
 def extract_contest_from_filename(filename: str) -> str:
     """
@@ -162,11 +206,11 @@ def extract_download_links_from_html(html, exts=None) -> list[dict]:
 def prompt_and_handle_download(
     page,
     target_url,
-    rejected_downloads=None,
-    session_id=None,
-    manual_upload_mode=False,
-    uploads_dir=None  
-) -> Tuple[Optional[dict], bool]:
+    rejected_downloads: Optional[set] = None,
+    session_id: Optional[str] = None,
+    manual_upload_mode: bool = False,
+    uploads_dir: Optional[str] = None
+) -> Tuple[Optional[tuple], bool]:
     """
     Extracts download links (from context library, DOM, and HTML), prompts user for format,
     downloads file, and routes to handler.
@@ -183,7 +227,10 @@ def prompt_and_handle_download(
             "message": f"[ManualOverride] Entering manual upload mode with uploads_dir={uploads_dir}",
             "session_id": session_id
         })
-        files = [f for f in os.listdir(uploads_dir) if os.path.isfile(os.path.join(uploads_dir, f))]
+        try:
+            files = [f for f in os.listdir(uploads_dir) if os.path.isfile(os.path.join(uploads_dir, f))]
+        except Exception:
+            files = []
         if not files:
             logger.error({
                 "level": "ERROR",
@@ -265,28 +312,29 @@ def prompt_and_handle_download(
 
     html = safe_content(page, session_id=session_id)
 
-    # 1. Extract links from context library
-    supported_links = []
-    context_lib = safe_context_library(page, session_id=session_id)
-    download_links = context_lib.get("download_links", [])
-    if isinstance(download_links, list):
-        supported_links = [link for link in download_links if isinstance(link, dict)]
-
-    # 2. Extract links from DOM (anchor tags) for supported formats
-    dom_links = []
+    # 1) Context library links (if any)
+    supported_links: List[Dict[str, str]] = []
     try:
-        anchors = safe_query_selector_all(page, "a")
+        context_lib = safe_context_library(page, session_id=session_id) or {}
+        download_links = context_lib.get("download_links", [])
+        if isinstance(download_links, list):
+            supported_links = [link for link in download_links if isinstance(link, dict)]
+    except Exception:
+        supported_links = []
+
+    # 2) DOM anchors for supported formats
+    dom_links: List[Dict[str, str]] = []
+    try:
+        anchors = safe_query_selector_all(page, "a") or []
         for a in anchors:
             href = safe_get_attribute(a, "href", logger)
             if not href:
                 continue
-            for ext in [".json", ".csv", ".pdf"]:
-                if safe_lower(ext) in safe_lower(href):
-                    dom_links.append({
-                        "href": href,
-                        "format": safe_lower(ext).strip("."),
-                        "source": "dom"
-                    })
+            h = str(href).lower()
+            for ext in (".json", ".csv", ".pdf"):
+                if ext in h:
+                    dom_links.append({"href": href, "format": ext.strip("."), "source": "dom"})
+                    break
     except Exception as e:
         logger.warning({
             "level": "WARNING",
@@ -295,23 +343,20 @@ def prompt_and_handle_download(
             "session_id": session_id
         })
 
-    # 3. Extract links dynamically from HTML (regex or pattern-based)
+    # 3) HTML regex scan
     dynamic_links = extract_download_links_from_html(html, exts=[".json", ".csv", ".pdf"])
 
-    # 4. Merge and deduplicate all links by (href, format)
-    all_links = {}
-    for link in supported_links + dom_links + dynamic_links:
-        href = safe_get(link, "href", None)
-        fmt = safe_get(link, "format", None)
+    # 4) Merge/dedupe by (href, format)
+    all_links: Dict[Tuple[str, str], Dict[str, str]] = {}
+    for link in (supported_links + dom_links + dynamic_links):
+        href = link.get("href")
+        fmt = link.get("format")
         if href and fmt:
             all_links[(href, fmt)] = link
     merged_links = list(all_links.values())
 
-    # 5. Remove rejected
-    new_links = [
-        link for link in merged_links
-        if isinstance(link, dict) and safe_get(link, "href") not in rejected_downloads
-    ]
+    # 5) Remove rejected
+    new_links = [link for link in merged_links if link.get("href") not in (rejected_downloads or set())]
     if not new_links:
         logger.info({
             "level": "INFO",
@@ -321,54 +366,49 @@ def prompt_and_handle_download(
         })
         return None, False
 
-    # 6. Update context metadata with discovered links (for downstream use, analytics, or UI)
-    context_result = safe_context_result(page, session_id=session_id)
-    if isinstance(context_result, dict):
-        context_result.setdefault("metadata", {})["download_links"] = merged_links
+    # 6) Update context metadata (best-effort)
+    try:
+        context_result = safe_context_result(page, session_id=session_id)
+        if isinstance(context_result, dict):
+            context_result.setdefault("metadata", {})["download_links"] = merged_links
+            logger.debug({
+                "level": "DEBUG",
+                "type": "download",
+                "message": f"[format_router][Session:{session_id}] Context metadata updated with download_links.",
+                "session_id": session_id
+            })
+    except Exception:
+        pass
+
+    # 7) Add format patterns to KB (best-effort)
+    try:
+        kb = load_pattern_kb()
+        for link in merged_links:
+            fmt = link.get("format", "")
+            href = link.get("href", "")
+            kb_entry = {
+                "pattern_id": f"format_{fmt}_{os.path.basename(href)}",
+                "label": "download_format",
+                "format": fmt,
+                "href": href,
+                "source_url": getattr(page, "url", target_url),
+                "timestamp": time.time(),
+                "embedding": [],
+                "session_id": session_id
+            }
+            append_pattern_kb(kb_entry)
         logger.debug({
             "level": "DEBUG",
             "type": "download",
-            "message": f"[format_router][Session:{session_id}] Context metadata updated with download_links.",
+            "message": f"[format_router][Session:{session_id}] Pattern KB entries added: {len(merged_links)}",
             "session_id": session_id
         })
+    except Exception:
+        pass
 
-    # 7. Add to pattern KB for ML-driven format clustering
-    format_kb = load_pattern_kb(session_id=session_id) if 'session_id' in load_pattern_kb.__code__.co_varnames else load_pattern_kb()
-    kb_entries = []
-    for link in merged_links:
-        fmt = safe_get(link, "format", "")
-        kb_entry = {
-            "pattern_id": f"format_{fmt}_{os.path.basename(safe_get(link, 'href', ''))}",
-            "label": "download_format",
-            "format": fmt,
-            "href": safe_get(link, "href", ""),
-            "source_url": getattr(page, "url", target_url),
-            "timestamp": time.time(),
-            "embedding": [],
-            "session_id": session_id
-        }
-        kb_entries.append(kb_entry)
-        append_pattern_kb(kb_entry)
-    logger.debug({
-        "level": "DEBUG",
-        "type": "download",
-        "message": f"[format_router][Session:{session_id}] Pattern KB entries added: {len(kb_entries)}",
-        "session_id": session_id
-    })
-    logger.debug({
-        "level": "DEBUG",
-        "type": "download",
-        "message": f"[format_router][Session:{session_id}] KB snapshot: {format_kb}",
-        "session_id": session_id
-    })
-
-    # 8. Prompt user for format (with contest context)
-    confirmed = [
-        (safe_lower(safe_get(link, "format", "")), safe_get(link, "href", ""))
-        for link in new_links if isinstance(link, dict)
-    ]
-    # Attach contest context for each file
-    context_options = []
+    # 8) Build prompt with contest context
+    confirmed: List[Tuple[str, str]] = [(str(link.get("format","")).lower(), str(link.get("href",""))) for link in new_links]
+    context_options: List[Tuple[str, str, str, str]] = []
     for fmt, url in confirmed:
         fname = os.path.basename(url)
         contest = extract_contest_from_filename(fname)
@@ -382,11 +422,7 @@ def prompt_and_handle_download(
         "session_id": session_id
     })
 
-    # Build prompt message with contest context
-    format_options = [
-        f"{str(fmt).upper()} ({fname}) [{contest}]"
-        for fmt, url, contest, fname in context_options
-    ]
+    format_options = [f"{fmt.upper()} ({fname}) [{contest}]" for fmt, url, contest, fname in context_options]
     options_lines = [f"  [{i}] {opt}" for i, opt in enumerate(format_options)]
     if not DISABLE_HTML_FALLBACK:
         options_lines.append("  [n or Enter] Skip download")
@@ -401,13 +437,10 @@ def prompt_and_handle_download(
     )
 
     def validator(x) -> bool:
-        x = str(x).strip().lower()
+        s = str(x).strip().lower()
         valid_indices = [str(i) for i in range(len(format_options))]
         valid_options = [opt.lower() for opt in format_options]
-        if DISABLE_HTML_FALLBACK:
-            return x in valid_indices or x in valid_options
-        else:
-            return x in ("", "n") or x in valid_indices or x in valid_options
+        return (s in valid_indices or s in valid_options) if DISABLE_HTML_FALLBACK else (s in ("", "n") or s in valid_indices or s in valid_options)
 
     try:
         selection = prompt.prompt_input(
@@ -426,32 +459,23 @@ def prompt_and_handle_download(
         })
         return None, None
 
-    # Handle skip/none
+    # Handle skip
     if selection is None or (not DISABLE_HTML_FALLBACK and str(selection).strip().lower() in ("", "n")):
-        msg = (
-            "No selection made. Aborting as HTML fallback is disabled."
-            if DISABLE_HTML_FALLBACK else
-            "User chose to skip format download."
-        )
         logger.info({
             "level": "INFO",
             "type": "prompt",
-            "message": msg,
+            "message": ("No selection made. Aborting as HTML fallback is disabled." if DISABLE_HTML_FALLBACK else "User chose to skip format download."),
             "session_id": session_id
         })
         return None, None
 
-    # Resolve selection
+    # Resolve choice -> index
     try:
         sel = str(selection).strip()
-        idx = None
         if sel.isdigit() and 0 <= int(sel) < len(context_options):
             idx = int(sel)
         else:
-            idx = next(
-                i for i, opt in enumerate(format_options)
-                if opt.lower() == sel.lower()
-            )
+            idx = next(i for i, opt in enumerate(format_options) if opt.lower() == sel.lower())
         fmt, file_url, _, _ = context_options[idx]
         logger.info({
             "level": "INFO",
@@ -459,19 +483,83 @@ def prompt_and_handle_download(
             "message": f"User selected format: {str(fmt).upper()}",
             "session_id": session_id
         })
-        # --- Actually download the file here ---
-        # Use the page's URL as the base for relative links
+
+        # Resolve URL relative to page.url
         page_url = getattr(page, "url", target_url) if page is not None else target_url
-        local_file_path = download_file(page_url, file_url)
+        resolved_url = _build_download_url(page_url, file_url)
+
+        # Headers: cookies + browser-like
+        cookie_hdr = _cookies_header_from_page(page)
+        hdrs = {**_browser_headers(page, page_url), **cookie_hdr}
+
+        local_file_path = None
+
+        # 1) Playwright request if available
+        try:
+            if page is not None and hasattr(page, "context") and hasattr(page.context, "request"):
+                resp = page.context.request.get(resolved_url, headers=hdrs, timeout=60_000)
+                if getattr(resp, "ok", False):
+                    from ..config import INPUT_DIR
+                    ensure_input_directory()
+                    fname = os.path.basename(resolved_url) or f"download.{fmt}"
+                    save_path = os.path.join(INPUT_DIR, fname)
+                    with open(save_path, "wb") as f:
+                        f.write(resp.body())
+                    local_file_path = save_path
+                else:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "download",
+                        "message": f"HTTP {getattr(resp, 'status', 'unknown')} via Playwright for {resolved_url}",
+                        "session_id": session_id
+                    })
+        except Exception as e:
+            logger.warning({
+                "level": "WARNING",
+                "type": "download",
+                "message": f"Playwright request failed, will fallback to requests: {e}",
+                "session_id": session_id
+            })
+
+        # 2) Fallback: our downloader
+        if not local_file_path:
+            try:
+                local_file_path = download_file(page_url, resolved_url, headers=hdrs, check_hash=True)
+            except TypeError:
+                # 3) Last resort: raw requests
+                try:
+                    r = requests.get(resolved_url, headers=hdrs, timeout=60, stream=True)
+                    status = getattr(r, "status_code", None)
+                    if status and status >= 400:
+                        raise requests.HTTPError(f"HTTP {status}")
+                    os.makedirs("downloads", exist_ok=True)
+                    suffix = os.path.splitext(os.path.basename(resolved_url))[1] or f".{fmt}"
+                    fd, tmp = tempfile.mkstemp(prefix="dl_", suffix=suffix, dir="downloads")
+                    os.close(fd)
+                    with open(tmp, "wb") as f:
+                        for chunk in r.iterate_content(8192) if hasattr(r, "iterate_content") else r.iter_content(8192):
+                            if chunk:
+                                f.write(chunk)
+                    local_file_path = tmp
+                except Exception as e:
+                    logger.error({
+                        "level": "ERROR",
+                        "type": "download",
+                        "message": f"Requests fallback failed for {resolved_url}: {e}",
+                        "session_id": session_id
+                    })
+                    local_file_path = None
+
         if not local_file_path or not os.path.exists(local_file_path):
             logger.error({
                 "level": "ERROR",
                 "type": "download",
-                "message": f"Failed to download file: {file_url}",
+                "message": f"Failed to download file: {resolved_url}",
                 "session_id": session_id
             })
             return None, None
-        # Route to handler as before, but now with local_file_path
+
+        # Dispatch to format handler with manual_file
         handler = route_format_handler(fmt)
         if not handler:
             logger.error({
@@ -481,6 +569,7 @@ def prompt_and_handle_download(
                 "session_id": session_id
             })
             return None, None
+
         result = safe_parse(
             handler,
             page=None,
@@ -499,6 +588,7 @@ def prompt_and_handle_download(
             })
             return None, False
         return result, True
+
     except Exception as e:
         logger.warning({
             "level": "WARNING",

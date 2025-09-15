@@ -35,6 +35,13 @@ except ImportError:
     Language = None
 _lock = threading.Lock()
 
+def _hf_offline() -> bool:
+    return (
+        os.getenv("TRANSFORMERS_OFFLINE") == "1"
+        or os.getenv("HUGGINGFACE_HUB_OFFLINE") == "1"
+        or os.getenv("DISABLE_HF_DOWNLOAD") == "1"
+    )
+
 # --- Robust Vocabulary Loading Utilities ---
 
 def load_vocab_from_file(path: str) -> Dict[str, int]:
@@ -360,13 +367,26 @@ class ModelRegistry(object):
             raise ImportError("sentence_transformers is not installed.")
         with _lock:
             base_name = model_name or "all-MiniLM-L6-v2"
-            if not isinstance(base_name, str) or base_name.strip() == "" or base_name.startswith("SentenceTransformer("):
+            if not isinstance(base_name, str) or not base_name.strip() or base_name.startswith("SentenceTransformer("):
                 logger.error(f"Invalid model_name for SentenceTransformer: {base_name!r}. Using default 'all-MiniLM-L6-v2'.")
                 base_name = "all-MiniLM-L6-v2"
             key = f"sentence_transformer:{base_name}:{use_finetuned}"
             if key in cls._models:
                 return cls._models[key]
-            # Try fine-tuned model first
+
+            # 0) Optional explicit local path override
+            local_override = os.getenv("SENTENCE_TRANSFORMER_LOCAL_PATH")  # e.g., C:\models\all-MiniLM-L6-v2
+            if local_override and os.path.isdir(local_override):
+                try:
+                    logger.info(f"Loading SentenceTransformer from local override: {local_override}")
+                    model = SentenceTransformer(local_override, device=device or cls._get_device())
+                    cls._models[key] = model
+                    cls._loaded_info[key] = local_override
+                    return model
+                except Exception as e:
+                    logger.warning(f"Failed loading local override for SentenceTransformer: {e}")
+
+            # 1) Try fine-tuned local directory
             if use_finetuned:
                 finetuned_path = cls._model_paths["sentence_transformer"]
                 config_path = os.path.join(finetuned_path, "config.json")
@@ -381,15 +401,32 @@ class ModelRegistry(object):
                         logger.error(f"Failed to load fine-tuned SentenceTransformer: {e}")
                         cls._models[key] = None
                         return None
-            # Fallback to base model
+
+            # 2) If offline, do not attempt network download
+            if _hf_offline():
+                logger.warning("TRANSFORMERS_OFFLINE/HUGGINGFACE_HUB_OFFLINE set; skipping HF download. Embeddings disabled.")
+                cls._models[key] = None
+                return None
+
+            # 3) Try base model (may hit network)
             logger.info(f"Loading base SentenceTransformer: {base_name}")
             try:
-                model = SentenceTransformer(base_name, device=device or cls._get_device())
+                # Optional: honor HF cache dirs if present
+                cache_folder = os.getenv("HUGGINGFACE_HUB_CACHE") or os.getenv("HF_HOME") or None
+                kwargs = {"device": device or cls._get_device()}
+                if cache_folder:
+                    kwargs["cache_folder"] = cache_folder
+                model = SentenceTransformer(base_name, **kwargs)
                 cls._models[key] = model
                 cls._loaded_info[key] = base_name
                 return model
             except Exception as e:
-                logger.error(f"Failed to load base SentenceTransformer: {e}")
+                # Downgrade DNS/network errors to WARNING for noisy environments
+                msg = str(e)
+                if "NameResolutionError" in msg or "MaxRetryError" in msg or "Failed to resolve" in msg:
+                    logger.warning(f"Failed to load base SentenceTransformer (network/DNS). Running without embeddings. Error: {e}")
+                else:
+                    logger.error(f"Failed to load base SentenceTransformer: {e}")
                 cls._models[key] = None
                 return None
 

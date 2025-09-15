@@ -274,32 +274,59 @@ def get_sqlalchemy_engine():
     Returns an SQLAlchemy engine that uses:
     - Password auth when POSTGRES_AUTH=password
     - Entra (AAD) token when POSTGRES_AUTH=aad
-    Falls back to password if AAD fails and creds exist.
+    Falls back to password if AAD fails and creds exist (unless DB_STRICT_AAD=true).
     """
+    strict_aad = os.environ.get("DB_STRICT_AAD", "false").lower() in ("1","true","yes")
+    connect_kwargs = {"connect_timeout": 10, "application_name": "ballotlens-webapp"}
+
     if POSTGRES_AUTH == "aad":
+        if not POSTGRES_AAD_USER:
+            logger.error("[DB] AAD mode requested but POSTGRES_AAD_USER is empty.")
+            if strict_aad:
+                raise RuntimeError("AAD auth requested but POSTGRES_AAD_USER missing")
         def _connect_with_aad():
             cred = DefaultAzureCredential(exclude_interactive_browser_credential=True)
-            token = cred.get_token("https://ossrdbms-aad.database.windows.net/.default").token
+            tok = cred.get_token("https://ossrdbms-aad.database.windows.net/.default")
+            logger.info(f"[DB] Got AAD token (exp={tok.expires_on}) for host={POSTGRES_HOST}, db={POSTGRES_DB}, user={POSTGRES_AAD_USER}")
             return psycopg2.connect(
                 host=POSTGRES_HOST,
                 dbname=POSTGRES_DB,
                 user=POSTGRES_AAD_USER,
-                password=token,
+                password=tok.token,
                 port=int(POSTGRES_PORT or 5432),
                 sslmode="require",
+                **connect_kwargs
             )
         try:
-            logger.info(f"DB auth mode=aad user={POSTGRES_AAD_USER} host={POSTGRES_HOST} db={POSTGRES_DB}")
-            return create_engine("postgresql+psycopg2://", creator=_connect_with_aad, pool_pre_ping=True, future=True)
+            logger.info(f"[DB] Connecting via AAD user={POSTGRES_AAD_USER} host={POSTGRES_HOST} db={POSTGRES_DB}")
+            return create_engine(
+                "postgresql+psycopg2://",
+                creator=_connect_with_aad,
+                pool_pre_ping=True,
+                future=True
+            )
         except Exception as e:
-            logger.error(f"AAD DB auth failed: {e}")
+            logger.error(f"[DB][AAD] Connection failed: {e}")
+            if strict_aad:
+                raise
             if POSTGRES_USER_RAW and POSTGRES_PASSWORD_RAW:
-                logger.warning("Falling back to password auth.")
-                return create_engine(POSTGRES_URL, pool_pre_ping=True, future=True)
+                logger.warning("[DB][AAD] Falling back to password auth.")
+                return create_engine(
+                    POSTGRES_URL,
+                    pool_pre_ping=True,
+                    future=True,
+                    connect_args=connect_kwargs
+                )
             raise
-    # Password
-    logger.info(f"DB auth mode=password user={POSTGRES_USER_RAW} host={POSTGRES_HOST} db={POSTGRES_DB}")
-    return create_engine(POSTGRES_URL, pool_pre_ping=True, future=True)
+
+    # Password path
+    logger.info(f"[DB] Connecting via password user={POSTGRES_USER_RAW} host={POSTGRES_HOST} db={POSTGRES_DB}")
+    return create_engine(
+        POSTGRES_URL,
+        pool_pre_ping=True,
+        future=True,
+        connect_args=connect_kwargs
+    )
 
 __all__ = [
     # Core paths

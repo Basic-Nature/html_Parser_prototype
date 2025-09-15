@@ -37,6 +37,29 @@ nlp = spacy.load("en_core_web_sm")
 print("spaCy model ready:", nlp.meta.get("version"))
 PY
 
+# --- Bake SentenceTransformer into the image (build-time) ---
+# Create model/cache dirs and set HF caches (safe pre-download)
+RUN mkdir -p /models/sentence /models/hf-cache
+ENV HUGGINGFACE_HUB_CACHE=/models/hf-cache
+ENV HF_HOME=/models/hf-cache
+
+# Ensure sentence-transformers is available (if not already from requirements.txt)
+RUN pip install --no-cache-dir "sentence-transformers>=2.7.0"
+
+# Pre-download and vendor the model into the image
+RUN python - <<'PY'
+from sentence_transformers import SentenceTransformer
+m = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+m.save("/models/sentence/all-MiniLM-L6-v2")
+print("Saved ST model to /models/sentence/all-MiniLM-L6-v2")
+PY
+
+# Point app to the baked model and prefer offline at runtime
+ENV SENTENCE_TRANSFORMER_LOCAL_PATH=/models/sentence/all-MiniLM-L6-v2
+ENV TRANSFORMERS_OFFLINE=1
+ENV HUGGINGFACE_HUB_OFFLINE=1
+# --- end model block ---
+
 # Copy source
 COPY . .
 
