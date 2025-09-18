@@ -147,6 +147,12 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
             "contests": [{"title": name} for name in sorted(contests)],
             "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())]
         }
+        logger.debug({
+            "level": "DEBUG",
+            "type": "input",
+            "message": f"Multiple contests found: {sorted(contests)}: [filtered {_CONTEST_RX.pattern}]: [unfiltered {CONTEST_KEYWORDS}]",
+            "session_id": session_id,
+        })
         selected = select_contest(
             coordinator=coordinator,
             state=None, county=None, year=None,
