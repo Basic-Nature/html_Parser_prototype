@@ -109,10 +109,12 @@ def build_dynamic_table(
                     _emit("warning", "builder", "[TABLE_BUILDER] dynamic_table_extractor failed for panel table", session_id, error=str(e))
                     h, d = [], []
                 if h and d:
-                    all_panel_tables = safe_append(all_panel_tables, (h, d))
+                    # NOTE: avoid assigning result of safe_append; ensure list type
+                    all_panel_tables.append((h, d))
         _emit("debug", "builder", "[TABLE_BUILDER] Collected panel tables", session_id, count=len(all_panel_tables))
     elif headers and data:
-        all_panel_tables = safe_append(all_panel_tables, (headers, data))
+        # Ensure explicit append to keep list type
+        all_panel_tables.append((headers, data))
         _emit("debug", "builder", "[TABLE_BUILDER] Using provided headers/data as sole table", session_id, headers=len(headers), rows=len(data))
     else:
         try:
@@ -121,9 +123,23 @@ def build_dynamic_table(
             _emit("warning", "builder", "[TABLE_BUILDER] dynamic_table_extractor failed (no panels path)", session_id, error=str(e))
             h, d = [], []
         if h and d:
-            all_panel_tables = safe_append(all_panel_tables, (h, d))
+            all_panel_tables.append((h, d))
         _emit("debug", "builder", "[TABLE_BUILDER] Fallback extractor path", session_id, found=bool(h and d))
 
+    # Defensive: coerce/validate structure before iterating
+    if not isinstance(all_panel_tables, list):
+        _emit("warning", "builder", "[TABLE_BUILDER] all_panel_tables was not a list; coercing to empty list", session_id, got_type=str(type(all_panel_tables)))
+        all_panel_tables = []
+    else:
+        # Keep only (headers, rows) tuple pairs
+        fixed = []
+        for item in all_panel_tables:
+            if isinstance(item, tuple) and len(item) == 2:
+                fixed.append(item)
+            else:
+                _emit("warning", "builder", "[TABLE_BUILDER] Dropping invalid table entry", session_id, entry_type=str(type(item)))
+        all_panel_tables = fixed
+        
     # --- 2. Merge and harmonize all tables (advanced logic) ---
     if all_panel_tables:
         all_headers = []
@@ -139,10 +155,6 @@ def build_dynamic_table(
                 all_data.extend(d)
             else:
                 all_data = safe_append(all_data, d)
-
-        # Remove empties
-        all_headers = [h for h in all_headers if h]
-        all_data = [d for d in all_data if d]
 
         # Merge headers and data with advanced deduplication and alignment
         try:
@@ -168,7 +180,11 @@ def build_dynamic_table(
             merged_headers = safe_append(merged_headers, percent_col)
             for row in merged_data:
                 row[percent_col] = ""
-
+    # Mark presence for downstream logic
+    context["has_percent_reported"] = any(
+        any(normalize_header(h) == normalize_header(pc) for h in merged_headers)
+        for pc in PERCENT_KEYWORDS
+    )
     # --- 3. NLP entity annotation ---
     try:
         annotated_headers, annotated_data, entity_info = nlp_entity_annotate_table(

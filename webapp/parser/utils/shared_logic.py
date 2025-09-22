@@ -670,29 +670,24 @@ def safe_db_call(callable_fn: Callable, *args: Any, default=None, logger=logger,
             print(f"[DB] Exception in {func_name}: {e}")
         return default
     
-def safe_append(lst, value, logger=logger, deduplicate=False) -> bool:
+def safe_append(lst, value, logger=None, deduplicate: bool = False) -> list:
     """
-    Safely append a value to a list.
-    - If lst is not a list, does nothing and logs a warning.
-    - Optionally deduplicates (does not append if value already exists).
-    - Returns True if appended, False otherwise.
-    - Logs errors if append fails.
+    Append value to a list and return the list (never raises).
     """
-    if not isinstance(lst, list):
-        if logger:
-            logger.warning(f"[safe_append] Target is not a list: {type(lst)}")
-        return False
     try:
-        if deduplicate and value in lst:
+        if not isinstance(lst, list):
             if logger:
-                logger.info(f"[safe_append] Value already exists in list, skipping append.")
-            return False
-        lst.append(value)
-        return True
-    except Exception as e:
-        if logger:
-            logger.error(f"[safe_append] Error appending value: {e}")
-        return False
+                try: logger.warning(f"[safe_append] Target is not a list: {type(lst)}; coercing to list.")
+                except Exception: pass
+            lst = [] if lst is None else list(lst) if isinstance(lst, (tuple, set)) else []
+        if not (deduplicate and value in lst):
+            lst.append(value)
+        return lst
+    except Exception:
+        try:
+            return lst if isinstance(lst, list) else [value]
+        except Exception:
+            return []
 
 def safe_update(dct, updates, logger=logger) -> None:
     """
@@ -719,34 +714,24 @@ def safe_update(dct, updates, logger=logger) -> None:
         if logger:
             logger.error(f"[safe_update] Error updating dict: {e}")
 
-def safe_extend(lib: dict, key: str, values: Iterable[dict]) -> None:
+def safe_extend(lst, values, logger=None, deduplicate: bool = False) -> list:
     """
-    Safely extend a list at lib[key] with values.
-    Ensures lib is a dict, lib[key] is a list, and values is an iterable (but not a string/bytes).
-    Filters out None and non-dict items for safety.
+    Extend a list with iterable values and return the list (never raises).
     """
-    if not isinstance(lib, dict):
-        return
-    if key not in lib or not isinstance(lib[key], list):
-        lib[key] = []
-    # Check values is an iterable but not a string/bytes
-    if values is None or isinstance(values, (str, bytes)):
-        return
     try:
-        if not isinstance(values, collections.abc.Iterable):
-            return
-        filtered = [v for v in values if isinstance(v, dict)]
-        if filtered:
-            # Double-check type before extending, and use a helper if you want
-            def _safe_list_extend(lst, items) -> None:
-                if isinstance(lst, list) and isinstance(items, list):
-                    lst.extend(items)
-            try:
-                _safe_list_extend(lib[key], filtered)
-            except Exception as e:
-                logger.error(f"[safe_extend] Failed to extend list at key '{key}': {e}")
-    except Exception as e:
-        logger.error(f"[safe_extend] Exception during extend: {e}")
+        if not isinstance(lst, list):
+            if logger:
+                try: logger.warning(f"[safe_extend] Target is not a list: {type(lst)}; coercing to list.")
+                except Exception: pass
+            lst = [] if lst is None else list(lst) if isinstance(lst, (tuple, set)) else []
+        if values is None:
+            return lst
+        for v in values:
+            if not (deduplicate and v in lst):
+                lst.append(v)
+        return lst
+    except Exception:
+        return lst if isinstance(lst, list) else []
 
 def convert_ndarrays(obj) -> Any:
     if isinstance(obj, dict):

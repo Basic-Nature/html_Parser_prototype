@@ -415,6 +415,7 @@ class UserPrompt(ContextManager):
         log_func: Optional[Callable[[str], None]] = None,
         max_attempts: int = 5,
         context: Any = None,
+        raise_on_max_attempts: bool = True,
     ) -> str:
         """
         Prompt the user for input, with optional default, validation, cancel, timeout, header, and logging.
@@ -514,11 +515,14 @@ class UserPrompt(ContextManager):
                     on_error("Invalid input.")
                 logger.warning("Invalid input. Please try again.")
                 if attempts >= max_attempts:
-                    logger.warning("[Prompt] Too many invalid attempts. Cancelling.")
+                    logger.warning("[Prompt] Too many invalid attempts.")
                     if log_func:
                         log_func(f"[PROMPT] Too many invalid attempts at {datetime.datetime.now()}")
                     self._log_to_file(prompt_str + " [Too many invalid attempts]", context)
-                    raise PromptCancelled("Too many invalid attempts.")
+                    if raise_on_max_attempts:
+                        raise PromptCancelled("Too many invalid attempts.")
+                    # Soft-fail: return default (or empty string if no default)
+                    return default
             else:
                 if log_func:
                     log_func(f"[PROMPT] User input: {response} at {datetime.datetime.now()}")

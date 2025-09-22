@@ -216,6 +216,7 @@ def prompt_and_handle_download(
     downloads file, and routes to handler.
     Returns (result, handled) where handled=True if a format was selected and processed.
     """
+    from .user_prompt import PromptCancelled
     if rejected_downloads is None:
         rejected_downloads = set()
 
@@ -240,10 +241,18 @@ def prompt_and_handle_download(
             })
             return None, False
 
-        # Prompt user to select file
-        prompt_message = "[PROMPT] Select a file to parse from uploads:"
+        # Prompt user to select file (index or filename)
+        prompt_message = "[PROMPT] Select a file to parse from uploads (enter index or filename):"
         def validator(x):
-            return safe_isdigit(x) and 0 <= int(x) < len(files)
+            s = (str(x) or "").strip()
+            if not s:
+                return False
+            if s.isdigit() and 0 <= int(s) < len(files):
+                return True
+            # allow exact or case-insensitive filename
+            low = s.lower()
+            return any(low == f.lower() for f in files)
+
         try:
             selection = prompt.prompt_input(
                 prompt_message,
@@ -253,8 +262,14 @@ def prompt_and_handle_download(
             )
             if not isinstance(selection, str):
                 raise ValueError("Non-string selection")
-            selected_index = int(selection.strip())
-        except (ValueError, EOFError, KeyboardInterrupt):
+            sel = selection.strip()
+            if sel.isdigit():
+                selected_index = int(sel)
+            else:
+                # resolve filename (case-insensitive)
+                target = sel.lower()
+                selected_index = next(i for i, f in enumerate(files) if f.lower() == target)
+        except (PromptCancelled, ValueError, EOFError, KeyboardInterrupt, StopIteration):
             logger.error({
                 "level": "ERROR",
                 "type": "manual_override",

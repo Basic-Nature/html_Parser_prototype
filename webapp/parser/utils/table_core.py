@@ -479,28 +479,26 @@ def extract_percent_reported_from_heading(heading):
     percent_pattern = re.compile(r"(\d{1,3})\s*%[\s\-]*reported", re.I)
     match = percent_pattern.search(heading)
     if match:
-        return f"{match.group(1)}%"
-    try:
-        if isinstance(heading, str) and "fully reported" in heading.lower():
-            return "100%"
-    except Exception:
-        pass
+        try:
+            val = int(match.group(1))
+            return f"{val}%"
+        except Exception:
+            return match.group(0)
     return ""
 
 def extract_percent_reported_from_page(page):
     """Try to extract percent reported from the page outside the table."""
     # Look for common phrases in spans/divs
     for selector in ["span", "div", "p"]:
-        elements = safe_locator(page, selector, logger)
-        count = safe_count(elements, logger)
-        for i in range(count):
-            element = safe_nth(elements, i, logger)
-            text = safe_inner_text(element, logger).strip() if element else ""
-            if not text:
-                continue
-            percent = extract_percent_reported_from_heading(text)
-            if percent:
-                return percent
+        try:
+            nodes = safe_locator(page, selector, logger)
+            for i in range(safe_count(nodes, logger)):
+                txt = safe_inner_text(safe_nth(nodes, i, logger), logger)
+                val = extract_percent_reported_from_heading(txt)
+                if val:
+                    return val
+        except Exception:
+            continue
     return ""
 
 def extract_all_tables_with_location(page, coordinator=None, context=None):
@@ -2602,92 +2600,130 @@ def pivot_to_wide_format(
 
     # Use entity_info for robust detection if available
     if entity_info:
-        location_header = entity_info.get("location_header", None)
-        percent_header = entity_info.get("percent_header", None)
-        entity_candidates = set(safe_strip(c) for c in entity_info.get("people", []) if c)
-        entity_locations = set(safe_strip(l) for l in entity_info.get("locations", []) if l)
+        location_header = safe_get(entity_info, "location_column") or safe_get(entity_info, "location_header")
+        percent_header = safe_get(entity_info, "percent_column") or safe_get(entity_info, "percent_header")
+        entity_candidates = set(safe_strip(c) for c in safe_get(entity_info, "people", []) if c)
+        entity_locations = set(safe_strip(l) for l in safe_get(entity_info, "locations", []) if l)
     else:
-        entity_candidates = set()
-        entity_locations = set()
+        entity_candidates, entity_locations = set(), set()
 
     # Use coordinator for fallback detection if needed
     if coordinator and (not location_header or not percent_header):
-        detected_loc, detected_pct, _ = dynamic_detect_location_header(headers, coordinator)
-        if not location_header:
-            location_header = detected_loc
-        if not percent_header:
-            percent_header = detected_pct
+        det_loc, det_pct, _ = dynamic_detect_location_header(headers, coordinator)
+        location_header = location_header or det_loc
+        percent_header = percent_header or det_pct
 
     # Fallback to header scan if not found in entity_info or coordinator
-    for h in headers:
-        if not location_header and is_location_header(h) and safe_lower(h) != "candidate":
-            location_header = h
-        if not percent_header and (safe_lower(h) in (safe_lower(ph) for ph in PERCENT_KEYWORDS) or "%" in h or "reported" in safe_lower(h)):
-            percent_header = h
+    if not percent_header:
+        for h in headers:
+            if _is_percent_header(h):
+                percent_header = h
+                break
 
-    # Use context for fallback if still not found
-    if not location_header and context:
-        location_header = safe_get(context, "location_header", "Precinct")
-    if not percent_header and context:
-        percent_header = safe_get(context, "percent_header", "Percent Reported")
+    # Normalize percent header to canonical name if present
+    if percent_header and normalize_header(percent_header) != normalize_header("Percent Reported"):
+        # Rename in data and headers
+        for row in data:
+            if percent_header in row and "Percent Reported" not in row:
+                row["Percent Reported"] = row.pop(percent_header)
+        headers = ["Percent Reported" if h == percent_header else h for h in headers]
+        percent_header = "Percent Reported"
 
+    # Final guard: if location is missing or invalid, synthesize "Precinct"
     if not location_header:
         location_header = "Precinct"
+        default_loc = safe_get(context or {}, "location_value", "") or safe_get(context or {}, "contest", "") or "All"
+        for row in data:
+            if "Precinct" not in row:
+                row["Precinct"] = default_loc
+
+    # Normalize header name to "Precinct" (rename if a different header was detected)
     if location_header != "Precinct":
         headers = ["Precinct" if h == location_header else h for h in headers]
         for row in data:
-            row["Precinct"] = row.pop(location_header)
+            row["Precinct"] = row.pop(location_header, safe_get(row, "Precinct", "")) or safe_get(row, "Precinct", "")
         location_header = "Precinct"
 
-    # 2. Gather all unique candidates and ballot types using canonical normalization
+    # 2. Detect a usable candidate column
+    candidate_col = _detect_candidate_column(headers, data, coordinator)
+    # If none, fallback to "Candidate" if present, else try first reasonable text column
+    if not candidate_col:
+        if any(normalize_header(h) == "candidate" for h in headers):
+            candidate_col = next(h for h in headers if normalize_header(h) == "candidate")
+        else:
+            for h in headers:
+                if h == "Precinct" or _is_percent_header(h):
+                    continue
+                if any(t in normalize_header(h) for t in [*TOTAL_KEYWORDS, "grand total"]):
+                    continue
+                candidate_col = h
+                break
+
+    # 3. Gather candidates and ballot types
     candidates = set(entity_candidates)
-    ballot_types = set()
     for row in data:
-        cand = safe_get(row, "Candidate", "")
+        cand = safe_strip(safe_get(row, candidate_col, "")) if candidate_col else ""
         if cand:
-            candidates.add(safe_strip(cand))
-        for h in row.keys():
-            norm_h = normalize_segment_text(h)
-            if norm_h in [normalize_segment_text(bt) for bt in BALLOT_TYPES_SORT_ORDER] or h in BALLOT_TYPES_SORT_ORDER:
-                ballot_types.add(h)
-    # Fallback: scan headers if not found in data
+            candidates.add(cand)
+
+    ballot_types = set()
+    # Prefer canonical order matches
+    norm_bt_sorted = [normalize_header(bt) for bt in BALLOT_TYPES_SORT_ORDER]
+    for h in headers:
+        nh = normalize_header(h)
+        if nh in norm_bt_sorted:
+            ballot_types.add(h)
+    # Add any other per-row numeric columns (excluding special/location/candidate)
     if not ballot_types:
         for h in headers:
-            norm_h = normalize_segment_text(h)
-            if norm_h in [normalize_segment_text(bt) for bt in BALLOT_TYPES_SORT_ORDER] or h in BALLOT_TYPES_SORT_ORDER:
+            if h in ("Precinct", candidate_col, "Percent Reported"):
+                continue
+            nh = normalize_header(h)
+            if nh in {normalize_header(t) for t in TOTAL_KEYWORDS}:
+                continue
+            non_empty = [safe_get(r, h, "") for r in data]
+            numeric_like = [
+                v for v in non_empty
+                if isinstance(v, (int, float))
+                or (isinstance(v, str) and re.fullmatch(r"[\d,]+(\.\d+)?%?", v.replace(",", "")))
+            ]
+            if numeric_like and len(numeric_like) >= max(1, len(non_empty) // 4):
                 ballot_types.add(h)
-    # Use canonical sort order for ballot types
+
+    # Canonical ballot type order
     ballot_types_sorted = [bt for bt in BALLOT_TYPES_SORT_ORDER if bt in ballot_types]
     for bt in sorted(ballot_types):
         if bt not in ballot_types_sorted:
             ballot_types_sorted.append(bt)
 
-    # 3. Build wide headers: Precinct, % Reported, [Candidate - BallotType ... Total Vote], Grand Total
-    wide_headers = [location_header]
+    # 4. Build wide headers
+    wide_headers = ["Precinct"]
     if percent_header:
-        wide_headers.append(percent_header)
+        wide_headers.append("Percent Reported")
     for candidate in sorted(candidates):
         for bt in ballot_types_sorted:
             wide_headers.append(f"{candidate} - {bt}")
         wide_headers.append(f"{candidate} - Total Vote")
     wide_headers.append("Grand Total")
 
-    # 4. Build wide data, one row per unique location
-    # Use entity_info locations if available, else extract from data
+    # 5. Build wide data, one row per unique location
     if entity_locations:
         location_values = entity_locations
     else:
-        location_values = set(safe_get(row, location_header, "") for row in data if safe_get(row, location_header, ""))
+        location_values = set(safe_get(row, "Precinct", "") for row in data if safe_get(row, "Precinct", ""))
+
+    # Fallback: ensure at least one location row exists
+    if not location_values:
+        location_values = {"All"}
 
     wide_data = []
     for loc in sorted(location_values):
         out_row = {h: "" for h in wide_headers}
-        out_row[location_header] = loc
-        if percent_header:
-            # Use the first found value for this precinct
+        out_row["Precinct"] = loc
+        if percent_header and "Percent Reported" in wide_headers:
             for row in data:
-                if safe_get(row, location_header, "") == loc and percent_header in row:
-                    out_row[percent_header] = row[percent_header]
+                if safe_get(row, "Precinct", "") == loc and "Percent Reported" in row:
+                    out_row["Percent Reported"] = row["Percent Reported"]
                     break
         grand_total = 0
         for candidate in sorted(candidates):
@@ -2695,19 +2731,22 @@ def pivot_to_wide_format(
             for bt in ballot_types_sorted:
                 val = ""
                 for row in data:
-                    if safe_get(row, location_header, "") == loc and safe_strip(safe_get(row, "Candidate", "")) == candidate:
+                    if safe_get(row, "Precinct", "") == loc and safe_strip(safe_get(row, candidate_col, "")) == candidate:
                         val = row.get(bt, "") or row.get(f"{candidate} - {bt}", "")
                         break
-                out_row[f"{candidate} - {bt}"] = val if val not in (None, "") else "-"
+                key = f"{candidate} - {bt}"
+                out_row[key] = val if val not in (None, "") else "-"
                 try:
-                    if val and str(val).replace(",", "").isdigit():
-                        cand_total += int(str(val).replace(",", ""))
+                    if val and str(val).replace(",", "").replace(".", "", 1).isdigit():
+                        v = int(float(str(val).replace(",", "").replace("%", "")))
+                        cand_total += v
                 except Exception:
                     pass
             out_row[f"{candidate} - Total Vote"] = str(cand_total)
             grand_total += cand_total
         out_row["Grand Total"] = str(grand_total)
         wide_data.append(out_row)
+
     logger.info(
         f"[TABLE_CORE][pivot_to_wide_format] Wide format: {len(wide_data)} rows, {len(wide_headers)} columns. "
         f"Used coordinator: {bool(coordinator)}, Used context: {bool(context)}"
@@ -2917,35 +2956,42 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     # Load patterns from coordinator if available, else fall back to constants
     location_patterns: set[str] = set()
     percent_patterns: set[str] = set()
-
     try:
-        if coordinator and hasattr(coordinator, "get_dom_parts"):
-            dom_parts = coordinator.get_dom_parts()
-            location_patterns = set(safe_get(dom_parts, "location_patterns", []))
-            percent_patterns = set(safe_get(dom_parts, "percent_patterns", []))
+        lib = getattr(coordinator, "library", {})
+        location_patterns = set(safe_get(lib, "location_patterns", []))
+        percent_patterns = set(safe_get(lib, "percent_patterns", []))
     except Exception:
         pass
-
     if not location_patterns:
         location_patterns = set(LOCATION_KEYWORDS)
     if not percent_patterns:
         percent_patterns = set(PERCENT_KEYWORDS)
-
     norm_headers = [normalize_text(h) for h in headers]
     location_header: str | None = None
     percent_header: str | None = None
     location_entity_value: str | None = None
 
-    # 1) Exact match
+    # Percent header detection (robust, first)
     for idx, h in enumerate(norm_headers):
-        if any(normalize_text(pat) == h for pat in location_patterns):
+        if any(normalize_text(pat) == h for pat in percent_patterns) or _is_percent_header(headers[idx]):
+            percent_header = headers[idx]
+            break
+    if not percent_header:
+        for idx, h in enumerate(norm_headers):
+            if any(normalize_text(pat) in h for pat in percent_patterns) or _is_percent_header(headers[idx]):
+                percent_header = headers[idx]
+                break
+    # Location header detection (ensure not percent)
+    # 1) Exact pattern match
+    for idx, h in enumerate(norm_headers):
+        if any(normalize_text(pat) == h for pat in location_patterns) and not _is_percent_header(headers[idx]):
             location_header = headers[idx]
             break
 
     # 2) Substring match
     if not location_header:
         for idx, h in enumerate(norm_headers):
-            if any(normalize_text(pat) in h for pat in location_patterns):
+            if any(normalize_text(pat) in h for pat in location_patterns) and not _is_percent_header(headers[idx]):
                 location_header = headers[idx]
                 break
 
@@ -2953,33 +2999,25 @@ def dynamic_detect_location_header(headers: List[str], coordinator: "ContextCoor
     if not location_header and coordinator and hasattr(coordinator, "extract_entities"):
         for idx, h in enumerate(headers):
             try:
-                entities = coordinator.extract_entities(h)
-                for ent, label in entities:
-                    if label in {"GPE", "LOC", "FAC"}:
-                        location_header = headers[idx]
-                        location_entity_value = ent
-                        break
-                if location_header:
-                    break
+                ents = coordinator.extract_entities(h)
             except Exception:
-                continue
-
-    # 4) Fallback to first column
-    if not location_header and headers:
-        location_header = headers[0]
-
-    # Percent header detection
-    for idx, h in enumerate(norm_headers):
-        if any(normalize_text(pat) == h for pat in percent_patterns):
-            percent_header = headers[idx]
-            break
-    if not percent_header:
-        for idx, h in enumerate(norm_headers):
-            if any(normalize_text(pat) in h for pat in percent_patterns):
-                percent_header = headers[idx]
+                ents = []
+            if any(label in {"GPE", "LOC", "FAC"} for _, label in ents) and not _is_percent_header(h):
+                location_header = h
                 break
-    if not percent_header and headers:
-        percent_header = next((h for h in headers if "%" in h or "reported" in safe_lower(h)), None)
+
+    # 4) Fallback to first non-percent column
+    if not location_header and headers:
+        for h in headers:
+            if not _is_bad_location_fallback(h):
+                location_header = h
+                break
+        # If everything looks bad, leave None to force downstream synthesis
+
+    # Guard: location and percent cannot be identical
+    if location_header and percent_header and normalize_header(location_header) == normalize_header(percent_header):
+        # Prefer keeping percent, synthesize location later
+        location_header = None
 
     logger.info(f"[TABLE BUILDER] Location header detected: {location_header}, Percent header detected: {percent_header}, Location entity: {location_entity_value}")
     return location_header, percent_header, location_entity_value
@@ -3468,6 +3506,73 @@ def is_location_header(header) -> bool:
     if header_norm in LOCATION_ABBREVIATIONS:
         return True
     return False
+
+def _is_percent_header(h: str) -> bool:
+    nh = normalize_header(h or "")
+    return nh in {normalize_header(p) for p in PERCENT_KEYWORDS} or "%" in (h or "").lower() or "reported" in (h or "").lower()
+
+def _is_bad_location_fallback(h: str) -> bool:
+    # Exclude percent-like or purely numeric headers from being chosen as a location
+    if _is_percent_header(h):
+        return True
+    s = (h or "").strip()
+    # avoid picking obviously numeric/generic headers
+    return bool(re.fullmatch(r"(col(umn)?\s*\d+|column\s*\d+|\d+)", s.lower()))
+
+def _detect_candidate_column(headers: list[str], data: list[dict], coordinator=None) -> str | None:
+    """
+    Heuristic/NLP candidate column detection:
+    - Prefer headers matching CANDIDATE_KEYWORDS or NER PERSON on header
+    - Otherwise scan row values for PERSON entities or name-like patterns
+    """
+    if not headers:
+        return None
+    # 1) Header keyword/NER
+    norm_kw = {normalize_header(k) for k in CANDIDATE_KEYWORDS}
+    for h in headers:
+        if normalize_header(h) in norm_kw:
+            return h
+    if coordinator and hasattr(coordinator, "extract_entities"):
+        for h in headers:
+            try:
+                ents = coordinator.extract_entities(h)
+            except Exception:
+                ents = []
+            if any(label == "PERSON" for _, label in ents):
+                return h
+    # 2) Row value NER
+    sample_rows = data[: min(50, len(data))]
+    for h in headers:
+        hits, seen = 0, 0
+        for row in sample_rows:
+            v = safe_get(row, h, "")
+            if not v or not isinstance(v, str):
+                continue
+            seen += 1
+            ents = []
+            try:
+                if coordinator and hasattr(coordinator, "extract_entities"):
+                    ents = coordinator.extract_entities(v)
+            except Exception:
+                ents = []
+            if any(label == "PERSON" for _, label in ents):
+                hits += 1
+        if seen and hits / seen >= 0.35:
+            return h
+    # 3) Name-like pattern (fallback)
+    name_like = re.compile(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}$")
+    for h in headers:
+        hits, cnt = 0, 0
+        for row in sample_rows:
+            v = safe_get(row, h, "")
+            if not v or not isinstance(v, str):
+                continue
+            cnt += 1
+            if name_like.match(v.strip()):
+                hits += 1
+        if cnt and hits / cnt >= 0.35:
+            return h
+    return None
 
 # ===================================================================
 # OUTPUT, SANITIZATION, AND FINALIZATION UTILITIES
