@@ -314,6 +314,81 @@ def finalize_election_output(
         # Best-effort path stub on failure
         return {"csv_path": "", "metadata_path": ""}
 
+    # ------------------------------------------------------------------
+    # Enrichment: build summary + hierarchical header export (if present)
+    # ------------------------------------------------------------------
+    context = context or {}
+    try:
+        enr = context.get("rawjson_enrichment")
+        if enr:
+            # Contest-level summary (idempotent; don't overwrite if already set)
+            if "summary" not in context:
+                groups = enr.get("ballot_groups_present") or []
+                group_totals = enr.get("group_totals") or {}
+                # Total votes (sum of candidate totals if available)
+                total_votes_all = 0
+                cand_total_list = []
+                for c in (enr.get("candidates") or []):
+                    tv = c.get("total_votes_reported") or 0
+                    if isinstance(tv, (int, float)):
+                        total_votes_all += tv
+                        cand_total_list.append(tv)
+                # Slim candidate view
+                slim_candidates = []
+                for c in (enr.get("candidates") or []):
+                    tv = c.get("total_votes_reported") or 0
+                    pct = (tv / total_votes_all * 100.0) if total_votes_all else 0.0
+                    slim = {
+                        "label": c.get("label"),
+                        "party": c.get("party"),
+                        "total_votes": tv,
+                        "pct_total": round(pct, 3),
+                        "groups": c.get("group_breakdown", {})
+                    }
+                    slim_candidates.append(slim)
+                # Group percent distribution
+                group_pct = {}
+                grand_groups = sum(v for v in group_totals.values() if isinstance(v, (int, float)))
+                for g, v in group_totals.items():
+                    if isinstance(v, (int, float)) and grand_groups:
+                        group_pct[g] = round(v / grand_groups * 100.0, 3)
+                context["summary"] = {
+                    "contest_id": enr.get("contest_id"),
+                    "contest_name": enr.get("contest_name"),
+                    "contest_type": enr.get("contest_type"),
+                    "vote_for": enr.get("vote_for"),
+                    "precincts_participating": enr.get("precincts_participating"),
+                    "precincts_reporting": enr.get("precincts_reporting"),
+                    "contest_reporting_percent": enr.get("contest_reporting_percent"),
+                    "candidate_count": enr.get("candidate_count"),
+                    "ballot_groups": groups,
+                    "group_totals": group_totals,
+                    "group_percent_distribution": group_pct,
+                    "total_candidate_votes": total_votes_all,
+                    "candidates": slim_candidates
+                }
+            # Retain a slim copy for metadata (avoid huge blobs)
+            context["rawjson_enrichment_slim"] = {
+                "contest_reporting_percent": enr.get("contest_reporting_percent"),
+                "candidate_count": enr.get("candidate_count"),
+                "ballot_groups_present": enr.get("ballot_groups_present"),
+            }
+        # Hierarchical headers -> export (two rows) if present
+        if "hierarchical_headers" in context and isinstance(context["hierarchical_headers"], dict):
+            hh = context["hierarchical_headers"].get("rows")
+            if hh and isinstance(hh, list) and all(isinstance(r, list) for r in hh):
+                context["hierarchical_header_rows"] = hh
+    except Exception as e:
+        logger.warning(f"[OUTPUT_UTILS] Enrichment build failed: {e}")
+
+    # Optional: embed a reproducibility hash (very light – based on header list)
+    try:
+        import hashlib
+        h_bytes = "|".join(map(str, headers_final)).encode("utf-8", errors="ignore")
+        context["structure_hash"] = hashlib.sha256(h_bytes).hexdigest()[:16]
+    except Exception:
+        pass
+
     # Build metadata
     meta = {
         "created_at": dt.datetime.now().isoformat(timespec="seconds"),
@@ -328,6 +403,11 @@ def finalize_election_output(
         "csv_path": csv_path,
         "context": context,
         "user_feedback_enabled": bool(enable_user_feedback),
+        # Direct top-level convenience copies (do not duplicate large objects)
+        "hierarchical_header_rows": context.get("hierarchical_header_rows"),
+        "rawjson_summary": context.get("summary"),
+        "rawjson_enrichment_slim": context.get("rawjson_enrichment_slim"),
+        "structure_hash": context.get("structure_hash"),
     }
     try:
         with open(meta_path, "wb") as f:
@@ -340,5 +420,29 @@ def finalize_election_output(
             "session_id": session_id,
             "path": meta_path
         })
+        
+    # Optional XLSX export with hierarchical headers
+    try:
+        if context.get("generate_xlsx", True):
+            from .xlsx_exporter import export_candidate_group_pivot_xlsx
+            xlsx_path = os.path.join(os.path.dirname(csv_path), base_name + ".xlsx")
+            export_candidate_group_pivot_xlsx(
+                flat_headers=headers_final,
+                rows=safe_rows,
+                hierarchical_header_rows=context.get("hierarchical_header_rows"),
+                xlsx_path=xlsx_path,
+                context=context,
+                format_numbers=context.get("xlsx_format_numbers", True),
+                apply_color_scale=context.get("xlsx_color_scale", True)
+            )
+            meta["xlsx_path"] = xlsx_path
+            # Rewrite metadata to include xlsx path
+            try:
+                with open(meta_path, "wb") as f:
+                    f.write(orjson.dumps(meta, option=orjson.OPT_INDENT_2))
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"[OUTPUT_UTILS] XLSX export failed: {e}")
 
     return {"csv_path": csv_path, "metadata_path": meta_path}

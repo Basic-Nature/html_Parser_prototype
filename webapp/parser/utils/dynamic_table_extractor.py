@@ -53,17 +53,20 @@ from typing import List, Dict, Tuple, Any, Optional
 from .logger_singleton import logger
 from typing import TYPE_CHECKING
 from .table_core import ( 
-    extract_rows_and_headers_from_dom,
-    extract_with_patterns,
-    guess_headers_from_row,
-    extract_table_data,
-    load_dom_patterns,
-    normalize_text,
     robust_table_extraction,
-    is_date_like,
-    is_location_header,
-    normalize_header
 )
+
+from .dom_extractor import extract_rows_and_headers_from_dom, guess_headers_from_row
+from .pattern_extractor import extract_with_patterns, load_dom_patterns
+from .date_utils import is_date_like
+
+from .detect import (
+    normalize_text,
+    normalize_header,
+    extract_table_data,
+    is_location_header
+)
+from .table_core import robust_table_extraction
 
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator

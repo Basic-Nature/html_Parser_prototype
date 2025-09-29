@@ -20,14 +20,19 @@ from .shared_logic import (
 )
 from .logger_singleton import logger
 from ..config import CACHE_DIR
-from .table_core import (
+
+from .detect import (
     harmonize_headers_and_data,
     nlp_entity_annotate_table,
-    pivot_to_wide_format,
-    table_signature,
-    cache_table_structure,
-    normalize_header, merge_table_data
+    normalize_header,
+    emit_metric
 )
+from .pivot import (
+    pivot_to_wide as pivot_to_wide_format,
+    pivot_candidate_groups_from_rawjson
+)
+from .merge_utils import merge_table_data
+from .structure_cache import table_signature, cache_table_structure
 from .dynamic_table_extractor import dynamic_table_extractor
 
 if TYPE_CHECKING:
@@ -55,6 +60,219 @@ def _emit(level: str, msg_type: str, message: str, session_id: Optional[str] = N
     level_l = level.lower()
     log_fn = getattr(logger, level_l, logger.info)
     log_fn(payload)
+
+def _salvage_promote_best_row_as_header(rows: List[Any], session_id=None):
+    """
+    Heuristically choose the best list/tuple row to act as header.
+    Score = (non_empty_cells / total) + 0.3 * uniqueness_ratio
+    Returns (headers, dict_rows, diagnostics)
+    """
+    if not rows:
+        return [], [], {}
+    candidate_indices = list(range(min(6, len(rows))))  # inspect first few
+    best = {"score": -1, "idx": 0, "headers": []}
+    for idx in candidate_indices:
+        r = rows[idx]
+        if not isinstance(r, (list, tuple)):
+            continue
+        cells = [str(c).strip() for c in r]
+        if not cells:
+            continue
+        non_empty = [c for c in cells if c]
+        if len(non_empty) < 2:
+            continue
+        uniq = len(set(cells)) / max(1, len(cells))
+        score = (len(non_empty) / len(cells)) + 0.3 * uniq
+        if score > best["score"]:
+            best.update({"score": score, "idx": idx, "headers": cells})
+    if not best["headers"]:
+        # fallback to first list row
+        return _salvage_promote_first_row_as_header(rows) + ({"fallback": True},)
+
+    # Normalize + dedupe headers
+    header_cells = []
+    seen = set()
+    for i, h in enumerate(best["headers"]):
+        base = h or f"Column {i+1}"
+        candidate = base
+        k = 2
+        while normalize_header(candidate) in seen:
+            candidate = f"{base}_{k}"
+            k += 1
+        seen.add(normalize_header(candidate))
+        header_cells.append(candidate)
+
+    dict_rows = []
+    for ridx, row in enumerate(rows):
+        if ridx == best["idx"]:
+            continue
+        if isinstance(row, (list, tuple)):
+            d = {header_cells[i]: row[i] if i < len(row) else "" for i in range(len(header_cells))}
+        elif isinstance(row, dict):
+            d = {h: row.get(h, "") for h in header_cells}
+        else:
+            d = {header_cells[0]: row}
+        if any(v not in ("", None) for v in d.values()):
+            dict_rows.append(d)
+
+    emit_metric("builder_salvage_row_index", index=best["idx"], score=round(best["score"], 3))
+    _emit("info", "builder", "[TABLE_BUILDER] Salvage header promotion",
+          session_id, row_index=best["idx"], score=round(best["score"], 3),
+          columns=len(header_cells))
+    return header_cells, dict_rows, {
+        "row_index": best["idx"],
+        "score": best["score"],
+        "columns": len(header_cells),
+        "strategy": "heuristic"
+    }
+
+def _salvage_promote_first_row_as_header(rows: List[Any]) -> tuple[list[str], list[dict]]:
+    """
+    Treat first list/tuple row as header; map remaining list rows to dict rows.
+    """
+    if not rows:
+        return [], []
+    raw_header_row = rows[0]
+    header_cells = [str(c).strip() or f"Column {i+1}" for i, c in enumerate(raw_header_row)]
+    norm_seen = set()
+    final_headers = []
+    for h in header_cells:
+        nh = normalize_header(h)
+        if nh in norm_seen:
+            # Deduplicate by appending index suffix
+            base = h
+            k = 2
+            while normalize_header(f"{base}_{k}") in norm_seen:
+                k += 1
+            h = f"{base}_{k}"
+            nh = normalize_header(h)
+        norm_seen.add(nh)
+        final_headers.append(h)
+    dict_rows = []
+    for r in rows[1:]:
+        if isinstance(r, (list, tuple)):
+            d = {final_headers[i]: r[i] if i < len(r) else "" for i in range(len(final_headers))}
+        elif isinstance(r, dict):
+            d = {h: r.get(h, "") for h in final_headers}
+        else:
+            d = {final_headers[0]: r}
+        if any(v not in ("", None) for v in d.values()):
+            dict_rows.append(d)
+    emit_metric("builder_salvage_promote_header", rows=len(dict_rows))
+    return final_headers, dict_rows
+
+def _sanitize_headers_and_rows(headers: List[Any], rows: List[Any], session_id=None, context: dict | None = None):
+    """
+    Defensive sanitation & salvage:
+      - Flatten nested header lists
+      - Coerce non-string headers
+      - Promote first row to header if >80% of rows are list/tuple and headers empty or numeric placeholders
+      - Coerce list/tuple rows to dict rows
+      - Collapse duplicate Column N sequences
+    """
+    from .detect import normalize_header
+    import re
+    headers = headers or []
+    rows = rows or []
+
+    context = context or {}
+    # Salvage detection:
+    list_like = sum(1 for r in rows if isinstance(r, (list, tuple)))
+    salvage_diag = None
+    if rows and list_like / len(rows) >= 0.8:
+        # generic header test
+        generic = all(
+            (not h) or bool(re.fullmatch(r"col(umn)?\s*\d+", str(h).strip().lower()))
+            for h in headers
+        ) or not headers
+        if generic:
+            try:
+                # Use heuristic best-row promotion
+                promoted_headers, promoted_rows, diag = _salvage_promote_best_row_as_header(rows, session_id=session_id)
+                if promoted_headers:
+                    headers, rows = promoted_headers, promoted_rows
+                    salvage_diag = {"event": "promote_header", **diag}
+            except Exception as e:
+                emit_metric("builder_salvage_failed", error=str(e))
+                _emit("warning", "builder", "[TABLE_BUILDER] Salvage heuristic failed", session_id, error=str(e))
+    if salvage_diag:
+        context.setdefault("salvage_events", []).append(salvage_diag)
+
+    # Flatten headers
+    def _flatten(seq):
+        for x in seq:
+            if isinstance(x, (list, tuple)):
+                yield from _flatten(x)
+            else:
+                yield x
+
+    flat_headers: list[str] = []
+    seen_norm = set()
+    col_pattern = re.compile(r"^column\s+(\d+)$", re.I)
+    for raw in _flatten(headers):
+        if raw is None:
+            continue
+        hs = raw if isinstance(raw, str) else str(raw)
+        nh = normalize_header(hs)
+        if not nh:
+            continue
+        # Collapse duplicate Column N
+        m = col_pattern.match(hs.strip())
+        if m:
+            col_key = f"column_{m.group(1)}"
+            if col_key in seen_norm:
+                continue
+            seen_norm.add(col_key)
+        if nh in seen_norm:
+            continue
+        seen_norm.add(nh)
+        flat_headers.append(hs)
+
+    # Sanitize rows
+    sanitized_rows: list[dict] = []
+    changed = False
+
+    # Helper to ensure enough columns when mapping list rows
+    def _ensure_columns(count: int):
+        idx = 0
+        current_norm = {normalize_header(h): h for h in flat_headers}
+        while len(flat_headers) < count:
+            candidate = f"Column {len(flat_headers)+1}"
+            nc = normalize_header(candidate)
+            if nc in current_norm:
+                # skip if duplicate numeric placeholder
+                idx += 1
+                continue
+            flat_headers.append(candidate)
+            current_norm[nc] = candidate
+
+    for r in rows:
+        if isinstance(r, dict):
+            fixed = {}
+            for k, v in r.items():
+                ks = k if isinstance(k, str) else str(k)
+                nk = normalize_header(ks)
+                if nk not in {normalize_header(h) for h in flat_headers}:
+                    flat_headers.append(ks)
+                fixed[ks] = v
+            sanitized_rows.append(fixed)
+        elif isinstance(r, (list, tuple)):
+            _ensure_columns(len(r))
+            mapped = {flat_headers[i]: r[i] for i in range(len(r))}
+            sanitized_rows.append(mapped)
+            changed = True
+        else:
+            if "Value" not in flat_headers:
+                flat_headers.append("Value")
+            sanitized_rows.append({"Value": r})
+            changed = True
+
+    if changed:
+        emit_metric("builder_rows_coerced", rows=len(sanitized_rows))
+    if any(not isinstance(h, str) for h in headers):
+        emit_metric("builder_headers_coerced", count=len(flat_headers))
+
+    return flat_headers, sanitized_rows
 
 # ===================================================================
 # MAIN TABLE BUILDING PIPELINE
@@ -166,25 +384,31 @@ def build_dynamic_table(
         merged_headers, merged_data = [], []
 
     try:
+        merged_headers, merged_data = _sanitize_headers_and_rows(merged_headers, merged_data,
+                                                                 session_id=session_id, context=context)
+    except Exception as e:
+        _emit("warning", "builder", "[TABLE_BUILDER] _sanitize_headers_and_rows failed",
+              session_id, error=str(e))
+
+    try:
         merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data, context=context)
     except Exception as e:
-        _emit("warning", "builder", "[TABLE_BUILDER] harmonize_headers_and_data (initial) failed", session_id, error=str(e))
-        # Keep original if harmonization fails
-        pass
+        _emit("warning", "builder", "[TABLE_BUILDER] harmonize_headers_and_data (initial) failed",
+              session_id, error=str(e))
 
-    # --- Ensure all required percent columns are present ---
-    norm_headers = set(normalize_header(h) for h in merged_headers)
-    for percent_col in PERCENT_KEYWORDS:
-        norm_percent_col = normalize_header(percent_col)
-        if norm_percent_col not in norm_headers:
-            merged_headers = safe_append(merged_headers, percent_col)
-            for row in merged_data:
-                row[percent_col] = ""
-    # Mark presence for downstream logic
-    context["has_percent_reported"] = any(
-        any(normalize_header(h) == normalize_header(pc) for h in merged_headers)
-        for pc in PERCENT_KEYWORDS
-    )
+    # --- Single canonical percent column (de-noise) ---
+    percent_norm_set = {normalize_header(p) for p in PERCENT_KEYWORDS}
+    has_any_percent = any(normalize_header(h) in percent_norm_set for h in merged_headers)
+    if has_any_percent and not any(normalize_header(h) == normalize_header("Percent Reported") for h in merged_headers):
+        merged_headers = safe_append(merged_headers, "Percent Reported")
+        for row in merged_data:
+            # migrate first existing percent-like value if present
+            for k, v in list(row.items()):
+                if normalize_header(k) in percent_norm_set and v not in ("", None):
+                    row["Percent Reported"] = v
+                    break
+            row.setdefault("Percent Reported", row.get("Percent Reported", ""))
+    context["has_percent_reported"] = any(normalize_header(h) == normalize_header("Percent Reported") for h in merged_headers)
     # --- 3. NLP entity annotation ---
     try:
         annotated_headers, annotated_data, entity_info = nlp_entity_annotate_table(
@@ -196,18 +420,69 @@ def build_dynamic_table(
         entity_info = {}
 
     try:
-        headers, data = harmonize_headers_and_data(annotated_headers, annotated_data, context=context)
+        headers, data = _sanitize_headers_and_rows(annotated_headers, annotated_data,
+                                                   session_id=session_id, context=context)
     except Exception as e:
-        _emit("warning", "builder", "[TABLE_BUILDER] harmonize_headers_and_data (post-NLP) failed; using annotated directly", session_id, error=str(e))
+        _emit("warning", "builder", "[TABLE_BUILDER] sanitation post-NLP failed",
+              session_id, error=str(e))
         headers, data = annotated_headers, annotated_data
 
-    # --- 4. Pivot to wide format before feedback ---
+    try:
+        headers, data = harmonize_headers_and_data(headers, data, context=context)
+    except Exception as e:
+        _emit("warning", "builder", "[TABLE_BUILDER] harmonize_headers_and_data (post-NLP) failed; using annotated directly",
+              session_id, error=str(e))
+        headers, data = headers, data
+        
+    context.setdefault("merge_cross_endorsements", True)
+    # --- 4. Pivot (RawJSON specialized first, then generic) ---
     if pivot_to_wide:
         try:
-            wide_headers, wide_data = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
-            headers, data = harmonize_headers_and_data(wide_headers, wide_data, context=context)
+            headers, data = _sanitize_headers_and_rows(headers, data,
+                                                       session_id=session_id, context=context)
         except Exception as e:
-            _emit("warning", "builder", "[TABLE_BUILDER] Pivot to wide format failed", session_id, error=str(e), contest=safe_get(context, "contest", "Unknown"))
+            _emit("warning", "builder", "[TABLE_BUILDER] sanitation pre-pivot failed", session_id, error=str(e))
+
+        specialized_applied = False
+        if "RawJSON" in headers:
+            try:
+                cg_headers, cg_rows = pivot_candidate_groups_from_rawjson(headers, data, context=context)
+                if cg_headers and cg_rows:
+                    headers, data = cg_headers, cg_rows
+                    specialized_applied = True
+                    _emit("info", "builder", "[TABLE_BUILDER] Applied RawJSON candidate-group pivot",
+                          session_id, rows=len(data), cols=len(headers))
+            except Exception as e:
+                _emit("warning", "builder", "[TABLE_BUILDER] candidate-group RawJSON pivot failed", session_id, error=str(e))
+
+        if not specialized_applied:
+            try:
+                wide_headers, wide_rows = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
+                headers, data = harmonize_headers_and_data(wide_headers, wide_rows, context=context)
+            except Exception as e:
+                _emit("warning", "builder", "[TABLE_BUILDER] Pivot to wide format failed",
+                      session_id, error=str(e), contest=safe_get(context, "contest", "Unknown"))
+
+        # Collapse duplicate / synonym percent headers post-pivot
+        try:
+            headers, data = _unify_percent_columns(headers, data)
+        except Exception as e:
+            _emit("warning", "builder", "[TABLE_BUILDER] Percent unification failed", session_id, error=str(e))
+
+        # Mark hierarchical headers availability (if produced by specialized pivot)
+        if "hierarchical_headers" in context:
+            context["has_hierarchical_headers"] = True
+        else:
+            context["has_hierarchical_headers"] = False
+
+        # Propagate RawJSON enrichment flags
+        if "rawjson_enrichment" in context:
+            context["has_rawjson_enrichment"] = True
+        else:
+            context["has_rawjson_enrichment"] = False
+    # Attach salvage events to entity_info if any
+    if 'salvage_events' in context and isinstance(context['salvage_events'], list):
+        entity_info.setdefault("salvage_events", context['salvage_events'])
 
     # --- 5. Optionally load from cache for debugging ---
     if debug:
@@ -758,6 +1033,58 @@ def dynamic_confidence_threshold(history, coordinator=None, default=0.93):
         elif removals > 10:
             threshold = max(0.85, threshold - 0.03)
     return threshold
+
+def _unify_percent_columns(headers: List[str], rows: List[Dict[str, Any]]) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Collapse multiple percent-reporting synonym columns into one 'Percent Reported'.
+    Keep first meaningful value per row.
+    """
+    if not headers:
+        return headers, rows
+    target_norm = normalize_header("Percent Reported")
+    percent_norms = {normalize_header(p) for p in PERCENT_KEYWORDS} | {
+        normalize_header("% reported"),
+        normalize_header("% precincts reporting"),
+        normalize_header("percent reported"),
+        normalize_header("precincts reporting"),
+    }
+    candidates = [h for h in headers if normalize_header(h) in percent_norms]
+    if not candidates:
+        return headers, rows
+    # Decide canonical header
+    canonical = None
+    for pref in ("Percent Reported", "% Reported", "% Precincts Reporting"):
+        if pref in headers:
+            canonical = pref
+            break
+    if not canonical:
+        canonical = "Percent Reported"
+    # Build new header list (remove others)
+    new_headers = []
+    inserted = False
+    for h in headers:
+        if h in candidates and h != canonical:
+            continue
+        if h == canonical:
+            inserted = True
+        new_headers.append(h)
+    if not inserted:
+        new_headers.insert(1 if "Total Ballots Reported" in new_headers else 0, canonical)
+    # Row merge
+    out_rows = []
+    for r in rows:
+        val = ""
+        for h in candidates:
+            v = r.get(h)
+            if v not in (None, "", 0):
+                val = v
+                break
+        if val and isinstance(val, (int, float)):
+            val = f"{val}"
+        new_r = {h: r.get(h, "") for h in new_headers}
+        new_r[canonical] = val
+        out_rows.append(new_r)
+    return new_headers, out_rows
 
 # ===================================================================
 # END OF FILE
