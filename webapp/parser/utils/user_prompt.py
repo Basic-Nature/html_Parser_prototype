@@ -1,4 +1,10 @@
 from __future__ import annotations
+
+import datetime
+import inspect
+import re
+import threading
+
 # webapp/parser/utils/user_prompt.py
 # -----------------------------------------------------------------------------------
 # This file contains a unified user prompt handler for both CLI and webapp modes.
@@ -7,16 +13,21 @@ from __future__ import annotations
 # structured logging.
 # -----------------------------------------------------------------------------------
 import time
-import threading
-import datetime
-import re
-import orjson
-import inspect
 import traceback
-from datetime import timezone
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
-from typing import Any, Callable, Dict, List, Optional, Union, Generator, ContextManager
 from contextlib import contextmanager
+from datetime import timezone
+from typing import Any, Callable, ContextManager, Dict, Generator, List, Optional, Union
+
+import orjson
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
+
 
 def safe_lower(val) -> str:
     try:
@@ -320,7 +331,7 @@ class UserPrompt(ContextManager):
         """
         Emit a prompt or status message in both CLI and webapp modes.
         """
-        from .logger_singleton import logger, console
+        from .logger_singleton import console, logger
         payload = {
             "type": status,
             "session_id": session_id,
@@ -452,6 +463,9 @@ class UserPrompt(ContextManager):
             try:
                 if self.mode == "webapp" and self.socketio_emit_func and session_id:
                     # Emit prompt payload to frontend
+                    # Ensure the prompt session exists before notifying the frontend to avoid
+                    # race conditions where the response arrives before the session is registered.
+                    prompt_session = self.get_prompt_session(session_id, context)
                     payload = {
                         "type": "prompt",
                         "message": prompt_str,
@@ -460,7 +474,6 @@ class UserPrompt(ContextManager):
                     }
                     self.socketio_emit_func(orjson.dumps(payload).decode("utf-8"))
                     # Wait for frontend response
-                    prompt_session = self.get_prompt_session(session_id, context)
                     print("TRACE: Waiting for frontend response for session", session_id)
                     response = prompt_session.wait_for_response(timeout)
                     print("TRACE: Received response from frontend:", response)
@@ -795,7 +808,7 @@ class UserPrompt(ContextManager):
         logger.info(f"\n[CONFIRMATION] Candidate button found: '{label}'\nSelector: {selector}")
         try:
             resp = self.prompt_input(
-                f"Do you want to click this button? (y/n): ",
+                "Do you want to click this button? (y/n): ",
                 default="y",
                 validator=lambda x: safe_lower(x or "") in {"y", "n", "yes", "no"},
                 allow_cancel=True,

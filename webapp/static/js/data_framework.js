@@ -117,8 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Optional: basic filename policy (client hint)
       const file = fd.get('csv_file');
-      if (file && file.name && !/\.csv$/i.test(file.name)) {
-        setStatus(el.uploadStatus, 'error', 'Only .csv files are allowed.');
+      if (file && file.name && !/\.(csv|txt|tsv|xlsx|xls)$/i.test(file.name)) {
+        setStatus(el.uploadStatus, 'error', 'Only .csv, .txt, .tsv, .xls, or .xlsx files are allowed.');
         return;
       }
 

@@ -1,11 +1,13 @@
 import os
-import sys
-import spacy
-from spacy.training import offsets_to_biluo_tags
-import orjson
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+import orjson
+import spacy
+from spacy.training import offsets_to_biluo_tags
+
 from ..config import LOG_DIR, PROJECT_ROOT
 from ..utils.logger_singleton import logger
 

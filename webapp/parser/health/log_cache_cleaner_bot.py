@@ -21,20 +21,20 @@ From another script:
 from webapp.parser.bots.log_cache_cleaner_bot import run_log_cache_cleaner
 run_log_cache_cleaner()
 """
-import os
-import sys
-import orjson
 import argparse
-import time
+import os
 import threading
+import time
 from pathlib import Path
+
+import orjson
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from ..utils.logger_singleton import logger
-# --- SQLAlchemy imports for DB maintenance ---
+
+from ..config import CACHE_DIR, CONTEXT_LIBRARY_DIR, LOG_DIR
 from ..utils.db_utils import get_engine
+from ..utils.logger_singleton import logger
 from .context_migration import migrate_all
-from ..config import LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR
 
 DEFAULT_MAX_SIZE_MB = 1024 # Default max size for files before cleaning 250MB, 500MB, 1024MB, 2048MB
 MISALIGNED_KEYWORDS = ["misaligned", "pattern-excluding"]
@@ -113,7 +113,7 @@ def clean_jsonl(path, required_fields=None, backup=True) -> dict:
         for idx, line in enumerate(lines, 1):
             try:
                 entry = orjson.loads(line)
-            except Exception as e:
+            except Exception:
                 malformed_count += 1
                 if len(malformed_examples) < 5:
                     malformed_examples.append(line[:100])
@@ -401,7 +401,7 @@ def clean_dir(target_dir, allowed_roots, max_size_bytes, full_sweep=False) -> tu
     misaligned_summary = []
     # Recursively find all files with allowed extensions
     for path in Path(target_dir).rglob("*"):
-        if not path.is_file() or not path.suffix in ALLOWED_EXTS:
+        if not path.is_file() or path.suffix not in ALLOWED_EXTS:
             continue
         fname = str(path)
         try:

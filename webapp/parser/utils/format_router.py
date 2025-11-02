@@ -1,24 +1,29 @@
 import os
-import time
 import re
-from typing import Tuple, Optional, Any, Dict, List
+import tempfile
+import time
 from difflib import get_close_matches
-from ..handlers.formats import json_handler, pdf_handler, csv_handler
-from .logger_singleton import logger, prompt
-from .shared_logic import (
-    safe_lower, safe_get, safe_isdigit, safe_parse
-)
-from .browser_utils import (
-    safe_content, safe_query_selector_all, safe_context_library, safe_context_result,
-    safe_get_attribute, safe_url
-)
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
+
 import requests
-import tempfile 
-from ..config import SUPPORTED_FORMATS, DISABLE_HTML_FALLBACK
-from .download_utils import download_file, ensure_input_directory
-from .html_scanner import load_pattern_kb, append_pattern_kb
+
+from ..config import DISABLE_HTML_FALLBACK, SUPPORTED_FORMATS
 from ..Context_Integration.Context_Library.constants import CONTEST_KEYWORDS
+from ..handlers.formats import csv_handler, json_handler, pdf_handler, txt_handler, xlsx_handler
+from .browser_utils import (
+    safe_content,
+    safe_context_library,
+    safe_context_result,
+    safe_get_attribute,
+    safe_query_selector_all,
+    safe_url,
+)
+from .download_utils import download_file, ensure_input_directory
+from .html_scanner import append_pattern_kb, load_pattern_kb
+from .logger_singleton import logger, prompt
+from .shared_logic import safe_lower, safe_parse
+
 
 def _browser_headers(page, referer: str) -> dict:
     try:
@@ -169,6 +174,10 @@ def route_format_handler(format_str: str) -> Optional[object]:
             return pdf_handler
         if fmt == "csv":
             return csv_handler
+        if fmt in {"txt", "text"}:
+            return txt_handler
+        if fmt in {"xlsx", "xls"}:
+            return xlsx_handler
         logger.warning({
             "level": "WARNING",
             "type": "router",
@@ -346,7 +355,7 @@ def prompt_and_handle_download(
             if not href:
                 continue
             h = str(href).lower()
-            for ext in (".json", ".csv", ".pdf"):
+            for ext in (".json", ".csv", ".pdf", ".txt", ".xlsx", ".xls"):
                 if ext in h:
                     dom_links.append({"href": href, "format": ext.strip("."), "source": "dom"})
                     break
@@ -359,7 +368,7 @@ def prompt_and_handle_download(
         })
 
     # 3) HTML regex scan
-    dynamic_links = extract_download_links_from_html(html, exts=[".json", ".csv", ".pdf"])
+    dynamic_links = extract_download_links_from_html(html, exts=[".json", ".csv", ".pdf", ".txt", ".xlsx", ".xls"])
 
     # 4) Merge/dedupe by (href, format)
     all_links: Dict[Tuple[str, str], Dict[str, str]] = {}
@@ -397,7 +406,13 @@ def prompt_and_handle_download(
 
     # 7) Add format patterns to KB (best-effort)
     try:
-        kb = load_pattern_kb()
+        existing_entries = load_pattern_kb() or []
+        existing_ids = {
+            entry.get("pattern_id")
+            for entry in existing_entries
+            if isinstance(entry, dict)
+        }
+        added = 0
         for link in merged_links:
             fmt = link.get("format", "")
             href = link.get("href", "")
@@ -411,11 +426,14 @@ def prompt_and_handle_download(
                 "embedding": [],
                 "session_id": session_id
             }
+            if kb_entry["pattern_id"] in existing_ids:
+                continue
             append_pattern_kb(kb_entry)
+            added += 1
         logger.debug({
             "level": "DEBUG",
             "type": "download",
-            "message": f"[format_router][Session:{session_id}] Pattern KB entries added: {len(merged_links)}",
+            "message": f"[format_router][Session:{session_id}] Pattern KB entries added: {added}",
             "session_id": session_id
         })
     except Exception:

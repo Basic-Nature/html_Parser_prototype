@@ -1,0 +1,71 @@
+[tool.ruff]
+# Keep it simple and fast; respect existing style while catching common issues.
+line-length = 100
+# Limit to our source tree
+src = ["webapp"]
+exclude = [
+  "webapp/static",
+  "webapp/templates",
+  "webapp/__pycache__",
+  "**/__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+  "E",  # pycodestyle
+  "F",  # pyflakes
+  "I",  # isort (import sorting only for new files)
+]
+ignore = [
+  "E501",  # long lines are common in logging/doc payloads
+  "E402",  # allow late imports where refactors would be large (temporary)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"webapp/parser/handlers/formats/pdf_handler.py" = ["E402", "F401", "I001", "E741", "F841"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+no_implicit_optional = true
+check_untyped_defs = false
+ignore_missing_imports = true
+follow_imports = "silent"
+# Only attempt to type-check our source tree; many third-party libs are optional at runtime.
+files = ["webapp"]
+exclude = [
+  "webapp/static",
+  "webapp/templates",
+  "webapp/__pycache__",
+  # Example scaffold has a space in the folder name, which breaks module discovery for mypy
+  "webapp/parser/handlers/states/example state/.*",
+]
+
+# Gradual typing: ignore errors across the app by default, then opt-in for critical modules.
+[[tool.mypy.overrides]]
+module = ["webapp.*"]
+ignore_errors = true
+
+# Enforce on format handlers (our ingestion parity surface)
+[[tool.mypy.overrides]]
+module = ["webapp.parser.handlers.formats.*"]
+ignore_errors = false
+check_untyped_defs = true
+no_implicit_optional = true
+
+# Temporarily relax pdf handler; it's large and being incrementally typed
+[[tool.mypy.overrides]]
+module = ["webapp.parser.handlers.formats.pdf_handler"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+addopts = "-p no:unraisableexception"
+
+# Enforce on tests to keep examples/types honest
+[[tool.mypy.overrides]]
+module = ["webapp.tests.*"]
+ignore_errors = false
+check_untyped_defs = true
+

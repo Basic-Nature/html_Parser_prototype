@@ -1,5 +1,3 @@
-
-from __future__ import annotations
 # webapp/parser/Context_Integration/librarian.py
 # -----------------------------------------------------------------------------------
 # This file contains functions to manage the context library for the HTML parser,
@@ -7,32 +5,49 @@ from __future__ import annotations
 # It also includes utilities for logging unknown HTML tags and attributes,
 # extending context library structures, and handling ML/LLM feedback.
 # -----------------------------------------------------------------------------------
+from __future__ import annotations
+
+import argparse
 import os
 import re
-import orjson
+import shutil
 import subprocess
 import sys
-import time
-import shutil
-import numpy as np
-import time
-import threading
-import shutil
 import tempfile
-import argparse
-from pathlib import Path
+import threading
+import time
 from datetime import datetime, timezone
-from typing import Dict, Set, List, Any
-from ..config import CONTEXT_LIBRARY_PATH, PROJECT_ROOT, LOG_DIR, BASE_DIR
-from .Context_Library.constants import (
-    BALLOT_TYPES, CANDIDATE_KEYWORDS, CANONICAL_SEGMENT_LABELS, CUSTOM_ATTR_PATTERNS, PANEL_TAGS,
-    HEADING_TAGS, HTML_TAGS, LOCATION_KEYWORDS, STATE_ABBR, KNOWN_STATE_TO_COUNTY_MAP, _CANONICAL_STATE_ABBR
-)
-from ..utils.shared_logic import (
-    safe_get, safe_merge_defaults, safe_setdefault, safe_startswith, safe_append, safe_filename
-)
-from ..utils.misc_utils import file_hash, is_safe_path
+from pathlib import Path
+from typing import Any, Dict, List, Set
+
+import numpy as np
+import orjson
+
+from ..config import BASE_DIR, CONTEXT_LIBRARY_PATH, LOG_DIR, PROJECT_ROOT
 from ..utils.logger_singleton import logger
+from ..utils.misc_utils import file_hash, is_safe_path
+from ..utils.shared_logic import (
+    safe_append,
+    safe_filename,
+    safe_get,
+    safe_merge_defaults,
+    safe_setdefault,
+    safe_startswith,
+)
+from .Context_Library.constants import (
+    _CANONICAL_STATE_ABBR,
+    BALLOT_TYPES,
+    CANDIDATE_KEYWORDS,
+    CANONICAL_SEGMENT_LABELS,
+    CUSTOM_ATTR_PATTERNS,
+    HEADING_TAGS,
+    HTML_TAGS,
+    KNOWN_STATE_TO_COUNTY_MAP,
+    LOCATION_KEYWORDS,
+    PANEL_TAGS,
+    STATE_ABBR,
+)
+
 _CONTEXT_LOCK = threading.Lock()
 SCHEMA_VERSION = "1.0"
 _TEMP_CONTEXT_LIB_TEMPFILES = set()
@@ -102,7 +117,7 @@ def atomic_write_json(obj, path) -> None:
         try:
             shutil.move(str(tmp_path), str(path))
             break
-        except (OSError, PermissionError, FileExistsError) as e:
+        except (OSError, PermissionError, FileExistsError):
             # Try to remove the target file if possible (only if you are sure it's safe)
             try:
                 os.remove(str(path))

@@ -1,3 +1,3 @@
-from .arizona import handle as parse
+from .arizona import parse as parse
 
 county_mode = False

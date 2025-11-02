@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # webapp/parser/utils/ml_table_detector.py
 # ---------------------------------------------------------------
 # Advanced ML-based Table Detection for HTML Table Extraction
@@ -23,17 +24,23 @@ Exports:
     - detect_tables_ml(html: str, options: dict = None) -> List[dict]
 """
 import re
-import orjson
-from typing import List, Dict, Any, Optional, Tuple
 from collections import Counter
+from typing import Any, Dict, List, Optional, Tuple
+
+import orjson
 from selectolax.parser import HTMLParser
-from .browser_utils import safe_content, safe_attributes
-from .model_registry import TableDetectionModel
-from .logger_singleton import logger
+
 from ..config import (
-    LLM_PROVIDER, LLM_MODEL, LLM_API_KEY, LLM_SYSTEM_PROMPT, LLM_EXTRA_INSTRUCTIONS,
-    TABLE_MODEL_PATH
+    LLM_API_KEY,
+    LLM_EXTRA_INSTRUCTIONS,
+    LLM_MODEL,
+    LLM_PROVIDER,
+    LLM_SYSTEM_PROMPT,
+    TABLE_MODEL_PATH,
 )
+from .browser_utils import safe_attributes, safe_content
+from .logger_singleton import logger
+from .model_registry import TableDetectionModel
 
 # Precompiled patterns to avoid recompilation hot spots
 _JSON_OBJECT_RE = re.compile(r"\{[\s\S]+?\}")
@@ -399,12 +406,12 @@ def _regex_table_detection(html: str) -> List[Dict[str, Any]]:
     Fallback: Use regex to find repeated row/column patterns in flat HTML.
     Returns list of {headers, data, meta}.
     """
-    lines = [l.strip() for l in html.splitlines() if l.strip()]
+    lines = [line.strip() for line in html.splitlines() if line.strip()]
     if not lines:
         return []
 
     # Column counts per line
-    col_counts = [len(_SPLIT_COLS_RE.split(l)) for l in lines]
+    col_counts = [len(_SPLIT_COLS_RE.split(line)) for line in lines]
     if not col_counts:
         return []
 
@@ -415,7 +422,11 @@ def _regex_table_detection(html: str) -> List[Dict[str, Any]]:
         return []
 
     # Extract rows with the common col count
-    rows = [_SPLIT_COLS_RE.split(l) for l, c in zip(lines, col_counts) if c == common_col]
+    rows = [
+        _SPLIT_COLS_RE.split(line)
+        for line, col_count in zip(lines, col_counts)
+        if col_count == common_col
+    ]
     if len(rows) < 2:
         return []
 

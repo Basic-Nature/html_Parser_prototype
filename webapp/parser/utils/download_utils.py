@@ -1,18 +1,22 @@
 from __future__ import annotations
+
 # webapp/parser/utils/download_utils.py
 # ---------------------------------------------------------------
 # Download utility functions for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
 import os
-import requests
-import orjson
-from urllib.parse import urljoin
 from datetime import datetime
-from ..utils.logger_singleton import logger
-from ..utils.shared_logic import safe_get
+from urllib.parse import urljoin
+
+import orjson
+import requests
+
+from ..config import DOWNLOAD_MANIFEST, INPUT_DIR, OUTPUT_DIR
 from ..Context_Integration.context_organizer import ContextOrganizer
+from ..utils.logger_singleton import logger
 from ..utils.misc_utils import file_hash
-from ..config import INPUT_DIR, OUTPUT_DIR, DOWNLOAD_MANIFEST
+from ..utils.shared_logic import safe_get
+
 
 def ensure_input_directory():
     """Ensure the 'input' directory exists."""

@@ -1,7 +1,8 @@
 import os
 import re
+
 from .config import INPUT_DIR, OUTPUT_DIR, URL_LIST_FILE
-from .utils.logger_singleton import logger, console, prompt
+from .utils.logger_singleton import console, logger, prompt
 
 URL_LINE_RE = re.compile(r'^\s*(?P<url>(https?://|ftp://|www\.)[^\s#]+)')
 

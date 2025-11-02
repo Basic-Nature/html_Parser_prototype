@@ -1,42 +1,357 @@
 from __future__ import annotations
+
+import copy
+import os
+import re
+import time
+from collections import OrderedDict
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
 # ===================================================================
 # table_builder.py
 # Election Data Cleaner - Table Extraction and Cleaning Orchestrator
 # Centralizes user feedback, ML learning, and structure confirmation.
 # ===================================================================
-import copy
-import os
 import orjson
-import time
-from typing import List, Dict, Tuple, Any, TYPE_CHECKING, Optional
 from rich.table import Table
 
-from ..Context_Integration.Context_Library.constants import (
-    PERCENT_KEYWORDS,
-)
-from .shared_logic import (
-    safe_get, safe_append, safe_isalnum, safe_copy, safe_strip, safe_replace, safe_lower,
-    safe_values
-)
-from .logger_singleton import logger
 from ..config import CACHE_DIR
-
+from ..Context_Integration.Context_Library.constants import (
+    BALLOT_TYPES_SORT_ORDER,
+    PERCENT_KEYWORDS,
+    get_camelot_row_regex,
+    get_camelot_title_regex,
+    is_pseudo_result_party,
+)
+from .coordinator_protocol import CoordinatorProtocol
 from .detect import (
+    emit_metric,
     harmonize_headers_and_data,
     nlp_entity_annotate_table,
     normalize_header,
-    emit_metric
 )
-from .pivot import (
-    pivot_to_wide as pivot_to_wide_format,
-    pivot_candidate_groups_from_rawjson
-)
+from .logger_singleton import logger
 from .merge_utils import merge_table_data
-from .structure_cache import table_signature, cache_table_structure
-from .dynamic_table_extractor import dynamic_table_extractor
+from .pivot import pivot_candidate_groups_from_rawjson
+from .pivot import pivot_to_wide as pivot_to_wide_format
+from .salvage import collapse_ballot_synonym_columns
+from .shared_logic import (
+    build_camelot_row_filter_for_context,
+    record_noise_suggestion,
+    resolve_state_county_from_context,
+    safe_append,
+    safe_copy,
+    safe_get,
+    safe_isalnum,
+    safe_lower,
+    safe_replace,
+    safe_strip,
+    safe_values,
+)
+from .structure_cache import cache_table_structure, table_signature
+
+try:
+    from .dynamic_table_extractor import dynamic_table_extractor
+except Exception:
+    # Fallback no-op extractor to keep import chain stable in minimal environments
+    def dynamic_table_extractor(page, context, coordinator, table_html=None):  # type: ignore
+        return [], []
 
 if TYPE_CHECKING:
-    from ..Context_Integration.context_coordinator import ContextCoordinator
+    pass
+
+
+@lru_cache(maxsize=2048)
+def _normalize_header_cached(raw: str) -> str:
+    """Cache-normalized header lookups to avoid repeated regex work."""
+    return normalize_header(raw)
+
+
+def _norm_header(value: Any) -> str:
+    """Normalize a header-like value with caching for hot loops."""
+    if value is None:
+        return _normalize_header_cached("")
+    if isinstance(value, str):
+        return _normalize_header_cached(value)
+    return _normalize_header_cached(str(value))
+
+
+@lru_cache(maxsize=1)
+def _percent_norms() -> set[str]:
+    extras = (
+        "% reported",
+        "% precincts reporting",
+        "percent reported",
+        "precincts reporting",
+    )
+    norms = {_norm_header(term) for term in PERCENT_KEYWORDS}
+    norms.update(_norm_header(term) for term in extras)
+    norms.add(_norm_header("Percent Reported"))
+    return norms
+
+
+@lru_cache(maxsize=1)
+def _percent_reported_norm() -> str:
+    return _norm_header("Percent Reported")
+
+
+_LOCATION_PRIORITY = (
+    "Division Name",
+    "Precinct",
+    "Municipality",
+    "Ward",
+    "District",
+    "County",
+    "Division Type",
+)
+
+_LOCATION_PRIORITY_NORMS = tuple(_norm_header(label) for label in _LOCATION_PRIORITY)
+_LOCATION_TOKENS = (
+    "precinct",
+    "division",
+    "district",
+    "ward",
+    "municipality",
+    "county",
+    "borough",
+    "township",
+    "location",
+    "jurisdiction",
+)
+
+_CANDIDATE_SUFFIX_BASE = (
+    "Party",
+    "Total Vote",
+    "Total Votes",
+    "Vote Total",
+    "% Vote",
+    "Percent Vote",
+    "Cumulative Vote",
+    "Cumulative %",
+    "Cumulative Percent",
+    "Vote Share",
+)
+_CANDIDATE_SUFFIX_NORMS = {_norm_header(label) for label in _CANDIDATE_SUFFIX_BASE}
+_BALLOT_TYPE_NORMS = {_norm_header(bt) for bt in BALLOT_TYPES_SORT_ORDER}
+
+
+def _looks_like_location_header(header: str) -> bool:
+    nh = _norm_header(header)
+    if nh in _LOCATION_PRIORITY_NORMS:
+        return True
+    low = header.lower()
+    return any(token in low for token in _LOCATION_TOKENS)
+
+
+def _location_priority_score(header: str, original_index: int) -> tuple[int, int]:
+    nh = _norm_header(header)
+    if nh in _LOCATION_PRIORITY_NORMS:
+        return (_LOCATION_PRIORITY_NORMS.index(nh), original_index)
+    low = header.lower()
+    for offset, token in enumerate(_LOCATION_TOKENS):
+        if token in low:
+            return (len(_LOCATION_PRIORITY_NORMS) + offset, original_index)
+    return (len(_LOCATION_PRIORITY_NORMS) + len(_LOCATION_TOKENS), original_index)
+
+
+def _candidate_header_info(header: str) -> tuple[str, str] | None:
+    if " - " not in header:
+        return None
+    left, right = header.split(" - ", 1)
+    left = left.strip()
+    right = right.strip()
+    if not left or not right:
+        return None
+    norm_right = _norm_header(right)
+    if norm_right in _CANDIDATE_SUFFIX_NORMS:
+        return left, right
+    if norm_right in _BALLOT_TYPE_NORMS:
+        return left, right
+    for bt in BALLOT_TYPES_SORT_ORDER:
+        if bt.lower() in right.lower():
+            return left, right
+    return None
+
+
+def _extract_candidate_blocks(headers: list[str]) -> OrderedDict[str, list[str]]:
+    blocks: OrderedDict[str, list[str]] = OrderedDict()
+    for h in headers:
+        info = _candidate_header_info(h)
+        if not info:
+            continue
+        cand, _ = info
+        blocks.setdefault(cand, []).append(h)
+    return blocks
+
+
+def _coerce_int_for_total(val: Any) -> Optional[int]:
+    if val in (None, ""):
+        return None
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        return int(val) if val.is_integer() else None
+    if isinstance(val, str):
+        s = val.replace(",", "").strip()
+        if s.endswith("%"):
+            s = s[:-1].strip()
+        if not s:
+            return None
+        if s.lstrip("+-").isdigit():
+            try:
+                return int(s)
+            except Exception:
+                return None
+    return None
+
+
+def _ensure_division_totals(headers: list[str], rows: list[dict]) -> tuple[list[str], list[dict]]:
+    if not headers or not rows:
+        return headers, rows
+    norm_map = {h: _norm_header(h) for h in headers}
+    grand_norm = _norm_header("Grand Total")
+    grand_header = next((h for h in headers if norm_map[h] == grand_norm), None)
+    percent_norms = _percent_norms()
+    candidate_blocks = _extract_candidate_blocks(headers)
+    if not candidate_blocks:
+        if grand_header is not None:
+            for row in rows:
+                existing = row.get(grand_header)
+                existing_int = _coerce_int_for_total(existing)
+                if existing_int is not None:
+                    row[grand_header] = existing_int
+        return headers, rows
+    candidate_total_cols: list[str] = []
+    ballot_value_cols: list[str] = []
+    for cols in candidate_blocks.values():
+        for col in cols:
+            info = _candidate_header_info(col)
+            if not info:
+                continue
+            _, suffix = info
+            suffix_norm = _norm_header(suffix)
+            if suffix_norm == _norm_header("Total Vote") or suffix_norm == _norm_header("Total Votes"):
+                candidate_total_cols.append(col)
+            elif suffix_norm in _BALLOT_TYPE_NORMS:
+                ballot_value_cols.append(col)
+            else:
+                for bt in BALLOT_TYPES_SORT_ORDER:
+                    if bt.lower() in suffix.lower():
+                        ballot_value_cols.append(col)
+                        break
+
+    totals_needed = grand_header is None
+    if totals_needed:
+        headers = headers + ["Grand Total"]
+        grand_header = "Grand Total"
+    assert grand_header is not None
+
+    for row in rows:
+        existing = row.get(grand_header)
+        existing_int = _coerce_int_for_total(existing)
+        if existing_int is not None and existing_int >= 0:
+            row[grand_header] = existing_int
+            continue
+        total_val = None
+        if candidate_total_cols:
+            total_val = sum(_coerce_int_for_total(row.get(col)) or 0 for col in candidate_total_cols)
+        elif ballot_value_cols:
+            total_val = sum(_coerce_int_for_total(row.get(col)) or 0 for col in ballot_value_cols)
+        else:
+            numeric_sum = 0
+            numeric_found = False
+            for col, value in row.items():
+                ncol = _norm_header(col)
+                if ncol in _LOCATION_PRIORITY_NORMS or ncol in percent_norms:
+                    continue
+                iv = _coerce_int_for_total(value)
+                if iv is not None:
+                    numeric_sum += iv
+                    numeric_found = True
+            if numeric_found:
+                total_val = numeric_sum
+        if total_val is not None:
+            row[grand_header] = total_val
+        elif totals_needed:
+            row.setdefault(grand_header, "")
+
+    return headers, rows
+
+
+def _apply_canonical_order(headers: list[str]) -> list[str]:
+    if not headers:
+        return headers
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    percent_norm_set = _percent_norms()
+    candidate_blocks = _extract_candidate_blocks(headers)
+    location_candidates = [h for h in headers if _looks_like_location_header(h)]
+
+    primary = None
+    if location_candidates:
+        primary = min(location_candidates, key=lambda h: _location_priority_score(h, headers.index(h)))
+        ordered.append(primary)
+        seen.add(primary)
+    else:
+        primary = None
+        first = headers[0]
+        ordered.append(first)
+        seen.add(first)
+
+    for h in headers:
+        if h in seen:
+            continue
+        if _norm_header(h) in percent_norm_set:
+            ordered.append(h)
+            seen.add(h)
+
+    if location_candidates:
+        for h in sorted(location_candidates, key=lambda h: _location_priority_score(h, headers.index(h))):
+            if h in seen:
+                continue
+            ordered.append(h)
+            seen.add(h)
+
+    for cols in candidate_blocks.values():
+        for col in cols:
+            if col in seen:
+                continue
+            ordered.append(col)
+            seen.add(col)
+
+    total_norms = {
+        _norm_header("Grand Total"),
+        _norm_header("Total Vote"),
+        _norm_header("Total Votes"),
+        _norm_header("Total Ballots"),
+    }
+    if candidate_blocks:
+        for h in headers:
+            if h in seen:
+                continue
+            if _norm_header(h) in total_norms:
+                ordered.append(h)
+                seen.add(h)
+
+    for h in headers:
+        if h not in seen:
+            ordered.append(h)
+            seen.add(h)
+
+    # Ensure percent columns follow the primary location when both exist
+    if primary and any(_norm_header(h) in percent_norm_set for h in ordered):
+        percent_cols = [h for h in ordered if _norm_header(h) in percent_norm_set]
+        for h in percent_cols:
+            ordered.remove(h)
+        idx = ordered.index(primary) + 1
+        for offset, h in enumerate(percent_cols):
+            ordered.insert(idx + offset, h)
+
+    return ordered
 
 # ===================================================================
 # Helper: Structured logging wrapper
@@ -68,90 +383,74 @@ def _salvage_promote_best_row_as_header(rows: List[Any], session_id=None):
     Returns (headers, dict_rows, diagnostics)
     """
     if not rows:
-        return [], [], {}
+        return [], [], {"row_index": None, "score": 0.0, "columns": 0, "strategy": "none"}
     candidate_indices = list(range(min(6, len(rows))))  # inspect first few
-    best = {"score": -1, "idx": 0, "headers": []}
+    best = {"score": -1.0, "idx": 0, "headers": []}
     for idx in candidate_indices:
         r = rows[idx]
         if not isinstance(r, (list, tuple)):
             continue
         cells = [str(c).strip() for c in r]
-        if not cells:
-            continue
-        non_empty = [c for c in cells if c]
-        if len(non_empty) < 2:
-            continue
-        uniq = len(set(cells)) / max(1, len(cells))
-        score = (len(non_empty) / len(cells)) + 0.3 * uniq
+        non = sum(1 for c in cells if c)
+        uniq = len({_norm_header(c) for c in cells if c})
+        denom = max(1, len(cells))
+        score = (non / denom) + 0.3 * (uniq / denom)
         if score > best["score"]:
-            best.update({"score": score, "idx": idx, "headers": cells})
+            best = {"score": score, "idx": idx, "headers": cells}
     if not best["headers"]:
-        # fallback to first list row
-        return _salvage_promote_first_row_as_header(rows) + ({"fallback": True},)
+        return [], [], {"row_index": None, "score": 0.0, "columns": 0, "strategy": "none"}
 
-    # Normalize + dedupe headers
-    header_cells = []
-    seen = set()
-    for i, h in enumerate(best["headers"]):
+    # Normalize + dedupe headers from the chosen row
+    raw_headers = [str(c).strip() for c in best["headers"]]
+    final_headers: list[str] = []
+    norm_seen: set[str] = set()
+    for i, h in enumerate(raw_headers):
         base = h or f"Column {i+1}"
         candidate = base
-        k = 2
-        while normalize_header(candidate) in seen:
-            candidate = f"{base}_{k}"
-            k += 1
-        seen.add(normalize_header(candidate))
-        header_cells.append(candidate)
+        suffix = 2
+        while _norm_header(candidate) in norm_seen:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        final_headers.append(candidate)
+        norm_seen.add(_norm_header(candidate))
 
-    dict_rows = []
-    for ridx, row in enumerate(rows):
-        if ridx == best["idx"]:
+    # Build dict rows from all rows except the promoted header row
+    dict_rows: list[dict] = []
+    for idx, r in enumerate(rows):
+        if idx == best["idx"]:
             continue
-        if isinstance(row, (list, tuple)):
-            d = {header_cells[i]: row[i] if i < len(row) else "" for i in range(len(header_cells))}
-        elif isinstance(row, dict):
-            d = {h: row.get(h, "") for h in header_cells}
+        if isinstance(r, (list, tuple)):
+            d = {final_headers[i]: (r[i] if i < len(r) else "") for i in range(len(final_headers))}
+        elif isinstance(r, dict):
+            d = {h: r.get(h, "") for h in final_headers}
         else:
-            d = {header_cells[0]: row}
+            d = {final_headers[0]: r}
         if any(v not in ("", None) for v in d.values()):
             dict_rows.append(d)
+    emit_metric("builder_salvage_promote_header", rows=len(dict_rows))
+    diag = {"row_index": best["idx"], "score": best["score"], "columns": len(final_headers), "strategy": "auto_best_row"}
+    return final_headers, dict_rows, diag
 
-    emit_metric("builder_salvage_row_index", index=best["idx"], score=round(best["score"], 3))
-    _emit("info", "builder", "[TABLE_BUILDER] Salvage header promotion",
-          session_id, row_index=best["idx"], score=round(best["score"], 3),
-          columns=len(header_cells))
-    return header_cells, dict_rows, {
-        "row_index": best["idx"],
-        "score": best["score"],
-        "columns": len(header_cells),
-        "strategy": "heuristic"
-    }
-
-def _salvage_promote_first_row_as_header(rows: List[Any]) -> tuple[list[str], list[dict]]:
-    """
-    Treat first list/tuple row as header; map remaining list rows to dict rows.
-    """
-    if not rows:
+def _salvage_promote_first_row_as_header(rows: List[Any]):
+    """Fallback: treat the first list/tuple row as header and build dict rows."""
+    if not rows or not isinstance(rows[0], (list, tuple)):
         return [], []
-    raw_header_row = rows[0]
-    header_cells = [str(c).strip() or f"Column {i+1}" for i, c in enumerate(raw_header_row)]
-    norm_seen = set()
-    final_headers = []
-    for h in header_cells:
-        nh = normalize_header(h)
-        if nh in norm_seen:
-            # Deduplicate by appending index suffix
-            base = h
-            k = 2
-            while normalize_header(f"{base}_{k}") in norm_seen:
-                k += 1
-            h = f"{base}_{k}"
-            nh = normalize_header(h)
-        norm_seen.add(nh)
-        final_headers.append(h)
-    dict_rows = []
+    raw = [str(c).strip() for c in rows[0]]
+    final_headers: list[str] = []
+    norm_seen: set[str] = set()
+    for i, h in enumerate(raw):
+        base = h or f"Column {i+1}"
+        candidate = base
+        suffix = 2
+        while _norm_header(candidate) in norm_seen:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        final_headers.append(candidate)
+        norm_seen.add(_norm_header(candidate))
+    dict_rows: list[dict] = []
     for r in rows[1:]:
         if isinstance(r, (list, tuple)):
-            d = {final_headers[i]: r[i] if i < len(r) else "" for i in range(len(final_headers))}
+            d = {final_headers[i]: (r[i] if i < len(r) else "") for i in range(len(final_headers))}
         elif isinstance(r, dict):
             d = {h: r.get(h, "") for h in final_headers}
         else:
@@ -163,46 +462,33 @@ def _salvage_promote_first_row_as_header(rows: List[Any]) -> tuple[list[str], li
 
 def _sanitize_headers_and_rows(headers: List[Any], rows: List[Any], session_id=None, context: dict | None = None):
     """
-    Defensive sanitation & salvage:
-      - Flatten nested header lists
-      - Coerce non-string headers
-      - Promote first row to header if >80% of rows are list/tuple and headers empty or numeric placeholders
-      - Coerce list/tuple rows to dict rows
-      - Collapse duplicate Column N sequences
+    Defensive sanitation & salvage.
     """
-    from .detect import normalize_header
-    import re
     headers = headers or []
     rows = rows or []
-
     context = context or {}
-    # Salvage detection:
+    norm = _norm_header
+
+    # Salvage detection: many list rows and missing/placeholder headers
     list_like = sum(1 for r in rows if isinstance(r, (list, tuple)))
     salvage_diag = None
-    if rows and list_like / len(rows) >= 0.8:
-        # generic header test
-        generic = all(
-            (not h) or bool(re.fullmatch(r"col(umn)?\s*\d+", str(h).strip().lower()))
-            for h in headers
-        ) or not headers
-        if generic:
+    if rows and list_like / max(1, len(rows)) >= 0.8 and (not headers or all(re.match(r"^col(umn)?\s*\d+$", str(h), re.I) for h in headers)):
+        try:
+            headers, rows, salvage_diag = _salvage_promote_best_row_as_header(rows, session_id=session_id)
+        except Exception:
             try:
-                # Use heuristic best-row promotion
-                promoted_headers, promoted_rows, diag = _salvage_promote_best_row_as_header(rows, session_id=session_id)
-                if promoted_headers:
-                    headers, rows = promoted_headers, promoted_rows
-                    salvage_diag = {"event": "promote_header", **diag}
-            except Exception as e:
-                emit_metric("builder_salvage_failed", error=str(e))
-                _emit("warning", "builder", "[TABLE_BUILDER] Salvage heuristic failed", session_id, error=str(e))
+                headers, rows = _salvage_promote_first_row_as_header(rows)
+            except Exception:
+                pass
     if salvage_diag:
-        context.setdefault("salvage_events", []).append(salvage_diag)
+        context.setdefault("salvage_events", []).append({"type": "promote_row_header", **salvage_diag})
 
     # Flatten headers
     def _flatten(seq):
-        for x in seq:
+        for x in (seq or []):
             if isinstance(x, (list, tuple)):
-                yield from _flatten(x)
+                for y in _flatten(x):
+                    yield y
             else:
                 yield x
 
@@ -210,69 +496,195 @@ def _sanitize_headers_and_rows(headers: List[Any], rows: List[Any], session_id=N
     seen_norm = set()
     col_pattern = re.compile(r"^column\s+(\d+)$", re.I)
     for raw in _flatten(headers):
-        if raw is None:
+        h = str(raw) if raw is not None else ""
+        h = h.strip()
+        if not h:
             continue
-        hs = raw if isinstance(raw, str) else str(raw)
-        nh = normalize_header(hs)
-        if not nh:
-            continue
-        # Collapse duplicate Column N
-        m = col_pattern.match(hs.strip())
+        nh = norm(h)
+        # collapse duplicate Column N
+        m = col_pattern.match(h)
         if m:
-            col_key = f"column_{m.group(1)}"
-            if col_key in seen_norm:
-                continue
-            seen_norm.add(col_key)
-        if nh in seen_norm:
-            continue
-        seen_norm.add(nh)
-        flat_headers.append(hs)
+            h = f"Column {m.group(1)}"
+            nh = norm(h)
+        if nh not in seen_norm:
+            flat_headers.append(h)
+            seen_norm.add(nh)
 
     # Sanitize rows
     sanitized_rows: list[dict] = []
     changed = False
 
-    # Helper to ensure enough columns when mapping list rows
     def _ensure_columns(count: int):
-        idx = 0
-        current_norm = {normalize_header(h): h for h in flat_headers}
         while len(flat_headers) < count:
-            candidate = f"Column {len(flat_headers)+1}"
-            nc = normalize_header(candidate)
-            if nc in current_norm:
-                # skip if duplicate numeric placeholder
-                idx += 1
-                continue
-            flat_headers.append(candidate)
-            current_norm[nc] = candidate
+            idx = len(flat_headers) + 1
+            name = f"Column {idx}"
+            if norm(name) not in seen_norm:
+                flat_headers.append(name)
+                seen_norm.add(norm(name))
 
     for r in rows:
         if isinstance(r, dict):
-            fixed = {}
+            # coerce keys to strings
+            d = {}
             for k, v in r.items():
                 ks = k if isinstance(k, str) else str(k)
-                nk = normalize_header(ks)
-                if nk not in {normalize_header(h) for h in flat_headers}:
+                if norm(ks) not in seen_norm:
                     flat_headers.append(ks)
-                fixed[ks] = v
-            sanitized_rows.append(fixed)
+                    seen_norm.add(norm(ks))
+                d[ks] = v
+            sanitized_rows.append(d)
         elif isinstance(r, (list, tuple)):
             _ensure_columns(len(r))
-            mapped = {flat_headers[i]: r[i] for i in range(len(r))}
-            sanitized_rows.append(mapped)
+            d = {flat_headers[i]: r[i] if i < len(r) else "" for i in range(len(flat_headers))}
+            sanitized_rows.append(d)
             changed = True
         else:
-            if "Value" not in flat_headers:
-                flat_headers.append("Value")
-            sanitized_rows.append({"Value": r})
+            if not flat_headers:
+                flat_headers = ["Value"]
+                seen_norm.add(norm("Value"))
+            sanitized_rows.append({flat_headers[0]: r})
             changed = True
 
     if changed:
-        emit_metric("builder_rows_coerced", rows=len(sanitized_rows))
-    if any(not isinstance(h, str) for h in headers):
-        emit_metric("builder_headers_coerced", count=len(flat_headers))
+        emit_metric("builder_rows_sanitized", rows=len(sanitized_rows))
+    if any(not isinstance(h, str) for h in flat_headers):
+        flat_headers = [str(h) for h in flat_headers]
+    return flat_headers, sanitized_rows, context
 
-    return flat_headers, sanitized_rows
+def _stringify_for_pivot(headers: List[Any], rows: List[Dict[str, Any]]) -> tuple[list[str], list[dict]]:
+    """
+    Coerce headers and row keys to strings and stringify all scalar values.
+    This prevents type errors during header concatenation inside pivot logic.
+    """
+    sh = [(h if isinstance(h, str) else str(h)) for h in (headers or [])]
+    out = []
+    for r in (rows or []):
+        nr = {}
+        if isinstance(r, dict):
+            for k, v in r.items():
+                ks = k if isinstance(k, str) else str(k)
+                # keep numeric types; stringify others
+                if isinstance(v, (int, float)) or v in (None, ""):
+                    nr[ks] = v
+                else:
+                    try:
+                        nr[ks] = v if isinstance(v, (int, float)) else str(v)
+                    except Exception:
+                        nr[ks] = str(v)
+        out.append(nr)
+    return sh, out
+
+def _stringify_entity_info(entity_info: dict | None) -> dict:
+    """
+    Deep-stringify entity_info keys/labels that can be concatenated into headers by pivot.
+    """
+    if not isinstance(entity_info, dict):
+        return {}
+    def _s(x):
+        try:
+            return x if isinstance(x, (int, float)) else (x if isinstance(x, str) else str(x))
+        except Exception:
+            return str(x)
+    out = {}
+    for k, v in entity_info.items():
+        if isinstance(v, (list, tuple, set)):
+            out[k] = [_s(x) for x in v]
+        elif isinstance(v, dict):
+            out[k] = { _s(kk): _s(vv) for kk, vv in v.items() }
+        else:
+            out[k] = _s(v)
+    return out
+
+# -------------------------------------------------------------------
+# Row noise dropper (title/boilerplate) prior to pivoting
+# -------------------------------------------------------------------
+
+def _drop_title_noise_rows(headers: list[str], rows: list[dict], *, context: dict | None = None) -> tuple[list[str], list[dict]]:
+    """
+    Remove obvious title/boilerplate rows before pivoting.
+    Uses centralized noise regexes from constants.py and pseudo-party buckets.
+
+    Heuristics:
+    - If any cell in a row matches title/boilerplate patterns, drop the row.
+    - If a row's Party field is a pseudo result bucket (Blank/Undervote, etc.), drop the row.
+    Conservatively keeps data rows; fails open on errors.
+    """
+    context = context or {}
+    try:
+        state, county = resolve_state_county_from_context(context)
+        title_re = get_camelot_title_regex(state=state, county=county)
+        row_re = get_camelot_row_regex(state=state, county=county)
+    except Exception:
+        # If regex helpers are unavailable, no-op
+        return headers, rows
+
+    kept: list[dict] = []
+    dropped = 0
+    # Build jurisdiction-aware row filter (uses Candidate/Party keys primarily)
+    try:
+        row_noise = build_camelot_row_filter_for_context(context)
+    except Exception:
+        row_noise = None
+    for r in rows or []:
+        try:
+            if not isinstance(r, dict):
+                kept.append(r)
+                continue
+            # Pseudo party buckets
+            party_val = r.get("Party", "")
+            if party_val and is_pseudo_result_party(str(party_val)):
+                dropped += 1
+                try:
+                    record_noise_suggestion(state, county, f"Party={party_val}", category="pseudo_party")
+                except Exception:
+                    pass
+                continue
+            # If a jurisdiction-aware row filter is available, apply it
+            if row_noise and row_noise(r):
+                dropped += 1
+                try:
+                    snippet = next((str(v).strip() for v in r.values() if str(v).strip()), "")
+                    record_noise_suggestion(state, county, snippet, category="row")
+                except Exception:
+                    pass
+                continue
+            # Any cell match to boilerplate/title patterns
+            is_noise = False
+            matched_cat = None
+            for v in r.values():
+                s = str(v or "").strip()
+                if not s:
+                    continue
+                if title_re.search(s):
+                    matched_cat = "title"
+                    is_noise = True
+                    break
+                if row_re.search(s):
+                    matched_cat = "row"
+                    is_noise = True
+                    break
+            if is_noise:
+                dropped += 1
+                try:
+                    record_noise_suggestion(state, county, s, category=matched_cat or "row")
+                except Exception:
+                    pass
+                continue
+            kept.append(r)
+        except Exception:
+            # On error, keep row to avoid data loss
+            kept.append(r)
+
+    if dropped:
+        try:
+            emit_metric("builder_drop_title_noise_rows", dropped=dropped, kept=len(kept))
+        except Exception:
+            pass
+        try:
+            _emit("info", "builder", "[TABLE_BUILDER] Dropped title/boilerplate rows", None, dropped=dropped, kept=len(kept))
+        except Exception:
+            pass
+    return headers, kept
 
 # ===================================================================
 # MAIN TABLE BUILDING PIPELINE
@@ -282,7 +694,7 @@ def build_dynamic_table(
     domain: str,
     headers: List[str],
     data: List[Dict[str, Any]],
-    coordinator: "ContextCoordinator",
+    coordinator: CoordinatorProtocol | None,
     context: dict = None,
     max_feedback_loops: int = 2,
     learning_mode: bool = True,
@@ -304,10 +716,10 @@ def build_dynamic_table(
     headers = headers or []
     if "coordinator" not in context or context["coordinator"] is None:
         context["coordinator"] = coordinator
-    # session_id pass-through for logs and prompts
+    # session_id for logs
     session_id = safe_get(context, "session_id", None)
     if safe_get(context, "panel_heading") and not safe_get(context, "Precinct"):
-        context["Precinct"] = context["panel_heading"]
+        context["Precinct"] = safe_get(context, "panel_heading")
     page = safe_get(context, "page", [])
 
     _emit("info", "builder", "[TABLE_BUILDER] Starting dynamic build", session_id, domain=domain, pivot_to_wide=pivot_to_wide, learning_mode=learning_mode)
@@ -327,11 +739,9 @@ def build_dynamic_table(
                     _emit("warning", "builder", "[TABLE_BUILDER] dynamic_table_extractor failed for panel table", session_id, error=str(e))
                     h, d = [], []
                 if h and d:
-                    # NOTE: avoid assigning result of safe_append; ensure list type
                     all_panel_tables.append((h, d))
         _emit("debug", "builder", "[TABLE_BUILDER] Collected panel tables", session_id, count=len(all_panel_tables))
     elif headers and data:
-        # Ensure explicit append to keep list type
         all_panel_tables.append((headers, data))
         _emit("debug", "builder", "[TABLE_BUILDER] Using provided headers/data as sole table", session_id, headers=len(headers), rows=len(data))
     else:
@@ -357,181 +767,183 @@ def build_dynamic_table(
             else:
                 _emit("warning", "builder", "[TABLE_BUILDER] Dropping invalid table entry", session_id, entry_type=str(type(item)))
         all_panel_tables = fixed
-        
-    # --- 2. Merge and harmonize all tables (advanced logic) ---
+
+    # --- 2. Merge and harmonize all tables (simple merge) ---
     if all_panel_tables:
         all_headers = []
         all_data = []
         for h, d in all_panel_tables:
-            # If h or d are lists of lists, flatten them
-            if isinstance(h, list) and any(isinstance(x, list) for x in h):
-                for sub_h in h:
-                    all_headers = safe_append(all_headers, sub_h)
-            else:
-                all_headers = safe_append(all_headers, h)
-            if isinstance(d, list) and any(isinstance(x, dict) for x in d):
-                all_data.extend(d)
-            else:
-                all_data = safe_append(all_data, d)
-
-        # Merge headers and data with advanced deduplication and alignment
-        try:
-            merged_headers, merged_data = merge_table_data(all_headers, all_data)
-        except Exception as e:
-            _emit("warning", "builder", "[TABLE_BUILDER] merge_table_data failed; falling back to raw", session_id, error=str(e))
-            merged_headers, merged_data = all_headers, all_data
+            all_headers.append(h)
+            all_data.extend(d)
+        merged_headers, merged_rows = merge_table_data(all_headers, all_data)
     else:
-        merged_headers, merged_data = [], []
+        merged_headers, merged_rows = headers or [], data or []
 
     try:
-        merged_headers, merged_data = _sanitize_headers_and_rows(merged_headers, merged_data,
-                                                                 session_id=session_id, context=context)
+        merged_headers, merged_rows, context = _sanitize_headers_and_rows(merged_headers, merged_rows, session_id=session_id, context=context)
     except Exception as e:
-        _emit("warning", "builder", "[TABLE_BUILDER] _sanitize_headers_and_rows failed",
-              session_id, error=str(e))
+        _emit("warning", "builder", "[TABLE_BUILDER] sanitize failed", session_id, error=str(e))
 
     try:
-        merged_headers, merged_data = harmonize_headers_and_data(merged_headers, merged_data, context=context)
+        merged_headers, merged_rows = harmonize_headers_and_data(merged_headers, merged_rows, context)
     except Exception as e:
-        _emit("warning", "builder", "[TABLE_BUILDER] harmonize_headers_and_data (initial) failed",
-              session_id, error=str(e))
+        _emit("warning", "builder", "[TABLE_BUILDER] harmonize failed", session_id, error=str(e))
+
+    # Canonicalize ballot/method headers and merge synonyms
+    try:
+        merged_headers, merged_rows = collapse_ballot_synonym_columns(merged_headers, merged_rows)
+    except Exception as e:
+        _emit("warning", "builder", "[TABLE_BUILDER] collapse_ballot_synonym_columns failed", session_id, error=str(e))
+
+    # NEW: drop title/boilerplate rows before any pivoting
+    merged_headers, merged_rows = _drop_title_noise_rows(merged_headers, merged_rows, context=context)
+
+    # Define schema validator before first use
+    def _validate_stage_schema(stage: str, hdrs: list[str], rows: list[dict]):
+        """Lightweight schema checks with logging-only warnings; always emits a structured event.
+        - normalized: expect at least one candidate-like column or a total + ballot columns; Precinct optional.
+        - wide: expect candidate columns pivoted to headers and at least one numeric vote column.
+        """
+        status = "unknown"
+        details = {}
+        try:
+            nh = [_norm_header(h) for h in hdrs]
+            precinct_norm = _norm_header("Precinct")
+            total_norm = _norm_header("Total Vote")
+            grand_total_norm = _norm_header("Grand Total")
+            percent_norm = _norm_header("Percent Reported")
+            has_precinct = precinct_norm in nh
+            has_total = total_norm in nh or grand_total_norm in nh
+            has_pct = percent_norm in nh
+            cand_like = [h for h in hdrs if any(k in h.lower() for k in ("candidate","name"))]
+            ballot_like = [h for h in hdrs if any(bt.lower() in h.lower() for bt in BALLOT_TYPES_SORT_ORDER)]
+            numeric_cols = set()
+            for r in rows[: min(50, len(rows))]:
+                for k, v in (r or {}).items():
+                    if isinstance(v, (int, float)):
+                        numeric_cols.add(k)
+                        continue
+                    s = str(v or "").replace(",", "").replace("%", "").strip()
+                    if s.replace(".", "", 1).isdigit():
+                        numeric_cols.add(k)
+            if stage == "normalized":
+                ok = bool(cand_like or (has_total and ballot_like))
+            else:  # wide
+                ok = bool(numeric_cols)
+            status = "ok" if ok else "weak"
+            details = {
+                "headers": len(hdrs),
+                "rows": len(rows),
+                "has_precinct": has_precinct,
+                "has_total": has_total,
+                "has_percent": has_pct,
+                "candidates": len(cand_like),
+                "ballots": len(ballot_like),
+            }
+        except Exception as e:
+            status = "error"
+            details = {"error": str(e), "headers": len(hdrs), "rows": len(rows)}
+        finally:
+            _emit(
+                "info" if status == "ok" else "warning",
+                "builder",
+                {"event": "schema_check", "stage": stage, "status": status, **details},
+                session_id,
+            )
+
+    # Validate normalized stage before pivot
+    try:
+        _validate_stage_schema("normalized", merged_headers, merged_rows)
+    except Exception:
+        pass
 
     # --- Single canonical percent column (de-noise) ---
-    percent_norm_set = {normalize_header(p) for p in PERCENT_KEYWORDS}
-    has_any_percent = any(normalize_header(h) in percent_norm_set for h in merged_headers)
-    if has_any_percent and not any(normalize_header(h) == normalize_header("Percent Reported") for h in merged_headers):
-        merged_headers = safe_append(merged_headers, "Percent Reported")
-        for row in merged_data:
-            # migrate first existing percent-like value if present
-            for k, v in list(row.items()):
-                if normalize_header(k) in percent_norm_set and v not in ("", None):
-                    row["Percent Reported"] = v
-                    break
-            row.setdefault("Percent Reported", row.get("Percent Reported", ""))
-    context["has_percent_reported"] = any(normalize_header(h) == normalize_header("Percent Reported") for h in merged_headers)
-    # --- 3. NLP entity annotation ---
+    percent_norm_set = _percent_norms()
+    percent_reported_norm = _percent_reported_norm()
+    has_any_percent = any(_norm_header(h) in percent_norm_set for h in merged_headers)
+    if has_any_percent and not any(_norm_header(h) == percent_reported_norm for h in merged_headers):
+        merged_headers.append("Percent Reported")
+    context["has_percent_reported"] = any(_norm_header(h) == percent_reported_norm for h in merged_headers)
+
+    # --- 3. NLP entity annotation (optional, safe) ---
     try:
-        annotated_headers, annotated_data, entity_info = nlp_entity_annotate_table(
-            merged_headers, merged_data, context=context, coordinator=coordinator
-        )
+        eh, ed, entity_info = nlp_entity_annotate_table(merged_headers, merged_rows, context=context, coordinator=coordinator)
+        merged_headers, merged_rows = eh, ed
     except Exception as e:
-        _emit("warning", "builder", "[TABLE_BUILDER] NLP entity annotation failed", session_id, error=str(e), contest=safe_get(context, "contest", "Unknown"))
-        annotated_headers, annotated_data = merged_headers, merged_data
+        _emit("warning", "builder", "[TABLE_BUILDER] entity annotate failed", session_id, error=str(e))
         entity_info = {}
-
     try:
-        headers, data = _sanitize_headers_and_rows(annotated_headers, annotated_data,
-                                                   session_id=session_id, context=context)
+        entity_info = _stringify_entity_info(entity_info)
     except Exception as e:
-        _emit("warning", "builder", "[TABLE_BUILDER] sanitation post-NLP failed",
-              session_id, error=str(e))
-        headers, data = annotated_headers, annotated_data
+        _emit("warning", "builder", "[TABLE_BUILDER] stringify entity_info failed", session_id, error=str(e))
 
-    try:
-        headers, data = harmonize_headers_and_data(headers, data, context=context)
-    except Exception as e:
-        _emit("warning", "builder", "[TABLE_BUILDER] harmonize_headers_and_data (post-NLP) failed; using annotated directly",
-              session_id, error=str(e))
-        headers, data = headers, data
-        
-    context.setdefault("merge_cross_endorsements", True)
     # --- 4. Pivot (RawJSON specialized first, then generic) ---
-    if pivot_to_wide:
-        try:
-            headers, data = _sanitize_headers_and_rows(headers, data,
-                                                       session_id=session_id, context=context)
-        except Exception as e:
-            _emit("warning", "builder", "[TABLE_BUILDER] sanitation pre-pivot failed", session_id, error=str(e))
-
-        specialized_applied = False
-        if "RawJSON" in headers:
+    def _apply_pivot(hdrs, rows, *, prefer_rawjson: bool = True):
+        stage: str | None = None
+        if prefer_rawjson:
             try:
-                cg_headers, cg_rows = pivot_candidate_groups_from_rawjson(headers, data, context=context)
-                if cg_headers and cg_rows:
-                    headers, data = cg_headers, cg_rows
-                    specialized_applied = True
-                    _emit("info", "builder", "[TABLE_BUILDER] Applied RawJSON candidate-group pivot",
-                          session_id, rows=len(data), cols=len(headers))
-            except Exception as e:
-                _emit("warning", "builder", "[TABLE_BUILDER] candidate-group RawJSON pivot failed", session_id, error=str(e))
-
-        if not specialized_applied:
-            try:
-                wide_headers, wide_rows = pivot_to_wide_format(headers, data, entity_info, coordinator, context)
-                headers, data = harmonize_headers_and_data(wide_headers, wide_rows, context=context)
-            except Exception as e:
-                _emit("warning", "builder", "[TABLE_BUILDER] Pivot to wide format failed",
-                      session_id, error=str(e), contest=safe_get(context, "contest", "Unknown"))
-
-        # Collapse duplicate / synonym percent headers post-pivot
+                hh, rr = pivot_candidate_groups_from_rawjson(
+                    hdrs, rows, context=context, drop_rawjson=True
+                )
+                if hh and rr:
+                    return hh, rr, "rawjson"
+            except Exception:
+                pass
         try:
-            headers, data = _unify_percent_columns(headers, data)
+            hh, rr = pivot_to_wide_format(hdrs, rows, entity_info, coordinator, context)
+            if hh and rr:
+                stage = "wide"
+                return hh, rr, stage
         except Exception as e:
-            _emit("warning", "builder", "[TABLE_BUILDER] Percent unification failed", session_id, error=str(e))
+            _emit("warning", "builder", "[TABLE_BUILDER] pivot_to_wide failed", session_id, error=str(e))
+        return hdrs, rows, stage
 
-        # Mark hierarchical headers availability (if produced by specialized pivot)
-        if "hierarchical_headers" in context:
-            context["has_hierarchical_headers"] = True
-        else:
-            context["has_hierarchical_headers"] = False
+    pivot_stage: str | None = None
+    if pivot_to_wide and not context.get("skip_pivot") and context.get("rawjson_expanded_early"):
+        merged_headers, merged_rows, pivot_stage = _apply_pivot(merged_headers, merged_rows)
+        _validate_stage_schema("wide", merged_headers, merged_rows)
 
-        # Propagate RawJSON enrichment flags
-        if "rawjson_enrichment" in context:
-            context["has_rawjson_enrichment"] = True
-        else:
-            context["has_rawjson_enrichment"] = False
+    if pivot_to_wide and not context.get("skip_pivot") and (pivot_stage is None or pivot_stage == "rawjson"):
+        merged_headers, merged_rows, pivot_stage = _apply_pivot(
+            merged_headers,
+            merged_rows,
+            prefer_rawjson=pivot_stage is None,
+        )
+        _validate_stage_schema("wide", merged_headers, merged_rows)
+
+    # Ensure division-level totals are always available
+    try:
+        merged_headers, merged_rows = _ensure_division_totals(merged_headers, merged_rows)
+    except Exception as e:
+        _emit("warning", "builder", "[TABLE_BUILDER] ensure division totals failed", session_id, error=str(e))
+
+    # Apply canonical ordering at the end for consistency
+    try:
+        merged_headers = _apply_canonical_order(merged_headers)
+        merged_rows = [{h: r.get(h, "") for h in merged_headers} for r in merged_rows]
+    except Exception:
+        pass
+
     # Attach salvage events to entity_info if any
     if 'salvage_events' in context and isinstance(context['salvage_events'], list):
-        entity_info.setdefault("salvage_events", context['salvage_events'])
+        entity_info['salvage_events'] = context['salvage_events']
 
-    # --- 5. Optionally load from cache for debugging ---
+    # --- 5. Optional cache for debugging ---
     if debug:
-        cached = _load_table_builder_cache(domain, latest=True)
-        if cached:
-            _emit("info", "builder", "[TABLE_BUILDER] Loaded cached table", session_id, domain=domain)
-            headers, data = safe_get(cached, "headers", headers), safe_get(cached, "data", data)
-            entity_info = safe_get(cached, "entity_info", entity_info)
+        persistent_cache = {
+            "timestamp": time.time(),
+            "domain": domain,
+            "headers": merged_headers,
+            "rows": merged_rows[:50],
+        }
+        try:
+            _save_table_builder_cache(domain, persistent_cache)
+        except Exception:
+            pass
 
-    # --- 6. User/ML confirmation and learning (if enabled) ---
-    if learning_mode:
-        contest = safe_get(context, "contest", []) or "Unknown Contest"
-        feedback_loops = 0
-        while feedback_loops < max_feedback_loops:
-            try:
-                if confirm_table_structure_callback:
-                    headers_confirmed, data_confirmed = confirm_table_structure_callback(
-                        headers, data, domain, contest, coordinator, session_id=session_id
-                    )
-                else:
-                    headers_confirmed, data_confirmed = prompt_user_to_confirm_table_structure(
-                        headers, data, domain, contest, coordinator, session_id=session_id
-                    )
-            except Exception as e:
-                _emit("warning", "builder", "[TABLE_BUILDER] Confirmation callback failed; skipping interactive step", session_id, error=str(e))
-                break
-
-            if debug:
-                _save_table_builder_cache(domain, {
-                    "headers": headers_confirmed,
-                    "data": data_confirmed,
-                    "entity_info": entity_info,
-                    "timestamp": time.time()
-                })
-
-            # Accept if user made changes or confirmed, else loop for feedback
-            if headers_confirmed != headers or data_confirmed != data or not learning_mode:
-                headers, data = headers_confirmed, data_confirmed
-                break
-            feedback_loops += 1
-
-        # Ensure all user-added columns are present in all rows
-        for h in headers:
-            for row in data:
-                if h not in row:
-                    row[h] = ""
-
-    _emit("info", "builder", "[TABLE_BUILDER] Completed dynamic build", session_id, headers=len(headers), rows=len(data))
-    return headers, data, entity_info
+    # --- 6. Learning disabled in non-interactive path; keep hook for future ---
+    _emit("info", "builder", "[TABLE_BUILDER] Completed dynamic build", session_id, headers=len(merged_headers), rows=len(merged_rows))
+    return merged_headers, merged_rows, entity_info
 
 # Non-interactive wrapper for format handlers
 
@@ -539,7 +951,7 @@ def build_table_noninteractive(
     domain: str,
     headers: List[str] | None,
     data: List[Dict[str, Any]] | None,
-    coordinator: "ContextCoordinator" = None,
+    coordinator: CoordinatorProtocol | None = None,
     context: dict | None = None,
     pivot_to_wide: bool = True,
     debug: bool = False
@@ -765,9 +1177,10 @@ def prompt_user_to_confirm_table_structure(
         # Raw input prompt (CLI only)
         resp = input("Accept, Reject, mark Columns, reorder, Rename, Add, Next, or Prev? [Y/n/c/o/r/a/next/prev]: ").strip().lower()
         if resp in ("", "y", "yes"):
-            if should_log and hasattr(coordinator, "log_table_structure"):
+            log_structure = getattr(coordinator, "log_table_structure", None)
+            if should_log and callable(log_structure):
                 try:
-                    coordinator.log_table_structure(domain, new_headers, data)
+                    log_structure(domain, new_headers, data)
                 except Exception:
                     pass
             new_headers, data = harmonize_headers_and_data(new_headers, data)
@@ -863,21 +1276,27 @@ def prompt_user_to_confirm_table_structure(
         candidate_headers, data = harmonize_headers_and_data(candidate_headers, data)
 
     # Save user-confirmed structure for future ML learning
-    if should_log and hasattr(coordinator, "log_table_structure"):
+    log_structure = getattr(coordinator, "log_table_structure", None)
+    if should_log and callable(log_structure):
         try:
-            coordinator.log_table_structure(contest, new_headers, context={"domain": domain})
-            cache_table_structure(domain, new_headers, new_headers)
-            _emit("info", "builder", "[TABLE_BUILDER] Logged confirmed table structure", session_id, contest=contest)
-            if hasattr(coordinator, "save_table_structure_to_db"):
-                coordinator.save_table_structure_to_db(
-                    contest=contest,
-                    headers=new_headers,
-                    context={"domain": domain},
-                    ml_confidence=avg_score if 'avg_score' in locals() else None,
-                    confirmed_by_user=True
-                )
+            log_structure(contest, new_headers, context={"domain": domain})
         except Exception as e:
             _emit("warning", "builder", "[TABLE_BUILDER] Failed to persist table structure logs", session_id, error=str(e))
+        else:
+            cache_table_structure(domain, new_headers, new_headers)
+            _emit("info", "builder", "[TABLE_BUILDER] Logged confirmed table structure", session_id, contest=contest)
+            save_structure = getattr(coordinator, "save_table_structure_to_db", None)
+            if callable(save_structure):
+                try:
+                    save_structure(
+                        contest=contest,
+                        headers=new_headers,
+                        context={"domain": domain},
+                        ml_confidence=avg_score if 'avg_score' in locals() else None,
+                        confirmed_by_user=True
+                    )
+                except Exception as e:
+                    _emit("warning", "builder", "[TABLE_BUILDER] Failed to persist coordinator DB log", session_id, error=str(e))
 
     # Always harmonize before returning
     new_headers, data = harmonize_headers_and_data(new_headers, data)
@@ -946,7 +1365,7 @@ def interactive_batch_operations(headers, data) -> Tuple[List[str], List[Dict[st
             print("[Batch Ops] Unknown option.")
     return headers, data
 
-def auto_suggest_corrections(headers, data, coordinator):
+def auto_suggest_corrections(headers, data, coordinator: CoordinatorProtocol | None):
     """
     Suggest likely corrections based on previous user feedback or ML confidence.
     Examines both headers and the data content for issues.
@@ -983,24 +1402,27 @@ def auto_suggest_corrections(headers, data, coordinator):
             suggestions.append((f"Row {idx+1}", f"Missing values for columns: {missing}"))
 
     # Feedback log based suggestions (if available)
-    if hasattr(coordinator, "get_feedback_log"):
+    feedback_log: dict = {}
+    get_feedback = getattr(coordinator, "get_feedback_log", None)
+    if callable(get_feedback):
         try:
-            feedback_log = coordinator.get_feedback_log()
+            raw_feedback = get_feedback() or {}
+            if isinstance(raw_feedback, dict):
+                feedback_log = raw_feedback
         except Exception:
             feedback_log = {}
-        for h in headers:
-            h_norm = safe_lower(safe_strip(h))
-            if h_norm in feedback_log.get("removed_columns", {}):
-                count = feedback_log["removed_columns"][h_norm]
-                if count > 2:
-                    suggestions.append((h, f"Column '{h}' was removed {count} times in past feedback"))
-            if h_norm in feedback_log.get("renamed_columns", {}):
-                new_name = feedback_log["renamed_columns"][h_norm]
-                suggestions.append((h, f"Column '{h}' was often renamed to '{new_name}'"))
+    for h in headers:
+        h_norm = safe_lower(safe_strip(h))
+        removed = safe_get(feedback_log.get("removed_columns", {}), h_norm)
+        if isinstance(removed, int) and removed > 2:
+            suggestions.append((h, f"Column '{h}' was removed {removed} times in past feedback"))
+        renamed = safe_get(feedback_log.get("renamed_columns", {}), h_norm)
+        if renamed:
+            suggestions.append((h, f"Column '{h}' was often renamed to '{renamed}'"))
 
     return suggestions
 
-def dynamic_confidence_threshold(history, coordinator=None, default=0.93):
+def dynamic_confidence_threshold(history, coordinator: CoordinatorProtocol | None = None, default=0.93):
     """
     Adjust threshold for auto-accepting structures based on past accuracy and feedback log.
     If a ContextCoordinator is provided, use its feedback analytics for smarter adjustment.
@@ -1018,9 +1440,13 @@ def dynamic_confidence_threshold(history, coordinator=None, default=0.93):
         elif correct <= 2:
             threshold = max(0.85, threshold - 0.05)
 
-    if coordinator and hasattr(coordinator, "get_feedback_log"):
+    feedback = {}
+    get_feedback = getattr(coordinator, "get_feedback_log", None)
+    if callable(get_feedback):
         try:
-            feedback = coordinator.get_feedback_log()
+            raw_feedback = get_feedback() or {}
+            if isinstance(raw_feedback, dict):
+                feedback = raw_feedback
         except Exception:
             feedback = {}
         denials = sum(safe_values(safe_get(feedback, "structure_denials", {})))
@@ -1041,16 +1467,13 @@ def _unify_percent_columns(headers: List[str], rows: List[Dict[str, Any]]) -> Tu
     """
     if not headers:
         return headers, rows
-    target_norm = normalize_header("Percent Reported")
-    percent_norms = {normalize_header(p) for p in PERCENT_KEYWORDS} | {
-        normalize_header("% reported"),
-        normalize_header("% precincts reporting"),
-        normalize_header("percent reported"),
-        normalize_header("precincts reporting"),
-    }
-    candidates = [h for h in headers if normalize_header(h) in percent_norms]
+
+    percent_norms = _percent_norms()
+    norm_map = {h: _norm_header(h) for h in headers}
+    candidates = [h for h in headers if norm_map[h] in percent_norms]
     if not candidates:
         return headers, rows
+
     # Decide canonical header
     canonical = None
     for pref in ("Percent Reported", "% Reported", "% Precincts Reporting"):
@@ -1059,17 +1482,24 @@ def _unify_percent_columns(headers: List[str], rows: List[Dict[str, Any]]) -> Tu
             break
     if not canonical:
         canonical = "Percent Reported"
+
     # Build new header list (remove others)
     new_headers = []
     inserted = False
+    seen_norm = set()
     for h in headers:
         if h in candidates and h != canonical:
             continue
         if h == canonical:
             inserted = True
-        new_headers.append(h)
+        norm_value = norm_map.get(h, _norm_header(h))
+        if norm_value not in seen_norm:
+            new_headers.append(h)
+            seen_norm.add(norm_value)
     if not inserted:
         new_headers.insert(1 if "Total Ballots Reported" in new_headers else 0, canonical)
+        seen_norm.add(_norm_header(canonical))
+
     # Row merge
     out_rows = []
     for r in rows:

@@ -4,11 +4,13 @@
 # and toggles between 'Vote Type' and 'By County' views.
 # ==============================================================
 import os
+
 import orjson
-from ....utils.logger_singleton import logger
-from ....Context_Integration.context_organizer import ContextOrganizer
-from ....utils.output_utils import finalize_election_output
+
 from ....config import CONTEXT_LIBRARY_PATH
+from ....Context_Integration.context_organizer import ContextOrganizer
+from ....utils.logger_singleton import logger
+from ....utils.output_utils import finalize_election_output
 
 # Load config from context library if available
 # Debug: Print the path being checked and whether it exists
@@ -79,7 +81,7 @@ def parse(page, html_context=None):
     logger.info("[INFO] Also collecting county-wide totals from overlay where available.")
     all_candidates = set()
     precinct_data = []
-        # Capture everything including modal content (vote types)
+    # Capture everything including modal content (vote types)
     all_elements = page.query_selector_all('h1, h2, h3, strong, b, span, table, div, section, article, a, p')
 
     current_precinct = None
@@ -148,7 +150,7 @@ def parse(page, html_context=None):
                 county_totals["Ballots Cast"] = text.split(":")[-1].strip()
             elif "Voter Turnout:" in text:
                 county_totals["Voter Turnout"] = text.split(":")[-1].strip()
-        except:
+        except Exception:
             continue
 
     if county_totals:
@@ -162,9 +164,7 @@ def parse(page, html_context=None):
         logger.warning("[FALLBACK] No tables were parsed. Either no results are published yet or the structure has changed.")
         logger.warning("[FALLBACK] Please verify that the site has posted election data.")
 
-        # Insert county-level totals as a dummy precinct row if any were found
-    contest = "Arizona Statewide Results"
-    headers_out = sorted([col for col in precinct_data[0] if col != "Precinct Name"] if precinct_data else [])
+    # Insert county-level totals as a dummy precinct row if any were found
     metadata = {
         "state": "AZ",
         "race": contest or "Unknown",

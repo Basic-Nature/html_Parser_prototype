@@ -8,57 +8,89 @@ Production-grade Context Coordinator for Election Data Pipeline
 - Provides robust, dynamic, and cache-aware access to contests, buttons, panels, tables, candidates, precincts, etc.
 - Ensures all data is validated, deduplicated, and anomaly-checked before output.
 """
-import re
+from __future__ import annotations
+
+import difflib
+import numbers
 import os
+import re
+import subprocess
+import threading
+from collections import defaultdict
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
 import numpy as np
 import orjson
-import numbers
-from datetime import datetime, timezone
-from rapidfuzz import process, fuzz
-from collections import defaultdict
-from ..utils.logger_singleton import logger
-import difflib
-from ..utils.browser_utils import (
-    safe_nth, safe_locator,  safe_inner_text, safe_get_attribute,
-    safe_evaluate, safe_is_visible, safe_is_enabled, safe_click,
-    safe_wait_for_timeout, safe_count, scan_buttons_with_progress
-)
-from ..utils.shared_logic import (
-    keyphrase_match, normalize_state_name, normalize_county_name, safe_get_first,
-    safe_model_encode, safe_startswith, safe_isupper,
-    _sync_type_and_election_types, safe_get, safe_items, safe_lower, safe_endswith,
-    safe_similarity, safe_strip, safe_replace, safe_append, safe_filename,
-    safe_tolist
-)
-from .Context_Library.constants import (
-    STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP, PARTY_KEYWORDS,
-    ELECTION_TYPES, STATE_ABBR, LOCATION_KEYWORDS, TABLE_TAGS, PANEL_TAGS, STATE_TAGS, BUTTON_TAGS,
-    BALLOT_TYPES
-)
-from .librarian import (    
-    atomic_write_json 
-)
+from rapidfuzz import fuzz, process
 from sklearn.preprocessing import LabelEncoder
-import subprocess
-from ..config import PROJECT_ROOT, LOG_DIR, CONTEXT_LIBRARY_PATH
-import threading
 
-from ..utils.spacy_utils import (
-    extract_entities, extract_locations, extract_dates
+from ..config import CONTEXT_LIBRARY_PATH, LOG_DIR, PROJECT_ROOT
+from ..services.election_data_services import ElectionDataService
+from ..utils.browser_utils import (
+    safe_click,
+    safe_count,
+    safe_evaluate,
+    safe_get_attribute,
+    safe_inner_text,
+    safe_is_enabled,
+    safe_is_visible,
+    safe_locator,
+    safe_nth,
+    safe_wait_for_timeout,
+    scan_buttons_with_progress,
 )
+from ..utils.html_scanner import (
+    deduplicate_pattern_kb,
+    get_segment_embedding,
+    load_pattern_kb,
+)
+from ..utils.logger_singleton import logger
+from ..utils.model_registry import ModelRegistry
+from ..utils.shared_logic import (
+    _sync_type_and_election_types,
+    keyphrase_match,
+    normalize_county_name,
+    normalize_state_name,
+    safe_append,
+    safe_endswith,
+    safe_filename,
+    safe_get,
+    safe_get_first,
+    safe_isupper,
+    safe_items,
+    safe_lower,
+    safe_model_encode,
+    safe_replace,
+    safe_similarity,
+    safe_startswith,
+    safe_strip,
+    safe_tolist,
+)
+from ..utils.spacy_utils import extract_dates, extract_entities, extract_locations
+from .Context_Library.constants import (
+    BALLOT_TYPES,
+    BUTTON_TAGS,
+    ELECTION_TYPES,
+    KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    KNOWN_STATE_TO_COUNTY_MAP,
+    LOCATION_KEYWORDS,
+    PANEL_TAGS,
+    PARTY_KEYWORDS,
+    STATE_ABBR,
+    STATE_MODULE_MAP,
+    STATE_TAGS,
+    TABLE_TAGS,
+)
+from .context_organizer import ContextOrganizer
 from .Integrity_check import (
+    advanced_cross_field_validation,
     detect_anomalies_with_ml,
     election_integrity_checks,
     monitor_db_for_alerts,
-    advanced_cross_field_validation,
-    print_integrity_summary
+    print_integrity_summary,
 )
-from .librarian import (
-    clean_for_json
-)
-from .context_organizer import ContextOrganizer
-from ..services.election_data_services import ElectionDataService
-from typing import Optional, Any, List, Dict, Tuple, Callable
+from .librarian import atomic_write_json, clean_for_json
 
 
 def get_semantic_score(model, text1, text2) -> float:
@@ -68,15 +100,22 @@ def get_semantic_score(model, text1, text2) -> float:
     """
     # Type and value checks
     if model is None:
-        if logger: logger.error("[get_semantic_score] Model is None.")
+        if logger:
+            logger.error("[get_semantic_score] Model is None.")
         return 0.0
     if not isinstance(text1, str) or not isinstance(text2, str) or not text1 or not text2:
-        if logger: logger.error(f"[get_semantic_score] Invalid input types: text1={type(text1)}, text2={type(text2)}")
+        if logger:
+            logger.error(
+                "[get_semantic_score] Invalid input types: text1=%s, text2=%s",
+                type(text1),
+                type(text2),
+            )
         return 0.0
     try:
         emb1 = safe_model_encode(model, text1, convert_to_tensor=True, show_progress_bar=False)
         emb2 = safe_model_encode(model, text2, convert_to_tensor=True, show_progress_bar=False)
-        if logger: logger.debug(f"Type of emb1: {type(emb1)}, Type of emb2: {type(emb2)}")
+        if logger:
+            logger.debug("Type of emb1: %s, Type of emb2: %s", type(emb1), type(emb2))
         from sentence_transformers import util
         cos_sim = util.pytorch_cos_sim(emb1, emb2)
         # Defensive extraction
@@ -88,15 +127,18 @@ def get_semantic_score(model, text1, text2) -> float:
         elif isinstance(cos_sim, (list, tuple, np.ndarray)):
             val = float(cos_sim[0][0]) if cos_sim and cos_sim[0] else 0.0
         else:
-            if logger: logger.error(f"[get_semantic_score] Unexpected cos_sim type: {type(cos_sim)}")
+            if logger:
+                logger.error("[get_semantic_score] Unexpected cos_sim type: %s", type(cos_sim))
             val = 0.0
         # Final type check
         if not isinstance(val, (float, int)):
-            if logger: logger.error(f"[get_semantic_score] Non-numeric similarity value: {val}")
+            if logger:
+                logger.error("[get_semantic_score] Non-numeric similarity value: %s", val)
             return 0.0
         return float(val)
     except Exception as e:
-        if logger: logger.error(f"[get_semantic_score] Error: {e}")
+        if logger:
+            logger.error("[get_semantic_score] Error: %s", e)
         return 0.0
 
 def merge_and_rank_candidates(
@@ -195,10 +237,26 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
     Utilizes context fields, contest titles, URL, and canonical librarian mappings.
     Returns (county, state, handler_path, detection_log)
     """
+    # Lightweight in-function caches for large lookups
+    if not hasattr(dynamic_state_county_detection, "_lookup_cache"):
+        dynamic_state_county_detection._lookup_cache = {}
+    cache = dynamic_state_county_detection._lookup_cache
     detection_log = []
     state_to_county = KNOWN_STATE_TO_COUNTY_MAP
     county_to_precinct = KNOWN_COUNTY_TO_PRECINCTS_MAP
     state_module_map = STATE_MODULE_MAP
+    # Cache normalized lists/sets used multiple times
+    cache_key = "norm_sets"
+    if cache_key in cache:
+        known_states, all_counties, all_precincts = cache[cache_key]
+    else:
+        known_states = set(state_to_county.keys())
+        state_to_county_values = state_to_county.values() if isinstance(state_to_county, dict) else state_to_county
+        all_counties = {normalize_county_name(c) for counties in state_to_county_values for c in counties}
+        county_to_precinct_values = county_to_precinct.values() if isinstance(county_to_precinct, dict) else county_to_precinct
+        all_precincts = {normalize_county_name(d) for precincts in county_to_precinct_values for d in precincts}
+        cache[cache_key] = (known_states, all_counties, all_precincts)
+
     known_states = set(state_to_county.keys())
     state_to_county_values = state_to_county.values() if isinstance(state_to_county, dict) else state_to_county
     all_counties = {normalize_county_name(c) for counties in state_to_county_values for c in counties}
@@ -219,6 +277,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
     if county:
         if county in all_counties:
             detection_log.append(f"County found in context: {county} (validated as county)")
+            detection_log.append("[SOURCE] context:county")
             # Webapp-friendly structured log with a message (avoid empty message field)
             logger.info({
                 "level": "INFO",
@@ -244,6 +303,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                     "session_id": session_id
                 })               
                 county = parent_county
+                detection_log.append("[SOURCE] context:precinct->county")
             else:
                 detection_log.append(f"County '{county}' found in context, but is a precinct with no parent mapping.")
                 logger.info({
@@ -266,6 +326,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
     if state:
         if state in known_states:
             detection_log.append(f"State found in context: {state} (validated as state)")
+            detection_log.append("[SOURCE] context:state")
             logger.info({
                 "level": "INFO",
                 "type": "router",
@@ -296,6 +357,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                     "message": f"[Context Detection] State '{state}' mapped via state_module_map/abbr.",
                     "session_id": session_id
                 })
+                detection_log.append("[SOURCE] context:mapped_state")
             else:
                 # Fuzzy match as last resort
                 match = difflib.get_close_matches(state, known_states, n=1, cutoff=0.8)
@@ -327,6 +389,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if c in url_lower:
                 county = c
                 detection_log.append(f"County '{county}' detected from URL.")
+                detection_log.append("[SOURCE] url:county_exact")
                 logger.info({
                     "level": "INFO",
                     "type": "router",
@@ -344,6 +407,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                         if d in {normalize_county_name(x) for x in precincts}:
                             county = normalize_county_name(c)
                             detection_log.append(f"precinct '{d}' detected from URL, mapped to county '{county}'")
+                            detection_log.append("[SOURCE] url:precinct->county")
                             logger.info({
                                 "level": "INFO",
                                 "type": "router",
@@ -360,6 +424,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if matches:
                 county = safe_get_first(matches, "county_match", None, logger)
                 detection_log.append(f"County '{county}' fuzzy-matched from URL tokens.")
+                detection_log.append("[SOURCE] url:county_fuzzy")
                 logger.info({
                     "level": "INFO",
                     "type": "router",
@@ -376,6 +441,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                         if match_val in {normalize_county_name(x) for x in precincts}:
                             county = normalize_county_name(c)
                             detection_log.append(f"precinct '{match_val}' fuzzy-matched from URL tokens, mapped to county '{county}'")
+                            detection_log.append("[SOURCE] url:precinct->county")
                             logger.info({
                                 "level": "INFO",
                                 "type": "router",
@@ -433,6 +499,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if ent in all_counties:
                 county = ent
                 detection_log.append(f"County '{county}' detected from HTML NLP entity.")
+                detection_log.append("[SOURCE] nlp:county")
                 logger.info({
                     "level": "INFO",
                     "type": "router",
@@ -447,6 +514,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                     if ent in {normalize_county_name(x) for x in precincts}:
                         county = normalize_county_name(c)
                         detection_log.append(f"precinct '{ent}' detected from HTML NLP entity, mapped to county '{county}'")
+                        detection_log.append("[SOURCE] nlp:precinct->county")
                         logger.info({
                             "level": "INFO",
                             "type": "router",
@@ -480,6 +548,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if s in url_lower:
                 state = s
                 detection_log.append(f"State '{state}' detected from URL.")
+                detection_log.append("[SOURCE] url:state_exact")
                 logger.info({
                     "level": "INFO",
                     "type": "router",
@@ -494,6 +563,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if matches:
                 state = safe_get_first(matches, "state_match", None, logger)
                 detection_log.append(f"State '{state}' fuzzy-matched from URL tokens.")
+                detection_log.append("[SOURCE] url:state_fuzzy")
                 logger.info({
                     "level": "INFO",
                     "type": "router",
@@ -512,6 +582,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
                 if s in title_lower:
                     state = s
                     detection_log.append(f"State '{state}' detected from contest title: '{title}'")
+                    detection_log.append("[SOURCE] title:state")
                     logger.info({
                         "level": "INFO",
                         "type": "router",
@@ -530,6 +601,7 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             if ent in known_states:
                 state = ent
                 detection_log.append(f"State '{state}' detected from HTML NLP entity.")
+                detection_log.append("[SOURCE] nlp:state")
                 logger.info({
                     "level": "INFO",
                     "type": "router",
@@ -653,7 +725,14 @@ def dynamic_state_county_detection(context, html, debug=False) -> tuple:
             "message": "State could not be detected.",
             "session_id": session_id
         })
-
+    # Summarize detection sources and compute a coarse confidence score
+    try:
+        srcs = [line.split('] ', 1)[1] for line in detection_log if isinstance(line, str) and line.startswith('[SOURCE]')]
+        unique_sources = set(srcs)
+        confidence = min(1.0, 0.2 * len(unique_sources))
+        detection_log.append(f"[SUMMARY] sources={sorted(unique_sources)} confidence={confidence:.2f}")
+    except Exception:
+        pass
     if debug:
         for log in detection_log:
             logger.debug({
@@ -691,7 +770,6 @@ class ContextCoordinator(object):
         self.alert_monitor_thread = None
 
         if enable_ml:
-            from ..utils.model_registry import ModelRegistry
             self._semantic_model = ModelRegistry.get_sentence_transformer("all-MiniLM-L6-v2")
 
         if alert_monitor:
@@ -758,7 +836,6 @@ class ContextCoordinator(object):
             logger.error(f"[pattern_kb property] Error loading pattern KB: {e}")
         # Final fallback: load from disk
         try:
-            from ..utils.html_scanner import load_pattern_kb, deduplicate_pattern_kb
             kb = load_pattern_kb()
             return deduplicate_pattern_kb(kb)
         except Exception as e:
@@ -1285,7 +1362,6 @@ class ContextCoordinator(object):
                     return entry_dict["ml_label"]
 
         if pattern_kb and model and "html" in segment_dict:
-            from ..utils.html_scanner import get_segment_embedding
             seg_emb = get_segment_embedding(model, segment_dict)
             if seg_emb is not None:
                 best_score = 0
@@ -1842,14 +1918,16 @@ class ContextCoordinator(object):
         """
         try:
             if not isinstance(text, str) or not text:
-                if hasattr(self, 'logger'):
-                    self.logger.error(f"[extract_entities] Invalid text type: {type(text)}")
+                if hasattr(self, "logger"):
+                    self.logger.error("[extract_entities] Invalid text type: %s", type(text))
                 return [] if not first_only else None
-            from ..utils.spacy_utils import extract_entities
             entities = extract_entities(text)
             if not isinstance(entities, list):
-                if hasattr(self, 'logger'):
-                    self.logger.error(f"[extract_entities] extract_entities did not return a list: {type(entities)}")
+                if hasattr(self, "logger"):
+                    self.logger.error(
+                        "[extract_entities] extract_entities did not return a list: %s",
+                        type(entities),
+                    )
                 entities = []
             if labels:
                 labels_set = set(labels)
@@ -1860,8 +1938,8 @@ class ContextCoordinator(object):
                 return safe_get_first(filtered, "entity_filtered", None, self.logger if hasattr(self, 'logger') else None) if filtered else None
             return filtered
         except Exception as e:
-            if hasattr(self, 'logger'):
-                self.logger.error(f"[ContextCoordinator.extract_entities] Error: {e}")
+            if hasattr(self, "logger"):
+                self.logger.error("[ContextCoordinator.extract_entities] Error: %s", e)
             return [] if not first_only else None
 
     def extract_locations(self, text, labels=None, first_only=False):
@@ -1875,7 +1953,6 @@ class ContextCoordinator(object):
         try:
             if not text or not isinstance(text, str):
                 return [] if not first_only else None
-            from ..utils.spacy_utils import extract_locations
             locations = extract_locations(text)
             if labels:
                 labels_set = set(labels)
@@ -1886,7 +1963,7 @@ class ContextCoordinator(object):
                 return safe_get_first(filtered, "locations_filtered", None, logger) if filtered else None
             return filtered
         except Exception as e:
-            logger.error(f"[ContextCoordinator.extract_locations] Error: {e}")
+            logger.error("[ContextCoordinator.extract_locations] Error: %s", e)
             return [] if not first_only else None
 
     def extract_dates(self, text, labels=None, first_only=False):
@@ -1900,7 +1977,6 @@ class ContextCoordinator(object):
         try:
             if not text or not isinstance(text, str):
                 return [] if not first_only else None
-            from ..utils.spacy_utils import extract_dates
             dates = extract_dates(text)
             if labels:
                 labels_set = set(labels)
@@ -1911,7 +1987,7 @@ class ContextCoordinator(object):
                 return safe_get_first(filtered, "dates_filtered", None, logger) if filtered else None
             return filtered
         except Exception as e:
-            logger.error(f"[ContextCoordinator.extract_dates] Error: {e}")
+            logger.error("[ContextCoordinator.extract_dates] Error: %s", e)
             return [] if not first_only else None
 
     def extract_field(self, field_type, text=None, context=None, extra=None):
@@ -2799,7 +2875,8 @@ class ContextCoordinator(object):
                             learned_btn["is_clickable"] = safe_is_enabled(btn, logger)
                             break
                     except Exception as e:
-                        if logger: logger.error(f"[get_best_button_advanced] Error scanning learned button: {e}")
+                        if logger:
+                            logger.error("[get_best_button_advanced] Error scanning learned button: %s", e)
                         continue
                 if (
                     isinstance(learned_btn, dict)
@@ -2813,7 +2890,7 @@ class ContextCoordinator(object):
                         safe_wait_for_timeout(page, 1500, logger)
                         self.clicked_button_selectors.add(learned_btn.get("selector"))
                         return learned_btn, 0
-                    except Exception as e:
+                    except Exception:
                         logger.error("[LEARNING] Failed to click learned button element.", exc_info=True)
                 else:
                     logger.error("[red][ERROR] No element_handle found for the learned button candidate.[/red]")
@@ -2991,10 +3068,13 @@ class ContextCoordinator(object):
             f.write(orjson.dumps(clean_for_json(log_entry)) + b"\n")
 
     # --- Table structure learning/lookup ---
-    def get_table_structure(self, contest: dict = None, context: dict = None, learning_mode: bool = True) -> Optional[list[str]]:
-        """
-        Retrieve or learn the expected table structure for a contest.
-        """
+    def get_table_structure_from_log(
+        self,
+        contest: dict | None = None,
+        context: dict | None = None,
+        learning_mode: bool = True,
+    ) -> Optional[list[str]]:
+        """Retrieve a previously learned table structure from the learning log."""
         log_path = os.path.join(LOG_DIR, "table_structure_learning_log.jsonl")
         # 1. Learning mode: check log for confirmed structure
         if learning_mode and os.path.exists(log_path):

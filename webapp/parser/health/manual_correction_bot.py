@@ -12,36 +12,46 @@ Deep ML/LLM-enhanced batch review and correction bot for all context fields.
 """
 
 import argparse
+import importlib
 import os
-import orjson
-import shutil
-from pathlib import Path
-from collections import defaultdict, Counter
+import re
 import shelve
-from datetime import datetime, timedelta
+import shutil
 import subprocess
 import sys
 import time
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta
+from pathlib import Path
+
 import openai
-# --- Unified logger import ---
-from ..utils.logger_singleton import logger
-import re
-from ..utils.misc_utils import file_hash
-from ..Context_Integration.librarian import (
-    update_context_library, lookup_county,
-    SCHEMA_VERSION, lookup_state, get_state_abbr,
-    DEFAULT_STRUCTURE,
-    load_context_library,
-)
-# --- Config ---
-# --- Directory and file constants ---
+import orjson
+
 from ..config import (
-    PROJECT_ROOT, CONTEXT_LIBRARY_PATH, LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR,
-    LLM_API_KEY, LLM_PROVIDER, LLM_MODEL, LLM_SYSTEM_PROMPT, LLM_EXTRA_INSTRUCTIONS, 
-    USER_NAME
+    CACHE_DIR,
+    CONTEXT_LIBRARY_DIR,
+    CONTEXT_LIBRARY_PATH,
+    LLM_API_KEY,
+    LLM_EXTRA_INSTRUCTIONS,
+    LLM_MODEL,
+    LLM_PROVIDER,
+    LLM_SYSTEM_PROMPT,
+    LOG_DIR,
+    PROJECT_ROOT,
+    USER_NAME,
 )
-from ..Context_Integration.Context_Library.constants import lookup_state
-from webapp.parser.Context_Integration.context_coordinator import ContextCoordinator
+from ..Context_Integration.context_coordinator import ContextCoordinator
+from ..Context_Integration.librarian import (
+    DEFAULT_STRUCTURE,
+    SCHEMA_VERSION,
+    get_state_abbr,
+    load_context_library,
+    lookup_county,
+    lookup_state,
+    update_context_library,
+)
+from ..utils.logger_singleton import logger
+from ..utils.misc_utils import file_hash
 from ..utils.model_registry import ModelRegistry
 
 # Ensure these are Path objects
@@ -212,7 +222,7 @@ def atomic_write_json(obj, path):
         try:
             shutil.move(str(tmp_path), str(path))
             break
-        except (OSError, PermissionError, FileExistsError) as e:
+        except (OSError, PermissionError, FileExistsError):
             # Try to remove the target file if possible (only if you are sure it's safe)
             try:
                 os.remove(str(path))
@@ -302,8 +312,7 @@ def ml_score_entry(entry, coordinator=None):
     Use ML/NER or coordinator's ML model to score the entry for likely correctness.
     Returns a float score between 0 and 1.
     """
-    from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
     text = entry.get("extracted_value", "")
     score = 0.0
     if coordinator and hasattr(coordinator, "score_entry"):
@@ -325,8 +334,7 @@ def ml_suggest_field(entry, coordinator=None):
     """
     Use ML/NER or coordinator to suggest a better field for the entry.
     """
-    from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
     text = entry.get("extracted_value", "")
     if coordinator and hasattr(coordinator, "suggest_field"):
         try:
@@ -645,8 +653,7 @@ def feedback_loop(
     llm_extra_instructions=None,
     fast_mode=False
 ) -> tuple[int, int, int]:
-    from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
     context_library_path = safe_path(context_library_path, [CONTEXT_LIBRARY_DIR])
     if not new_entries:
         logger.info(f"No new entries to review for {field_type}.")
@@ -657,7 +664,6 @@ def feedback_loop(
     if not isinstance(context_library, dict):
         logger.error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
         raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
-    changed = False
     accepted, edited, removed = 0, 0, 0
     new_entries_values = new_entries.values() if isinstance(new_entries, dict) else new_entries
     total_new = sum(len(v) for v in new_entries_values)
@@ -876,12 +882,13 @@ def suggest_fields_with_models(contest, nlp=None):
     suggestions = {}
 
     # Load models if not provided
+    torch_model = None
     if not nlp:
         try:
             nlp = ModelRegistry.get_spacy_model()
         except Exception:
             nlp = None
-    if not torch_model:
+    if torch_model is None:
         try:
             torch_model = ModelRegistry.get_torch_contest_model()
         except Exception:
@@ -970,9 +977,19 @@ def prompt_for_missing_fields(contest, suggestions):
 
 def highlight_anomalies(context_library, field_type, context_path=None, autofix=True):
     try:
-        from ..Context_Integration.Integrity_check import analyze_contests, summarize_context_entities
-    except ImportError:
-        logger.warning("Could not import integrity_check for anomaly highlighting.")
+        integrity_mod = importlib.import_module(
+            "webapp.parser.Context_Integration.Integrity_check"
+        )
+        analyze_contests = getattr(integrity_mod, "analyze_contests")
+        summarize_context_entities = getattr(
+            integrity_mod,
+            "summarize_context_entities",
+        )
+    except (ImportError, AttributeError) as exc:
+        logger.warning(
+            "Could not import integrity_check for anomaly highlighting: %s",
+            exc,
+        )
         return
     if field_type == "contests" and "contests" in context_library:
         contests = context_library["contests"]
@@ -1007,8 +1024,7 @@ def highlight_anomalies(context_library, field_type, context_path=None, autofix=
 
 # --- DB update logic (batch, periodic, error handling) ---
 def update_database_with_context(library, db_path=None, coordinator=None, enhanced=True) -> None:
-    from ..Context_Integration.context_coordinator import ContextCoordinator   
-    coordinator = ContextCoordinator()
+    coordinator = coordinator or ContextCoordinator()
     if not db_path:
         db_path = CONTEXT_LIBRARY_DIR / "context_library.json"
     db_path = safe_path(db_path, [CONTEXT_LIBRARY_DIR])

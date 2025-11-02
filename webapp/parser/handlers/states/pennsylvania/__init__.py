@@ -1,3 +1,3 @@
-from .pennsylvania import handle as parse
+from .pennsylvania import parse as parse
 
 county_mode = False

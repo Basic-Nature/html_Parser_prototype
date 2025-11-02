@@ -1,56 +1,86 @@
-import os
-import orjson
-import re
-import datetime
-import hashlib
-import subprocess
-import shutil
-import gc
-import sys
-from types import ModuleType
-import random
-from importlib.util import find_spec
 import copy
-from ..Context_Integration.Context_Library.constants import (
-    PARTY_KEYWORDS, ELECTION_ENTITY_LABELS, ENTITY_PATTERNS,
-    MISALIGNED_PATTERNS
-)
-from typing import (
-    List, Dict, Any, Optional, Set, Tuple, Protocol, runtime_checkable
-)
-from ..utils.model_registry import ModelRegistry
-from ..utils.shared_logic import (
-    safe_get, safe_encode, safe_update, safe_items,
-    safe_add, safe_execute, safe_commit, safe_scalar_one_or_none,
-    safe_replace, safe_model_save, get_or_create
-)
-from collections import Counter
-from sentence_transformers import InputExample, losses
-from torch.utils.data import DataLoader
-from ..Context_Integration.librarian import load_context_library
-from ..utils.misc_utils import _safe_db_path
-from ..utils.db_utils import get_session, create_engine
-from ..utils.logger_singleton import logger, console
-from ..config import (
-    CONTEXT_DB_PATH, MODEL_DIR, PROJECT_ROOT, LOG_DIR,
-    SBERT_EPOCHS, SBERT_BATCH_SIZE,
-    SPACY_NER_EPOCHS, SPACY_NER_PATIENCE, SPACY_NER_MIN_DELTA, SPACY_NER_BATCH_SIZE,
-    REVIEW_WITH_MANUAL_BOT, get_subprocess_env, get_sqlalchemy_engine    
-)
-import numpy as np
-import spacy
-from spacy.language import Language
-from spacy.training import Example, offsets_to_biluo_tags
-from spacy.lookups import Lookups
+import datetime
+import gc
 import glob
-from sklearn.feature_extraction.text import TfidfVectorizer
+import hashlib
+import os
+import random
+import re
+import shutil
+import subprocess
+import sys
+from collections import Counter
+from importlib.util import find_spec
+from types import ModuleType
+from typing import Any, Dict, List, Optional, Protocol, Set, Tuple, runtime_checkable
+
+import numpy as np
+import orjson
+import spacy
+from sentence_transformers import InputExample, losses
 from sklearn.cluster import KMeans
-from sqlalchemy import select, inspect
-from ..utils.models import (
-    TableStructure, Base, MetaDataProtocol, DeclarativeBaseProtocol,
-    Entity, Party, State, County, District, Office, Candidate, 
-    Contest, Result
+from sklearn.feature_extraction.text import TfidfVectorizer
+from spacy.language import Language
+from spacy.lookups import Lookups
+from spacy.training import Example, offsets_to_biluo_tags
+from sqlalchemy import inspect, select
+from torch.utils.data import DataLoader
+
+from ..config import (
+    CONTEXT_DB_PATH,
+    LOG_DIR,
+    MODEL_DIR,
+    PROJECT_ROOT,
+    REVIEW_WITH_MANUAL_BOT,
+    SBERT_BATCH_SIZE,
+    SBERT_EPOCHS,
+    SPACY_NER_BATCH_SIZE,
+    SPACY_NER_EPOCHS,
+    SPACY_NER_MIN_DELTA,
+    SPACY_NER_PATIENCE,
+    get_sqlalchemy_engine,
+    get_subprocess_env,
 )
+from ..Context_Integration.Context_Library.constants import (
+    ELECTION_ENTITY_LABELS,
+    ENTITY_PATTERNS,
+    MISALIGNED_PATTERNS,
+    PARTY_KEYWORDS,
+)
+from ..Context_Integration.librarian import load_context_library
+from ..utils.db_utils import get_session
+from ..utils.logger_singleton import console, logger
+from ..utils.misc_utils import _safe_db_path
+from ..utils.model_registry import ModelRegistry
+from ..utils.models import (
+    Base,
+    Candidate,
+    Contest,
+    County,
+    DeclarativeBaseProtocol,
+    District,
+    Entity,
+    MetaDataProtocol,
+    Office,
+    Party,
+    Result,
+    State,
+    TableStructure,
+)
+from ..utils.shared_logic import (
+    get_or_create,
+    safe_add,
+    safe_commit,
+    safe_encode,
+    safe_execute,
+    safe_get,
+    safe_items,
+    safe_model_save,
+    safe_replace,
+    safe_scalar_one_or_none,
+    safe_update,
+)
+
 
 @runtime_checkable
 class NERPipeProtocol(Protocol):
@@ -469,7 +499,11 @@ def retrain_spacy_ner_advanced(
         all_counties.update([c for c in safe_get(context, "known_counties", []) if c and isinstance(c, str) and len(c.strip()) > 2])
         all_states.update([s for s in safe_get(context, "known_states", []) if s and isinstance(s, str) and len(s.strip()) > 1])
         all_districts.update([d for d in safe_get(context, "known_districts", []) if d and isinstance(d, str) and len(d.strip()) > 0])
-        all_locations.update([l for l in safe_get(context, "known_cities", []) if l and isinstance(l, str) and len(l.strip()) > 1])
+        all_locations.update([
+            city
+            for city in safe_get(context, "known_cities", [])
+            if city and isinstance(city, str) and len(city.strip()) > 1
+        ])
 
         for header in headers:
             if is_misaligned_text(header):
@@ -582,9 +616,9 @@ def retrain_spacy_ner_advanced(
     # --- Training summary and suggestions ---
     logger.info(f"[SUMMARY] Best loss: {best_loss:.2f} at epoch {best_epoch}")
     if best_epoch < epochs:
-        logger.warning(f"[SUGGESTION] Consider lowering min_delta or increasing patience if you want longer training.")
+        logger.warning("[SUGGESTION] Consider lowering min_delta or increasing patience if you want longer training.")
     elif best_epoch == epochs:
-        logger.warning(f"[SUGGESTION] Model improved until the last epoch. Consider increasing epochs for further improvement.")
+        logger.warning("[SUGGESTION] Model improved until the last epoch. Consider increasing epochs for further improvement.")
     logger.warning(f"[SUGGESTION] Next run: patience={patience}, min_delta={min_delta:.2f}, epochs={epochs}")
 
     # --- Robust DB update with all entity types ---
@@ -618,7 +652,7 @@ def get_all_confirmed_structures() -> List[Dict[str, Any]]:
     """
     with get_session() as session:
         rows = session.execute(
-            select(TableStructure).where(TableStructure.confirmed_by_user == True)
+            select(TableStructure).where(TableStructure.confirmed_by_user.is_(True))
         ).scalars().all()
         # Extract all needed fields while session is open
         result = []

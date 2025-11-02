@@ -1,35 +1,61 @@
 from __future__ import annotations
+
+import copy
+
 # webapp/parser/utils/shared_logic.py
 # -----------------------------------------------------------------------------------
 # Common parsing utilities for context-integrated pipeline
 # -----------------------------------------------------------------------------------
 import difflib
+import gc
+import inspect
 import os
 import platform
 import re
-import copy
-import numpy as np
-import inspect
-import time
 import shutil
-import gc
-import collections.abc
+import time
 from pathlib import Path
-from sqlalchemy.orm import Session, Query
-from flask import request, session
-from sqlalchemy.engine import ScalarResult
-from urllib.parse import ParseResult, SplitResult
-from ..utils.logger_singleton import logger, console, prompt
-from sentence_transformers import SentenceTransformer
-from ..Context_Integration.Context_Library.constants import (
-    STATE_ABBR, STATE_MODULE_MAP, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP
-)
 from typing import (
-    TYPE_CHECKING, Optional, Generator, Any, Iterable, Dict, 
-    Union, Iterable, Protocol, Awaitable, TypedDict,
-    List, Callable, Mapping, Sequence, runtime_checkable,
-    TypeVar, Type
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Type,
+    TypedDict,
+    TypeVar,
+    Union,
+    runtime_checkable,
 )
+from urllib.parse import ParseResult, SplitResult
+
+import numpy as np
+import orjson
+from flask import request, session
+# Optional Sentencetransformers dependency (graceful fallback when missing)
+try:
+    from sentence_transformers import SentenceTransformer  # type: ignore
+except ImportError:  # pragma: no cover - dependency optional in some environments
+    SentenceTransformer = None  # type: ignore
+from sqlalchemy.engine import ScalarResult
+from sqlalchemy.orm import Query, Session
+
+from ..Context_Integration.Context_Library.constants import (
+    KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    KNOWN_STATE_TO_COUNTY_MAP,
+    STATE_ABBR,
+    STATE_MODULE_MAP,
+    build_camelot_row_filter,
+)
+from ..utils.logger_singleton import logger
+
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
 
@@ -479,7 +505,7 @@ def safe_model_save(
             shutil_module.rmtree(model_save_path, ignore_errors=True)
             shutil_module.move(tmp_path, model_save_path)
         if logger:
-            logger.info(f"[INFO] Model saved via temp path workaround.")
+            logger.info("[INFO] Model saved via temp path workaround.")
         return True
     except Exception as e:
         if logger:
@@ -677,8 +703,10 @@ def safe_append(lst, value, logger=None, deduplicate: bool = False) -> list:
     try:
         if not isinstance(lst, list):
             if logger:
-                try: logger.warning(f"[safe_append] Target is not a list: {type(lst)}; coercing to list.")
-                except Exception: pass
+                try:
+                    logger.warning(f"[safe_append] Target is not a list: {type(lst)}; coercing to list.")
+                except Exception:
+                    pass
             lst = [] if lst is None else list(lst) if isinstance(lst, (tuple, set)) else []
         if not (deduplicate and value in lst):
             lst.append(value)
@@ -721,8 +749,10 @@ def safe_extend(lst, values, logger=None, deduplicate: bool = False) -> list:
     try:
         if not isinstance(lst, list):
             if logger:
-                try: logger.warning(f"[safe_extend] Target is not a list: {type(lst)}; coercing to list.")
-                except Exception: pass
+                try:
+                    logger.warning(f"[safe_extend] Target is not a list: {type(lst)}; coercing to list.")
+                except Exception:
+                    pass
             lst = [] if lst is None else list(lst) if isinstance(lst, (tuple, set)) else []
         if values is None:
             return lst
@@ -820,10 +850,19 @@ def safe_encode(val, encoding="utf-8") -> bytes:
         return val.encode(encoding, errors="replace")
     return str(val).encode(encoding, errors="replace")
     
-def safe_startswith(val, prefix) -> bool:
+def safe_startswith(
+    obj: Union[str, bytes],
+    prefix: Union[str, bytes],
+    logger=logger,
+) -> bool:
+    """Safely call .startswith on a string-like object."""
     try:
-        return val.startswith(prefix) if isinstance(val, str) else False
-    except Exception:
+        if isinstance(obj, (str, bytes)):
+            return obj.startswith(prefix)
+        return False
+    except Exception as exc:
+        if logger:
+            logger.error(f"[safe_startswith] Error: {exc}")
         return False
 
 def safe_add(container, item) -> bool:
@@ -910,11 +949,15 @@ def safe_items(obj) -> Iterable:
     except Exception:
         return []
 
-def safe_similarity(model: SentenceTransformer, a: str, b: str, logger=logger) -> float:
+def safe_similarity(model: Any, a: str, b: str, logger=logger) -> float:
     """
     Safely compute similarity between two strings using model.similarity.
     Returns a float between 0.0 and 1.0, or 0.0 on error.
     """
+    if model is None:
+        if logger:
+            logger.debug("[safe_similarity] sentence-transformers model unavailable; returning 0.0")
+        return 0.0
     try:
         sim = model.similarity(a, b)
         # Handle numpy scalars, lists, etc.
@@ -932,12 +975,15 @@ def safe_similarity(model: SentenceTransformer, a: str, b: str, logger=logger) -
             logger.error(f"[safe_similarity] Exception: {e}")
         return 0.0
 
-def safe_model_encode(model: SentenceTransformer, text: str, **kwargs: Any) -> Union[np.ndarray, List[np.ndarray], None]   :
+def safe_model_encode(model: Any, text: str, **kwargs: Any) -> Union[np.ndarray, List[np.ndarray], None]:
     """
     Safely encode text or list of text using a model, handling edge cases.
     Returns: np.ndarray or list[np.ndarray] or None
     Always returns consistent types, logs errors, and handles batch/single input.
     """
+    if model is None:
+        logger.debug("[safe_model_encode] sentence-transformers model unavailable; returning None")
+        return None
     def _normalize_text(val):
         if isinstance(val, (str, bytes)):
             return str(val)
@@ -1015,7 +1061,7 @@ def safe_model_encode(model: SentenceTransformer, text: str, **kwargs: Any) -> U
 
     # Extra safety: try to encode each character (rare fallback)
     try:
-        logger.error(f"[safe_model_encode] All string encode attempts failed. Trying per-char fallback.")
+        logger.error("[safe_model_encode] All string encode attempts failed. Trying per-char fallback.")
         result = [_encode([c]) for c in norm_text if isinstance(c, str)]
         result = [r for r in result if isinstance(r, np.ndarray)]
         return result if result else None
@@ -1056,11 +1102,13 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
     """
     try:
         if handler is None:
-            if logger: logger.error("[safe_parse] Handler is None.")
+            if logger:
+                logger.error("[safe_parse] Handler is None.")
             return None
         parse_method = getattr(handler, "parse", None)
         if not callable(parse_method):
-            if logger: logger.error("[safe_parse] Handler has no callable 'parse' method.")
+            if logger:
+                logger.error("[safe_parse] Handler has no callable 'parse' method.")
             return None
         sig = inspect.signature(parse_method)
         param_names = list(sig.parameters.keys())
@@ -1076,9 +1124,6 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
             # If not enough args to fill coordinator, add it positionally
             if len(call_args) <= coord_idx:
                 call_args.insert(coord_idx, coordinator)
-            else:
-                # If already present, don't add as kwarg
-                pass
             # Remove from kwargs if present
             call_kwargs.pop('coordinator', None)
 
@@ -1092,18 +1137,9 @@ def safe_parse(handler: Optional[Union["ContextCoordinator", Any]], *args: Any, 
 
         return parse_method(*call_args, **call_kwargs)
     except Exception as e:
-        if logger: logger.error(f"[safe_parse] Error calling handler.parse: {e}")
+        if logger:
+            logger.error(f"[safe_parse] Error calling handler.parse: {e}")
         return None
-
-def safe_startswith(obj: Union[str, bytes], prefix: Union[str, bytes], logger=logger) -> bool:
-    """Safely call .startswith on a string-like object."""
-    try:
-        if isinstance(obj, (str, bytes)):
-            return obj.startswith(prefix)
-        return False
-    except Exception as e:
-        if logger: logger.error(f"[safe_startswith] Error: {e}")
-        return False
 
 def safe_endswith(obj: Union[str, bytes], suffix: Union[str, bytes], logger=logger) -> bool:
     """Safely call .endswith on a string-like object."""
@@ -1112,7 +1148,8 @@ def safe_endswith(obj: Union[str, bytes], suffix: Union[str, bytes], logger=logg
             return obj.endswith(suffix)
         return False
     except Exception as e:
-        if logger: logger.error(f"[safe_endswith] Error: {e}")
+        if logger:
+            logger.error(f"[safe_endswith] Error: {e}")
         return False
 
 def safe_isupper(obj: Union[str, bytes], logger=logger) -> bool:
@@ -1122,7 +1159,8 @@ def safe_isupper(obj: Union[str, bytes], logger=logger) -> bool:
             return obj.isupper()
         return False
     except Exception as e:
-        if logger: logger.error(f"[safe_isupper] Error: {e}")
+        if logger:
+            logger.error(f"[safe_isupper] Error: {e}")
         return False
 
 def resolve_county_alias(county_name: str, state: Optional[str] = None) -> str:
@@ -1346,6 +1384,70 @@ def infer_state_county_from_url(url: str) -> tuple:
 
     return state, county
 
+def resolve_state_county_from_context(context: Optional[dict]) -> tuple[Optional[str], Optional[str]]:
+    """Resolve normalized state and county from a context dict.
+
+    Checks explicit fields first, then attempts to infer from common URL keys.
+    Returns (state, county) normalized to canonical snake_case (state) and lowercased county name without suffix.
+    """
+    context = context or {}
+    # Direct fields
+    state = context.get("state") or context.get("state_abbr")
+    county = context.get("county") or context.get("county_name")
+    # Fallback to URL-based inference
+    if not state or not county:
+        for k in ("source_url", "url", "page_url", "origin_url"):
+            u = context.get(k)
+            if u:
+                s2, c2 = infer_state_county_from_url(str(u))
+                state = state or s2
+                county = county or c2
+                if state and county:
+                    break
+    # Normalize
+    state = normalize_state_name(state) if state else None
+    county = normalize_county_name(county) if county else None
+    return state, county
+
+def build_camelot_row_filter_for_context(context: Optional[dict], candidate_keys: tuple[str, ...] = ("Candidate", "Party")):
+    """Build a Camelot row-noise predicate using jurisdiction-aware overrides resolved from context.
+
+    The returned callable(row: dict) -> bool indicates whether a row should be treated as noise.
+    """
+    s, c = resolve_state_county_from_context(context)
+    return build_camelot_row_filter(candidate_keys=candidate_keys, state=s, county=c)
+
+def record_noise_suggestion(state: Optional[str], county: Optional[str], snippet: str, category: str = "row") -> None:
+    """Record a dropped-noise snippet for future analysis and pattern suggestions.
+
+    Appends counts to output/noise_suggestions.json with structure:
+    { state: { county: { category: { snippet: count } } } }
+    """
+    try:
+        state = normalize_state_name(state) if state else "__unknown__"
+        county = normalize_county_name(county) if county else "__unknown__"
+        snippet = (snippet or "").strip()
+        if not snippet:
+            return
+        if len(snippet) > 160:
+            snippet = snippet[:160]
+        out_dir = Path("output")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / "noise_suggestions.json"
+        data = {}
+        if out_path.exists():
+            try:
+                data = orjson.loads(out_path.read_bytes())
+            except Exception:
+                data = {}
+        data.setdefault(state, {}).setdefault(county, {}).setdefault(category, {})
+        bucket = data[state][county][category]
+        bucket[snippet] = int(bucket.get(snippet, 0)) + 1
+        out_path.write_bytes(orjson.dumps(data, option=orjson.OPT_INDENT_2))
+    except Exception:
+        # Best-effort only
+        pass
+
 def get_county_precincts(county_name) -> Optional[list]:
     county_norm = normalize_county_name(county_name)
     return KNOWN_COUNTY_TO_PRECINCTS_MAP.get(county_norm)
@@ -1556,3 +1658,809 @@ def infer_contest_fields(
     _sync_type_and_election_types(contest_dict)
 
     return year, type_, state, county
+
+# =============================================================================
+# Project inventory and architecture.md updater
+# =============================================================================
+
+def _infer_category(rel_path: str) -> str:
+    p = rel_path.replace("\\", "/")
+    # Webapp areas
+    if "/webapp/parser/handlers/states/" in p:
+        return "State Handlers"
+    if "/webapp/parser/handlers/formats/" in p:
+        return "Format Handlers"
+    if "/webapp/parser/Context_Integration/" in p:
+        return "Context & Integrity"
+    if "/webapp/parser/services/" in p:
+        return "Services"
+    if "/webapp/parser/health/" in p:
+        return "Health"
+    if "/webapp/parser/utils/" in p:
+        return "Utilities"
+    if "/webapp/templates/" in p:
+        return "Templates"
+    if "/webapp/static/" in p:
+        return "Static Assets"
+    if "/tests/" in p or p.endswith("/tests"):
+        return "Tests"
+    if p.startswith("docs/"):
+        return "Docs"
+    return "Misc"
+
+def _read_module_summary(abs_path: Path) -> tuple[str, int, int]:
+    """Return (summary, func_count, class_count) from a Python module."""
+    try:
+        import ast
+        src = abs_path.read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(src)
+        doc = ast.get_docstring(tree) or ""
+        # Derive a one-line summary
+        summary = (doc.strip().splitlines()[0] if doc.strip() else "")
+        funcs = sum(isinstance(n, ast.FunctionDef) for n in tree.body)
+        classes = sum(isinstance(n, ast.ClassDef) for n in tree.body)
+        return summary, funcs, classes
+    except Exception:
+        # Fallback: first non-empty comment line
+        try:
+            for line in abs_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                ls = line.strip()
+                if ls.startswith("# ") and len(ls) > 2:
+                    return ls[2:], 0, 0
+        except Exception:
+            pass
+        return "", 0, 0
+
+def _is_ignored_dir(name: str) -> bool:
+    low = name.lower()
+    return low in {".git", "__pycache__", ".venv", "venv", "node_modules", ".mypy_cache", ".pytest_cache"}
+
+def generate_project_inventory(project_root: str | Path = ".") -> Dict[str, List[Dict[str, Any]]]:
+    """Walk the repository and build a categorized inventory of files.
+
+    Returns a dict: {category: [ {path, summary, functions, classes, loc} ]}
+    """
+    root = Path(project_root).resolve()
+    inventory: Dict[str, List[Dict[str, Any]]] = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        # prune ignored directories in-place for performance
+        dirnames[:] = [d for d in dirnames if not _is_ignored_dir(d)]
+        for fname in filenames:
+            rel = Path(dirpath).joinpath(fname).relative_to(root)
+            rel_s = str(rel).replace("\\", "/")
+            category = _infer_category(rel_s)
+            item: Dict[str, Any] = {"path": rel_s}
+            abs_path = Path(dirpath) / fname
+            # Simple LOC (non-empty)
+            try:
+                loc = sum(1 for line in abs_path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip())
+            except Exception:
+                loc = 0
+            item["loc"] = loc
+            if fname.endswith(".py"):
+                summary, funcs, classes = _read_module_summary(abs_path)
+                item.update({
+                    "summary": summary,
+                    "functions": funcs,
+                    "classes": classes,
+                })
+            inventory.setdefault(category, []).append(item)
+    # Sort within categories by path
+    for k in list(inventory.keys()):
+        inventory[k].sort(key=lambda x: x.get("path", ""))
+    return inventory
+
+def _render_inventory_md(inv: Dict[str, List[Dict[str, Any]]]) -> str:
+    lines: List[str] = []
+    total_files = sum(len(v) for v in inv.values())
+    total_loc = sum(sum(i.get("loc", 0) for i in v) for v in inv.values())
+    lines.append(f"Inventory summary: {total_files} files, ~{total_loc} non-empty LOC\n")
+    for category in sorted(inv.keys()):
+        lines.append(f"### {category}")
+        lines.append("")
+        for item in inv[category]:
+            path = item.get("path", "")
+            summary = item.get("summary") or ""
+            funcs = item.get("functions")
+            classes = item.get("classes")
+            loc = item.get("loc")
+            meta = []
+            if isinstance(funcs, int):
+                meta.append(f"funcs: {funcs}")
+            if isinstance(classes, int):
+                meta.append(f"classes: {classes}")
+            if isinstance(loc, int):
+                meta.append(f"loc: {loc}")
+            meta_s = f" ({', '.join(meta)})" if meta else ""
+            bullet = f"- `{path}`{meta_s}"
+            if summary:
+                bullet += f": {summary}"
+            lines.append(bullet)
+        lines.append("")
+    return "\n".join(lines).strip() + "\n"
+
+def update_architecture_md(project_root: str | Path = ".", md_path: str | Path = "docs/architecture.md") -> bool:
+    """Replace the AUTO-INVENTORY block in architecture.md with a fresh inventory."""
+    try:
+        root = Path(project_root).resolve()
+        md_file = (root / md_path).resolve()
+        if not md_file.exists():
+            logger.warning(f"[inventory] architecture.md not found at {md_file}")
+            return False
+        text = md_file.read_text(encoding="utf-8", errors="replace")
+        begin = "<!-- AUTO-INVENTORY:START -->"
+        end = "<!-- AUTO-INVENTORY:END -->"
+        if begin not in text or end not in text:
+            logger.warning("[inventory] Markers not found in architecture.md; aborting replace.")
+            return False
+        inv = generate_project_inventory(root)
+        block = _render_inventory_md(inv)
+        new_text = text.split(begin)[0] + begin + "\n\n" + block + "\n" + end + text.split(end)[1]
+        md_file.write_text(new_text, encoding="utf-8")
+        return True
+    except Exception as e:
+        logger.error(f"[inventory] Failed to update architecture.md: {e}")
+        return False
+
+def generate_project_map(project_root: str | Path = ".", out_markdown: str | Path = "docs/architecture.md") -> None:
+    """Compatibility wrapper referenced in docs; updates architecture.md in-place."""
+    ok = update_architecture_md(project_root=project_root, md_path=out_markdown)
+    if not ok:
+        logger.warning("[inventory] generate_project_map completed with warnings; check markers and path.")
+
+# =============================================================================
+# Static code audit: import graph, symbol defs, cross-module calls
+# =============================================================================
+
+def _posix(p: Path) -> str:
+    return str(p).replace("\\", "/")
+
+def _read_file_text(p: Path) -> str:
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return ""
+
+def _extract_top_comment_block(src: str) -> str:
+    """Return leading comment block (lines starting with '#') before first code/docstring.
+
+    Stops when encountering a non-comment, non-blank line or a triple-quoted string start.
+    """
+    lines = src.splitlines()
+    out: list[str] = []
+    in_block = True
+    for line in lines:
+        ls = line.strip()
+        if not ls:
+            if in_block:
+                out.append("")
+            else:
+                break
+            continue
+        # stop on docstring opening
+        if ls.startswith("\"\"") or ls.startswith("'''"):
+            break
+        if ls.startswith("#"):
+            out.append(line)
+            continue
+        # first code-ish line ends the top comment block
+        break
+    # Trim trailing blank lines
+    while out and not out[-1].strip():
+        out.pop()
+    return "\n".join(out)
+
+
+def _harvest_todos(src: str) -> list[tuple[int, str]]:
+    """Find lines containing TODO/FIXME/WARN (case-insensitive). Returns list of (lineno, text)."""
+    hits: list[tuple[int, str]] = []
+    pat = re.compile(r"\b(TODO|FIXME|WARN|WARNING)\b", re.IGNORECASE)
+    for i, line in enumerate(src.splitlines(), start=1):
+        if pat.search(line):
+            hits.append((i, line.rstrip()))
+    return hits
+
+
+def _module_info_from_ast(src: str, file_path: Path) -> dict:
+    import ast
+    info: dict = {
+        "path": _posix(file_path),
+        "doc": "",
+        "defs": [],            # list of {type, name, lineno}
+        "imports": [],         # list of {type, module, name, alias, lineno}
+        "aliases": {},         # Name -> fully qualified (module[.name])
+        "module_aliases": {},  # alias -> module
+        "calls": [],           # list of {func, kind, lineno}
+        "loc": 0,
+        "top_comment": "",
+        "todo_lines": [],      # list[(lineno, text)]
+    }
+    try:
+        tree = ast.parse(src)
+    except Exception:
+        return info
+    info["doc"] = (ast.get_docstring(tree) or "").strip()
+    info["loc"] = sum(1 for line in src.splitlines() if line.strip())
+    info["top_comment"] = _extract_top_comment_block(src)
+    info["todo_lines"] = _harvest_todos(src)
+
+    # Collect defs and imports
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef):
+            info["defs"].append({"type": "function", "name": node.name, "lineno": getattr(node, "lineno", 0)})
+        elif isinstance(node, ast.AsyncFunctionDef):
+            info["defs"].append({"type": "async_function", "name": node.name, "lineno": getattr(node, "lineno", 0)})
+        elif isinstance(node, ast.ClassDef):
+            info["defs"].append({"type": "class", "name": node.name, "lineno": getattr(node, "lineno", 0)})
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                info["imports"].append({"type": "import", "module": alias.name, "name": None, "alias": alias.asname, "lineno": getattr(node, "lineno", 0)})
+                if alias.asname:
+                    info["module_aliases"][alias.asname] = alias.name
+                else:
+                    # bare import foo means name 'foo' binds to module
+                    base = alias.name.split(".")[0]
+                    info["module_aliases"].setdefault(base, alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            for alias in node.names:
+                info["imports"].append({"type": "from", "module": mod, "name": alias.name, "alias": alias.asname, "lineno": getattr(node, "lineno", 0)})
+                bound = alias.asname or alias.name
+                fq = f"{mod}.{alias.name}" if mod else alias.name
+                info["aliases"][bound] = fq
+
+    # Walk for calls
+    import ast
+    class CallVisitor(ast.NodeVisitor):
+        def visit_Call(self, call: ast.Call):
+            tgt = None
+            kind = "local"
+            # f(...) where f is Name
+            if isinstance(call.func, ast.Name):
+                nm = call.func.id
+                if nm in info["aliases"]:
+                    tgt = info["aliases"][nm]
+                    kind = "call:alias"
+                elif nm in info["module_aliases"]:
+                    tgt = info["module_aliases"][nm]
+                    kind = "call:module"
+                else:
+                    tgt = nm
+                    kind = "call:local"
+            # alias.attr(...) where alias is a module alias
+            elif isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name):
+                base = call.func.value.id
+                attr = call.func.attr
+                if base in info["module_aliases"]:
+                    tgt = f"{info['module_aliases'][base]}.{attr}"
+                    kind = "call:module.attr"
+                elif base in info["aliases"]:
+                    # e.g., from x import y as z; z.attr()
+                    tgt = f"{info['aliases'][base]}.{attr}"
+                    kind = "call:alias.attr"
+                else:
+                    tgt = f"{base}.{attr}"
+                    kind = "call:attr"
+            if tgt:
+                info["calls"].append({
+                    "func": tgt,
+                    "kind": kind,
+                    "lineno": getattr(call, "lineno", 0),
+                })
+            self.generic_visit(call)
+
+    try:
+        CallVisitor().visit(tree)
+    except Exception:
+        pass
+    return info
+
+def _scan_webapp_modules(project_root: Path) -> list[dict]:
+    webapp = (project_root / "webapp").resolve()
+    if not webapp.exists():
+        return []
+    modules = []
+    for dirpath, dirnames, filenames in os.walk(webapp):
+        # prune
+        dirnames[:] = [d for d in dirnames if not _is_ignored_dir(d)]
+        for fn in filenames:
+            if not fn.endswith(".py"):
+                continue
+            p = Path(dirpath) / fn
+            src = _read_file_text(p)
+            if not src:
+                continue
+            info = _module_info_from_ast(src, p)
+            modules.append(info)
+    return modules
+
+def _index_defs(modules: list[dict]) -> dict:
+    """Map fully-qualified guess for definitions to file path and line."""
+    idx: dict[str, dict] = {}
+    for m in modules:
+        mod_path = m.get("path", "")
+        mod_name = mod_path.replace("/", ".").rstrip(".py")
+        # derive package-ish name by trimming project root parts until 'webapp'
+        try:
+            i = mod_name.index("webapp")
+            mod_name = mod_name[i:].removesuffix(".py")
+        except ValueError:
+            pass
+        for d in m.get("defs", []):
+            nm = d.get("name")
+            if not nm:
+                continue
+            key = f"{mod_name}:{nm}"
+            idx[key] = {"path": m.get("path"), "lineno": d.get("lineno"), "type": d.get("type")}
+    return idx
+
+def _resolve_targets(modules: list[dict], def_index: dict) -> tuple[list[dict], dict[str, list[dict]]]:
+    """Return edges and inbound map.
+    edges: list of {src_path, src_line, target, resolved_path?, resolved_line?}
+    inbound: target_key -> list[edge]
+    """
+    edges: list[dict] = []
+    inbound: dict[str, list[dict]] = {}
+    for m in modules:
+        src_path = m.get("path")
+        for c in m.get("calls", []):
+            tgt = c.get("func")
+            # Try to resolve to known defs by matching suffix ':name'
+            resolved_key = None
+            if ":" in tgt:
+                # already module:name form
+                if tgt in def_index:
+                    resolved_key = tgt
+            else:
+                # find by name across modules (could be many; pick first)
+                for k in def_index.keys():
+                    if k.endswith(":" + tgt):
+                        resolved_key = k
+                        break
+            edge = {
+                "src_path": src_path,
+                "src_line": c.get("lineno"),
+                "target": tgt,
+            }
+            if resolved_key:
+                di = def_index[resolved_key]
+                edge["resolved_path"] = di.get("path")
+                edge["resolved_line"] = di.get("lineno")
+                inbound.setdefault(resolved_key, []).append(edge)
+            edges.append(edge)
+    return edges, inbound
+
+def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], inbound: dict[str, list[dict]]) -> str:
+    # Summary
+    lines: list[str] = []
+    total = len(modules)
+    total_loc = sum(m.get("loc", 0) for m in modules)
+    lines.append("# Project Audit — webapp\n")
+    lines.append(f"Modules scanned: {total} | ~{total_loc} non-empty LOC\n")
+
+    # High-level call graph (top 25 edges)
+    lines.append("## Pipeline map (Mermaid)")
+    # Build module-level edges using resolved paths where available
+    edge_counts: dict[tuple[str, str], int] = {}
+    def _to_mod(p: str | None) -> str:
+        if not p:
+            return "unknown"
+        # Collapse to package-like name from webapp/ onward
+        s = p.replace("\\", "/")
+        i = s.find("webapp/")
+        if i >= 0:
+            s = s[i:]
+        return s.replace("/", ".").removesuffix(".py")
+    for e in edges:
+        src = _to_mod(e.get("src_path"))
+        dst = _to_mod(e.get("resolved_path") or e.get("target"))
+        if src == dst or dst == "unknown":
+            continue
+        edge_counts[(src, dst)] = edge_counts.get((src, dst), 0) + 1
+    # Top 25
+    top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:25]
+    lines.append("```mermaid")
+    lines.append("graph LR")
+    for (src, dst), cnt in top_edges:
+        lines.append(f"  {src.replace('.', '_')}[{src}] -->|{cnt}| {dst.replace('.', '_')}[{dst}]")
+    if not top_edges:
+        lines.append("  A[no data] --> B[no data]")
+    lines.append("```")
+    lines.append("")
+
+    # Compact pipeline focus (entry → pipeline → routing → handlers → utils)
+    lines.append("## Pipeline focus (compact)")
+    def _is_pipeline_path(p: str) -> bool:
+        if not p:
+            return False
+        p = p.replace("\\", "/")
+        return (
+            p.endswith("/webapp/Smart_Elections_Parser_Webapp.py") or
+            "/webapp/parser/web_pipeline.py" in p or
+            "/webapp/parser/state_router.py" in p or
+            "/webapp/parser/handlers/" in p or
+            "/webapp/parser/utils/" in p
+        )
+    pipe_counts: dict[tuple[str, str], int] = {}
+    for e in edges:
+        sp = e.get("src_path")
+        dp = e.get("resolved_path")
+        if _is_pipeline_path(sp) and (_is_pipeline_path(dp) if dp else True):
+            src = _to_mod(sp)
+            dst = _to_mod(dp or e.get("target"))
+            if src != dst and dst != "unknown":
+                pipe_counts[(src, dst)] = pipe_counts.get((src, dst), 0) + 1
+    top_pipe = sorted(pipe_counts.items(), key=lambda kv: -kv[1])[:15]
+    lines.append("```mermaid")
+    lines.append("graph LR")
+    for (src, dst), cnt in top_pipe:
+        lines.append(f"  {src.replace('.', '_')}[{src}] -->|{cnt}| {dst.replace('.', '_')}[{dst}]")
+    if not top_pipe:
+        lines.append("  A[no data] --> B[no data]")
+    lines.append("```")
+    lines.append("")
+
+    # Cross-module hotspots (top 15 by inbound refs)
+    lines.append("## Cross-module hotspots")
+    hotspot = sorted(((k, len(v)) for k, v in inbound.items()), key=lambda x: -x[1])[:15]
+    if hotspot:
+        for key, cnt in hotspot:
+            path = def_index.get(key, {}).get("path", "")
+            lines.append(f"- {key} ← {cnt} refs ({path})")
+    else:
+        lines.append("- No cross-module references resolved.")
+    lines.append("")
+
+    # Leaf/legacy modules (zero inbound to any defs), excluding tests and __init__.py
+    lines.append("## Leaf modules (candidates for review)")
+    mod_has_inbound: dict[str, bool] = {}
+    for key, refs in inbound.items():
+        p = def_index.get(key, {}).get("path")
+        if p:
+            mod_has_inbound[p] = True
+    leaves: list[str] = []
+    for m in modules:
+        p = m.get("path", "")
+        if not p or p.endswith("__init__.py") or "/tests/" in p:
+            continue
+        if not mod_has_inbound.get(p):
+            leaves.append(p)
+    if leaves:
+        for p in sorted(leaves)[:50]:
+            lines.append(f"- `{p}`")
+        if len(leaves) > 50:
+            lines.append(f"- (+{len(leaves)-50} more hidden)")
+    else:
+        lines.append("- None detected.")
+    lines.append("")
+
+    # Clustered pipeline view (compact with subgraphs)
+    lines.append("## Pipeline clusters (Mermaid)")
+    def _cluster_for_path(p: str) -> str:
+        if not p:
+            return "Other"
+        p = p.replace("\\", "/")
+        if p.endswith("/webapp/Smart_Elections_Parser_Webapp.py"):
+            return "Entry"
+        if "/webapp/parser/web_pipeline.py" in p:
+            return "Pipeline"
+        if "/webapp/parser/state_router.py" in p:
+            return "Routing"
+        if "/webapp/parser/handlers/" in p:
+            return "Handlers"
+        if "/webapp/parser/services/" in p:
+            return "Services"
+        if "/webapp/parser/utils/" in p:
+            return "Utils"
+        return "Other"
+    # Build node sets by cluster and limited edges between them
+    cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Other"]}
+    cluster_edges: dict[tuple[str,str], int] = {}
+    for e in edges:
+        sp = e.get("src_path")
+        dp = e.get("resolved_path")
+        sm = _to_mod(sp)
+        dm = _to_mod(dp or e.get("target"))
+        if not sm or not dm or dm == "unknown" or sm == dm:
+            continue
+        sc = _cluster_for_path(sp)
+        dc = _cluster_for_path(dp)
+        cluster_nodes[sc].add(sm)
+        cluster_nodes[dc].add(dm)
+        cluster_edges[(sm, dm)] = cluster_edges.get((sm, dm), 0) + 1
+    # Keep only top 20 edges for compactness
+    top_cluster_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:20]
+    lines.append("```mermaid")
+    lines.append("graph LR")
+    # Subgraphs
+    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
+        nodes = sorted(list(cluster_nodes.get(cname, [])))[:12]
+        if not nodes:
+            continue
+        lines.append(f"  subgraph {cname}")
+        for n in nodes:
+            lines.append(f"    {n.replace('.', '_')}[{n}]")
+        lines.append("  end")
+    # Edges
+    for (src, dst), cnt in top_cluster_edges:
+        lines.append(f"  {src.replace('.', '_')} -->|{cnt}| {dst.replace('.', '_')}")
+    if not top_cluster_edges:
+        lines.append("  A[no data] --> B[no data]")
+    lines.append("```")
+    lines.append("")
+
+    # Per-module detail
+    lines.append("## Modules\n")
+    for m in sorted(modules, key=lambda x: x.get("path", "")):
+        path = m.get("path", "")
+        lines.append(f"### `{path}`\n")
+        if m.get("doc"):
+            lines.append(f"> {m['doc'].splitlines()[0]}")
+        # Top-of-file comments
+        if m.get("top_comment"):
+            lines.append("")
+            lines.append("- Top-of-file comments:")
+            for ln in m["top_comment"].splitlines():
+                lines.append(f"  > {ln}")
+        lines.append("")
+        # Definitions
+        defs = m.get("defs", [])
+        if defs:
+            lines.append("- Definitions:")
+            for d in defs:
+                lines.append(f"  - {d['type']}: `{d['name']}` (line {d.get('lineno', '?')})")
+        # Imports
+        imps = m.get("imports", [])
+        if imps:
+            lines.append("- Imports:")
+            for im in imps[:100]:
+                if im["type"] == "import":
+                    lines.append(f"  - import {im['module']} as {im.get('alias') or im['module'].split('.')[0]} (line {im.get('lineno','?')})")
+                else:
+                    alias = im.get('alias')
+                    alias_s = f" as {alias}" if alias else ""
+                    lines.append(f"  - from {im['module']} import {im['name']}{alias_s} (line {im.get('lineno','?')})")
+        # TODO/FIXME/WARN
+        todos = m.get("todo_lines", [])
+        if todos:
+            lines.append("- TODO/FIXME/WARN:")
+            for ln, txt in todos[:50]:
+                safe_txt = txt.replace("`", "\u2063`")  # avoid MD inline code breaks
+                lines.append(f"  - L{ln}: {safe_txt}")
+        # Outgoing calls (cross-module)
+        calls = [c for c in m.get("calls", []) if any(sep in c.get("func"," ") for sep in (".", ":"))]
+        if calls:
+            lines.append("- Outgoing cross-module calls (sample):")
+            for c in calls[:50]:
+                tgt = c.get("func")
+                res = ""
+                # try to find a resolved match
+                for k, di in def_index.items():
+                    if k == tgt or k.endswith(":" + tgt.split(":")[-1]):
+                        res = f" → {di.get('path')}:{di.get('lineno')}"
+                        break
+                lines.append(f"  - {tgt} (line {c.get('lineno','?')}){res}")
+        # Inbound references to defs in this module
+        local_keys = [k for k in def_index.keys() if def_index[k].get("path") == path]
+        inbound_here = []
+        for k in local_keys:
+            inbound_here.extend(inbound.get(k, []))
+        if inbound_here:
+            lines.append("- Inbound references:")
+            for e in inbound_here[:50]:
+                src = e.get("src_path")
+                tgt = e.get("target")
+                lines.append(f"  - {tgt} ← {src}:{e.get('src_line','?')}")
+        lines.append("")
+    return "\n".join(lines)
+
+def generate_project_audit(project_root: str | Path = ".", out_markdown: str | Path = "docs/project_audit.md") -> bool:
+    """Scan webapp/ for Python modules and produce a first-pass audit report.
+
+    Report includes per-file summaries, defs, imports, outgoing cross-module calls,
+    and inbound references to local defs. Static, AST-only (no imports executed).
+    """
+    try:
+        root = Path(project_root).resolve()
+        modules = _scan_webapp_modules(root)
+        def_index = _index_defs(modules)
+        edges, inbound = _resolve_targets(modules, def_index)
+        md = _render_audit_md(modules, def_index, edges, inbound)
+        out = (root / out_markdown).resolve()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(md, encoding="utf-8")
+        return True
+    except Exception as e:
+        logger.error(f"[audit] Failed to generate project audit: {e}")
+        return False
+
+def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Path = "docs/todos.md") -> bool:
+    """Aggregate TODO/FIXME/WARN lines from webapp/ into a compact index.
+
+    Writes a markdown file with a summary and per-module annotated lines.
+    """
+    try:
+        root = Path(project_root).resolve()
+        modules = _scan_webapp_modules(root)
+        total = sum(len(m.get("todo_lines", [])) for m in modules)
+        lines: list[str] = []
+        lines.append("# TODO/FIXME index — webapp\n")
+        lines.append(f"Total annotations: {total}\n")
+        for m in sorted(modules, key=lambda x: x.get("path", "")):
+            todos = m.get("todo_lines", [])
+            if not todos:
+                continue
+            lines.append(f"## `{m['path']}`\n")
+            for ln, txt in todos:
+                safe_txt = (txt or "").replace("`", "\u2063`")
+                lines.append(f"- L{ln}: {safe_txt}")
+            lines.append("")
+        out = (root / out_markdown).resolve()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        return True
+    except Exception as e:
+        logger.error(f"[audit] Failed to generate todos index: {e}")
+        return False
+
+def generate_noise_override_suggestions(
+    project_root: str | Path = ".",
+    noise_json: str | Path = "output/noise_suggestions.json",
+    out_markdown: str | Path = "docs/noise_override_suggestions.md",
+    min_count: int = 3,
+) -> bool:
+    r"""Produce ready-to-paste override suggestions from aggregated noise snippets.
+
+    Reads output/noise_suggestions.json and emits two code blocks:
+    - CAMELOT_STATE_NOISE_OVERRIDES additions
+    - CAMELOT_COUNTY_NOISE_OVERRIDES additions
+
+    Each suggested regex uses re.escape(snippet) and is wrapped as ^\s*...\s*$ to avoid over-matching.
+    Only includes snippets with frequency >= min_count.
+    """
+    try:
+        root = Path(project_root).resolve()
+        path = (root / noise_json).resolve()
+        if not path.exists():
+            logger.warning(f"[noise] No suggestions file found at {path}")
+            return False
+        try:
+            data = orjson.loads(path.read_bytes())
+        except Exception as e:
+            logger.error(f"[noise] Failed to parse suggestions json: {e}")
+            return False
+        # Build state-level and county-level maps
+        state_map: dict[str, dict[str, list[str]]] = {}
+        county_map: dict[tuple[str, str], dict[str, list[str]]] = {}
+        import re as _re
+        for state, counties in (data or {}).items():
+            if not isinstance(counties, dict):
+                continue
+            # Aggregate state-level snippets from __unknown__ county if present
+            for county, cats in counties.items():
+                if not isinstance(cats, dict):
+                    continue
+                for category, snippets in cats.items():
+                    # Map pseudo categories to 'row'
+                    cat = "row" if category in ("pseudo_party",) else category or "row"
+                    if not isinstance(snippets, dict):
+                        continue
+                    for snippet, cnt in snippets.items():
+                        try:
+                            if int(cnt) < int(min_count):
+                                continue
+                        except Exception:
+                            continue
+                        patt = rf"^\s*{_re.escape(str(snippet))}\s*$"
+                        if county == "__unknown__":
+                            state_map.setdefault(state, {}).setdefault(cat, []).append(patt)
+                        else:
+                            county_map.setdefault((state, county), {}).setdefault(cat, []).append(patt)
+
+        # Render markdown
+        lines: list[str] = []
+        lines.append("# Suggested Camelot noise overrides\n")
+        lines.append(f"Min count cutoff: {min_count}\n")
+        # State-level
+        if state_map:
+            lines.append("## State-level additions")
+            lines.append("```python")
+            lines.append("CAMELOT_STATE_NOISE_OVERRIDES.update({")
+            for state, cats in sorted(state_map.items()):
+                # Use string concatenation to safely include literal '{' in f-string
+                lines.append(f"    \"{state}\": " + "{")
+                for cat, patterns in sorted(cats.items()):
+                    lines.append(f"        \"{cat}\": [")
+                    for p in sorted(set(patterns)):
+                        lines.append(f"            r\"{p}\",")
+                    lines.append("        ],")
+                lines.append("    },")
+            lines.append("})")
+            lines.append("```")
+            lines.append("")
+        else:
+            lines.append("## State-level additions\nNone above threshold.\n")
+        # County-level
+        if county_map:
+            lines.append("## County-level additions")
+            lines.append("```python")
+            lines.append("CAMELOT_COUNTY_NOISE_OVERRIDES.update({")
+            for (state, county), cats in sorted(county_map.items()):
+                # Use string concatenation to safely include literal '{' in f-string
+                lines.append(f"    (\"{state}\", \"{county}\"): " + "{")
+                for cat, patterns in sorted(cats.items()):
+                    lines.append(f"        \"{cat}\": [")
+                    for p in sorted(set(patterns)):
+                        lines.append(f"            r\"{p}\",")
+                    lines.append("        ],")
+                lines.append("    },")
+            lines.append("})")
+            lines.append("```")
+            lines.append("")
+        else:
+            lines.append("## County-level additions\nNone above threshold.\n")
+
+        out = (root / out_markdown).resolve()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        return True
+    except Exception as e:
+        logger.error(f"[noise] Failed to generate override suggestions: {e}")
+        return False
+
+def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Path = "docs/pipeline_map.md") -> bool:
+    """Emit a pipeline-only Mermaid graph (Pipeline/Routing/Handlers/Services).
+
+    Keeps the view compact by capping edges at top 25.
+    """
+    try:
+        root = Path(project_root).resolve()
+        modules = _scan_webapp_modules(root)
+        def_index = _index_defs(modules)
+        edges, _inbound = _resolve_targets(modules, def_index)
+        def _to_mod(p: str | None) -> str:
+            if not p:
+                return "unknown"
+            s = p.replace("\\", "/")
+            i = s.find("webapp/")
+            if i >= 0:
+                s = s[i:]
+            return s.replace("/", ".").removesuffix(".py")
+        def _is_target_path(p: str) -> bool:
+            if not p:
+                return False
+            p = p.replace("\\", "/")
+            return (
+                "/webapp/parser/web_pipeline.py" in p or
+                "/webapp/parser/state_router.py" in p or
+                "/webapp/parser/handlers/" in p or
+                "/webapp/parser/services/" in p
+            )
+        edge_counts: dict[tuple[str, str], int] = {}
+        for e in edges:
+            sp = e.get("src_path")
+            dp = e.get("resolved_path")
+            if not _is_target_path(sp) or not _is_target_path(dp or ""):
+                continue
+            src = _to_mod(sp)
+            dst = _to_mod(dp or e.get("target"))
+            if src == dst or dst == "unknown":
+                continue
+            edge_counts[(src, dst)] = edge_counts.get((src, dst), 0) + 1
+        top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:25]
+        lines: list[str] = []
+        lines.append("# Pipeline map — compact\n")
+        lines.append("```mermaid")
+        lines.append("graph LR")
+        for (src, dst), cnt in top_edges:
+            lines.append(f"  {src.replace('.', '_')}[{src}] -->|{cnt}| {dst.replace('.', '_')}[{dst}]")
+        if not top_edges:
+            lines.append("  A[no data] --> B[no data]")
+        lines.append("```")
+        out = (root / out_markdown).resolve()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        return True
+    except Exception as e:
+        logger.error(f"[pipeline] Failed to generate pipeline map: {e}")
+        return False

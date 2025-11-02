@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 # webapp/parser/utils/logger_singleton.py
 # ---------------------------------------------------------------
 # Shared, import-safe logger/console singletons.
 # Reads LOG_LEVEL from env to avoid circular import with config.py.
 # ---------------------------------------------------------------
 import os
-from .shared_logger import SharedLogger, RichConsoleProxy
+
+from .shared_logger import RichConsoleProxy, SharedLogger
 
 # Resolve log level from environment (no config.py import)
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").split(",")[0].strip().upper()

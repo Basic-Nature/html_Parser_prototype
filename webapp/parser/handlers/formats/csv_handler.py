@@ -1,27 +1,29 @@
 from __future__ import annotations
+
+import csv
+import os
+import re
+from typing import Any, Dict, List, Optional, Tuple, cast
+
+from ...Context_Integration.Context_Library.constants import (
+    CONTEST_KEYWORDS,
+    CONTEST_TITLE_SKIP_PHRASES,
+)
+from ...utils.contest_selector import (
+    select_contest_auto_first,
+)
+from ...utils.logger_singleton import logger
+from ...utils.output_utils import finalize_election_output
+from ...utils.pivot import expand_single_rawjson_row
+from ...utils.shared_logic import safe_get, safe_slug
+from ...utils.table_builder import build_table_noninteractive
+from ...utils.table_core import robust_table_extraction
+
 # ==============================================================
 # 🗳️ Smart Elections: Universal CSV Election Results Parser
 # ==============================================================
-import csv
-import os
-import orjson
-import time
-from ...config import (
-    OUTPUT_DIR
-)
-from ...utils.logger_singleton import logger, prompt
-from ...Context_Integration.Context_Library.constants import (
-    LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
-    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS, CONTEST_TITLE_SKIP_PHRASES
-)
-from ...utils.table_core import harmonize_headers_and_data
-from ...utils.contest_selector import select_contest
-from ...utils.table_builder import build_table_noninteractive
-from ...utils.output_utils import finalize_election_output
-from ...utils.shared_logic import safe_slug
-import re
 
-def _build_contest_regex(keywords) -> re.Pattern:
+def _build_contest_regex(keywords: List[str] | set[str] | tuple[str, ...] | None) -> re.Pattern:
     parts = []
     for phrase in (keywords or []):
         if not isinstance(phrase, str) or not phrase.strip():
@@ -40,7 +42,11 @@ def _build_contest_regex(keywords) -> re.Pattern:
 
 _CONTEST_RX = _build_contest_regex(CONTEST_KEYWORDS)
 
-def parse_csv_election_results(csv_path, session_id=None, coordinator=None):
+def parse_csv_election_results(
+    csv_path: str,
+    session_id: Optional[str] = None,
+    coordinator: Any = None,
+) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     data = []
     headers = []
     contest_column = None
@@ -85,33 +91,32 @@ def parse_csv_election_results(csv_path, session_id=None, coordinator=None):
         if len(part) == 2 and part.isalpha():
             state = part.upper()
 
-    # Fast-path if only one contest
+    selection_context = {
+        "selector_data": {
+            "contests": [{"title": name} for name in contest_names],
+            "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())]
+        },
+        "input_file": os.path.basename(csv_path)
+    }
     if len(contest_names) == 1:
         contest = contest_names[0]
     else:
-        selector_data = {
-            "contests": [{"title": name} for name in contest_names],
-            "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())]
-        }
-        selected = select_contest(
+        auto_pick = select_contest_auto_first(
             coordinator=coordinator,
-            state=state, county=county, year=None,
+            context=selection_context,
             session_id=session_id,
-            context={"selector_data": selector_data},
             allow_multiple=False,
-            prompt_message="[PROMPT] Select contest (index, text, or 'cancel'): ",
-            force_interactive=True,
-            disable_ml_verify=False
+            force_interactive=False
         )
-        if not selected:
+        if not auto_pick:
             logger.error({
                 "level": "ERROR",
                 "type": "input",
                 "message": "No contest selected.",
                 "session_id": session_id
             })
-            return None, None, None, {"error": "No contest selected"}
-        contest = (selected[0] or {}).get("title") or contest_names[0]
+            return [], [], "", {"error": "No contest selected"}
+        contest = safe_get(auto_pick[0], "title") or contest_names[0]
 
     # Filter rows by selected contest if we have a contest column
     if contest_column:
@@ -131,6 +136,8 @@ def parse_csv_election_results(csv_path, session_id=None, coordinator=None):
         # include slugs in context so downstream naming is stable
         "source_slug": domain
     }
+    headers, data = expand_single_rawjson_row(headers, data, context=context)
+    
     headers_final, data_final, _entity_info = build_table_noninteractive(
         domain=domain,
         headers=headers,
@@ -187,12 +194,86 @@ def parse_csv_election_results(csv_path, session_id=None, coordinator=None):
 
     return headers_final, data_final, contest, metadata
 
-def parse(page=None, coordinator=None, html_context=None, manual_file=None, session_id=None, **kwargs):
+def parse(
+    page: Any | None = None,
+    coordinator: Any | None = None,
+    html_context: Dict[str, Any] | None = None,
+    manual_file: str | None = None,
+    session_id: Optional[str] = None,
+    **kwargs: Any,
+) -> Tuple[List[str] | None, List[Dict[str, Any]] | None, str | None, Dict[str, Any]]:
     """
     Universal pipeline entry: Accepts a CSV file path (manual_file) from the format router.
     Returns: headers, data, contest, metadata
     """
     html_context = html_context or {}
+    # Parity guard: support provided_tables + skip_pivot (mirrors table_core behavior)
+    provided_tables = html_context.get("provided_tables")
+    if isinstance(provided_tables, list) and provided_tables:
+        # Merge any provided tables, then pass through the builder
+        ctx = dict(html_context)
+        ctx.update({
+            "session_id": session_id,
+            "coordinator": coordinator,
+        })
+        merged_headers, merged_rows = robust_table_extraction(page=None, extraction_context=ctx)
+
+        contest = html_context.get("contest") or "Provided Tables"
+        state = html_context.get("state") or "Unknown"
+        county = html_context.get("county") or "Unknown"
+        year = html_context.get("year")
+        domain = html_context.get("source_slug") or safe_slug(contest)
+
+        headers_final, data_final, _entity_info = build_table_noninteractive(
+            domain=domain,
+            headers=merged_headers,
+            data=merged_rows,
+            coordinator=coordinator,
+            context={
+                **ctx,
+                "contest": contest,
+                "state": state,
+                "county": county,
+                "year": year,
+                "handler": "csv_handler",
+            },
+            pivot_to_wide=not bool(html_context.get("skip_pivot")),
+            debug=False,
+        )
+
+        finalized = finalize_election_output(
+            headers=headers_final,
+            data=data_final,
+            coordinator=coordinator,
+            contest=contest,
+            state=state,
+            county=county,
+            context={
+                "handler": "csv_handler",
+                "session_id": session_id,
+                "race": contest,
+                "provided_tables": True,
+                "skip_pivot": bool(html_context.get("skip_pivot")),
+            },
+            enable_user_feedback=False,
+            session_id=session_id,
+        )
+
+        metadata = {
+            "race": contest,
+            "input_file": html_context.get("input_file") or "<provided>",
+            "output_file": os.path.basename(finalized.get("csv_path", "")),
+            "headers": headers_final,
+            "row_count": len(data_final),
+            "handler": "csv_handler",
+            "state": state,
+            "county": county,
+            "year": year,
+            "csv_path": finalized.get("csv_path"),
+            "metadata_path": finalized.get("metadata_path"),
+        }
+
+        return headers_final, data_final, contest, metadata
     if html_context.get("skip_format") or html_context.get("manual_skip"):
         logger.info({
             "level": "INFO",
@@ -220,8 +301,8 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
 
     result = parse_csv_election_results(manual_file, session_id=session_id, coordinator=coordinator)
 
-    # Defensive: always return a 4-tuple, never a bool
-    if not (isinstance(result, tuple) and len(result) == 4):
+    result_any = cast(Any, result)
+    if not (isinstance(result_any, tuple) and len(result_any) == 4):
         logger.error({
             "level": "ERROR",
             "type": "handler",
@@ -230,4 +311,4 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
             "got_type": type(result).__name__
         })
         return None, None, None, {"error": "Invalid parse result"}
-    return result
+    return cast(Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]], result_any)

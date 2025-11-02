@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 model_registry.py
 
@@ -8,20 +9,22 @@ Ensures models are loaded once, cached, and reused across modules.
 Integrates with config.py for model directory paths.
 Optimized for robust, singleton-style loading, device selection, path validation, and logging.
 """
-import threading
 import os
-import sys
 import re
 import subprocess
+import sys
+import threading
+from collections import Counter
+from typing import Any, Callable, Dict
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Any, Callable
-from collections import Counter
 from selectolax.parser import HTMLParser
-from .logger_singleton import logger
-from ..config import MODEL_DIR, PROJECT_ROOT, VOCAB_DIR, TABLE_MODEL_PATH
+
+from ..config import MODEL_DIR, PROJECT_ROOT, TABLE_MODEL_PATH, VOCAB_DIR
 from ..Context_Integration.librarian import load_context_library
+from .logger_singleton import logger
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -320,12 +323,10 @@ class ModelRegistry(object):
         try:
             context = load_context_library()
             candidate_vocab = context.get("candidate_keywords", [])
-            CANDIDATE2IDX = {c: i+1 for i, c in enumerate(sorted(set(candidate_vocab)))}
-            IDX2CANDIDATE = {v: k for k, v in CANDIDATE2IDX.items()}
+            CANDIDATE2IDX = {c: i + 1 for i, c in enumerate(sorted(set(candidate_vocab)))}
         except Exception as e:
             logger.error(f"Failed to load candidate vocab from librarian.py: {e}")
             CANDIDATE2IDX = {}
-            IDX2CANDIDATE = {}
 
         # --- Model loading ---
         model_path = cls._model_paths.get("torch_candidate", os.path.join(MODEL_DIR, "candidate_classifier.pt"))
@@ -335,11 +336,12 @@ class ModelRegistry(object):
 
         try:
             logger.info(f"Loading CandidateClassifier from {model_path}")
+            vocab_size = len(CANDIDATE2IDX) + 1
             model = CandidateClassifier.load_from_checkpoint(
                 model_path,
-                vocab_size=max(CANDIDATE2IDX.values(), default=1) + 1,
+                vocab_size=vocab_size,
                 embed_dim=128,
-                num_candidates=max(CANDIDATE2IDX.values(), default=1) + 1
+                num_candidates=vocab_size
             )
             model.eval()
             cls._torch_candidate_model = model
@@ -559,15 +561,23 @@ class TableDetectionModel(nn.Module):
         Returns list of {headers, data, meta}.
         """
         tables = []
-        lines = [l.strip() for l in html.splitlines() if l.strip()]
-        col_counts = [len(re.split(r"\s{2,}|\t|\|", l)) for l in lines]
+        lines = [line.strip() for line in html.splitlines() if line.strip()]
+        col_counts = [len(re.split(r"\s{2,}|\t|\|", line)) for line in lines]
         if not col_counts:
             return []
         count_freq = Counter(col_counts)
-        common_col = max((c for c in count_freq if c > 1), key=lambda c: count_freq[c], default=None)
+        common_col = max(
+            (count for count in count_freq if count > 1),
+            key=lambda count: count_freq[count],
+            default=None,
+        )
         if not common_col or count_freq[common_col] < 2:
             return []
-        rows = [re.split(r"\s{2,}|\t|\|", l) for l, c in zip(lines, col_counts) if c == common_col]
+        rows = [
+            re.split(r"\s{2,}|\t|\|", line)
+            for line, col_count in zip(lines, col_counts)
+            if col_count == common_col
+        ]
         if len(rows) < 2:
             return []
         headers = rows[0]
@@ -579,7 +589,7 @@ class TableDetectionModel(nn.Module):
         meta = {
             "source": "regex_table",
             "n_rows": len(data),
-            "n_cols": len(headers)
+            "n_cols": len(headers),
         }
         tables.append({"headers": headers, "data": data, "meta": meta})
         return tables
@@ -594,7 +604,9 @@ if __name__ == "__main__":
         result = model.predict(test_title)
         print("Prediction for:", test_title)
         for field, info in result.items():
-            print(f"  {field}: {info['value']} (confidence: {info['confidence']:.2f}) -- {info['explanation']}")
+            print(
+                f"  {field}: {info['value']} (confidence: {info['confidence']:.2f}) -- {info['explanation']}"
+            )
     except Exception as e:
         print(f"Error in model prediction: {e}")
 

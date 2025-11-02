@@ -1,26 +1,28 @@
 from __future__ import annotations
+
+import atexit
+import logging
+
 # webapp/parser/utils/embedding_cache.py
 # ---------------------------------------------------------------
 # Embedding cache management for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
 import os
-import logging
 import threading
-import atexit
-import orjson
-import numpy as np
 from functools import lru_cache
+
+import numpy as np
+import orjson
+from sqlalchemy import inspect, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm.exc import DetachedInstanceError
-from sqlalchemy import select, inspect
-from sqlalchemy.dialects.postgresql import insert
-from .db_utils import get_session, engine
+
+from ..config import DISK_CACHE_PATH, MISSING_LOG_PATH
+from .db_utils import engine, get_session
+from .logger_singleton import console, logger
 from .models import EmbeddingCache
-from ..config import (
-    DISK_CACHE_PATH, MISSING_LOG_PATH
-)
 from .shared_logger import SQLAlchemyToSharedLoggerHandler
-from .logger_singleton import logger, console
 
 try:
     import joblib

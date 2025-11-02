@@ -50,7 +50,8 @@ jobs:
       - name: Install system dependencies (runner)
         run: |
           sudo apt-get update
-          sudo apt-get install -y tesseract-ocr poppler-utils libpq-dev
+          sudo apt-get install -y tesseract-ocr poppler-utils ghostscript \
+            libgl1 libglib2.0-0 libsm6 libxrender1 libxext6 libpq-dev build-essential gcc
 
       - name: Cache pip
         uses: actions/cache@v4

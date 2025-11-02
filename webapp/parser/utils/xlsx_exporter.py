@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import List, Dict, Any, Optional
-from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter
-from openpyxl.formatting.rule import ColorScaleRule
 import re
+from typing import Any, Dict, List, Optional
+
+from openpyxl import Workbook
+from openpyxl.formatting.rule import ColorScaleRule
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+
 BASE_COLUMNS = {"Precinct", "Total Ballots Reported", "Percent Reported"}
 
 def _auto_width(ws):
@@ -113,15 +115,14 @@ def export_candidate_group_pivot_xlsx(
         data_start_row = 2
 
     # Write data rows (raw first)
-    numeric_candidate_re = re.compile(r"(Total Reported|Total Vote|Grand Total|Cum Vote)$", re.I)
-    percent_col_re = re.compile(r"(Percent Reported|% Vote|Cum %)$", re.I)
+    numeric_candidate_re = re.compile(r"(Total Reported|Total Vote|Grand Total|Cumulative Vote)$", re.I)
+    percent_col_re = re.compile(r"(Percent Reported|% Vote|Cumulative %| - %)$", re.I)
     for r in rows:
         ws.append([r.get(h, "") for h in flat_headers])
 
     if format_numbers:
         # Determine column types
         for col_idx, header in enumerate(flat_headers, start=1):
-            col_letter = get_column_letter(col_idx)
             is_percent = bool(percent_col_re.search(header))
             is_numeric = bool(numeric_candidate_re.search(header))
             # Fallback heuristic: if >70% numeric strings

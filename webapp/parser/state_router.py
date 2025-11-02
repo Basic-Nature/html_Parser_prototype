@@ -5,22 +5,29 @@
 # Now uses librarian.py for state/county mapping.
 # Also provides state/county info for format_router and download_utils.
 # ===============================================
-import os
+import difflib
 import importlib
-from typing import Optional, Dict, Any, List, Tuple
-from .utils.logger_singleton import logger, console, prompt
-from .utils.user_prompt import PromptCancelled
+import os
+import time
 import traceback
+from typing import Any, Dict, List, Optional, Tuple
+
+import orjson
+
 from .config import BASE_DIR
 from .Context_Integration.Context_Library.constants import (
-    STATE_MODULE_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    STATE_MODULE_MAP,
 )
-import difflib
-import time
+from .utils.logger_singleton import console, logger, prompt
 from .utils.shared_logic import (
-    normalize_state_name, normalize_county_name, safe_append, safe_get_first, safe_lower
+    normalize_county_name,
+    normalize_state_name,
+    safe_append,
+    safe_get_first,
+    safe_lower,
 )
-import orjson
+from .utils.user_prompt import PromptCancelled
 
 LOADED_HANDLERS: Dict[str, Any] = {}
 
@@ -307,7 +314,10 @@ def get_handler(
     Uses context_coordinator's dynamic_state_county_detection as the primary source.
     Returns a dict with keys: 'handler', 'summary', 'log', 'error' (if any)
     """
-    from .Context_Integration.context_coordinator import ContextCoordinator, dynamic_state_county_detection
+    from .Context_Integration.context_coordinator import (
+        ContextCoordinator,
+        dynamic_state_county_detection,
+    )
     if not HANDLER_MAP["states"] or not HANDLER_MAP["counties_by_state"]:
         preload_handler_map()
     summary = {"attempts": [], "final": None, "error": None, "session_id": session_id}

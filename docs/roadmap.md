@@ -67,6 +67,7 @@ This document tracks the progress and next steps for the Smart Elections Parser 
 - Add more sample URLs and edge cases to `urls.txt`.
 - Improve documentation for handler development, context enrichment, and bot usage.
 - Add troubleshooting and FAQ sections to the Web UI.
+- Monitor upstream pytest / SeleniumBase releases so the temporary unraisable warning suppression can be removed once socket cleanup is fixed.
 
 ### 6. **Performance & Scalability**
 

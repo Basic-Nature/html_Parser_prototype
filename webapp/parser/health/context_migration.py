@@ -1,12 +1,25 @@
-import orjson
 from pathlib import Path
 from typing import Any, Dict, List
+
+import orjson
+
+from ..config import CACHE_DIR, CONTEXT_LIBRARY_DIR, LOG_DIR
 from ..utils.db_utils import get_session
-from ..utils.models import Contest, Panel, TableStructure, CandidatePanel, LocationPanel, Heading, BallotType, ResultsTimestamp, PartyLabel, VoteMethod
-from ..config import CACHE_DIR, LOG_DIR, CONTEXT_LIBRARY_DIR
-from ..utils.logger_singleton import console
 from ..utils.html_scanner import export_context_cache_for_db
-from ..bots.manual_correction import MAIN_FIELDS, AUX_FIELDS
+from ..utils.logger_singleton import console
+from ..utils.models import (
+    BallotType,
+    CandidatePanel,
+    Contest,
+    Heading,
+    LocationPanel,
+    Panel,
+    PartyLabel,
+    ResultsTimestamp,
+    TableStructure,
+    VoteMethod,
+)
+from .manual_correction_bot import AUX_FIELDS, MAIN_FIELDS
 
 ALL_FIELDS = MAIN_FIELDS + AUX_FIELDS
 

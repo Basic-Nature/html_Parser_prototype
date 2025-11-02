@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 dynamic_table_extractor.py
 
@@ -14,59 +15,65 @@ are handled centrally in table_core.py and table_builder.py.
 
 This ensures a single source of truth for table structure and learning.
 """
+import difflib
 import os
 import re
-import orjson
-import difflib
-import numpy as np
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
 import dateutil.parser
+import numpy as np
+import orjson
 from selectolax.parser import HTMLParser
-from .browser_utils import (
-    safe_locator, safe_count, safe_nth, safe_evaluate, safe_inner_text,
-    safe_get_attribute
-)
-from .shared_logic import (
-    safe_get,
-    safe_append,
-    safe_copy,
-    safe_strip,
-    safe_replace,
-    safe_lower,
-    safe_values,
-    safe_split
+
+from ..Context_Integration.Context_Library.constants import (
+    BALLOT_TYPES,
+    BALLOT_TYPES_SORT_ORDER,
+    CANDIDATE_KEYWORDS,
+    CONTAINER_EXTRA_KEYWORDS,
+    CONTAINER_FALLBACK_SELECTORS,
+    CONTEST_KEYWORDS,
+    EXTRA_HEADING_TAGS,
+    HEADING_TAGS,
+    LOCATION_ABBREVIATIONS,
+    LOCATION_KEYWORDS,
+    MISC_FOOTER_KEYWORDS,
+    NLP_SKIP_PHRASES,
+    PANEL_TAGS,
+    PARTY_KEYWORDS,
+    TOTAL_KEYWORDS,
 )
 from ..Context_Integration.librarian import (
-    extend_panel_tags, extend_heading_tags, log_unknown_tag, get_safe_log_path
+    extend_heading_tags,
+    extend_panel_tags,
+    get_safe_log_path,
+    log_unknown_tag,
 )
-from ..Context_Integration.Context_Library.constants import (
-    CANDIDATE_KEYWORDS,
-    HEADING_TAGS,
-    BALLOT_TYPES,
-    EXTRA_HEADING_TAGS, CONTEST_KEYWORDS,
-    PARTY_KEYWORDS, LOCATION_ABBREVIATIONS,
-    TOTAL_KEYWORDS, NLP_SKIP_PHRASES,
-    LOCATION_KEYWORDS, BALLOT_TYPES_SORT_ORDER,
-    MISC_FOOTER_KEYWORDS, PANEL_TAGS,
-    CONTAINER_EXTRA_KEYWORDS, CONTAINER_FALLBACK_SELECTORS
+from .browser_utils import (
+    safe_count,
+    safe_evaluate,
+    safe_get_attribute,
+    safe_inner_text,
+    safe_locator,
+    safe_nth,
 )
-from typing import List, Dict, Tuple, Any, Optional
+from .date_utils import is_date_like
+from .detect import extract_table_data, is_location_header, normalize_header, normalize_text
+from .dom_extractor import extract_rows_and_headers_from_dom, guess_headers_from_row
 from .logger_singleton import logger
-from typing import TYPE_CHECKING
-from .table_core import ( 
+from .pattern_extractor import extract_with_patterns, load_dom_patterns
+from .shared_logic import (
+    safe_append,
+    safe_copy,
+    safe_get,
+    safe_lower,
+    safe_replace,
+    safe_split,
+    safe_strip,
+    safe_values,
+)
+from .table_core import (
     robust_table_extraction,
 )
-
-from .dom_extractor import extract_rows_and_headers_from_dom, guess_headers_from_row
-from .pattern_extractor import extract_with_patterns, load_dom_patterns
-from .date_utils import is_date_like
-
-from .detect import (
-    normalize_text,
-    normalize_header,
-    extract_table_data,
-    is_location_header
-)
-from .table_core import robust_table_extraction
 
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator

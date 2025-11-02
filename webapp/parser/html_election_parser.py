@@ -1,39 +1,45 @@
 from __future__ import annotations
+
 # ==============================================================
 # 🗳️ Smart Elections: HTML Election Results Parser
 # ==============================================================
-import re
 import os
-import orjson
-import threading
+import re
 import sys
-import psycopg2
+import threading
 from datetime import datetime
-from typing import cast, Dict, Any, List
 from multiprocessing import Pool
+from typing import Any, Dict, List
 
-from playwright.sync_api import sync_playwright, Page
+import orjson
+import psycopg2
+from playwright.sync_api import sync_playwright
 from sqlalchemy.exc import OperationalError
+
+from .config import (
+    CACHE_LOCK,
+    CACHE_RESET,
+    ENABLE_AI_ANALYSIS,
+    ENABLE_PARALLEL,
+    ENABLE_REALTIME_STREAM,
+    MAX_URLS_DISPLAYED,
+    OUTPUT_DIR,
+    PROCESSED_URLS_FILE,
+    UPLOADS_DIR,
+    URL_LIST_FILE,
+)
 from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler, preload_handler_map
-from .utils.browser_utils import sync_browser_pipeline, sync_safe_browser_close, autoscroll_until_stable
-from .utils.misc_utils import load_processed_urls
+from .utils.browser_utils import (
+    autoscroll_until_stable,
+    sync_browser_pipeline,
+    sync_safe_browser_close,
+)
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.format_router import prompt_and_handle_download
-from .utils.shared_logic import (
-    infer_state_county_from_url, safe_parse, safe_is_set, safe_filename,
-    safe_strip
-)
-from .utils.misc_utils import is_safe_path
-from .Context_Integration.librarian import safe_join
-from .utils.logger_singleton import logger, console, prompt
-from .config import (
-    UPLOADS_DIR,
-    CACHE_LOCK, CACHE_RESET,
-    ENABLE_PARALLEL, ENABLE_AI_ANALYSIS, ENABLE_REALTIME_STREAM,
-    FORCE_PARSE_INPUT_FILE, FORCE_PARSE_FORMAT, MAX_URLS_DISPLAYED,
-    INPUT_DIR, OUTPUT_DIR, URL_LIST_FILE, PROCESSED_URLS_FILE
-)
+from .utils.logger_singleton import logger, prompt
+from .utils.misc_utils import load_processed_urls
+from .utils.shared_logic import infer_state_county_from_url, safe_is_set, safe_parse, safe_strip
 
 if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     logger.warning("Deleting .processed_urls cache for fresh start...")
@@ -320,7 +326,7 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         logger.error({
             "level": "ERROR",
             "type": "manual_override",
-            "message": f"[ManualOverride] No files found in uploads folder.",
+            "message": "[ManualOverride] No files found in uploads folder.",
             "session_id": session_id
         })
         return None
@@ -395,7 +401,10 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
 def ai_analyze_results(headers, data, contest, metadata, target_url=None, session_id=None):
     if ENABLE_AI_ANALYSIS:
         try:
-            from .Context_Integration.Integrity_check import analyze_contests, print_integrity_summary
+            from .Context_Integration.Integrity_check import (  # noqa: E402
+                analyze_contests,
+                print_integrity_summary,
+            )
 
             contests = []
             if isinstance(contest, list):
@@ -465,7 +474,7 @@ def ai_analyze_results(headers, data, contest, metadata, target_url=None, sessio
 def stream_results(headers, data, contest, metadata, target_url=None, session_id=None):
     if ENABLE_REALTIME_STREAM:
         try:
-            from .Context_Integration.Integrity_check import print_integrity_summary
+            from .Context_Integration.Integrity_check import print_integrity_summary  # noqa: E402
 
             contests = []
             if isinstance(contest, list):

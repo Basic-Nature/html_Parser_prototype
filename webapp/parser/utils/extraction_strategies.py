@@ -5,32 +5,29 @@ Each strategy returns a list of (headers, rows, diagnostics) tuples.
 """
 
 from __future__ import annotations
-from typing import Callable, List, Tuple, Dict, Any
+
 import re
-
-from .logger_singleton import logger
-from .browser_utils import (
-    safe_locator, safe_nth, safe_count, safe_inner_text, safe_content
-)
-from .shared_logic import safe_get, safe_append
-from selectolax.parser import HTMLParser
-from ..Context_Integration.Context_Library.constants import (
-    LOCATION_KEYWORDS, NLP_SKIP_PHRASES, TOTAL_KEYWORDS, MISC_FOOTER_KEYWORDS
-)
-from .detect import (
-    find_best_header,
-    extract_percent_reported_from_heading,
-    normalize_header,
-    is_location_header,
-    emit_metric,
-    dynamic_detect_location_header,
-    is_likely_header
-)
-
-from .dom_extractor import extract_rows_and_headers_from_dom
-from .pattern_extractor import extract_with_patterns
-from .date_utils import is_date_like 
 import time
+from typing import Any, Callable, Dict, List, Tuple
+
+from selectolax.parser import HTMLParser
+
+from ..Context_Integration.Context_Library.constants import (
+    LOCATION_KEYWORDS,
+    NLP_SKIP_PHRASES,
+)
+from .browser_utils import safe_content, safe_count, safe_inner_text, safe_locator, safe_nth
+from .detect import (
+    emit_metric,
+    extract_percent_reported_from_heading,
+    find_best_header,
+    normalize_header,
+)
+from .dom_extractor import extract_rows_and_headers_from_dom
+from .logger_singleton import logger
+from .pattern_extractor import extract_with_patterns
+from .shared_logic import safe_append
+
 StrategyResult = Tuple[List[str], List[Dict[str, Any]], Dict[str, Any]]
 StrategyFunc = Callable[[Any, dict | None], List[StrategyResult]]
 
@@ -106,7 +103,7 @@ def strategy_pattern_based(page, context=None) -> List[StrategyResult]:
 
 def strategy_heading_associated(page, context=None) -> List[StrategyResult]:
     """Tables with nearest heading -> location column enrichment."""
-    from .browser_utils import safe_locator, safe_count, safe_nth
+    from .browser_utils import safe_count, safe_locator, safe_nth
     from .detect import extract_table_data
     results: List[StrategyResult] = []
     percent_global = ""

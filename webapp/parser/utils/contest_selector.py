@@ -1,23 +1,35 @@
 from __future__ import annotations
+
+import json
+import math
+
 # Contest selection and filtering utilities (refactored)
 import re
 from collections import defaultdict
+from dataclasses import asdict, dataclass
 from difflib import get_close_matches
-from typing import TYPE_CHECKING, List, Dict, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .logger_singleton import logger, prompt
-from .user_prompt import PromptCancelled
-from .shared_logic import (
-    normalize_state_name, normalize_county_name, _sync_type_and_election_types,
-    safe_get, safe_items, safe_lower, safe_split, safe_capitalize, safe_strip,
-    safe_model_encode
-)
 from ..Context_Integration.Context_Library.constants import (
-    ELECTION_TYPES, CONTEST_KEYWORDS, KNOWN_COUNTY_TO_PRECINCTS_MAP,
-    ELECTION_TYPE_REGEX_MAP, OFFICE_KEYWORDS
+    CONTEST_KEYWORDS,
+    CONTEST_TITLE_KEYWORDS,
+    ELECTION_TYPE_REGEX_MAP,
+    ELECTION_TYPES,
+    OFFICE_KEYWORDS,
 )
+from .logger_singleton import logger, prompt
+from .shared_logic import (
+    normalize_county_name,
+    normalize_state_name,
+    safe_capitalize,
+    safe_get,
+    safe_lower,
+    safe_model_encode,
+    safe_strip,
+)
+from .user_prompt import PromptCancelled
 
 # Some deployments may not expose optional constants
 try:
@@ -27,9 +39,9 @@ except Exception:
 
 # Optional NLP normalization (safe if NLTK missing)
 try:
-    from nltk.stem import PorterStemmer
-    from nltk.corpus import stopwords
     import nltk
+    from nltk.corpus import stopwords
+    from nltk.stem import PorterStemmer
     try:
         STOPWORDS = set(stopwords.words('english'))
     except LookupError:
@@ -44,6 +56,204 @@ LOG_SCOPE = "contest_selector"
 
 if TYPE_CHECKING:
     from ..Context_Integration.context_coordinator import ContextCoordinator
+   
+# ================================================
+# Data model for structured output (optional JSON)
+# ================================================
+@dataclass
+class ContestRecord:
+    title: str
+    year: int | None = None
+    jurisdiction: str | None = None
+    level: str | None = None
+    type_: str | None = None
+    canonical_key: str | None = None
+    cluster_id: int | None = None
+    source: str | None = None
+    confidence: float | None = None
+    session_id: str | None = None 
+    
+# ------------------ Normalization helpers (keep existing _norm_key / _tokens / _jaccard) ------------------
+
+def _extract_year_tokens(title: str) -> list[int]:
+    return [int(y) for y in re.findall(r"\b(19|20)\d{2}\b", title or "") if 1800 < int(y) < 2100]
+
+def _strip_years(title: str) -> str:
+    return re.sub(r"\b(19|20)\d{2}\b", "", title or "").strip()
+
+def _base_canonical_key(title: str) -> str:
+    """
+    Canonical key ignoring year tokens & punctuation for duplicate collapse.
+    """
+    t = _strip_years(title)
+    return _norm_key(t)
+
+# --------------------------------------------------------
+# Keyword / text-based expansion of potential contest titles
+# --------------------------------------------------------
+def _expand_contests_from_context(context: dict | None, base_titles: list[str]) -> list[str]:
+    """
+    Mine additional potential contest titles from raw textual artifacts in context.
+    Sources (if present):
+      - context['page_text']
+      - context['page'] (list/iterable of strings)
+      - context['raw_text']
+      - context['ocr_lines']
+    Uses keyword presence & minimum word length heuristics.
+    """
+    if not context:
+        return []
+    seen_norm = {_norm_key(t) for t in base_titles if isinstance(t, str)}
+    out = []
+    containers = []
+    for k in ("page_text", "raw_text"):
+        v = context.get(k)
+        if isinstance(v, str):
+            containers.append(v.splitlines())
+    for k in ("page", "ocr_lines"):
+        v = context.get(k)
+        if isinstance(v, (list, tuple)):
+            containers.append(v)
+    lines: list[str] = []
+    for c in containers:
+        for ln in c:
+            if isinstance(ln, str):
+                lines.append(ln.strip())
+    if not lines:
+        return []
+    office_terms = {kw for kw, _cat in OFFICE_KEYWORDS}
+    core_kw = {*(k.lower() for k in CONTEST_KEYWORDS),
+               *(k.lower() for k in CONTEST_TITLE_KEYWORDS),
+               *(t.lower() for t in office_terms)}
+    skip_phr = {s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())}
+    for ln in lines:
+        if not ln or len(ln) < 4:
+            continue
+        raw = ln.strip()
+        low = raw.lower()
+        if any(sp in low for sp in skip_phr):
+            continue
+        tokens = re.findall(r"[a-z0-9']+", low)
+        if len(tokens) < 2:
+            continue
+        if not any(t in core_kw for t in tokens):
+            continue
+        cleaned = sanitize_title(raw)
+        if not cleaned or len(cleaned.split()) < 2:
+            continue
+        nk = _norm_key(cleaned)
+        if not nk or nk in seen_norm:
+            continue
+        seen_norm.add(nk)
+        out.append(cleaned)
+    return out
+
+def _merge_expanded_contests(original: list[dict], extra_titles: list[str]) -> list[dict]:
+    """
+    Merge extra titles (list[str]) into existing contest dict list without duplicates.
+    """
+    if not extra_titles:
+        return original
+    seen_norm = set()
+    for c in original:
+       seen_norm.add(_norm_key(safe_get(c, "title", "")))
+    for t in extra_titles:
+        nk = _norm_key(t)
+        if nk and nk not in seen_norm:
+            seen_norm.add(nk)
+            original.append({"title": t})
+    return original
+
+# ================================================
+# Clustering & scoring
+# ================================================
+def _cluster_titles_by_base(titles: list[str], jaccard_thresh=0.82) -> list[list[str]]:
+    # Similar to earlier clustering but using canonical base key
+    groups: list[list[str]] = []
+    for t in titles:
+        base = _base_canonical_key(t)
+        tk = _tokens(base)
+        matched = False
+        for g in groups:
+            g_base = _base_canonical_key(g[0])
+            if _jaccard(tk, _tokens(g_base)) >= jaccard_thresh:
+                g.append(t)
+                matched = True
+                break
+        if not matched:
+            groups.append([t])
+    return groups
+
+def _pick_rep_title(cluster: list[str]) -> str:
+    if not cluster:
+        return ""
+    # Heuristic: prefer the one with year if others lack; else shortest
+    with_year = [c for c in cluster if _extract_year_tokens(c)]
+    if len(with_year) == 1:
+        return with_year[0]
+    if with_year:
+        # choose shortest of with_year
+        return sorted(with_year, key=lambda x: (len(_strip_years(x)), len(x)))[0]
+    return sorted(cluster, key=lambda x: (len(_strip_years(x)), len(x)))[0]
+
+def _score_title(coordinator, title: str, meta: dict) -> float:
+    if not coordinator or not hasattr(coordinator, "score_header"):
+        return 0.0
+    try:
+        return float(coordinator.score_header(title, meta) or 0.0)
+    except Exception:
+        return 0.0
+
+# ================================================
+# Logging utilities (chunk to avoid truncation)
+# ================================================
+def _chunk_log_options(options: list[str], session_id: str | None, chunk_size=60):
+    for i in range(0, len(options), chunk_size):
+        logger.info({
+            "level": "INFO",
+            "type": "selector",
+            "message": "[SELECTOR] Contest options chunk",
+            "session_id": session_id,
+            "range": f"{i}-{min(i+chunk_size-1, len(options)-1)}",
+            "options": options[i:i+chunk_size]
+        })
+
+# --------------------------------------------------------
+# Paginated render utility
+# --------------------------------------------------------
+def _render_paginated_contest_menu(
+    candidates: list[dict],
+    page: int,
+    page_size: int,
+    allow_multiple: bool
+) -> tuple[str, int]:
+    """
+    Build a page of contest options; returns (menu_text, total_pages).
+    """
+    total = len(candidates)
+    total_pages = max(1, math.ceil(total / page_size))
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * page_size
+    end = min(start + page_size, total)
+    lines = [
+        f"Available contests (page {page}/{total_pages}, showing {end - start} of {total}):",
+        "Commands: next | prev | page <n> | /search <term> | all | indices (e.g. 0,2 5) | substring | cancel"
+    ]
+    for idx in range(start, end):
+        c = candidates[idx]
+        t = safe_get(c, "title", "")
+        y = safe_get(c, "year")
+        typ = safe_get(c, "type_", "")
+        meta = []
+        if y:
+            meta.append(str(y))
+        if typ:
+            meta.append(typ)
+        meta_str = f" ({', '.join(meta)})" if meta else ""
+        lines.append(f"[{idx}] {t}{meta_str}")
+    if allow_multiple:
+        lines.append("Tip: enter 'all' to select every visible contest.")
+    return "\n".join(lines), total_pages
 
 # -------------------------
 # Structured logging helper
@@ -72,6 +282,64 @@ def _log(level: str, type_: str, message: str, session_id: Optional[str] = None,
 # -------------------------
 # Utilities
 # -------------------------
+
+def _norm_key(s: str) -> str:
+    s = (s or "").lower()
+    s = re.sub(r'[^a-z0-9 ]+', '', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+def _tokens(s: str) -> set[str]:
+    return set(re.findall(r'[a-z0-9]+', (s or "").lower()))
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    inter = len(a & b)
+    union = max(1, len(a | b))
+    return inter / union
+
+def _cluster_titles(titles: List[str], thresh: float = 0.80) -> List[list[str]]:
+    toks = [(_tokens(t), t) for t in titles if t]
+    clusters: List[list[Tuple[set[str], str]]] = []
+    for tk, t in toks:
+        placed = False
+        for c in clusters:
+            # compare to cluster centroid (first item)
+            if _jaccard(tk, c[0][0]) >= thresh:
+                c.append((tk, t))
+                placed = True
+                break
+        if not placed:
+            clusters.append([(tk, t)])
+    # return just titles
+    return [[t for _, t in c] for c in clusters]
+
+def _pick_rep(titles: List[str]) -> str:
+    if not titles:
+        return ""
+    # Prefer shortest non-empty
+    titles_s = sorted([t for t in titles if isinstance(t, str)], key=lambda x: (len(x.strip()), x.lower()))
+    return titles_s[0] if titles_s else ""
+
+def _build_effective_list(contests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    titles = []
+    for c in (contests or []):
+        t = c.get("title") if isinstance(c, dict) else str(c)
+        if not t:
+            continue
+        titles.append(t)
+    # Deduplicate by normalized key
+    seen = set()
+    uniq = []
+    for t in titles:
+        k = _norm_key(t)
+        if k not in seen:
+            seen.add(k)
+            uniq.append(t)
+    # Cluster near-duplicates; pick representative per cluster
+    clusters = _cluster_titles(uniq, 0.85)
+    reps = [{"title": _pick_rep(cl)} for cl in clusters if cl]
+    return reps
+
 def is_markup_like(text: str) -> bool:
     if not isinstance(text, str):
         return False
@@ -282,7 +550,6 @@ def ml_verify_contest(
     # Type score
     ctype_norm = safe_lower(ctype).replace("election", "").strip()
     type_score = 0.0
-    detected_type = None
     try:
         known_types = [safe_lower(t or "") for t in coordinator.get_election_types()]
     except Exception:
@@ -291,23 +558,18 @@ def ml_verify_contest(
     if ctype:
         if any(t in ctype_norm for t in known_types):
             type_score = 1.0
-            detected_type = ctype
         elif any(safe_lower(v) in ctype_norm for v in ELECTION_TYPES):
             type_score = 1.0
-            detected_type = ctype
         else:
             for pattern, forced_type in ELECTION_TYPE_REGEX_MAP:
                 match = re.search(pattern, ctype_norm)
                 if match:
                     type_score = 0.9
-                    detected_type = forced_type if forced_type else match.group(0)
                     break
             if type_score == 0.0 and ctype_norm in {"judicial", "proposition", "amendment", "state legislature", "federal legislature"}:
                 type_score = 0.8
-                detected_type = ctype_norm
             elif type_score == 0.0 and any(x in ctype_norm for x in ["general", "primary", "presidential", "special", "runoff"]):
                 type_score = 0.8
-                detected_type = ctype_norm
 
     # Semantic fallback (safe when model unavailable)
     best_sim = 0.0
@@ -327,7 +589,6 @@ def ml_verify_contest(
                     sim = float(np.dot(ctype_emb[0], known_embs[idx]) / (np.linalg.norm(ctype_emb[0]) * np.linalg.norm(known_embs[idx]) + 1e-8))
                     if sim > best_sim:
                         best_sim = sim
-                        detected_type = t
         except Exception:
             pass
         if best_sim > 0.7:
@@ -358,7 +619,6 @@ def ml_verify_contest(
             ml_score = 0.0
     except Exception:
         ml_score = 0.0
-
     # Fuzzy boost (safe)
     fuzzy_boost = 0.0
     try:
@@ -439,265 +699,496 @@ def feedback_loop_verify_contests(
 
     return []
 
+def resolve_selection_context(
+    coordinator=None,
+    context: dict | None = None,
+    fallback_filename: str | None = None,
+    allow_filename_infer: bool = True
+) -> tuple[str | None, str | None, int | None]:
+    """
+    Infer (state, county, year) from (in order):
+      - explicit context fields
+      - first enriched contest in coordinator
+      - dynamic_state_county_detection (if available & raw html in context)
+      - filename tokens (STATE / <name>county / 4-digit year)
+    """
+    ctx = context or {}
+    state = normalize_state_name(safe_get(ctx, "state")) or None
+    county = normalize_county_name(safe_get(ctx, "county")) or None
+    year = safe_get(ctx, "year")
+    if isinstance(year, str) and year.isdigit():
+        year = int(year)
+    if not isinstance(year, int):
+        year = None
+
+    # From coordinator contests
+    try:
+        if (not state or not county or not year) and coordinator and hasattr(coordinator, "get_contests"):
+            contests = coordinator.get_contests()
+            if contests:
+                c0 = contests[0]
+                state = state or normalize_state_name(safe_get(c0, "state"))
+                county = county or normalize_county_name(safe_get(c0, "county"))
+                y = safe_get(c0, "year")
+                if not year and isinstance(y, int):
+                    year = y
+    except Exception:
+        pass
+
+    # Filename inference (format handlers)
+    if allow_filename_infer and fallback_filename:
+        base = fallback_filename.lower()
+        parts = base.replace(".json", "").replace(".csv", "").replace(".pdf", "").split("_")
+        for p in parts:
+            if not state and len(p) == 2 and p.isalpha():
+                state = p.upper()
+            if "county" in p and not county:
+                county = (p.replace("county", "").strip() + " County").title()
+            if not year:
+                m = re.search(r"(19|20)\d{2}", p)
+                if m:
+                    try:
+                        year = int(m.group(0))
+                    except Exception:
+                        pass
+
+    return state, county, year
+
+def select_contest_auto_first(
+    *,
+    coordinator=None,
+    context: dict | None = None,
+    allow_multiple: bool = False,
+    session_id: str | None = None,
+    force_interactive: bool = False,
+    auto_confidence_threshold: float = 0.93,
+    page_size: int = 30,
+    prefer_year_match: bool = True,
+    return_mode: str = "objects"
+) -> Optional[List[Dict[str, Any]]]:
+    """
+    Wrapper:
+      1. Resolve (state, county, year)
+      2. Attempt non-interactive selection
+      3. If result empty OR >1 and interactive needed, fallback to interactive select_contest
+      4. Always returns list[dict] (or None if user cancels)
+    """
+    ctx = context or {}
+    filename = safe_get(ctx, "input_file") or safe_get(ctx, "source_file") or safe_get(ctx, "source") or None
+    state, county, year = resolve_selection_context(
+        coordinator=coordinator,
+        context=ctx,
+        fallback_filename=filename
+    )
+
+    # Non-interactive attempt
+    auto = select_contest_noninteractive(
+        coordinator=coordinator,
+        context=ctx,
+        state=state,
+        county=county,
+        year=year,
+        session_id=session_id,
+        prefer_year_match=prefer_year_match,
+        return_mode="objects"
+    )
+    auto_list = auto if isinstance(auto, list) else []
+    # If we got exactly one or user forbids interactive, return it
+    if not force_interactive and auto_list:
+        if len(auto_list) == 1:
+            return auto_list
+        # If top has very high confidence, accept
+        try:
+            top_conf = float(safe_get(auto_list[0], "confidence") or 0.0)
+        except Exception:
+            top_conf = 0.0
+        if top_conf >= auto_confidence_threshold and not allow_multiple:
+            return [auto_list[0]]
+
+    # Fallback to interactive
+    return select_contest(
+        coordinator=coordinator,
+        state=state,
+        county=county,
+        year=year,
+        session_id=session_id,
+        context=ctx,
+        allow_multiple=allow_multiple,
+        force_interactive=force_interactive,
+        page_size=page_size,
+        auto_when_confident=True,
+        auto_confidence_threshold=auto_confidence_threshold,
+        return_mode="objects"
+    )
+
+# ================================================
+# Non-interactive selection (auto strategy)
+# ================================================
+def select_contest_noninteractive(
+    *,
+    coordinator=None,
+    context: dict | None = None,
+    state: str | None = None,
+    county: str | None = None,
+    year: int | None = None,
+    session_id: str | None = None,
+    prefer_year_match: bool = True,
+    return_mode: str = "objects"  # 'objects' | 'json' | 'titles'
+) -> list[dict] | str | list[str]:
+    """
+    Attempt automatic contest selection WITHOUT user interaction.
+    - Expands & clusters contests
+    - Scores with coordinator if available
+    - Picks top cluster representative
+    - Optionally filters by explicit year if provided
+    """
+    context = context or {}
+    selector_data = context.get("selector_data") or {}
+    base_contests = selector_data.get("contests") or []
+    base_titles = [safe_get(c, "title", "") for c in base_contests]
+    extra = _expand_contests_from_context(context, base_titles)
+    if extra:
+        base_contests = _merge_expanded_contests(base_contests, extra)
+    titles = [safe_get(c, "title", "") for c in base_contests if safe_get(c, "title")]
+    titles = list(dict.fromkeys(titles))  # preserve order unique
+
+    if not titles:
+        return [] if return_mode != "json" else "[]"
+
+    clusters = _cluster_titles_by_base(titles)
+    reps = []
+    for idx, cl in enumerate(clusters):
+        rep = _pick_rep_title(cl)
+        yrs = _extract_year_tokens(rep)
+        rep_year = yrs[0] if yrs else None
+        score = _score_title(coordinator, rep, {"state": state, "county": county, "year": year})
+        reps.append(ContestRecord(
+            title=rep,
+            year=rep_year,
+            jurisdiction=county,
+            level=None,
+            type_=None,
+            canonical_key=_base_canonical_key(rep),
+            cluster_id=idx,
+            source="auto",
+            confidence=score,
+            session_id=session_id
+        ))
+
+    # Optional year preference
+    if prefer_year_match and year:
+        year_matches = [r for r in reps if r.year == year]
+        if year_matches:
+            reps = year_matches
+
+    # Sort by confidence desc then shorter stripped title
+    reps.sort(key=lambda r: (-float(r.confidence or 0.0), len(_strip_years(r.title)), r.title.lower()))
+
+    if return_mode == "json":
+        return json.dumps([asdict(r) for r in reps], ensure_ascii=False)
+    if return_mode == "titles":
+        return [r.title for r in reps]
+    return [asdict(r) for r in reps]
+
 # -------------------------
 # Core selection
 # -------------------------
 def select_contest(
-    coordinator: "ContextCoordinator",
-    state=None,
-    county=None,
-    year=None,
-    session_id=None,
-    context=None,
-    prompt_message="[PROMPT] Select contest (index, comma-separated indices, text, or 'cancel'): ",
-    allow_multiple=True,
-    log_func=None,
-    *,
+    coordinator=None,
+    state: str | None = None,
+    county: str | None = None,
+    year: int | None = None,
+    session_id: str | None = None,
+    context: dict | None = None,
+    allow_multiple: bool = False,
+    prompt_message: str = "[PROMPT] Select contest (index(es), /search <term>, next, prev, page <n>, 'all', or 'cancel'): ",
     force_interactive: bool = False,
     disable_ml_verify: bool = False,
+    page_size: int = 30,
+    max_search_results: int = 400,
+    return_mode: str = "objects",
+    noninteractive_if_single: bool = True,
+    auto_when_confident: bool = True,
+    auto_confidence_threshold: float = 0.93
 ) -> Optional[List[Dict[str, Any]]]:
     """
-    Centralized contest selection with:
-    - Handler-injected selector_data support
-    - Soft/strict filtering
-    - Optional ML/NER verification (skipped offline or when disabled)
-    - Always-offer menu when force_interactive=True and >1 candidates
-    - Returns a list of dicts: [{"title": "..."}] or [] if canceled/no selection
+    Adaptive contest selector with webapp prompt integration.
+    Uses prompt.prompt_input (non-blocking for web frontend) instead of raw input().
+    Returns list[dict] or None if user cancels.
     """
-    from ..Context_Integration.context_coordinator import ContextCoordinator
-    coordinator = coordinator or ContextCoordinator()
+    context = context or {}
+    selector_data = context.get("selector_data") or {}
+    base_contests = selector_data.get("contests") or []
+    base_titles = [safe_get(c, "title", "") for c in base_contests]
+    expanded = _expand_contests_from_context(context, base_titles)
+    if expanded:
+        base_contests = _merge_expanded_contests(base_contests, expanded)
 
-    # Gather selector data
-    selector_data = (context or {}).get("selector_data") if isinstance(context, dict) else None
-    if not selector_data:
-        selector_data = coordinator.get_for_selector()
+    raw_titles = [safe_get(c, "title", "") for c in base_contests if safe_get(c, "title")]
+    raw_titles = list(dict.fromkeys(raw_titles))
+    if not raw_titles:
+        return [] if return_mode != "json" else "[]"
 
-    norm_state = normalize_state_name(state)
-    norm_county = normalize_county_name(county)
-    contests = safe_get(selector_data, "contests", []) or []
-    noisy_patterns = set(safe_get(selector_data, "noisy_patterns", []) or [])
+    clusters = _cluster_titles_by_base(raw_titles)
+    candidates: list[ContestRecord] = []
+    for idx, cl in enumerate(clusters):
+        rep = _pick_rep_title(cl)
+        yrs = _extract_year_tokens(rep)
+        rep_year = yrs[0] if yrs else None
+        score = _score_title(coordinator, rep, {"state": state, "county": county, "year": year})
+        candidates.append(ContestRecord(
+            title=rep,
+            year=rep_year,
+            jurisdiction=county,
+            canonical_key=_base_canonical_key(rep),
+            cluster_id=idx,
+            source="cluster_rep",
+            confidence=score,
+            session_id=session_id
+        ))
 
-    # Sanitize/normalize titles and drop obvious noise
-    cleaned_contests = []
-    for c in contests:
-        c = ensure_contest(c)
-        t = sanitize_title(safe_get(c, "title", ""))
-        if not t or is_markup_like(t):
-            continue
-        low = t.lower()
-        if any(skip in low for skip in noisy_patterns):
-            continue
-        if CONTEST_TITLE_SKIP_PHRASES and any(s in low for s in {s.lower() for s in CONTEST_TITLE_SKIP_PHRASES}):
-            continue
-        c["title"] = t
-        cleaned_contests.append(c)
+    if year:
+        year_pref = [c for c in candidates if c.year == year]
+        if year_pref:
+            candidates = year_pref
 
-    # Deduplicate by normalized title
-    seen = set()
-    deduped = []
-    for c in cleaned_contests:
-        key = (normalize_contest(safe_get(c, "title", "")), str(safe_get(c, "year", "")), safe_get(c, "type_", ""))
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(c)
+    # Detect webapp mode and disable pagination (show all in one page)
+    is_webapp = bool((context or {}).get("webapp") or (context or {}).get("web_use_full_menu")) \
+                or str(getattr(prompt, "mode", "")).lower() == "webapp"
+    if is_webapp:
+        page_size = max(page_size, len(candidates) or 0)
+        # Also simplify the prompt text for webapp (no paging commands)
+        prompt_message = "[PROMPT] Select contest index(es) or 'cancel': "
 
-    # Enrich missing metadata to avoid empty-input warnings during verification
-    for c in deduped:
-        try:
-            title = safe_get(c, "title", "")
-            if title:
-                if not safe_get(c, "year"):
-                    c["year"] = extract_year_from_title(title)
-                if not safe_get(c, "type_"):
-                    inferred = infer_election_type(title, context, c, deduped, coordinator)
-                    if inferred:
-                        c["type_"] = inferred
-        except Exception:
-            pass
+    if noninteractive_if_single and len(candidates) == 1 and not force_interactive:
+        result = [asdict(candidates[0])]
+        if return_mode == "json":
+            return json.dumps(result, ensure_ascii=False)
+        if return_mode == "titles":
+            return [result[0]["title"]]
+        return result
 
-    # Attach session_id
-    for c in deduped:
-        if session_id is not None:
-            c["session_id"] = session_id
+    if auto_when_confident and not force_interactive:
+        top_sorted = sorted(candidates, key=lambda r: -float(r.confidence or 0.0))
+        if top_sorted and (top_sorted[0].confidence or 0.0) >= auto_confidence_threshold:
+            result = [asdict(top_sorted[0])]
+            if return_mode == "json":
+                return json.dumps(result, ensure_ascii=False)
+            if return_mode == "titles":
+                return [result[0]["title"]]
+            return result
 
-    _log("debug", "selector", "Initial candidate contests", session_id=session_id,
-         payload={"count": len(deduped), "state": norm_state, "county": norm_county, "year": year})
+    # Interactive path
+    candidates = sorted(
+        candidates,
+        key=lambda r: (-float(r.confidence or 0.0), len(_strip_years(r.title)), r.title.lower())
+    )
+    titles = [c.title for c in candidates]
+    structured_options = []
+    for idx, c in enumerate(candidates):
+        meta_parts = []
+        if c.year:
+            meta_parts.append(str(c.year))
+        if c.confidence is not None:
+            meta_parts.append(f"conf={c.confidence:.2f}")
+        structured_options.append({
+            "index": idx,
+            "label": c.title,
+            "meta": ", ".join(meta_parts) if meta_parts else ""
+        })
 
-    if not deduped:
-        _log("warning", "selector", "No valid contests detected after sanitization", session_id=session_id)
-        return []
-
-    # Soft-vs-strict filter
-    any_year_present = any(safe_get(c, "year") for c in deduped)
-    any_type_present = any(safe_get(c, "type_") for c in deduped)
-
-    filtered = []
-    fallbacks = []
-    for c in deduped:
-        title = safe_get(c, "title", "")
-        if not title:
-            continue
-        if norm_state and normalize_state_name(safe_get(c, "state", "")) not in (None, "", norm_state):
-            fallbacks.append(c)
-            continue
-        if any_year_present and not safe_get(c, "year"):
-            fallbacks.append(c)
-            continue
-        if any_type_present and not safe_get(c, "type_"):
-            fallbacks.append(c)
-            continue
-        filtered.append(c)
-
-    if not filtered:
-        filtered = fallbacks or deduped
-
-    _log("debug", "selector", "After soft/strict filtering", session_id=session_id,
-         payload={"kept": len(filtered), "fallbacks": len(fallbacks)})
-
-    # Determine offline/verify flags
-    offline_mode = False
-    try:
-        # Heuristic: no semantic model attribute or explicitly False => offline
-        offline_mode = not bool(getattr(coordinator, "has_semantic_model", False))
-    except Exception:
-        offline_mode = True
-
-    candidates = filtered
-    if not disable_ml_verify and not offline_mode:
-        verify_ctx = {
-            "state": norm_state,
-            "county": norm_county,
-            "year": year,
-            "contests": filtered,
-            "url": getattr(coordinator, "last_url", None) if hasattr(coordinator, "last_url") else None,
-            "session_id": session_id,
-            "type_": safe_get(context, "type_", "") if isinstance(context, dict) else ""
-        }
-        verified = [c for c in filtered if ml_verify_contest(c, coordinator, verify_ctx, threshold=0.75)]
-        if not verified:
-            verified = feedback_loop_verify_contests(filtered, coordinator, verify_ctx, session_id=session_id)
-        if verified:
-            candidates = verified
-        else:
-            _log("warning", "selector", "No contests passed verification; using filtered list.", session_id=session_id)
-
-    # Single-contest fast-path if not forcing interactive
-    if len(candidates) == 1 and not force_interactive:
-        only = ensure_contest(candidates[0])
-        _log("info", "selector", "Auto-selected single contest.", session_id=session_id,
-             payload={"title": safe_get(only, "title", "")})
-        if log_func:
-            log_func(f"[CONTEST] Auto-selected: {safe_get(only, 'title', '')}")
-        return [only]
-
-    # Render a clear menu and accept indices or fuzzy text
-    titles = [safe_get(c, "title", "") for c in candidates]
-    lines = ["Available contests:"]
-    for i, t in enumerate(titles):
-        y = safe_get(candidates[i], "year")
-        typ = safe_get(candidates[i], "type_", "")
-        suffix = []
-        if y:
-            suffix.append(str(y))
-        if typ:
-            suffix.append(typ)
-        suffix_str = f" ({', '.join(suffix)})" if suffix else ""
-        lines.append(f"[{i}] {t}{suffix_str}")
-    menu = "\n".join(lines)
-
-    # Log menu with both selector (for analytics) and input (for terminal rendering)
-    _log("info", "selector", menu, session_id=session_id)
     logger.info({
         "level": "INFO",
-        "type": "input",
-        "message": menu,
+        "type": "contest_options",
+        "message": f"Emitting {len(structured_options)} contest options",
+        "session_id": session_id,
+        "options": structured_options,
+        "total_count": len(structured_options),
+        "context": {
+            "state": state,
+            "county": county,
+            "year": year,
+            "source": safe_get(context, "source") or safe_get(context, "input_file"),
+            "handler": safe_get(context, "handler"),
+            "input_file": safe_get(context, "input_file")
+        }
+    })
+
+    legacy_lines = ["Available contests:"]
+    for o in structured_options:
+        legacy_lines.append(f"[{o['index']}] {o['label']}" + (f" ({o['meta']})" if o['meta'] else ""))
+    logger.info({
+        "level": "INFO",
+        "type": "selector",
+        "message": "\n".join(legacy_lines),
         "session_id": session_id
     })
-    
-    try:
-        user_input = prompt.prompt_input(
-            prompt_message,
-            default=("0" if not allow_multiple else "all"),
-            validator=lambda x: True,  # free-form; we sanitize below
-            allow_cancel=True,
-            header="CONTEST SELECTION",
-            log_func=log_func,
-            session_id=session_id,
-            context={
-                "count": len(titles),
-                "state": state, "county": county, "year": year,
-                "force_interactive": force_interactive,
-                "offline_mode": offline_mode
-            }
-        )
-    except PromptCancelled:
-        _log("warning", "prompt", "Contest selection cancelled by user.", session_id=session_id)
-        if log_func:
-            log_func("[CONTEST] User cancelled contest selection.")
-        return []
+    page = 1
 
-    choice = (user_input or "").strip()
-    if not choice:
-        # Default to first if not multiple
-        if not allow_multiple and titles:
-            return [ensure_contest(candidates[0])]
-        return []
+    def build_page_options(pg: int) -> tuple[list[str], int]:
+        total = len(candidates)
+        total_pages = max(1, math.ceil(total / page_size))
+        pg = max(1, min(pg, total_pages))
+        start = (pg - 1) * page_size
+        end = min(start + page_size, total)
+        opts = []
+        for idx in range(start, end):
+            c = candidates[idx]
+            meta = []
+            if c.year:
+                meta.append(str(c.year))
+            if c.confidence is not None:
+                meta.append(f"conf={c.confidence:.2f}")
+            opts.append(f"[{idx}] {c.title}" + (f" ({', '.join(meta)})" if meta else ""))
+        return opts, total_pages
 
-    if choice.lower() == "cancel":
-        return []
+    selected: list[ContestRecord] = []
+    prompted_once = False
 
-    # Parse indices
-    if allow_multiple and choice.lower() in {"all", "*"}:
-        indices = list(range(len(titles)))
-    else:
-        # Parse indices
-        indices = []
-        parts = [p.strip() for p in re.split(r"[,\s]+", choice) if p.strip()]
-        if all(p.isdigit() for p in parts):
-            for p in parts:
-                i = int(p)
-                if 0 <= i < len(titles):
-                    indices.append(i)
-            if not allow_multiple and indices:
-                indices = [indices[0]]
-        else:
-            # Fuzzy by text
-            import difflib
-            n = (5 if allow_multiple else 1)
-            choices = difflib.get_close_matches(choice, titles, n=n, cutoff=0.45)
-            if not choices:
-                # containment fallback
-                low = choice.lower()
-                choices = [t for t in titles if low in t.lower()]
-                if not allow_multiple and choices:
-                    choices = [choices[0]]
-            indices = [titles.index(t) for t in choices if t in titles]
-            if not allow_multiple and indices:
-                indices = [indices[0]]
+    while True:
+        page_options, total_pages = build_page_options(page)
 
-    if not indices:
-        _log("warning", "prompt", "No valid contest selection; defaulting to first.", session_id=session_id)
-        if titles:
-            return [ensure_contest(candidates[0])]
-        return []
+        # Suppress confusing page logs in webapp mode
+        if not is_webapp:
+            logger.info({
+                "level": "INFO",
+                "type": "selector_menu",
+                "message": f"Contests page {page}/{total_pages} (total={len(candidates)})",
+                "session_id": session_id
+            })
 
-    selected = [ensure_contest(_sync_type_and_election_types(candidates[i]) or candidates[i]) for i in sorted(set(indices))]
-    # Attach session_id
-    if session_id is not None:
-        for c in selected:
+        prompt_ctx = {
+            "kind": "contest",
+            "page": page,
+            "total_pages": total_pages,
+            "count": len(candidates)
+        }
+        # Attach options once; with webapp mode page_size == total, this is the full list
+        if not prompted_once:
+            prompt_ctx["options"] = page_options
+
+        try:
+            user_in = prompt.prompt_input(
+                prompt_message,
+                session_id=session_id,
+                context=prompt_ctx,
+                allow_cancel=True
+            ).strip()
+            prompted_once = True
+        except PromptCancelled:
+            return None
+        except Exception:
+            user_in = ""
+
+        if not user_in:
+            selected = [candidates[0]]
+            break
+
+        lowered_input = user_in.lower()
+
+        if lowered_input in {"cancel", "quit", "q", "exit"}:
+            return None
+
+        if allow_multiple and lowered_input in {"all", "*"}:
+            selected = candidates
+            break
+
+        # Keep paging commands for CLI; they are harmless in webapp (single-page)
+        if lowered_input in {"next", "n"}:
+            page = page + 1 if page < total_pages else 1
+            prompted_once = False
+            continue
+
+        if lowered_input in {"prev", "p", "previous"}:
+            page = page - 1 if page > 1 else total_pages
+            prompted_once = False
+            continue
+
+        if lowered_input.startswith("page "):
             try:
-                c["session_id"] = session_id
+                req = int(lowered_input.split()[1])
+                if 1 <= req <= total_pages:
+                    page = req
+                    prompted_once = False
             except Exception:
                 pass
+            continue
 
-    # Log and return robust list of dicts; never return a bare bool/str
-    try:
-        _log("info", "selector", "Contest selection complete.", session_id=session_id,
-             payload={"selected": [safe_get(c, "title", "") for c in selected]})
-        if log_func:
-            log_func(f"[CONTEST] User selected contests: {[safe_get(c, 'title', '') for c in selected]}")
-    except Exception:
-        pass
-    
-    return selected
+        if lowered_input.startswith("/search"):
+            term = user_in.split(" ", 1)[1].strip() if " " in user_in else ""
+            if not term:
+                logger.warning({"level": "WARNING", "type": "selector", "message": "Empty search term", "session_id": session_id})
+                continue
+            term_l = term.lower()
+            idxs = [i for i, t in enumerate(titles) if term_l in t.lower()]
+            if not idxs:
+                logger.warning({"level": "WARNING", "type": "selector", "message": f"No matches for '{term}'", "session_id": session_id})
+                continue
+            candidates = [candidates[i] for i in idxs[:max_search_results]]
+            titles = [c.title for c in candidates]
+            page = 1
+            prompted_once = False
+            # In webapp, also re-emit the full updated options so modal refreshes naturally
+            if is_webapp:
+                new_opts = []
+                for i, c in enumerate(candidates):
+                    meta_parts = []
+                    if c.year:
+                        meta_parts.append(str(c.year))
+                    if c.confidence is not None:
+                        meta_parts.append(f"conf={c.confidence:.2f}")
+                    new_opts.append({"index": i, "label": c.title, "meta": ", ".join(meta_parts) if meta_parts else ""})
+                logger.info({
+                    "level": "INFO",
+                    "type": "contest_options",
+                    "message": f"Emitting {len(new_opts)} contest options",
+                    "session_id": session_id,
+                    "options": new_opts,
+                    "total_count": len(new_opts),
+                    "context": {
+                        "state": state, "county": county, "year": year,
+                        "source": safe_get(context, "source") or safe_get(context, "input_file"),
+                        "handler": safe_get(context, "handler"),
+                        "input_file": safe_get(context, "input_file")
+                    }
+                })
+            continue
+
+        parts = [p for p in re.split(r"[,\s]+", user_in) if p]
+        if parts and all(p.isdigit() for p in parts):
+            idxs = []
+            for p in parts:
+                i = int(p)
+                if 0 <= i < len(candidates):
+                    idxs.append(i)
+            if not idxs:
+                continue
+            if not allow_multiple:
+                idxs = [idxs[0]]
+            selected = [candidates[i] for i in sorted(set(idxs))]
+            break
+
+        substr = [i for i, t in enumerate(titles) if user_in.lower() in t.lower()]
+        if substr:
+            if not allow_multiple:
+                substr = [substr[0]]
+            selected = [candidates[i] for i in substr]
+            break
+
+        import difflib
+        fuzz = difflib.get_close_matches(user_in, titles, n=(5 if allow_multiple else 1), cutoff=0.45)
+        if fuzz:
+            idxs = [titles.index(f) for f in fuzz]
+            if not allow_multiple:
+                idxs = [idxs[0]]
+            selected = [candidates[i] for i in idxs]
+            break
+
+        logger.warning({"level": "WARNING", "type": "selector", "message": "No match; try again.", "session_id": session_id})
+
+    result_objs = [asdict(r) for r in selected]
+    if return_mode == "json":
+        return json.dumps(result_objs, ensure_ascii=False)
+    if return_mode == "titles":
+        return [r["title"] for r in result_objs]
+    return result_objs

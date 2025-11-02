@@ -1,54 +1,74 @@
 from __future__ import annotations
 
 import eventlet
+
 eventlet.monkey_patch()
 
-# Smart_Elections_Parser_Webapp.py
-# -----------------------------------------------------------
-# Web Application for Smart Elections Parser
-# -----------------------------------------------------------
-# 1. Imports & Environment Setup
-from datetime import datetime, timezone
-from typing import Callable, Iterable, Tuple
-import secrets
-from flask import (
-    Flask, render_template, request, redirect, session,
-    url_for, flash, send_file, send_from_directory,
-    jsonify, Response, g
-)
-from flask_socketio import emit, SocketIO, join_room
-import orjson
-import os
-import time
-import re
-from werkzeug.exceptions import NotFound
-from threading import Thread, RLock, Event
 import gzip
-from queue import Queue
-import psycopg2
-import threading
+import os
 import re
-from psycopg2 import sql
+import secrets
+import shutil
+import threading
+import time
+from datetime import datetime, timezone
+from queue import Queue
+from threading import Event, RLock, Thread
+from typing import Callable, Tuple
+
+import orjson
+import psycopg2
+from flask import (
+    Flask,
+    Response,
+    flash,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    send_from_directory,
+    session,
+    url_for,
+)
+from flask_socketio import SocketIO, emit, join_room
 from psycopg2 import errors as pg_errors
+from werkzeug.exceptions import NotFound
+
+from webapp.parser.config import (
+    DATA_API_URL,
+    INPUT_DIR,
+    LOG_DIR,
+    OUTPUT_DIR,
+    POSTGRES_DB,
+    POSTGRES_HOST,
+    POSTGRES_PASSWORD_RAW,
+    POSTGRES_PORT,
+    POSTGRES_USER_RAW,
+    RUN_HISTORY_FILE,
+    SUPPORTED_FORMATS,
+    UPLOADS_DIR,
+    URL_LIST_FILE,
+)
+from webapp.parser.utils.logger_singleton import logger, prompt
+from webapp.parser.utils.shared_logic import (
+    safe_get,
+    safe_is_set,
+    safe_lower,
+    safe_rsplit,
+    safe_sid,
+    safe_split,
+    safe_strip,
+)
+from webapp.parser.web_pipeline import (
+    cancel_processing,
+    cancellation_manager,
+    process_urls_for_web,
+)
 
 # Lazy DB table init flag
 _tables_initialized = False
-
-# Project-specific imports
-from webapp.parser import data_manager
-from webapp.parser.utils.shared_logic import (
-    safe_get, safe_split, safe_lower, safe_is_set, safe_append,
-    safe_sid, safe_rsplit, safe_strip
-)
-from webapp.parser.web_pipeline import (
-    process_urls_for_web, cancel_processing, cancellation_manager,
-)
-from webapp.parser.config import (
-    INPUT_DIR, OUTPUT_DIR, UPLOADS_DIR, URL_LIST_FILE,
-    SUPPORTED_FORMATS, DATA_API_URL, POSTGRES_DB, POSTGRES_USER_RAW, POSTGRES_PASSWORD_RAW,
-    POSTGRES_HOST, POSTGRES_PORT, RUN_HISTORY_FILE, LOG_DIR
-)
-from webapp.parser.utils.logger_singleton import logger, console, prompt
 
 try:
     import dotenv
@@ -254,6 +274,41 @@ def resolve_session_id(data=None, create_if_missing=True):
             create_session_metadata(new_sid)
         return new_sid
 
+def emit_contest_options(session_id: str, contests: list[dict], context: dict | None = None):
+    """
+    Emit full contest option list (no truncation) to the session room.
+    contests: [{ "index": int, "label": str, "meta": Optional[str] }, ...]
+    context:  { "state": str, "county": str, "source": str, "handler": str, "url": str, "input_file": str }
+    """
+    try:
+        payload = {
+            "session_id": session_id,
+            "context": {
+                "state": safe_get(context, "state"),
+                "county": safe_get(context, "county"),
+                "source": safe_get(context, "source"),
+                "handler": safe_get(context, "handler"),
+                "url": safe_get(context, "url"),
+                "input_file": safe_get(context, "input_file"),
+            } if isinstance(context, dict) else {},
+            "total_count": len(contests or []),
+            "options": contests or []
+        }
+        socketio.emit("contest_options", payload, room=session_id)
+        logger.info({
+            "level": "INFO",
+            "type": "prompt",
+            "message": f"Emitted {len(contests or [])} contest options",
+            "session_id": session_id
+        })
+    except Exception as e:
+        logger.error({
+            "level": "ERROR",
+            "type": "prompt",
+            "message": f"Failed to emit contest options: {e}",
+            "session_id": session_id
+        })
+
 def _promote_inner(obj: dict) -> dict:
     inner = obj.get("message")
     if isinstance(inner, str) and inner.strip().startswith("{"):
@@ -287,8 +342,8 @@ def ensure_db_tables(force: bool = False):
     if os.environ.get("AUTO_INIT_DB", "true").lower() not in ("1","true","yes"):
         return
     try:
-        from webapp.parser.utils.models import Base  # imports metadata
         from webapp.parser.utils.db_utils import engine
+        from webapp.parser.utils.models import Base  # imports metadata
         Base.metadata.create_all(engine)
         _tables_initialized = True
         logger.info({
@@ -666,10 +721,13 @@ def build_csp(relaxed: bool, nonce: str) -> str:
 
     # Dedupe while preserving order
     def dedupe(seq):
-        seen = set(); out=[]
-        for x in seq:
-            if x not in seen:
-                seen.add(x); out.append(x)
+        seen = set()
+        out = []
+        for item in seq:
+            if item in seen:
+                continue
+            seen.add(item)
+            out.append(item)
         return out
 
     scripts_extra = dedupe(scripts_extra)
@@ -885,7 +943,6 @@ def data_framework():
 
 @app.route("/api/fs/list", methods=["GET"])
 def api_fs_list():
-    import os, time
     root = (request.args.get("root") or "").lower().strip()
     subpath = (request.args.get("path") or "").strip().replace("\\", "/")
     roots = {"input": INPUT_DIR, "output": OUTPUT_DIR, "uploads": UPLOADS_DIR}
@@ -965,7 +1022,6 @@ def api_fs_mkdir():
 
 @app.route("/api/fs/delete", methods=["POST"])
 def api_fs_delete():
-    import os, shutil
     data = request.get_json(force=True) or {}
     root = (data.get("root") or "").lower().strip()
     subpath = (data.get("path") or "").strip().replace("\\", "/")
@@ -1086,9 +1142,15 @@ def api_warehouse_election_results():
     contest = request.args.get("contest")
     where = []
     params = []
-    if state: where.append("state = %s"); params.append(state)
-    if county: where.append("county = %s"); params.append(county)
-    if contest: where.append("contest ILIKE %s"); params.append(f"%{contest}%")
+    if state:
+        where.append("state = %s")
+        params.append(state)
+    if county:
+        where.append("county = %s")
+        params.append(county)
+    if contest:
+        where.append("contest ILIKE %s")
+        params.append(f"%{contest}%")
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     ensure_db_tables()  # attempt upfront (idempotent)
     try:
@@ -1413,6 +1475,48 @@ def rerun_prior(run_id):
     return redirect(url_for("run_parser", source=source))
 
 # 6. SocketIO Event Handlers
+
+@socketio.on('contest_selected')
+def handle_contest_selected(data) -> None:
+    """
+    Accepts selection from modal and passes it into the active prompt (if any).
+    Expects: { session_id: str, indices: [int] }
+    """
+    sid = resolve_session_id(data or {}, create_if_missing=False)
+    indices = []
+    try:
+        indices = [int(x) for x in (data.get("indices") or [])]
+    except Exception:
+        pass
+    if not sid or not indices:
+        emit('parser_output', normalize_log_obj({
+            "level": "WARNING",
+            "type": "prompt",
+            "message": "No contest selected."
+        }), room=getattr(request, 'sid', None))
+        return
+    # Hand off to the active prompt (same effect as user typing "index" into prompt)
+    try:
+        prompt_session = prompt.prompt_sessions.get(sid)
+        if prompt_session:
+            prompt_session.set_response(",".join(str(i) for i in indices))
+            emit('parser_output', normalize_log_obj({
+                "level": "INFO",
+                "type": "prompt",
+                "message": f"Contest selection received: {indices}",
+                "session_id": sid
+            }), room=request.sid)
+        else:
+            # Fallback: behave like parser_prompt
+            handle_parser_prompt({"session_id": sid, "value": ",".join(str(i) for i in indices)})
+    except Exception as e:
+        emit('parser_output', normalize_log_obj({
+            "level": "ERROR",
+            "type": "prompt",
+            "message": f"Failed to accept selection: {e}",
+            "session_id": sid
+        }), room=request.sid)
+
 @socketio.on('get_session_history')
 def handle_get_session_history(data) -> None:
     sid = resolve_session_id(data, create_if_missing=False)

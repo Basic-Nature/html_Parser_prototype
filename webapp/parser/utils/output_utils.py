@@ -1,23 +1,40 @@
 from __future__ import annotations
+
+import csv
+import datetime as dt
+import hashlib
+import os
+
 # webapp/parser/utils/output_utils.py
 # ---------------------------------------------------------------
 # Output utilities for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
 import re
-import csv
-import orjson
-import os
 from datetime import datetime
-import datetime as dt
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
+import orjson
+import pandas as pd
+
+from ..config import BASE_DIR, OUTPUT_CACHE, OUTPUT_DIR
 from .logger_singleton import logger
-from .shared_logic import (
-    safe_get_first, safe_items, safe_get, safe_lower,
-    safe_filename
+from .rawjson_utils import (
+    extract_rawjson_enrichment_from_rows,
 )
-from ..config import (
-    BASE_DIR, OUTPUT_DIR, ENABLE_USER_FEEDBACK, OUTPUT_CACHE
+from .rawjson_utils import (
+    offload_rawjson_to_ndjson as _shared_offload_rawjson_to_ndjson,
 )
+from .shared_logic import safe_filename, safe_get, safe_get_first, safe_items, safe_lower
+
+PERCENT_COL_REGEX = re.compile(r"(% Vote|Cumulative %|Percent Reported| - %)$", re.I)
+
+def coerce_percent_strings(row: dict):
+    for k, v in row.items():
+        if isinstance(v, str) and PERCENT_COL_REGEX.search(k):
+            sv = v.replace("%", "").strip()
+            if sv.replace(".", "", 1).isdigit():
+                row[k] = f"{float(sv):.2f}%"
+    return row
 
 def get_project_root() -> str:
     # Returns the parent directory of webapp (the project root)
@@ -90,15 +107,14 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
         logger.warning("[yellow][OUTPUT] contests could not be verified. Using 'unknown_contests'.[/yellow]")
         contests = "unknown_contests"
 
-    contests_safe = safe_filename(contests)
-    county_safe = safe_filename(county)
-    state_safe = safe_filename(state)
-    if contests:
-        parts.append(safe_lower(contests_safe or ""))
-    if state:
-        parts.append(safe_lower(state_safe or ""))
-    if county:
-        parts.append(safe_lower(county_safe or ""))
+    # Centralized filtering/slugging (maintain ordering: contests -> state -> county)
+    s_slug, c_slug, ct_slug = build_filename_triplet(state, county, contests)
+    if ct_slug:
+        parts.append(safe_lower(ct_slug))
+    if s_slug:
+        parts.append(safe_lower(s_slug))
+    if c_slug:
+        parts.append(safe_lower(c_slug))
     if year and str(year).isdigit() and len(str(year)) == 4:
         parts.append(str(year))
     else:
@@ -175,7 +191,7 @@ def check_existing_output(metadata, cache_file=OUTPUT_CACHE) -> Optional[dict]:
                     continue
                 try:
                     entries.append(orjson.loads(line))
-                except Exception as e:
+                except Exception:
                     logger.debug(f"[DEBUG] Failed to parse line as JSON: {line!r}")
                     continue
         for entry in entries:
@@ -226,6 +242,20 @@ def _slug(value: Optional[str], max_len: int = 80) -> str:
     stem = re.sub(r"_+", "_", stem)
     return stem[:max_len] or "na"
 
+def build_filename_triplet(state: Optional[str], county: Optional[str], contest: Optional[str]) -> tuple[str, str, str]:
+    """
+    Return (state_slug, county_slug, contest_slug) with Unknown filtered to empty.
+    Slugs are safe for filenames.
+    """
+    s = _slug((state or "").strip())
+    c = _slug((county or "").strip())
+    ct = _slug((contest or "").strip(), max_len=120)
+    if s.lower() == "unknown":
+        s = ""
+    if c.lower() == "unknown":
+        c = ""
+    return s, c, ct
+
 def _ensure_dir(p: str) -> None:
     try:
         os.makedirs(p, exist_ok=True)
@@ -243,6 +273,66 @@ def _coerce_headers(headers: List[str], rows: List[Dict[str, Any]]) -> List[str]
                     base.append(k)
                     seen.add(k)
     return base
+
+def apply_results_conditional_formatting(writer, sheet_name: str, df: pd.DataFrame):
+    """
+    Apply conditional formatting:
+      - Green 3‑color scale on 'Percent Reported'
+      - Data bars on each candidate 'Total Reported' column
+      - Data bars on each candidate '%' column (strip % for evaluation)
+    """
+    try:
+        worksheet = writer.sheets[sheet_name]
+    except Exception:
+        return
+    # Percent Reported scale
+    if "Percent Reported" in df.columns:
+        col_idx = df.columns.get_loc("Percent Reported")
+        # xlsxwriter style:
+        worksheet.conditional_format(1, col_idx, len(df), col_idx, {
+            "type": "3_color_scale",
+            "min_color": "#fbe5e1",
+            "mid_color": "#ffd965",
+            "max_color": "#63be7b"
+        })
+    # Candidate total & percent columns
+    for c in df.columns:
+        if c.endswith("Total Reported"):
+            idx = df.columns.get_loc(c)
+            worksheet.conditional_format(1, idx, len(df), idx, {
+                "type": "data_bar",
+                "bar_color": "#4F81BD"
+            })
+        elif c.endswith(" %"):
+            # strip % when writing? (Assumes already string with %; leave bars approximate)
+            idx = df.columns.get_loc(c)
+            worksheet.conditional_format(1, idx, len(df), idx, {
+                "type": "data_bar",
+                "bar_color": "#9BBB59"
+            })
+
+def export_dataframe_with_format(df, path: str, sheet_name: str = "Results"):
+    """
+    Write DataFrame to XLSX with election result formatting.
+    """
+    import pandas as pd
+    with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+        apply_results_conditional_formatting(writer, sheet_name, df)
+
+def _compute_structure_hash(headers: List[str] | None, rows: List[Dict[str, Any]] | None) -> str:
+    """
+    Compute a light structure hash based on headers plus first row keys (stable).
+    """
+    try:
+        parts = list(headers or [])
+        if rows and isinstance(rows[0], dict):
+            for k in rows[0].keys():
+                parts.append(str(k))
+        digest = hashlib.sha256("|".join(map(str, parts)).encode("utf-8", errors="ignore")).hexdigest()
+        return digest[:16]
+    except Exception:
+        return "raw"
 
 def finalize_election_output(
     *,
@@ -265,20 +355,52 @@ def finalize_election_output(
     out_dir = OUTPUT_DIR or os.path.join(os.getcwd(), "outputs")
     _ensure_dir(out_dir)
 
-    # Build filenames
-    state_slug = _slug(state)
-    county_slug = _slug(county)
-    contest_slug = _slug(contest, max_len=120)
-    base_name = f"{state_slug}__{county_slug}__{contest_slug}__{ts}"
+    # Effective state/county/contest from context if provided; omit Unknown in filename
+    state_eff = (safe_get(context, "state", None) or state or "").strip()
+    county_eff = (safe_get(context, "county", None) or county or "").strip()
+    contest_eff = (safe_get(context, "contest", None) or contest or "").strip()
+
+    # Build filenames (skip Unknown parts)
+    s_slug, c_slug, ct_slug = build_filename_triplet(state_eff, county_eff, contest_eff)
+    parts_for_name = []
+    if s_slug:
+        parts_for_name.append(s_slug)
+    if c_slug:
+        parts_for_name.append(c_slug)
+    parts_for_name.append(ct_slug or "contest")
+    parts_for_name.append(ts)
+    base_name = "__".join(parts_for_name)
     csv_path = os.path.join(out_dir, f"{base_name}.csv")
     meta_path = os.path.join(out_dir, f"{base_name}.metadata.json")
+
+    # Establish structure hash early (stable NDJSON filename)
+    context["structure_hash"] = context.get("structure_hash") or _compute_structure_hash(headers, data)
+
+    # RawJSON enrichment (build from rows if not already provided)
+    if not context.get("rawjson_enrichment"):
+        try:
+            built = extract_rawjson_enrichment_from_rows(data or [])
+            if built:
+                context["rawjson_enrichment"] = built["extended"]
+                context["rawjson_enrichment_slim"] = built["slim"]
+        except Exception:
+            pass
+
+    # Optional: offload RawJSON column to NDJSON and keep pointers in CSV
+    try:
+        if any(isinstance(r, dict) and "RawJSON" in r for r in (data or [])):
+            structure_hash = context.get("structure_hash")
+            data, ndjson_path = _shared_offload_rawjson_to_ndjson(data, os.path.dirname(csv_path), structure_hash)
+            if ndjson_path:
+                context["rawjson_offload_path"] = ndjson_path
+    except Exception:
+        pass
 
     # Normalize headers and rows
     headers_final = _coerce_headers(headers or [], data or [])
     safe_rows: List[Dict[str, Any]] = []
     for row in (data or []):
         if not isinstance(row, dict):
-            # Coerce non-dict rows to a single-column dict
             safe_rows.append({"value": str(row)})
             if "value" not in headers_final:
                 headers_final = ["value"] + headers_final
@@ -286,7 +408,6 @@ def finalize_election_output(
         safe = {}
         for h in headers_final:
             val = row.get(h, "")
-            # Keep scalars as-is, stringify complex structures
             if isinstance(val, (str, int, float)) or val is None:
                 safe[h] = "" if val is None else val
             else:
@@ -294,85 +415,80 @@ def finalize_election_output(
                     safe[h] = orjson.dumps(val).decode("utf-8", errors="ignore")
                 except Exception:
                     safe[h] = str(val)
+        # Coerce percent-like strings per row
+        safe = coerce_percent_strings(safe)
         safe_rows.append(safe)
 
     # Write CSV
-    try:
-        with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=headers_final, extrasaction="ignore")
-            writer.writeheader()
-            for r in safe_rows:
-                writer.writerow(r)
-    except Exception as e:
-        logger.error({
-            "level": "ERROR",
-            "type": "output",
-            "message": f"[ERROR] Failed to write CSV: {e}",
-            "session_id": session_id,
-            "path": csv_path
-        })
-        # Best-effort path stub on failure
+    def _write_csv(path: str, fieldnames: list[str], rows: list[dict]) -> bool:
+        try:
+            with open(path, "w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+                writer.writeheader()
+                for r in rows:
+                    writer.writerow(r)
+            return True
+        except Exception as e:
+            logger.error({
+                "level": "ERROR",
+                "type": "output",
+                "message": f"[ERROR] Failed to write CSV: {e}",
+                "session_id": session_id,
+                "path": path
+            })
+            return False
+    if not _write_csv(csv_path, headers_final, safe_rows):
         return {"csv_path": "", "metadata_path": ""}
 
     # ------------------------------------------------------------------
     # Enrichment: build summary + hierarchical header export (if present)
     # ------------------------------------------------------------------
-    context = context or {}
     try:
         enr = context.get("rawjson_enrichment")
         if enr:
-            # Contest-level summary (idempotent; don't overwrite if already set)
-            if "summary" not in context:
-                groups = enr.get("ballot_groups_present") or []
-                group_totals = enr.get("group_totals") or {}
-                # Total votes (sum of candidate totals if available)
-                total_votes_all = 0
-                cand_total_list = []
-                for c in (enr.get("candidates") or []):
-                    tv = c.get("total_votes_reported") or 0
-                    if isinstance(tv, (int, float)):
-                        total_votes_all += tv
-                        cand_total_list.append(tv)
-                # Slim candidate view
-                slim_candidates = []
-                for c in (enr.get("candidates") or []):
-                    tv = c.get("total_votes_reported") or 0
-                    pct = (tv / total_votes_all * 100.0) if total_votes_all else 0.0
-                    slim = {
-                        "label": c.get("label"),
-                        "party": c.get("party"),
-                        "total_votes": tv,
-                        "pct_total": round(pct, 3),
-                        "groups": c.get("group_breakdown", {})
-                    }
-                    slim_candidates.append(slim)
-                # Group percent distribution
-                group_pct = {}
+            # Contest-level summary (derived consistently)
+            group_totals = enr.get("group_totals") or {}
+            total_votes_all = 0
+            slim_candidates = []
+            for c in (enr.get("candidates") or []):
+                tv = c.get("total_votes_reported") or 0
+                if isinstance(tv, (int, float)):
+                    total_votes_all += tv
+                pct = (tv / total_votes_all * 100.0) if total_votes_all else 0.0
+                slim_candidates.append({
+                    "label": c.get("label"),
+                    "party": c.get("party"),
+                    "total_votes": tv,
+                    "pct_total": round(pct, 3) if total_votes_all else 0.0,
+                    "groups": c.get("group_breakdown", {})
+                })
+            # Group percent distribution (fallback if not present)
+            group_pct = context.get("summary", {}).get("group_percent_distribution") or {}
+            if not group_pct and group_totals:
                 grand_groups = sum(v for v in group_totals.values() if isinstance(v, (int, float)))
-                for g, v in group_totals.items():
-                    if isinstance(v, (int, float)) and grand_groups:
-                        group_pct[g] = round(v / grand_groups * 100.0, 3)
-                context["summary"] = {
-                    "contest_id": enr.get("contest_id"),
-                    "contest_name": enr.get("contest_name"),
-                    "contest_type": enr.get("contest_type"),
-                    "vote_for": enr.get("vote_for"),
-                    "precincts_participating": enr.get("precincts_participating"),
-                    "precincts_reporting": enr.get("precincts_reporting"),
-                    "contest_reporting_percent": enr.get("contest_reporting_percent"),
-                    "candidate_count": enr.get("candidate_count"),
-                    "ballot_groups": groups,
-                    "group_totals": group_totals,
-                    "group_percent_distribution": group_pct,
-                    "total_candidate_votes": total_votes_all,
-                    "candidates": slim_candidates
-                }
-            # Retain a slim copy for metadata (avoid huge blobs)
-            context["rawjson_enrichment_slim"] = {
+                if grand_groups:
+                    group_pct = {g: round(v / grand_groups * 100.0, 3) for g, v in group_totals.items() if isinstance(v, (int, float))}
+            context["summary"] = {
+                "contest_id": enr.get("contest_id"),
+                "contest_name": enr.get("contest_name"),
+                "contest_type": enr.get("contest_type"),
+                "vote_for": enr.get("vote_for"),
+                "ballot_order": enr.get("ballot_order"),
+                "precincts_participating": enr.get("precincts_participating"),
+                "precincts_reporting": enr.get("precincts_reporting"),
                 "contest_reporting_percent": enr.get("contest_reporting_percent"),
                 "candidate_count": enr.get("candidate_count"),
-                "ballot_groups_present": enr.get("ballot_groups_present"),
+                "group_totals": group_totals,
+                "group_percent_distribution": group_pct,
+                "total_candidate_votes": total_votes_all,
+                "candidates": slim_candidates
             }
+            # Ensure we keep a slim enrichment too
+            context.setdefault("rawjson_enrichment_slim", {
+                "contest_reporting_percent": enr.get("contest_reporting_percent"),
+                "candidate_count": enr.get("candidate_count"),
+                "groups_present": list(group_totals.keys())
+            })
         # Hierarchical headers -> export (two rows) if present
         if "hierarchical_headers" in context and isinstance(context["hierarchical_headers"], dict):
             hh = context["hierarchical_headers"].get("rows")
@@ -381,13 +497,7 @@ def finalize_election_output(
     except Exception as e:
         logger.warning(f"[OUTPUT_UTILS] Enrichment build failed: {e}")
 
-    # Optional: embed a reproducibility hash (very light – based on header list)
-    try:
-        import hashlib
-        h_bytes = "|".join(map(str, headers_final)).encode("utf-8", errors="ignore")
-        context["structure_hash"] = hashlib.sha256(h_bytes).hexdigest()[:16]
-    except Exception:
-        pass
+    # structure_hash already set earlier and used for NDJSON offload
 
     # Build metadata
     meta = {
@@ -395,16 +505,16 @@ def finalize_election_output(
         "session_id": session_id,
         "handler": context.get("handler"),
         "input_file": context.get("input_file"),
-        "contest": contest,
-        "state": state,
-        "county": county,
+        "contest": contest_eff,
+        "state": state_eff,
+        "county": county_eff,
         "row_count": len(safe_rows),
         "headers": headers_final,
         "csv_path": csv_path,
         "context": context,
         "user_feedback_enabled": bool(enable_user_feedback),
-        # Direct top-level convenience copies (do not duplicate large objects)
         "hierarchical_header_rows": context.get("hierarchical_header_rows"),
+        "rawjson_enrichment_extended": context.get("rawjson_enrichment"),
         "rawjson_summary": context.get("summary"),
         "rawjson_enrichment_slim": context.get("rawjson_enrichment_slim"),
         "structure_hash": context.get("structure_hash"),

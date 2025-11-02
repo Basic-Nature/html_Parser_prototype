@@ -1,12 +1,16 @@
 from __future__ import annotations
+
+import time
+
 # webapp/parser/utils/seleniumbase_launcher.py
 # -----------------------------------------------------------------------------------
 # This file contains functions to launch and manage SeleniumBase browsers
 # for web scraping and automation tasks, including handling CAPTCHAs and stealth mode.
 # -----------------------------------------------------------------------------------
 from seleniumbase import Driver
-import time
+
 from .logger_singleton import logger
+
 
 def launch_browser(user_agent=None, headless=True, proxy=None):
     """
@@ -44,7 +48,7 @@ def relaunch_browser_fullscreen_if_needed(_, url, timeout=300, user_agent=None, 
         driver.maximize_window()
     except Exception:
         pass
-    logger.info(f"[SeleniumBase] Please solve the CAPTCHA manually in the browser window.")
+    logger.info("[SeleniumBase] Please solve the CAPTCHA manually in the browser window.")
     logger.info(f"[SeleniumBase] Waiting up to {timeout} seconds...")
     start = time.time()
     while time.time() - start < timeout:

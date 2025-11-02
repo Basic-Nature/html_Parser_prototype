@@ -1,24 +1,52 @@
-import os
-import sys
-import time
-import subprocess
-import orjson
 import errno
 import glob
+import os
 import re
+import subprocess
+import sys
+import time
 from datetime import datetime
-from sqlalchemy import inspect
 from pathlib import Path
-from ..utils.logger_singleton import logger, console
-from ..Context_Integration.librarian import load_context_library
-from ..utils.models import Base
-from ..utils.db_utils import get_engine
+
+import orjson
+from sqlalchemy import inspect
+
 from ..config import (
-    ENABLE_ENHANCED, CORRECTION_MODE, INTEGRITY_CHECK, UPDATE_DB, LLM_API_KEY, LLM_PROVIDER, LLM_MODEL,
-    LLM_SYSTEM_PROMPT, LLM_EXTRA_INSTRUCTIONS, FILTER_CONTEXT_KEY, FILTER_VALUE, FIELDS, CONTEXT_PATH, 
-    LOG_DIR, DRY_RUN, NO_COORDINATOR, NO_ORGANIZER, BATCH_MODE, FAST_MODE, FLUSH_CACHE, CACHE_EXPIRE_DAYS, 
-    EXPORT_AUDIT_LOG, REST_API, SELF_HEAL, MAX_RETRIES, COOLDOWN, DB_PATH, CACHE_DIR, PROJECT_ROOT
+    BATCH_MODE,
+    CACHE_DIR,
+    CACHE_EXPIRE_DAYS,
+    CONTEXT_PATH,
+    COOLDOWN,
+    CORRECTION_MODE,
+    DB_PATH,
+    DRY_RUN,
+    ENABLE_ENHANCED,
+    EXPORT_AUDIT_LOG,
+    FAST_MODE,
+    FIELDS,
+    FILTER_CONTEXT_KEY,
+    FILTER_VALUE,
+    FLUSH_CACHE,
+    INTEGRITY_CHECK,
+    LLM_API_KEY,
+    LLM_EXTRA_INSTRUCTIONS,
+    LLM_MODEL,
+    LLM_PROVIDER,
+    LLM_SYSTEM_PROMPT,
+    LOG_DIR,
+    MAX_RETRIES,
+    NO_COORDINATOR,
+    NO_ORGANIZER,
+    PROJECT_ROOT,
+    REST_API,
+    SELF_HEAL,
+    UPDATE_DB,
 )
+from ..Context_Integration.librarian import load_context_library
+from ..utils.db_utils import get_engine
+from ..utils.logger_singleton import console, logger
+from ..utils.models import Base
+
 try:
     import openai
 except ImportError:
@@ -305,7 +333,7 @@ class BotPipeline:
             if exit_code == 0:
                 logger.info("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
                 return 0
-            logger.warning(f"[SELF-HEAL] Misalignments found. Launching manual_correction...")
+            logger.warning("[SELF-HEAL] Misalignments found. Launching manual_correction...")
             self.manual_correction(args=self.build_correction_args())
             logger.warning(f"[SELF-HEAL] Sleeping {cooldown}s before rescanning...")
             time.sleep(cooldown)
@@ -462,7 +490,11 @@ class BotPipeline:
     def context_postprocess(self):
         try:
             # Example: add your context modules here
-            from ..Context_Integration import context_organizer, context_coordinator, Integrity_check
+            from ..Context_Integration import (
+                Integrity_check,
+                context_coordinator,
+                context_organizer,
+            )
             contests = self.context.get("contests", [])
             if contests:
                 Integrity_check.print_integrity_summary(contests)

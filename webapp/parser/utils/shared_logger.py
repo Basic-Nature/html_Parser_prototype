@@ -1,4 +1,8 @@
 from __future__ import annotations
+
+import inspect
+import logging
+
 # webapp/parser/utils/shared_logger.py
 # -----------------------------------------------------------------------------------
 # This file contains the SharedLogger class, which provides a unified logging interface
@@ -8,21 +12,28 @@ from __future__ import annotations
 import os
 import re
 import time
-import logging
-import inspect
 import traceback
-import orjson
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Generator, Tuple, Set
-from rich import print as rprint
-from rich.logging import RichHandler
-from rich.console import Console, RenderableType
-from rich.panel import Panel
-from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
-from rich.json import JSON
-from rich.table import Table
 from contextlib import contextmanager
 from io import StringIO
+from pathlib import Path
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple
+
+import orjson
+from rich import print as rprint
+from rich.console import Console, RenderableType
+from rich.json import JSON
+from rich.logging import RichHandler
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
+from rich.table import Table
+
 
 def safe_getvalue(file_obj: StringIO) -> str:
     """
@@ -193,6 +204,24 @@ class SharedLogger(logging.Logger):
         self._warned_sections = set()
         self.console_echo_webapp = False
         self._setup_python_logger()
+        # In-memory test sinks for deterministic capture in tests
+        self._test_sinks: list[Callable[[dict], None]] = []
+
+    # --- Test sink management (for deterministic unit tests) ---
+    def add_test_sink(self, sink: Callable[[dict], None]) -> None:
+        try:
+            self._test_sinks.append(sink)
+        except Exception:
+            pass
+
+    def remove_test_sink(self, sink: Callable[[dict], None]) -> None:
+        try:
+            self._test_sinks.remove(sink)
+        except Exception:
+            pass
+
+    def clear_test_sinks(self) -> None:
+        self._test_sinks.clear()
 
     def enable_console_echo_webapp(self, flag: bool):
         """Optionally mirror webapp emissions to console (off by default to prevent duplicates)."""
@@ -269,10 +298,8 @@ class SharedLogger(logging.Logger):
             label = match.group(1)
             rest = match.group(2)
             if " " in label:
-                *style_parts, color = label.split()
-                style = " ".join(style_parts)
+                *_, color = label.split()
             else:
-                style = None
                 color = label
             color_map = {
                 "INFO": "green",
@@ -461,6 +488,21 @@ class SharedLogger(logging.Logger):
                 else:
                     f.write(f"{log_line['timestamp']} [{log_line['level']}] {log_line['message']}\n")
 
+        # Test sinks: always emit a structured payload for deterministic capture
+        try:
+            payload = {
+                "level": level,
+                "message": (msg if isinstance(msg, dict) else (msg_obj if msg_obj is not None else msg_str)),
+                "context": context,
+            }
+            for sink in list(self._test_sinks):
+                try:
+                    sink(payload)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     # --- Progress Bar Helper ---
     @contextmanager
     def progress_bar(
@@ -532,8 +574,10 @@ class SharedLogger(logging.Logger):
                 task_id = progress.add_task(desc_clean or "Processing", total=total)
                 def update_progress(completed: int, extra: Optional[dict] = None) -> None:
                     # Clamp and update both completion and (optionally) description
-                    if completed < 0: completed = 0
-                    if total and completed > total: completed = total
+                    if completed < 0:
+                        completed = 0
+                    if total and completed > total:
+                        completed = total
                     kwargs = {"completed": completed}
                     if extra and isinstance(extra, dict):
                         new_desc = extra.get("message") or extra.get("description")

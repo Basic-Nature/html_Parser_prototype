@@ -1,29 +1,37 @@
 from __future__ import annotations
+
+import os
+import re
+from collections import defaultdict
+from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
+
+import orjson
+
+from ...Context_Integration.Context_Library.constants import (
+    BALLOT_TYPES,
+    CANDIDATE_KEYWORDS,
+    CONTEST_KEYWORDS,
+    CONTEST_TITLE_SKIP_PHRASES,
+    GROUP_RENAME_MAP,
+    LOCATION_KEYWORDS,
+    PARTY_KEYWORDS,
+)
+from ...utils.contest_selector import (
+    select_contest_auto_first,
+)
+from ...utils.logger_singleton import logger
+from ...utils.output_utils import finalize_election_output
+from ...utils.pivot import expand_single_rawjson_row
+from ...utils.shared_logic import safe_get, safe_slug
+from ...utils.table_builder import build_table_noninteractive
+from ...utils.table_core import robust_table_extraction
+
 # ============================================================
 # 🗳️ Smart Elections: Universal JSON Election Results Parser
 # ============================================================
-import orjson
-import os
-import csv
-import time
-import re
-from collections import defaultdict
-from ...config import (
-    OUTPUT_DIR
-)
-from ...Context_Integration.Context_Library.constants import (
-    GROUP_RENAME_MAP, LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
-    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS, CONTEST_TITLE_SKIP_PHRASES
-)
-from ...utils.logger_singleton import logger, console, prompt
-from ...utils.table_core import harmonize_headers_and_data
-from ...utils.contest_selector import select_contest
-from ...utils.table_builder import build_table_noninteractive
-from ...utils.output_utils import finalize_election_output
-from ...utils.shared_logic import safe_slug
 
 # Add robust regex builder for contest keywords
-def _build_contest_regex(keywords) -> re.Pattern:
+def _build_contest_regex(keywords: Iterable[str] | None) -> re.Pattern:
     """
     Build a tolerant regex that matches keyword phrases even with dots, hyphens, or extra separators.
     - Treat '.' as optional (e.g., 'u.s.' ~ 'us')
@@ -53,9 +61,9 @@ def _build_contest_regex(keywords) -> re.Pattern:
     return re.compile("|".join(parts), re.I)
 
 # Precompile regex once
-_CONTEST_RX = _build_contest_regex(CONTEST_KEYWORDS)
+_CONTEST_RX: re.Pattern = _build_contest_regex(CONTEST_KEYWORDS)
 
-def find_key_by_keywords(obj, keywords):
+def find_key_by_keywords(obj: Dict[str, Any] | Any, keywords: Iterable[str]) -> Optional[str]:
     """Find the first key in obj that matches any keyword (case-insensitive, partial match allowed)."""
     if not isinstance(obj, dict):
         return None
@@ -73,16 +81,21 @@ def find_key_by_keywords(obj, keywords):
                 return key
     return None
 
-def _is_dict_list(x) -> bool:
-    return isinstance(x, list) and x and all(isinstance(i, dict) for i in x)
+def _is_dict_list(x: Any) -> bool:
+    # Ensure we return a strict boolean, not a possibly-empty list via short-circuit behavior
+    return isinstance(x, list) and bool(x) and all(isinstance(i, dict) for i in x)
 
-def parse_json_election_results(json_path, session_id=None, coordinator=None):
+def parse_json_election_results(
+    json_path: str,
+    session_id: Optional[str] = None,
+    coordinator: Any = None,
+) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     with open(json_path, "rb") as f:
         data = orjson.loads(f.read())
 
     # --- Resolve where "ballot items/contests" live ---
     results_obj = data.get("results")
-    ballot_items = []
+    ballot_items: Any = []
     if isinstance(results_obj, dict):
         ballot_items_key = find_key_by_keywords(
             results_obj,
@@ -137,41 +150,32 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
             "message": "No contests found in JSON.",
             "session_id": session_id
         })
-        return None, None, None, {"error": "No contests found"}
+        return [], [], "", {"error": "No contests found"}
 
-    # Select contest
-    if len(contests) == 1:
-        target_contest = next(iter(contests))
-    else:
-        selector_data = {
+    selection_context = {
+        "selector_data": {
             "contests": [{"title": name} for name in sorted(contests)],
             "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())]
-        }
-        logger.debug({
-            "level": "DEBUG",
+        },
+        "input_file": os.path.basename(json_path)
+    }
+
+    auto_pick = select_contest_auto_first(
+        coordinator=coordinator,
+        context=selection_context,
+        session_id=session_id,
+        allow_multiple=False,
+        force_interactive=False
+    )
+    if not auto_pick:
+        logger.error({
+            "level": "ERROR",
             "type": "input",
-            "message": f"Multiple contests found: {sorted(contests)}: [filtered {_CONTEST_RX.pattern}]: [unfiltered {CONTEST_KEYWORDS}]",
-            "session_id": session_id,
+            "message": "No contest selected.",
+            "session_id": session_id
         })
-        selected = select_contest(
-            coordinator=coordinator,
-            state=None, county=None, year=None,
-            session_id=session_id,
-            context={"selector_data": selector_data},
-            allow_multiple=False,
-            prompt_message="[PROMPT] Select contest (index, text, or 'cancel'): ",
-            force_interactive=True,
-            disable_ml_verify=False
-        )
-        if not selected:
-            logger.error({
-                "level": "ERROR",
-                "type": "input",
-                "message": "No contest selected.",
-                "session_id": session_id
-            })
-            return None, None, None, {"error": "No contest selected"}
-        target_contest = (selected[0] or {}).get("title") or next(iter(contests))
+        return [], [], "", {"error": "No contest selected"}
+    target_contest = safe_get(auto_pick[0], "title") or next(iter(contests))
 
     logger.info({
         "level": "INFO",
@@ -192,9 +196,29 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
     # --- Extract options/candidates and nested results when schema supports it ---
     rows = []
     headers = []
+    normalization_map: Dict[str, str] = {}
+    candidate_metadata: List[Dict[str, Any]] = []
+    candidate_header_map: Dict[str, set] = defaultdict(set)
+    candidate_id_map: Dict[str, str] = {}
     if isinstance(contest_item, dict):
-        ballot_options_key = find_key_by_keywords(contest_item, set(CANDIDATE_KEYWORDS) | {"ballotoption", "ballotoptions", "candidates"})
+        ballot_options_key = find_key_by_keywords(
+            contest_item,
+            {"ballotoption", "ballotoptions", "candidates", "options", "choices"},
+        )
         ballot_options = contest_item.get(ballot_options_key, []) if ballot_options_key else []
+
+        if not _is_dict_list(ballot_options):
+            # Fall back to the first list-of-dicts payload that looks candidate-like.
+            for key, value in contest_item.items():
+                if key == ballot_options_key:
+                    continue
+                if not _is_dict_list(value):
+                    continue
+                exemplar = value[0]
+                if find_key_by_keywords(exemplar, set(CANDIDATE_KEYWORDS) | {"name", "label"}):
+                    ballot_options_key = key
+                    ballot_options = value
+                    break
         if _is_dict_list(ballot_options):
             candidate_name_key = find_key_by_keywords(ballot_options[0], set(CANDIDATE_KEYWORDS) | {"name"})
             party_key = find_key_by_keywords(ballot_options[0], set(PARTY_KEYWORDS) | {"politicalparty"})
@@ -207,20 +231,31 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
                 set(BALLOT_TYPES) | {"groupresult", "groupresults"}
             )
 
-            # Build normalization map for candidates/parties
-            raw_candidates = {}
+            # Build normalization map and candidate metadata entries
+            raw_candidates: Dict[str, str] = {}
+            candidate_metadata = []
+            candidate_id_map = {}
             for opt in ballot_options:
                 raw = (opt.get(candidate_name_key, "") or "").strip()
                 party = (opt.get(party_key, "") or "") if party_key else ""
                 label = f"{raw} ({party})" if party else raw
                 if raw:
                     raw_candidates[raw] = label
+                meta = {
+                    "id": opt.get("id"),
+                    "raw_name": raw,
+                    "display_label": label,
+                    "party": party,
+                    "ballot_order": opt.get("ballotOrder"),
+                }
+                candidate_metadata.append(meta)
+                if opt.get("id") is not None and raw:
+                    candidate_id_map[str(opt.get("id"))] = label
 
             normalization_map = {k: v for k, v in raw_candidates.items()}
 
             # Build nested results -> flat rows
-            from collections import defaultdict
-            results_nested = defaultdict(lambda: defaultdict(dict))
+            results_nested: Dict[str, Dict[str, Dict[str, Any]]] = defaultdict(lambda: defaultdict(dict))
             for opt in ballot_options:
                 raw_label = (opt.get(candidate_name_key, "") or "").strip()
                 if not raw_label:
@@ -252,16 +287,23 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
                         col_name = f"{norm_label} - {method}"
                         row[col_name] = count
                         all_keys.add(col_name)
+                        candidate_header_map[norm_label].add(method)
                 rows.append(row)
             headers = ["Precinct"] + sorted(all_keys)
+
+            # Freeze candidate_header_map into JSON-serializable structure
+            candidate_header_map = {
+                label: sorted({m for m in methods if m})
+                for label, methods in candidate_header_map.items()
+            }
 
     # --- Fallback when schema isn't the expected nested structure ---
     if not rows:
         # Try to emit something useful rather than crash
         try:
             raw_blob = contest_item if contest_item is not None else ballot_items
-            blob_str = orjson.dumps(raw_blob, option=orjson.OPT_INDENT_2)
-            blob_str = blob_str.decode("utf-8", errors="ignore")
+            blob_bytes = orjson.dumps(raw_blob, option=orjson.OPT_INDENT_2)
+            blob_str = blob_bytes.decode("utf-8", errors="ignore")
         except Exception:
             blob_str = str(contest_item or ballot_items)
         # Limit very large strings
@@ -271,7 +313,11 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
         rows = [{"Contest": target_contest, "RawJSON": blob_str}]
 
     # Harmonize/pivot via non-interactive builder
-    headers, rows = harmonize_headers_and_data(headers, rows)
+    headers, rows = expand_single_rawjson_row(headers, rows, context={
+        "contest": target_contest,
+        "handler": "json_handler",
+        "phase": "pre_builder"
+    })
 
     fname = os.path.basename(json_path).lower()
     state = "Unknown"
@@ -285,6 +331,16 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
     year = int(m.group(0)) if m else None
 
     domain = safe_slug(os.path.basename(json_path))
+    candidate_header_map_serializable: Dict[str, List[str]] = {}
+    for label, methods in candidate_header_map.items():
+        if isinstance(methods, (set, list, tuple)):
+            filtered = sorted({(m or "").strip() for m in methods if m})
+        elif methods:
+            filtered = [str(methods)]
+        else:
+            filtered = []
+        candidate_header_map_serializable[label] = filtered
+
     context = {
         "contest": target_contest,
         "state": state,
@@ -293,7 +349,11 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
         "session_id": session_id,
         "handler": "json_handler",
         "contest_slug": safe_slug(target_contest, 80),
-        "source_slug": domain
+        "source_slug": domain,
+        "candidate_label_map": normalization_map,
+        "candidate_header_map": candidate_header_map_serializable,
+        "candidate_metadata": candidate_metadata,
+        "candidate_id_to_label": candidate_id_map,
     }
     headers_final, data_final, _entity_info = build_table_noninteractive(
         domain=domain,
@@ -305,19 +365,28 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
         debug=False
     )
 
-    result = finalize_election_output(
+    # Ensure the output context carries forward candidate metadata while dropping
+    # non-serializable helpers (like the coordinator instance) before we hand it
+    # to finalize_election_output for JSON serialization.
+    export_context = {
+        k: v for k, v in context.items()
+        if k not in {"coordinator"}
+    }
+    export_context.update({
+        "handler": "json_handler",
+        "input_file": os.path.basename(json_path),
+        "session_id": session_id,
+        "race": target_contest,
+    })
+
+    finalized = finalize_election_output(
         headers=headers_final,
         data=data_final,
         coordinator=coordinator,
         contest=target_contest,
         state=state,
         county=county,
-        context={
-            "handler": "json_handler",
-            "input_file": os.path.basename(json_path),
-            "session_id": session_id,
-            "race": target_contest
-        },
+        context=export_context,
         enable_user_feedback=False,
         session_id=session_id
     )
@@ -325,32 +394,108 @@ def parse_json_election_results(json_path, session_id=None, coordinator=None):
     metadata = {
         "race": target_contest,
         "input_file": os.path.basename(json_path),
-        "output_file": os.path.basename(result.get("csv_path", "")),
+        "output_file": os.path.basename(finalized.get("csv_path", "")),
         "headers": headers_final,
         "row_count": len(data_final),
         "handler": "json_handler",
         "state": state,
         "county": county,
         "year": year,
-        "csv_path": result.get("csv_path"),
-        "metadata_path": result.get("metadata_path")
+        "csv_path": finalized.get("csv_path"),
+        "metadata_path": finalized.get("metadata_path"),
+        "candidate_label_map": normalization_map,
+        "candidate_header_map": candidate_header_map_serializable,
+        "candidate_metadata": candidate_metadata,
+        "candidate_id_to_label": candidate_id_map,
     }
 
     logger.info({
         "level": "INFO",
         "type": "output",
-        "message": f"✅ Completed! Output CSV: {result.get('csv_path')}, Metadata: {result.get('metadata_path')}",
+        "message": f"✅ Completed! Output CSV: {finalized.get('csv_path')}, Metadata: {finalized.get('metadata_path')}",
         "session_id": session_id
     })
 
     return headers_final, data_final, target_contest, metadata
 
-def parse(page=None, coordinator=None, html_context=None, manual_file=None, session_id=None, **kwargs):
+def parse(
+    page: Any | None = None,
+    coordinator: Any | None = None,
+    html_context: Dict[str, Any] | None = None,
+    manual_file: str | None = None,
+    session_id: Optional[str] = None,
+    **kwargs: Any,
+) -> Tuple[List[str] | None, List[Dict[str, Any]] | None, str | None, Dict[str, Any]]:
     """
     Universal pipeline entry: Accepts a JSON file path (manual_file) from the format router.
     Returns: headers, data, contest, metadata
     """
     html_context = html_context or {}
+    # Parity guard: allow provided_tables + skip_pivot without manual_file
+    provided_tables = html_context.get("provided_tables")
+    if isinstance(provided_tables, list) and provided_tables:
+        ctx = dict(html_context)
+        ctx.update({
+            "session_id": session_id,
+            "coordinator": coordinator,
+        })
+        merged_headers, merged_rows = robust_table_extraction(page=None, extraction_context=ctx)
+
+        contest = html_context.get("contest") or "Provided Tables"
+        state = html_context.get("state") or "Unknown"
+        county = html_context.get("county") or "Unknown"
+        year = html_context.get("year")
+        domain = html_context.get("source_slug") or safe_slug(contest)
+
+        headers_final, data_final, _entity_info = build_table_noninteractive(
+            domain=domain,
+            headers=merged_headers,
+            data=merged_rows,
+            coordinator=coordinator,
+            context={
+                **ctx,
+                "contest": contest,
+                "state": state,
+                "county": county,
+                "year": year,
+                "handler": "json_handler",
+            },
+            pivot_to_wide=not bool(html_context.get("skip_pivot")),
+            debug=False,
+        )
+
+        finalized = finalize_election_output(
+            headers=headers_final,
+            data=data_final,
+            coordinator=coordinator,
+            contest=contest,
+            state=state,
+            county=county,
+            context={
+                "handler": "json_handler",
+                "session_id": session_id,
+                "race": contest,
+                "provided_tables": True,
+                "skip_pivot": bool(html_context.get("skip_pivot")),
+            },
+            enable_user_feedback=False,
+            session_id=session_id,
+        )
+
+        metadata = {
+            "race": contest,
+            "input_file": html_context.get("input_file") or "<provided>",
+            "output_file": os.path.basename(finalized.get("csv_path", "")),
+            "headers": headers_final,
+            "row_count": len(data_final),
+            "handler": "json_handler",
+            "state": state,
+            "county": county,
+            "year": year,
+            "csv_path": finalized.get("csv_path"),
+            "metadata_path": finalized.get("metadata_path"),
+        }
+        return headers_final, data_final, contest, metadata
     if html_context.get("skip_format") or html_context.get("manual_skip"):
         logger.info({
             "level": "INFO",
@@ -378,8 +523,8 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
 
     result = parse_json_election_results(manual_file, session_id=session_id, coordinator=coordinator)
 
-    # Defensive: always return a 4-tuple, never a bool
-    if not (isinstance(result, tuple) and len(result) == 4):
+    result_any = cast(Any, result)
+    if not (isinstance(result_any, tuple) and len(result_any) == 4):
         logger.error({
             "level": "ERROR",
             "type": "handler",
@@ -388,4 +533,4 @@ def parse(page=None, coordinator=None, html_context=None, manual_file=None, sess
             "got_type": type(result).__name__
         })
         return None, None, None, {"error": "Invalid parse result"}
-    return result
+    return cast(Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]], result_any)

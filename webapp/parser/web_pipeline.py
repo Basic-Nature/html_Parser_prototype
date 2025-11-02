@@ -1,20 +1,19 @@
-from .html_election_parser import main
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 import threading
 import time
-import os
-import orjson
 import traceback
-from .utils.shared_logic import (
-    safe_set,
-    safe_clear,
-    safe_is_set
-)
-from .utils.logger_singleton import logger, prompt
+
+import orjson
+
 from .config import (
-    PIPELINE_MAX_WORKERS, PIPELINE_MAX_ERRORS, PIPELINE_HEARTBEAT_INTERVAL,
-    URL_LIST_FILE
+    PIPELINE_HEARTBEAT_INTERVAL,
+    PIPELINE_MAX_WORKERS,
+    URL_LIST_FILE,
 )
+from .html_election_parser import main
+from .utils.logger_singleton import logger, prompt
+from .utils.shared_logic import safe_clear, safe_is_set, safe_set
+
 
 class CancellationManager(threading.Thread):
     """

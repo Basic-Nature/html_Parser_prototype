@@ -1,4 +1,8 @@
 from __future__ import annotations
+
+import asyncio
+import inspect
+
 # utils/browser_utils.py
 # ---------------------------------------------------------------
 # Handles launching the Playwright browser (sync or async) and applying stealth,
@@ -7,28 +11,30 @@ from __future__ import annotations
 # ---------------------------------------------------------------
 import os
 import random
-import time
-import inspect
-import asyncio
 import re
-from typing import (
-    Protocol, Optional, Tuple, Union, Any, Sequence, Dict, TypeVar
-)
+import time
+from typing import Any, Dict, Optional, Protocol, Sequence, Tuple, TypeVar, Union
+
+from playwright.async_api import Browser as AsyncBrowser
+from playwright.async_api import BrowserContext as AsyncBrowserContext
+from playwright.async_api import BrowserType as AsyncBrowserType
+from playwright.async_api import ElementHandle as AsyncElementHandle
+from playwright.async_api import Locator as AsyncLocator
+from playwright.async_api import Page as AsyncPage
+from playwright.async_api import async_playwright
+from playwright.sync_api import Browser as SyncBrowser
+from playwright.sync_api import BrowserContext as SyncBrowserContext
+from playwright.sync_api import BrowserType as SyncBrowserType
+from playwright.sync_api import ElementHandle as SyncElementHandle
+from playwright.sync_api import Locator as SyncLocator
+from playwright.sync_api import Page as SyncPage
+from playwright.sync_api import sync_playwright
 from selectolax.parser import Node as SelectolaxNode
-from playwright.sync_api import (
-    sync_playwright, Browser as SyncBrowser, BrowserContext as SyncBrowserContext,
-    Page as SyncPage, BrowserType as SyncBrowserType, ElementHandle as SyncElementHandle, Locator as SyncLocator
-)
-from playwright.async_api import (
-    async_playwright, Browser as AsyncBrowser, BrowserContext as AsyncBrowserContext,
-    Page as AsyncPage, BrowserType as AsyncBrowserType, ElementHandle as AsyncElementHandle, Locator as AsyncLocator
-)
 from selenium.webdriver.remote.webelement import WebElement as SeleniumElement
-from .logger_singleton import logger, console, prompt
-from .shared_logic import (
-    safe_lower, safe_get_first
-)
+
 from ..config import CONTEXT_LIBRARY_PATH
+from .logger_singleton import console, logger, prompt
+from .shared_logic import safe_get_first, safe_lower
 
 # --- Type Aliases for IDE and Type Checking ---
 PageType = Union[SyncPage, AsyncPage]
@@ -118,7 +124,8 @@ def safe_inner_text(obj: Optional[ElementType | PageType], logger=logger) -> str
         logger and logger.error(f"[safe_inner_text] Object is not a Playwright ElementHandle, Locator, or Page: {type(obj)}")
         return ""
     except Exception as e:
-        if logger: logger.error(f"[safe_inner_text] Error: {e}")
+        if logger:
+            logger.error(f"[safe_inner_text] Error: {e}")
         return ""
 
 def safe_locator(page: Optional[PageType], selector: str, logger=logger) -> Optional[LocatorType]:
@@ -128,7 +135,8 @@ def safe_locator(page: Optional[PageType], selector: str, logger=logger) -> Opti
             return page.locator(selector)
         return None
     except Exception as e:
-        if logger: logger.error(f"[safe_locator] Error: {e}")
+        if logger:
+            logger.error(f"[safe_locator] Error: {e}")
         return None
 
 def safe_evaluate(obj: Optional[EvaluateType], script: str, logger=logger) -> Any:
@@ -161,7 +169,8 @@ def safe_evaluate(obj: Optional[EvaluateType], script: str, logger=logger) -> An
             logger.error(f"[safe_evaluate] Object is not a Playwright Page or ElementHandle: {type(obj)}")
             return None
     except Exception as e:
-        if logger: logger.error(f"[safe_evaluate] Error: {e}")
+        if logger:
+            logger.error(f"[safe_evaluate] Error: {e}")
         return None
 
 def safe_wait_for_timeout(page: Optional[PageType], ms: int, logger=logger) -> bool:
@@ -172,7 +181,8 @@ def safe_wait_for_timeout(page: Optional[PageType], ms: int, logger=logger) -> b
             return True
         return False
     except Exception as e:
-        if logger: logger.error(f"[safe_wait_for_timeout] Error: {e}")
+        if logger:
+            logger.error(f"[safe_wait_for_timeout] Error: {e}")
         return False
 
 def safe_content(page: Optional[PageType], session_id: Optional[str] = None) -> str:
@@ -212,7 +222,8 @@ def safe_is_visible(element: Optional[ElementType], logger=logger) -> bool:
             return element.is_visible()
         return False
     except Exception as e:
-        if logger: logger.error(f"[safe_is_visible] Error: {e}")
+        if logger:
+            logger.error(f"[safe_is_visible] Error: {e}")
         return False
 
 def safe_is_enabled(element: Optional[ElementType], logger=logger) -> bool:
@@ -222,7 +233,8 @@ def safe_is_enabled(element: Optional[ElementType], logger=logger) -> bool:
             return element.is_enabled()
         return False
     except Exception as e:
-        if logger: logger.error(f"[safe_is_enabled] Error: {e}")
+        if logger:
+            logger.error(f"[safe_is_enabled] Error: {e}")
         return False
 
 def safe_click(element: Optional[ElementType], logger=logger) -> bool:
@@ -233,7 +245,8 @@ def safe_click(element: Optional[ElementType], logger=logger) -> bool:
             return True
         return False
     except Exception as e:
-        if logger: logger.error(f"[safe_click] Error: {e}")
+        if logger:
+            logger.error(f"[safe_click] Error: {e}")
         return False
 
 def safe_get_attribute(element: Optional[ElementType], attr: str, logger=logger) -> str:
@@ -244,7 +257,8 @@ def safe_get_attribute(element: Optional[ElementType], attr: str, logger=logger)
             return val if val is not None else ""
         return ""
     except Exception as e:
-        if logger: logger.error(f"[safe_get_attribute] Error: {e}")
+        if logger:
+            logger.error(f"[safe_get_attribute] Error: {e}")
         return ""
 
 def safe_attributes(element: ElementLike) -> Dict[str, str]:
@@ -324,7 +338,8 @@ def safe_query_selector_all(page: Optional[PageType], selector: str, logger=logg
             return page.query_selector_all(selector)
         return []
     except Exception as e:
-        if logger: logger.error(f"[safe_query_selector_all] Error: {e}")
+        if logger:
+            logger.error(f"[safe_query_selector_all] Error: {e}")
         return []
 
 def safe_context_library(page: Optional[PageType] = None, session_id: Optional[str] = None) -> dict:
@@ -368,7 +383,8 @@ def safe_count(obj: Optional[Any], logger=logger) -> int:
         logger and logger.warning(f"[safe_count] Object is not countable: {type(obj)}")
         return 0
     except Exception as e:
-        if logger: logger.error(f"[safe_count] Error: {e}")
+        if logger:
+            logger.error(f"[safe_count] Error: {e}")
         return 0
 
 def safe_context_result(page: Optional[PageType], session_id: Optional[str] = None) -> dict:
@@ -621,7 +637,7 @@ def autoscroll_until_stable(
     url_str = safe_url(page)
     domain = domain or (
         safe_get_first(url_str.split("/"), "domain_split", None, logger, default="")
-        if not ("://" in url_str) else
+        if "://" not in url_str else
         safe_get_first(url_str.split("/"), "domain_split", None, logger, default="")
     )
     if "://" in url_str and len(url_str.split("/")) > 2:

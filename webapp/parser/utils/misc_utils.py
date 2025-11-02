@@ -1,16 +1,20 @@
 from __future__ import annotations
+
 # webapp/parser/utils/misc_utils.py
 # ---------------------------------------------------------------
 # Miscellaneous utility functions for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
 import hashlib
 import os
+from pathlib import Path
+from typing import Any, Dict, List
+
 import orjson
+
+from ..config import CONTEXT_LIBRARY_PATH, OUTPUT_CACHE, PROCESSED_URLS_FILE
 from .logger_singleton import logger
 from .shared_logic import safe_get
-from typing import Dict, Any, List
-from pathlib import Path
-from ..config import CONTEXT_LIBRARY_PATH, PROCESSED_URLS_FILE, OUTPUT_CACHE
+
 
 # --- Utility: Processed URL cache (unchanged, not DB) ---
 def load_processed_urls() -> Dict[str, Any]:

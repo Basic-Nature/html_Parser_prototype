@@ -78,7 +78,38 @@ Used when no `state_router` match is found.
   ```python
   return headers, data_rows, contest, metadata
 
----
+### Provided tables and skip_pivot
+
+Format handlers (CSV/JSON/PDF) support a parity path that lets you supply pre-extracted table data and control whether the pivot-to-wide step runs. Pass these fields via `html_context`:
+
+- `provided_tables`: list of `(headers, rows)` pairs, where `headers` is a list of column names and `rows` is a list of row dicts. Multiple tables will be merged and harmonized.
+- `skip_pivot`: boolean; when true, the builder will not pivot to wide format and will emit the normalized table instead.
+
+Example usage:
+
+```python
+html_context = {
+  "state": "New York",
+  "county": "New York",
+  "contest": "District Attorney",
+  "provided_tables": [
+    (
+      ["Precinct", "Candidate", "Votes"],
+      [
+        {"Precinct": "01-01", "Candidate": "Jane Doe", "Votes": 1234},
+        {"Precinct": "01-01", "Candidate": "John Smith", "Votes": 1110},
+      ],
+    )
+  ],
+  "skip_pivot": True,
+}
+
+# CSV/JSON/PDF handlers will detect provided_tables and route through the
+# unified builder and output pipeline accordingly.
+headers, rows, contest, metadata = csv_handler.parse(None, html_context)
+```
+
+This path mirrors the HTML handler behavior and ensures that downstream schema events (normalized and wide) are emitted consistently. See Architecture docs for the Schema Events section.
 
 ## 🔁 Reusable Helpers (handlers/shared)
 

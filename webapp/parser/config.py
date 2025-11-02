@@ -5,16 +5,18 @@ Central configuration module for the Smart Elections Parser Webapp.
 - This file is imported by all modules needing configuration, paths, or environment-based toggles.
 - No Flask app or runtime logic should be placed here—only configuration and helpers.
 """
-
 import os
 import threading
-from pathlib import Path
-import orjson
 import urllib.parse
+from pathlib import Path
+
+import orjson
 import psycopg2
-from sqlalchemy import create_engine
-from .utils.logger_singleton import logger
 from azure.identity import DefaultAzureCredential
+from sqlalchemy import create_engine
+
+from .utils.logger_singleton import logger
+
 try:
     import dotenv
     dotenv.load_dotenv()
@@ -175,6 +177,11 @@ DEFAULT_CAPTCHA_TIMEOUT = int(os.environ.get("CAPTCHA_TIMEOUT", "300"))
 DISABLE_HTML_FALLBACK = os.environ.get("DISABLE_HTML_FALLBACK", "0").lower() in ("1", "true", "yes")
 
 ENABLE_OCR = os.environ.get("ENABLE_OCR", "true").lower() in ("1","true","yes")
+
+ENABLE_CAMELOT = True
+CAMELOT_MIN_SCORE = 0.9
+CAMELOT_HYBRID_FILL = True
+CAMELOT_MERGE_COMPAT = True
 # Force OCR even if PyMuPDF returns text (for debugging tricky PDFs)
 ENABLE_OCR_FORCE = os.environ.get("ENABLE_OCR_FORCE", "false").lower() in ("1","true","yes")
 # Optional binaries (Windows)
@@ -243,7 +250,7 @@ def get_supported_formats():
     Priority:
       1. SUPPORTED_FORMATS env variable (comma-separated, e.g. ".csv,.json")
       2. context_library.json 'supported_formats' key (if context_library is a dict)
-      3. Default: [".json", ".csv", ".pdf"]
+    3. Default: [".json", ".csv", ".pdf", ".txt", ".xlsx"]
     """
     env_formats = os.environ.get("SUPPORTED_FORMATS")
     if env_formats:
@@ -256,16 +263,16 @@ def get_supported_formats():
             with open(CONTEXT_LIBRARY_PATH, "rb") as f:
                 context_library = orjson.loads(f.read())
             if isinstance(context_library, dict):
-                formats_raw = context_library.get("supported_formats", [".json", ".csv", ".pdf"])
+                formats_raw = context_library.get("supported_formats", [".json", ".csv", ".pdf", ".txt", ".xlsx"])
                 if isinstance(formats_raw, list):
                     return formats_raw
                 elif isinstance(formats_raw, str):
                     import json
                     parsed = json.loads(formats_raw)
-                    return parsed if isinstance(parsed, list) else [".json", ".csv", ".pdf"]
+                    return parsed if isinstance(parsed, list) else [".json", ".csv", ".pdf", ".txt", ".xlsx"]
     except Exception:
         pass  # Optionally log error here
-    return [".json", ".csv", ".pdf"]
+    return [".json", ".csv", ".pdf", ".txt", ".xlsx"]
 
 SUPPORTED_FORMATS = [ext for ext in get_supported_formats() if ext.lower() not in [".html", "html"]]
 
@@ -357,7 +364,8 @@ __all__ = [
     "INCLUDE_TIMESTAMP_IN_FILENAME","ENABLE_PARALLEL","ENABLE_AI_ANALYSIS",
     "ENABLE_REALTIME_STREAM","FORCE_PARSE_INPUT_FILE","FORCE_PARSE_FORMAT",
     "MAX_URLS_DISPLAYED","PIPELINE_MAX_WORKERS","PIPELINE_MAX_ERRORS",
-    "PIPELINE_HEARTBEAT_INTERVAL","ENABLE_USER_FEEDBACK", "DISABLE_HTML_FALLBACK",
+    "PIPELINE_HEARTBEAT_INTERVAL","ENABLE_USER_FEEDBACK", "DISABLE_HTML_FALLBACK", "ENABLE_CAMELOT",
+    "CAMELOT_MIN_SCORE","CAMELOT_HYBRID_FILL","CAMELOT_MERGE_COMPAT",
 
     # Training params
     "SBERT_EPOCHS","SBERT_BATCH_SIZE","SPACY_NER_EPOCHS","SPACY_NER_PATIENCE",

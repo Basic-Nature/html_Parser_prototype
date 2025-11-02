@@ -1,17 +1,22 @@
 from __future__ import annotations
+
+import ctypes
+import os
+import platform
+
 # utils/captcha_tools.py
 # ---------------------------------------------------------------
 # CAPTCHA detection and user-intervention handler (browser-agnostic)
 # ---------------------------------------------------------------
 import time
-import os
-import platform
-import ctypes
 from typing import Any, Protocol, runtime_checkable
-from .logger_singleton import logger
+
 import orjson
+
 from ..config import CONTEXT_LIBRARY_PATH, DEFAULT_CAPTCHA_TIMEOUT
+from .logger_singleton import logger
 from .shared_logic import safe_get, safe_lower
+
 
 @runtime_checkable
 class HasContent(Protocol):

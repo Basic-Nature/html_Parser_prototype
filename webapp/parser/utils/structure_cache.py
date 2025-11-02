@@ -3,8 +3,10 @@ structure_cache.py
 Lightweight in-memory cache + signature helper for table structures.
 """
 from __future__ import annotations
-from typing import List, Dict, Any
+
 import hashlib
+from typing import Any, Dict, List
+
 from .detect import normalize_header
 
 _STRUCTURE_CACHE: Dict[str, Dict[str, Any]] = {}

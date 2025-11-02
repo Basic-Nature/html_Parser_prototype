@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # webapp/parser/utils/spacy_utils.py
 # -----------------------------------------------------------------------------------
 # Advanced spaCy NLP utilities for election data integrity, context validation, and interference mitigation.
@@ -8,20 +9,19 @@ spacy_utils.py
 
 Advanced spaCy NLP utilities for election data integrity, context validation, and interference mitigation.
 """
-import spacy
-import sys
-import re
 import os
-import orjson
+import re
+import sys
 from collections import Counter
-from typing import List, Tuple, Dict, Any, Set
-from ..Context_Integration.Context_Library.constants import (
-    KNOWN_STATE_TO_COUNTY_MAP
-)
+from typing import Any, Dict, List, Set, Tuple
+
+import orjson
+import spacy
+
+from ..Context_Integration.Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP
 from .logger_singleton import logger
-from .shared_logic import (
-    safe_get, safe_lower
-)
+from .shared_logic import safe_get, safe_lower
+
 # Load spaCy model globally for efficiency; no runtime download
 try:
     nlp = spacy.load("en_core_web_sm")

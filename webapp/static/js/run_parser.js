@@ -59,8 +59,7 @@
     try { return JSON.parse(s); } catch { return null; }
   }
   function stripMetaLines(rawStr) {
-    if (!ENABLE_META_STRIP || typeof rawStr !== 'string') return rawStr;
-    if (!/(^|\n)\s*(Level:|Type:|Session:)/i.test(rawStr)) return rawStr;
+    if (!ENABLE_META_STRIP || typeof rawStr !== 'string' || !/(^|\n)\s*(Level:|Type:|Session:)/i.test(rawStr)) return rawStr;
     return rawStr
       .split(/\r?\n/)
       .map(l => l.trim())
@@ -97,7 +96,8 @@
   window.showContestPicker = function(sessionId = activeSessionId) {
     const opts = getContestOptions(sessionId);
     if (!opts.length) return false;
-    showIndexedSelectionModal('Select Contest', opts, (selection) => {
+    const ctxSummary = `<div class="small text-muted">${opts.length} option(s)</div>`;
+    showIndexedSelectionModalWithContext('Select Contest', opts, ctxSummary, (selection) => {
       if (!selection) return;
       if (socket) socket.emit('parser_prompt', { session_id: sessionId, value: selection.join(',') });
     });
@@ -390,34 +390,65 @@
   }
 
   // Generic selection modal reusing download modal shell
-  function showIndexedSelectionModal(title, options, onSelect) {
+  function showIndexedSelectionModalWithContext(title, options, ctxSummaryHtml, onSelect) {
     const refs = Modal.get();
     if (!refs) return onSelect(null);
     const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
-
     titleEl.textContent = title || 'Select';
-    summaryDiv.textContent = `${options.length} option(s)`;
+    summaryDiv.innerHTML = ctxSummaryHtml || `${options.length} option(s)`;
+    let filtered = options.slice();
+    let page = 0;
+    const PAGE_SIZE = 200;
+    let rendered = 0;
 
     function renderList(q = '') {
       const query = (q || '').toLowerCase().trim();
-      const filtered = !query
-        ? options
+      filtered = !query
+        ? options.slice()
         : options.filter(o =>
             String(o.index).includes(query) ||
-            o.label.toLowerCase().includes(query) ||
+            (o.label || '').toLowerCase().includes(query) ||
             (o.meta || '').toLowerCase().includes(query)
           );
-
+      page = 0;
+      rendered = 0;
       optionsDiv.innerHTML = '';
-      filtered.forEach(o => {
+      const end = Math.min(filtered.length, PAGE_SIZE);
+      filtered.slice(0, end).forEach(o => {
         const item = document.createElement('div');
         item.className = 'download-option';
         item.tabIndex = 0;
-        item.innerHTML = `<b>[${o.index}]</b> ${esc(o.label)}${o.meta ? ` <small>(${esc(o.meta)})</small>` : ''}`;
-        item.onclick = () => { hide(); onSelect([o.index]); };
-        item.onkeydown = (e) => { if (e.key === 'Enter') { hide(); onSelect([o.index]); } };
+        item.innerHTML = `<b>[${o.index}]</b> ${esc(o.label || '')}${o.meta ? ` <small>(${esc(o.meta)})</small>` : ''}`;
+        item.onclick = () => { Modal.close(); onSelect([o.index]); };
+        item.onkeydown = (e) => { if (e.key === 'Enter') { Modal.close(); onSelect([o.index]); } };
         optionsDiv.appendChild(item);
       });
+      rendered = end;
+      if (rendered < filtered.length) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'btn btn-primary btn-sm mt-1em';
+        more.textContent = `Show more (${filtered.length - rendered} remaining)`;
+        more.onclick = () => {
+          const start = rendered;
+          const newEnd = Math.min(filtered.length, rendered + PAGE_SIZE);
+          filtered.slice(start, newEnd).forEach(o => {
+            const item = document.createElement('div');
+            item.className = 'download-option';
+            item.tabIndex = 0;
+            item.innerHTML = `<b>[${o.index}]</b> ${esc(o.label || '')}${o.meta ? ` <small>(${esc(o.meta)})</small>` : ''}`;
+            item.onclick = () => { Modal.close(); onSelect([o.index]); };
+            item.onkeydown = (e) => { if (e.key === 'Enter') { Modal.close(); onSelect([o.index]); } };
+            optionsDiv.appendChild(item);
+          });
+          rendered = newEnd;
+          more.textContent = rendered >= filtered.length
+            ? 'All options shown'
+            : `Show more (${filtered.length - rendered} remaining)`;
+          if (rendered >= filtered.length) more.remove();
+        };
+        optionsDiv.appendChild(more);
+      }
     }
 
     function hide() { Modal.close(); }
@@ -1940,7 +1971,35 @@
     socket.on('session_list', handleSessionList);
     socket.on('session_deleted', handleSessionDeleted);
     socket.on('session_heartbeat', handleSessionHeartbeat);
+    // Full contest list (paged modal) from backend, with context summary
+    socket.on('contest_options', (payload) => {
+      try {
+        const { session_id, context, total_count, options } = payload || {};
+        if (!Array.isArray(options) || !session_id) return;
 
+        // Persist per-session list (uses existing localStorage-backed helpers)
+        setContestOptions(session_id, options);
+
+        // Only open for active session
+        if (typeof activeSessionId !== 'undefined' && session_id !== activeSessionId) return;
+
+        const ctxSummary = `
+          <div class="small text-muted">
+            ${total_count || 0} option(s)
+            ${context?.state && context.state.toLowerCase() !== 'unknown' ? ` • State: ${esc(context.state)}` : ''}
+            ${context?.county && context.county.toLowerCase() !== 'unknown' ? ` • County: ${esc(context.county)}` : ''}
+            ${context?.handler ? ` • Handler: ${esc(context.handler)}` : ''}
+            ${context?.input_file ? ` • File: ${esc(context.input_file)}` : ''}
+          </div>`.trim();
+
+        showIndexedSelectionModalWithContext('Select Contest', options, ctxSummary, (indices) => {
+          if (!indices) return;
+          socket.emit('contest_selected', { session_id, indices });
+        });
+      } catch (e) {
+        console.error('contest_options handler error:', e);
+      }
+    });
     socket.emit('get_sessions');
 
     function handleConnect() {
@@ -1999,7 +2058,79 @@
         earlyQueue.push(d);
         return;
       }
+      if (d && d.type === 'contest_options' && Array.isArray(d.options)) {
+        setContestOptions(d.session_id, d.options.map(o => ({
+          index: o.index,
+          label: o.label,
+          meta: o.meta || ''
+        })));
 
+        // Auto-open modal only for active session
+        if (d.session_id === activeSessionId && d.options.length) {
+          const ctx = d.context || {};
+          const ctxSummary = `
+            <div class="small text-muted">
+              ${d.options.length} option(s)
+              ${ctx.state && ctx.state.toLowerCase() !== 'unknown' ? ' • State: ' + esc(ctx.state) : ''}
+              ${ctx.county && ctx.county.toLowerCase() !== 'unknown' ? ' • County: ' + esc(ctx.county) : ''}
+              ${ctx.year ? ' • Year: ' + esc(String(ctx.year)) : ''}
+              ${ctx.input_file ? ' • File: ' + esc(ctx.input_file) : ''}
+            </div>`.trim();
+
+          showIndexedSelectionModalWithContext(
+            'Select Contest',
+            d.options.map(o => ({ index: o.index, label: o.label, meta: o.meta })),
+            ctxSummary,
+            (sel) => {
+              if (sel && socket) {
+                // Prefer dedicated event if backend listens; else fall back to parser_prompt
+                socket.emit('contest_selected', { session_id: d.session_id, indices: sel });
+              }
+            }
+          );
+        }
+        // Continue to render the log line as normal
+      }
+
+      // If a generic prompt carries contest context (context.kind === 'contest'), normalize it
+      if (d && d.type === 'prompt' && d.context && d.context.kind === 'contest' && Array.isArray(d.context.options)) {
+        const optStrings = d.context.options;
+        const parsed = optStrings.map((s, i) => {
+          // Try to parse "[idx] Title (meta)" if present; fallback to raw
+            const m = s.match(/^\s*\[(\d+)\]\s+(.+?)(?:\s+\(([^)]+)\))?\s*$/);
+            if (m) {
+              return {
+                index: Number(m[1]),
+                label: m[2],
+                meta: m[3] || ''
+              };
+            }
+            return { index: i, label: s, meta: '' };
+        });
+        if (parsed.length) {
+          setContestOptions(d.session_id, parsed);
+          if (d.session_id === activeSessionId) {
+            const ctx = d.context;
+            const ctxSummary = `
+              <div class="small text-muted">
+                ${parsed.length} option(s)
+                ${ctx.state && ctx.state.toLowerCase() !== 'unknown' ? ' • State: ' + esc(ctx.state) : ''}
+                ${ctx.county && ctx.county.toLowerCase() !== 'unknown' ? ' • County: ' + esc(ctx.county) : ''}
+                ${ctx.year ? ' • Year: ' + esc(String(ctx.year)) : ''}
+              </div>`.trim();
+            showIndexedSelectionModalWithContext(
+              'Select Contest',
+              parsed,
+              ctxSummary,
+              (sel) => {
+                if (sel && socket) {
+                  socket.emit('contest_selected', { session_id: d.session_id, indices: sel });
+                }
+              }
+            );
+          }
+        }
+      }
       // Normalize message for display (fallback to context/description if message is blank)
       const msg = (d && typeof d.message === 'string' && d.message.trim())
         ? d.message
@@ -2014,10 +2145,14 @@
       if (d && typeof d.message === 'string' && /available contests:/i.test(d.message)) {
         const options = parseIndexedMenu(d.message);
         if (options.length) {
+          // If backend already sent a full options list, avoid duplicate modal
+          const existing = getContestOptions(d.session_id);
+          if (!existing.length) setContestOptions(d.session_id, options);
+
           contestIndexMap = Object.fromEntries(options.map(o => [String(o.index), o.label]));
-          setContestOptions(d.session_id, options);
           lastPromptContext = { kind: 'contest', options: options.map(o => `[${o.index}] ${o.label}`), session_id: d.session_id };
-          showIndexedSelectionModal('Select Contest', options, (selection) => {
+          const ctxSummary = `<div class="small text-muted">${options.length} option(s)</div>`;
+          showIndexedSelectionModalWithContext('Select Contest', options, ctxSummary, (selection) => {
             if (!selection) return;
             const val = selection.join(',');
             socket && socket.emit('parser_prompt', { session_id: d.session_id, value: val });

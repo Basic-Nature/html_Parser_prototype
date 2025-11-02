@@ -1,17 +1,21 @@
 import importlib
-from playwright.sync_api import Page
-from typing import Optional, Tuple, Any, List, Dict
+from typing import TYPE_CHECKING
 
-from ....utils.logger_singleton import logger
-from ....utils.shared_logic import (
-    safe_get, safe_lower, safe_strip, safe_parse
-)
-from ....utils.output_utils import finalize_election_output
+from playwright.sync_api import Page
+
 from ....utils.contest_selector import select_contest
+from ....utils.html_scanner import scan_html_for_context
+from ....utils.logger_singleton import logger
+from ....utils.output_utils import finalize_election_output
+from ....utils.shared_logic import (
+    safe_get,
+    safe_lower,
+    safe_parse,
+    safe_strip,
+)
 from ....utils.table_builder import build_dynamic_table
 from ....utils.table_core import robust_table_extraction
-from ....utils.html_scanner import scan_html_for_context
-from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from ....Context_Integration.context_coordinator import ContextCoordinator
 
@@ -145,11 +149,11 @@ def parse_single_contest_dynamic(page, html_context, state, county, coordinator)
             data_rows = [dict(zip(headers, row)) for row in ballot_items]
     else:
         # Fallback: try table-based extraction as a last resort
-        logger.warning(f"[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
-        
+        logger.warning("[yellow][WARNING] No ballot items found by div selectors. Trying table-based extraction...[/yellow]")
+
         headers, data_rows = robust_table_extraction(page, html_context)
         if not headers or not data_rows:
-            logger.error(f"[red][ERROR] No headers found and no table available for debugging.[/red]")
+            logger.error("[red][ERROR] No headers found and no table available for debugging.[/red]")
             return None, None, contest, {"skipped": True}
 
     # --- Build dynamic table ---

@@ -37,58 +37,76 @@ Returns:
 """
 
 from __future__ import annotations
-from typing import List, Dict, Any, Tuple, Optional
-import time
 
-from .logger_singleton import logger
-from .shared_logic import safe_get
-import inspect
-
-# Concurrency + strategies
-from .strategy_concurrency import run_strategies_concurrently, run_strategies_concurrently_async
 import asyncio
-from .extraction_strategies import (
-    strategy_dom_repetition,
-    strategy_pattern_based,
-    strategy_heading_associated,
-    strategy_html_tables,
-    strategy_ml_detection,
-    strategy_selectolax_fallback,
-    strategy_nlp_fallback,
-)
+import re
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
-# Salvage / cleaning
-from .salvage import (
-    merge_multiline_candidate_rows,
-    combine_panel_tables_by_precinct,
-    _salvage_rows_from_rawjson,
-    remove_footer_and_summary_rows,
-    remove_outlier_and_empty_rows,
+# Metric emitter (re-use from detect for consistency)
+from .detect import (
+    emit_metric,
+    harmonize_headers_and_data,
+    normalize_header,
 )
 
 # Detection / harmonization / pivot / IO
 from .detector import Detector
-from .detect import (
-    harmonize_headers_and_data,
+from .extraction_strategies import (
+    strategy_dom_repetition,
+    strategy_heading_associated,
+    strategy_html_tables,
+    strategy_ml_detection,
+    strategy_nlp_fallback,
+    strategy_pattern_based,
+    strategy_selectolax_fallback,
 )
+from .logger_singleton import logger
+from .pivot import pivot_candidate_groups_from_rawjson
 from .pivot import pivot_to_wide as pivot_to_wide_unified
-from .output_utils import finalize_election_output
 
-# Metric emitter (re-use from detect for consistency)
-from .detect import emit_metric, normalize_header
+# Salvage / cleaning
+from .salvage import (
+    _salvage_rows_from_rawjson,
+    combine_panel_tables_by_precinct,
+    merge_multiline_candidate_rows,
+    remove_footer_and_summary_rows,
+    remove_outlier_and_empty_rows,
+)
+from .shared_logic import safe_get
+
+# Concurrency + strategies
+from .strategy_concurrency import run_strategies_concurrently, run_strategies_concurrently_async
 
 # ------------------ Internal Helpers ------------------ #
+
+def _stringify_for_pivot(headers, rows):
+    sh = [(h if isinstance(h, str) else str(h)) for h in (headers or [])]
+    out = []
+    for r in (rows or []):
+        nr = {}
+        for k, v in (r.items() if isinstance(r, dict) else []):
+            ks = k if isinstance(k, str) else str(k)
+            if isinstance(v, (int, float)) or v in (None, ""):
+                nr[ks] = v
+            else:
+                try:
+                    nr[ks] = str(v)
+                except Exception:
+                    nr[ks] = f"{v}"
+        out.append(nr)
+    return sh, out
 
 def _deduplicate_tables(tables: List[Tuple[List[str], List[Dict[str, Any]], Dict[str, Any]]]):
     """
     Deduplicate by normalized header signature (alphabetical normalized headers).
     Keep the variant having the most data rows for each signature.
     """
-    sig_map = {}
+    sig_map: Dict[tuple, Tuple[List[str], List[Dict[str, Any]], Dict[str, Any]]] = {}
     for headers, rows, diag in tables:
         if not headers or not rows:
             continue
-        sig = tuple(sorted(h.lower() for h in headers))
+        sig = tuple(sorted(str(h).strip().lower() for h in headers))
         if sig not in sig_map or len(rows) > len(sig_map[sig][1]):
             sig_map[sig] = (headers, rows, diag)
     return list(sig_map.values())
@@ -158,6 +176,24 @@ def robust_table_extraction(
             "success": True
         })
 
+    # Optional: include multiple provided tables via context['provided_tables']
+    try:
+        provided_tables = safe_get(ctx, "provided_tables", [])
+        if isinstance(provided_tables, list):
+            for item in provided_tables:
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    h, d = item
+                    if h and d:
+                        collected.append((h, d, {"strategy": "provided_multi"}))
+                        extraction_logs.append({
+                            "strategy": "provided_multi",
+                            "rows": len(d),
+                            "columns": len(h),
+                            "success": True
+                        })
+    except Exception:
+        pass
+
     # Strategy classification:
     # DOM-bound strategies (need real page object)
     dom_strategies = [
@@ -183,13 +219,14 @@ def robust_table_extraction(
             max_workers=4
         )
         for h, d, diag in strategy_results:
-            collected.append((h, d, diag))
-            extraction_logs.append({
-                "strategy": diag.get("strategy", "unknown"),
-                "rows": len(d),
-                "columns": len(h),
-                "success": True
-            })
+            if h and d:
+                collected.append((h, d, diag or {}))
+                extraction_logs.append({
+                    "strategy": (diag or {}).get("strategy", "unknown"),
+                    "rows": len(d),
+                    "columns": len(h),
+                    "success": True
+                })
     except Exception as e:
         logger.warning(f"[TABLE BUILDER] Concurrent strategies execution failed: {e}")
 
@@ -211,7 +248,7 @@ def robust_table_extraction(
     headers, data = merge_multiline_candidate_rows(headers, data)
 
     # RawJSON salvage (if any)
-    headers, data = _salvage_rows_from_rawjson(headers, data)
+    headers, data = _salvage_rows_from_rawjson(headers, data, ctx)
 
     # Basic cleaning
     data = remove_footer_and_summary_rows(data, headers)
@@ -233,9 +270,32 @@ def robust_table_extraction(
         entity_info["location_column"] = safe_get(ctx, "location_header")
     if safe_get(ctx, "percent_reported") and "percent_column" not in entity_info:
         entity_info["percent_column"] = "Percent Reported"
+        
+    def _has_any_header(headers, names):
+        norm = {re.sub(r"[^a-z0-9]+", "", str(h).strip().lower()) for h in (headers or [])}
+        return any(re.sub(r"[^a-z0-9]+", "", n.lower()) in norm for n in names)
 
-    # Pivot
-    headers, data = pivot_to_wide_unified(headers, data, entity_info, coordinator, ctx)
+    # Pivot (specialized RawJSON first, then generic)
+    applied_special_rawjson = False
+    if _has_any_header(headers, ("RawJSON", "RawJSONPath")):
+        try:
+            ph, pd = pivot_candidate_groups_from_rawjson(headers, data, ctx)
+            if ph and pd:
+                headers, data = ph, pd
+                applied_special_rawjson = True
+                emit_metric("pivot_rawjson_applied", rows=len(data))
+        except Exception as e:
+            logger.warning(f"[TABLE BUILDER] RawJSON pivot failed: {e}")
+
+    if not applied_special_rawjson and not safe_get(ctx, "skip_pivot"):
+        try:
+            # Stringify defensively
+            sh, sd = _stringify_for_pivot(headers, data)
+            headers, data = pivot_to_wide_unified(sh, sd, entity_info, coordinator, ctx)
+        except TypeError as e:
+            logger.warning(f"[TABLE BUILDER] pivot_to_wide signature mismatch (skipped): {e}")
+        except Exception as e:
+            logger.warning(f"[TABLE BUILDER] pivot_to_wide failed (skipped): {e}")
 
     headers = _sanitize_headers(headers)
 
@@ -282,24 +342,11 @@ def build_table_from_page(page, extraction_context: Dict[str, Any] | None = None
         out_dir = safe_get(ctx, "output_dir")
         # Use new unified output utility if directory provided
         if out_dir:
-            # Build base metadata from context
-            meta = {
-                "state": safe_get(ctx, "state"),
-                "county": safe_get(ctx, "county"),
-                "contests": safe_get(ctx, "contest"),
-                "year": safe_get(ctx, "year"),
-                "election_types": safe_get(ctx, "election_type"),
-            }
-            # finalize_election_output handles path creation & metadata
-            finalize_election_output(
-                headers=headers,
-                data=data,
-                context=ctx,
-                contest=meta.get("contests"),
-                state=meta.get("state"),
-                county=meta.get("county"),
-                session_id=safe_get(ctx, "session_id")
-            )
+            try:
+                from .output_utils import finalize_election_output
+                finalize_election_output(headers, data, context=ctx, output_dir=out_dir, basename=safe_get(ctx, "output_basename", "results"))
+            except Exception as e:
+                logger.warning(f"[TABLE BUILDER] finalize output failed: {e}")
     return headers, data
 
 async def robust_table_extraction_async(
@@ -379,7 +426,7 @@ async def robust_table_extraction_async(
         headers, data, _ = deduped[0]
 
     headers, data = merge_multiline_candidate_rows(headers, data)
-    headers, data = _salvage_rows_from_rawjson(headers, data)
+    headers, data = _salvage_rows_from_rawjson(headers, data, ctx)
 
     data = remove_footer_and_summary_rows(data, headers)
     data = remove_outlier_and_empty_rows(data)
@@ -423,22 +470,11 @@ async def build_table_from_page_async(page, extraction_context: Dict[str, Any] |
         ctx = extraction_context or {}
         out_dir = safe_get(ctx, "output_dir")
         if out_dir:
-            meta = {
-                "state": safe_get(ctx, "state"),
-                "county": safe_get(ctx, "county"),
-                "contest": safe_get(ctx, "contest"),
-                "year": safe_get(ctx, "year"),
-                "election_type": safe_get(ctx, "election_type"),
-            }
-            finalize_election_output(
-                headers=headers,
-                data=data,
-                context=ctx,
-                contest=meta.get("contest"),
-                state=meta.get("state"),
-                county=meta.get("county"),
-                session_id=safe_get(ctx, "session_id")
-            )
+            try:
+                from .output_utils import finalize_election_output
+                finalize_election_output(headers, data, context=ctx, output_dir=out_dir, basename=safe_get(ctx, "output_basename", "results"))
+            except Exception as e:
+                logger.warning(f"[TABLE BUILDER][ASYNC] finalize output failed: {e}")
     return headers, data
 
 def auto_table_build(page, extraction_context=None, async_hint: bool | None = None):

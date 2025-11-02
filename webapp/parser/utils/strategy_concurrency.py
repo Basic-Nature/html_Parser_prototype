@@ -4,12 +4,14 @@ Runs extraction strategies concurrently where safe.
 DOM-sensitive strategies run sequentially; HTML/string strategies run in a thread pool.
 """
 from __future__ import annotations
-from typing import List, Tuple, Dict, Any, Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from .logger_singleton import logger
-from .browser_utils import safe_content
+
 import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
+from typing import Any, Callable, Dict, List, Tuple
+
+from .browser_utils import safe_content
+from .logger_singleton import logger
 
 StrategyResult = Tuple[List[str], List[Dict[str, Any]], Dict[str, Any]]
 Strategy = Callable[[Any, dict | None], List[StrategyResult]]

@@ -1,36 +1,40 @@
-import numpy as np
-from sklearn.ensemble import IsolationForest
-from sklearn.cluster import DBSCAN
-from sklearn.preprocessing import LabelEncoder
-from sklearn.decomposition import PCA
-import matplotlib
-# Use Agg backend for non-GUI environments # (e.g., servers, CI/CD pipelines)
-matplotlib.use('Agg')
-#/ comment out to see plots
-import matplotlib.pyplot as plt
-import threading
-import orjson
-import time
+from __future__ import annotations
+
 import re
+import threading
+import time
+from collections import Counter
 from pathlib import Path
-from ..utils.logger_singleton import console
-from typing import List, Dict, Any, Tuple
-from ..utils.spacy_utils import extract_dates
-from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
-from ..utils import misc_utils
-from sqlalchemy import select
-from ..utils.db_utils import get_session
-from ..utils.shared_logic import (
-    safe_get, safe_items, safe_encode, safe_tolist,
-    safe_execute, safe_all
-)
-from ..Context_Integration.librarian import (
-    clean_for_json
-)
-from ..utils.models import Alert
-# --- Rich imports for CLI output ---
-from rich.table import Table
+from typing import Any, Dict, List, Tuple
+
+import matplotlib
+import numpy as np
+import orjson
 from rich.panel import Panel
+from rich.table import Table
+from sklearn.cluster import DBSCAN
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import LabelEncoder
+from sqlalchemy import select
+
+from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH
+from ..Context_Integration.librarian import clean_for_json
+from ..utils import misc_utils
+from ..utils.db_utils import get_session
+from ..utils.logger_singleton import console
+from ..utils.models import Alert
+from ..utils.shared_logic import (
+    safe_all,
+    safe_encode,
+    safe_execute,
+    safe_get,
+    safe_items,
+    safe_tolist,
+)
+from ..utils.spacy_utils import extract_dates, extract_entities, flag_suspicious_contests
+
+# Use Agg backend for non-GUI environments (e.g., servers, CI/CD pipelines)
+matplotlib.use("Agg")
 
 def _ensure_alerts_table():
     # Table is managed by SQLAlchemy migrations; nothing to do here
@@ -129,8 +133,6 @@ def advanced_cross_field_validation(contests: List[Dict[str, Any]]) -> List[Tupl
     return issues
 
 def summarize_context_entities(contests) -> Dict[str, int]:
-    from collections import Counter
-    from ..utils.spacy_utils import extract_entities
     entity_counter = Counter()
     for c in contests:
         title = safe_get(c, "title", "")
@@ -140,7 +142,6 @@ def summarize_context_entities(contests) -> Dict[str, int]:
     return dict(entity_counter)
 
 def analyze_contests(contests, expected_year=None, context_library_path=None) -> Dict[str, Any]:
-    from ..utils.spacy_utils import flag_suspicious_contests
     integrity_issues = election_integrity_checks(contests)
     date_anomalies = find_date_anomalies(contests, expected_year=expected_year)
     anomalies, clusters = detect_anomalies_with_ml(contests)

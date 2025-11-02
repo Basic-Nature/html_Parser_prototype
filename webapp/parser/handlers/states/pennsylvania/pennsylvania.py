@@ -1,15 +1,23 @@
+import csv
 import os
 from pathlib import Path
-import csv
-from ....utils.logger_singleton import logger
-from ....utils.shared_logic import (
-    safe_get, safe_lower, safe_strip, safe_isdigit, safe_replace
-)
+
+from ....config import BASE_DIR
 from ....utils.browser_utils import (
-    safe_query_selector_all, safe_click, safe_wait_for_timeout, safe_inner_text
+    safe_click,
+    safe_inner_text,
+    safe_query_selector_all,
+    safe_wait_for_timeout,
 )
+from ....utils.logger_singleton import logger
 from ....utils.output_utils import finalize_election_output
-from ....config import CONTEXT_DB_PATH, BASE_DIR
+from ....utils.shared_logic import (
+    safe_get,
+    safe_isdigit,
+    safe_lower,
+    safe_replace,
+    safe_strip,
+)
 
 INPUT_DIR = Path(os.path.join(BASE_DIR, "input"))
 OUTPUT_DIR = Path(os.path.join(BASE_DIR, "output"))

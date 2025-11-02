@@ -50,6 +50,11 @@ This document provides a high-level overview of the architecture and responsibil
   - Dynamic scoring and patching: combines results from multiple extraction strategies, fills in missing info, and scores each method.
   - Keyword libraries for location, percent, and other election-specific columns.
 
+- **`utils/table_builder.py`**
+  - Normalizes, merges, annotates, and pivots tables for every handler (CSV, JSON, TXT, PDF, and state pipelines).
+  - Applies cached header normalization, row-salvage heuristics, and canonical column ordering so that downstream tests and exports stay consistent.
+  - Invoked via `build_table_noninteractive()` from format handlers and tests, ensuring the webapp and CLI share the same table reconstruction logic.
+
 - **`utils/dynamic_table_extractor.py`**
   - Finds tables using both panel and section heading strategies.
   - Supports plugin-based and ML/NER-based extraction.
@@ -88,9 +93,22 @@ This document provides a high-level overview of the architecture and responsibil
 - **`utils/shared_logger.py`**
   - Centralized logging for all modules, supports both CLI and Web UI.
 
+- **`utils/shared_logic.py`**
+  - Safety wrappers for filesystem, SQLAlchemy, and ML helpers used across routers, handlers, and the web pipeline.
+  - Provides the “audit backbone” that keeps cross-module interactions defensive (e.g., `safe_get`, `safe_slug`, coordinator feedback helpers).
+
 ---
 
-## 🤖 ML, Context, and Web UI Integration
+## � Table Builder Flow
+
+- **Single orchestration surface**: All generic format handlers (`csv_handler.py`, `json_handler.py`, `txt_handler.py`, `xlsx_handler.py`, and PDF routines) call `build_table_noninteractive()` from `utils/table_builder.py`. This guarantees that table salvage, NLP tagging, pivoting, and canonical ordering behave the same way in the CLI and webapp.
+- **Context hand-off**: Format handlers assemble a context payload (contest, state/county inference, session identifiers) before calling the builder, so shared utilities such as `safe_get`, `record_noise_suggestion`, and the coordinator feedback loop can reason about the run.
+- **Shared heuristics**: `table_builder` relies on `shared_logic.py` for auditing helpers (`safe_append`, `safe_strip`, etc.) and the constants library for ballot-type normalization. Optimizations such as cached header normalization ensure the wide range of format inputs stay performant.
+- **Testing parity**: Dedicated tests in `webapp/tests/` exercise the builder directly, mirroring the format handlers. This acts as a safety net for architecture changes and keeps `architecture.md` aligned with the actual pipeline.
+
+---
+
+## �🤖 ML, Context, and Web UI Integration
 
 - **`health/`**
   - Correction, retraining, and automation health (see `health_router.py`).
@@ -254,6 +272,11 @@ This project uses a modular, auditable pipeline for election data parsing, conte
 - **Use migration scripts** (like `context_migration.py`) to move legacy data into PostgreSQL.
 - **Document all paths and roles** in your README or a `docs/` folder for future maintainers.
 
+#### **F. Runtime Compatibility Guards**
+
+- **`sitecustomize.py`** runs before any project import and installs safe shims (e.g., aliasing `click.parser.split_arg_string`) so third-party updates from spaCy/weasel do not flood tests with deprecation warnings.
+- Keep the shim in place until upstream libraries drop the deprecated import. When versions are bumped, remove the alias and rerun the table-builder pytest suite to confirm the warning-free contract still holds.
+
 ---
 
 ### 5. **Summary Diagram**
@@ -350,5 +373,296 @@ Manual parsing is supported if you use the correct naming convention and trigger
 - Automated retraining pipeline for ML/NLP models based on correction logs.
 
 ---
+
+## 📐 Table pipeline contract (normalized → wide)
+
+This project enforces light, explicit contracts for table shapes at two stages. The checks are logging-only and never drop data automatically, but they surface issues early for fast iteration.
+
+- Normalized stage (pre-pivot):
+  - Should contain either a candidate-like column (e.g., Candidate/Name) or both a Total column and one or more ballot-method columns.
+  - Location/Precinct is recommended but not required.
+
+- Wide stage (post-pivot):
+  - Should contain at least one numeric vote column.
+  - Candidate names are expected in the header row (after pivot).
+
+When a stage looks incomplete, the builder emits a structured log event:
+
+- event: schema_check
+- stage: normalized | wide
+- status: ok | weak
+- counters: headers, rows, has_precinct, has_total, has_percent, candidates, ballots
+
+## 🔤 Canonical column order and ballot methods
+
+The builder applies a stable column order for consistency across formats:
+
+1) Precinct
+2) Candidate columns
+3) Ballot-method columns ordered by `BALLOT_TYPES_SORT_ORDER`
+4) Percent Reported
+5) Total Vote / Grand Total
+6) Remaining columns (as encountered)
+
+All Absentee–Military variants are normalized to the canonical label “Absentee Military”, and duplicate/synonym ballot-method columns are merged by summing numeric values.
+
+## 🧰 Troubleshooting schema warnings
+
+- “normalized schema weak”
+  - Ensure the table has a candidate-like column or a totals-plus-ballot combination.
+  - Check header normalization: mixed-case and spacing are normalized; duplicates are deduped with suffixes.
+
+- “wide schema weak”
+  - Ensure the pipeline produced at least one numeric column; if not, pivot may have kept the table in a normalized shape (by design). Consider setting `context["skip_pivot"] = True` to inspect normalized output.
+
+You can safely ignore these warnings when exploring new formats—they’re there to help you spot missing signals early.
+
+---
+
+## Auto Inventory (Regenerate)
+
+Run this to rebuild the inventory section from source files:
+
+```bash
+python -c "from webapp.parser.utils.shared_logic import generate_project_map; generate_project_map(project_root=r'.', out_markdown=r'docs/architecture.md')"
+```
+
+The block below is auto-generated. Do not edit between markers.
+
+<!-- AUTO-INVENTORY:START -->
+
+Inventory summary: 160 files, ~195144 non-empty LOC
+
+### Docs
+
+- `docs/Election Integrity Guidelines.md` (loc: 28)
+- `docs/architecture.md` (loc: 264)
+- `docs/handlers.md` (loc: 145)
+- `docs/index.md` (loc: 61)
+- `docs/roadmap.md` (loc: 78)
+- `docs/troubleshooting.md` (loc: 77)
+
+### Misc
+
+- `.Dockerfile` (loc: 60)
+- `.env` (loc: 153)
+- `.env.template` (loc: 165)
+- `.gitattributes` (loc: 17)
+- `.github/chatmodes/test.chatmode.md` (loc: 5)
+- `.github/workflows/main_ballotlens.yml` (loc: 176)
+- `.gitignore` (loc: 129)
+- `.vscode/launch.json` (loc: 31)
+- `.vscode/settings.json` (loc: 11)
+- `CONTRIBUTING.md` (loc: 229)
+- `input/.download_manifest.jsonl` (loc: 6)
+- `input/export-GE2024Results.json` (loc: 1)
+- `license.md` (loc: 17)
+- `output/United_States_Senator__20251022_175606.csv` (loc: 3)
+- `output/United_States_Senator__20251022_175606.metadata.json` (loc: 34)
+- `output/United_States_Senator__20251022_175606.xlsx` (loc: 158)
+- `output/new_york__new_york__Democratic_District_Attorney_New_York_2025__20251022_175411.csv` (loc: 3)
+- `output/new_york__new_york__Democratic_District_Attorney_New_York_2025__20251022_175411.metadata.json` (loc: 43)
+- `output/new_york__new_york__Democratic_District_Attorney_New_York_2025__20251022_175411.xlsx` (loc: 174)
+- `output/ocr_debug/Democratic_District_Attorney_New_York_2025_p1_300dpi.png` (loc: 5835)
+- `output/ocr_debug/Democratic_District_Attorney_New_York_2025_p2_300dpi.png` (loc: 9005)
+- `readme.md` (loc: 279)
+- `requirements.txt` (loc: 47)
+- `uploads/01101200010New York Democratic District Attorney New York Recap.csv` (loc: 9144)
+- `uploads/Democratic District Attorney New York 2025.pdf` (loc: 85736)
+
+## Schema events (normalized and wide stages)
+
+The table builder emits structured schema_check events to make pipeline validation observable and testable. These are informational and do not stop the pipeline; they indicate the strength of the current shape.
+
+- Event name: schema_check
+- Emitted twice per run: at normalized and wide stages
+- Status values:
+  - ok: heuristic expectations met for the stage
+  - weak: expectations not met (actionable for tests/alerts), but processing continues
+  - error: validator encountered an exception (rare; investigate)
+
+Example payloads:
+
+Normalized stage (pre-pivot):
+
+```json
+{
+  "level": "INFO",
+  "type": "builder",
+  "message": {
+    "event": "schema_check",
+    "stage": "normalized",
+    "status": "ok",
+    "headers": 6,
+    "rows": 124,
+    "has_precinct": true,
+    "has_total": true,
+    "has_percent": false,
+    "candidates": 1,
+    "ballots": 3
+  }
+}
+```
+
+Wide stage (post-pivot):
+
+```json
+{
+  "level": "INFO",
+  "type": "builder",
+  "message": {
+    "event": "schema_check",
+    "stage": "wide",
+    "status": "ok",
+    "headers": 28,
+    "rows": 124,
+    "has_precinct": true,
+    "has_total": true,
+    "has_percent": true,
+    "candidates": 0,
+    "ballots": 0
+  }
+}
+```
+
+Notes:
+
+- Normalized stage is considered acceptable when either a Candidate-like column is present or a Total + one or more ballot-method columns exist.
+- Wide stage expects at least one numeric vote column after pivoting.
+- Tests can assert on presence of these events and their statuses to detect regressions without relying on exact header names.
+- `uploads/export-GE2024Results.json` (loc: 1)
+- `webapp/Smart_Elections_Parser_Webapp.py` (funcs: 69, classes: 1, loc: 1879)
+- `webapp/__init__.py` (funcs: 0, classes: 0, loc: 0)
+- `webapp/parser/Context_Integration/Context_Library/.processed_urls` (loc: 37)
+- `webapp/parser/Context_Integration/Context_Library/cache/context_cache.json` (loc: 50)
+- `webapp/parser/Context_Integration/Context_Library/cache/embedding_disk_cache.pkl` (loc: 1)
+- `webapp/parser/Context_Integration/Context_Library/constants.py` (funcs: 11, classes: 0, loc: 2459)
+- `webapp/parser/Context_Integration/Context_Library/context_library.json` (loc: 295)
+- `webapp/parser/Context_Integration/Context_Library/context_library.json.20250915_123644.bak` (loc: 295)
+- `webapp/parser/Context_Integration/Context_Library/context_library.json.20250917_181646.bak` (loc: 295)
+- `webapp/parser/Context_Integration/Context_Library/context_library.json.20250917_181653.bak` (loc: 295)
+- `webapp/parser/Context_Integration/Context_Library/context_library.json.20250917_181700.bak` (loc: 295)
+- `webapp/parser/Context_Integration/Context_Library/context_library.json.20250917_181706.bak` (loc: 295)
+- `webapp/parser/Context_Integration/Context_Library/log/dom_pattern_kb.jsonl` (loc: 599)
+- `webapp/parser/Context_Integration/Context_Library/log/field_selection_log.jsonl` (loc: 986)
+- `webapp/parser/Context_Integration/Context_Library/log/run_history.ndjson` (loc: 75)
+- `webapp/parser/Context_Integration/Context_Library/log/sess_sess_77gkh9p97.ndjson` (loc: 1)
+- `webapp/parser/Context_Integration/Context_Library/log/sess_sess_v07taenjq.ndjson` (loc: 36)
+- `webapp/parser/Context_Integration/Integrity_check.py` (funcs: 18, classes: 0, loc: 369)
+- `webapp/parser/Context_Integration/context.cs` (loc: 60)
+- `webapp/parser/Context_Integration/context_coordinator.py` (funcs: 3, classes: 1, loc: 3137): context_coordinator.py
+- `webapp/parser/Context_Integration/context_organizer.py` (funcs: 6, classes: 1, loc: 1751): context_organizer.py
+- `webapp/parser/Context_Integration/librarian.py` (funcs: 34, classes: 0, loc: 597)
+- `webapp/parser/Context_Integration/vocab/counties.txt` (loc: 0)
+- `webapp/parser/Context_Integration/vocab/states.txt` (loc: 0)
+- `webapp/parser/Context_Integration/vocab/types.txt` (loc: 0)
+- `webapp/parser/Context_Integration/vocab/words.txt` (loc: 0)
+- `webapp/parser/Context_Integration/vocab/years.txt` (loc: 0)
+- `webapp/parser/config.py` (funcs: 3, classes: 0, loc: 394): Central configuration module for the Smart Elections Parser Webapp.
+- `webapp/parser/data_manager.py` (funcs: 11, classes: 0, loc: 185)
+- `webapp/parser/handlers/__init__.py` (funcs: 0, classes: 0, loc: 0)
+- `webapp/parser/handlers/batch_handler.py` (funcs: 0, classes: 0, loc: 0)
+- `webapp/parser/handlers/formats/__init__.py` (funcs: 0, classes: 0, loc: 0)
+- `webapp/parser/handlers/formats/csv_handler.py` (funcs: 3, classes: 0, loc: 216)
+- `webapp/parser/handlers/formats/html_handler.py` (funcs: 1, classes: 0, loc: 243)
+- `webapp/parser/handlers/formats/json_handler.py` (funcs: 5, classes: 0, loc: 361)
+- `webapp/parser/handlers/formats/pdf_handler.py` (funcs: 38, classes: 0, loc: 1976)
+- `webapp/parser/handlers/states/arizona/__init__.py` (funcs: 0, classes: 0, loc: 2)
+- `webapp/parser/handlers/states/arizona/arizona.py` (funcs: 1, classes: 0, loc: 168)
+- `webapp/parser/handlers/states/example state/__init__.py` (funcs: 0, classes: 0, loc: 0)
+- `webapp/parser/handlers/states/example state/example_county/__init__.py` (funcs: 0, classes: 0, loc: 0)
+- `webapp/parser/handlers/states/example state/example_county/example_county.py` (funcs: 2, classes: 0, loc: 136)
+- `webapp/parser/handlers/states/example state/example_state.py` (funcs: 2, classes: 0, loc: 161)
+- `webapp/parser/handlers/states/new_york/__init__.py` (funcs: 0, classes: 0, loc: 0)
+- `webapp/parser/handlers/states/new_york/county/__init__.py` (funcs: 0, classes: 0, loc: 0)
+- `webapp/parser/handlers/states/new_york/county/rockland.py` (funcs: 1, classes: 0, loc: 315)
+- `webapp/parser/handlers/states/new_york/new_york.py` (funcs: 1, classes: 0, loc: 37)
+- `webapp/parser/handlers/states/pennsylvania/__init__.py` (funcs: 0, classes: 0, loc: 2)
+- `webapp/parser/handlers/states/pennsylvania/pennsylvania.py` (funcs: 2, classes: 0, loc: 178)
+- `webapp/parser/health/__init__.py` (funcs: 0, classes: 0, loc: 0)
+- `webapp/parser/health/context_migration.py` (funcs: 8, classes: 0, loc: 219)
+- `webapp/parser/health/health_router.py` (funcs: 3, classes: 1, loc: 493)
+- `webapp/parser/health/log_cache_cleaner_bot.py` (funcs: 14, classes: 0, loc: 544): log_cache_cleaner_bot.py
+- `webapp/parser/health/manual_correction_bot.py` (funcs: 37, classes: 0, loc: 1281): manual_correction.py
+- `webapp/parser/health/retrain_table_structure_models.py` (funcs: 24, classes: 2, loc: 868)
+- `webapp/parser/health/scan_misaligned_ner.py` (funcs: 4, classes: 0, loc: 154)
+- `webapp/parser/html_election_parser.py` (funcs: 9, classes: 0, loc: 937)
+- `webapp/parser/services/context_service.py` (funcs: 0, classes: 2, loc: 370)
+- `webapp/parser/services/election_data_services.py` (funcs: 10, classes: 2, loc: 812): ElectionDataService: Service layer for all election DB operations.
+- `webapp/parser/state_router.py` (funcs: 11, classes: 0, loc: 496)
+- `webapp/parser/urls.txt` (loc: 19)
+- `webapp/parser/utils/__init__.py` (funcs: 0, classes: 0, loc: 0)
+- `webapp/parser/utils/browser_utils.py` (funcs: 27, classes: 1, loc: 642)
+- `webapp/parser/utils/camelot_utils.py` (funcs: 6, classes: 0, loc: 116)
+- `webapp/parser/utils/captcha_tools.py` (funcs: 5, classes: 4, loc: 139)
+- `webapp/parser/utils/contest_selector.py` (funcs: 32, classes: 1, loc: 1088)
+- `webapp/parser/utils/date_utils.py` (funcs: 1, classes: 0, loc: 14): date_utils.py
+- `webapp/parser/utils/db_utils.py` (funcs: 28, classes: 0, loc: 375)
+- `webapp/parser/utils/detect.py` (funcs: 21, classes: 2, loc: 365): detect.py
+- `webapp/parser/utils/detector.py` (funcs: 2, classes: 2, loc: 169): detector.py
+- `webapp/parser/utils/dom_extractor.py` (funcs: 5, classes: 0, loc: 162): dom_extractor.py
+- `webapp/parser/utils/download_utils.py` (funcs: 10, classes: 0, loc: 143)
+- `webapp/parser/utils/dynamic_table_extractor.py` (funcs: 25, classes: 0, loc: 1090)
+- `webapp/parser/utils/embedding_cache.py` (funcs: 8, classes: 0, loc: 320)
+- `webapp/parser/utils/extraction_strategies.py` (funcs: 11, classes: 0, loc: 266): extraction_strategies.py
+- `webapp/parser/utils/format_router.py` (funcs: 9, classes: 0, loc: 573)
+- `webapp/parser/utils/header_utils.py` (funcs: 2, classes: 0, loc: 49)
+- `webapp/parser/utils/html_scanner.py` (funcs: 44, classes: 0, loc: 3096)
+- `webapp/parser/utils/logger_singleton.py` (funcs: 2, classes: 0, loc: 24)
+- `webapp/parser/utils/merge_utils.py` (funcs: 1, classes: 0, loc: 37): merge_utils.py
+- `webapp/parser/utils/misc_utils.py` (funcs: 5, classes: 0, loc: 71)
+- `webapp/parser/utils/ml_table_detector.py` (funcs: 11, classes: 0, loc: 386)
+- `webapp/parser/utils/model_registry.py` (funcs: 4, classes: 4, loc: 550)
+- `webapp/parser/utils/models.py` (funcs: 1, classes: 30, loc: 411)
+- `webapp/parser/utils/output_utils.py` (funcs: 18, classes: 0, loc: 527)
+- `webapp/parser/utils/pattern_extractor.py` (funcs: 2, classes: 0, loc: 90): pattern_extractor.py
+- `webapp/parser/utils/pivot.py` (funcs: 28, classes: 0, loc: 1248): pivot.py
+- `webapp/parser/utils/rawjson_utils.py` (funcs: 6, classes: 0, loc: 205)
+- `webapp/parser/utils/salvage.py` (funcs: 3, classes: 0, loc: 126): salvage.py
+- `webapp/parser/utils/seleniumbase_launcher.py` (funcs: 4, classes: 0, loc: 87)
+- `webapp/parser/utils/shared_logger.py` (funcs: 1, classes: 3, loc: 559)
+- `webapp/parser/utils/shared_logic.py` (funcs: 88, classes: 10, loc: 1571)
+- `webapp/parser/utils/spacy_utils.py` (funcs: 26, classes: 0, loc: 243)
+- `webapp/parser/utils/strategy_concurrency.py` (funcs: 2, classes: 0, loc: 115): strategy_concurrency.py
+- `webapp/parser/utils/structure_cache.py` (funcs: 3, classes: 0, loc: 20): structure_cache.py
+- `webapp/parser/utils/table_builder.py` (funcs: 17, classes: 0, loc: 942)
+- `webapp/parser/utils/table_core.py` (funcs: 8, classes: 0, loc: 414): table_core.py (refactored orchestrator)
+- `webapp/parser/utils/user_prompt.py` (funcs: 2, classes: 3, loc: 846)
+- `webapp/parser/utils/xlsx_exporter.py` (funcs: 3, classes: 0, loc: 217)
+- `webapp/parser/web_pipeline.py` (funcs: 4, classes: 1, loc: 257)
+- `webapp/static/css/data_framework.css` (loc: 654)
+- `webapp/static/css/history.css` (loc: 314)
+- `webapp/static/css/main.css` (loc: 608)
+- `webapp/static/css/run_parser.css` (loc: 1722)
+- `webapp/static/favicon.ico` (loc: 0)
+- `webapp/static/icons/apple-touch-icon.png` (loc: 596)
+- `webapp/static/icons/favicon-32.png` (loc: 66)
+- `webapp/static/icons/icon-192.png` (loc: 810)
+- `webapp/static/icons/icon-512.png` (loc: 3054)
+- `webapp/static/icons/icon-maskable-192.png` (loc: 725)
+- `webapp/static/icons/icon-maskable-512.png` (loc: 2831)
+- `webapp/static/img/earth.png` (loc: 17764)
+- `webapp/static/img/moon.png` (loc: 4032)
+- `webapp/static/img/moon.svg` (loc: 226)
+- `webapp/static/img/sun.png` (loc: 2892)
+- `webapp/static/img/sun.svg` (loc: 1)
+- `webapp/static/js/data_framework.js` (loc: 438)
+- `webapp/static/js/history.js` (loc: 277)
+- `webapp/static/js/main.js` (loc: 701)
+- `webapp/static/js/nav_guard.js` (loc: 84)
+- `webapp/static/js/run_parser.js` (loc: 2469)
+- `webapp/static/vendor/bootstrap-5.3.0.bundle.min.js` (loc: 7)
+- `webapp/static/vendor/bootstrap-5.3.0.min.css` (loc: 6)
+- `webapp/static/vendor/socket.io-4.7.5.min.js` (loc: 7)
+- `webapp/templates/data_framework.html` (loc: 117)
+- `webapp/templates/history.html` (loc: 254)
+- `webapp/templates/index.html` (loc: 97)
+- `webapp/templates/run_parser.html` (loc: 305)
+
+### Tests
+
+- `webapp/tests/test_header_normalization.py` (funcs: 4, classes: 0, loc: 45)
+
+<!-- AUTO-INVENTORY:END -->
 
 Contributions welcome! See `CONTRIBUTING.md` to get started.

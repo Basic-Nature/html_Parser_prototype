@@ -1,23 +1,25 @@
+from typing import TYPE_CHECKING
+
 from playwright.sync_api import Page
 
-from .....utils.contest_selector import select_contest
+from .....Context_Integration.librarian import clean_for_json
+from .....utils.browser_utils import (
+    autoscroll_until_stable,
+    safe_click,
+    safe_is_enabled,
+    safe_is_visible,
+)
+from .....utils.contest_selector import select_contest_auto_first
+from .....utils.html_scanner import scan_html_for_context
+from .....utils.logger_singleton import logger, prompt
+from .....utils.output_utils import finalize_election_output
+from .....utils.shared_logic import safe_get
 from .....utils.table_builder import build_dynamic_table
 from .....utils.table_core import harmonize_headers_and_data
-from .....utils.output_utils import finalize_election_output
-from .....utils.logger_singleton import logger, prompt
-from .....utils.browser_utils import (
-    autoscroll_until_stable, safe_is_visible, safe_is_enabled, safe_click
-)
-from .....utils.shared_logic import  safe_get
-from .....utils.html_scanner import scan_html_for_context
-from .....Context_Integration.librarian import (
-    clean_for_json
-)
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .....Context_Integration.context_coordinator import ContextCoordinator
-import numpy as e
+
 BUTTON_SELECTORS = "button, a, [role='button'], input[type='button'], input[type='submit']"
 context_cache = {}
 accepted_buttons_cache = {}
@@ -80,14 +82,15 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
     }
     if session_id is not None:
         context_for_selector["session_id"] = session_id
-    selected = select_contest(
-        coordinator,
-        state=state,
-        county=county,
-        year=year,
+        
+    selected = select_contest_auto_first(
+        coordinator=coordinator,
+        context=context_for_selector,
         session_id=session_id,
-        context=context_for_selector
+        allow_multiple=False,
+        force_interactive=False
     )
+    
     if not selected:
         logger.warning("[red]No contest selected. Skipping.[/red]")
         return None, None, None, {"skipped": True}
@@ -297,7 +300,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
 
             # --- 10. Assemble headers and finalize output ---
             if not merged_data:
-                logger.error(f"[red][ERROR] No data could be parsed from ballot items or robust extraction.[/red]")
+                logger.error("[red][ERROR] No data could be parsed from ballot items or robust extraction.[/red]")
                 return None, None, contest, {"skipped": True}
 
             metadata = {

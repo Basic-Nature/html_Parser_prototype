@@ -1,25 +1,31 @@
 from __future__ import annotations
+
+from contextlib import contextmanager
+from typing import Generator, List, Optional
+
 # webapp/parser/utils/db_utils.py
 # ---------------------------------------------------------------
 # Database utility functions for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
 import orjson
-from typing import Optional, List, Generator
-from sqlalchemy import create_engine, update, select, and_, or_, desc
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import and_, create_engine, desc, inspect, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import inspect
-from contextlib import contextmanager
-from .models import (
-    Contest, TableStructure, BatchMetadata, 
-    StagingElectionResult, WarehouseElectionResult, Base,
-    State, County, Party,
-)
-from ..Context_Integration.librarian import (
-    clean_for_json
-)
-from .logger_singleton import logger
+from sqlalchemy.orm import Session, sessionmaker
+
 from ..config import get_sqlalchemy_engine
+from ..Context_Integration.librarian import clean_for_json
+from .logger_singleton import logger
+from .models import (
+    Base,
+    BatchMetadata,
+    Contest,
+    County,
+    Party,
+    StagingElectionResult,
+    State,
+    TableStructure,
+    WarehouseElectionResult,
+)
 
 # Set up SQLAlchemy engine and session
 engine = get_sqlalchemy_engine()
@@ -196,7 +202,7 @@ def fetch_table_structures(filters: Optional[dict] = None, limit: int = 100, ord
             for k, v in filters.items():
                 query = query.filter(getattr(TableStructure, k) == v)
         if confirmed_only:
-            query = query.filter(TableStructure.confirmed_by_user == True)
+            query = query.filter(TableStructure.confirmed_by_user.is_(True))
         if order_by:
             query = query.order_by(order_by)
         else:

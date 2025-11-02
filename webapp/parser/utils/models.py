@@ -1,20 +1,33 @@
 from __future__ import annotations
+
+import enum
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Protocol
+
 # webapp/parser/utils/models.py
 # ---------------------------------------------------------------
 # Core database models for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
 from sqlalchemy import (
-    Column, Integer, String, DateTime, Text, ForeignKey, Boolean, Float, LargeBinary,
-    UniqueConstraint, Index, Enum
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    inspect,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import declarative_base, relationship, backref
-from sqlalchemy import inspect
-import uuid
-from typing import Protocol, Any
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.engine.base import Engine
-from datetime import datetime, timezone
-import enum
+from sqlalchemy.orm import backref, declarative_base, relationship
+
 from .logger_singleton import logger
 
 Base = declarative_base()

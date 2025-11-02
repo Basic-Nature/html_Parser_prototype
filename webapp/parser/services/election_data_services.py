@@ -6,32 +6,62 @@ not DB details.
 
 All methods are annotated and include docstrings for clarity.
 """
+from typing import Any, Dict, Iterator, List, Optional, Protocol, Type, Union
+
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session, DeclarativeMeta
-from sqlalchemy.sql.schema import Table, Column
-from typing import Optional, List, Any, Union, Dict, Type, Iterator, Protocol
-from ..utils.shared_logic import safe_items, safe_values
+from sqlalchemy.orm import DeclarativeMeta, Session
+from sqlalchemy.sql.schema import Column, Table
+
+from ..Context_Integration.librarian import clean_for_json
 from ..utils.db_utils import (
-    get_session, upsert_contest, fetch_contest_full,
-    get_table_structure_from_db, save_table_structure_to_db,
-    create_batch_metadata, update_batch_metadata, get_batch_metadata,
-    create_staging_election_result, get_staging_results_by_batch,
-    create_warehouse_election_result, get_warehouse_results_by_batch,
-    fetch_table_structures, search_table_structures, update_table_structure_fields,
-    select_table_structures_by_title, get_or_create_state,
-    get_or_create_county, get_or_create_party, check_missing_tables, get_engine, SessionLocal
-)
-from ..Context_Integration.librarian import (
-    clean_for_json
-)
-from ..utils.models import (
-    Base, Contest, State, County, Party, 
-    TableStructure, Panel, CandidatePanel, LocationPanel, 
-    Heading, BallotType, ResultsTimestamp, PartyLabel, VoteMethod,
-    Candidate, Office, District, Result, Button
+    SessionLocal,
+    check_missing_tables,
+    create_batch_metadata,
+    create_staging_election_result,
+    create_warehouse_election_result,
+    fetch_contest_full,
+    fetch_table_structures,
+    get_batch_metadata,
+    get_engine,
+    get_or_create_county,
+    get_or_create_party,
+    get_or_create_state,
+    get_session,
+    get_staging_results_by_batch,
+    get_table_structure_from_db,
+    get_warehouse_results_by_batch,
+    save_table_structure_to_db,
+    search_table_structures,
+    select_table_structures_by_title,
+    update_batch_metadata,
+    update_table_structure_fields,
+    upsert_contest,
 )
 from ..utils.logger_singleton import logger
+from ..utils.models import (
+    BallotType,
+    Base,
+    Button,
+    Candidate,
+    CandidatePanel,
+    Contest,
+    County,
+    District,
+    Heading,
+    LocationPanel,
+    Office,
+    Panel,
+    Party,
+    PartyLabel,
+    Result,
+    ResultsTimestamp,
+    State,
+    TableStructure,
+    VoteMethod,
+)
+from ..utils.shared_logic import safe_items, safe_values
+
 
 class DictConvertible(Protocol):
     def as_dict(self) -> Dict[str, Any]:

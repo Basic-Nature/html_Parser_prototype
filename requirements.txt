@@ -20,7 +20,11 @@ PyMuPDF>=1.26.3
 sqlalchemy>=2.0.42
 psycopg2>=2.9.10
 openpyxl>=3.1.5
-
+pdfminer.six>=20221105
+camelot-py[cv]>=1.0.9
+ghostscript>=0.8.1
+# opencv-python is pulled by camelot-py[cv], but keep explicit if you prefer
+opencv-python>=4.12.0.88
 # CLI and ML utilities
 rapidfuzz>=3.13.0
 matplotlib>=3.10.5

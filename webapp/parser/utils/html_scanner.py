@@ -1,59 +1,117 @@
 from __future__ import annotations
+
+import concurrent.futures
+import datetime
+
 # webapp/parser/utils/html_scanner.py
 # ---------------------------------------------------------------
 # HTML scanning utilities for Smart Elections Parser Webapp
 # ---------------------------------------------------------------
 import hashlib
-import orjson
 import os
 import re
-import time
-import threading
-import traceback
 import tempfile
+import threading
 import time
-import datetime
-import numpy as np
-from typing import Dict, Any, List, Optional, Set, Pattern
+import traceback
 from collections import Counter
-import concurrent.futures
+from difflib import get_close_matches
+from typing import Any, Dict, List, Optional, Pattern, Set
+
+import numpy as np
+import orjson
+from selectolax.parser import HTMLParser
+
 from ..config import (
-    CONTEXT_LIBRARY_PATH, CACHE_DIR, LOG_DIR, CONTEXT_CACHE_PATH,
-    ENABLE_SEGMENT_LABEL_PROMPT
-)
-from .logger_singleton import logger, console, prompt
-from .shared_logic import (
-    safe_append_cached_segment, safe_append, safe_update, safe_extend,
-    convert_ndarrays, safe_filename, _normalize_html_for_hash, clean_cache_inplace,
-    _keyword_in_text, safe_lower, safe_encode, safe_startswith, safe_add, safe_items, safe_model_encode,
-    safe_get_first, _sync_type_and_election_types, safe_get, safe_strip,
-    safe_setdefault, safe_keys
+    CACHE_DIR,
+    CONTEXT_CACHE_PATH,
+    CONTEXT_LIBRARY_PATH,
+    ENABLE_SEGMENT_LABEL_PROMPT,
+    LOG_DIR,
 )
 from ..Context_Integration.Context_Library.constants import (
-    STATE_ABBR, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP,
-    ELECTION_TYPES, BALLOT_TYPES, PARTY_KEYWORDS, CONTEST_KEYWORDS,
-    CANDIDATE_KEYWORDS, BALLOT_TYPES, ELECTION_TYPES,
-    HTML_TAGS, PANEL_TAGS, HEADING_TAGS, CUSTOM_ATTR_PATTERNS, LOCATION_KEYWORDS, EXTRA_HEADING_TAGS,
-    ALWAYS_IGNORE_TAGS, ALWAYS_IGNORE_CLASSES, ALWAYS_IGNORE_IDS, ICON_CLASSES, ICON_TAGS, BUTTON_CLASSES,
-    HEADING_CLASSES, PANEL_CLASSES, TIMESTAMP_CLASSES, STRUCTURAL_TAGS, TIMESTAMP_ID_PATTERNS, TIMESTAMP_ATTRS,
-    MISC_FOOTER_KEYWORDS, UPDATE_PANEL_KEYWORDS, VIEW_BY_PHRASES, CANONICAL_SEGMENT_LABELS,
-    TOTAL_KEYWORDS, PERCENT_KEYWORDS, ROOT_CONTAINER_TAGS, LOCATION_ABBREVIATIONS,
-    CONTEST_PANEL_TAGS, TABLE_TAGS, BALLOT_TYPES_SORT_ORDER, BUTTON_TAGS,
-    BUTTON_CLASSES, STATE_TAGS, OFFICE_KEYWORDS, PRECINCT_HEADER_PATTERNS,
-    HEADING_TAGS, HEADING_CLASSES, NOISY_LABEL_PATTERNS, SELECTORS, DISTRICT_REGEX,
-    ALLOWED_LABELS  
+    ALLOWED_LABELS,
+    ALWAYS_IGNORE_CLASSES,
+    ALWAYS_IGNORE_IDS,
+    ALWAYS_IGNORE_TAGS,
+    BALLOT_TYPES,
+    BALLOT_TYPES_SORT_ORDER,
+    BUTTON_CLASSES,
+    BUTTON_TAGS,
+    CANDIDATE_KEYWORDS,
+    CANONICAL_SEGMENT_LABELS,
+    CONTEST_KEYWORDS,
+    CONTEST_PANEL_TAGS,
+    CUSTOM_ATTR_PATTERNS,
+    DISTRICT_REGEX,
+    ELECTION_TYPES,
+    EXTRA_HEADING_TAGS,
+    HEADING_CLASSES,
+    HEADING_TAGS,
+    HTML_TAGS,
+    ICON_CLASSES,
+    ICON_TAGS,
+    KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    KNOWN_STATE_TO_COUNTY_MAP,
+    LOCATION_ABBREVIATIONS,
+    LOCATION_KEYWORDS,
+    MISC_FOOTER_KEYWORDS,
+    NOISY_LABEL_PATTERNS,
+    OFFICE_KEYWORDS,
+    PANEL_CLASSES,
+    PANEL_TAGS,
+    PARTY_KEYWORDS,
+    PERCENT_KEYWORDS,
+    PRECINCT_HEADER_PATTERNS,
+    ROOT_CONTAINER_TAGS,
+    SELECTORS,
+    STATE_ABBR,
+    STATE_TAGS,
+    STRUCTURAL_TAGS,
+    TABLE_TAGS,
+    TIMESTAMP_ATTRS,
+    TIMESTAMP_CLASSES,
+    TIMESTAMP_ID_PATTERNS,
+    TOTAL_KEYWORDS,
+    UPDATE_PANEL_KEYWORDS,
+    VIEW_BY_PHRASES,
 )
 from ..Context_Integration.librarian import (
-    
-    update_context_library, load_context_library, log_unknown_tag, log_unknown_attr, 
-    get_canonical_segment_label, cache_segment_label, get_cached_segment_label,    
+    get_canonical_segment_label,
+    load_context_library,
+    update_context_library,
 )
 from .embedding_cache import (
-    save_embedding, get_embedding_from_memory, load_embeddings_batch, save_embeddings_batch
+    get_embedding_from_memory,
+    load_embeddings_batch,
+    save_embedding,
+    save_embeddings_batch,
 )
-from selectolax.parser import HTMLParser
+from .logger_singleton import console, logger, prompt
 from .model_registry import ModelRegistry
-from difflib import get_close_matches
+from .shared_logic import (
+    _keyword_in_text,
+    _normalize_html_for_hash,
+    _sync_type_and_election_types,
+    clean_cache_inplace,
+    convert_ndarrays,
+    safe_add,
+    safe_append,
+    safe_append_cached_segment,
+    safe_encode,
+    safe_extend,
+    safe_filename,
+    safe_get,
+    safe_get_first,
+    safe_items,
+    safe_keys,
+    safe_lower,
+    safe_model_encode,
+    safe_setdefault,
+    safe_startswith,
+    safe_strip,
+    safe_update,
+)
 
 # --- Caching and threading ---
 _LABEL_CACHE_FILENAME = "segment_label_cache.json"
@@ -1131,8 +1189,8 @@ def extract_tagged_segments_with_attrs(
     - Multi-level filtering, robust parent/child relationships, unique indices, and auditability.
     - Uses coordinator.extract_field for dynamic context enrichment.
     """
-    from ..Context_Integration.context_organizer import ContextOrganizer
     from ..Context_Integration.context_coordinator import ContextCoordinator
+    from ..Context_Integration.context_organizer import ContextOrganizer
 
     coordinator = coordinator or ContextCoordinator()
     if context_cache is not None:
@@ -1179,29 +1237,44 @@ def extract_tagged_segments_with_attrs(
             context_contests = set(
                 safe_lower(c.get("title", "")) for c in coordinator.get_contests() if isinstance(c, dict)
             )
-        except Exception: pass
+        except Exception:
+            context_contests = set()
+
         try:
             all_state_tags |= set(coordinator.extract_field("states") or [])
-        except Exception: pass
+        except Exception:
+            all_state_tags |= set()
+
         try:
             for state in all_state_tags:
                 context_counties = coordinator.extract_field("precincts", context={"state": state}) or []
                 all_location_keywords |= set(context_counties)
-        except Exception: pass
+        except Exception:
+            all_location_keywords |= set()
+
         try:
             all_election_types |= set(coordinator.extract_field("election_types") or [])
-        except Exception: pass
+        except Exception:
+            all_election_types |= set()
+
         try:
             for county in coordinator.get_known_county_to_PRECINCTS_map():
                 precincts = coordinator.extract_field("precincts", context={"county": county}) or []
                 all_location_keywords |= set(precincts)
-        except Exception: pass
+        except Exception:
+            all_location_keywords |= set()
+
         try:
             context_parties = set(safe_lower(p) for p in (coordinator.extract_field("party") or []))
-        except Exception: pass
+        except Exception:
+            context_parties = set()
+
         try:
-            context_vote_methods = set(safe_lower(vm) for vm in (coordinator.extract_field("vote_methods") or []))
-        except Exception: pass
+            context_vote_methods = set(
+                safe_lower(vm) for vm in (coordinator.extract_field("vote_methods") or [])
+            )
+        except Exception:
+            context_vote_methods = set()
 
     segments: List[Dict[str, Any]] = []
 
@@ -1605,7 +1678,7 @@ def extract_tagged_segments_with_attrs(
             else:
                 logger.debug({"level": "DEBUG", "type": "dom_segments", "message": msg_debug})
         else:
-            msg_debug = f"[DOM SEGMENTS] Extracted 0 segments."
+            msg_debug = "[DOM SEGMENTS] Extracted 0 segments."
             if logger.mode == "cli":
                 console.print(msg_debug)
             else:
@@ -2508,7 +2581,6 @@ def scan_html_for_context(
     semantic tags, selector log, debug logging, and list field safety.
     Mode-aware logging for CLI and non-CLI environments.
     """
-    from ..Context_Integration.context_organizer import ContextOrganizer
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = coordinator or ContextCoordinator()
 
@@ -3084,8 +3156,8 @@ def _enrich_and_validate_context(
     - Handles downstream enrichment via coordinator if present.
     - Returns the enriched context_result.
     """
-    from ..Context_Integration.context_organizer import ContextOrganizer
     from ..Context_Integration.context_coordinator import ContextCoordinator
+    from ..Context_Integration.context_organizer import ContextOrganizer
     coordinator = coordinator or ContextCoordinator()
     # --- 1. Propagate year/type to all relevant sections ---
     contests = safe_get(context_result, "contests", [])

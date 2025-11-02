@@ -5,53 +5,58 @@ Advanced context organizer for election HTML parsing and data integrity.
 Handles data formatting, ML anomaly detection, cache-aware learning, clustering, and robust DB.
 Delegates NLP/semantic logic to the context_coordinator and spacy_utils modules.
 """
-import re
-from datetime import datetime, timezone
+from __future__ import annotations
+
+import itertools
 import os
-from networkx import nodes
-import orjson
-from collections import defaultdict, Counter
+import re
 import types
-import collections.abc
-import numpy as np
-from ..utils.model_registry import ModelRegistry
-from sqlalchemy.exc import SQLAlchemyError
-from ..utils.misc_utils import (
-    load_processed_urls,
-    load_output_cache,
-    
-)
-from ..services.election_data_services import ElectionDataService
-from ..utils.shared_logic import (
-    safe_model_encode, scan_environment, flatten_raw_field, flatten_raw_field, infer_contest_fields, safe_get_first,
-    flatten_raw_field, safe_add, safe_items, safe_update, _sync_type_and_election_types, safe_db_call, normalize_label,
-    safe_filename
-)
-from .Context_Library.constants import (
-    CONTEST_KEYWORDS, CANDIDATE_KEYWORDS, PARTY_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS,
-    PERCENT_KEYWORDS, TOTAL_KEYWORDS, MISC_FOOTER_KEYWORDS, LOCATION_KEYWORDS,
-)
-from .librarian import (
-    load_context_library, update_context_library,   
-    
-)
-from .Integrity_check import (
-    detect_anomalies_with_ml, print_ml_anomalies, election_integrity_checks
-)
-from ..utils.html_scanner import load_context_cache_from_disk
-from ..utils.logger_singleton import logger, console
-from rich.table import Table
-import matplotlib.pyplot as plt 
+from collections import Counter, defaultdict
+from collections.abc import Hashable
+from datetime import datetime, timezone
 from difflib import get_close_matches
 
-from ..config import (
-    CONTEXT_LIBRARY_PATH, CONTEXT_DB_PATH, 
-    LOG_DIR
+import matplotlib.pyplot as plt
+import numpy as np
+import orjson
+from rich.table import Table
+from sqlalchemy.exc import SQLAlchemyError
+
+from ..config import CONTEXT_DB_PATH, CONTEXT_LIBRARY_PATH, LOG_DIR
+from ..services.election_data_services import ElectionDataService
+from ..utils.html_scanner import load_context_cache_from_disk
+from ..utils.logger_singleton import console, logger
+from ..utils.misc_utils import load_output_cache, load_processed_urls
+from ..utils.model_registry import ModelRegistry
+from ..utils.shared_logic import (
+    _sync_type_and_election_types,
+    flatten_raw_field,
+    infer_contest_fields,
+    normalize_label,
+    safe_add,
+    safe_db_call,
+    safe_filename,
+    safe_get_first,
+    safe_items,
+    safe_model_encode,
+    safe_update,
+    scan_environment,
 )
+from .Context_Library.constants import (
+    BALLOT_TYPES,
+    CANDIDATE_KEYWORDS,
+    CONTEST_KEYWORDS,
+    LOCATION_KEYWORDS,
+    MISC_FOOTER_KEYWORDS,
+    PARTY_KEYWORDS,
+    PERCENT_KEYWORDS,
+    TOTAL_KEYWORDS,
+)
+from .Integrity_check import detect_anomalies_with_ml, election_integrity_checks, print_ml_anomalies
+from .librarian import clean_for_json, load_context_library, update_context_library
 
 processed_urls = load_processed_urls()
 output_cache = load_output_cache()
-import itertools
 _spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
 
 def get_loading_indicator() -> str:
@@ -219,7 +224,7 @@ class ContextOrganizer(object):
             elif hasattr(self.embedding_model, "encode"):
                 # Looks like a SentenceTransformer or compatible model
                 self.embedding_model_obj = self.embedding_model
-                logger.info(f"[CONTEXT ORGANIZER] Using provided embedding model object.")
+                logger.info("[CONTEXT ORGANIZER] Using provided embedding model object.")
             else:
                 # If it's a method, class, or something else, warn and set to None
                 logger.warning(f"[CONTEXT ORGANIZER] Provided embedding_model is not a recognized model instance or string. Type: {type(self.embedding_model)}. Setting to None.")
@@ -1413,6 +1418,13 @@ class ContextOrganizer(object):
             else:
                 metadata["year"] = "Unknown"
             self.append_to_context_library(organized, path=self.context_library_path)
+            # If pivot added RawJSON enrichment to context, surface it in metadata (if present)
+            if isinstance(self.last_raw_context, dict):
+                pass  # placeholder if needed
+            # Safer: allow any upstream context to place enrichment into raw_context["rawjson_enrichment"]
+            rje = raw_context.get("rawjson_enrichment") if isinstance(raw_context, dict) else None
+            if rje and isinstance(organized, dict) and "metadata" in organized:
+                organized["metadata"]["rawjson_enrichment"] = rje
             logger.info(
                 f"[CONTEXT ORGANIZER] Organized context for {len(contests)} contests. "
                 f"Anomalies: {len(anomalies)}  Integrity issues: {len(integrity_issues)}"
@@ -1448,6 +1460,18 @@ class ContextOrganizer(object):
                     raw_context["state"] = state
                 if county:
                     raw_context["county"] = county
+                # Update organized metadata so downstream has accurate location + diagnostics
+                if isinstance(organized, dict) and "metadata" in organized:
+                    md = organized["metadata"]
+                    # Only fill if missing; do not write "Unknown"
+                    if not md.get("state") and state:
+                        md["state"] = state
+                    if not md.get("county") and county:
+                        md["county"] = county
+                    md["location_detection"] = {
+                        "handler_path": handler_path,
+                        "log": detection_log
+                    }
                 summary["final"] = {"state": state, "county": county, "handler_path": handler_path}
                 log.append(f"Final detected state: {state}, county: {county}, handler_path: {handler_path}")
 
@@ -1658,9 +1682,9 @@ class ContextOrganizer(object):
                     continue
                 label = node.get(label_field)
                 if isinstance(label, list):
-                    for l in label:
-                        if l is not None:
-                            groups[str(l)].append(node)
+                    for label_value in label:
+                        if label_value is not None:
+                            groups[str(label_value)].append(node)
                 elif label is not None:
                     groups[str(label)].append(node)
         except Exception as e:
@@ -1786,9 +1810,6 @@ class ContextOrganizer(object):
         - merge_lists: If True, lists are merged (with deduplication if deduplicate=True).
         - deduplicate: If True, removes duplicates from merged lists based on dict content or value.
         """
-        from ..Context_Integration.librarian import (
-            clean_for_json
-        )
         def merge_dicts(a, b) -> dict:
             """Recursively merge dict b into dict a."""
             for k, v in safe_items(b):
@@ -1803,7 +1824,7 @@ class ContextOrganizer(object):
                             deduped = []
                             for item in combined:
                                 try:
-                                    key = orjson.dumps(item) if isinstance(item, collections.abc.Hashable) else str(item)
+                                    key = orjson.dumps(item) if isinstance(item, Hashable) else str(item)
                                 except Exception:
                                     key = str(item)
                                 if key not in seen:

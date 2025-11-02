@@ -1,24 +1,34 @@
-import os
-import json
 import hashlib
+import json
+import os
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional
+
 from ..Context_Integration.Context_Library.constants import (
-    STATE_ABBR, KNOWN_STATE_TO_COUNTY_MAP, KNOWN_COUNTY_TO_PRECINCTS_MAP,
-    PARTY_KEYWORDS, CANDIDATE_KEYWORDS, ELECTION_TYPES, CONTEST_KEYWORDS
+    CANDIDATE_KEYWORDS,
+    CONTEST_KEYWORDS,
+    ELECTION_TYPES,
+    KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    KNOWN_STATE_TO_COUNTY_MAP,
+    PARTY_KEYWORDS,
+    STATE_ABBR,
 )
 from ..Context_Integration.librarian import (
-    load_context_library
+    load_context_library,
     # Add more normalization/alias utilities as needed
 )
-from ..utils.shared_logic import (
-    PredictionResult, safe_append, safe_get,
-    normalize_state_name, normalize_county_name, resolve_county_alias
-)
-from ..utils.logger_singleton import logger, prompt
 from ..services.election_data_services import ElectionDataService
-from ..utils.spacy_utils import extract_entities, extract_dates, extract_locations
+from ..utils.logger_singleton import logger, prompt
+from ..utils.shared_logic import (
+    PredictionResult,
+    normalize_county_name,
+    normalize_state_name,
+    resolve_county_alias,
+    safe_append,
+    safe_get,
+)
+from ..utils.spacy_utils import extract_dates, extract_entities, extract_locations
 
 AUDIT_LOG = "context_audit_log.jsonl"
 
