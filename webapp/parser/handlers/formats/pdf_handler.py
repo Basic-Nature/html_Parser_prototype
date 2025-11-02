@@ -1745,22 +1745,72 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
     if not images:
         return [], []
 
-    aggregated: dict[str, dict] = {}
-    current: dict[str, object] | None = None
+    records_map: dict[tuple[str, str, str], dict] = {}
+    current_record: dict[str, object] | None = None
+    current_ad: str | None = None
+    current_ed: str | None = None
 
-    def commit(record: dict[str, object] | None):
-        if not record:
+    def _value_has_payload(value: object) -> bool:
+        if value in (None, ""):
+            return False
+        if isinstance(value, (int, float)):
+            return True
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return False
+            core = stripped.replace(",", "").replace("%", "").replace("-", "").replace("(", "").replace(")", "")
+            if core.replace(".", "", 1).isdigit():
+                return True
+            return len(stripped) >= 3
+        return True
+
+    def _ensure_record() -> bool:
+        nonlocal current_record
+        if current_record is None:
+            if not (current_ad or current_ed):
+                return False
+            current_record = {"Assembly District": current_ad or ""}
+            if current_ed:
+                current_record["Election District"] = current_ed
+        else:
+            if current_ad and not current_record.get("Assembly District"):
+                current_record["Assembly District"] = current_ad
+            if current_ed and not current_record.get("Election District"):
+                current_record["Election District"] = current_ed
+        return True
+
+    def commit_record():
+        nonlocal current_record
+        if not current_record:
             return
-        ad = str(record.get("Assembly District") or "").strip()
+        ad = str(current_record.get("Assembly District") or "").strip()
+        ed = str(current_record.get("Election District") or "").strip()
+        precinct_label = str(current_record.get("Precinct") or "").strip()
         if not ad:
+            current_record = None
             return
-        entry = aggregated.setdefault(ad, {"Assembly District": ad})
-        for key, value in record.items():
-            if key == "Assembly District":
+        has_payload = any(
+            _value_has_payload(value)
+            for key, value in current_record.items()
+            if key not in {"Assembly District", "Election District", "Precinct"}
+        )
+        if not has_payload and not ed and not precinct_label:
+            current_record = None
+            return
+        key = (ad, ed, precinct_label)
+        bucket = records_map.setdefault(key, {"Assembly District": ad})
+        if ed:
+            bucket["Election District"] = ed
+        if precinct_label:
+            bucket["Precinct"] = precinct_label
+        for k, v in current_record.items():
+            if isinstance(v, str) and not v.strip():
                 continue
-            if isinstance(value, str) and not value.strip():
+            if v in (None, ""):
                 continue
-            entry[key] = value
+            bucket[k] = v
+        current_record = None
 
     for page_index, image in enumerate(images):
         try:
@@ -1818,22 +1868,27 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
 
             ad_match = _STATEMENT_AD_RE.search(text)
             if ad_match:
-                commit(current)
-                current = {"Assembly District": ad_match.group(1)}
+                commit_record()
+                current_ad = ad_match.group(1)
+                current_ed = None
+                current_record = {"Assembly District": current_ad}
                 continue
 
-            if current is None:
+            if current_ad is None and current_record is None:
                 # Ignore until we know which assembly the block belongs to
                 continue
 
             ed_match = _STATEMENT_ED_RE.search(text)
             if ed_match:
-                current["Election District"] = ed_match.group(1)
+                commit_record()
+                current_ed = ed_match.group(1)
+                current_record = {"Assembly District": current_ad or "", "Election District": current_ed}
                 continue
 
             prec_match = _STATEMENT_PRECINCT_RE.search(text)
             if prec_match:
-                current.setdefault("Precinct", prec_match.group(1))
+                if _ensure_record():
+                    current_record["Precinct"] = prec_match.group(1)
                 continue
 
             key_val = _split_key_value_line(text)
@@ -1842,39 +1897,54 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
 
             label, value_token = key_val
             parsed_value = _clean_numeric_cell(value_token)
-            current[label] = parsed_value
+            if _ensure_record():
+                current_record[label] = parsed_value
 
         # Continue accumulating across pages; do not commit yet to allow multi-page sections
 
-    commit(current)
+    commit_record()
 
-    if not aggregated:
+    if not records_map:
         return [], []
 
-    records = list(aggregated.values())
+    records = list(records_map.values())
 
     if not records:
         return [], []
 
-    try:
-        records.sort(key=lambda r: int(str(r.get("Assembly District", "0"))))
-    except Exception:
-        records.sort(key=lambda r: str(r.get("Assembly District", "")))
+    def _sort_key(rec: dict) -> tuple:
+        ad_raw = str(rec.get("Assembly District", "")).strip()
+        ed_raw = str(rec.get("Election District", "")).strip()
+        def _coerce(val: str) -> tuple[int, str, str]:
+            stripped = (val or "").strip()
+            if stripped.isdigit():
+                padded = stripped.zfill(6)
+                return (0, padded, stripped)
+            return (1, stripped.lower(), stripped)
+        return (_coerce(ad_raw), _coerce(ed_raw))
 
-    headers: list[str] = ["Assembly District"]
+    try:
+        records.sort(key=_sort_key)
+    except Exception:
+        records.sort(key=lambda r: (str(r.get("Assembly District", "")), str(r.get("Election District", ""))))
+
+    ordered_headers: list[str] = []
+    priority = ["Precinct", "Assembly District", "Election District"]
+    for key in priority:
+        ordered_headers.append(key)
+    seen = {h for h in ordered_headers}
     for rec in records:
         for key in rec.keys():
-            if key == "Assembly District":
-                continue
-            if key not in headers:
-                headers.append(key)
+            if key not in seen:
+                ordered_headers.append(key)
+                seen.add(key)
 
     rows = []
     for rec in records:
-        row = {h: rec.get(h, "") for h in headers}
+        row = {h: rec.get(h, "") for h in ordered_headers}
         rows.append(row)
 
-    return headers, rows
+    return ordered_headers, rows
 
 
 def _attach_statement_precinct(headers: list[str], rows: list[dict]) -> tuple[list[str], list[dict], bool]:
@@ -1958,9 +2028,8 @@ def _finalize_structured_table_output(
 
     if statement_used:
         context.setdefault("include_all_precincts_row", False)
-        if not precinct_attached:
-            context["skip_pivot"] = True
-        else:
+        context["skip_pivot"] = True
+        if precinct_attached:
             context.setdefault("precinct_sort", "natural")
         metadata["statement_blocks_precinct_attached"] = precinct_attached
 
@@ -2306,6 +2375,8 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         session_id=session_id,
         ocr_params=metadata.get("ocr_params"),
     )
+    statement_headers_copy = list(statement_headers or [])
+    statement_rows_copy = [dict(row) for row in statement_rows] if statement_rows else []
     if layout_tables:
         metadata["layout_tables_available"] = [
             {
@@ -2315,13 +2386,13 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             }
             for tbl in layout_tables[:5]
         ]
-    if statement_rows:
+    if statement_rows_copy:
         metadata["statement_blocks_available"] = {
-            "rows": len(statement_rows),
-            "headers": statement_headers[:10]
+            "rows": len(statement_rows_copy),
+            "headers": statement_headers_copy[:10]
         }
         metadata["statement_blocks_diagnostic"] = {
-            "raw_rows": len(statement_rows)
+            "raw_rows": len(statement_rows_copy)
         }
 
     headers, header_candidate = infer_headers_and_methods(lines, table_hints)
@@ -2619,25 +2690,25 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             elif layout_rows:
                 metadata["layout_table_candidate_rows"] = len(layout_rows)
 
-        if statement_rows:
+        if statement_rows_copy:
             use_statement = False
             pre_statement_rows = len(data) if isinstance(data, list) else 0
             if not data:
                 use_statement = True
-            elif len(statement_rows) >= max(len(data), 5):
+            elif len(statement_rows_copy) >= max(len(data), 5):
                 use_statement = True
-            elif len(data) <= 3 and len(statement_rows) >= len(data) * 2:
+            elif len(data) <= 3 and len(statement_rows_copy) >= len(data) * 2:
                 use_statement = True
             if use_statement:
-                headers = list(statement_headers)
-                data = [dict(row) for row in statement_rows]
+                headers = list(statement_headers_copy)
+                data = [dict(row) for row in statement_rows_copy]
                 contest_column = None
                 metadata["statement_blocks_used"] = True
-                metadata["statement_blocks_rows"] = len(statement_rows)
+                metadata["statement_blocks_rows"] = len(statement_rows_copy)
             metadata["statement_blocks_decision"] = {
                 "pre_rows": pre_statement_rows,
                 "use_statement": use_statement,
-                "statement_rows": len(statement_rows),
+                "statement_rows": len(statement_rows_copy),
             }
             logger.debug({
                 "level": "DEBUG",
@@ -2645,7 +2716,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 "message": "[DEBUG] Statement-return heuristic",
                 "session_id": session_id,
                 "pre_rows": pre_statement_rows,
-                "statement_rows": len(statement_rows),
+                "statement_rows": len(statement_rows_copy),
                 "use_statement": use_statement,
             })
 
@@ -2720,37 +2791,42 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 coordinator,
                 session_id=session_id,
             )
-            if (
-                statement_rows
-                and statement_headers
-                and len(data_final) <= 3
-                and len(statement_rows) >= max(len(data_final) * 2, 5)
-            ):
-                metadata["statement_blocks_used"] = True
-                metadata["statement_blocks_rows"] = len(statement_rows)
-                headers_final, data_final, _ = _finalize_structured_table_output(
-                    pdf_path,
-                    list(statement_headers),
-                    [dict(row) for row in statement_rows],
-                    selected_contest_title,
-                    state,
-                    county,
-                    year,
-                    contest_slug,
-                    metadata,
-                    coordinator,
-                    session_id=session_id,
-                )
+            if statement_rows_copy and statement_headers_copy:
+                promote_statement = False
+                if metadata.get("statement_blocks_used"):
+                    promote_statement = True
+                elif len(data_final) <= 3 and len(statement_rows_copy) >= max(len(data_final) * 2, 5):
+                    promote_statement = True
+                if promote_statement:
+                    metadata["statement_blocks_used"] = True
+                    metadata["statement_blocks_rows"] = len(statement_rows_copy)
+                    metadata["statement_blocks_promoted"] = {
+                        "rows_before": len(data_final),
+                        "rows_statement": len(statement_rows_copy),
+                    }
+                    headers_final, data_final, _ = _finalize_structured_table_output(
+                        pdf_path,
+                        list(statement_headers_copy),
+                        [dict(row) for row in statement_rows_copy],
+                        selected_contest_title,
+                        state,
+                        county,
+                        year,
+                        contest_slug,
+                        metadata,
+                        coordinator,
+                        session_id=session_id,
+                    )
             return headers_final, data_final, selected_contest_title, metadata
 
         else:
-            if statement_rows and statement_headers:
+            if statement_rows_copy and statement_headers_copy:
                 metadata["statement_blocks_used"] = True
-                metadata["statement_blocks_rows"] = len(statement_rows)
+                metadata["statement_blocks_rows"] = len(statement_rows_copy)
                 headers_final, data_final, _ = _finalize_structured_table_output(
                     pdf_path,
-                    list(statement_headers),
-                    [dict(row) for row in statement_rows],
+                    list(statement_headers_copy),
+                    [dict(row) for row in statement_rows_copy],
                     selected_contest_title,
                     state,
                     county,
@@ -2817,6 +2893,12 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         layout_headers = best_layout.get("headers") or []
         layout_rows = best_layout.get("rows") or []
         if layout_headers and layout_rows:
+            prefer_statement = False
+            if statement_rows_copy and statement_headers_copy:
+                if len(layout_rows) <= 3 and len(statement_rows_copy) >= max(len(layout_rows) * 2, 5):
+                    prefer_statement = True
+                elif len(statement_rows_copy) >= max(len(layout_rows) + 5, int(len(layout_rows) * 1.5)):
+                    prefer_statement = True
             metadata["layout_table_used"] = True
             metadata["layout_table_rows"] = len(layout_rows)
             metadata["layout_table_page"] = best_layout.get("page")
@@ -2833,6 +2915,35 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 coordinator,
                 session_id=session_id,
             )
+            if (
+                statement_rows_copy
+                and statement_headers_copy
+                and (
+                    prefer_statement
+                    or (
+                        len(data_final) <= 3
+                        and len(statement_rows_copy) >= max(len(data_final) * 2, 5)
+                    )
+                )
+            ):
+                metadata["layout_table_available_rows"] = len(layout_rows)
+                metadata["layout_table_available_page"] = best_layout.get("page")
+                metadata["layout_table_used"] = False
+                metadata["statement_blocks_used"] = True
+                metadata["statement_blocks_rows"] = len(statement_rows_copy)
+                headers_final, data_final, _ = _finalize_structured_table_output(
+                    pdf_path,
+                    list(statement_headers_copy),
+                    [dict(row) for row in statement_rows_copy],
+                    selected_contest_title,
+                    state,
+                    county,
+                    year,
+                    contest_slug,
+                    metadata,
+                    coordinator,
+                    session_id=session_id,
+                )
             return headers_final, data_final, selected_contest_title, metadata
 
     if statement_rows and statement_headers:
