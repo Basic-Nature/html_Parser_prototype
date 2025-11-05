@@ -359,6 +359,8 @@ def safe_count(obj: Optional[Any], logger=logger) -> int:
     Safely get the count/length of a Playwright locator, element list, or any countable object.
     Returns 0 if not countable or on error.
     """
+    if obj is None:
+        return 0
     try:
         # Playwright Locator has a count() method (sync/async)
         if hasattr(obj, "count"):

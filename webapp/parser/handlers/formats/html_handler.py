@@ -15,6 +15,61 @@ from ...utils.logger_singleton import logger as app_logger
 from ...utils.logger_singleton import prompt
 from ...utils.shared_logic import normalize_county_name, normalize_state_name, safe_get, safe_parse
 
+
+def _attempt_generic_fallback(
+    *,
+    page: Any,
+    coordinator: Any,
+    html_context: Dict[str, Any],
+    session_id: Optional[str],
+    context: Optional[Dict[str, Any]],
+    logger: Any | None,
+) -> Optional[Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]]:
+    """Try the shared generic HTML fallback extractor."""
+
+    try:
+        from ...html_election_parser import generate_generic_html_result
+    except Exception as exc:  # pragma: no cover - defensive import
+        (logger or app_logger).error({
+            "level": "ERROR",
+            "type": "html_handler",
+            "message": f"[HTML Handler] Unable to import fallback extractor: {exc}",
+            "session_id": session_id,
+        })
+        return None
+
+    fallback_ctx = dict(html_context or {})
+    fallback_ctx.setdefault("fallback_reason", "html_handler_no_handler")
+    if page is not None:
+        fallback_ctx.setdefault("url", getattr(page, "url", None))
+    if isinstance(context, dict):
+        if context.get("source_file") and not fallback_ctx.get("source_file"):
+            fallback_ctx["source_file"] = context.get("source_file")
+        if context.get("force_parse_input_file") and not fallback_ctx.get("file_name"):
+            fallback_ctx["file_name"] = context.get("force_parse_input_file")
+
+    raw_html = None
+    if isinstance(context, dict):
+        raw_html = context.get("raw_html") or context.get("force_parse_raw_html")
+
+    try:
+        return generate_generic_html_result(
+            page=page,
+            coordinator=coordinator,
+            context=fallback_ctx,
+            session_id=session_id,
+            html_text=raw_html,
+            log_type="html_handler",
+        )
+    except Exception as exc:  # pragma: no cover - fallback errors logged
+        (logger or app_logger).error({
+            "level": "ERROR",
+            "type": "html_handler",
+            "message": f"[HTML Handler] Fallback extraction failed: {exc}",
+            "session_id": session_id,
+        })
+        return None
+
 # webapp/parser/handlers/formats/html_handler.py
 # ---------------------------------------------------------------
 # This file is part of the HTML Parser prototype for BallotLens.
@@ -77,136 +132,113 @@ def parse(
     attempts: List[Dict[str, Any]] = []
     entities: List[Any] = []
     available_counties: List[str] = []
+    interactive_mode = session_id is None
 
     # 5. Feedback loop: If handler not found, try ML/NLP and prompt user
     if not handler_found:
-        handler_path = prompt.prompt_input("Enter handler path manually (or leave blank to skip): ").strip()
-        if handler_path:
-            try:
-                handler_mod = importlib.import_module(handler_path)
-                if callable(handler_mod):
-                    handler = handler_mod
-                    handler_found = True
-                elif hasattr(handler_mod, "parse"):
-                    handler = safe_parse(handler_mod)
-                    handler_found = True
-                else:
-                    handler_found = False
-                attempts.append({
-                    "method": "manual_handler_path",
-                    "handler_path": handler_path
-                })
-                routing_trace.append(f"User specified handler path: {handler_path}")
-            except Exception as e:
-                app_logger.error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
-                routing_trace.append(f"Failed manual handler import: {handler_path} ({e})")
+        fallback_result = _attempt_generic_fallback(
+            page=page,
+            coordinator=coordinator,
+            html_context=html_context,
+            session_id=session_id,
+            context=context,
+            logger=logger,
+        )
+        if fallback_result:
+            attempts.append({"method": "generic_html_fallback", "status": "success"})
+            routing_trace.append("Generic HTML fallback succeeded.")
+            return fallback_result
 
-        # --- ML/NLP: Try to infer state/county from context/entities ---
-        state = normalize_state_name(html_context.get("state"))
-        county = normalize_county_name(html_context.get("county"))
-        url = getattr(page, "url", None) or html_context.get("source_url", "")
-        contests = organized.get("contests", [])
-        entities = []
-        for c in contests:
-            entities.extend(safe_get(c, "entities", []))
-        try:
-            ml_suggestions = coordinator.validate_and_check_integrity()
-        except Exception:
-            ml_suggestions = {}
-        if not isinstance(ml_suggestions, dict):
-            ml_suggestions = {}
-        suggested_state = normalize_state_name(state or (ml_suggestions.get("integrity_issues") or [{}])[0].get("state"))
-        suggested_county = normalize_county_name(county or (ml_suggestions.get("integrity_issues") or [{}])[0].get("county"))
-        attempts.append({
-            "method": "ml_nlp",
-            "suggested_state": suggested_state,
-            "suggested_county": suggested_county,
-            "entities": entities,
-            "url": url
-        })
-        routing_trace.append(f"ML/NLP suggestions: state={suggested_state}, county={suggested_county}")
+        attempts.append({"method": "generic_html_fallback", "status": "failed"})
+        routing_trace.append("Generic HTML fallback failed. Proceeding with manual routing heuristics.")
 
-        # --- Handler discovery and fuzzy suggestions ---
-        available_states = list_available_handlers(level="state")
-        available_counties = list_available_handlers(level="county", state=(suggested_state or state or ""))
-        app_logger.info(f"[HTML Handler] Available states: {available_states}")
-        app_logger.info(f"[HTML Handler] Available counties for state '{suggested_state or state}': {available_counties}")
-
-        # Fuzzy match for county if not found
-        if county and county not in available_counties:
-            matches = fuzzy_match_handler(county or "", available_counties)
-            app_logger.warning(f"[HTML Handler] County '{county}' not found. Closest matches: {matches}")
-            routing_trace.append(f"Fuzzy county matches for '{county}': {matches}")
-
-        # --- Context consistency check ---
-        if county and (county not in available_counties):
-            app_logger.warning(f"[HTML Handler] Detected county '{county}' is not in known counties for state '{suggested_state or state}'.")
-            routing_trace.append(f"County '{county}' not in known counties for state '{suggested_state or state}'.")
-
-        # --- Prompt user for manual override ---
-        app_logger.info("[HTML Handler] Prompting user for manual state/county selection.")
-        max_prompt_attempts = 3
-        for attempt in range(max_prompt_attempts):
-            try:
-                user_state_raw = prompt.prompt_input(
-                    f"Enter state (or type 'skip' to stop, blank keeps '{suggested_state or state}'): "
-                ).strip()
-            except Exception:
-                break
-            if not user_state_raw:
-                user_state_raw = (suggested_state or state) or ""
-            if user_state_raw.lower() in {"skip", "cancel"}:
-                break
-            normalized_state = normalize_state_name(user_state_raw)
-            user_state = normalized_state if normalized_state else user_state_raw
-            available_states = list_available_handlers(level="state")
-            if user_state not in available_states:
-                matches = fuzzy_match_handler(user_state or "", available_states)
-                app_logger.warning(f"[HTML Handler] State '{user_state}' not found. Closest matches: {matches}")
-                if matches:
-                    try:
-                        confirm = prompt.prompt_input(
-                            f"Did you mean '{matches[0]}'? (y/n): "
-                        ).strip().lower()
-                    except Exception:
-                        break
-                    proposed = cast(str, matches[0])
-                    if confirm == "y" and proposed:
-                        normalized_match = normalize_state_name(proposed)
-                        user_state = normalized_match if normalized_match else proposed
+        if not interactive_mode:
+            attempts.append({
+                "method": "manual_prompt",
+                "status": "skipped",
+                "reason": "interactive prompts disabled for active web session"
+            })
+            routing_trace.append("Manual routing prompts skipped because session_id indicates web run.")
+            app_logger.info("[HTML Handler] Skipping manual routing prompts in web session.")
+        else:
+            handler_path = prompt.prompt_input("Enter handler path manually (or leave blank to skip): ").strip()
+            if handler_path:
+                try:
+                    handler_mod = importlib.import_module(handler_path)
+                    if callable(handler_mod):
+                        handler = handler_mod
+                        handler_found = True
+                    elif hasattr(handler_mod, "parse"):
+                        handler = safe_parse(handler_mod)
+                        handler_found = True
                     else:
-                        continue
-                else:
-                    app_logger.error(f"[HTML Handler] No valid state handler found for '{user_state}'. Try again.")
-                    continue
+                        handler_found = False
+                    attempts.append({
+                        "method": "manual_handler_path",
+                        "handler_path": handler_path
+                    })
+                    routing_trace.append(f"User specified handler path: {handler_path}")
+                except Exception as e:
+                    app_logger.error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
+                    routing_trace.append(f"Failed manual handler import: {handler_path} ({e})")
 
-            available_counties = list_available_handlers(level="county", state=user_state)
+            state = normalize_state_name(html_context.get("state"))
+            county = normalize_county_name(html_context.get("county"))
+            url = getattr(page, "url", None) or html_context.get("source_url", "")
+            contests = organized.get("contests", [])
+            entities = []
+            for c in contests:
+                entities.extend(safe_get(c, "entities", []))
             try:
-                user_county_raw = prompt.prompt_input(
-                    f"Enter county (or type 'skip' to stop, blank keeps '{suggested_county or county}'): "
-                ).strip()
+                ml_suggestions = coordinator.validate_and_check_integrity()
             except Exception:
-                break
-            if not user_county_raw:
-                user_county_raw = (suggested_county or county) or ""
-            if user_county_raw.lower() in {"skip", "cancel"}:
-                break
-            normalized_county = normalize_county_name(user_county_raw)
-            user_county = normalized_county if normalized_county else user_county_raw
-            if user_county not in available_counties:
-                known_county_to_precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP
-                mapped_county = None
-                for county_name, precincts in known_county_to_precincts.items():
-                    if user_county in [normalize_county_name(d) for d in precincts]:
-                        normalized_mapping = normalize_county_name(county_name)
-                        if normalized_mapping:
-                            mapped_county = normalized_mapping
-                            app_logger.info(f"[HTML Handler] '{user_county}' matched as precincts of county '{county_name}'. Using '{county_name}'.")
-                            user_county = normalized_mapping
-                            break
-                if not mapped_county:
-                    matches = fuzzy_match_handler(user_county or "", available_counties)
-                    app_logger.warning(f"[HTML Handler] County '{user_county}' not found. Closest matches: {matches}")
+                ml_suggestions = {}
+            if not isinstance(ml_suggestions, dict):
+                ml_suggestions = {}
+            suggested_state = normalize_state_name(state or (ml_suggestions.get("integrity_issues") or [{}])[0].get("state"))
+            suggested_county = normalize_county_name(county or (ml_suggestions.get("integrity_issues") or [{}])[0].get("county"))
+            attempts.append({
+                "method": "ml_nlp",
+                "suggested_state": suggested_state,
+                "suggested_county": suggested_county,
+                "entities": entities,
+                "url": url
+            })
+            routing_trace.append(f"ML/NLP suggestions: state={suggested_state}, county={suggested_county}")
+
+            available_states = list_available_handlers(level="state")
+            available_counties = list_available_handlers(level="county", state=(suggested_state or state or ""))
+            app_logger.info(f"[HTML Handler] Available states: {available_states}")
+            app_logger.info(f"[HTML Handler] Available counties for state '{suggested_state or state}': {available_counties}")
+
+            if county and county not in available_counties:
+                matches = fuzzy_match_handler(county or "", available_counties)
+                app_logger.warning(f"[HTML Handler] County '{county}' not found. Closest matches: {matches}")
+                routing_trace.append(f"Fuzzy county matches for '{county}': {matches}")
+
+            if county and (county not in available_counties):
+                app_logger.warning(f"[HTML Handler] Detected county '{county}' is not in known counties for state '{suggested_state or state}'.")
+                routing_trace.append(f"County '{county}' not in known counties for state '{suggested_state or state}'.")
+
+            app_logger.info("[HTML Handler] Prompting user for manual state/county selection.")
+            max_prompt_attempts = 3
+            for attempt in range(max_prompt_attempts):
+                try:
+                    user_state_raw = prompt.prompt_input(
+                        f"Enter state (or type 'skip' to stop, blank keeps '{suggested_state or state}'): "
+                    ).strip()
+                except Exception:
+                    break
+                if not user_state_raw:
+                    user_state_raw = (suggested_state or state) or ""
+                if user_state_raw.lower() in {"skip", "cancel"}:
+                    break
+                normalized_state = normalize_state_name(user_state_raw)
+                user_state = normalized_state if normalized_state else user_state_raw
+                available_states = list_available_handlers(level="state")
+                if user_state not in available_states:
+                    matches = fuzzy_match_handler(user_state or "", available_states)
+                    app_logger.warning(f"[HTML Handler] State '{user_state}' not found. Closest matches: {matches}")
                     if matches:
                         try:
                             confirm = prompt.prompt_input(
@@ -216,55 +248,98 @@ def parse(
                             break
                         proposed = cast(str, matches[0])
                         if confirm == "y" and proposed:
-                            normalized_match = normalize_county_name(proposed)
-                            user_county = normalized_match if normalized_match else proposed
+                            normalized_match = normalize_state_name(proposed)
+                            user_state = normalized_match if normalized_match else proposed
                         else:
                             continue
                     else:
-                        app_logger.error(f"[HTML Handler] No valid county handler found for '{user_county}'. Try again.")
+                        app_logger.error(f"[HTML Handler] No valid state handler found for '{user_state}'. Try again.")
                         continue
 
-            html_context["state"] = user_state
-            html_context["county"] = user_county
-            handler_info = get_handler(html_context, url=url)
-            handler = handler_info["handler"] if isinstance(handler_info, dict) else handler_info
-            handler_found = handler and hasattr(handler, "parse") and handler is not parse
-            attempts.append({
-                "method": "manual_prompt",
-                "user_state": user_state,
-                "user_county": user_county
-            })
-            routing_trace.append(f"User override: state={user_state}, county={user_county}")
-            if handler_found:
-                break
-
-            routing_trace.append("Manual selection did not resolve to a handler.")
-            try:
-                retry = prompt.prompt_input(
-                    "No handler found for that selection. Try another state/county? (y/n): ",
-                    default="n",
-                ).strip().lower()
-            except Exception:
-                break
-            if retry not in ("y", "yes"):
-                break
-
-        # Optionally allow user to specify handler path directly
-        if not handler_found:
-            handler_path = prompt.prompt_input("Enter handler path manually (or leave blank to skip): ").strip()
-            if handler_path:
+                available_counties = list_available_handlers(level="county", state=user_state)
                 try:
-                    handler_mod = importlib.import_module(handler_path)
-                    handler = getattr(handler_mod, "parse", None)
-                    handler_found = handler is not None
-                    attempts.append({
-                        "method": "manual_handler_path",
-                        "handler_path": handler_path
-                    })
-                    routing_trace.append(f"User specified handler path: {handler_path}")
-                except Exception as e:
-                    app_logger.error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
-                    routing_trace.append(f"Failed manual handler import: {handler_path} ({e})")
+                    user_county_raw = prompt.prompt_input(
+                        f"Enter county (or type 'skip' to stop, blank keeps '{suggested_county or county}'): "
+                    ).strip()
+                except Exception:
+                    break
+                if not user_county_raw:
+                    user_county_raw = (suggested_county or county) or ""
+                if user_county_raw.lower() in {"skip", "cancel"}:
+                    break
+                normalized_county = normalize_county_name(user_county_raw)
+                user_county = normalized_county if normalized_county else user_county_raw
+                if user_county not in available_counties:
+                    known_county_to_precincts = KNOWN_COUNTY_TO_PRECINCTS_MAP
+                    mapped_county = None
+                    for county_name, precincts in known_county_to_precincts.items():
+                        if user_county in [normalize_county_name(d) for d in precincts]:
+                            normalized_mapping = normalize_county_name(county_name)
+                            if normalized_mapping:
+                                mapped_county = normalized_mapping
+                                app_logger.info(f"[HTML Handler] '{user_county}' matched as precincts of county '{county_name}'. Using '{county_name}'.")
+                                user_county = normalized_mapping
+                                break
+                    if not mapped_county:
+                        matches = fuzzy_match_handler(user_county or "", available_counties)
+                        app_logger.warning(f"[HTML Handler] County '{user_county}' not found. Closest matches: {matches}")
+                        if matches:
+                            try:
+                                confirm = prompt.prompt_input(
+                                    f"Did you mean '{matches[0]}'? (y/n): "
+                                ).strip().lower()
+                            except Exception:
+                                break
+                            proposed = cast(str, matches[0])
+                            if confirm == "y" and proposed:
+                                normalized_match = normalize_county_name(proposed)
+                                user_county = normalized_match if normalized_match else proposed
+                            else:
+                                continue
+                        else:
+                            app_logger.error(f"[HTML Handler] No valid county handler found for '{user_county}'. Try again.")
+                            continue
+
+                html_context["state"] = user_state
+                html_context["county"] = user_county
+                handler_info = get_handler(html_context, url=url)
+                handler = handler_info["handler"] if isinstance(handler_info, dict) else handler_info
+                handler_found = handler and hasattr(handler, "parse") and handler is not parse
+                attempts.append({
+                    "method": "manual_prompt",
+                    "user_state": user_state,
+                    "user_county": user_county
+                })
+                routing_trace.append(f"User override: state={user_state}, county={user_county}")
+                if handler_found:
+                    break
+
+                routing_trace.append("Manual selection did not resolve to a handler.")
+                try:
+                    retry = prompt.prompt_input(
+                        "No handler found for that selection. Try another state/county? (y/n): ",
+                        default="n",
+                    ).strip().lower()
+                except Exception:
+                    break
+                if retry not in ("y", "yes"):
+                    break
+
+            if not handler_found:
+                handler_path = prompt.prompt_input("Enter handler path manually (or leave blank to skip): ").strip()
+                if handler_path:
+                    try:
+                        handler_mod = importlib.import_module(handler_path)
+                        handler = getattr(handler_mod, "parse", None)
+                        handler_found = handler is not None
+                        attempts.append({
+                            "method": "manual_handler_path",
+                            "handler_path": handler_path
+                        })
+                        routing_trace.append(f"User specified handler path: {handler_path}")
+                    except Exception as e:
+                        app_logger.error(f"[HTML Handler] Failed to import handler from path '{handler_path}': {e}")
+                        routing_trace.append(f"Failed manual handler import: {handler_path} ({e})")
 
     # 6. If handler found after feedback, route and return
     if handler_found:
@@ -297,8 +372,10 @@ def parse(
             ) + b"\n"
         )
 
-    # Offer to export context for manual review
-    export = prompt.prompt_input("Routing failed. Export organized context for debugging? (y/n): ").strip().lower()
+    # Offer to export context for manual review when running interactively
+    export = "n"
+    if interactive_mode:
+        export = prompt.prompt_input("Routing failed. Export organized context for debugging? (y/n): ").strip().lower()
     if export == "y":
         export_path = os.path.join(log_dir, "html_handler_failed_context.json")
         with open(export_path, "wb") as ef:

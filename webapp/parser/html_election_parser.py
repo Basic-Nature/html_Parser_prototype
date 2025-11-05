@@ -23,6 +23,7 @@ from .config import (
     ENABLE_AI_ANALYSIS,
     ENABLE_PARALLEL,
     ENABLE_REALTIME_STREAM,
+    INPUT_DIR,
     MAX_URLS_DISPLAYED,
     OUTPUT_DIR,
     PROCESSED_URLS_FILE,
@@ -32,6 +33,7 @@ from .config import (
 from .state_router import get_handler, preload_handler_map
 from .utils.browser_utils import (
     autoscroll_until_stable,
+    safe_content,
     sync_browser_pipeline,
     sync_safe_browser_close,
 )
@@ -519,6 +521,75 @@ def stream_results(headers, data, contest, metadata, target_url=None, session_id
             logger.error(payload)
 
 
+def _read_text_file_with_fallback(path: str) -> str | None:
+    for encoding in ("utf-8", "utf-8-sig", "latin-1"):
+        try:
+            with open(path, "r", encoding=encoding) as handle:
+                return handle.read()
+        except UnicodeDecodeError:
+            continue
+        except Exception:
+            return None
+    try:
+        with open(path, "rb") as handle:
+            return handle.read().decode("utf-8", "ignore")
+    except Exception:
+        return None
+
+
+def _extract_text_blocks(html_text: str, max_rows: int = 200) -> tuple[list[str], list[Dict[str, Any]]]:
+    try:
+        from selectolax.parser import HTMLParser
+    except ImportError:
+        return [], []
+    if not html_text:
+        return [], []
+    try:
+        parser = HTMLParser(html_text)
+    except Exception:
+        return [], []
+    root = getattr(parser, "body", None) or getattr(parser, "root", None)
+    if root is None:
+        return [], []
+
+    heading_tags = {"h1", "h2", "h3", "h4", "h5", "h6", "dt"}
+    content_tags = {"p", "li", "dd", "div", "span"}
+    skipped_tags = {"script", "style", "noscript", "template", "meta", "link"}
+
+    rows: list[Dict[str, Any]] = []
+    seen: set[str] = set()
+    current_section = "Body"
+
+    for node in root.iter():
+        tag = getattr(node, "tag", "") or ""
+        tag = tag.lower()
+        if not tag or tag in skipped_tags:
+            continue
+        try:
+            text = node.text(strip=True)
+        except Exception:
+            text = ""
+        if not text:
+            continue
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            continue
+        if tag in heading_tags:
+            current_section = text
+            continue
+        if tag in content_tags:
+            if text in seen:
+                continue
+            seen.add(text)
+            rows.append({"Section": current_section, "Content": text})
+        if len(rows) >= max_rows:
+            break
+
+    if not rows:
+        return [], []
+    return ["Section", "Content"], rows
+
+
 def generate_generic_html_result(
     *,
     page=None,
@@ -541,6 +612,52 @@ def generate_generic_html_result(
     ctx.setdefault("url", ctx.get("url") or (getattr(page, "url", None) if page else None))
     ctx.setdefault("fallback_reason", ctx.get("fallback_reason") or "generic_html")
 
+    fallback_strategy = "table_candidates"
+    resolved_source_path = None
+
+    if not html_text:
+        source_file = ctx.get("source_file")
+        source_file = safe_strip(source_file) if isinstance(source_file, str) else None
+        if source_file:
+            candidate_paths = []
+            if os.path.isabs(source_file):
+                candidate_paths.append(source_file)
+            else:
+                candidate_paths.append(os.path.join(str(UPLOADS_DIR), source_file))
+                candidate_paths.append(os.path.join(str(INPUT_DIR), source_file))
+            for candidate in candidate_paths:
+                if not candidate or not os.path.exists(candidate):
+                    continue
+                ext = os.path.splitext(candidate)[1].lower()
+                if ext not in {".html", ".htm", ".xhtml", ".txt"}:
+                    continue
+                file_html = _read_text_file_with_fallback(candidate)
+                if file_html:
+                    html_text = file_html
+                    resolved_source_path = candidate
+                    logger.info({
+                        "level": "INFO",
+                        "type": log_type,
+                        "message": f"[GenericHTML] Loaded fallback HTML from {candidate}",
+                        "session_id": session_id
+                    })
+                    break
+                else:
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": log_type,
+                        "message": f"[GenericHTML] Failed to read fallback source file: {candidate}",
+                        "session_id": session_id
+                    })
+                    continue
+            if resolved_source_path:
+                ctx.setdefault("source_file_path", resolved_source_path)
+
+    if not html_text and page is not None:
+        page_html = safe_content(page, session_id=session_id)
+        if page_html:
+            html_text = page_html
+
     active_coordinator = coordinator or ContextCoordinator()
 
     try:
@@ -558,6 +675,19 @@ def generate_generic_html_result(
             "session_id": session_id
         })
         return None
+
+    if (not headers or not rows) and html_text:
+        text_headers, text_rows = _extract_text_blocks(html_text)
+        if text_headers and text_rows:
+            headers, rows = text_headers, text_rows
+            fallback_strategy = "text_blocks"
+            logger.info({
+                "level": "INFO",
+                "type": log_type,
+                "message": "[GenericHTML] No tables detected; using text block fallback.",
+                "session_id": session_id,
+                "row_count": len(text_rows)
+            })
 
     if not headers or not rows:
         logger.warning({
@@ -612,6 +742,7 @@ def generate_generic_html_result(
         "handler": "generic_html_fallback",
         "fallback": True,
         "fallback_reason": ctx.get("fallback_reason"),
+        "fallback_strategy": fallback_strategy,
         "source_url": ctx.get("url"),
         "session_id": session_id,
         "row_count": len(rows),
@@ -619,6 +750,8 @@ def generate_generic_html_result(
     }
     if ctx.get("source_file"):
         metadata["source_file"] = ctx["source_file"]
+    if resolved_source_path:
+        metadata["source_file_path"] = resolved_source_path
 
     logger.info({
         "level": "INFO",

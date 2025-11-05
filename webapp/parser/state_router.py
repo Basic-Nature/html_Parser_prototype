@@ -133,6 +133,10 @@ def prompt_for_handler_fallback(
 
     attempts = 0
 
+    if not available_states:
+        logger.warning(f"[Fallback][Session:{session_id}] No handler states available for manual selection.")
+        return None, None
+
     while attempts < max_attempts:
         if last_error:
             logger.error(f"\n[ERROR][Session:{session_id}] Last import failed: {last_error}\n")
@@ -142,7 +146,9 @@ def prompt_for_handler_fallback(
                 f"Select a state (or type 'cancel' to abort): [Session:{session_id}]",
                 options=available_states,
                 allow_cancel=True,
-                header=f"STATE SELECTION [Session:{session_id}]"
+                header=f"STATE SELECTION [Session:{session_id}]",
+                session_id=session_id,
+                context={"states": available_states}
             )
         except PromptCancelled:
             logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
@@ -165,7 +171,9 @@ def prompt_for_handler_fallback(
                     f"Select a county for '{state}' (or type 'cancel' to skip): [Session:{session_id}]",
                     options=counties,
                     allow_cancel=True,
-                    header=f"COUNTY SELECTION [Session:{session_id}]"
+                    header=f"COUNTY SELECTION [Session:{session_id}]",
+                    session_id=session_id,
+                    context={"state": state, "counties": counties}
                 )
             except PromptCancelled:
                 logger.warning(f"[Fallback][Session:{session_id}] Aborted by user.")
@@ -187,7 +195,16 @@ def preload_handler_map(restrict_to_states=None) -> None:
     If restrict_to_states is provided, only scan those states.
     """
     if restrict_to_states:
-        states = [normalize_state_name(s) for s in restrict_to_states]
+        states = []
+        for state_name in restrict_to_states:
+            normalized = normalize_state_name(state_name)
+            handler_path = os.path.join(STATE_HANDLER_BASE_PATH, normalized)
+            if os.path.isdir(handler_path):
+                states.append(normalized)
+            else:
+                logger.warning(f"[Router] Requested state '{state_name}' not found on disk. Skipping restrict filter.")
+        if not states:
+            states = list_available_states()
     else:
         states = list_available_states()
     counties_by_state = {

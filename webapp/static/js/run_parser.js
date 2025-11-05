@@ -754,97 +754,101 @@
     }
     const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
     const { onCancel } = extras || {};
+
+    const closeModal = (notifyCancel = false) => {
+      Modal.close();
+      if (notifyCancel && typeof onCancel === 'function') {
+        try { onCancel(); } catch (err) { void err; }
+      }
+    };
+
+    const cancelSelection = () => {
+      closeModal(true);
+      if (typeof onSelect === 'function') onSelect(null);
+    };
+
+    const emitSelection = (value) => {
+      closeModal(false);
+      if (typeof onSelect === 'function') onSelect(value);
+    };
+
     titleEl.textContent = title || 'Select';
     summaryDiv.innerHTML = ctxSummaryHtml || `${options.length} option(s)`;
-    let filtered = options.slice();
-    let page = 0;
+
     const PAGE_SIZE = 200;
+    let filtered = options.slice();
     let rendered = 0;
 
-    function renderList(q = '') {
-      const query = (q || '').toLowerCase().trim();
-      filtered = !query
-        ? options.slice()
-        : options.filter(o =>
-            String(o.index).includes(query) ||
-            (o.label || '').toLowerCase().includes(query) ||
-            (o.meta || '').toLowerCase().includes(query)
-          );
-      page = 0;
+    const createOptionElement = (option) => {
+      const item = document.createElement('div');
+      item.className = 'download-option';
+      item.tabIndex = 0;
+      item.innerHTML = `<b>[${option.index}]</b> ${esc(option.label || '')}${option.meta ? ` <small>(${esc(option.meta)})</small>` : ''}`;
+      const select = () => emitSelection([option.index]);
+      item.onclick = select;
+      item.onkeydown = (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          select();
+        }
+      };
+      optionsDiv.appendChild(item);
+    };
+
+    const appendLoadMoreButton = () => {
+      const remaining = filtered.length - rendered;
+      if (remaining <= 0) return;
+      const moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = 'btn btn-primary btn-sm mt-1em';
+      moreBtn.textContent = `Show more (${remaining} remaining)`;
+      moreBtn.onclick = () => {
+        const start = rendered;
+        const newEnd = Math.min(filtered.length, rendered + PAGE_SIZE);
+        for (let i = start; i < newEnd; i += 1) {
+          createOptionElement(filtered[i]);
+        }
+        rendered = newEnd;
+        const left = filtered.length - rendered;
+        if (left > 0) {
+          moreBtn.textContent = `Show more (${left} remaining)`;
+        } else {
+          moreBtn.remove();
+        }
+      };
+      optionsDiv.appendChild(moreBtn);
+    };
+
+    function renderList(query = '') {
+      const normalized = query.toLowerCase().trim();
+      filtered = normalized
+        ? options.filter(o =>
+            String(o.index).includes(normalized) ||
+            (o.label || '').toLowerCase().includes(normalized) ||
+            (o.meta || '').toLowerCase().includes(normalized)
+          )
+        : options.slice();
+
       rendered = 0;
       optionsDiv.innerHTML = '';
-      const end = Math.min(filtered.length, PAGE_SIZE);
-      filtered.slice(0, end).forEach(o => {
-        const item = document.createElement('div');
-        item.className = 'download-option';
-        item.tabIndex = 0;
-        item.innerHTML = `<b>[${o.index}]</b> ${esc(o.label || '')}${o.meta ? ` <small>(${esc(o.meta)})</small>` : ''}`;
-        item.onclick = () => { Modal.close(); onSelect([o.index]); };
-        item.onclick = () => {
-          Modal.close();
-          if (typeof onSelect === 'function') onSelect([o.index]);
-        };
-        item.onkeydown = (e) => { if (e.key === 'Enter') { Modal.close(); onSelect([o.index]); } };
-        item.onkeydown = (e) => {
-          if (e.key === 'Enter') {
-            Modal.close();
-            if (typeof onSelect === 'function') onSelect([o.index]);
-          }
-        };
-        optionsDiv.appendChild(item);
-      });
-      rendered = end;
-      if (rendered < filtered.length) {
-        const more = document.createElement('button');
-            item.onclick = () => {
-              Modal.close();
-              if (typeof onSelect === 'function') onSelect([o.index]);
-            };
-        more.type = 'button';
-        more.className = 'btn btn-primary btn-sm mt-1em';
-        more.textContent = `Show more (${filtered.length - rendered} remaining)`;
-        more.onclick = () => {
-          const start = rendered;
-          const newEnd = Math.min(filtered.length, rendered + PAGE_SIZE);
-          filtered.slice(start, newEnd).forEach(o => {
-            const item = document.createElement('div');
-            item.className = 'download-option';
-            item.tabIndex = 0;
-            item.innerHTML = `<b>[${o.index}]</b> ${esc(o.label || '')}${o.meta ? ` <small>(${esc(o.meta)})</small>` : ''}`;
-            item.onclick = () => { Modal.close(); onSelect([o.index]); };
-            item.onkeydown = (e) => { if (e.key === 'Enter') { Modal.close(); onSelect([o.index]); } };
-            optionsDiv.appendChild(item);
-          });
-          rendered = newEnd;
-          more.textContent = rendered >= filtered.length
-            ? 'All options shown'
-            : `Show more (${filtered.length - rendered} remaining)`;
-          if (rendered >= filtered.length) more.remove();
-        };
-            item.onkeydown = (e) => {
-              if (e.key === 'Enter') {
-                Modal.close();
-                if (typeof onSelect === 'function') onSelect([o.index]);
-              }
-            };
-        optionsDiv.appendChild(more);
+
+      const initialEnd = Math.min(filtered.length, PAGE_SIZE);
+      for (let i = 0; i < initialEnd; i += 1) {
+        createOptionElement(filtered[i]);
       }
+      rendered = initialEnd;
+
+      appendLoadMoreButton();
     }
 
-    function hide() { Modal.close(); }
     searchEl.value = '';
-    renderList('');
-    searchEl.oninput = e => renderList(e.target.value);
-    closeBtn.onclick = cancelBtn.onclick = () => { hide(); onSelect(null); };
+    renderList();
+    searchEl.oninput = (event) => renderList(event.target.value);
+    closeBtn.onclick = cancelBtn.onclick = cancelSelection;
+
     Modal.open();
     searchEl.focus();
   }
-    function hide() {
-      Modal.close();
-      if (typeof onCancel === 'function') {
-        try { onCancel(); } catch (err) { void err; }
-      }
-    }
   function getManualState(sessionId) {
     if (!sessionId) return null;
     const key = String(sessionId);
@@ -2461,6 +2465,9 @@
         earlyQueue = [];
       }
     }
+    const desiredSource = (el.fileSourceSelect?.value === 'uploads') ? 'uploads' : 'input';
+    const desiredOrigin = desiredSource === 'uploads' ? 'user' : 'default';
+    updateSessionSourceMeta(activeSessionId, desiredSource, desiredOrigin);
     emitManualFileSource();
   pipelineControl?.clearAttention('resolve');
   pipelineControl?.setPhase('run');
@@ -2470,17 +2477,25 @@
     el.runBtn.disabled = true;
     el.runBtn.setAttribute('data-running','true');
     el.runBtn.textContent = 'Running...';
-    socket.once('joined', function(data) {
-      if (data.session_id === activeSessionId) {
-        socket.emit('run_parser', {
-          session_id: activeSessionId,
-          file_source: currentFileSource(),
-          manual_source_origin: activeManualSourceOrigin,
-        });
-        setTimeout(() => socket && socket.emit('get_session_history', { session_id: activeSessionId }), 600);
-      }
-    });
-    joinSession(activeSessionId);
+    const dispatchRun = () => {
+      socket.emit('run_parser', {
+        session_id: activeSessionId,
+        file_source: desiredSource,
+        manual_source_origin: desiredOrigin,
+      });
+      setTimeout(() => socket && socket.emit('get_session_history', { session_id: activeSessionId }), 600);
+    };
+
+    if (joinedSessions.has(activeSessionId)) {
+      dispatchRun();
+    } else {
+      socket.once('joined', function(data) {
+        if (data.session_id === activeSessionId) {
+          dispatchRun();
+        }
+      });
+      joinSession(activeSessionId);
+    }
     setTimeout(() => { if (!el.runBtn.getAttribute('data-running')) el.runBtn.disabled = false; }, 4000);
   }
 
@@ -3632,7 +3647,6 @@
     function setOpen(open) {
       body.classList.toggle('collapsed', !open);
       sync();
-      if (open) pipelineControl?.setPhase('review');
     }
 
     on(btn, 'click', () => setOpen(body.classList.contains('collapsed')));

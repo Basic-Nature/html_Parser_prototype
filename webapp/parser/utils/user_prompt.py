@@ -195,7 +195,7 @@ class UserPrompt(ContextManager):
             if session_id in self._pending_delete:
                 self._pending_delete.pop(session_id, None)
             session = self.prompt_sessions.get(session_id)
-            if session is None or session.is_expired():
+            if session is None or session.is_expired() or session.is_resolved():
                 session = PromptSession(session_id, context, self.timeout_sec)
                 self.prompt_sessions[session_id] = session
             return session
