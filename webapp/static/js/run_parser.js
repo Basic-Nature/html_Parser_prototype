@@ -77,8 +77,247 @@
   const BATCH_INTERVAL = 40;
   const dupMap = new Map();
   const typeCounts = { all: 0 };
-  let urlIndexMap = {};
+  const urlIndexMap = Object.create(null);
   let contestIndexMap = {};
+  const MANUAL_UPLOAD_PROMPT_PATTERN = /select a file to parse from uploads/i;
+  const manualOverrideState = Object.create(null);
+  const SessionEnums = {
+    state: {
+      IDLE: 'idle',
+      RUNNING: 'running',
+      WAITING_PROMPT: 'waiting_prompt',
+      CANCELLING: 'cancelling',
+      CANCELLED: 'cancelled',
+      COMPLETED: 'completed',
+      ERROR: 'error',
+    },
+    phase: {
+      PREPARE: 'prepare',
+      SOURCE: 'source',
+      RUN: 'run',
+      RESOLVE: 'resolve',
+      REVIEW: 'review',
+    },
+    stateToPhase: {
+      idle: 'prepare',
+      running: 'run',
+      waiting_prompt: 'resolve',
+      cancelling: 'run',
+      cancelled: 'review',
+      completed: 'review',
+      error: 'review',
+    },
+  };
+
+  let PIPELINE_PHASES = [
+    SessionEnums.phase.PREPARE,
+    SessionEnums.phase.SOURCE,
+    SessionEnums.phase.RUN,
+    SessionEnums.phase.RESOLVE,
+    SessionEnums.phase.REVIEW,
+  ];
+  let pipelinePhase = PIPELINE_PHASES[0];
+
+  const SESSION_ENUMS_PROMISE = fetch('/api/session/enums', { cache: 'no-store' })
+    .then(res => (res.ok ? res.json() : null))
+    .then(data => {
+      if (!data || typeof data !== 'object') return;
+      if (data.states && typeof data.states === 'object') {
+        SessionEnums.state = { ...SessionEnums.state, ...data.states };
+      }
+      if (data.phases && typeof data.phases === 'object') {
+        SessionEnums.phase = { ...SessionEnums.phase, ...data.phases };
+      }
+      if (Array.isArray(data.phase_order) && data.phase_order.length) {
+        PIPELINE_PHASES = data.phase_order.slice();
+        if (!PIPELINE_PHASES.includes(pipelinePhase)) {
+          pipelinePhase = PIPELINE_PHASES[0];
+        }
+      }
+      if (data.state_phase_map && typeof data.state_phase_map === 'object') {
+        SessionEnums.stateToPhase = { ...SessionEnums.stateToPhase, ...data.state_phase_map };
+      }
+    })
+    .catch(() => {});
+
+  function createSessionMirror() {
+    const store = new Map();
+    const subscribers = new Set();
+
+    function notify(sessionId) {
+      const meta = store.get(sessionId) || null;
+      subscribers.forEach(fn => {
+        try { fn(sessionId, meta); } catch (err) { void err; }
+      });
+    }
+
+    const mirror = {
+      upsert(meta) {
+        if (!meta || typeof meta !== 'object') return;
+        const sid = meta.session_id;
+        if (!sid) return;
+        const existing = store.get(sid) || {};
+        const merged = { ...existing, ...meta };
+        store.set(sid, merged);
+        notify(sid);
+      },
+      remove(sessionId) {
+        if (!sessionId) return;
+        store.delete(sessionId);
+        notify(sessionId);
+      },
+      replace(list) {
+        store.clear();
+        if (Array.isArray(list)) {
+          list.forEach(item => mirror.upsert(item));
+        }
+      },
+      get(sessionId) {
+        return store.get(sessionId) || null;
+      },
+      list() {
+        return Array.from(store.values());
+      },
+      subscribe(fn) {
+        if (typeof fn !== 'function') return () => {};
+        subscribers.add(fn);
+        return () => subscribers.delete(fn);
+      }
+    };
+
+    return mirror;
+  }
+
+  const sessionMirror = createSessionMirror();
+  sessionMirror.subscribe((sid, meta) => {
+    ingestSessionSourceMeta(sid, meta, { fromServer: true });
+  });
+  let uploadsHasFiles = null;
+  let hasIssuedRunCommand = false;
+
+  function pipelinePhaseIndex(phase) {
+    return PIPELINE_PHASES.indexOf(phase);
+  }
+
+  function setPipelineHint(text, level = 'info') {
+    if (!el || !el.pipelineHint) return;
+    if (!text) {
+      el.pipelineHint.textContent = '';
+      el.pipelineHint.dataset.level = 'info';
+      el.pipelineHint.classList.add('hidden');
+      return;
+    }
+    el.pipelineHint.textContent = text;
+    el.pipelineHint.dataset.level = level;
+    el.pipelineHint.classList.remove('hidden');
+  }
+
+  function updatePipelineHintForPhase(extraMessage) {
+    if (!el || !el.pipelineHint) return;
+    const source = currentFileSource();
+    const origin = activeManualSourceOrigin || 'default';
+    let message = '';
+    let level = 'info';
+    if (extraMessage) {
+      if (typeof extraMessage === 'object') {
+        message = extraMessage.text || '';
+        level = extraMessage.level || 'info';
+      } else {
+        message = String(extraMessage);
+      }
+    } else {
+      switch (pipelinePhase) {
+        case 'prepare': {
+          if (source === 'uploads') {
+            if (uploadsHasFiles === false) {
+              message = 'Uploads folder is empty. Use the Uploads section or tap "Show Instructions" for guidance.';
+              level = 'warn';
+            } else if (origin !== 'default') {
+              message = 'Manual uploads already selected. Step "Choose Source" is checked - press Run when ready.';
+            } else {
+              message = 'Verify your uploads or add new files, then choose the source and press Run when ready.';
+            }
+          } else {
+            message = 'Review URLs and inputs. Switch to “Manual Uploads” if you need to run a local file.';
+          }
+          break;
+        }
+        case 'source': {
+          if (source === 'uploads') {
+            if (uploadsHasFiles === false) {
+              message = 'No files detected in Uploads. Add a file first or switch back to Input Folder.';
+              level = 'warn';
+            } else if (origin !== 'default') {
+              message = origin === 'server'
+                ? 'Manual uploads pre-selected. Review the file, then continue to Run.'
+                : 'Manual uploads selected. Review the file list or press Run when ready.';
+              level = 'info';
+            } else {
+              message = 'Select the file you want to parse from the Uploads panel before running.';
+              level = 'action';
+            }
+          } else {
+            message = 'Parser will pull from the Input folder. Press Run when you are ready.';
+          }
+          break;
+        }
+        case 'run': {
+          message = 'Parser is running. Monitor the activity log for progress and warnings.';
+          break;
+        }
+        case 'resolve': {
+          message = 'Respond to the prompt to continue. Use the modal or command box to submit your choice.';
+          level = 'action';
+          break;
+        }
+        case 'review': {
+          message = 'Download outputs from the Output section or rerun with a different selection.';
+          break;
+        }
+        default:
+          message = '';
+      }
+    }
+    setPipelineHint(message, level);
+  }
+
+  function setPipelinePhase(phase, { focus = false, force = false } = {}) {
+    if (!phase) return;
+    const targetIdx = pipelinePhaseIndex(phase);
+    if (targetIdx === -1) return;
+    const currentIdx = pipelinePhaseIndex(pipelinePhase);
+    if (!force && currentIdx > targetIdx) {
+      updatePipelineHintForPhase();
+      return;
+    }
+    pipelinePhase = phase;
+    if (pipelineControl) {
+      pipelineControl.setPhase(phase, { source: 'manual' });
+      if (focus) pipelineControl.focusStep(phase, { scroll: false, highlight: true });
+    }
+    updatePipelineHintForPhase();
+  }
+
+  function ensureResolveAttention(flag) {
+    if (pipelineControl && typeof pipelineControl.attentionOnly === 'function') {
+      pipelineControl.attentionOnly('resolve', !!flag);
+    }
+  }
+
+  function noteUploadsPresence(hasFiles) {
+    if (uploadsHasFiles === hasFiles) return;
+    uploadsHasFiles = hasFiles;
+    updatePipelineHintForPhase();
+  }
+
+  function updatePipelineMetadataForActive() {
+    if (!pipelineControl || typeof pipelineControl.setStepState !== 'function') return;
+    if (activeManualSource === 'uploads' && activeManualSourceOrigin !== 'default') {
+      pipelineControl.setStepState('source', 'done');
+    } else {
+      pipelineControl.setStepState('source', null);
+    }
+  }
   // Contest options store (per session) + helpers
   const CONTEST_STORE_KEY = 'contest_opts_by_session_v1';
   let contestOptionsBySession = lsGetJSON(CONTEST_STORE_KEY, {});
@@ -97,34 +336,146 @@
     const opts = getContestOptions(sessionId);
     if (!opts.length) return false;
     const ctxSummary = `<div class="small text-muted">${opts.length} option(s)</div>`;
+    if (sessionId === activeSessionId) {
+      pipelineControl?.markAttention('resolve');
+      pipelineControl?.focusStep('resolve', { scroll: false, highlight: true });
+      logPanelControl?.expand();
+    }
     showIndexedSelectionModalWithContext('Select Contest', opts, ctxSummary, (selection) => {
       if (!selection) return;
       if (socket) socket.emit('parser_prompt', { session_id: sessionId, value: selection.join(',') });
+      if (sessionId === activeSessionId) {
+        pipelineControl?.clearAttention('resolve');
+        pipelineControl?.setPhase('resolve');
+      }
     });
     return true;
   };
   let lastPromptContext = null;
+  const urlPromptContextBySession = new Map();
   let lastSentSourceBySession = {};
-  let sessionMetaIndex = {};
+  const sessionSourceMeta = new Map();
+  let activeManualSource = 'input';
+  let activeManualSourceOrigin = 'default';
+  let pendingManualSource = null;
+  let pipelineControl = null;
+  let logPanelControl = null;
 
   // Folder browser state
   const ROOT_LABELS = { uploads: 'Uploads', input: 'Input', output: 'Output' };
 
+  function normalizeManualSource(source) {
+    return source === 'uploads' ? 'uploads' : 'input';
+  }
+
+  function normalizeManualOrigin(origin, source) {
+    const normalizedSource = normalizeManualSource(source);
+    const lowered = typeof origin === 'string' ? origin.toLowerCase() : '';
+    if (lowered === 'user') {
+      return normalizedSource === 'input' ? 'default' : 'user';
+    }
+    if (lowered === 'server') {
+      return normalizedSource === 'input' ? 'default' : 'server';
+    }
+    if (lowered === 'default') {
+      return 'default';
+    }
+    return normalizedSource === 'uploads' ? 'user' : 'default';
+  }
+
+  function clearSessionSourceMeta(sessionId, { fromServer = false } = {}) {
+    if (!sessionId) return;
+    sessionSourceMeta.delete(sessionId);
+    if (fromServer) delete lastSentSourceBySession[sessionId];
+    if (sessionId === activeSessionId) {
+      activeManualSource = 'input';
+      activeManualSourceOrigin = 'default';
+      syncManualSourceUI();
+      updatePipelineMetadataForActive();
+      updatePipelineHintForPhase();
+    }
+  }
+
+  function updateSessionSourceMeta(sessionId, source, origin, { fromServer = false } = {}) {
+    const normalizedSource = normalizeManualSource(source);
+    const normalizedOrigin = normalizeManualOrigin(origin, normalizedSource);
+
+    if (!sessionId) {
+      pendingManualSource = { source: normalizedSource, origin: normalizedOrigin };
+      activeManualSource = normalizedSource;
+      activeManualSourceOrigin = normalizedOrigin;
+      syncManualSourceUI();
+      updatePipelineMetadataForActive();
+      updatePipelineHintForPhase();
+      return;
+    }
+
+    sessionSourceMeta.set(sessionId, { source: normalizedSource, origin: normalizedOrigin });
+    if (fromServer) {
+      lastSentSourceBySession[sessionId] = normalizedSource;
+    }
+    if (sessionId === activeSessionId) {
+      activeManualSource = normalizedSource;
+      activeManualSourceOrigin = normalizedOrigin;
+      pendingManualSource = null;
+      syncManualSourceUI();
+      updatePipelineMetadataForActive();
+      updatePipelineHintForPhase();
+    }
+  }
+
+  function ingestSessionSourceMeta(sessionId, meta, { fromServer = true } = {}) {
+    if (!sessionId) return;
+    if (!meta) {
+      clearSessionSourceMeta(sessionId, { fromServer });
+      return;
+    }
+    const source = meta.manual_source ?? meta.file_source ?? meta.source;
+    const origin = meta.manual_source_origin ?? meta.source_origin ?? meta.origin;
+    updateSessionSourceMeta(sessionId, source, origin, { fromServer });
+  }
+
+  function syncManualSourceUI() {
+    const desired = activeManualSource === 'uploads' ? 'uploads' : 'input';
+    if (el.fileSourceSelect && el.fileSourceSelect.value !== desired) {
+      el.fileSourceSelect.value = desired;
+    }
+    syncSourceClass();
+  }
+
   // Keep Run button in sync with backend session lock state
   function updateRunButtonLock() {
     if (!el.runBtn) return;
-    const meta = sessionMetaIndex[activeSessionId];
-    const locked = meta && meta.locked;
-    if (locked) {
+  const meta = sessionMirror.get(activeSessionId) || {};
+  const state = String(meta.state || '').toLowerCase();
+    const locked = !!meta.locked;
+    const busyStates = new Set([
+      SessionEnums.state.RUNNING,
+      SessionEnums.state.WAITING_PROMPT,
+      SessionEnums.state.CANCELLING,
+    ]);
+    const shouldDisable = locked || busyStates.has(state);
+    if (shouldDisable) {
       el.runBtn.disabled = true;
       el.runBtn.classList.add('btn-locked');
       el.runBtn.setAttribute('data-running','true');
     } else {
-      if (!el.runBtn.getAttribute('data-running')) {
-        el.runBtn.disabled = false;
-      }
+      el.runBtn.disabled = false;
       el.runBtn.classList.remove('btn-locked');
-      if (!locked) el.runBtn.removeAttribute('data-running');
+      el.runBtn.removeAttribute('data-running');
+    }
+  }
+
+  function applySessionState(sessionId, metaOverride) {
+    if (!sessionId) return;
+    const meta = metaOverride || sessionMirror.get(sessionId);
+    if (!meta) return;
+  const state = String(meta.state || '').toLowerCase();
+    const mappedPhase = meta.phase || SessionEnums.stateToPhase[state];
+    if (sessionId === activeSessionId && mappedPhase) {
+      setPipelinePhase(mappedPhase, { force: true });
+      ensureResolveAttention(state === SessionEnums.state.WAITING_PROMPT);
+      updateRunButtonLock();
     }
   }
   // Track joined rooms & early log queue
@@ -144,6 +495,11 @@
     promptForm: $('#promptForm'),
     logFilterSelect: $('#logFilterSelect'),
     outputModeSelect: $('#outputModeSelect'),
+    pipelineStepper: $('#pipelineStepper'),
+    logPanel: document.querySelector('.log-panel'),
+    logPanelBody: $('#logPanelBody'),
+    logToggleBtn: $('#toggleLogPanelBtn'),
+  pipelineHint: $('#pipelineHint'),
     sessionFooter: $('#sessionFooter'),
     footerPreview: $('#footerPreview'),
     footerFull: $('#footerFull'),
@@ -390,10 +746,14 @@
   }
 
   // Generic selection modal reusing download modal shell
-  function showIndexedSelectionModalWithContext(title, options, ctxSummaryHtml, onSelect) {
+  function showIndexedSelectionModalWithContext(title, options, ctxSummaryHtml, onSelect, extras = {}) {
     const refs = Modal.get();
-    if (!refs) return onSelect(null);
+    if (!refs) {
+      if (typeof onSelect === 'function') onSelect(null);
+      return;
+    }
     const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
+    const { onCancel } = extras || {};
     titleEl.textContent = title || 'Select';
     summaryDiv.innerHTML = ctxSummaryHtml || `${options.length} option(s)`;
     let filtered = options.slice();
@@ -420,12 +780,26 @@
         item.tabIndex = 0;
         item.innerHTML = `<b>[${o.index}]</b> ${esc(o.label || '')}${o.meta ? ` <small>(${esc(o.meta)})</small>` : ''}`;
         item.onclick = () => { Modal.close(); onSelect([o.index]); };
+        item.onclick = () => {
+          Modal.close();
+          if (typeof onSelect === 'function') onSelect([o.index]);
+        };
         item.onkeydown = (e) => { if (e.key === 'Enter') { Modal.close(); onSelect([o.index]); } };
+        item.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            Modal.close();
+            if (typeof onSelect === 'function') onSelect([o.index]);
+          }
+        };
         optionsDiv.appendChild(item);
       });
       rendered = end;
       if (rendered < filtered.length) {
         const more = document.createElement('button');
+            item.onclick = () => {
+              Modal.close();
+              if (typeof onSelect === 'function') onSelect([o.index]);
+            };
         more.type = 'button';
         more.className = 'btn btn-primary btn-sm mt-1em';
         more.textContent = `Show more (${filtered.length - rendered} remaining)`;
@@ -447,6 +821,12 @@
             : `Show more (${filtered.length - rendered} remaining)`;
           if (rendered >= filtered.length) more.remove();
         };
+            item.onkeydown = (e) => {
+              if (e.key === 'Enter') {
+                Modal.close();
+                if (typeof onSelect === 'function') onSelect([o.index]);
+              }
+            };
         optionsDiv.appendChild(more);
       }
     }
@@ -458,6 +838,321 @@
     closeBtn.onclick = cancelBtn.onclick = () => { hide(); onSelect(null); };
     Modal.open();
     searchEl.focus();
+  }
+    function hide() {
+      Modal.close();
+      if (typeof onCancel === 'function') {
+        try { onCancel(); } catch (err) { void err; }
+      }
+    }
+  function getManualState(sessionId) {
+    if (!sessionId) return null;
+    const key = String(sessionId);
+    if (!manualOverrideState[key]) {
+      manualOverrideState[key] = {
+        files: [],
+        folder: 'uploads',
+        baseDir: '',
+        lastPromptHash: null,
+        lastReset: 0,
+        lastCount: null,
+        lastSelection: null
+      };
+    }
+    return manualOverrideState[key];
+  }
+
+  function resetManualState(sessionId, meta = {}) {
+    const state = getManualState(sessionId);
+    if (!state) return null;
+    state.files = [];
+    state.lastReset = Date.now();
+    state.lastPromptHash = null;
+    state.lastSelection = null;
+    state.lastCount = typeof meta.count === 'number' ? meta.count : null;
+    if (meta.folder) state.folder = meta.folder;
+    if (meta.baseDir) state.baseDir = meta.baseDir;
+    return state;
+  }
+
+  function addManualFileOption(sessionId, index, label) {
+    const state = getManualState(sessionId);
+    if (!state) return null;
+    const idx = Number(index);
+    const trimmed = (label || '').trim();
+    if (!Number.isFinite(idx) || !trimmed) return state;
+    if (state.files.some(f => f.index === idx || f.label === trimmed)) return state;
+    state.files.push({ index: idx, label: trimmed, value: String(idx), meta: '' });
+    state.files.sort((a, b) => a.index - b.index);
+    return state;
+  }
+
+  function getManualFiles(sessionId) {
+    const state = getManualState(sessionId);
+    return state ? state.files.slice() : [];
+  }
+
+  function ensureSectionExpanded(sectionId) {
+    if (!sectionId) return;
+    const panel = document.getElementById(sectionId);
+    if (!panel) return;
+    const btn = document.querySelector(`.collapsible-btn[data-target="${sectionId}"]`);
+    const wasHidden = panel.classList.contains('hidden');
+    if (wasHidden) {
+      panel.classList.remove('hidden');
+      if (btn) btn.setAttribute('aria-expanded', 'true');
+      panel.querySelectorAll('.folder-panel').forEach(fp => fp._refresh && fp._refresh());
+    }
+    const container = panel.closest('.section');
+    if (container) {
+      container.classList.add('manual-highlight');
+      setTimeout(() => container.classList.remove('manual-highlight'), 1600);
+    }
+  }
+
+  function respondToPrompt(sessionId, value) {
+    if (!socket || !sessionId || value == null) return;
+    socket.emit('parser_prompt', { session_id: sessionId, value: String(value) });
+  }
+
+  function cacheUrlPromptContext(sessionId, urls, processed = {}, meta = {}) {
+    if (!sessionId || !Array.isArray(urls)) return [];
+    const sanitized = urls
+      .map(u => (typeof u === 'string' ? u.trim() : ''))
+      .filter(u => u && !/^(?:\.{3}|…)/.test(u));
+    const processedMap = (processed && typeof processed === 'object') ? processed : {};
+    const metaCopy = (meta && typeof meta === 'object') ? { ...meta } : {};
+    urlPromptContextBySession.set(sessionId, {
+      urls: sanitized.slice(),
+      processed: processedMap,
+      meta: metaCopy,
+    });
+    urlIndexMap[sessionId] = Object.fromEntries(sanitized.map((url, idx) => [String(idx + 1), url]));
+    return sanitized;
+  }
+
+  function getUrlPromptContext(sessionId = activeSessionId) {
+    return urlPromptContextBySession.get(sessionId) || null;
+  }
+
+  function hidePromptInput() {
+    if (!el.promptInput) return;
+    el.promptInput.disabled = true;
+    el.promptInput.value = '';
+    el.promptInput.parentElement?.classList.add('hidden');
+  }
+
+  function showPromptInput(placeholder = 'Type a command...') {
+    if (!el.promptInput) return;
+    el.promptInput.placeholder = placeholder;
+    el.promptInput.disabled = false;
+    el.promptInput.parentElement?.classList.remove('hidden');
+  }
+
+  function openManualSelectionModal(sessionId, promptMeta = {}) {
+    const state = getManualState(sessionId);
+    if (!state) return;
+    const files = getManualFiles(sessionId);
+    const placeholder = promptMeta.placeholder || 'Enter index or filename…';
+    const summaryParts = [];
+    const count = Number.isFinite(state.lastCount) ? state.lastCount : files.length;
+    if (count) summaryParts.push(`${count} file(s) detected`);
+    if (state.folder) summaryParts.push(`Source: ${state.folder}`);
+    if (state.baseDir) {
+      const normalized = state.baseDir.replace(/\\/g, '/');
+      summaryParts.push(`Path: ${normalized}`);
+    }
+    const summaryHtml = summaryParts.length
+      ? `<div class="small text-muted">${summaryParts.map(part => esc(part)).join(' • ')}</div>`
+      : '';
+
+    pipelineControl?.setPhase('source');
+    pipelineControl?.markAttention('source');
+    pipelineControl?.focusStep('source', { scroll: false, highlight: true });
+    logPanelControl?.expand();
+
+    hidePromptInput();
+
+    if (!files.length) {
+      showFolderBrowser('uploads', '', (sel) => {
+        if (!sel) {
+          showPromptInput(placeholder);
+          return;
+        }
+        const rel = sel.path ? `${sel.path}/${sel.name}` : sel.name;
+        respondToPrompt(sessionId, rel);
+        pipelineControl?.clearAttention('source');
+        state.lastSelection = rel;
+        setTimeout(() => showPromptInput('Type a command...'), 600);
+      });
+      return;
+    }
+
+    showIndexedSelectionModalWithContext(
+      'Select Upload File',
+      files.map(file => ({ index: file.index, label: file.label, meta: file.meta || '' })),
+      summaryHtml || `${files.length} option(s)`,
+      (selection) => {
+        if (!selection || !selection.length) {
+          showPromptInput(placeholder);
+          return;
+        }
+        const idx = selection[0];
+        const match = files.find(f => String(f.index) === String(idx));
+        const value = match ? match.value : String(idx);
+        respondToPrompt(sessionId, value);
+        pipelineControl?.clearAttention('source');
+        state.lastSelection = value;
+        setTimeout(() => showPromptInput('Type a command...'), 600);
+      },
+      {
+        onCancel: () => showPromptInput(placeholder)
+      }
+    );
+  }
+
+  function openContestSelectionModal(sessionId, options, ctxSummaryHtml = '', meta = {}) {
+    if (!sessionId || !Array.isArray(options) || !options.length) {
+      showPromptInput(meta.placeholder || 'Enter contest index…');
+      return;
+    }
+
+    pipelineControl?.setPhase('resolve');
+    pipelineControl?.markAttention('resolve');
+    pipelineControl?.focusStep('resolve', { scroll: false, highlight: true });
+    logPanelControl?.expand();
+
+    hidePromptInput();
+
+    showIndexedSelectionModalWithContext(
+      meta.title || 'Select Contest',
+      options,
+      ctxSummaryHtml || `${options.length} option(s)`,
+      (selection) => {
+        if (!selection || !selection.length) {
+          showPromptInput(meta.placeholder || 'Enter contest index…');
+          return;
+        }
+        const payload = selection.join(',');
+        respondToPrompt(sessionId, payload);
+        pipelineControl?.clearAttention('resolve');
+        setTimeout(() => showPromptInput('Type a command...'), 600);
+      },
+      {
+        onCancel: () => showPromptInput(meta.placeholder || 'Enter contest index…')
+      }
+    );
+  }
+
+  function openUrlSelectionModal(sessionId, urls, processed = {}, meta = {}) {
+    const placeholder = meta.placeholder || 'Enter URL index or filter…';
+    const hintText = meta.hint || 'Search or filter (state:/county:/text)';
+    const sanitized = cacheUrlPromptContext(sessionId, urls, processed, meta);
+    if (!sessionId || !sanitized.length) {
+      showPromptInput(placeholder);
+      return;
+    }
+    if (sessionId !== activeSessionId) return;
+
+    const context = getUrlPromptContext(sessionId) || { processed: {} };
+    const processedMap = (context.processed && typeof context.processed === 'object') ? context.processed : {};
+    const toTitle = (val) => {
+      const s = String(val || '').replace(/_/g, ' ').trim();
+      return s ? s.replace(/\b\w/g, c => c.toUpperCase()) : '';
+    };
+
+    const options = sanitized.map((url, idx) => {
+      const entry = processedMap[url];
+      const rawStatus = entry && typeof entry.status === 'string' ? entry.status.trim().toLowerCase() : '';
+      const statusKey = rawStatus || 'unprocessed';
+      const friendlyStatus = toTitle(statusKey);
+      const flagged = !!(entry && (entry.flagged_for_review || entry.flagged));
+      const metaParts = [];
+      if (friendlyStatus) metaParts.push(friendlyStatus);
+      if (flagged) metaParts.push('Flagged');
+      return {
+        index: idx + 1,
+        label: url,
+        meta: metaParts.join(' • '),
+        statusKey,
+      };
+    });
+
+    if (sessionId === activeSessionId) {
+      lastPromptContext = { kind: 'url', session_id: sessionId };
+    }
+
+    const statusCounts = options.reduce((acc, opt) => {
+      const key = opt.statusKey || 'unprocessed';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const statusSummary = Object.entries(statusCounts)
+      .filter(([, count]) => count > 0)
+      .map(([status, count]) => `${count} ${toTitle(status)}`)
+      .join(' • ');
+    const summaryLines = [
+      `${options.length} URL(s)`
+    ];
+    if (statusSummary) summaryLines.push(statusSummary);
+    if (hintText) summaryLines.push(hintText);
+    const summaryHtml = `<div class="small text-muted">${summaryLines.map(line => esc(line)).join('<br>')}</div>`;
+
+    pipelineControl?.setPhase('source');
+    pipelineControl?.markAttention('source');
+    pipelineControl?.focusStep('source', { scroll: false, highlight: true });
+    logPanelControl?.expand();
+
+    hidePromptInput();
+
+    showIndexedSelectionModalWithContext(
+      meta.title || 'Select URL',
+      options,
+      summaryHtml,
+      (selection) => {
+        if (!selection || !selection.length) {
+          showPromptInput(placeholder);
+          return;
+        }
+        const payload = selection.join(',');
+        respondToPrompt(sessionId, payload);
+        pipelineControl?.clearAttention('source');
+        setTimeout(() => showPromptInput('Type a command...'), 600);
+      },
+      {
+        onCancel: () => showPromptInput(placeholder)
+      }
+    );
+  }
+
+  window.showUrlPicker = function(sessionId = activeSessionId) {
+    if (sessionId !== activeSessionId) return false;
+    const ctx = getUrlPromptContext(sessionId);
+    if (!ctx || !Array.isArray(ctx.urls) || !ctx.urls.length) return false;
+    openUrlSelectionModal(sessionId, ctx.urls, ctx.processed || {}, ctx.meta || {});
+    return true;
+  };
+
+  function updatePipelineForStatusLog(message) {
+    if (!pipelineControl || !message) return;
+    const lower = String(message).toLowerCase();
+    if (/parser connected|session started|launching parser/.test(lower)) {
+      pipelineControl.setPhase('run');
+    }
+    if (/prompt response received/.test(lower)) {
+      pipelineControl.clearAttention('source');
+      pipelineControl.clearAttention('resolve');
+      pipelineControl.setPhase('run');
+    }
+    if (/run cancelled|cancellation requested|run canceled/.test(lower)) {
+      pipelineControl.clearAttention('resolve');
+      pipelineControl.setPhase('prepare');
+      pipelineControl.focusStep('prepare', { scroll: false, highlight: false });
+    }
+    if (/parser run completed|completed! output csv|manual upload parse succeeded/i.test(lower)) {
+      pipelineControl.setPhase('review');
+      pipelineControl.focusStep('review', { scroll: false, highlight: true });
+    }
   }
 
   // Folder browser (uploads, input, output) with search + breadcrumbs
@@ -1045,11 +1740,20 @@
   const dynamicLevels = new Set(['all', ...CANONICAL_LEVELS.map(l => l.toLowerCase())]);
 
   // -------- Sessions --------
-  function getSessions() {
-    const list = lsGetJSON('active_sessions', []);
-    const normalized = uniq(list.map(s => (s && typeof s === 'object' && s.session_id) ? s.session_id : s).filter(Boolean));
+  function syncSessionCache(ids) {
+    let source = Array.isArray(ids) ? ids.slice() : [];
+    if (!source.length) {
+      source = sessionMirror.list().map(meta => meta.session_id).filter(Boolean);
+    }
+    const normalized = uniq(source.filter(Boolean));
     lsSetJSON('active_sessions', normalized);
     return normalized;
+  }
+
+  function getSessions() {
+    const cached = lsGetJSON('active_sessions', []);
+    const merged = [...cached, ...sessionMirror.list().map(meta => meta.session_id || '')];
+    return syncSessionCache(merged);
   }
 
   function highlightActiveSessionBtn() {
@@ -1063,6 +1767,31 @@
     localStorage.setItem('session_id', activeSessionId);
     if (el.activeSessionSpan) el.activeSessionSpan.textContent = activeSessionId;
     highlightActiveSessionBtn();
+    pipelineControl?.reset();
+    if (activeSessionId) {
+      const meta = sessionMirror.get(activeSessionId);
+      if (meta) {
+        const source = meta.manual_source ?? meta.file_source ?? meta.source;
+        const origin = meta.manual_source_origin ?? meta.source_origin ?? meta.origin;
+        updateSessionSourceMeta(activeSessionId, source, origin, { fromServer: true });
+      } else if (pendingManualSource) {
+        updateSessionSourceMeta(
+          activeSessionId,
+          pendingManualSource.source,
+          pendingManualSource.origin,
+          { fromServer: false }
+        );
+      } else {
+        clearSessionSourceMeta(activeSessionId, { fromServer: true });
+      }
+    } else {
+      activeManualSource = 'input';
+      activeManualSourceOrigin = 'default';
+      syncManualSourceUI();
+      updatePipelineMetadataForActive();
+      updatePipelineHintForPhase();
+    }
+    logPanelControl?.collapse();
     // sync lastContestOptions for this session
     lastContestOptions = getContestOptions(activeSessionId);
     if (earlyQueue.length && el.outputDiv) {
@@ -1070,6 +1799,7 @@
       flushBatch();
       earlyQueue = [];
     }
+    applySessionState(activeSessionId);
   }
 
   function updateSessionCount() {
@@ -1448,6 +2178,16 @@
 
     ensureFilterOptions(el.logFilterSelect, dynamicLevels, obj.level.toLowerCase());
     const normType = obj.type.toLowerCase();
+    if (obj.session_id === activeSessionId && pipelineControl) {
+      if (normType === 'output' || normType === 'summary') {
+        pipelineControl.setPhase('review');
+      }
+    }
+    if (logPanelControl && typeof logPanelControl.isCollapsed === 'function') {
+      const severe = obj.level === 'ERROR' || obj.level === 'CRITICAL';
+      const warn = obj.level === 'WARNING';
+      if (logPanelControl.isCollapsed() && (severe || warn)) logPanelControl.expand();
+    }
     ensureFilterOptions(logTypeSelect, seenLogTypes, normType);
     bumpTypeCount(normType);
 
@@ -1647,7 +2387,7 @@
 
   // -------- Source / Bypass --------
   function currentFileSource() {
-    return (el.fileSourceSelect && el.fileSourceSelect.value === 'uploads') ? 'uploads' : 'input';
+    return activeManualSource === 'uploads' ? 'uploads' : 'input';
   }
   function syncSourceClass() {
     const inputSection = document.getElementById('inputSection');
@@ -1671,7 +2411,11 @@
     const src = currentFileSource();
     if (lastSentSourceBySession[activeSessionId] === src) return;
     lastSentSourceBySession[activeSessionId] = src;
-    socket.emit('set_manual_source', { session_id: activeSessionId, file_source: src });
+    socket.emit('set_manual_source', {
+      session_id: activeSessionId,
+      file_source: src,
+      origin: activeManualSourceOrigin,
+    });
   }
   function applyBypassState(onState) {
     document.body.classList.toggle('output-bypass', !!onState);
@@ -1718,13 +2462,21 @@
       }
     }
     emitManualFileSource();
+  pipelineControl?.clearAttention('resolve');
+  pipelineControl?.setPhase('run');
+  pipelineControl?.focusStep('run', { scroll: false, highlight: true });
+  logPanelControl?.expand();
     animateButton(el.runBtn);
     el.runBtn.disabled = true;
     el.runBtn.setAttribute('data-running','true');
     el.runBtn.textContent = 'Running...';
     socket.once('joined', function(data) {
       if (data.session_id === activeSessionId) {
-        socket.emit('run_parser', { session_id: activeSessionId, file_source: currentFileSource() });
+        socket.emit('run_parser', {
+          session_id: activeSessionId,
+          file_source: currentFileSource(),
+          manual_source_origin: activeManualSourceOrigin,
+        });
         setTimeout(() => socket && socket.emit('get_session_history', { session_id: activeSessionId }), 600);
       }
     });
@@ -1737,6 +2489,7 @@
     e.preventDefault();
     if (!socket || !el.promptInput || !activeSessionId) return;
     let raw = el.promptInput.value.trim();
+    const urlMap = urlIndexMap[activeSessionId] || {};
 
     // Quick command: reopen last contest picker
     if (/^\/?contests$/i.test(raw)) {
@@ -1746,11 +2499,13 @@
     }
     // Expand comma-separated numbers for contests (or URLs if present)
     if (/^\d+(?:\s*,\s*\d+)*$/.test(raw)) {
-      const nums = raw.split(/\s*,\s*/);
+      const nums = raw.split(/\s*,\s*/).filter(Boolean);
       if (lastPromptContext && lastPromptContext.kind === 'contest' && Object.keys(contestIndexMap).length) {
         raw = nums.filter(n => contestIndexMap[n] != null).join(',');
-      } else {
-        raw = nums.map(n => urlIndexMap[n] || n).join(',');
+      } else if (lastPromptContext && lastPromptContext.kind === 'url') {
+        raw = nums.join(',');
+      } else if (Object.keys(urlMap).length) {
+        raw = nums.map(n => urlMap[n] || n).join(',');
       }
     } else {
       const m = raw.match(/^\[?(\d+)\]?$/);
@@ -1758,14 +2513,18 @@
         const n = m[1];
         if (lastPromptContext && lastPromptContext.kind === 'contest' && contestIndexMap[n] != null) {
           raw = n;
-        } else if (urlIndexMap[n]) {
-          raw = urlIndexMap[n];
+        } else if (lastPromptContext && lastPromptContext.kind === 'url') {
+          raw = n;
+        } else if (urlMap[n]) {
+          raw = urlMap[n];
         }
       }
     }
 
     socket.emit('parser_prompt', { session_id: activeSessionId, value: raw });
     el.promptInput.value = '';
+    pipelineControl?.clearAttention('resolve');
+    pipelineControl?.setPhase('resolve');
   }
 
   // -------- URLs --------
@@ -1969,6 +2728,7 @@
     socket.on('output_bypass_state', ({ output_bypass }) => applyBypassState(!!output_bypass));
     socket.on('manual_source_state', handleManualSourceState);
     socket.on('session_list', handleSessionList);
+  socket.on('session_state', handleSessionState);
     socket.on('session_deleted', handleSessionDeleted);
     socket.on('session_heartbeat', handleSessionHeartbeat);
     // Full contest list (paged modal) from backend, with context summary
@@ -1977,25 +2737,28 @@
         const { session_id, context, total_count, options } = payload || {};
         if (!Array.isArray(options) || !session_id) return;
 
-        // Persist per-session list (uses existing localStorage-backed helpers)
-        setContestOptions(session_id, options);
+        const normalized = options.map(opt => ({
+          index: Number(opt.index ?? opt[0] ?? 0),
+          label: opt.label ?? opt.name ?? String(opt.title ?? opt[1] ?? opt),
+          meta: opt.meta ?? opt.summary ?? ''
+        }));
 
-        // Only open for active session
-        if (typeof activeSessionId !== 'undefined' && session_id !== activeSessionId) return;
+        setContestOptions(session_id, normalized);
+        contestIndexMap = Object.fromEntries(normalized.map(o => [String(o.index), o.label]));
+        lastPromptContext = { kind: 'contest', options: normalized.map(o => `[${o.index}] ${o.label}`), session_id };
+
+        if (session_id !== activeSessionId || !normalized.length) return;
 
         const ctxSummary = `
           <div class="small text-muted">
-            ${total_count || 0} option(s)
+            ${total_count ?? normalized.length} option(s)
             ${context?.state && context.state.toLowerCase() !== 'unknown' ? ` • State: ${esc(context.state)}` : ''}
             ${context?.county && context.county.toLowerCase() !== 'unknown' ? ` • County: ${esc(context.county)}` : ''}
             ${context?.handler ? ` • Handler: ${esc(context.handler)}` : ''}
             ${context?.input_file ? ` • File: ${esc(context.input_file)}` : ''}
           </div>`.trim();
 
-        showIndexedSelectionModalWithContext('Select Contest', options, ctxSummary, (indices) => {
-          if (!indices) return;
-          socket.emit('contest_selected', { session_id, indices });
-        });
+        openContestSelectionModal(session_id, normalized, ctxSummary, { placeholder: 'Enter contest index…', title: 'Select Contest' });
       } catch (e) {
         console.error('contest_options handler error:', e);
       }
@@ -2050,6 +2813,9 @@
         el.promptInput.parentElement?.classList.remove('hidden');
         el.promptInput.disabled = false;
         el.promptInput.focus();
+        pipelineControl?.markAttention('resolve');
+        pipelineControl?.focusStep('resolve', { scroll: false, highlight: false });
+        logPanelControl?.expand();
       }
     }
 
@@ -2058,38 +2824,101 @@
         earlyQueue.push(d);
         return;
       }
+      let handledCustomPrompt = false;
+      if (d && typeof d.message === 'string') {
+        updatePipelineForStatusLog(d.message);
+      }
+      if (d && d.session_id) {
+        if (d.type === 'manual_override') {
+          const sessionId = d.session_id;
+          const msg = String(d.message || d.full_text || '');
+          const state = getManualState(sessionId);
+          const foundMatch = msg.match(/Found\s+(\d+)\s+file/i);
+          if (foundMatch) {
+            const count = Number(foundMatch[1]);
+            const folderMatch = msg.match(/in\s+'([^']+)'/i);
+            const folder = folderMatch ? folderMatch[1] : state?.folder;
+            resetManualState(sessionId, { count, folder });
+            if (sessionId === activeSessionId) {
+              pipelineControl?.setPhase('source');
+              pipelineControl?.markAttention('source');
+              pipelineControl?.focusStep('source', { scroll: false, highlight: true });
+              ensureSectionExpanded('uploadsSection');
+              if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches && !document.body.classList.contains('sidebar-open')) {
+                document.getElementById('sidebarToggleBtn')?.click();
+              }
+            }
+          }
+          const itemMatch = msg.match(/\[ManualOverride\]\s*\[(\d+)\]\s*(.+)$/i);
+          if (itemMatch) addManualFileOption(sessionId, Number(itemMatch[1]), itemMatch[2]);
+          const dirMatch = msg.match(/uploads_dir\s*=\s*(.+)$/i);
+          if (dirMatch && state) state.baseDir = dirMatch[1].trim();
+          if (/manual upload mode/i.test(msg) && sessionId === activeSessionId) {
+            ensureSectionExpanded('uploadsSection');
+            if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches && !document.body.classList.contains('sidebar-open')) {
+              document.getElementById('sidebarToggleBtn')?.click();
+            }
+          }
+          if (/using manual upload/i.test(msg) && sessionId === activeSessionId) {
+            pipelineControl?.clearAttention('source');
+            pipelineControl?.setPhase('run');
+          }
+        }
+
+        if (d.type === 'prompt' && MANUAL_UPLOAD_PROMPT_PATTERN.test(String(d.message || ''))) {
+          const sessionId = d.session_id;
+          const state = getManualState(sessionId);
+          if (state) state.lastPromptHash = `${sessionId || ''}|${d.timestamp || ''}`;
+          if (sessionId === activeSessionId) {
+            handledCustomPrompt = true;
+            ensureSectionExpanded('uploadsSection');
+            if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches && !document.body.classList.contains('sidebar-open')) {
+              document.getElementById('sidebarToggleBtn')?.click();
+            }
+            openManualSelectionModal(sessionId, { placeholder: "Enter index or filename…" });
+          }
+        }
+
+        const urlPromptList = d.context && Array.isArray(d.context.urls) ? d.context.urls : null;
+        if (urlPromptList && urlPromptList.length) {
+          const processed = d.context && typeof d.context.processed === 'object' ? d.context.processed : {};
+          const meta = {
+            placeholder: 'Enter URL index or filter…',
+            title: 'Select URL',
+            hint: 'Search or filter (state:/county:/text)'
+          };
+          if (d.session_id === activeSessionId) {
+            handledCustomPrompt = true;
+            openUrlSelectionModal(d.session_id, urlPromptList, processed, meta);
+          } else {
+            cacheUrlPromptContext(d.session_id, urlPromptList, processed, meta);
+          }
+        }
+      }
       if (d && d.type === 'contest_options' && Array.isArray(d.options)) {
-        setContestOptions(d.session_id, d.options.map(o => ({
-          index: o.index,
+        const normalized = d.options.map(o => ({
+          index: Number(o.index),
           label: o.label,
           meta: o.meta || ''
-        })));
+        }));
+        setContestOptions(d.session_id, normalized);
 
-        // Auto-open modal only for active session
-        if (d.session_id === activeSessionId && d.options.length) {
+        if (d.session_id === activeSessionId && normalized.length) {
+          handledCustomPrompt = true;
+          contestIndexMap = Object.fromEntries(normalized.map(o => [String(o.index), o.label]));
+          lastPromptContext = { kind: 'contest', options: normalized.map(o => `[${o.index}] ${o.label}`), session_id: d.session_id };
           const ctx = d.context || {};
           const ctxSummary = `
             <div class="small text-muted">
-              ${d.options.length} option(s)
+              ${normalized.length} option(s)
               ${ctx.state && ctx.state.toLowerCase() !== 'unknown' ? ' • State: ' + esc(ctx.state) : ''}
               ${ctx.county && ctx.county.toLowerCase() !== 'unknown' ? ' • County: ' + esc(ctx.county) : ''}
               ${ctx.year ? ' • Year: ' + esc(String(ctx.year)) : ''}
               ${ctx.input_file ? ' • File: ' + esc(ctx.input_file) : ''}
             </div>`.trim();
 
-          showIndexedSelectionModalWithContext(
-            'Select Contest',
-            d.options.map(o => ({ index: o.index, label: o.label, meta: o.meta })),
-            ctxSummary,
-            (sel) => {
-              if (sel && socket) {
-                // Prefer dedicated event if backend listens; else fall back to parser_prompt
-                socket.emit('contest_selected', { session_id: d.session_id, indices: sel });
-              }
-            }
-          );
+          openContestSelectionModal(d.session_id, normalized, ctxSummary, { placeholder: 'Enter contest index…' });
         }
-        // Continue to render the log line as normal
       }
 
       // If a generic prompt carries contest context (context.kind === 'contest'), normalize it
@@ -2110,6 +2939,7 @@
         if (parsed.length) {
           setContestOptions(d.session_id, parsed);
           if (d.session_id === activeSessionId) {
+            handledCustomPrompt = true;
             const ctx = d.context;
             const ctxSummary = `
               <div class="small text-muted">
@@ -2118,16 +2948,9 @@
                 ${ctx.county && ctx.county.toLowerCase() !== 'unknown' ? ' • County: ' + esc(ctx.county) : ''}
                 ${ctx.year ? ' • Year: ' + esc(String(ctx.year)) : ''}
               </div>`.trim();
-            showIndexedSelectionModalWithContext(
-              'Select Contest',
-              parsed,
-              ctxSummary,
-              (sel) => {
-                if (sel && socket) {
-                  socket.emit('contest_selected', { session_id: d.session_id, indices: sel });
-                }
-              }
-            );
+            contestIndexMap = Object.fromEntries(parsed.map(o => [String(o.index), o.label]));
+            lastPromptContext = { kind: 'contest', options: parsed.map(o => `[${o.index}] ${o.label}`), session_id: d.session_id };
+            openContestSelectionModal(d.session_id, parsed, ctxSummary, { placeholder: 'Enter contest index…' });
           }
         }
       }
@@ -2145,24 +2968,35 @@
       if (d && typeof d.message === 'string' && /available contests:/i.test(d.message)) {
         const options = parseIndexedMenu(d.message);
         if (options.length) {
-          // If backend already sent a full options list, avoid duplicate modal
-          const existing = getContestOptions(d.session_id);
-          if (!existing.length) setContestOptions(d.session_id, options);
-
+          setContestOptions(d.session_id, options);
           contestIndexMap = Object.fromEntries(options.map(o => [String(o.index), o.label]));
           lastPromptContext = { kind: 'contest', options: options.map(o => `[${o.index}] ${o.label}`), session_id: d.session_id };
           const ctxSummary = `<div class="small text-muted">${options.length} option(s)</div>`;
-          showIndexedSelectionModalWithContext('Select Contest', options, ctxSummary, (selection) => {
-            if (!selection) return;
-            const val = selection.join(',');
-            socket && socket.emit('parser_prompt', { session_id: d.session_id, value: val });
-          });
+          if (d.session_id === activeSessionId) {
+            handledCustomPrompt = true;
+            openContestSelectionModal(d.session_id, options, ctxSummary, { placeholder: 'Enter contest index…' });
+          }
+        }
+      }
+
+      if (d && typeof d.message === 'string' && /no match; try again/i.test(d.message)) {
+        const sid = d.session_id || activeSessionId;
+        if (sid === activeSessionId) {
+          const options = getContestOptions(sid);
+          if (options.length) {
+            handledCustomPrompt = true;
+            const ctxSummary = `<div class="small text-muted">${options.length} option(s)</div>`;
+            openContestSelectionModal(sid, options, ctxSummary, { placeholder: 'Enter contest index…' });
+          }
         }
       }
 
       // Prompt handling
-      if (d && d.type === 'prompt' && d.session_id === activeSessionId) {
+  if (d && d.type === 'prompt' && d.session_id === activeSessionId && !handledCustomPrompt) {
         const ctx = d.context || {};
+        pipelineControl?.markAttention('resolve');
+        pipelineControl?.focusStep('resolve', { scroll: false, highlight: true });
+        logPanelControl?.expand();
         // Prefer confirmed (shape: [[fmt, href, group, filename], ...])
         if (Array.isArray(ctx.confirmed) && ctx.confirmed.length) {
           const opts = ctx.confirmed.map((arr, i) => ({
@@ -2179,6 +3013,8 @@
               session_id: activeSessionId,
               value: selectedIdx == null ? 'n' : String(selectedIdx)
             });
+            pipelineControl?.clearAttention('resolve');
+            pipelineControl?.setPhase('resolve');
           });
         } else if (Array.isArray(ctx.options) && ctx.options.length) {
           // Fallback: ctx.options as display strings (parse best-effort)
@@ -2198,6 +3034,8 @@
               session_id: activeSessionId,
               value: selectedIdx == null ? 'n' : String(selectedIdx)
             });
+            pipelineControl?.clearAttention('resolve');
+            pipelineControl?.setPhase('resolve');
           });
         } else {
           showPromptModal(d.message, function(userInput) {
@@ -2211,8 +3049,28 @@
       if (d && d.session_id) appendCacheLog(d.session_id, d);
 
       // Status: completed logic
-      if (d && d.session_id === activeSessionId && d.type === 'status') {
-        if (/completed/i.test(d.message||'')) {
+      if (d && d.session_id === activeSessionId && (d.type === 'status' || d.type === 'cancel' || d.type === 'error')) {
+        const msg = String(d.message || '');
+        if (/completed/i.test(msg)) {
+          pipelineControl?.clearAttention('resolve');
+          pipelineControl?.focusStep('review', { scroll: false, highlight: true });
+          logPanelControl?.expand();
+          if (el.runBtn) {
+            el.runBtn.disabled = false;
+            el.runBtn.removeAttribute('data-running');
+            el.runBtn.textContent = 'Run Parser';
+            updateRunButtonLock();
+          }
+        } else if (/cancel/i.test(msg) || /run cancelled/i.test(msg)) {
+          pipelineControl?.clearAttention('resolve');
+          pipelineControl?.setPhase('prepare');
+          if (el.runBtn) {
+            el.runBtn.disabled = false;
+            el.runBtn.removeAttribute('data-running');
+            el.runBtn.textContent = 'Run Parser';
+            updateRunButtonLock();
+          }
+        } else if (/error/i.test(msg) || /failed/i.test(msg)) {
           if (el.runBtn) {
             el.runBtn.disabled = false;
             el.runBtn.removeAttribute('data-running');
@@ -2223,31 +3081,39 @@
       }
     }
 
-    function handleManualSourceState({ session_id, file_source }) {
-      if (session_id === activeSessionId && el.fileSourceSelect) {
-        el.fileSourceSelect.value = file_source;
-        syncSourceClass();
-      }
+    function handleManualSourceState({ session_id, file_source, manual_source_origin }) {
+      updateSessionSourceMeta(session_id, file_source, manual_source_origin, { fromServer: true });
     }
 
     function handleSessionList(data) {
       if (!Array.isArray(data.sessions)) return;
-      const ids = data.sessions.map(s => (s && typeof s === 'object' && s.session_id) ? s.session_id : s);
-      sessionMetaIndex = {};
-      data.sessions.forEach(s => {
-        if (s && s.session_id) sessionMetaIndex[s.session_id] = s;
-      });
-      lsSetJSON('active_sessions', ids);
+      sessionMirror.replace(data.sessions);
+      const ids = syncSessionCache(data.sessions.map(s => (s && typeof s === 'object' && s.session_id) ? s.session_id : s));
       renderSessionList();
       if (!ids.includes(activeSessionId)) setActiveSession(ids[0] || '');
-      updateRunButtonLock();
+      applySessionState(activeSessionId);
     }
 
     function handleSessionDeleted({ session_id }) {
+      sessionMirror.remove(session_id);
       const filtered = getSessions().filter(s => s !== session_id);
-      lsSetJSON('active_sessions', filtered);
+      syncSessionCache(filtered);
       if (activeSessionId === session_id) setActiveSession(filtered[0] || '');
       renderSessionList();
+    }
+
+    function handleSessionState(payload) {
+      if (!payload || typeof payload !== 'object') return;
+      const sid = payload.session_id || (payload.metadata && payload.metadata.session_id);
+      if (!sid) return;
+      const meta = (payload.metadata && typeof payload.metadata === 'object')
+        ? payload.metadata
+        : { session_id: sid, state: payload.state, phase: payload.phase };
+      sessionMirror.upsert(meta);
+      syncSessionCache();
+      if (sid === activeSessionId) {
+        applySessionState(sid, meta);
+      }
     }
 
     function handleSessionHeartbeat({ session_id }) {
@@ -2311,6 +3177,9 @@
       el.promptInput.value = '';
       el.promptInput.parentElement?.classList.remove('hidden');
       el.promptInput.focus();
+      pipelineControl?.markAttention('resolve');
+      pipelineControl?.focusStep('resolve', { scroll: false, highlight: true });
+      logPanelControl?.expand();
       el.promptInput.onkeydown = function(e) {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -2319,12 +3188,16 @@
           el.promptInput.disabled = true;
           el.promptInput.parentElement?.classList.add('hidden');
           callback(val);
+          pipelineControl?.clearAttention('resolve');
+          pipelineControl?.setPhase('resolve');
         }
         if (e.key === 'Escape') {
           el.promptInput.value = '';
           el.promptInput.disabled = true;
           el.promptInput.parentElement?.classList.add('hidden');
           callback('');
+          pipelineControl?.clearAttention('resolve');
+          pipelineControl?.setPhase('resolve');
         }
       };
     }
@@ -2342,7 +3215,12 @@
     if (qpSource && ['uploads','input'].includes(qpSource.toLowerCase()))
       el.fileSourceSelect.value = qpSource.toLowerCase();
     syncSourceClass();
-    on(el.fileSourceSelect,'change', () => { syncSourceClass(); emitManualFileSource(); });
+    on(el.fileSourceSelect,'change', () => {
+      const src = el.fileSourceSelect.value === 'uploads' ? 'uploads' : 'input';
+      updateSessionSourceMeta(activeSessionId, src, 'user');
+      emitManualFileSource();
+      pipelineControl?.setPhase('source');
+    });
   }
   function initOutputBypass() {
     on(el.bypassBtn,'click', () => {
@@ -2561,6 +3439,213 @@
       });
     }
   }
+  function initPipelineStepper() {
+    const container = el.pipelineStepper;
+    if (!container) return null;
+    const steps = Array.from(container.querySelectorAll('.pipeline-step[data-step-id]'));
+    if (!steps.length) return null;
+
+    const order = steps.map(step => step.dataset.stepId).filter(Boolean);
+    const indexLookup = new Map(order.map((id, idx) => [id, idx]));
+    let activeId = order[0] || null;
+    let attentionId = null;
+    let manualLockIdx = activeId && indexLookup.has(activeId) ? indexLookup.get(activeId) : -1;
+    const highlightTimers = new WeakMap();
+    const visibleRatios = new Map();
+    const forcedStates = new Map();
+
+    const targets = new Map();
+    document.querySelectorAll('[data-step-target]').forEach(node => {
+      const id = node.getAttribute('data-step-target');
+      if (!id || !indexLookup.has(id)) return;
+      if (node.closest('.navbar')) return;
+      const existing = targets.get(id);
+      if (!existing || node.offsetTop < existing.offsetTop) targets.set(id, node);
+    });
+
+    function highlightTarget(node) {
+      if (!node || !node.classList) return;
+      const prev = highlightTimers.get(node);
+      if (prev) clearTimeout(prev);
+      node.classList.add('step-target-highlight');
+      highlightTimers.set(node, setTimeout(() => {
+        node.classList.remove('step-target-highlight');
+        highlightTimers.delete(node);
+      }, 1400));
+    }
+
+    function applyForcedStates() {
+      forcedStates.forEach((state, stepId) => {
+        if (!state || !indexLookup.has(stepId)) return;
+        const step = steps[indexLookup.get(stepId)];
+        if (!step) return;
+        if (step.dataset.state === 'active' && state === 'done') return;
+        step.dataset.state = state;
+        if (state !== 'attention') step.classList.remove('attention-only');
+      });
+    }
+
+    function reapplyStates() {
+      if (activeId && indexLookup.has(activeId)) {
+        setPhaseInternal(activeId, { source: 'forced' });
+      } else if (order[0]) {
+        setPhaseInternal(order[0], { source: 'forced' });
+      } else {
+        applyForcedStates();
+      }
+    }
+
+    function setPhaseInternal(id, { attention = false, source = 'manual' } = {}) {
+      if (!indexLookup.has(id)) return;
+      const idx = indexLookup.get(id);
+
+      if (source === 'manual') {
+        manualLockIdx = idx;
+      } else if (source === 'observer' && manualLockIdx >= 0 && idx < manualLockIdx) {
+        return;
+      }
+
+      if (!attention && attentionId && indexLookup.get(attentionId) <= idx) attentionId = null;
+      if (attention) attentionId = id;
+
+      activeId = id;
+      steps.forEach((step, i) => {
+        step.removeAttribute('data-state');
+        if (i < idx) step.dataset.state = 'done';
+        else if (i === idx) {
+          step.dataset.state = attentionId === id ? 'attention' : 'active';
+          step.classList.remove('attention-only');
+        }
+      });
+      applyForcedStates();
+    }
+
+    if (activeId) setPhaseInternal(activeId, { source: 'manual' });
+
+    function setAttentionOnly(id, flag) {
+      if (!indexLookup.has(id)) return;
+      const step = steps[indexLookup.get(id)];
+      if (!step) return;
+      step.classList.toggle('attention-only', !!flag);
+    }
+
+    function focusTarget(id, options = {}) {
+      const node = targets.get(id);
+      if (!node) return;
+      if (options.scroll !== false) {
+        try { node.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' }); } catch {}
+      }
+      if (options.highlight !== false) highlightTarget(node);
+    }
+
+    steps.forEach(step => {
+      step.addEventListener('click', () => {
+        const id = step.dataset.stepId;
+        if (!id) return;
+        setPhaseInternal(id, { source: 'manual' });
+        focusTarget(id, { highlight: true });
+      });
+      step.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); step.click(); }
+      });
+    });
+
+    const focusHandler = (event) => {
+      const node = event.target?.closest?.('[data-step-target]');
+      if (!node) return;
+      const id = node.getAttribute('data-step-target');
+      if (!indexLookup.has(id)) return;
+      setPhaseInternal(id, { source: 'manual' });
+    };
+    document.addEventListener('focusin', focusHandler);
+
+    if (window.IntersectionObserver) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          const id = entry.target.getAttribute('data-step-target');
+          if (!id || !indexLookup.has(id)) return;
+          if (entry.isIntersecting) visibleRatios.set(id, entry.intersectionRatio);
+          else visibleRatios.delete(id);
+        });
+        if (!visibleRatios.size) return;
+        let chosen = null;
+        let bestRatio = 0.25;
+        visibleRatios.forEach((ratio, id) => {
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            chosen = id;
+          } else if (ratio === bestRatio && chosen) {
+            if (indexLookup.get(id) > indexLookup.get(chosen)) chosen = id;
+          }
+        });
+        if (chosen && chosen !== activeId) setPhaseInternal(chosen, { source: 'observer' });
+      }, { threshold: [0.2, 0.35, 0.5] });
+      targets.forEach(node => observer.observe(node));
+    }
+
+    return {
+      setPhase(id, opts = {}) { setPhaseInternal(id, { ...opts, source: opts.source || 'manual' }); },
+      markAttention(id) { setPhaseInternal(id, { attention: true, source: 'manual' }); },
+      clearAttention(id) {
+        if (!id || !indexLookup.has(id)) return;
+        if (attentionId === id) attentionId = null;
+        const targetId = (activeId && indexLookup.has(activeId)) ? activeId : (order[0] || id);
+        setPhaseInternal(targetId, { source: 'manual' });
+      },
+      focusStep(id, opts = {}) {
+        if (!indexLookup.has(id)) return;
+        setPhaseInternal(id, { attention: opts.attention, source: opts.source || 'manual' });
+        focusTarget(id, opts);
+      },
+      reset() {
+        attentionId = null;
+        manualLockIdx = order.length ? 0 : -1;
+        const first = order[0];
+        steps.forEach(step => step.removeAttribute('data-state'));
+        steps.forEach(step => step.classList.remove('attention-only'));
+        if (first) setPhaseInternal(first, { source: 'manual' });
+      },
+      releaseLock() { manualLockIdx = -1; },
+      getActive() { return activeId; },
+      attentionOnly(id, flag) { setAttentionOnly(id, flag); },
+      setStepState(id, state) {
+        if (!indexLookup.has(id)) return;
+        if (!state) forcedStates.delete(id);
+        else forcedStates.set(id, state);
+        reapplyStates();
+      },
+    };
+  }
+  function initLogPanelToggle() {
+    const body = el.logPanelBody;
+    const btn = el.logToggleBtn;
+    const panel = el.logPanel;
+    if (!body || !btn || !panel) return null;
+
+    function sync() {
+      const open = !body.classList.contains('collapsed');
+      btn.setAttribute('aria-expanded', String(open));
+      btn.textContent = open ? 'Hide Log' : 'Show Log';
+      panel.classList.toggle('is-open', open);
+    }
+
+    function setOpen(open) {
+      body.classList.toggle('collapsed', !open);
+      sync();
+      if (open) pipelineControl?.setPhase('review');
+    }
+
+    on(btn, 'click', () => setOpen(body.classList.contains('collapsed')));
+    sync();
+
+    return {
+      setOpen,
+      expand: () => setOpen(true),
+      collapse: () => setOpen(false),
+      toggle: () => setOpen(body.classList.contains('collapsed')),
+      isCollapsed: () => body.classList.contains('collapsed')
+    };
+  }
   function initBootstrapUI() {
     if (!window.bootstrap) return;
     if (document.body.dataset.allowStyleAttr !== "1") return;
@@ -2608,6 +3693,10 @@
   function init() {
     initBootstrapUI();
     initConfirmDelegation();
+    pipelineControl = initPipelineStepper();
+    logPanelControl = initLogPanelToggle();
+    pipelineControl?.reset();
+  updatePipelineMetadataForActive();
     initFileSource();
     initOutputBypass();
     initCollapsibles();

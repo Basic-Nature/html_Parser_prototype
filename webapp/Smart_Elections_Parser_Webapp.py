@@ -12,8 +12,7 @@ import shutil
 import threading
 import time
 from datetime import datetime, timezone
-from queue import Queue
-from threading import Event, RLock, Thread
+from threading import Event, Thread
 from typing import Callable, Tuple
 
 import orjson
@@ -47,9 +46,17 @@ from webapp.parser.config import (
     POSTGRES_PORT,
     POSTGRES_USER_RAW,
     RUN_HISTORY_FILE,
+    SUPPORTED_EXTENSION_SET,
     SUPPORTED_FORMATS,
     UPLOADS_DIR,
     URL_LIST_FILE,
+)
+from webapp.parser.health.session_manager import SessionManager
+from webapp.parser.utils.session_state import (
+    PipelinePhase,
+    SessionState,
+    DEFAULT_PHASE_BY_STATE,
+    export_session_enums,
 )
 from webapp.parser.utils.logger_singleton import logger, prompt
 from webapp.parser.utils.shared_logic import (
@@ -131,13 +138,8 @@ class EnsureWsSecurityHeaders:
 app.wsgi_app = EnsureWsSecurityHeaders(app.wsgi_app)
 
 # 3. Session & State Management
-session_prompt_queues: dict[str, Queue] = {}
-session_threads: dict[str, Thread] = {}
-active_sessions_backend: set[str] = set()
-session_last_active: dict[str, float] = {}
-session_metadata: dict[str, dict] = {}
-session_logs: dict[str, list] = {}
-recent_message_cache: dict[str, dict] = {}  # session_id -> {'seen': {key: ts}, 'order': [keys]}
+session_manager = SessionManager()
+
 LOG_DEDUPE_WINDOW = float(os.environ.get("LOG_DEDUPE_WINDOW_SEC", "2.0"))
 MAX_CACHE_PER_SESSION = 120
 
@@ -154,58 +156,66 @@ if HB_INTERVAL_OVERRIDE:
     except ValueError:
         pass
 
-# Output bypass (per logical session)
-output_bypass_sessions: set[str] = set()
-
-# Manual format file source per session ('input' or 'uploads')
-manual_source_sessions: dict[str, str] = {}
-
-# Map socket connection -> logical session_id room
-sid_to_session: dict[str, str] = {}
-
-# Map IP/UA fingerprint -> default logical session; and per-session emitters
-ip_ua_to_session: dict[str, str] = {}
-session_emitters: dict[str, callable] = {}
-_registry_lock = RLock()
-
-# Thread -> session mapping (for logger emits outside Flask request context)
-thread_session_map: dict[int, str] = {}
-
 # 4. Utility Functions
 
 def is_owner(sid, username):
-    meta = safe_get(session_metadata, sid, {})
+    meta = session_manager.get_metadata(sid) or {}
     return safe_get(meta, 'username') == username
 
 def create_session_metadata(sid, username=None):
-    session_metadata[sid] = {
-        "session_id": sid,
-        "username": username or "anonymous",
-        "created": datetime.now(timezone.utc).isoformat(),
-        "last_active": time.time(),
-        "parser_status": "idle",
-        "locked": False,
-    }
+    return session_manager.ensure_session(sid, username)
 
 def cleanup_sessions():
-    now = time.time()
-    expired = []
-    for sid, last_active in list(session_last_active.items()):
-        if now - last_active > SESSION_TIMEOUT:
-            expired.append(sid)
-            active_sessions_backend.discard(sid)
-            del session_last_active[sid]
-            session_metadata.pop(sid, None)
-            session_logs.pop(sid, None)
-            # Remove log file from disk
-            try:
-                log_path = os.path.join(LOG_DIR, f"sess_{sid}.ndjson")
-                if os.path.exists(log_path):
-                    os.remove(log_path)
-            except Exception:
-                pass
+    expired = session_manager.expire_sessions(SESSION_TIMEOUT)
+    for sid in expired:
+        try:
+            log_path = os.path.join(LOG_DIR, f"sess_{sid}.ndjson")
+            if os.path.exists(log_path):
+                os.remove(log_path)
+        except Exception:
+            pass
     if expired:
         emit('session_expired', {'expired_sessions': expired}, broadcast=True)
+        broadcast_sessions()
+
+def transition_session(
+    session_id: str,
+    state: SessionState,
+    *,
+    locked: bool | None = None,
+    phase: PipelinePhase | None = None,
+    emit: bool = True,
+    broadcast: bool = True,
+    extras: dict | None = None,
+):
+    if not session_id:
+        return None
+    if not session_manager.has_session(session_id):
+        session_manager.ensure_session(session_id)
+    extras = dict(extras or {})
+    if locked is not None:
+        extras["locked"] = locked
+    if "manual_source" not in extras:
+        extras["manual_source"] = session_manager.get_manual_source(session_id, 'input')
+    if "manual_source_origin" not in extras:
+        extras["manual_source_origin"] = session_manager.get_manual_source_origin(session_id, 'default')
+    updated = session_manager.set_state(session_id, state, phase=phase, extras=extras)
+    if not updated:
+        return None
+    payload = {
+        "session_id": session_id,
+        "state": updated.get("state"),
+        "phase": updated.get("phase"),
+        "metadata": updated,
+    }
+    if emit:
+        emit_kwargs = {}
+        if not broadcast:
+            emit_kwargs["room"] = session_id
+        socketio.emit('session_state', payload, **emit_kwargs)
+    if broadcast:
+        broadcast_sessions()
+    return payload
 
 def cleanup_old_log_files(log_dir, active_sessions, keep_days=7):
     """
@@ -244,35 +254,38 @@ def resolve_session_id(data=None, create_if_missing=True):
         socket_sid = getattr(request, 'sid', None)
     if not isinstance(socket_sid, str) or not socket_sid:
         return None
-    with _registry_lock:
-        sid = None
-        if isinstance(data, dict):
-            sid = safe_get(data, 'session_id')
-        if isinstance(sid, str) and sid:
-            sid_to_session[socket_sid] = sid
-            return sid
-        mapped = sid_to_session.get(socket_sid)
-        if isinstance(mapped, str) and mapped:
-            return mapped
-        cookie_sid = session.get('logical_session_id')
-        if isinstance(cookie_sid, str) and cookie_sid:
-            sid_to_session[socket_sid] = cookie_sid
-            return cookie_sid
-        fp = client_fingerprint()
-        fp_sid = ip_ua_to_session.get(fp)
-        if isinstance(fp_sid, str) and fp_sid:
-            sid_to_session[socket_sid] = fp_sid
-            session['logical_session_id'] = fp_sid
-            return fp_sid
-        if not create_if_missing:
-            return None
-        new_sid = 'sess_' + os.urandom(6).hex()
-        ip_ua_to_session[fp] = new_sid
-        sid_to_session[socket_sid] = new_sid
-        session['logical_session_id'] = new_sid
-        if new_sid not in session_metadata:
-            create_session_metadata(new_sid)
-        return new_sid
+    sid = None
+    if isinstance(data, dict):
+        sid = safe_get(data, 'session_id')
+    if isinstance(sid, str) and sid:
+        session_manager.bind_socket(socket_sid, sid)
+        return sid
+
+    mapped = session_manager.resolve_socket(socket_sid)
+    if isinstance(mapped, str) and mapped:
+        return mapped
+
+    cookie_sid = session.get('logical_session_id')
+    if isinstance(cookie_sid, str) and cookie_sid:
+        session_manager.bind_socket(socket_sid, cookie_sid)
+        return cookie_sid
+
+    fp = client_fingerprint()
+    fp_sid = session_manager.resolve_fingerprint(fp)
+    if isinstance(fp_sid, str) and fp_sid:
+        session_manager.bind_socket(socket_sid, fp_sid)
+        session['logical_session_id'] = fp_sid
+        return fp_sid
+
+    if not create_if_missing:
+        return None
+
+    new_sid = 'sess_' + os.urandom(6).hex()
+    session_manager.bind_fingerprint(fp, new_sid)
+    session_manager.bind_socket(socket_sid, new_sid)
+    session['logical_session_id'] = new_sid
+    session_manager.ensure_session(new_sid)
+    return new_sid
 
 def emit_contest_options(session_id: str, contests: list[dict], context: dict | None = None):
     """
@@ -495,10 +508,7 @@ def normalize_log_obj(raw) -> dict:
 def store_log(session_id: str, log_obj: dict):
     if not session_id:
         return
-    logs = session_logs.setdefault(session_id, [])
-    logs.append(log_obj)
-    if len(logs) > MAX_LOGS_PER_SESSION:
-        del logs[0: len(logs) - TRIM_TO]
+    session_manager.append_log(session_id, log_obj, max_count=MAX_LOGS_PER_SESSION, trim_to=TRIM_TO)
     # Persist to disk using orjson
     try:
         log_path = os.path.join(LOG_DIR, f"sess_{session_id}.ndjson")
@@ -513,8 +523,8 @@ def _heartbeat_loop():
     while not _shutdown_event.is_set():
         time.sleep(HEARTBEAT_INTERVAL)
         now_ms = int(time.time() * 1000)
-        for sid in list(active_sessions_backend):
-            if sid not in session_metadata:
+        for sid in session_manager.list_active_session_ids():
+            if not session_manager.has_session(sid):
                 continue
             # Emit ONLY lightweight heartbeat (no parser_output log line)
             try:
@@ -545,29 +555,41 @@ def socketio_emit_func(line):
         msg = str(obj.get("message", ""))
         t_now = time.time()
         if sid and obj.get("type") in {"input", "status", "raw"} and len(msg) < 600:
-            cache = recent_message_cache.setdefault(sid, {"seen": {}, "order": []})
             key = f"{obj.get('type')}|{msg}"
-            last_ts = cache["seen"].get(key)
-            if last_ts and (t_now - last_ts) < LOG_DEDUPE_WINDOW:
+            should_emit = session_manager.should_emit_message(
+                sid,
+                key,
+                now=t_now,
+                window=LOG_DEDUPE_WINDOW,
+                max_entries=MAX_CACHE_PER_SESSION,
+            )
+            if not should_emit:
                 return  # skip duplicate
-            cache["seen"][key] = t_now
-            cache["order"].append(key)
-            if len(cache["order"]) > MAX_CACHE_PER_SESSION:
-                for _ in range(len(cache["order"]) - MAX_CACHE_PER_SESSION):
-                    old = cache["order"].pop(0)
-                    cache["seen"].pop(old, None)
 
         # --- Suppress repeated global URL list enumeration inside per-URL runs ---
         if sid and obj.get("type") == "input" and "Loaded" in msg and "raw URLs" in msg:
-            cache = recent_message_cache.setdefault(sid, {"seen": {}, "order": []})
-            if cache["seen"].get("__loaded_urls_once__"):
+            if not session_manager.mark_once(sid, "__loaded_urls_once__"):
                 return
-            cache["seen"]["__loaded_urls_once__"] = t_now
+
+        if sid and obj.get("type") == "prompt":
+            message_lower = str(obj.get("message", "")).lower()
+            if not any(term in message_lower for term in ("received", "no contest", "failed", "completed")):
+                transition_session(
+                    sid,
+                    SessionState.WAITING_PROMPT,
+                    locked=True,
+                    phase=PipelinePhase.RESOLVE,
+                    broadcast=False,
+                    extras={
+                        "manual_source": get_manual_source(sid),
+                        "manual_source_origin": get_manual_source_origin(sid),
+                    },
+                )
 
         # --- Session ID fallback logic ---
         if not sid:
             # Try thread map
-            mapped = thread_session_map.get(threading.get_ident())
+            mapped = session_manager.resolve_thread_id(threading.get_ident())
             if mapped:
                 sid = mapped
                 obj["session_id"] = sid
@@ -578,7 +600,7 @@ def socketio_emit_func(line):
             except Exception:
                 curr_sid = getattr(request, 'sid', None)
             if isinstance(curr_sid, str):
-                logical = sid_to_session.get(curr_sid)
+                logical = session_manager.resolve_socket(curr_sid)
                 if logical:
                     sid = logical
                     obj["session_id"] = sid
@@ -602,9 +624,7 @@ def socketio_emit_func(line):
         pass
 
 def get_prompt_queue(session_id):
-    if session_id not in session_prompt_queues:
-        session_prompt_queues[session_id] = Queue()
-    return session_prompt_queues[session_id]
+    return session_manager.get_prompt_queue(session_id)
 
 def broadcast_sessions():
     """
@@ -613,11 +633,7 @@ def broadcast_sessions():
     without a Flask request context.
     """
     try:
-        sessions = [
-            session_metadata[sid]
-            for sid in active_sessions_backend
-            if sid in session_metadata
-        ]
+        sessions = session_manager.list_active_metadata()
         socketio.emit('session_list', {'sessions': sessions})
     except Exception as e:
         logger.error({
@@ -628,26 +644,37 @@ def broadcast_sessions():
         })
 
 def lock_session(sid):
-    session_metadata[sid]['locked'] = True
-    session_metadata[sid]['parser_status'] = 'running'
-    broadcast_sessions()
+    source = get_manual_source(sid)
+    origin = get_manual_source_origin(sid)
+    transition_session(
+        sid,
+        SessionState.RUNNING,
+        locked=True,
+        phase=PipelinePhase.RUN,
+        extras={"manual_source": source, "manual_source_origin": origin},
+    )
 
 def unlock_session(sid):
-    if sid in session_metadata:
-        session_metadata[sid]['locked'] = False
-        session_metadata[sid]['parser_status'] = 'idle'
-    broadcast_sessions()
+    source = get_manual_source(sid)
+    origin = get_manual_source_origin(sid)
+    transition_session(
+        sid,
+        SessionState.IDLE,
+        locked=False,
+        phase=PipelinePhase.PREPARE,
+        extras={"manual_source": source, "manual_source_origin": origin},
+    )
 
 def safe_is_alive(session_id: str) -> bool:
     if not session_id:
         return False
-    meta = session_metadata.get(session_id)
+    meta = session_manager.get_metadata(session_id)
     if not meta:
         return False
-    last_active = session_last_active.get(session_id)
+    last_active = session_manager.get_last_active(session_id)
     if last_active and (time.time() - last_active) > SESSION_TIMEOUT:
         return False
-    thread: Thread = session_threads.get(session_id)
+    thread: Thread = session_manager.get_thread(session_id)
     if not thread or not thread.is_alive():
         return False
     try:
@@ -659,10 +686,13 @@ def safe_is_alive(session_id: str) -> bool:
     return True
 
 def is_output_bypassed(session_id: str) -> bool:
-    return session_id in output_bypass_sessions
+    return session_manager.is_output_bypassed(session_id)
 
 def get_manual_source(session_id: str) -> str:
-    return manual_source_sessions.get(session_id, 'input')
+    return session_manager.get_manual_source(session_id, 'input')
+
+def get_manual_source_origin(session_id: str) -> str:
+    return session_manager.get_manual_source_origin(session_id, 'default')
 
 def get_all_file_lists() -> dict:
     return {
@@ -670,6 +700,11 @@ def get_all_file_lists() -> dict:
         "output_files": os.listdir(OUTPUT_DIR),
         "uploaded_files": os.listdir(UPLOADS_DIR),
     }
+
+@app.get("/api/session/enums")
+def get_session_enums() -> Response:
+    """Expose session state/phase enumerations for the front-end."""
+    return jsonify(export_session_enums())
 
 # Flask Application Security / Config
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
@@ -852,9 +887,13 @@ def add_url() -> None:
         })
 
 def allowed_file(filename) -> bool:
+    if not filename or len(filename) >= 128:
+        return False
     parts = safe_rsplit(filename, '.', 1)
-    ext = safe_lower(parts[1]) if len(parts) > 1 else ''
-    return filename and ext in SUPPORTED_FORMATS and len(filename) < 128
+    if len(parts) < 2:
+        return False
+    ext = "." + safe_lower(parts[1])
+    return ext in SUPPORTED_EXTENSION_SET
 
 def get_url_list() -> list[str]:
     if not os.path.exists(URL_LIST_FILE):
@@ -1527,14 +1566,14 @@ def handle_get_session_history(data) -> None:
     if not sid:
         emit('session_history', {'session_id': None, 'logs': []}, room=socket_room)
         return
-    logs = session_logs.get(sid, [])
+    logs = session_manager.get_logs(sid)
     # If missing in memory, try to load from disk (orjson)
     if (not logs or not isinstance(logs, list)) and os.path.exists(os.path.join(LOG_DIR, f"sess_{sid}.ndjson")):
         try:
             log_path = os.path.join(LOG_DIR, f"sess_{sid}.ndjson")
             with open(log_path, "rb") as f:
                 logs = [orjson.loads(line) for line in f if line.strip()]
-            session_logs[sid] = logs  # restore to memory for future
+            session_manager.set_logs(sid, logs)  # restore to memory for future
         except Exception:
             logs = []
     # --- Ensure latest prompt log is present if prompt is still active ---
@@ -1582,13 +1621,28 @@ def handle_clone_session(data) -> None:
         )
         return
     new_sid = 'sess_' + os.urandom(6).hex()
-    session_metadata[new_sid] = dict(session_metadata[old_sid])
-    session_metadata[new_sid]['session_id'] = new_sid
-    session_metadata[new_sid]['created'] = datetime.now(timezone.utc).isoformat()
-    session_metadata[new_sid]['last_active'] = time.time()
-    session_logs[new_sid] = list(session_logs.get(old_sid, []))
-    active_sessions_backend.add(new_sid)
-    session_last_active[new_sid] = time.time()
+    try:
+        session_manager.clone_session(old_sid, new_sid)
+    except KeyError:
+        logger.warning(
+            {
+                "level": "WARNING",
+                "type": "status",
+                "message": f"Unable to clone missing session: {old_sid}"
+            }
+        )
+        return
+    transition_session(
+        new_sid,
+        SessionState.IDLE,
+        locked=False,
+        phase=PipelinePhase.PREPARE,
+        broadcast=False,
+        extras={
+            "manual_source": get_manual_source(new_sid),
+            "manual_source_origin": get_manual_source_origin(new_sid),
+        },
+    )
     broadcast_sessions()
     try:
         socket_room = safe_sid()
@@ -1611,17 +1665,37 @@ def on_join(data):
         )
         return
     join_room(sid)
-    active_sessions_backend.add(sid)
-    session_last_active[sid] = time.time()
-    if sid not in session_metadata:
-        create_session_metadata(sid, safe_get(data, 'username'))
+    username = safe_get(data, 'username')
+    existed = session_manager.has_session(sid)
+    meta = session_manager.ensure_session(sid, username)
+    session_manager.mark_active(sid)
+    session_manager.touch_session(sid)
+    try:
+        socket_sid = safe_sid()
+    except Exception:
+        socket_sid = getattr(request, 'sid', None)
+    if isinstance(socket_sid, str):
+        session_manager.bind_socket(socket_sid, sid)
+
+    phase_value = meta.get("phase") or DEFAULT_PHASE_BY_STATE.get(meta.get("state"), PipelinePhase.PREPARE.value)
+    state_value = meta.get("state", SessionState.IDLE.value)
+    meta["state"] = state_value
+    meta["phase"] = phase_value
+    payload = {
+        "session_id": sid,
+        "state": state_value,
+        "phase": phase_value,
+        "metadata": meta,
+    }
+    socketio.emit('session_state', payload, room=sid)
+    broadcast_sessions()
     # Notify client that join is complete (for real-time log delivery sync)
     emit('joined', {'session_id': sid}, room=request.sid)
 
 @socketio.on('get_sessions')
 def handle_get_sessions():
     cleanup_sessions()
-    sessions = [session_metadata[sid] for sid in active_sessions_backend if sid in session_metadata]
+    sessions = session_manager.list_active_metadata()
     emit('session_list', {'sessions': sessions}, broadcast=True)
 
 
@@ -1636,9 +1710,9 @@ def handle_connect(auth=None):
         if not requested:
             requested = request.args.get('prev_session_id')
         revived = None
-        if requested and requested in session_metadata:
+        if requested and session_manager.has_session(requested):
             revived = requested
-            session_last_active[revived] = time.time()
+            session_manager.touch_session(revived)
             cancellation_manager.remove(revived)
             # Do NOT clear prompt session here; let it persist for timeout
             logger.info({
@@ -1650,9 +1724,9 @@ def handle_connect(auth=None):
             emit('session_id', {'session_id': revived})
         else:
             cookie_sid = session.get('logical_session_id')
-            if cookie_sid and cookie_sid in session_metadata and cookie_sid not in active_sessions_backend:
-                active_sessions_backend.add(cookie_sid)
-                session_last_active[cookie_sid] = time.time()
+            if cookie_sid and session_manager.has_session(cookie_sid):
+                session_manager.mark_active(cookie_sid)
+                session_manager.touch_session(cookie_sid)
                 revived = cookie_sid
                 emit('session_id', {'session_id': revived})
                 logger.info({
@@ -1664,9 +1738,11 @@ def handle_connect(auth=None):
 
         resolved = resolve_session_id({'session_id': revived} if revived else {}, create_if_missing=False)
         if resolved:
-            session_last_active[resolved] = time.time()
+            session_manager.touch_session(resolved)
 
-        active = [session_metadata[sid] for sid in active_sessions_backend if sid in session_metadata]
+        if revived:
+            session_manager.mark_active(revived)
+        active = session_manager.list_active_metadata()
         emit('session_list', {'sessions': active})
         logger.info({
             "level": "INFO",
@@ -1690,7 +1766,7 @@ def handle_disconnect(arg=None) -> None:
         req_sid = getattr(request, 'sid', None)
         if not isinstance(req_sid, str):
             req_sid = None
-    logical = sid_to_session.pop(req_sid, None)
+    logical = session_manager.unbind_socket(req_sid) if req_sid else None
     logger.info({
         "level": "INFO",
         "type": "status",
@@ -1700,9 +1776,8 @@ def handle_disconnect(arg=None) -> None:
     # Do NOT clear prompt session or cancel immediately; let prompt timeout handle it
     # prompt.clear_prompt_session(logical or req_sid)
     # cancellation_manager.remove(logical or req_sid)
-    with _registry_lock:
-        if logical in session_emitters:
-            session_emitters.pop(logical, None)
+    if logical:
+        session_manager.pop_emitter(logical)
 
 @socketio.on('set_output_mode')
 def handle_set_output_mode(data) -> None:
@@ -1739,7 +1814,7 @@ def handle_parser_prompt(data) -> None:
     print("Current prompt sessions:", list(prompt.prompt_sessions.keys()))
     session_id = resolve_session_id(data, create_if_missing=False)
     value = data.get("value", "") if isinstance(data, dict) else data
-    if not session_id or session_id not in session_metadata:
+    if not session_id or not session_manager.has_session(session_id):
         logger.error({
             "level": "ERROR",
             "type": "prompt",
@@ -1750,6 +1825,17 @@ def handle_parser_prompt(data) -> None:
     prompt_session = prompt.prompt_sessions.get(session_id)
     if prompt_session:
         prompt_session.set_response(value)
+        transition_session(
+            session_id,
+            SessionState.RUNNING,
+            locked=True,
+            phase=PipelinePhase.RUN,
+            broadcast=False,
+            extras={
+                "manual_source": get_manual_source(session_id),
+                "manual_source_origin": get_manual_source_origin(session_id),
+            },
+        )
 
 @socketio.on('cancel_parser')
 def handle_cancel_parser(data=None) -> None:
@@ -1769,13 +1855,19 @@ def handle_cancel_parser(data=None) -> None:
         "message": "Cancellation requested",
         "session_id": session_id
     })
-    if session_id in session_threads:
-        session_threads.pop(session_id, None)
-    if session_id in session_prompt_queues:
-        session_prompt_queues.pop(session_id, None)
-    with _registry_lock:
-        session_emitters.pop(session_id, None)
-    unlock_session(session_id)
+    session_manager.pop_thread(session_id)
+    session_manager.drop_prompt_queue(session_id)
+    session_manager.pop_emitter(session_id)
+    transition_session(
+        session_id,
+        SessionState.CANCELLING,
+        locked=False,
+        phase=PipelinePhase.RUN,
+        extras={
+            "manual_source": get_manual_source(session_id),
+            "manual_source_origin": get_manual_source_origin(session_id),
+        },
+    )
     cleanup_sessions()
 
 @socketio.on('toggle_output_bypass')
@@ -1789,12 +1881,8 @@ def handle_toggle_output_bypass(data=None):
             "session_id": None
         })
         return
-    if sid in output_bypass_sessions:
-        output_bypass_sessions.remove(sid)
-        state = False
-    else:
-        output_bypass_sessions.add(sid)
-        state = True
+    current = session_manager.is_output_bypassed(sid)
+    state = session_manager.set_output_bypass(sid, not current)
     emit('output_bypass_state', {"session_id": sid, "output_bypass": state}, room=sid)
     logger.info({
         "level": "INFO",
@@ -1815,7 +1903,19 @@ def handle_set_manual_source(data=None):
             "session_id": sid
         })
         return
-    manual_source_sessions[sid] = source
+    origin = safe_lower(safe_get(data or {}, 'origin', 'user' if source == 'uploads' else 'default'))
+    if origin not in {'user', 'default', 'server'}:
+        origin = 'user' if source == 'uploads' else 'default'
+    session_manager.set_manual_source(sid, source, origin=origin)
+    transition_session(
+        sid,
+        SessionState.IDLE,
+        locked=False,
+        phase=PipelinePhase.SOURCE,
+        broadcast=False,
+        extras={"manual_source": source, "manual_source_origin": origin},
+    )
+    broadcast_sessions()
     logger.info({
         "level": "INFO",
         "type": "status",
@@ -1823,7 +1923,11 @@ def handle_set_manual_source(data=None):
         "session_id": sid
     })
     # Notify client so UI stays in sync
-    emit('manual_source_state', {"session_id": sid, "file_source": source}, room=sid)
+    emit(
+        'manual_source_state',
+        {"session_id": sid, "file_source": source, "manual_source_origin": origin},
+        room=sid,
+    )
 
 @socketio.on('delete_session')
 def handle_delete_session(data) -> None:
@@ -1836,12 +1940,7 @@ def handle_delete_session(data) -> None:
             "session_id": sid
         })
         return
-    active_sessions_backend.discard(sid)
-    session_last_active.pop(sid, None)
-    session_metadata.pop(sid, None)
-    session_prompt_queues.pop(sid, None)
-    session_threads.pop(sid, None)
-    session_logs.pop(sid, None)
+    session_manager.delete_session(sid)
     # Remove log file from disk
     try:
         log_path = os.path.join(LOG_DIR, f"sess_{sid}.ndjson")
@@ -1849,9 +1948,8 @@ def handle_delete_session(data) -> None:
             os.remove(log_path)
     except Exception:
         pass
-    with _registry_lock:
-        session_emitters.pop(sid, None)
     emit('session_deleted', {'session_id': sid}, broadcast=True)
+    broadcast_sessions()
 
 @socketio.on('run_parser')
 def handle_run_parser(data=None) -> None:
@@ -1881,12 +1979,14 @@ def handle_run_parser(data=None) -> None:
     except Exception:
         socket_sid = getattr(request, 'sid', None)
     if isinstance(socket_sid, str):
-        sid_to_session[socket_sid] = session_id
+        session_manager.bind_socket(socket_sid, session_id)
 
     # --- Ensure session metadata exists ---
-    if session_id not in session_metadata:
+    if not session_manager.has_session(session_id):
         create_session_metadata(session_id)
-    meta = safe_get(session_metadata, session_id, {})
+    meta = session_manager.get_metadata(session_id) or {}
+    session_manager.mark_active(session_id)
+    session_manager.touch_session(session_id)
 
     # --- Prevent concurrent runs ---
     if safe_get(meta, 'locked') and safe_is_alive(session_id):
@@ -1910,7 +2010,10 @@ def handle_run_parser(data=None) -> None:
     requested_source = safe_lower(safe_get(payload, 'file_source', get_manual_source(session_id)))
     if requested_source not in {'input', 'uploads'}:
         requested_source = 'input'
-    manual_source_sessions[session_id] = requested_source
+    requested_origin = safe_lower(safe_get(payload, 'manual_source_origin', None))
+    if requested_origin not in {'user', 'default', 'server'}:
+        requested_origin = 'user' if safe_get(payload, 'file_source') == 'uploads' else session_manager.get_manual_source_origin(session_id)
+    session_manager.set_manual_source(session_id, requested_source, origin=requested_origin)
     output_bypass_flag = is_output_bypassed(session_id)
     lock_session(session_id)
 
@@ -1922,8 +2025,7 @@ def handle_run_parser(data=None) -> None:
 
 
     # --- Register per-session emitter (used by prompt/manual emits) ---
-    with _registry_lock:
-        session_emitters[session_id] = socketio_emit_func
+    session_manager.register_emitter(session_id, socketio_emit_func)
 
     # --- Install dispatcher only ONCE globally (idempotent) ---
     logger.set_mode("webapp")
@@ -1986,7 +2088,7 @@ def handle_run_parser(data=None) -> None:
     # --- Launch parser in a dedicated thread ---
     def worker_wrapper():
         start_time = time.time()
-        thread_session_map[threading.get_ident()] = session_id
+        session_manager.bind_thread_id(threading.get_ident(), session_id)
         status = "error"  # Default to error
         err = None
         try:
@@ -2031,11 +2133,31 @@ def handle_run_parser(data=None) -> None:
                 "error": err,
                 "duration_ms": duration_ms
             })
-            unlock_session(session_id)
-            thread_session_map.pop(threading.get_ident(), None)
+            session_manager.pop_thread(session_id)
+            final_state = SessionState.COMPLETED
+            if safe_is_set(cancel_flag):
+                final_state = SessionState.CANCELLED
+            elif status != "ok":
+                final_state = SessionState.ERROR
+            extras = {
+                "manual_source": requested_source,
+                "manual_source_origin": requested_origin,
+                "run_id": run_id,
+                "output_bypass": output_bypass_flag,
+            }
+            if err:
+                extras["last_error"] = err
+            transition_session(
+                session_id,
+                final_state,
+                locked=False,
+                phase=None,
+                extras=extras,
+            )
+        session_manager.unbind_thread_id(threading.get_ident())
 
     thread = socketio.start_background_task(worker_wrapper)
-    session_threads[session_id] = thread
+    session_manager.set_thread(session_id, thread)
 
 # Heartbeat thread startup (idempotent)
 if 'heartbeat_thread' not in globals() or not isinstance(globals().get('heartbeat_thread'), Thread) or not globals()['heartbeat_thread'].is_alive():
@@ -2047,7 +2169,7 @@ if 'heartbeat_thread' not in globals() or not isinstance(globals().get('heartbea
 ensure_db_tables()
 
 # Clean up old session log files on startup (keep only active or recent)
-cleanup_old_log_files(LOG_DIR, active_sessions_backend, keep_days=7)
+cleanup_old_log_files(LOG_DIR, session_manager.list_active_session_ids(), keep_days=7)
         
 # 7. Main Entrypoint
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ from playwright.sync_api import sync_playwright
 from selectolax.parser import Node as SelectolaxNode
 from selenium.webdriver.remote.webelement import WebElement as SeleniumElement
 
-from ..config import CONTEXT_LIBRARY_PATH
+from ..config import CONTEXT_LIBRARY_PATH, HEADLESS_DEFAULT
 from .logger_singleton import console, logger, prompt
 from .shared_logic import safe_get_first, safe_lower
 
@@ -414,7 +414,7 @@ def safe_context_result(page: Optional[PageType], session_id: Optional[str] = No
         return {}
 
 def safe_launch(
-    browser_type: Optional[object], headless: bool = False, args: list = None, logger=logger
+    browser_type: Optional[object], headless: Optional[bool] = None, args: list = None, logger=logger
 ) -> Optional[BrowserType]:
     """Safely launch a Playwright browser (sync)."""
     try:
@@ -427,13 +427,14 @@ def safe_launch(
         # Optionally, check for correct type
         if not isinstance(browser_type, SyncBrowserType):
             logger.warning(f"[safe_launch] browser_type is not a SyncBrowserType: {type(browser_type)}")
-        return browser_type.launch(headless=headless, args=args or [])
+        launch_headless = HEADLESS_DEFAULT if headless is None else headless
+        return browser_type.launch(headless=launch_headless, args=args or [])
     except Exception as e:
         logger.error(f"[safe_launch] Error launching browser: {e}")
         return None
 
 async def async_safe_launch(
-    browser_type: Optional[object], headless: bool = False, args: list = None, logger=logger
+    browser_type: Optional[object], headless: Optional[bool] = None, args: list = None, logger=logger
 ) -> Optional[AsyncBrowser]:
     """Safely launch a Playwright browser (async)."""
     try:
@@ -446,7 +447,8 @@ async def async_safe_launch(
         # Optionally, check for correct type
         if not isinstance(browser_type, AsyncBrowserType):
             logger.warning(f"[async_safe_launch] browser_type is not an AsyncBrowserType: {type(browser_type)}")
-        return await browser_type.launch(headless=headless, args=args or [])
+        launch_headless = HEADLESS_DEFAULT if headless is None else headless
+        return await browser_type.launch(headless=launch_headless, args=args or [])
     except Exception as e:
         logger.error(f"[async_safe_launch] Error launching browser: {e}")
         return None
@@ -536,14 +538,17 @@ async def async_launch_browser(target_url: str, wait_seconds: int = 7, session_i
     user_agent = get_random_user_agent()
     async with async_playwright() as p:
         browser_type = getattr(p, "chromium", None)
-        browser = await async_safe_launch(browser_type, headless=False, args=["--window-position=0,1000", "--window-size=1280,800"])
+        launch_headless = HEADLESS_DEFAULT
+        launch_args = [] if launch_headless else ["--window-position=0,1000", "--window-size=1280,800"]
+        browser = await async_safe_launch(browser_type, headless=launch_headless, args=launch_args)
         context = await async_safe_new_context(browser, user_agent=user_agent, viewport={"width": 1280, "height": 800}, locale="en-US")
         page = await async_safe_new_page(context)
         await async_safe_goto(page, target_url, timeout=60000)
-        logger.info(f"[BROWSER] Async Playwright launched (minimized) with User-Agent: {user_agent} (Session: {session_id})")
-        logger.info(f"[BROWSER] Waiting {wait_seconds} seconds for page to load... (Session: {session_id})")
-        await asyncio.sleep(wait_seconds)
-        return browser, context, page, user_agent
+    mode_descr = "headless" if launch_headless else "(minimized)"
+    logger.info(f"[BROWSER] Async Playwright launched {mode_descr} with User-Agent: {user_agent} (Session: {session_id})")
+    logger.info(f"[BROWSER] Waiting {wait_seconds} seconds for page to load... (Session: {session_id})")
+    await asyncio.sleep(wait_seconds)
+    return browser, context, page, user_agent
 
 async def async_detect_cloudflare_captcha(page: AsyncPage) -> bool:
     html = (await page.content()).lower()
@@ -566,11 +571,14 @@ async def async_browser_pipeline(target_url: str, session_id=None) -> Tuple[Opti
 def sync_launch_browser(playwright: sync_playwright, target_url: str, wait_seconds: int = 7, session_id=None) -> Tuple[Optional[SyncBrowser], Optional[SyncBrowserContext], Optional[SyncPage], str]:
     user_agent = get_random_user_agent()
     browser_type = getattr(playwright, "chromium", None)
-    browser = safe_launch(browser_type, headless=False, args=["--window-position=0,1000", "--window-size=1280,800"])
+    launch_headless = HEADLESS_DEFAULT
+    launch_args = [] if launch_headless else ["--window-position=0,1000", "--window-size=1280,800"]
+    browser = safe_launch(browser_type, headless=launch_headless, args=launch_args)
     context = safe_new_context(browser, user_agent=user_agent, viewport={"width": 1280, "height": 800}, locale="en-US")
     page = safe_new_page(context)
     safe_goto(page, target_url, timeout=60000)
-    logger.info(f"[BROWSER] Playwright launched (minimized) with User-Agent: {user_agent} (Session: {session_id})")
+    mode_descr = "headless" if launch_headless else "(minimized)"
+    logger.info(f"[BROWSER] Playwright launched {mode_descr} with User-Agent: {user_agent} (Session: {session_id})")
     logger.info(f"[BROWSER] Waiting {wait_seconds} seconds for page to load... (Session: {session_id})")
     time.sleep(wait_seconds)
     return browser, context, page, user_agent

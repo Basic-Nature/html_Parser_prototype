@@ -19,7 +19,12 @@ from rich.table import Table
 from ..config import CACHE_DIR
 from ..Context_Integration.Context_Library.constants import (
     BALLOT_TYPES_SORT_ORDER,
+    LOCATION_KEYWORDS,
     PERCENT_KEYWORDS,
+    TABLE_BUILDER_CANDIDATE_SUFFIXES,
+    TABLE_BUILDER_LOCATION_PRIORITY,
+    TABLE_BUILDER_LOCATION_TOKENS,
+    TOTAL_KEYWORDS,
     get_camelot_row_regex,
     get_camelot_title_regex,
     is_pseudo_result_party,
@@ -96,7 +101,7 @@ def _percent_reported_norm() -> str:
     return _norm_header("Percent Reported")
 
 
-_LOCATION_PRIORITY = (
+_FALLBACK_LOCATION_PRIORITY = (
     "Division Name",
     "Precinct",
     "Municipality",
@@ -106,21 +111,31 @@ _LOCATION_PRIORITY = (
     "Division Type",
 )
 
+_LOCATION_PRIORITY = tuple(TABLE_BUILDER_LOCATION_PRIORITY) or _FALLBACK_LOCATION_PRIORITY
 _LOCATION_PRIORITY_NORMS = tuple(_norm_header(label) for label in _LOCATION_PRIORITY)
-_LOCATION_TOKENS = (
-    "precinct",
-    "division",
-    "district",
-    "ward",
-    "municipality",
-    "county",
-    "borough",
-    "township",
-    "location",
-    "jurisdiction",
-)
 
-_CANDIDATE_SUFFIX_BASE = (
+_LOCATION_TOKEN_SEQUENCE = tuple(
+    dict.fromkeys(tok.lower() for tok in (TABLE_BUILDER_LOCATION_TOKENS or ()))
+)
+if not _LOCATION_TOKEN_SEQUENCE:
+    _LOCATION_TOKEN_SEQUENCE = tuple(
+        dict.fromkeys(tok.lower() for tok in (
+            "precinct",
+            "division",
+            "district",
+            "ward",
+            "municipality",
+            "county",
+            "borough",
+            "township",
+            "location",
+            "jurisdiction",
+        ))
+    )
+
+_LOCATION_KEYWORD_NORMS = {_norm_header(label) for label in LOCATION_KEYWORDS}
+
+_CANDIDATE_SUFFIX_BASE = tuple(TABLE_BUILDER_CANDIDATE_SUFFIXES) or (
     "Party",
     "Total Vote",
     "Total Votes",
@@ -132,16 +147,32 @@ _CANDIDATE_SUFFIX_BASE = (
     "Cumulative Percent",
     "Vote Share",
 )
+_CANDIDATE_SUFFIX_BASE = tuple(dict.fromkeys(_CANDIDATE_SUFFIX_BASE))
 _CANDIDATE_SUFFIX_NORMS = {_norm_header(label) for label in _CANDIDATE_SUFFIX_BASE}
+
+_TOTAL_KEYWORD_NORMS = {
+    _norm_header(term)
+    for term in TOTAL_KEYWORDS
+    if isinstance(term, str)
+    and any(marker in term.lower() for marker in ("total", "vote", "ballot", "sum", "overall"))
+}
+_TOTAL_KEYWORD_NORMS.update({
+    _norm_header("Grand Total"),
+    _norm_header("Total Vote"),
+    _norm_header("Total Votes"),
+    _norm_header("Total Ballots"),
+})
+_CANDIDATE_SUFFIX_NORMS.update(_TOTAL_KEYWORD_NORMS)
+
 _BALLOT_TYPE_NORMS = {_norm_header(bt) for bt in BALLOT_TYPES_SORT_ORDER}
 
 
 def _looks_like_location_header(header: str) -> bool:
     nh = _norm_header(header)
-    if nh in _LOCATION_PRIORITY_NORMS:
+    if nh in _LOCATION_PRIORITY_NORMS or nh in _LOCATION_KEYWORD_NORMS:
         return True
     low = header.lower()
-    return any(token in low for token in _LOCATION_TOKENS)
+    return any(token in low for token in _LOCATION_TOKEN_SEQUENCE)
 
 
 def _location_priority_score(header: str, original_index: int) -> tuple[int, int]:
@@ -149,10 +180,10 @@ def _location_priority_score(header: str, original_index: int) -> tuple[int, int
     if nh in _LOCATION_PRIORITY_NORMS:
         return (_LOCATION_PRIORITY_NORMS.index(nh), original_index)
     low = header.lower()
-    for offset, token in enumerate(_LOCATION_TOKENS):
+    for offset, token in enumerate(_LOCATION_TOKEN_SEQUENCE):
         if token in low:
             return (len(_LOCATION_PRIORITY_NORMS) + offset, original_index)
-    return (len(_LOCATION_PRIORITY_NORMS) + len(_LOCATION_TOKENS), original_index)
+    return (len(_LOCATION_PRIORITY_NORMS) + len(_LOCATION_TOKEN_SEQUENCE), original_index)
 
 
 def _candidate_header_info(header: str) -> tuple[str, str] | None:
@@ -233,7 +264,7 @@ def _ensure_division_totals(headers: list[str], rows: list[dict]) -> tuple[list[
                 continue
             _, suffix = info
             suffix_norm = _norm_header(suffix)
-            if suffix_norm == _norm_header("Total Vote") or suffix_norm == _norm_header("Total Votes"):
+            if suffix_norm in _TOTAL_KEYWORD_NORMS:
                 candidate_total_cols.append(col)
             elif suffix_norm in _BALLOT_TYPE_NORMS:
                 ballot_value_cols.append(col)
@@ -265,7 +296,11 @@ def _ensure_division_totals(headers: list[str], rows: list[dict]) -> tuple[list[
             numeric_found = False
             for col, value in row.items():
                 ncol = _norm_header(col)
-                if ncol in _LOCATION_PRIORITY_NORMS or ncol in percent_norms:
+                if (
+                    ncol in _LOCATION_PRIORITY_NORMS
+                    or ncol in _LOCATION_KEYWORD_NORMS
+                    or ncol in percent_norms
+                ):
                     continue
                 iv = _coerce_int_for_total(value)
                 if iv is not None:
@@ -323,12 +358,7 @@ def _apply_canonical_order(headers: list[str]) -> list[str]:
             ordered.append(col)
             seen.add(col)
 
-    total_norms = {
-        _norm_header("Grand Total"),
-        _norm_header("Total Vote"),
-        _norm_header("Total Votes"),
-        _norm_header("Total Ballots"),
-    }
+    total_norms = set(_TOTAL_KEYWORD_NORMS)
     if candidate_blocks:
         for h in headers:
             if h in seen:
@@ -350,6 +380,17 @@ def _apply_canonical_order(headers: list[str]) -> list[str]:
         idx = ordered.index(primary) + 1
         for offset, h in enumerate(percent_cols):
             ordered.insert(idx + offset, h)
+
+    # Keep Party immediately after Candidate when both exist
+    candidate_norm = _norm_header("Candidate")
+    party_norm = _norm_header("Party")
+    candidate_col = next((h for h in ordered if _norm_header(h) == candidate_norm), None)
+    party_col = next((h for h in ordered if _norm_header(h) == party_norm), None)
+    if candidate_col and party_col:
+        if party_col in ordered:
+            ordered.remove(party_col)
+        insert_at = ordered.index(candidate_col) + 1
+        ordered.insert(insert_at, party_col)
 
     return ordered
 
@@ -610,6 +651,8 @@ def _drop_title_noise_rows(headers: list[str], rows: list[dict], *, context: dic
     Conservatively keeps data rows; fails open on errors.
     """
     context = context or {}
+    if context.get("skip_row_noise_filter"):
+        return headers, rows
     try:
         state, county = resolve_state_county_from_context(context)
         title_re = get_camelot_title_regex(state=state, county=county)

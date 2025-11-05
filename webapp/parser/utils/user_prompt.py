@@ -177,6 +177,11 @@ class UserPrompt(ContextManager):
 
     def create_prompt_session(self, session_id: str, context: Optional[dict] = None) -> PromptSession:
         with self._cleanup_lock:
+            # Interactive workflows reuse the same logical session id multiple times.
+            # If a previous prompt scheduled a delayed cleanup, cancel it so the
+            # background janitor does not delete the session mid-dialog.
+            if session_id in self._pending_delete:
+                self._pending_delete.pop(session_id, None)
             ps = PromptSession(session_id, context, self.timeout_sec)
             self.prompt_sessions[session_id] = ps
             return ps
@@ -187,6 +192,8 @@ class UserPrompt(ContextManager):
         Expired sessions are replaced.
         """
         with self._cleanup_lock:
+            if session_id in self._pending_delete:
+                self._pending_delete.pop(session_id, None)
             session = self.prompt_sessions.get(session_id)
             if session is None or session.is_expired():
                 session = PromptSession(session_id, context, self.timeout_sec)

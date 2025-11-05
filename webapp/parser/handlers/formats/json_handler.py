@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
+from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Set, Tuple, cast
 
 import orjson
 
@@ -18,6 +18,10 @@ from ...Context_Integration.Context_Library.constants import (
 )
 from ...utils.contest_selector import (
     select_contest_auto_first,
+)
+from ...utils.location_helpers import (
+    attach_precinct_column,
+    collect_location_headers,
 )
 from ...utils.logger_singleton import logger
 from ...utils.output_utils import finalize_election_output
@@ -194,11 +198,11 @@ def parse_json_election_results(
                 break
 
     # --- Extract options/candidates and nested results when schema supports it ---
-    rows = []
-    headers = []
+    rows: List[Dict[str, Any]] = []
+    headers: List[str] = []
     normalization_map: Dict[str, str] = {}
     candidate_metadata: List[Dict[str, Any]] = []
-    candidate_header_map: Dict[str, set] = defaultdict(set)
+    candidate_header_map: DefaultDict[str, Set[str]] = defaultdict(set)
     candidate_id_map: Dict[str, str] = {}
     if isinstance(contest_item, dict):
         ballot_options_key = find_key_by_keywords(
@@ -281,9 +285,9 @@ def parse_json_election_results(
             all_keys = set()
             for precinct, cands in results_nested.items():
                 row = {"Precinct": precinct}
-                for raw_label, methods in cands.items():
+                for raw_label, method_counts in cands.items():
                     norm_label = normalization_map.get(raw_label, raw_label)
-                    for method, count in methods.items():
+                    for method, count in method_counts.items():
                         col_name = f"{norm_label} - {method}"
                         row[col_name] = count
                         all_keys.add(col_name)
@@ -292,11 +296,6 @@ def parse_json_election_results(
             headers = ["Precinct"] + sorted(all_keys)
 
             # Freeze candidate_header_map into JSON-serializable structure
-            candidate_header_map = {
-                label: sorted({m for m in methods if m})
-                for label, methods in candidate_header_map.items()
-            }
-
     # --- Fallback when schema isn't the expected nested structure ---
     if not rows:
         # Try to emit something useful rather than crash
@@ -312,12 +311,26 @@ def parse_json_election_results(
         headers = ["Contest", "RawJSON"]
         rows = [{"Contest": target_contest, "RawJSON": blob_str}]
 
+    location_headers = collect_location_headers(headers)
+    headers, rows, precinct_attached = attach_precinct_column(
+        headers,
+        rows,
+        location_headers=location_headers,
+    )
+    location_diagnostics = {
+        "detected_location_headers": location_headers,
+        "precinct_attached": precinct_attached,
+    }
+
     # Harmonize/pivot via non-interactive builder
-    headers, rows = expand_single_rawjson_row(headers, rows, context={
+    pre_builder_context = {
         "contest": target_contest,
         "handler": "json_handler",
-        "phase": "pre_builder"
-    })
+        "phase": "pre_builder",
+        "location_headers": location_headers,
+        "precinct_attached": precinct_attached,
+    }
+    headers, rows = expand_single_rawjson_row(headers, rows, context=pre_builder_context)
 
     fname = os.path.basename(json_path).lower()
     state = "Unknown"
@@ -333,12 +346,7 @@ def parse_json_election_results(
     domain = safe_slug(os.path.basename(json_path))
     candidate_header_map_serializable: Dict[str, List[str]] = {}
     for label, methods in candidate_header_map.items():
-        if isinstance(methods, (set, list, tuple)):
-            filtered = sorted({(m or "").strip() for m in methods if m})
-        elif methods:
-            filtered = [str(methods)]
-        else:
-            filtered = []
+        filtered = sorted({(m or "").strip() for m in methods if m})
         candidate_header_map_serializable[label] = filtered
 
     context = {
@@ -354,6 +362,9 @@ def parse_json_election_results(
         "candidate_header_map": candidate_header_map_serializable,
         "candidate_metadata": candidate_metadata,
         "candidate_id_to_label": candidate_id_map,
+        "location_headers": location_headers,
+        "precinct_attached": precinct_attached,
+        "location_diagnostics": location_diagnostics,
     }
     headers_final, data_final, _entity_info = build_table_noninteractive(
         domain=domain,
@@ -377,6 +388,8 @@ def parse_json_election_results(
         "input_file": os.path.basename(json_path),
         "session_id": session_id,
         "race": target_contest,
+        "location_headers": location_headers,
+        "precinct_attached": precinct_attached,
     })
 
     finalized = finalize_election_output(
@@ -407,6 +420,9 @@ def parse_json_election_results(
         "candidate_header_map": candidate_header_map_serializable,
         "candidate_metadata": candidate_metadata,
         "candidate_id_to_label": candidate_id_map,
+        "location_headers_detected": location_headers,
+        "precinct_attached": precinct_attached,
+        "location_diagnostics": location_diagnostics,
     }
 
     logger.info({

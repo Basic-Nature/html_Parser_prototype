@@ -15,6 +15,7 @@ from collections import Counter, defaultdict
 from collections.abc import Hashable
 from datetime import datetime, timezone
 from difflib import get_close_matches
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -179,6 +180,7 @@ def _defensive_dom_check(dom_parts, url, logger=logger, log_errors=True) -> dict
     return errors
 
 class ContextOrganizer(object):
+    _MODEL_CACHE: dict[Any, Any] = {}
     def __init__(
         self,
         use_library=True,
@@ -218,20 +220,11 @@ class ContextOrganizer(object):
         self.embedding_model_obj = None
         self.data_service = ElectionDataService()
         try:
-            if isinstance(self.embedding_model, str):
-                self.embedding_model_obj = ModelRegistry.get_sentence_transformer(self.embedding_model)
-                logger.info(f"[CONTEXT ORGANIZER] Loaded embedding model: {self.embedding_model}")
-            elif hasattr(self.embedding_model, "encode"):
-                # Looks like a SentenceTransformer or compatible model
-                self.embedding_model_obj = self.embedding_model
-                logger.info("[CONTEXT ORGANIZER] Using provided embedding model object.")
-            else:
-                # If it's a method, class, or something else, warn and set to None
-                logger.warning(f"[CONTEXT ORGANIZER] Provided embedding_model is not a recognized model instance or string. Type: {type(self.embedding_model)}. Setting to None.")
-                self.embedding_model_obj = None
+            self.embedding_model_obj = self._resolve_embedding_model(self.embedding_model)
         except Exception as e:
             logger.error(f"[CONTEXT ORGANIZER] Failed to load embedding model: {e}")
             self.embedding_model_obj = None
+        self.last_raw_context = None
 
     @staticmethod
     def _default_library() -> dict:
@@ -271,6 +264,577 @@ class ContextOrganizer(object):
             "default_noisy_labels": [],
             "download_links": []
         }
+
+    @classmethod
+    def _resolve_embedding_model(cls, model: Any) -> Any:
+        if isinstance(model, str):
+            if model not in cls._MODEL_CACHE:
+                loaded = ModelRegistry.get_sentence_transformer(model)
+                cls._MODEL_CACHE[model] = loaded
+                logger.info(f"[CONTEXT ORGANIZER] Loaded embedding model: {model}")
+            return cls._MODEL_CACHE[model]
+        if hasattr(model, "encode"):
+            if model not in cls._MODEL_CACHE.values():
+                cls._MODEL_CACHE[id(model)] = model
+            logger.info("[CONTEXT ORGANIZER] Using provided embedding model object.")
+            return model
+        if model is not None:
+            logger.warning(
+                f"[CONTEXT ORGANIZER] Provided embedding_model is not a recognized model instance or string. "
+                f"Type: {type(model)}. Setting to None."
+            )
+        return None
+
+    @staticmethod
+    def _safe_list(val: Any) -> list:
+        return val if isinstance(val, list) else []
+
+    @staticmethod
+    def _dedupe_items(items: list, key_fields: list[str]) -> list:
+        seen = set()
+        deduped = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            key = tuple(item.get(f) for f in key_fields)
+            if key not in seen and any(item.get(f) for f in key_fields):
+                deduped.append(item)
+                seen.add(key)
+        return deduped
+
+    def _prepare_dom_context(self, raw_context, suppress_dom_errors: bool, log: list, summary: dict) -> tuple[dict, dict, dict]:
+        tagged_segments = raw_context.get("tagged_segments_with_attrs", []) if isinstance(raw_context, dict) else []
+        url_value = raw_context.get("url", "") if isinstance(raw_context, dict) else ""
+
+        virtual_root = {
+            "tag": "url_root",
+            "attrs": {},
+            "classes": [],
+            "id": "url_root",
+            "html": url_value,
+            "is_button": False,
+            "is_clickable": False,
+            "children": [],
+            "parent_idx": None,
+            "start": None,
+            "end": None,
+            "_idx": 0
+        }
+        for seg in tagged_segments:
+            if not isinstance(seg, dict):
+                continue
+            seg["_idx"] = seg.get("_idx", 0) + 1
+            if seg.get("parent_idx") is None:
+                seg["parent_idx"] = 0
+            elif isinstance(seg.get("parent_idx"), int):
+                seg["parent_idx"] += 1
+            seg["children"] = [c + 1 if isinstance(c, int) else c for c in seg.get("children", [])]
+        tagged_segments = [virtual_root] + tagged_segments
+        tagged_segments = repair_dom_segments(tagged_segments)
+        dom_tree = self.build_dom_tree(tagged_segments)
+        dom_tree["source_url"] = url_value
+        dom_parts = self.expose_dom_parts(dom_tree)
+
+        url = raw_context.get("url", "") if isinstance(raw_context, dict) else ""
+        context: dict = {}
+        dom_errors = _defensive_dom_check(dom_parts, url, logger, log_errors=not suppress_dom_errors)
+        if dom_errors:
+            context["dom_errors"] = dom_errors
+            summary["dom_errors"] = dom_errors
+            log.append(f"[DOM_PARTS] Errors: {dom_errors}")
+        return context, dom_tree, dom_parts
+
+    def _collect_structured_context(
+        self,
+        raw_context,
+        context_library,
+        button_features,
+        panel_features,
+        embedding_model,
+        log: list,
+    ) -> dict:
+        safe_list = self._safe_list
+        dedupe = self._dedupe_items
+
+        db_contests = safe_db_call(self.data_service.get_all_full_contests, limit=500, default=[], logger=logger)
+        contests = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("contests", [])) + db_contests
+        contests = dedupe(contests, ["title", "year", "type_"])
+
+        db_panels = safe_db_call(self.data_service.get_all_panels, limit=500, default=[], logger=logger)
+        panels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("panels", [])) + db_panels
+        panels = dedupe(panels, ["panel_text", "segment_hash"])
+
+        db_tables = safe_db_call(self.data_service.get_all_tables, limit=500, default=[], logger=logger)
+        tables = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("tables", [])) + db_tables
+        tables = dedupe(tables, ["table_text", "segment_hash"])
+
+        db_candidate_panels = safe_db_call(self.data_service.get_all_candidate_panels, limit=500, default=[], logger=logger)
+        candidate_panels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("candidate_panels", [])) + db_candidate_panels
+        candidate_panels = dedupe(candidate_panels, ["candidate_panel_text", "segment_hash"])
+
+        db_location_panels = safe_db_call(self.data_service.get_all_location_panels, limit=500, default=[], logger=logger)
+        location_panels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("location_panels", [])) + db_location_panels
+        location_panels = dedupe(location_panels, ["location_panel_text", "segment_hash"])
+
+        db_headings = safe_db_call(self.data_service.get_all_headings, limit=500, default=[], logger=logger)
+        headings = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("headings", [])) + db_headings
+        headings = dedupe(headings, ["heading_text", "segment_hash"])
+
+        db_ballot_types = safe_db_call(self.data_service.get_all_ballot_types, limit=500, default=[], logger=logger)
+        ballot_types = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("ballot_types", [])) + db_ballot_types
+        ballot_types = dedupe(ballot_types, ["ballot_types_text", "segment_hash"])
+
+        db_results_timestamps = safe_db_call(self.data_service.get_all_results_timestamps, limit=500, default=[], logger=logger)
+        results_timestamps = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("results_timestamps", [])) + db_results_timestamps
+        results_timestamps = dedupe(results_timestamps, ["timestamp_text", "segment_hash"])
+
+        db_party_labels = safe_db_call(self.data_service.get_all_party_labels, limit=500, default=[], logger=logger)
+        party_labels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("party_labels", [])) + db_party_labels
+        party_labels = dedupe(party_labels, ["party_label_text", "segment_hash"])
+
+        db_vote_methods = safe_db_call(self.data_service.get_all_vote_methods, limit=500, default=[], logger=logger)
+        vote_methods = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("vote_methods", [])) + db_vote_methods
+        vote_methods = dedupe(vote_methods, ["vote_method_text", "segment_hash"])
+
+        contests_out = []
+        contests_seen = set()
+        raw_contests = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("contests", []))
+        for c in raw_contests:
+            if not isinstance(c, dict) or not c.get("title"):
+                continue
+            title = c.get("title") or c.get("label") or ""
+            if not title or len(str(title)) > 500:
+                logger.warning(f"[CONTEST] Skipping contest with suspiciously large or missing title: {str(title)[:100]}...")
+                continue
+            norm_title = normalize_label(title)
+            if norm_title not in contests_seen:
+                contests_seen.add(norm_title)
+                year, type_, state, county = infer_contest_fields(
+                    c,
+                    context_library,
+                    db_service=self.data_service,
+                    embedding_model=embedding_model,
+                    log=log
+                )
+                contests_out.append({
+                    "title": title,
+                    "year": year,
+                    "type_": type_,
+                    "state": state or (c.get("state") if isinstance(c, dict) else None) or (raw_context.get("state") if isinstance(raw_context, dict) else None),
+                    "county": county or (c.get("county") if isinstance(c, dict) else None) or (raw_context.get("county") if isinstance(raw_context, dict) else None),
+                    "raw": flatten_raw_field(c)
+                })
+        for c in safe_list(context_library.get("contests", [])):
+            if not isinstance(c, dict) or not c.get("title"):
+                continue
+            norm_title = normalize_label(c.get("title", c.get("label", str(c))))
+            if norm_title not in contests_seen and all(
+                norm_title != normalize_label(c2.get("title", "")) if isinstance(c2, dict) else True
+                for c2 in contests_out
+            ):
+                contests_out.append(c)
+                contests_seen.add(norm_title)
+        contests = contests_out
+
+        from ..utils.html_scanner import extract_year_and_type
+        if isinstance(raw_context, dict):
+            state_context = raw_context.get("state")
+            county_context = raw_context.get("county")
+        else:
+            state_context = None
+            county_context = None
+        years = [c.get("year") for c in contests if isinstance(c, dict) and c.get("year")]
+        types = [c.get("type_") for c in contests if isinstance(c, dict) and c.get("type_")]
+        unique_years = set(y for y in years if y)
+        unique_types = set(t for t in types if t)
+
+        for c in contests:
+            if not isinstance(c, dict):
+                continue
+
+            if not c.get("state") and state_context:
+                c["state"] = state_context
+            if not c.get("county") and county_context:
+                c["county"] = county_context
+
+            title_val = c.get("title", "")
+            url_val = raw_context.get("url", "") if isinstance(raw_context, dict) else ""
+            y, t, _, _ = extract_year_and_type(title_val if isinstance(title_val, str) else "", url=url_val if isinstance(url_val, str) else "")
+
+            if not c.get("year"):
+                if len(unique_years) == 1:
+                    c["year"] = safe_get_first(list(unique_years), "unique_years", url_val, logger)
+                elif y:
+                    c["year"] = y
+
+            if not c.get("type_"):
+                if len(unique_types) == 1:
+                    c["type_"] = safe_get_first(list(unique_types), "unique_types", url_val, logger)
+                elif t:
+                    c["type_"] = t
+
+            raw_field = c.get("raw")
+            if isinstance(raw_field, dict):
+                if not c.get("state") and raw_field.get("state"):
+                    c["state"] = raw_field.get("state")
+                if not c.get("county") and raw_field.get("county"):
+                    c["county"] = raw_field.get("county")
+                if not c.get("year") and raw_field.get("year"):
+                    c["year"] = raw_field.get("year")
+                if not c.get("type_") and raw_field.get("type_"):
+                    c["type_"] = raw_field.get("type_")
+
+        filtered_out = []
+        filtered_contests = []
+        for c in contests:
+            if not (isinstance(c, dict) and c.get("title")):
+                filtered_out.append((c, "missing title"))
+                continue
+            filtered_contests.append(c)
+        if filtered_out:
+            logger.warning(f"[CONTEST] Filtered out {len(filtered_out)} contests due to missing required fields.")
+            for c, reason in filtered_out[:5]:
+                logger.warning(f"  [Filtered] {reason}: {str(c)[:100]}...")
+        contests = filtered_contests
+        if not contests:
+            logger.warning("[CONTEST] No contests with required fields for downstream output.")
+
+        panels_dict = {}
+        lib_panels = safe_list(context_library.get("panels", []))
+
+        def find_panel_by_title(title):
+            norm_title = normalize_label(title)
+            if panel_features and isinstance(panel_features, list):
+                for p in panel_features:
+                    if not isinstance(p, dict):
+                        continue
+                    if normalize_label(p.get("label", p.get("panel_text", ""))) == norm_title:
+                        return p
+            raw_panels = raw_context.get("panels", {}) if isinstance(raw_context, dict) else {}
+            if isinstance(raw_panels, dict):
+                for _, p in raw_panels.items():
+                    if not isinstance(p, dict):
+                        continue
+                    if normalize_label(p.get("label", p.get("panel_text", ""))) == norm_title:
+                        return p
+            elif isinstance(raw_panels, list):
+                for p in raw_panels:
+                    if not isinstance(p, dict):
+                        continue
+                    if normalize_label(p.get("label", p.get("panel_text", ""))) == norm_title:
+                        return p
+            for p in lib_panels:
+                if not isinstance(p, dict):
+                    continue
+                if normalize_label(p.get("label", p.get("panel_text", ""))) == norm_title:
+                    return p
+            return None
+
+        for c in contests:
+            if isinstance(c, dict) and c.get("title"):
+                panel = find_panel_by_title(c["title"])
+                if panel and panel.get("panel_text"):
+                    panels_dict[c["title"]] = panel
+
+        raw_panels = raw_context.get("panels", {}) if isinstance(raw_context, dict) else {}
+        if isinstance(raw_panels, dict):
+            raw_panels_list = list(raw_panels.values())
+        elif isinstance(raw_panels, list):
+            raw_panels_list = raw_panels
+        else:
+            raw_panels_list = []
+
+        for p in (panel_features if isinstance(panel_features, list) else []) + raw_panels_list + (lib_panels if isinstance(lib_panels, list) else []):
+            if not isinstance(p, dict):
+                continue
+            if not p.get("panel_text"):
+                continue
+            label = p.get("label", p.get("panel_text", ""))
+            if label not in panels_dict:
+                panels_dict[label] = p
+
+        raw_tables = safe_list(raw_context.get("tables", []) if isinstance(raw_context, dict) else [])
+        lib_tables = safe_list(context_library.get("tables", []))
+        all_tables = raw_tables + lib_tables
+
+        raw_buttons = safe_list(button_features) if isinstance(button_features, list) else safe_list(raw_context.get("buttons", []) if isinstance(raw_context, dict) else [])
+        lib_buttons = safe_list(context_library.get("buttons", []))
+        all_buttons = raw_buttons + lib_buttons
+        unmatched_buttons = []
+
+        for btn in all_buttons:
+            if not isinstance(btn, dict):
+                continue
+            label = btn.get("label")
+            if not isinstance(label, str) or not label:
+                continue
+            matched = False
+            for c in contests:
+                if not isinstance(c, dict):
+                    continue
+                title = c.get("title")
+                if not isinstance(title, str) or not title:
+                    continue
+                label_lower = label.lower()
+                title_lower = title.lower()
+                if title_lower and label_lower and title_lower in label_lower:
+                    matched = True
+                    break
+                if "election" in label_lower and "election" in title_lower:
+                    matched = True
+                    break
+            if not matched:
+                unmatched_buttons.append(btn)
+
+        for btn in unmatched_buttons:
+            btn.setdefault("__unmatched__", True)
+
+        return {
+            "contests": contests,
+            "panels_dict": panels_dict,
+            "all_tables": all_tables,
+            "all_buttons": all_buttons,
+            "candidate_panels": candidate_panels,
+            "location_panels": location_panels,
+            "headings": headings,
+            "ballot_types": ballot_types,
+            "results_timestamps": results_timestamps,
+            "party_labels": party_labels,
+            "vote_methods": vote_methods,
+        }
+
+    def _group_keyword_sections(self, assets: dict, log: list, fuzzy_cutoff: float = 0.85) -> dict:
+        keyword_sets = {
+            "location": LOCATION_KEYWORDS,
+            "candidate": CANDIDATE_KEYWORDS,
+            "party": PARTY_KEYWORDS,
+            "ballot_types": set(BALLOT_TYPES),
+            "contest": CONTEST_KEYWORDS,
+            "percent": PERCENT_KEYWORDS,
+            "total": TOTAL_KEYWORDS,
+            "footer": MISC_FOOTER_KEYWORDS,
+        }
+
+        def group_by_keywords(items, label_fields=None, keyword_sets=None, fuzzy_cutoff=0.85) -> dict:
+            if label_fields is None:
+                label_fields = [
+                    "label",
+                    "button_text",
+                    "panel_text",
+                    "table_text",
+                    "candidate_panel_text",
+                    "location_panel_text",
+                    "heading_text",
+                    "ballot_types_text",
+                    "timestamp_text",
+                    "party_label_text",
+                    "vote_method_text",
+                ]
+            if keyword_sets is None:
+                raise ValueError("keyword_sets must be provided")
+            groups = {k: [] for k in keyword_sets}
+            seen = {k: set() for k in keyword_sets}
+
+            def normalize(text):
+                return re.sub(r"[^\w\s]", "", (text or "").lower()).strip()
+
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                label = ""
+                for field in label_fields:
+                    label = item.get(field, "")
+                    if label:
+                        break
+                label_norm = normalize(label)
+                tokens = set(label_norm.split())
+                for group, keywords in safe_items(keyword_sets):
+                    matched = False
+                    for kw in keywords:
+                        kw_norm = normalize(kw)
+                        if kw_norm in label_norm or any(kw_norm in t for t in tokens):
+                            matched = True
+                            break
+                        if get_close_matches(kw_norm, [label_norm], n=1, cutoff=fuzzy_cutoff):
+                            matched = True
+                            break
+                    if matched:
+                        dedup_key = item.get("segment_hash", label_norm)
+                        if dedup_key not in seen[group]:
+                            groups[group].append(item)
+                            seen[group].add(dedup_key)
+            return groups
+
+        panels = ensure_dict(
+            group_by_keywords(
+                [p for p in assets["panels_dict"].values() if p],
+                label_fields=["panel_text"],
+                keyword_sets=keyword_sets,
+                fuzzy_cutoff=fuzzy_cutoff,
+            )
+        )
+        buttons = ensure_dict(
+            group_by_keywords(
+                assets["all_buttons"],
+                label_fields=["button_text", "label"],
+                keyword_sets=keyword_sets,
+                fuzzy_cutoff=fuzzy_cutoff,
+            )
+        )
+        tables = ensure_dict(
+            group_by_keywords(
+                assets["all_tables"],
+                label_fields=["table_text"],
+                keyword_sets=keyword_sets,
+                fuzzy_cutoff=fuzzy_cutoff,
+            )
+        )
+        candidate_panels = ensure_dict(
+            group_by_keywords(
+                assets["candidate_panels"],
+                label_fields=["candidate_panel_text"],
+                keyword_sets=keyword_sets,
+                fuzzy_cutoff=fuzzy_cutoff,
+            )
+        )
+        location_panels = ensure_dict(
+            group_by_keywords(
+                assets["location_panels"],
+                label_fields=["location_panel_text"],
+                keyword_sets=keyword_sets,
+                fuzzy_cutoff=fuzzy_cutoff,
+            )
+        )
+        headings = ensure_dict(
+            group_by_keywords(
+                assets["headings"],
+                label_fields=["heading_text"],
+                keyword_sets=keyword_sets,
+                fuzzy_cutoff=fuzzy_cutoff,
+            )
+        )
+        ballot_types = ensure_dict(
+            group_by_keywords(
+                assets["ballot_types"],
+                label_fields=["ballot_types_text"],
+                keyword_sets=keyword_sets,
+                fuzzy_cutoff=fuzzy_cutoff,
+            )
+        )
+        results_timestamps = ensure_dict(
+            group_by_keywords(
+                assets["results_timestamps"],
+                label_fields=["timestamp_text"],
+                keyword_sets=keyword_sets,
+                fuzzy_cutoff=fuzzy_cutoff,
+            )
+        )
+        party_labels = ensure_dict(
+            group_by_keywords(
+                assets["party_labels"],
+                label_fields=["party_label_text"],
+                keyword_sets=keyword_sets,
+                fuzzy_cutoff=fuzzy_cutoff,
+            )
+        )
+        vote_methods = ensure_dict(
+            group_by_keywords(
+                assets["vote_methods"],
+                label_fields=["vote_method_text"],
+                keyword_sets=keyword_sets,
+                fuzzy_cutoff=fuzzy_cutoff,
+            )
+        )
+
+        panel_counts = {k: len(v) for k, v in panels.items()}
+        button_counts = {k: len(v) for k, v in buttons.items()}
+        table_counts = {k: len(v) for k, v in tables.items()}
+        candidate_counts = {k: len(v) for k, v in candidate_panels.items()}
+        location_counts = {k: len(v) for k, v in location_panels.items()}
+        heading_counts = {k: len(v) for k, v in headings.items()}
+        ballot_counts = {k: len(v) for k, v in ballot_types.items()}
+        timestamp_counts = {k: len(v) for k, v in results_timestamps.items()}
+        party_counts = {k: len(v) for k, v in party_labels.items()}
+        vote_counts = {k: len(v) for k, v in vote_methods.items()}
+
+        log.append(f"[KEYWORDS] Panel groups: {panel_counts}")
+        log.append(f"[KEYWORDS] Button groups (by button_text): {button_counts}")
+        log.append(f"[KEYWORDS] Table groups: {table_counts}")
+        log.append(f"[KEYWORDS] Candidate panel groups: {candidate_counts}")
+        log.append(f"[KEYWORDS] Location panel groups: {location_counts}")
+        log.append(f"[KEYWORDS] Heading groups: {heading_counts}")
+        log.append(f"[KEYWORDS] Ballot type groups: {ballot_counts}")
+        log.append(f"[KEYWORDS] Results timestamp groups: {timestamp_counts}")
+        log.append(f"[KEYWORDS] Party label groups: {party_counts}")
+        log.append(f"[KEYWORDS] Vote method groups: {vote_counts}")
+
+        return {
+            "panels": panels,
+            "buttons": buttons,
+            "tables": tables,
+            "candidate_panels": candidate_panels,
+            "location_panels": location_panels,
+            "headings": headings,
+            "ballot_types": ballot_types,
+            "results_timestamps": results_timestamps,
+            "party_labels": party_labels,
+            "vote_methods": vote_methods,
+        }
+
+    def _apply_ml_pipeline(
+        self,
+        contests: list,
+        context_library,
+        enable_ml: bool,
+        embedding_model,
+        contamination,
+        n_estimators,
+        random_state,
+        plot_clusters_flag: bool,
+        log: list,
+        plot_anomalies: bool,
+    ) -> tuple[list, list, list, list, Any, list, bool]:
+        anomalies, clusters = [], []
+        try:
+            if enable_ml and len(contests) > 0:
+                anomalies, clusters = detect_anomalies_with_ml(
+                    contests,
+                    contamination=contamination,
+                    n_estimators=n_estimators,
+                    random_state=random_state,
+                    embedding_model=embedding_model,
+                )
+                if anomalies:
+                    for idx in anomalies:
+                        if idx < len(contests):
+                            contest = contests[idx]
+                            title = contest.get("title", str(contest)) if isinstance(contest, dict) else str(contest)
+                            logger.info(
+                                f"[bold magenta][ML][/bold magenta] Context anomaly detected: [bold yellow]{title}[/bold yellow]\n  [dim]Context:[/dim] {contest}"
+                            )
+                        else:
+                            logger.warning(f"[ML] Anomaly index {idx} out of range for contests list of length {len(contests)}")
+                if plot_anomalies and plot_clusters_flag:
+                    plot_clusters_flag = print_ml_anomalies(anomalies, contests)
+        except Exception as e:
+            logger.error(f"[bold red][ML] Anomaly detection failed:[/bold red] {e}")
+
+        contests, fix_log = self.suggest_and_apply_fixes(
+            contests,
+            context_library,
+            logs=log,
+            min_confidence=0.8,
+            embedding_model=embedding_model if embedding_model is not None else self.embedding_model_obj,
+        )
+
+        for contest in contests:
+            _sync_type_and_election_types(contest)
+
+        best_contest = contests[0] if contests else {}
+        best_type = best_contest.get("type_")
+        best_election_types = best_contest.get("election_types", [])
+
+        return contests, anomalies, clusters, fix_log, best_type, best_election_types, plot_clusters_flag
     @staticmethod
     def print_contest_summary(contests) -> None:
         table = Table(title="Contest Summary by State/County")
@@ -855,516 +1419,86 @@ class ContextOrganizer(object):
             f"  • Plot anomalies:  {plot_anomalies}\n"
         )
         organized = None
+        context: dict = {}
+        dom_tree: dict = {}
+        dom_parts: dict = {}
+        contests: list = []
+        anomalies: list = []
+        clusters = []
+        fix_log: list = []
+        integrity_issues: list = []
+        enable_ml = self.enable_ml if enable_ml is None else enable_ml
+        contamination = self.contamination if contamination is None else contamination
+        n_estimators = self.n_estimators if n_estimators is None else n_estimators
+        random_state = self.random_state if random_state is None else random_state
+        url = raw_context.get("url", "") if isinstance(raw_context, dict) else ""
+        self.last_raw_context = raw_context
         try:
-            # --- Use/merge context library if provided ---
-            context_library = self.library.copy() if hasattr(self, 'library') else {}
-            if use_library:
-                context_library.update(use_library)
-                log.append("[LIBRARY] Merged use_library into context_library.")
-            # --- Use cache if provided ---
+            base_library = self.library if isinstance(self.library, dict) else {}
+            context_library = base_library.copy()
+            library_override = self.use_library if use_library is None else use_library
+            if isinstance(library_override, dict):
+                context_library.update(library_override)
+                log.append(f"[LIBRARY] Merged override library entries: {len(library_override)}")
+            elif library_override is False:
+                context_library = self._default_library()
+                log.append("[LIBRARY] Context library disabled for this invocation.")
             if cache is not None:
-                if hasattr(self, '_context_cache'):
+                if hasattr(self, "_context_cache") and isinstance(self._context_cache, dict):
                     self._context_cache.update(cache)
                 else:
                     self._context_cache = cache.copy() if isinstance(cache, dict) else dict(cache) if isinstance(cache, list) else {}
-                log.append(f"[CACHE] Using provided cache with {len(cache) if hasattr(cache, '__len__') else 0} entries.")
+                cache_size = len(cache) if hasattr(cache, "__len__") else 0
+                log.append(f"[CACHE] Using provided cache with {cache_size} entries.")
 
-            tagged_segments = raw_context.get("tagged_segments_with_attrs", []) if isinstance(raw_context, dict) else []
-            url_value = raw_context.get("url", "") if isinstance(raw_context, dict) else ""
+            context, dom_tree, dom_parts = self._prepare_dom_context(raw_context, suppress_dom_errors, log, summary)
 
-            # --- Virtual root handling: _idx=0, all real roots point to it as parent ---
-            virtual_root = {
-                "tag": "url_root",
-                "attrs": {},
-                "classes": [],
-                "id": "url_root",
-                "html": url_value,
-                "is_button": False,
-                "is_clickable": False,
-                "children": [],
-                "parent_idx": None,
-                "start": None,
-                "end": None,
-                "_idx": 0
-            }
-            for seg in tagged_segments:
-                if not isinstance(seg, dict):
-                    continue
-                seg["_idx"] = seg.get("_idx", 0) + 1
-                if seg.get("parent_idx") is None:
-                    seg["parent_idx"] = 0
-                elif isinstance(seg.get("parent_idx"), int):
-                    seg["parent_idx"] += 1
-                seg["children"] = [c + 1 if isinstance(c, int) else c for c in seg.get("children", [])]
-            tagged_segments = [virtual_root] + tagged_segments
-            tagged_segments = repair_dom_segments(tagged_segments)
-            dom_tree = self.build_dom_tree(tagged_segments)
-            dom_tree["source_url"] = url_value
-            dom_parts = self.expose_dom_parts(dom_tree)
+            assets = self._collect_structured_context(
+                raw_context,
+                context_library,
+                button_features,
+                panel_features,
+                embedding_model,
+                log,
+            )
+            contests = assets.get("contests", [])
 
-            # --- Defensive: check for missing/empty lists in dom_parts ---
-            url = raw_context.get("url", "") if isinstance(raw_context, dict) else ""
-            context = {}
-            dom_errors = _defensive_dom_check(dom_parts, url, logger, log_errors=not suppress_dom_errors)
-            if dom_errors:
-                context['dom_errors'] = dom_errors
+            grouped = self._group_keyword_sections(
+                assets,
+                log,
+                fuzzy_cutoff=fuzzy_cutoff if fuzzy_cutoff is not None else 0.85,
+            )
+            panels = grouped["panels"]
+            buttons = grouped["buttons"]
+            tables = grouped["tables"]
+            candidate_panels = grouped["candidate_panels"]
+            location_panels = grouped["location_panels"]
+            headings = grouped["headings"]
+            ballot_types = grouped["ballot_types"]
+            results_timestamps = grouped["results_timestamps"]
+            party_labels = grouped["party_labels"]
+            vote_methods = grouped["vote_methods"]
 
-            # --- Logging dom_errors for diagnostics ---
-            if dom_errors:
-                summary['dom_errors'] = dom_errors
-                log.append(f"[DOM_PARTS] Errors: {dom_errors}")
-
-            # --- Merge and deduplicate all context types from DB ---
-            def dedupe(items, key_fields):
-                seen = set()
-                deduped = []
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    key = tuple(item.get(f) for f in key_fields)
-                    if key not in seen and any(item.get(f) for f in key_fields):
-                        deduped.append(item)
-                        seen.add(key)
-                return deduped
-
-            def safe_list(val):
-                return val if isinstance(val, list) else []
-
-            # --- Organize contests, panels, tables, etc. (original logic unchanged) ---
-            db_contests = safe_db_call(self.data_service.get_all_full_contests, limit=500, default=[], logger=logger)
-            contests = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("contests", [])) + db_contests
-            contests = dedupe(contests, ["title", "year", "type_"])
-
-            db_panels = safe_db_call(self.data_service.get_all_panels, limit=500, default=[], logger=logger)
-            panels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("panels", [])) + db_panels
-            panels = dedupe(panels, ["panel_text", "segment_hash"])
-
-            db_tables = safe_db_call(self.data_service.get_all_tables, limit=500, default=[], logger=logger)
-            tables = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("tables", [])) + db_tables
-            tables = dedupe(tables, ["table_text", "segment_hash"])
-
-            db_candidate_panels = safe_db_call(self.data_service.get_all_candidate_panels, limit=500, default=[], logger=logger)
-            candidate_panels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("candidate_panels", [])) + db_candidate_panels
-            candidate_panels = dedupe(candidate_panels, ["candidate_panel_text", "segment_hash"])
-
-            db_location_panels = safe_db_call(self.data_service.get_all_location_panels, limit=500, default=[], logger=logger)
-            location_panels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("location_panels", [])) + db_location_panels
-            location_panels = dedupe(location_panels, ["location_panel_text", "segment_hash"])
-
-            db_headings = safe_db_call(self.data_service.get_all_headings, limit=500, default=[], logger=logger)
-            headings = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("headings", [])) + db_headings
-            headings = dedupe(headings, ["heading_text", "segment_hash"])
-
-            db_ballot_types = safe_db_call(self.data_service.get_all_ballot_types, limit=500, default=[], logger=logger)
-            ballot_types = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("ballot_types", [])) + db_ballot_types
-            ballot_types = dedupe(ballot_types, ["ballot_types_text", "segment_hash"])
-
-            db_results_timestamps = safe_db_call(self.data_service.get_all_results_timestamps, limit=500, default=[], logger=logger)
-            results_timestamps = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("results_timestamps", [])) + db_results_timestamps
-            results_timestamps = dedupe(results_timestamps, ["timestamp_text", "segment_hash"])
-
-            db_party_labels = safe_db_call(self.data_service.get_all_party_labels, limit=500, default=[], logger=logger)
-            party_labels = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("party_labels", [])) + db_party_labels
-            party_labels = dedupe(party_labels, ["party_label_text", "segment_hash"])
-
-            db_vote_methods = safe_db_call(self.data_service.get_all_vote_methods, limit=500, default=[], logger=logger)
-            vote_methods = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("vote_methods", [])) + db_vote_methods
-            vote_methods = dedupe(vote_methods, ["vote_method_text", "segment_hash"])
-
-            # --- Robust contest organization using all available keywords ---
-            contests_out = []
-            contests_seen = set()
-            raw_contests = safe_list((raw_context if isinstance(raw_context, dict) else {}).get("contests", []))
-            for c in raw_contests:
-                if not isinstance(c, dict) or not c.get("title"):
-                    continue
-                title = c.get("title") or c.get("label") or ""
-                if not title or len(str(title)) > 500:
-                    logger.warning(f"[CONTEST] Skipping contest with suspiciously large or missing title: {str(title)[:100]}...")
-                    continue
-                norm_title = normalize_label(title)
-                if norm_title not in contests_seen:
-                    contests_seen.add(norm_title)
-                    year, type_, state, county = infer_contest_fields(
-                        c,
-                        context_library,
-                        db_service=self.data_service,
-                        embedding_model=embedding_model,
-                        log=log
-                    )
-                    contests_out.append({
-                        "title": title,
-                        "year": year,
-                        "type_": type_,
-                        "state": state or (c.get("state") if isinstance(c, dict) else None) or (raw_context.get("state") if isinstance(raw_context, dict) else None),
-                        "county": county or (c.get("county") if isinstance(c, dict) else None) or (raw_context.get("county") if isinstance(raw_context, dict) else None),
-                        "raw": flatten_raw_field(c)
-                    })
-            for c in safe_list(context_library.get("contests", [])):
-                if not isinstance(c, dict) or not c.get("title"):
-                    continue
-                norm_title = normalize_label(c.get("title", c.get("label", str(c))))
-                if norm_title not in contests_seen and all(
-                    norm_title != normalize_label(c2.get("title", "")) if isinstance(c2, dict) else True
-                    for c2 in contests_out
-                ):
-                    contests_out.append(c)
-                    contests_seen.add(norm_title)
-            contests = contests_out
-
-            from ..utils.html_scanner import extract_year_and_type
-            if isinstance(raw_context, dict):
-                state_context = raw_context.get("state")
-                county_context = raw_context.get("county")
-            else:
-                state_context = None
-                county_context = None
-            years = [c.get("year") for c in contests if isinstance(c, dict) and c.get("year")]
-            types = [c.get("type_") for c in contests if isinstance(c, dict) and c.get("type_")]
-            unique_years = set(y for y in years if y)
-            unique_types = set(t for t in types if t)
-
-            for c in contests:
-                if not isinstance(c, dict):
-                    continue
-
-                # Fill state/county from context if missing
-                if not c.get("state") and state_context:
-                    c["state"] = state_context
-                if not c.get("county") and county_context:
-                    c["county"] = county_context
-
-                # Extract year/type once per contest if needed
-                title_val = c.get("title", "")
-                url_val = raw_context.get("url", "") if isinstance(raw_context, dict) else ""
-                y, t, _, _ = extract_year_and_type(title_val if isinstance(title_val, str) else "", url=url_val if isinstance(url_val, str) else "")
-
-                # Fill year
-                if not c.get("year"):
-                    if len(unique_years) == 1:
-                        c["year"] = safe_get_first(list(unique_years), "unique_years", url, logger)
-                    elif y:
-                        c["year"] = y
-
-                # Fill type_
-                if not c.get("type_"):
-                    if len(unique_types) == 1:
-                        c["type_"] = safe_get_first(list(unique_types), "unique_types", url, logger)
-                    elif t:
-                        c["type_"] = t
-
-                # Fallback: try to infer from raw field
-                raw_field = c.get("raw")
-                if isinstance(raw_field, dict):
-                    if not c.get("state") and raw_field.get("state"):
-                        c["state"] = raw_field.get("state")
-                    if not c.get("county") and raw_field.get("county"):
-                        c["county"] = raw_field.get("county")
-                    if not c.get("year") and raw_field.get("year"):
-                        c["year"] = raw_field.get("year")
-                    if not c.get("type_") and raw_field.get("type_"):
-                        c["type_"] = raw_field.get("type_")
-            # --- Filter out contests missing title (required) ---
-            filtered_out = []
-            filtered_contests = []
-            for c in contests:
-                if not (isinstance(c, dict) and c.get("title")):
-                    filtered_out.append((c, "missing title"))
-                    continue
-                filtered_contests.append(c)
-            if filtered_out:
-                logger.warning(f"[CONTEST] Filtered out {len(filtered_out)} contests due to missing required fields.")
-                for c, reason in filtered_out[:5]:
-                    logger.warning(f"  [Filtered] {reason}: {str(c)[:100]}...")
-            contests = filtered_contests
-            if not contests:
-                logger.warning("[CONTEST] No contests with required fields for downstream output.")
-
-            # --- Panels: relaxed filtering, only require panel_text ---
-            panels_dict = {}
-            lib_panels = safe_list(context_library.get("panels", []))
-            def find_panel_by_title(title):
-                norm_title = normalize_label(title)
-                # 1. panel_features
-                if panel_features and isinstance(panel_features, list):
-                    for p in panel_features:
-                        if not isinstance(p, dict):
-                            continue
-                        if normalize_label(p.get("label", p.get("panel_text", ""))) == norm_title:
-                            return p
-                # Defensive extraction of raw_panels
-                raw_panels = raw_context.get("panels", {}) if isinstance(raw_context, dict) else {}
-                if isinstance(raw_panels, dict):
-                    for k, p in raw_panels.items():
-                        if not isinstance(p, dict):
-                            continue
-                        if normalize_label(p.get("label", p.get("panel_text", ""))) == norm_title:
-                            return p
-                elif isinstance(raw_panels, list):
-                    for p in raw_panels:
-                        if not isinstance(p, dict):
-                            continue
-                        if normalize_label(p.get("label", p.get("panel_text", ""))) == norm_title:
-                            return p
-                # 3. context_library panels
-                for p in lib_panels:
-                    if not isinstance(p, dict):
-                        continue
-                    if normalize_label(p.get("label", p.get("panel_text", ""))) == norm_title:
-                        return p
-                return None
-
-            for c in contests:
-                panel = find_panel_by_title(c["title"])
-                if panel and panel.get("panel_text"):
-                    panels_dict[c["title"]] = panel
-
-            # Defensive extraction of raw_panels
-            raw_panels = raw_context.get("panels", {}) if isinstance(raw_context, dict) else {}
-
-            # Defensive conversion to list for iteration
-            if isinstance(raw_panels, dict):
-                raw_panels_list = list(raw_panels.values())
-            elif isinstance(raw_panels, list):
-                raw_panels_list = raw_panels
-            else:
-                raw_panels_list = []
-
-            # Defensive iteration over panels
-            for p in (panel_features if isinstance(panel_features, list) else []) + raw_panels_list + (lib_panels if isinstance(lib_panels, list) else []):
-                if not isinstance(p, dict):
-                    continue
-                if not p.get("panel_text"):
-                    continue
-                label = p.get("label", p.get("panel_text", ""))
-                if label not in panels_dict:
-                    panels_dict[label] = p
-
-            # --- Tables: relaxed filtering, only require table_text ---
-            tables_by_contest = defaultdict(list)
-            raw_tables = safe_list(raw_context.get("tables", []) if isinstance(raw_context, dict) else [])
-            lib_tables = safe_list(context_library.get("tables", []))
-            all_tables = raw_tables + lib_tables
-            for tbl in all_tables:
-                if not isinstance(tbl, dict):
-                    continue
-                if not tbl.get("table_text"):
-                    continue
-                for c in contests:
-                    if (
-                        isinstance(c, dict) and isinstance(tbl, dict)
-                        and isinstance(c.get("title"), str) and isinstance(tbl.get("label"), str)
-                    ):
-                        c_title = c.get("title")
-                        tbl_label = tbl.get("label")
-                        # Only proceed if both are non-empty strings and .lower() is safe
-                        if (
-                            isinstance(c_title, str) and isinstance(tbl_label, str)
-                            and c_title and tbl_label
-                            and c_title.lower() in tbl_label.lower()
-                        ):
-                            tables_by_contest[c["title"]].append(tbl)
-                    if not any(tbl in v for v in tables_by_contest.values()):
-                        tables_by_contest["__unmatched__"].append(tbl)
-
-            # --- Buttons: relaxed filtering, only require label ---
-            buttons_by_contest = defaultdict(list)
-            raw_buttons = safe_list(button_features) if isinstance(button_features, list) else safe_list(raw_context.get("buttons", []) if isinstance(raw_context, dict) else [])
-            lib_buttons = safe_list(context_library.get("buttons", []))
-            all_buttons = raw_buttons + lib_buttons
-            unmatched_buttons = []
-            for btn in all_buttons:
-                if not isinstance(btn, dict):
-                    continue
-                label = btn.get("label")
-                if not isinstance(label, str) or not label:
-                    continue
-                matched = False
-                for c in contests:
-                    if not isinstance(c, dict):
-                        continue
-                    title = c.get("title")
-                    if not isinstance(title, str) or not title:
-                        continue
-                    # Safeguard .lower() calls
-                    label_lower = label.lower() if isinstance(label, str) else ""
-                    title_lower = title.lower() if isinstance(title, str) else ""
-                    if title_lower and label_lower and title_lower in label_lower:
-                        buttons_by_contest[title].append(btn)
-                        matched = True
-                    elif "election" in label_lower and "election" in title_lower:
-                        buttons_by_contest[title].append(btn)
-                        matched = True
-                if not matched:
-                    unmatched_buttons.append(btn)
-            for btn in unmatched_buttons:
-                buttons_by_contest["__unmatched__"].append(btn)
-
-            # --- Grouping by keywords with specific label fields for each type ---
-            keyword_sets = {
-                "location": LOCATION_KEYWORDS,
-                "candidate": CANDIDATE_KEYWORDS,
-                "party": PARTY_KEYWORDS,
-                "ballot_types": set(BALLOT_TYPES),
-                "contest": CONTEST_KEYWORDS,
-                "percent": PERCENT_KEYWORDS,
-                "total": TOTAL_KEYWORDS,
-                "footer": MISC_FOOTER_KEYWORDS
-            }
-            def group_by_keywords(items, label_fields=None, keyword_sets=None, fuzzy_cutoff=0.85) -> dict:
-                if label_fields is None:
-                    label_fields = ["label", "button_text", "panel_text", "table_text", "candidate_panel_text",
-                                    "location_panel_text", "heading_text", "ballot_types_text", "timestamp_text",
-                                    "party_label_text", "vote_method_text"]
-                if keyword_sets is None:
-                    raise ValueError("keyword_sets must be provided")
-                groups = {k: [] for k in keyword_sets}
-                seen = {k: set() for k in keyword_sets}
-                def normalize(text):
-                    return re.sub(r"[^\w\s]", "", (text or "").lower()).strip()
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    label = ""
-                    for field in label_fields:
-                        label = item.get(field, "")
-                        if label:
-                            break
-                    label_norm = normalize(label)
-                    tokens = set(label_norm.split())
-                    for group, keywords in safe_items(keyword_sets):
-                        matched = False
-                        for kw in keywords:
-                            kw_norm = normalize(kw)
-                            if kw_norm in label_norm or any(kw_norm in t for t in tokens):
-                                matched = True
-                                break
-                            if get_close_matches(kw_norm, [label_norm], n=1, cutoff=fuzzy_cutoff):
-                                matched = True
-                                break
-                        if matched:
-                            dedup_key = item.get("segment_hash", label_norm)
-                            if dedup_key not in seen[group]:
-                                groups[group].append(item)
-                                seen[group].add(dedup_key)
-                return groups
-
-            # --- Use specific label fields for each group ---
-            panels = ensure_dict(group_by_keywords(
-                [p for p in panels_dict.values() if p],
-                label_fields=["panel_text"],
-                keyword_sets=keyword_sets
-            ))
-            buttons = ensure_dict(group_by_keywords(
-                all_buttons,
-                label_fields=["button_text", "label"],
-                keyword_sets=keyword_sets
-            ))
-            tables = ensure_dict(group_by_keywords(
-                all_tables,
-                label_fields=["table_text"],
-                keyword_sets=keyword_sets
-            ))
-            candidate_panels = ensure_dict(group_by_keywords(
-                candidate_panels,
-                label_fields=["candidate_panel_text"],
-                keyword_sets=keyword_sets
-            ))
-            location_panels = ensure_dict(group_by_keywords(
-                location_panels,
-                label_fields=["location_panel_text"],
-                keyword_sets=keyword_sets
-            ))
-            headings = ensure_dict(group_by_keywords(
-                headings,
-                label_fields=["heading_text"],
-                keyword_sets=keyword_sets
-            ))
-            ballot_types = ensure_dict(group_by_keywords(
-                ballot_types,
-                label_fields=["ballot_types_text"],
-                keyword_sets=keyword_sets
-            ))
-            results_timestamps = ensure_dict(group_by_keywords(
-                results_timestamps,
-                label_fields=["timestamp_text"],
-                keyword_sets=keyword_sets
-            ))
-            party_labels = ensure_dict(group_by_keywords(
-                party_labels,
-                label_fields=["party_label_text"],
-                keyword_sets=keyword_sets
-            ))
-            vote_methods = ensure_dict(group_by_keywords(
-                vote_methods,
-                label_fields=["vote_method_text"],
-                keyword_sets=keyword_sets
-            ))
-
-            # --- Logging group sizes for diagnostics ---
-            log.append(f"[KEYWORDS] Panel groups: { {k: len(v) for k,v in panels.items()} }")
-            log.append(f"[KEYWORDS] Button groups (by button_text): { {k: len(v) for k,v in buttons.items()} }")
-            log.append(f"[KEYWORDS] Table groups: { {k: len(v) for k,v in tables.items()} }")
-            log.append(f"[KEYWORDS] Candidate panel groups: { {k: len(v) for k,v in candidate_panels.items()} }")
-            log.append(f"[KEYWORDS] Location panel groups: { {k: len(v) for k,v in location_panels.items()} }")
-            log.append(f"[KEYWORDS] Heading groups: { {k: len(v) for k,v in headings.items()} }")
-            log.append(f"[KEYWORDS] Ballot type groups: { {k: len(v) for k,v in ballot_types.items()} }")
-            log.append(f"[KEYWORDS] Results timestamp groups: { {k: len(v) for k,v in results_timestamps.items()} }")
-            log.append(f"[KEYWORDS] Party label groups: { {k: len(v) for k,v in party_labels.items()} }")
-            log.append(f"[KEYWORDS] Vote method groups: { {k: len(v) for k,v in vote_methods.items()} }")
-
-            # --- ML anomaly detection and integrity checks ---
-            anomalies, clusters = [], []
-            try:
-                if enable_ml and len(contests) > 0:
-                    anomalies, clusters = detect_anomalies_with_ml(
-                        contests,
-                        contamination=contamination,
-                        n_estimators=n_estimators,
-                        random_state=random_state,
-                        embedding_model=embedding_model
-                    )
-                    if anomalies:
-                        for idx in anomalies:
-                            if idx < len(contests):
-                                contest = contests[idx]
-                                title = contest.get('title', str(contest)) if isinstance(contest, dict) else str(contest)
-                                logger.info(f"[bold magenta][ML][/bold magenta] Context anomaly detected: [bold yellow]{title}[/bold yellow]\n  [dim]Context:[/dim] {contest}")
-                            else:
-                                logger.warning(f"[ML] Anomaly index {idx} out of range for contests list of length {len(contests)}")
-                    if plot_clusters_flag:
-                        plot_clusters_flag = print_ml_anomalies(anomalies, contests)
-            except Exception as e:
-                logger.error(f"[bold red][ML] Anomaly detection failed:[/bold red] {e}")
-
-            integrity_issues = election_integrity_checks(contests)
-            contests, fix_log = self.suggest_and_apply_fixes(
+            contests, anomalies, clusters, fix_log, best_type, best_election_types, plot_clusters_flag = self._apply_ml_pipeline(
                 contests,
                 context_library,
-                logs=log,
-                min_confidence=0.8,
-                embedding_model=embedding_model if embedding_model is not None else self.embedding_model_obj
+                enable_ml,
+                embedding_model,
+                contamination,
+                n_estimators,
+                random_state,
+                plot_clusters_flag,
+                log,
+                plot_anomalies,
             )
-            # --- Sync type_ and election_types for all contests ---
-            for contest in contests:
-                _sync_type_and_election_types(contest)
 
-            # Get best contest type/election_types for fallback
-            best_contest = contests[0] if contests else {}
-            best_type = best_contest.get("type_")
-            best_election_types = best_contest.get("election_types", [])
-
-            # Sync other sections
-            for section in [tables, candidate_panels, location_panels, ballot_types]:
-                for item in section:
-                    _sync_type_and_election_types(item, fallback_types=best_election_types, fallback_type=best_type)
-
-            # Sync top-level organized dict
-            _sync_type_and_election_types(organized, fallback_types=best_election_types, fallback_type=best_type)
             if fix_log:
                 logger.info("[bold green]Auto-fixes applied:[/bold green]")
                 for entry in fix_log:
-                    logger.warning(f"  [yellow]{entry['title']}[/yellow]: {', '.join(entry['fixes'])}")
+                    title = entry.get("title", "?")
+                    fixes = ", ".join(entry.get("fixes", []))
+                    logger.warning(f"  [yellow]{title}[/yellow]: {fixes}")
+
             integrity_issues = election_integrity_checks(contests)
             for issue, contest in integrity_issues:
                 if issue == "duplicate":
@@ -1375,7 +1509,14 @@ class ContextOrganizer(object):
                     logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing year.\n  [dim]Context:[/dim] {contest}")
 
             if len(contests) > 50:
-                logger.error(f"[bold red][CONTEXT ORGANIZER][/bold red] High contest count detected — possible congestion.\n  [dim]Context:[/dim] contest_count={len(contests)}")
+                logger.error(
+                    f"[bold red][CONTEXT ORGANIZER][/bold red] High contest count detected — possible congestion.\n  [dim]Context:[/dim] contest_count={len(contests)}"
+                )
+
+            for section in [tables, candidate_panels, location_panels, ballot_types]:
+                for bucket in section.values():
+                    for item in bucket:
+                        _sync_type_and_election_types(item, fallback_types=best_election_types, fallback_type=best_type)
 
             organized = {
                 "contests": contests,
@@ -1394,7 +1535,7 @@ class ContextOrganizer(object):
                 "metadata": {
                     "state": raw_context.get("state") if isinstance(raw_context, dict) else None,
                     "county": raw_context.get("county") if isinstance(raw_context, dict) else None,
-                    "source_url": raw_context.get("url") if isinstance(raw_context, dict) else None,
+                    "source_url": url,
                     "election_types": raw_context.get("election_types") if isinstance(raw_context, dict) else [],
                     "scrape_time": raw_context.get("scrape_time") if isinstance(raw_context, dict) else None,
                     "year": None,
@@ -1407,24 +1548,28 @@ class ContextOrganizer(object):
                 "clusters": clusters.tolist() if hasattr(clusters, "tolist") else clusters,
                 "integrity_issues": integrity_issues,
             }
+
+            metadata = organized["metadata"]
+            _sync_type_and_election_types(organized, fallback_types=best_election_types, fallback_type=best_type)
+            _sync_type_and_election_types(metadata, fallback_types=best_election_types, fallback_type=best_type)
             valid_years = [
-                c.get("year") for c in contests
+                c.get("year")
+                for c in contests
                 if isinstance(c, dict) and c.get("year") and c.get("type_") and str(c.get("year")).isdigit()
             ]
-            metadata = organized["metadata"]
-            _sync_type_and_election_types(metadata, fallback_types=best_election_types, fallback_type=best_type)
             if valid_years:
                 metadata["year"] = safe_get_first(valid_years, "valid_years", url, logger, default="Unknown")
             else:
                 metadata["year"] = "Unknown"
+
             self.append_to_context_library(organized, path=self.context_library_path)
-            # If pivot added RawJSON enrichment to context, surface it in metadata (if present)
+
             if isinstance(self.last_raw_context, dict):
-                pass  # placeholder if needed
-            # Safer: allow any upstream context to place enrichment into raw_context["rawjson_enrichment"]
+                pass
             rje = raw_context.get("rawjson_enrichment") if isinstance(raw_context, dict) else None
             if rje and isinstance(organized, dict) and "metadata" in organized:
                 organized["metadata"]["rawjson_enrichment"] = rje
+
             logger.info(
                 f"[CONTEXT ORGANIZER] Organized context for {len(contests)} contests. "
                 f"Anomalies: {len(anomalies)}  Integrity issues: {len(integrity_issues)}"
@@ -1434,24 +1579,21 @@ class ContextOrganizer(object):
                 f"  [magenta]Anomalies:[/magenta] {len(anomalies)}  [yellow]Integrity issues:[/yellow] {len(integrity_issues)}"
             )
 
-            # Insert or update contests robustly using SQLAlchemy ORM
             try:
-                for c in contests:
-                    self.data_service.upsert_contest(c)
+                for contest in contests:
+                    self.data_service.upsert_contest(contest)
             except SQLAlchemyError as e:
                 logger.error(f"[DB][Contest] Error upserting contests: {e}")
 
-            # --- Dynamic state/county detection if missing ---
             missing_location = any(
                 not (c.get("state") if isinstance(c, dict) else None) or not (c.get("county") if isinstance(c, dict) else None)
                 for c in contests
             )
             if missing_location:
                 from .context_coordinator import dynamic_state_county_detection
+
                 html = raw_context.get("raw_html", "") if isinstance(raw_context, dict) else ""
-                county, state, handler_path, detection_log = dynamic_state_county_detection(
-                    raw_context, html, debug=True
-                )
+                county, state, handler_path, detection_log = dynamic_state_county_detection(raw_context, html, debug=True)
                 for log_entry in detection_log:
                     log.append(f"[Dynamic Detection] {log_entry}")
                     if debug:
@@ -1460,17 +1602,15 @@ class ContextOrganizer(object):
                     raw_context["state"] = state
                 if county:
                     raw_context["county"] = county
-                # Update organized metadata so downstream has accurate location + diagnostics
                 if isinstance(organized, dict) and "metadata" in organized:
                     md = organized["metadata"]
-                    # Only fill if missing; do not write "Unknown"
                     if not md.get("state") and state:
                         md["state"] = state
                     if not md.get("county") and county:
                         md["county"] = county
                     md["location_detection"] = {
                         "handler_path": handler_path,
-                        "log": detection_log
+                        "log": detection_log,
                     }
                 summary["final"] = {"state": state, "county": county, "handler_path": handler_path}
                 log.append(f"Final detected state: {state}, county: {county}, handler_path: {handler_path}")
@@ -1478,20 +1618,49 @@ class ContextOrganizer(object):
             self.append_to_context_library(organized, path=self.context_library_path)
             logger.info(f"[CONTEXT ORGANIZER] Organized context for {len(contests)} contests.")
             self.organized = organized
+
+            attempt_snapshot = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "contest_count": len(contests),
+                "anomaly_count": len(anomalies),
+                "integrity_issue_count": len(integrity_issues),
+            }
+            summary["attempts"].append(attempt_snapshot)
+            final_snapshot = {
+                "state": organized.get("metadata", {}).get("state"),
+                "county": organized.get("metadata", {}).get("county"),
+                "contest_count": len(contests),
+                "anomaly_count": len(anomalies),
+                "integrity_issue_count": len(integrity_issues),
+            }
+            if summary.get("final"):
+                summary["final"].update({k: v for k, v in final_snapshot.items() if v is not None})
+            else:
+                summary["final"] = final_snapshot
+            summary["error"] = None
+
+            return {
+                "organized": organized,
+                "summary": summary,
+                "log": log,
+                "context": context,
+            }
         except IndexError as e:
-            logger.error(f"[ERROR] Exception while processing {url}: {e}")
+            error_msg = f"IndexError while processing {url}: {e}"
+            logger.error(f"[ERROR] {error_msg}")
             context['dom_parts_keys'] = list(dom_parts.keys()) if isinstance(dom_parts, dict) else []
             context['dom_parts_lengths'] = {
                 k: len(v) if isinstance(v, list) else None
                 for k, v in dom_parts.items()
             } if isinstance(dom_parts, dict) else {}
-            summary['error'] = context['error']
-            log.append(f"[EXCEPTION] {context['error']}")
+            context['error'] = error_msg
+            summary['error'] = error_msg
+            log.append(f"[EXCEPTION] {error_msg}")
             return {
                 "organized": None,
                 "summary": summary,
                 "log": log,
-                "error": context['error'],
+                "error": error_msg,
             }
     
     def build_dom_tree(self, segments) -> dict:

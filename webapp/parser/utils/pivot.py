@@ -37,6 +37,9 @@ from ..Context_Integration.Context_Library.constants import (
     DIVISION_HEURISTIC_TERMS,
     DIVISION_SUFFIXES,
     KNOWN_COUNTY_TO_PRECINCTS_MAP,
+    LOCATION_ABBREVIATIONS,
+    LOCATION_KEYWORDS,
+    LOCATION_SYNONYM_MAP,
     STATE_TO_DIVISION_TYPE_MAP,
     TOTAL_KEYWORDS,
     canonical_ballot_group,
@@ -51,9 +54,117 @@ _TOTAL_LIKE = {normalize_header(t) for t in TOTAL_KEYWORDS} | {
     normalize_header("grand total"),
     normalize_header("total vote")
 }
+_BALLOT_TYPE_NORM_SET = {normalize_header(bt) for bt in BALLOT_TYPES} | {
+    normalize_header(bt) for bt in BALLOT_TYPES_SORT_ORDER
+}
 
 # --- Added natural sort + division heuristics (place here with other global regex/constants) ---
 _SPLIT_NUM_RE = re.compile(r'(\d+)')
+
+
+_NUMERIC_TRAILING_TYPES = {
+    "precinct",
+    "election district",
+    "assembly district",
+    "senate district",
+    "congressional district",
+    "school district",
+    "township",
+    "ward",
+    "district",
+    "division",
+}
+
+
+_DIVISION_TYPE_PRIORITY = (
+    "precinct",
+    "ward",
+    "election district",
+    "assembly district",
+    "senate district",
+    "congressional district",
+    "school district",
+    "township",
+    "borough",
+    "city",
+    "town",
+    "village",
+    "county",
+    "parish",
+    "municipality",
+    "district",
+    "division",
+    "region",
+)
+
+
+def _token_to_pattern(token: str) -> str:
+    token = token.strip().lower()
+    escaped = re.escape(token)
+    escaped = escaped.replace(r"\ ", r"\s+")
+    escaped = escaped.replace(r"\.", r"\.?")
+    return escaped
+
+
+def _build_division_token_patterns() -> list[tuple[re.Pattern, str]]:
+    base_types = {dtype.lower() for _, dtype in DIVISION_HEURISTIC_TERMS}
+    base_types.update(
+        {
+            "precinct",
+            "election district",
+            "assembly district",
+            "senate district",
+            "congressional district",
+            "school district",
+            "township",
+            "ward",
+        }
+    )
+
+    token_map: dict[str, set[str]] = {dtype: {dtype} for dtype in base_types}
+
+    for kw in LOCATION_KEYWORDS:
+        norm_kw = kw.strip().lower()
+        if norm_kw in token_map:
+            token_map[norm_kw].add(norm_kw)
+
+    for alias, canonical in LOCATION_SYNONYM_MAP.items():
+        canonical_norm = canonical.strip().lower()
+        alias_norm = alias.strip().lower()
+        if canonical_norm in token_map:
+            token_map[canonical_norm].add(alias_norm)
+
+    for abbr, expansions in LOCATION_ABBREVIATIONS.items():
+        abbr_norm = abbr.strip().lower()
+        for expansion in expansions:
+            exp_norm = expansion.strip().lower()
+            if exp_norm in token_map:
+                token_map[exp_norm].add(abbr_norm)
+
+    priority_map = {dtype: idx for idx, dtype in enumerate(_DIVISION_TYPE_PRIORITY)}
+    patterns: list[tuple[re.Pattern, str]] = []
+    for dtype, tokens in token_map.items():
+        clean_tokens = [_token_to_pattern(tok) for tok in tokens if tok]
+        if not clean_tokens:
+            continue
+        clean_tokens.sort(key=len, reverse=True)
+        joined = "|".join(clean_tokens)
+        if dtype in _NUMERIC_TRAILING_TYPES:
+            regex = rf"\b(?:{joined})(?:\s*[-#:]?\s*\d+[A-Za-z]?)?\b"
+        else:
+            regex = rf"\b(?:{joined})\b"
+        patterns.append((re.compile(regex, re.I), dtype))
+
+    def _pattern_sort_key(item: tuple[re.Pattern, str]) -> tuple[int, int, str]:
+        dtype = item[1]
+        pr = priority_map.get(dtype, len(priority_map))
+        return (pr, -len(dtype), dtype)
+
+    patterns.sort(key=_pattern_sort_key)
+    return patterns
+
+
+_DIVISION_TOKEN_PATTERNS = _build_division_token_patterns()
 
 # ---- small numeric helper & slight micro-optimizations ----
 _NUM_CLEAN_RE = re.compile(r"[,\s%]+")
@@ -168,9 +279,13 @@ def _fast_path_already_wide(headers: List[str], data: List[Dict[str, Any]]):
             continue
         cand = m.group("cand").strip()
         bt = m.group("bt").strip()
-        if cand and bt:
-            candidate_map.setdefault(cand, set()).add(bt)
-            has_pattern = True
+        if not cand or not bt:
+            continue
+        cand_norm = normalize_header(cand)
+        if cand_norm in _BALLOT_TYPE_NORM_SET or cand_norm in _TOTAL_LIKE:
+            continue
+        candidate_map.setdefault(cand, set()).add(bt)
+        has_pattern = True
     if not has_pattern or len(candidate_map) < 1:
         return None
     pattern_cols = [h for h in headers if _CAND_BT_RE.match(h)]
@@ -334,8 +449,24 @@ def _detect_division_type_for_precinct(loc: str, state: str | None, context: dic
             if low == mlow or low.startswith(mlow + " ") or (" " + mlow + " ") in (" " + low + " "):
                 return "municipality"
 
-    # ED/Ward/District-like
-    if re.search(r"\b(ward|e\.?d\.?|election\s+district|district|precinct)\b", low, flags=re.I):
+    # Token-based heuristics (prefer more specific matches)
+    for pattern, dtype in _DIVISION_TOKEN_PATTERNS:
+        if pattern.search(low):
+            return dtype
+
+    wide_tokens = (
+        ("countywide", "county"),
+        ("citywide", "city"),
+        ("boroughwide", "borough"),
+        ("townwide", "town"),
+        ("villagewide", "village"),
+    )
+    for token, dtype in wide_tokens:
+        if token in low:
+            return dtype
+
+    # Generic district fallback
+    if re.search(r"\bdistrict\b", low, flags=re.I):
         return "district"
 
     # If the "loc" looks like a county/independent city known for the state
@@ -576,6 +707,10 @@ def pivot_to_wide(
 
     ballot_types = _collect_ballot_types(headers, data, detector=detector, candidate_col=candidate_col)
     party_map = _derive_party_map(candidate_col, data) if include_party else {}
+    raw_party_present = include_party and (
+        "Party" in headers or any("Party" in r for r in data)
+    )
+    party_column_requested = include_party and (raw_party_present or bool(party_map))
 
     # ---------------- Fallback: unstructured numeric table ----------------
     if not candidates_totals and not ballot_types:
@@ -638,16 +773,8 @@ def pivot_to_wide(
         wide_headers.append("Percent Reported")
 
     for cand in candidate_names:
-        if include_party:
-            # Resolve party using any raw label mapping
-            party_val = None
-            for raw_label, nlabel in raw_to_norm.items():
-                if nlabel == cand:
-                    party_val = party_map.get(raw_label) or party_map.get(cand)
-                    if party_val:
-                        break
-            if party_val:
-                wide_headers.append(_safe_col_name(cand, "Party"))
+        if party_column_requested:
+            wide_headers.append(_safe_col_name(cand, "Party"))
         for bt in ballot_types:
             wide_headers.append(_safe_col_name(cand, bt))
         wide_headers.append(_safe_col_name(cand, "Total Vote"))
@@ -728,10 +855,10 @@ def pivot_to_wide(
             cand_totals_local[norm_c] = cand_totals_local.get(norm_c, 0) + cand_row_total
             grand_total_loc += cand_row_total
 
-            if include_party:
+            if party_column_requested:
                 party_val = party_map.get(raw_c) or party_map.get(norm_c)
                 party_col = _safe_col_name(norm_c, "Party")
-                if party_val and party_col in out and not out[party_col]:
+                if party_col in out and party_val and not out[party_col]:
                     out[party_col] = party_val
 
         # Local %
@@ -782,7 +909,7 @@ def pivot_to_wide(
                 agg[_safe_col_name(cand, "Cumulative Vote")] = agg[total_col]
                 if include_candidate_pct:
                     agg[_safe_col_name(cand, "Cumulative %")] = agg[_safe_col_name(cand, "% Vote")]
-            if include_party:
+            if party_column_requested:
                 party_col = _safe_col_name(cand, "Party")
                 if party_col in wide_headers:
                     # Take first non-empty from rows

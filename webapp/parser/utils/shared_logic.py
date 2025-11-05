@@ -39,6 +39,7 @@ from urllib.parse import ParseResult, SplitResult
 import numpy as np
 import orjson
 from flask import request, session
+
 # Optional Sentencetransformers dependency (graceful fallback when missing)
 try:
     from sentence_transformers import SentenceTransformer  # type: ignore

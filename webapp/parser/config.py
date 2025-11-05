@@ -275,6 +275,10 @@ def get_supported_formats():
     return [".json", ".csv", ".pdf", ".txt", ".xlsx"]
 
 SUPPORTED_FORMATS = [ext for ext in get_supported_formats() if ext.lower() not in [".html", "html"]]
+SUPPORTED_EXTENSION_SET = {
+    ext.lower() if ext.startswith(".") else f".{ext.lower()}"
+    for ext in SUPPORTED_FORMATS
+}
 
 def get_sqlalchemy_engine():
     """
@@ -372,7 +376,7 @@ __all__ = [
     "SPACY_NER_MIN_DELTA","SPACY_NER_BATCH_SIZE","REVIEW_WITH_MANUAL_BOT",
 
     # Formats
-    "SUPPORTED_FORMATS","SEED_URLS_IF_EMPTY",
+    "SUPPORTED_FORMATS","SUPPORTED_EXTENSION_SET","SEED_URLS_IF_EMPTY",
 
     # Helpers
     "get_subprocess_env","get_supported_formats",

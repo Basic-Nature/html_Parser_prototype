@@ -3,6 +3,7 @@ from __future__ import annotations
 # ==============================================================
 # 🗳️ Smart Elections: HTML Election Results Parser
 # ==============================================================
+import csv
 import os
 import re
 import sys
@@ -28,7 +29,6 @@ from .config import (
     UPLOADS_DIR,
     URL_LIST_FILE,
 )
-from .handlers.formats.html_handler import parse as html_handler
 from .state_router import get_handler, preload_handler_map
 from .utils.browser_utils import (
     autoscroll_until_stable,
@@ -40,6 +40,7 @@ from .utils.format_router import prompt_and_handle_download
 from .utils.logger_singleton import logger, prompt
 from .utils.misc_utils import load_processed_urls
 from .utils.shared_logic import infer_state_county_from_url, safe_is_set, safe_parse, safe_strip
+from .utils.dynamic_table_extractor import dynamic_table_extractor
 
 if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     logger.warning("Deleting .processed_urls cache for fresh start...")
@@ -517,6 +518,121 @@ def stream_results(headers, data, contest, metadata, target_url=None, session_id
             }
             logger.error(payload)
 
+
+def generate_generic_html_result(
+    *,
+    page=None,
+    coordinator=None,
+    context: Dict[str, Any] | None = None,
+    session_id: str | None = None,
+    html_text: str | None = None,
+    log_type: str = "fallback"
+) -> tuple[list[str], list[Dict[str, Any]], str, Dict[str, Any]] | None:
+    """Extract tabular data using the dynamic table extractor and emit a CSV result.
+
+    Returns a standard (headers, data, contest, metadata) tuple when successful,
+    otherwise ``None``.
+    """
+    from .Context_Integration.context_coordinator import ContextCoordinator
+
+    ctx: Dict[str, Any] = dict(context or {})
+    if session_id:
+        ctx.setdefault("session_id", session_id)
+    ctx.setdefault("url", ctx.get("url") or (getattr(page, "url", None) if page else None))
+    ctx.setdefault("fallback_reason", ctx.get("fallback_reason") or "generic_html")
+
+    active_coordinator = coordinator or ContextCoordinator()
+
+    try:
+        headers, rows = dynamic_table_extractor(
+            page,
+            ctx,
+            active_coordinator,
+            table_html=html_text
+        )
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": log_type,
+            "message": f"[GenericHTML] Extraction failed: {exc}",
+            "session_id": session_id
+        })
+        return None
+
+    if not headers or not rows:
+        logger.warning({
+            "level": "WARNING",
+            "type": log_type,
+            "message": "[GenericHTML] No tabular data detected during fallback extraction.",
+            "session_id": session_id
+        })
+        return None
+
+    fieldnames = list(headers)
+    for row in rows:
+        if isinstance(row, dict):
+            for key in row.keys():
+                if key not in fieldnames:
+                    fieldnames.append(key)
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    base_label = ctx.get("file_name") or ctx.get("county") or ctx.get("state") or ctx.get("url") or "generic_html"
+    base_label = safe_strip(str(base_label)) if base_label else "generic_html"
+    base_label = re.sub(r"[^A-Za-z0-9]+", "_", base_label or "generic_html")
+    base_label = base_label.strip("_") or "generic_html"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_file = os.path.join(OUTPUT_DIR, f"{base_label}_{timestamp}_fallback.csv")
+
+    try:
+        with open(output_file, "w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                if isinstance(row, dict):
+                    writer.writerow({
+                        key: "" if row.get(key) is None else str(row.get(key, ""))
+                        for key in fieldnames
+                    })
+                else:
+                    normalized_row = list(row) if isinstance(row, (list, tuple)) else [row]
+                    padded = {fieldnames[i]: normalized_row[i] if i < len(normalized_row) else "" for i in range(len(fieldnames))}
+                    writer.writerow(padded)
+    except Exception as exc:
+        logger.error({
+            "level": "ERROR",
+            "type": log_type,
+            "message": f"[GenericHTML] Failed to write fallback CSV: {exc}",
+            "session_id": session_id
+        })
+        return None
+
+    metadata = {
+        "output_file": output_file,
+        "output_dir": OUTPUT_DIR,
+        "handler": "generic_html_fallback",
+        "fallback": True,
+        "fallback_reason": ctx.get("fallback_reason"),
+        "source_url": ctx.get("url"),
+        "session_id": session_id,
+        "row_count": len(rows),
+        "column_count": len(fieldnames)
+    }
+    if ctx.get("source_file"):
+        metadata["source_file"] = ctx["source_file"]
+
+    logger.info({
+        "level": "INFO",
+        "type": log_type,
+        "message": "[GenericHTML] Fallback extraction succeeded.",
+        "session_id": session_id,
+        "output_file": output_file,
+        "row_count": len(rows),
+        "column_count": len(fieldnames)
+    })
+
+    contest_label = ctx.get("contest") or ctx.get("state") or "Generic HTML Extraction"
+    return fieldnames, rows, contest_label, metadata
+
 def orchestrate_url(
     target_url,
     processed_info,
@@ -646,7 +762,7 @@ def orchestrate_url(
             if handler and hasattr(handler, 'parse'):
                 result = safe_parse(handler, page, coordinator, context, session_id=session_id, logger=logger, **kwargs)
             else:
-                msg = f"[Router] No suitable handler found for {target_url}, using generic HTML handler."
+                msg = f"[Router] No suitable handler found for {target_url}, using generic HTML fallback."
                 payload = {
                     "level": "WARNING",
                     "type": "router",
@@ -654,7 +770,19 @@ def orchestrate_url(
                     "session_id": session_id
                 }
                 logger.warning(payload)
-                result = safe_parse(html_handler, page, coordinator, context, session_id=session_id, logger=logger, **kwargs)
+                html_content = None
+                try:
+                    html_content = page.inner_html("body") if page else None
+                except Exception:
+                    html_content = None
+                result = generate_generic_html_result(
+                    page=page,
+                    coordinator=coordinator,
+                    context=context,
+                    session_id=session_id,
+                    html_text=html_content,
+                    log_type="router"
+                )
 
             if not isinstance(result, tuple) or len(result) != 4:
                 msg = f"Handler did not return a valid result tuple. (Session: {session_id})"
@@ -866,6 +994,30 @@ def main(
                 })
                 return
             if override_result is None:
+                context = {
+                    "state": kwargs.get("state"),
+                    "county": kwargs.get("county"),
+                    "source_file": kwargs.get("force_parse_input_file"),
+                    "fallback_reason": "manual_override_failed"
+                }
+                fallback = generate_generic_html_result(
+                    context=context,
+                    session_id=session_id,
+                    html_text=kwargs.get("force_parse_raw_html"),
+                    log_type="manual_override"
+                )
+                if fallback:
+                    headers, data, contest, metadata = fallback
+                    source_key = context.get("source_file") or "manual_override"
+                    stream_results(headers, data, contest, metadata, target_url=source_key, session_id=session_id)
+                    mark_url_processed(source_key, status="success", session_id=session_id)
+                    logger.info({
+                        "level": "INFO",
+                        "type": "manual_override",
+                        "message": "[ManualOverride] Fallback generic HTML extraction succeeded.",
+                        "session_id": session_id
+                    })
+                    return
                 if continue_on_override_failure:
                     logger.warning({
                         "level": "WARNING",

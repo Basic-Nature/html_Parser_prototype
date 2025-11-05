@@ -10,6 +10,10 @@ from ...Context_Integration.Context_Library.constants import (
     CONTEST_TITLE_SKIP_PHRASES,
 )
 from ...utils.contest_selector import select_contest_auto_first
+from ...utils.location_helpers import (
+    attach_precinct_column,
+    collect_location_headers,
+)
 from ...utils.logger_singleton import logger
 from ...utils.output_utils import finalize_election_output
 from ...utils.pivot import expand_single_rawjson_row
@@ -59,7 +63,10 @@ def _read_delimited_file(txt_path: str) -> Tuple[List[str], List[Dict[str, Any]]
                 for raw in reader:
                     if not raw:
                         continue
-                    clean = { (k or "").strip(): (v if v is not None else "") for k, v in raw.items() }
+                    clean: Dict[str, Any] = {
+                        (k or "").strip(): (v if v is not None else "")
+                        for k, v in raw.items()
+                    }
                     if any(str(val).strip() for val in clean.values()):
                         rows.append(clean)
                 return headers, rows
@@ -137,6 +144,17 @@ def parse_txt_election_results(
     if contest_column:
         data = [row for row in data if (row.get(contest_column, "") or "").strip() == contest]
 
+    location_headers = collect_location_headers(headers)
+    headers, data, precinct_attached = attach_precinct_column(
+        headers,
+        data,
+        location_headers=location_headers,
+    )
+    location_diagnostics = {
+        "detected_location_headers": location_headers,
+        "precinct_attached": precinct_attached,
+    }
+
     domain = safe_slug(os.path.basename(txt_path))
     m = re.search(r"(19|20)\d{2}", fname)
     year = int(m.group(0)) if m else None
@@ -148,6 +166,9 @@ def parse_txt_election_results(
         "session_id": session_id,
         "handler": _HANDLER_NAME,
         "source_slug": domain,
+        "location_headers": location_headers,
+        "precinct_attached": precinct_attached,
+        "location_diagnostics": location_diagnostics,
     }
     headers, data = expand_single_rawjson_row(headers, data, context=context)
 
@@ -173,6 +194,9 @@ def parse_txt_election_results(
             "input_file": os.path.basename(txt_path),
             "session_id": session_id,
             "race": contest,
+            "location_headers": location_headers,
+            "precinct_attached": precinct_attached,
+            "location_diagnostics": location_diagnostics,
         },
         enable_user_feedback=False,
         session_id=session_id,
@@ -190,6 +214,9 @@ def parse_txt_election_results(
         "year": year,
         "csv_path": result.get("csv_path"),
         "metadata_path": result.get("metadata_path"),
+        "location_headers_detected": location_headers,
+        "precinct_attached": precinct_attached,
+        "location_diagnostics": location_diagnostics,
     }
 
     logger.info({

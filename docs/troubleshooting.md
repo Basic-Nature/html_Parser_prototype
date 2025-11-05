@@ -67,6 +67,14 @@
   - Use `ENABLE_DOWNLOAD_DISCOVERY=true` in `.env` to allow automatic retrieval.
   - For manual override, ensure `FORCE_PARSE_INPUT_FILE=true` and `FORCE_PARSE_FORMAT` are set in `.env`.
 
+### ❗ Problem: PyMuPDF emits `swigvarlink` DeprecationWarning on import
+
+- **Root Cause**: Python 3.12 tightened validation around C-extension types that lack a `__module__` attribute. PyMuPDF wheels prior to the upstream fix still expose several SWIG-generated builtin types (`SwigPyObject`, `SwigPyPacked`, `swigvarlink`) without that metadata, triggering a warning the first time the module loads.
+- **Fix options**:
+  1. **Upgrade to the latest PyMuPDF release**. We pin the minimum supported version in `requirements.txt`. Run `pip install --upgrade PyMuPDF` to pick up the newest wheel once the maintainers publish the patch (the warning disappears in those builds).
+  2. **Locally rebuild PyMuPDF with the patched SWIG bindings**. Clone [https://github.com/pymupdf/PyMuPDF](https://github.com/pymupdf/PyMuPDF), apply the commit that sets `__module__` on the SWIG typemaps (see PR #2945 upstream), run `python -m build`, then install the wheel with `pip install dist/PyMuPDF-*.whl`. Building requires the MuPDF toolchain—follow PyMuPDF’s `install.md` for Windows specifics.
+- **Project behaviour**: Our loader records the warning once and surfaces the affected type names in handler metadata so you can confirm whether you are running a patched build.
+
 ### ❗ Problem: Manual file parsing not working
 
 - **Possible Cause**: Wrong file extension or missing handler.

@@ -25,3 +25,4 @@ https://results.elections.myflorida.com/
 
 
 https://www.vote.nyc/page/election-results-summary
+https://records.sos.state.or.us/ORSOSWebDrawer/Recordhtml/6873777

@@ -61,7 +61,8 @@ except Exception:
 
 from ...utils.logger_singleton import logger, prompt
 from ...Context_Integration.Context_Library.constants import (
-    LOCATION_KEYWORDS, CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
+    LOCATION_KEYWORDS,
+    CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
     MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS, CONTEST_TITLE_SKIP_PHRASES,
     CONTEST_HEADER_KEYWORDS, CONTEST_HEADER_PREFERENCE
 )
@@ -94,6 +95,11 @@ def _prepare_output_context(base: dict | None, extra: dict | None = None) -> dic
     return ctx
 
 from ...utils.table_core import harmonize_headers_and_data
+from ...utils.location_helpers import (
+    attach_precinct_column,
+    collect_location_headers,
+    is_strict_location_header,
+)
 import orjson
 from ...utils.contest_selector import (
     select_contest_auto_first,
@@ -108,7 +114,58 @@ from ...Context_Integration.Context_Library.constants import normalize_party_lab
 from ...utils.table_core import robust_table_extraction
 _FITZ_MODULE = None
 _FITZ_IMPORT_WARNINGS: tuple[str, ...] = ()
+_FITZ_PATCHED_TYPES: tuple[str, ...] = ()
+_FITZ_PATCH_FAILURES: tuple[str, ...] = ()
 _FITZ_WARNING_LOGGED = False
+_SWIG_WARNING_PATTERN = re.compile(
+    r"builtin type (?P<name>SwigPyObject|SwigPyPacked|swigvarlink) has no __module__ attribute"
+)
+_PYMUPDF_MIN_VERSION = (1, 26, 5)
+
+
+def _check_pymupdf_version(module):
+    """Emit guidance when PyMuPDF is behind the tested baseline."""
+    version_str = getattr(module, "__version__", "0.0.0")
+    try:
+        parts = tuple(int(p) for p in version_str.split(".")[:3])
+    except ValueError:
+        parts = (0, 0, 0)
+    if parts and parts < _PYMUPDF_MIN_VERSION:
+        logger.warning({
+            "level": "WARNING",
+            "type": "dependency",
+            "message": (
+                "[WARN] Detected PyMuPDF %s. Upgrade to %s or newer to incorporate "
+                "SWIG metadata fixes and avoid deprecation noise."
+            )
+            % (version_str, ".".join(str(p) for p in _PYMUPDF_MIN_VERSION)),
+        })
+
+
+def _patch_fitz_swig_types(module, warning_messages):
+    """Assign a module name to SWIG-generated types to satisfy Python 3.12+ requirements."""
+    patched: list[str] = []
+    failures: list[str] = []
+    for message in warning_messages:
+        match = _SWIG_WARNING_PATTERN.search(message)
+        if not match:
+            continue
+        type_name = match.group("name")
+        target = getattr(module, type_name, None)
+        if not isinstance(target, type):
+            failures.append(type_name)
+            continue
+        module_name = getattr(target, "__module__", "")
+        if module_name:
+            patched.append(type_name)
+            continue
+        try:
+            setattr(target, "__module__", module.__name__)
+            patched.append(type_name)
+        except (AttributeError, TypeError):
+            failures.append(type_name)
+    return patched, failures
+
 
 try:
     import pandas as pd  # type: ignore
@@ -120,38 +177,61 @@ except Exception:  # pragma: no cover - pandas is optional but strongly recommen
 
 def _ensure_fitz():
     """Import PyMuPDF while capturing its SWIG DeprecationWarnings safely."""
-    global _FITZ_MODULE, _FITZ_IMPORT_WARNINGS
+    global _FITZ_MODULE, _FITZ_IMPORT_WARNINGS, _FITZ_PATCHED_TYPES, _FITZ_PATCH_FAILURES
     if _FITZ_MODULE is not None:
         return _FITZ_MODULE
 
     captured_msgs: list[str] = []
 
-    def _capture_warning(message, category, filename, lineno, file=None, line=None):
-        captured_msgs.append(str(message))
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("default", DeprecationWarning)
-        original_showwarning = warnings.showwarning
-        warnings.showwarning = _capture_warning
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", DeprecationWarning)
         try:
             module = importlib.import_module("fitz")
         except ImportError as exc:
             raise ImportError("You must install PyMuPDF to use the PDF handler: pip install pymupdf") from exc
-        finally:
-            warnings.showwarning = original_showwarning
+        captured_msgs = [str(warning.message) for warning in (caught or [])]
 
+    _check_pymupdf_version(module)
+
+    swig_msgs: list[str] = []
+    other_msgs: list[str] = []
     if captured_msgs:
-        swig_msgs = [msg for msg in captured_msgs if "SwigPy" in msg or "swigvarlink" in msg]
-        other_msgs = [msg for msg in captured_msgs if msg not in swig_msgs]
-        if swig_msgs:
-            _FITZ_IMPORT_WARNINGS = tuple(sorted(set(swig_msgs)))
-        if other_msgs:
-            logger.warning({
-                "level": "WARNING",
+        for msg in captured_msgs:
+            if _SWIG_WARNING_PATTERN.search(msg):
+                swig_msgs.append(msg)
+            else:
+                other_msgs.append(msg)
+
+    if swig_msgs:
+        patched, failures = _patch_fitz_swig_types(module, swig_msgs)
+        _FITZ_PATCHED_TYPES = tuple(sorted(set(patched)))
+        _FITZ_PATCH_FAILURES = tuple(sorted(set(failures)))
+        if _FITZ_PATCHED_TYPES:
+            logger.info({
+                "level": "INFO",
                 "type": "handler",
-                "message": "[WARN] PyMuPDF import emitted unexpected warning(s).",
-                "warning_details": other_msgs,
+                "message": "[INFO] Applied module metadata patches to PyMuPDF SWIG types.",
+                "patched_types": list(_FITZ_PATCHED_TYPES),
             })
+        # Retain warnings for any types we could not patch successfully
+        unresolved = []
+        for msg in swig_msgs:
+            match = _SWIG_WARNING_PATTERN.search(msg)
+            if match and match.group("name") not in patched:
+                unresolved.append(msg)
+        _FITZ_IMPORT_WARNINGS = tuple(sorted(set(unresolved)))
+    else:
+        _FITZ_IMPORT_WARNINGS = ()
+        _FITZ_PATCHED_TYPES = ()
+        _FITZ_PATCH_FAILURES = ()
+
+    if other_msgs:
+        logger.warning({
+            "level": "WARNING",
+            "type": "handler",
+            "message": "[WARN] PyMuPDF import emitted unexpected warning(s).",
+            "warning_details": other_msgs,
+        })
 
     _FITZ_MODULE = module
     globals()["fitz"] = module
@@ -1731,6 +1811,210 @@ _STATEMENT_AD_RE = re.compile(r"assembly\s+district\s+(\d+)", re.I)
 _STATEMENT_ED_RE = re.compile(r"election\s+district\s+(\d+)", re.I)
 _STATEMENT_PRECINCT_RE = re.compile(r"precinct\s+(\d+)", re.I)
 
+_STATEMENT_SUMMARY_KEYWORDS = (
+    "public counter",
+    "manually counted",
+    "absentee",
+    "military",
+    "affidavit",
+    "total ballots",
+    "total votes",
+    "total vote",
+    "total applicable",
+    "less - inapplicable",
+    "inapplicable",
+    "unrecorded",
+    "vote for",
+    "scanner",
+    "ballots cast",
+    "ballots counted",
+)
+
+def _identify_statement_location_columns(headers: list[str]) -> list[str]:
+    return collect_location_headers(headers or [], ensure_precinct=False)
+
+
+def _statement_value_has_payload(value: object) -> bool:
+    if value in (None, ""):
+        return False
+    if isinstance(value, (int, float)):
+        return True
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return False
+        core = (
+            stripped.replace(",", "")
+            .replace("%", "")
+            .replace("-", "")
+            .replace("(", "")
+            .replace(")", "")
+        )
+        if core.replace(".", "", 1).isdigit():
+            return True
+        return len(stripped) >= 3
+    return True
+
+
+def _coerce_statement_numeric(value: object) -> object:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except Exception:
+            return value
+    if isinstance(value, str):
+        cleaned = value.strip().replace(",", "")
+        if cleaned.replace(".", "", 1).isdigit():
+            try:
+                return int(float(cleaned))
+            except Exception:
+                return value
+    return value
+
+
+def _remap_statement_summary_header(header: str) -> str:
+    low = (header or "").strip().lower()
+    if "public counter" in low:
+        return "Precinct Public Counter"
+    if "manually counted" in low and "emergency" in low:
+        return "Precinct Emergency Ballots"
+    if "absentee" in low or "military" in low:
+        return "Precinct Absentee Military"
+    if "affidavit" in low:
+        return "Precinct Affidavit"
+    if "total applicable" in low:
+        return "Precinct Total Applicable Ballots"
+    if "less - inapplicable" in low or "inapplicable" in low:
+        return "Precinct Inapplicable Ballots"
+    if low == "total vote" or "total votes" in low:
+        return "Precinct Total Votes"
+    if "total ballots" in low:
+        return "Precinct Total Ballots"
+    if "unrecorded" in low:
+        return "Precinct Unrecorded"
+    return header
+
+
+def _is_statement_summary_header(header: str) -> bool:
+    if is_strict_location_header(header):
+        return False
+    low = (header or "").strip().lower()
+    if not low:
+        return False
+    return any(token in low for token in _STATEMENT_SUMMARY_KEYWORDS)
+
+
+def _parse_statement_candidate_header(header: str) -> tuple[str, str | None, str | None]:
+    text = re.sub(r"\s+", " ", (header or "").strip())
+    candidate_type = "Write-In" if re.search(r"write[-\s]?in", text, re.I) else "Candidate"
+    party = None
+
+    without_write_in = re.sub(r"\s*\(write[-\s]?in\)\s*", "", text, flags=re.I)
+    without_write_in = re.sub(r"/\s*write[-\s]?in", "", without_write_in, flags=re.I)
+
+    party_match = re.search(r"\(([^)]+)\)$", without_write_in)
+    if party_match and not re.search(r"write", party_match.group(1), re.I):
+        party = party_match.group(1).strip()
+        candidate_label = without_write_in[: party_match.start()].strip()
+    else:
+        candidate_label = without_write_in.strip()
+
+    if candidate_label.isupper():
+        candidate_label = candidate_label.title()
+
+    return candidate_label or text, candidate_type, party
+
+
+def _normalize_statement_candidate_results(
+    headers: list[str],
+    rows: list[dict],
+) -> tuple[list[str], list[dict], dict]:
+    if not headers or not rows:
+        return [], [], {}
+
+    location_cols = _identify_statement_location_columns(headers)
+    if "Precinct" not in location_cols:
+        location_cols = ["Precinct", *location_cols]
+    summary_cols = [h for h in headers if _is_statement_summary_header(h)]
+    base_cols = [h for h in location_cols if h in headers or h == "Precinct"]
+    candidate_cols = [h for h in headers if h not in base_cols and h not in summary_cols]
+
+    if not candidate_cols:
+        return [], [], {}
+
+    summary_targets: dict[str, str] = {}
+    summary_order: list[str] = []
+    for col in summary_cols:
+        mapped = _remap_statement_summary_header(col)
+        summary_targets[col] = mapped
+        if mapped not in summary_order:
+            summary_order.append(mapped)
+
+    normalized_rows: list[dict] = []
+    for rec in rows:
+        base = {col: rec.get(col, "") for col in base_cols}
+        for cand in candidate_cols:
+            value = rec.get(cand, "")
+            if not _statement_value_has_payload(value):
+                continue
+            candidate_label, candidate_type, candidate_party = _parse_statement_candidate_header(cand)
+            normalized = dict(base)
+            normalized["Candidate"] = candidate_label
+            if candidate_type:
+                normalized["Candidate Type"] = candidate_type
+            if candidate_party:
+                normalized["Party"] = candidate_party
+            normalized["Votes"] = _coerce_statement_numeric(value)
+            for src, dest in summary_targets.items():
+                summary_val = rec.get(src, "")
+                if not _statement_value_has_payload(summary_val):
+                    continue
+                normalized[dest] = _coerce_statement_numeric(summary_val)
+            normalized_rows.append(normalized)
+
+    if not normalized_rows:
+        return [], [], {}
+
+    header_candidates = []
+    if "Precinct" in location_cols:
+        header_candidates.append("Precinct")
+    for loc in location_cols:
+        if loc != "Precinct":
+            header_candidates.append(loc)
+    header_candidates.append("Candidate")
+    if any(row.get("Candidate Type") for row in normalized_rows):
+        header_candidates.append("Candidate Type")
+    if any(row.get("Party") for row in normalized_rows):
+        header_candidates.append("Party")
+    header_candidates.append("Votes")
+    header_candidates.extend(h for h in summary_order if h not in header_candidates)
+
+    keep_headers: list[str] = []
+    for header in header_candidates:
+        if header in {"Precinct", "Assembly District", "Election District", "Candidate", "Votes"}:
+            keep_headers.append(header)
+            continue
+        if header in {"Candidate Type", "Party"}:
+            if any(row.get(header) for row in normalized_rows):
+                keep_headers.append(header)
+            continue
+        if any(_statement_value_has_payload(row.get(header)) for row in normalized_rows):
+            keep_headers.append(header)
+
+    finalized_rows = [{h: row.get(h, "") for h in keep_headers} for row in normalized_rows]
+
+    diagnostics = {
+        "source_headers": len(headers),
+        "candidate_columns": len(candidate_cols),
+        "summary_columns": len(summary_cols),
+        "normalized_rows": len(finalized_rows),
+        "location_headers": location_cols,
+    }
+
+    return keep_headers, finalized_rows, diagnostics
+
 
 def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params: dict | None = None, max_pages: int | None = None):
     """Parse statement & return style PDF pages into structured key/value rows."""
@@ -1749,21 +2033,6 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
     current_record: dict[str, object] | None = None
     current_ad: str | None = None
     current_ed: str | None = None
-
-    def _value_has_payload(value: object) -> bool:
-        if value in (None, ""):
-            return False
-        if isinstance(value, (int, float)):
-            return True
-        if isinstance(value, str):
-            stripped = value.strip()
-            if not stripped:
-                return False
-            core = stripped.replace(",", "").replace("%", "").replace("-", "").replace("(", "").replace(")", "")
-            if core.replace(".", "", 1).isdigit():
-                return True
-            return len(stripped) >= 3
-        return True
 
     def _ensure_record() -> bool:
         nonlocal current_record
@@ -1791,7 +2060,7 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
             current_record = None
             return
         has_payload = any(
-            _value_has_payload(value)
+            _statement_value_has_payload(value)
             for key, value in current_record.items()
             if key not in {"Assembly District", "Election District", "Precinct"}
         )
@@ -1947,41 +2216,36 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
     return ordered_headers, rows
 
 
-def _attach_statement_precinct(headers: list[str], rows: list[dict]) -> tuple[list[str], list[dict], bool]:
+def _attach_statement_precinct(
+    headers: list[str],
+    rows: list[dict],
+    *,
+    location_headers: list[str] | None = None,
+) -> tuple[list[str], list[dict], bool]:
     """Ensure statement rows expose a precinct-like label for downstream pivots."""
     if not rows:
         return headers, rows, False
 
-    has_precinct_header = any(
-        isinstance(h, str) and h.strip().lower().startswith("precinct")
-        for h in headers or []
+    sanitized_extras = [
+        header.strip()
+        for header in (location_headers or [])
+        if isinstance(header, str) and header.strip()
+    ]
+
+    detected = collect_location_headers(
+        headers or [],
+        ensure_precinct=True,
+        extra_headers=sanitized_extras,
     )
-    added_any = False
 
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if row.get("Precinct"):
-            added_any = True
-            continue
-        ad = str(row.get("Assembly District") or "").strip()
-        ed = str(row.get("Election District") or "").strip()
-        if ad and ed:
-            label = f"AD {ad} / ED {ed}"
-        elif ad:
-            label = f"AD {ad}"
-        elif ed:
-            label = f"ED {ed}"
-        else:
-            label = ""
-        if label:
-            row["Precinct"] = label
-            added_any = True
+    updated_headers, updated_rows, added_any = attach_precinct_column(
+        list(headers or []),
+        rows,
+        location_headers=detected,
+        column_name="Precinct",
+    )
 
-    if added_any and not has_precinct_header:
-        headers = ["Precinct"] + [h for h in headers if h != "Precinct"]
-
-    return headers, rows, added_any
+    return updated_headers, updated_rows, added_any
 
 
 def _finalize_structured_table_output(
@@ -2000,7 +2264,13 @@ def _finalize_structured_table_output(
     statement_used = bool(metadata.get("statement_blocks_used"))
     precinct_attached = False
     if statement_used:
-        headers, data, precinct_attached = _attach_statement_precinct(headers, data)
+        diag_info = metadata.get("statement_blocks_normalized")
+        location_headers = list(diag_info.get("location_headers") or []) if isinstance(diag_info, dict) else []
+        headers, data, precinct_attached = _attach_statement_precinct(
+            headers,
+            data,
+            location_headers=location_headers,
+        )
 
     headers_adj, data_adj = harmonize_headers_and_data(
         headers,
@@ -2029,6 +2299,7 @@ def _finalize_structured_table_output(
     if statement_used:
         context.setdefault("include_all_precincts_row", False)
         context["skip_pivot"] = True
+        context["skip_row_noise_filter"] = True
         if precinct_attached:
             context.setdefault("precinct_sort", "natural")
         metadata["statement_blocks_precinct_attached"] = precinct_attached
@@ -2191,6 +2462,10 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         })
     if _FITZ_IMPORT_WARNINGS:
         metadata["fitz_import_warnings"] = list(_FITZ_IMPORT_WARNINGS)
+    if _FITZ_PATCHED_TYPES:
+        metadata["fitz_patched_types"] = list(_FITZ_PATCHED_TYPES)
+    if _FITZ_PATCH_FAILURES:
+        metadata["fitz_patch_failures"] = list(_FITZ_PATCH_FAILURES)
     headers = []
     ocr_score = 0.0
     ocr_runs = []
@@ -2375,8 +2650,27 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         session_id=session_id,
         ocr_params=metadata.get("ocr_params"),
     )
-    statement_headers_copy = list(statement_headers or [])
-    statement_rows_copy = [dict(row) for row in statement_rows] if statement_rows else []
+
+    statement_headers_raw = list(statement_headers or [])
+    statement_rows_raw = [dict(row) for row in statement_rows] if statement_rows else []
+    statement_headers_norm, statement_rows_norm, statement_norm_diag = _normalize_statement_candidate_results(
+        statement_headers_raw,
+        [dict(row) for row in statement_rows_raw],
+    )
+
+    statement_headers_use = statement_headers_raw
+    statement_rows_use = statement_rows_raw
+    if statement_rows_norm:
+        statement_headers_use = statement_headers_norm
+        statement_rows_use = statement_rows_norm
+        diag = dict(statement_norm_diag or {})
+        diag["raw_rows"] = len(statement_rows_raw)
+        metadata["statement_blocks_normalized"] = diag
+
+    statement_headers_copy = list(statement_headers_use)
+    statement_rows_copy = [dict(row) for row in statement_rows_use]
+    statement_headers = list(statement_headers_use)
+    statement_rows = [dict(row) for row in statement_rows_use]
     if layout_tables:
         metadata["layout_tables_available"] = [
             {
@@ -2392,7 +2686,8 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             "headers": statement_headers_copy[:10]
         }
         metadata["statement_blocks_diagnostic"] = {
-            "raw_rows": len(statement_rows_copy)
+            "normalized_rows": len(statement_rows_copy),
+            "raw_rows": len(statement_rows_raw)
         }
 
     headers, header_candidate = infer_headers_and_methods(lines, table_hints)

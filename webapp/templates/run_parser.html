@@ -37,7 +37,7 @@
         <a href="{{ url_for('index') }}">Dashboard</a>
         <a href="{{ url_for('data_framework') }}">Data Framework</a>
         <a href="{{ url_for('history') }}">History</a>
-        <a href="{{ url_for('run_parser') }}" class="active">Run Parser</a>
+        <a href="{{ url_for('run_parser') }}" class="active" data-step-target="run">Run Parser</a>
         <a href="https://basic-nature.github.io/html_Parser_prototype/"
            target="_blank"
            rel="noopener noreferrer"
@@ -56,7 +56,7 @@
                     {% endfor %}
                 {% endif %}
                 {% endwith %}
-                <div id="urlSidebarBlock" class="section">
+                <div id="urlSidebarBlock" class="section" data-step-target="prepare">
                     <input type="search" class="url-search-box" placeholder="Search state, county, or URL...">
                     <h2>
                         urls.txt
@@ -70,7 +70,7 @@
                     </form>
                 </div>
                 <!-- Input Folder Section -->
-                <div class="section">
+                <div class="section" data-step-target="prepare">
                     <button type="button" class="collapsible-btn" data-target="inputSection">
                     Input Folder Files
                     </button>
@@ -85,7 +85,7 @@
                 </div>
 
                 <!-- Output Folder Section -->
-                <div class="section">
+                <div class="section" data-step-target="review">
                     <button type="button" class="collapsible-btn" data-target="outputSection">
                     Output Folder Files
                     </button>
@@ -100,7 +100,7 @@
                 </div>
 
                 <!-- Uploads Folder Section -->
-                <div class="section">
+                <div class="section" data-step-target="prepare">
                     <button type="button" class="collapsible-btn" data-target="uploadsSection">
                     Uploads Folder Files
                     </button>
@@ -120,6 +120,45 @@
         <div class="container-main">
             <h1>Run the Smart Elections Parser</h1>
             <div class="subtitle">Start a new parsing job and view the results below.</div>
+
+            <div id="pipelineStepper" class="pipeline-stepper" role="list" aria-label="Parser pipeline">
+                <div class="pipeline-step" data-step-id="prepare" role="listitem" tabindex="0">
+                    <span class="step-badge">1</span>
+                    <div class="step-copy">
+                        <span class="step-title">Prepare Inputs</span>
+                        <span class="step-caption">URLs &amp; uploads</span>
+                    </div>
+                </div>
+                <div class="pipeline-step" data-step-id="source" role="listitem" tabindex="0">
+                    <span class="step-badge">2</span>
+                    <div class="step-copy">
+                        <span class="step-title">Choose Source</span>
+                        <span class="step-caption">Select input location</span>
+                    </div>
+                </div>
+                <div class="pipeline-step" data-step-id="run" role="listitem" tabindex="0">
+                    <span class="step-badge">3</span>
+                    <div class="step-copy">
+                        <span class="step-title">Run &amp; Monitor</span>
+                        <span class="step-caption">Launch parser session</span>
+                    </div>
+                </div>
+                <div class="pipeline-step" data-step-id="resolve" role="listitem" tabindex="0">
+                    <span class="step-badge">4</span>
+                    <div class="step-copy">
+                        <span class="step-title">Resolve Prompts</span>
+                        <span class="step-caption">Complete selections</span>
+                    </div>
+                </div>
+                <div class="pipeline-step" data-step-id="review" role="listitem" tabindex="0">
+                    <span class="step-badge">5</span>
+                    <div class="step-copy">
+                        <span class="step-title">Review Output</span>
+                        <span class="step-caption">Download &amp; export</span>
+                    </div>
+                </div>
+            </div>
+            <div id="pipelineHint" class="pipeline-hint" role="status" aria-live="polite"></div>
 
             <!-- Collapsible Instructions Panel -->
             <button type="button"
@@ -160,27 +199,29 @@
             {% endwith %}
 
             <div class="form-section">
-                <button type="button" class="run-btn" id="runParserBtn" data-bs-toggle="tooltip" title="Start a new parsing session">
-                Run Parser
-                </button>
-                <button type="button" class="run-btn" id="cancelParserBtn" data-bs-toggle="tooltip" title="Send cancel request to active session">
-                Cancel
-                </button>
-                <button type="button" class="btn btn-danger ms-1em" id="toggleOutputBypassBtn"
-                        aria-pressed="false" aria-controls="outputSection">
-                    Bypass Output
-                    <span class="help-icon" tabindex="0" aria-label="Bypass Output Help">
-                        ?
-                        <span class="custom-tooltip">
-                            When enabled, parsed results are streamed directly to you and NOT saved to the Output Folder.
-                            Use this for quick downloads or previews.
+                <div class="primary-actions" data-step-target="run">
+                    <button type="button" class="run-btn" id="runParserBtn" data-bs-toggle="tooltip" title="Start a new parsing session">
+                    Run Parser
+                    </button>
+                    <button type="button" class="run-btn" id="cancelParserBtn" data-bs-toggle="tooltip" title="Send cancel request to active session">
+                    Cancel
+                    </button>
+                    <button type="button" class="btn btn-danger ms-1em" id="toggleOutputBypassBtn"
+                            aria-pressed="false" aria-controls="outputSection">
+                        Bypass Output
+                        <span class="help-icon" tabindex="0" aria-label="Bypass Output Help">
+                            ?
+                            <span class="custom-tooltip">
+                                When enabled, parsed results are streamed directly to you and NOT saved to the Output Folder.
+                                Use this for quick downloads or previews.
+                            </span>
                         </span>
-                    </span>
-                </button>
-                <span class="output-badge" id="outputBypassBadge">BYPASS</span>
+                    </button>
+                    <span class="output-badge" id="outputBypassBadge">BYPASS</span>
+                </div>
 
                 <!-- File Source Dropdown -->
-                <div class="dropdown-group">
+                <div class="dropdown-group" data-step-target="source">
                 <label for="fileSourceSelect" class="dropdown-label">
                     File Source:
                     <span class="help-icon" tabindex="0" aria-label="File Source">
@@ -261,24 +302,32 @@
                 <span id="sessionSwitcher" class="session-switcher"></span>
             </div>
 
-            <div class="output-section" id="terminal" role="log" aria-live="polite">
-                {% if parser_output %}
-                    {{ parser_output }}
-                {% else %}
-                    <span class="terminal-hint">Parser output will appear here after you run the parser.</span>
-                {% endif %}
-                <div id="bypassDownloadHint" class="hidden">
-                    <span class="help-icon" tabindex="0" aria-label="Direct Download">
-                        ?
-                        <span class="custom-tooltip">
-                          Output bypass is ON. Results will be streamed directly for download and will NOT appear in the Output Folder.
-                        </span>
-                    </span>
-                    <span>Output bypass is enabled. Results will be streamed directly for download.</span>
+            <div class="log-panel" data-step-target="review">
+                <div class="log-panel-header">
+                    <h2 class="log-panel-title">Activity Log</h2>
+                    <button type="button" class="btn btn-outline-light btn-sm" id="toggleLogPanelBtn" aria-expanded="false" aria-controls="logPanelBody">Show Log</button>
+                </div>
+                <div class="log-panel-body collapsed" id="logPanelBody">
+                    <div class="output-section" id="terminal" role="log" aria-live="polite">
+                        {% if parser_output %}
+                            {{ parser_output }}
+                        {% else %}
+                            <span class="terminal-hint">Parser output will appear here after you run the parser.</span>
+                        {% endif %}
+                        <div id="bypassDownloadHint" class="hidden">
+                            <span class="help-icon" tabindex="0" aria-label="Direct Download">
+                                ?
+                                <span class="custom-tooltip">
+                                  Output bypass is ON. Results will be streamed directly for download and will NOT appear in the Output Folder.
+                                </span>
+                            </span>
+                            <span>Output bypass is enabled. Results will be streamed directly for download.</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="prompt-section">
+            <div class="prompt-section" data-step-target="resolve">
                 <form id="promptForm" autocomplete="off">
                     <input type="text" id="promptInput" placeholder="Type a command...">
                     <button type="submit">Send</button>

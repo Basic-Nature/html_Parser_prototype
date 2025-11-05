@@ -12,6 +12,10 @@ from ...Context_Integration.Context_Library.constants import (
 from ...utils.contest_selector import (
     select_contest_auto_first,
 )
+from ...utils.location_helpers import (
+    attach_precinct_column,
+    collect_location_headers,
+)
 from ...utils.logger_singleton import logger
 from ...utils.output_utils import finalize_election_output
 from ...utils.pivot import expand_single_rawjson_row
@@ -47,8 +51,8 @@ def parse_csv_election_results(
     session_id: Optional[str] = None,
     coordinator: Any = None,
 ) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
-    data = []
-    headers = []
+    data: List[Dict[str, Any]] = []
+    headers: List[str] = []
     contest_column = None
 
     # Robust file open with encoding fallback
@@ -69,9 +73,12 @@ def parse_csv_election_results(
             contest_column = possible_contest_cols[0]
 
         for row in reader:
-            row = { (k or "").strip(): (v if v is not None else "") for k, v in (row.items() if row else []) }
-            if any((val or "").strip() for val in row.values()):
-                data.append(row)
+            normalized_row: Dict[str, Any] = {
+                (k or "").strip(): (v if v is not None else "")
+                for k, v in (row.items() if row else [])
+            }
+            if any((val or "").strip() for val in normalized_row.values()):
+                data.append(normalized_row)
 
     # Build contest candidates
     contest_names = []
@@ -122,6 +129,17 @@ def parse_csv_election_results(
     if contest_column:
         data = [row for row in data if (row.get(contest_column, "") or "").strip() == contest]
 
+    location_headers = collect_location_headers(headers)
+    headers, data, precinct_attached = attach_precinct_column(
+        headers,
+        data,
+        location_headers=location_headers,
+    )
+    location_diagnostics = {
+        "detected_location_headers": location_headers,
+        "precinct_attached": precinct_attached,
+    }
+
     # Build table via non-interactive builder
     m = re.search(r"(19|20)\d{2}", fname)
     year = int(m.group(0)) if m else None
@@ -134,7 +152,10 @@ def parse_csv_election_results(
         "session_id": session_id,
         "handler": "csv_handler",
         # include slugs in context so downstream naming is stable
-        "source_slug": domain
+        "source_slug": domain,
+        "location_headers": location_headers,
+        "precinct_attached": precinct_attached,
+        "location_diagnostics": location_diagnostics,
     }
     headers, data = expand_single_rawjson_row(headers, data, context=context)
     
@@ -159,7 +180,10 @@ def parse_csv_election_results(
             "handler": "csv_handler",
             "input_file": os.path.basename(csv_path),
             "session_id": session_id,
-            "race": contest
+            "race": contest,
+            "location_headers": location_headers,
+            "precinct_attached": precinct_attached,
+            "location_diagnostics": location_diagnostics,
         },
         enable_user_feedback=False,
         session_id=session_id
@@ -176,7 +200,10 @@ def parse_csv_election_results(
         "county": county,
         "year": year,
         "csv_path": result.get("csv_path"),
-        "metadata_path": result.get("metadata_path")
+        "metadata_path": result.get("metadata_path"),
+        "location_headers_detected": location_headers,
+        "precinct_attached": precinct_attached,
+        "location_diagnostics": location_diagnostics,
     }
 
     logger.info({

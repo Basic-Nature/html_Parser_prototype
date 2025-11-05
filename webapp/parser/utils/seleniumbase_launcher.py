@@ -9,17 +9,19 @@ import time
 # -----------------------------------------------------------------------------------
 from seleniumbase import Driver
 
+from ..config import HEADLESS_DEFAULT
 from .logger_singleton import logger
 
 
-def launch_browser(user_agent=None, headless=True, proxy=None):
+def launch_browser(user_agent=None, headless=None, proxy=None):
     """
     Launch SeleniumBase browser with stealth and custom options.
     Returns (None, None, driver) for compatibility with Playwright tuple.
     """
+    launch_headless = HEADLESS_DEFAULT if headless is None else headless
     driver_kwargs = {
         "uc": True,
-        "headless": headless,
+        "headless": launch_headless,
     }
     if user_agent:
         driver_kwargs["user_agent"] = user_agent

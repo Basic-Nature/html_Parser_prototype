@@ -57,7 +57,8 @@ def normalize_ballot_column_name(h: str) -> str:
     # returning the original header when the suffix clearly matches a
     # candidate-centric metric.
     if " - " in raw:
-        _, right = raw.split(" - ", 1)
+        left, right = raw.split(" - ", 1)
+        left_norm = left.strip().lower()
         right_norm = right.strip().lower()
         candidate_suffixes = {
             "total",
@@ -73,8 +74,12 @@ def normalize_ballot_column_name(h: str) -> str:
             "party",
         }
         ballot_suffixes = {b.lower() for b in BALLOT_TYPES}
+        total_like = {"total", "total vote", "grand total", "votes", "vote"}
         if right_norm in candidate_suffixes or right_norm in ballot_suffixes or right_norm.endswith("%"):
-            return raw
+            if left_norm in ballot_suffixes or left_norm in total_like:
+                pass
+            else:
+                return raw
 
     if low in {"total", "total vote"}:
         return "Total Vote"
