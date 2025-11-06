@@ -81,6 +81,13 @@
   let contestIndexMap = {};
   const MANUAL_UPLOAD_PROMPT_PATTERN = /select a file to parse from uploads/i;
   const manualOverrideState = Object.create(null);
+  const manualUploadSelectionBySession = new Map();
+  const directUrlDraftBySession = new Map();
+  let manualUploadSelection = null; // { relPath, name }
+  let manualUploadsInventory = [];
+  let pendingManualUploadSelection = null;
+  let pendingDirectUrlDraft = '';
+  const MAX_DIRECT_URLS = 20;
   const SessionEnums = {
     state: {
       IDLE: 'idle',
@@ -118,7 +125,7 @@
   ];
   let pipelinePhase = PIPELINE_PHASES[0];
 
-  const SESSION_ENUMS_PROMISE = fetch('/api/session/enums', { cache: 'no-store' })
+  fetch('/api/session/enums', { cache: 'no-store' })
     .then(res => (res.ok ? res.json() : null))
     .then(data => {
       if (!data || typeof data !== 'object') return;
@@ -137,8 +144,8 @@
       if (data.state_phase_map && typeof data.state_phase_map === 'object') {
         SessionEnums.stateToPhase = { ...SessionEnums.stateToPhase, ...data.state_phase_map };
       }
-    })
-    .catch(() => {});
+  })
+  .catch(() => {});
 
   function createSessionMirror() {
     const store = new Map();
@@ -193,7 +200,6 @@
     ingestSessionSourceMeta(sid, meta, { fromServer: true });
   });
   let uploadsHasFiles = null;
-  let hasIssuedRunCommand = false;
 
   function pipelinePhaseIndex(phase) {
     return PIPELINE_PHASES.indexOf(phase);
@@ -321,14 +327,12 @@
   // Contest options store (per session) + helpers
   const CONTEST_STORE_KEY = 'contest_opts_by_session_v1';
   let contestOptionsBySession = lsGetJSON(CONTEST_STORE_KEY, {});
-  let lastContestOptions = contestOptionsBySession[activeSessionId] || []; // [{index,label,meta}]
   function getContestOptions(sessionId = activeSessionId) {
     return (contestOptionsBySession[sessionId] || []).slice();
   }
   function setContestOptions(sessionId, opts) {
     contestOptionsBySession[sessionId] = (opts || []).slice();
     lsSetJSON(CONTEST_STORE_KEY, contestOptionsBySession);
-    if (sessionId === activeSessionId) lastContestOptions = contestOptionsBySession[sessionId];
   }
   // Handy globals for console/UI hooks
   window.getLastContestOptions = () => getContestOptions();
@@ -443,6 +447,194 @@
     syncSourceClass();
   }
 
+  function ensureManualUploadOption(relPath, label) {
+    if (!el.manualUploadSelect) return;
+    const value = relPath || '';
+    if (!value) return;
+    const exists = Array.from(el.manualUploadSelect.options || []).some(opt => opt.value === value);
+    if (exists) return;
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label || value;
+    opt.dataset.manual = '1';
+    el.manualUploadSelect.appendChild(opt);
+  }
+
+  function syncManualUploadControls() {
+    if (!el.manualUploadSelect) return;
+    const rel = manualUploadSelection ? manualUploadSelection.relPath : '';
+    ensureManualUploadOption(rel, manualUploadSelection?.name);
+    if (el.manualUploadSelect.value !== rel) {
+      el.manualUploadSelect.value = rel || '';
+    }
+    if (el.manualUploadSummary) {
+      const summary = manualUploadSelection
+        ? `Selected: ${manualUploadSelection.relPath}`
+        : 'No file selected.';
+      el.manualUploadSummary.textContent = summary;
+    }
+    if (el.manualUploadClearBtn) {
+      el.manualUploadClearBtn.disabled = !manualUploadSelection;
+    }
+  }
+
+  async function refreshManualUploads({ preserveSelection = true, silent = false } = {}) {
+    if (!el.manualUploadSelect) return;
+    try {
+      const res = await fetch('/api/fs/list?root=uploads', { headers: { 'Cache-Control': 'no-store' } });
+      const data = await res.json().catch(() => ({}));
+      const basePath = (data.path || '').replace(/\\/g, '/').replace(/^\//, '').trim();
+      manualUploadsInventory = Array.isArray(data.entries)
+        ? data.entries
+            .filter(item => item && item.type === 'file')
+            .map(item => {
+              const rel = basePath ? `${basePath}/${item.name}` : item.name;
+              return {
+                name: item.name,
+                relPath: rel.replace(/\\/g, '/'),
+              };
+            })
+        : [];
+      noteUploadsPresence(manualUploadsInventory.length > 0);
+      const select = el.manualUploadSelect;
+      const currentRel = (preserveSelection && manualUploadSelection) ? manualUploadSelection.relPath : '';
+      const optionsHtml = manualUploadsInventory
+        .map(entry => `<option value="${esc(entry.relPath)}">${esc(entry.name)}</option>`)
+        .join('');
+      select.innerHTML = `<option value="">— No file selected —</option>${optionsHtml}`;
+      if (currentRel && manualUploadsInventory.every(entry => entry.relPath !== currentRel)) {
+        ensureManualUploadOption(currentRel, manualUploadSelection?.name);
+      }
+      syncManualUploadControls();
+      if (!silent && manualUploadSelection && manualUploadsInventory.every(entry => entry.relPath !== manualUploadSelection.relPath)) {
+        // Notification when previously selected file is missing
+        el.manualUploadSummary?.classList.add('text-warning');
+      } else {
+        el.manualUploadSummary?.classList.remove('text-warning');
+      }
+    } catch (err) {
+      manualUploadsInventory = [];
+      noteUploadsPresence(false);
+      syncManualUploadControls();
+      if (!silent) {
+        el.manualUploadSummary && (el.manualUploadSummary.textContent = 'Unable to load uploads list.');
+      }
+    }
+  }
+
+  function applyManualUploadSelection(selection, { updateSource = true } = {}) {
+    if (!selection || !selection.relPath) {
+      manualUploadSelection = null;
+      if (activeSessionId) manualUploadSelectionBySession.delete(activeSessionId);
+      else pendingManualUploadSelection = null;
+      syncManualUploadControls();
+      el.manualUploadSummary?.classList.remove('text-warning');
+      noteUploadsPresence(manualUploadsInventory.length > 0);
+      return;
+    }
+    const cleanRel = selection.relPath.replace(/\\/g, '/').replace(/^\//, '');
+    const name = selection.name || cleanRel.split('/').pop() || cleanRel;
+    manualUploadSelection = { relPath: cleanRel, name };
+  if (activeSessionId) manualUploadSelectionBySession.set(activeSessionId, manualUploadSelection);
+  else pendingManualUploadSelection = manualUploadSelection;
+    ensureManualUploadOption(cleanRel, name);
+    syncManualUploadControls();
+    el.manualUploadSummary?.classList.remove('text-warning');
+  noteUploadsPresence(true);
+    if (updateSource !== false) {
+      updateSessionSourceMeta(activeSessionId, 'uploads', 'user');
+      emitManualFileSource();
+      updatePipelineMetadataForActive();
+      updatePipelineHintForPhase();
+    }
+  }
+
+  function parseDirectUrlField() {
+    const raw = (el.directUrlTextarea?.value || '')
+      .split(/\r?\n/)
+      .map(line => line.split(','))
+      .flat()
+      .map(part => part.trim())
+      .filter(Boolean);
+    const valid = [];
+    const invalid = [];
+    raw.forEach(url => {
+      if (isUserSuppliedSafeHttpUrl(url)) valid.push(url);
+      else invalid.push(url);
+    });
+    return { valid, invalid };
+  }
+
+  function updateDirectUrlFeedback() {
+    if (!el.directUrlFeedback) return;
+    const { valid, invalid } = parseDirectUrlField();
+    let message = 'Enter one URL per line.';
+    const classList = el.directUrlFeedback.classList;
+    classList.remove('text-danger');
+    classList.add('text-muted');
+    if (valid.length) {
+      message = `Will run ${valid.length} URL${valid.length === 1 ? '' : 's'}.`;
+    }
+    if (valid.length > MAX_DIRECT_URLS) {
+      message = `Limit ${MAX_DIRECT_URLS} URLs (currently ${valid.length}).`;
+      classList.add('text-danger');
+      classList.remove('text-muted');
+    } else if (invalid.length) {
+      const sample = invalid.slice(0, 2).join(', ');
+      const more = invalid.length > 2 ? ` (+${invalid.length - 2} more)` : '';
+      message = `Invalid URL${invalid.length === 1 ? '' : 's'}: ${sample}${more}`;
+      classList.add('text-danger');
+      classList.remove('text-muted');
+    }
+    el.directUrlFeedback.textContent = message;
+  }
+
+  function initManualUploadControl() {
+    if (!el.manualUploadSelect) return;
+    refreshManualUploads({ preserveSelection: true, silent: true }).catch(() => {});
+    on(el.manualUploadRefreshBtn, 'click', () => {
+      refreshManualUploads({ preserveSelection: true }).catch(() => {});
+    });
+    on(el.manualUploadBrowseBtn, 'click', () => {
+      showFolderBrowser('uploads', '', (sel) => {
+        if (!sel) return;
+        const rel = sel.path ? `${sel.path}/${sel.name}` : sel.name;
+        applyManualUploadSelection({ relPath: rel, name: sel.name });
+      });
+    });
+    on(el.manualUploadClearBtn, 'click', () => {
+      applyManualUploadSelection(null, { updateSource: false });
+    });
+    on(el.manualUploadSelect, 'change', () => {
+      const rel = el.manualUploadSelect.value || '';
+      if (!rel) {
+        applyManualUploadSelection(null, { updateSource: false });
+        return;
+      }
+      const entry = manualUploadsInventory.find(item => item.relPath === rel);
+      applyManualUploadSelection({ relPath: rel, name: entry?.name || rel.split('/').pop() || rel });
+    });
+  }
+
+  function initDirectUrlControl() {
+    if (!el.directUrlTextarea) return;
+    updateDirectUrlFeedback();
+    if (!activeSessionId && el.directUrlTextarea.value) {
+      pendingDirectUrlDraft = el.directUrlTextarea.value;
+    }
+    on(el.directUrlTextarea, 'input', () => {
+      if (activeSessionId) directUrlDraftBySession.set(activeSessionId, el.directUrlTextarea.value);
+      else pendingDirectUrlDraft = el.directUrlTextarea.value;
+      updateDirectUrlFeedback();
+    });
+    on(el.directUrlClearBtn, 'click', () => {
+      el.directUrlTextarea.value = '';
+      if (activeSessionId) directUrlDraftBySession.set(activeSessionId, '');
+      else pendingDirectUrlDraft = '';
+      updateDirectUrlFeedback();
+    });
+  }
+
   // Keep Run button in sync with backend session lock state
   function updateRunButtonLock() {
     if (!el.runBtn) return;
@@ -512,14 +704,203 @@
     saveFiltersBtn: $('#saveFiltersBtn'),
     exportFiltersBtn: $('#exportFiltersBtn'),
     filterPresetSelect: $('#filterPresetSelect'),
-    deletePresetBtn: $('#deletePresetBtn')
+    deletePresetBtn: $('#deletePresetBtn'),
+    manualUploadSelect: $('#manualUploadSelect'),
+    manualUploadSummary: $('#manualUploadSummary'),
+    manualUploadRefreshBtn: $('#manualUploadRefreshBtn'),
+    manualUploadBrowseBtn: $('#manualUploadBrowseBtn'),
+    manualUploadClearBtn: $('#manualUploadClearBtn'),
+    directUrlTextarea: $('#directUrlTextarea'),
+    directUrlFeedback: $('#directUrlFeedback'),
+    directUrlClearBtn: $('#directUrlClearBtn'),
+    modalAddDirectUrl: $('#modalAddDirectUrl'),
+    modalAddManualUpload: $('#modalAddManualUpload'),
+    modalQuickAddContainer: $('#modalQuickAddContainer'),
+    modalQuickAddDirectPanel: $('#modalQuickAddDirectPanel'),
+    modalQuickAddManualPanel: $('#modalQuickAddManualPanel'),
+    modalQuickAddMessage: $('#modalQuickAddMessage'),
+    modalQuickAddDirectAdd: $('#modalQuickAddDirectAdd'),
+    modalQuickAddDirectCancel: $('#modalQuickAddDirectCancel'),
+    modalQuickAddManualDone: $('#modalQuickAddManualDone'),
+    modalQuickAddUploadInput: $('#modalQuickAddUploadInput')
   };
+
+  let modalQuickAddContext = null;
+  let modalQuickAddHideTimer = null;
+
+  function setModalQuickAddContext(ctx) {
+    modalQuickAddContext = ctx || null;
+    const mode = modalQuickAddContext?.mode || null;
+    if (el.modalAddDirectUrl) {
+      el.modalAddDirectUrl.classList.toggle('hidden', mode !== 'url');
+    }
+    if (el.modalAddManualUpload) {
+      el.modalAddManualUpload.classList.toggle('hidden', mode !== 'manual');
+    }
+    if (!ctx) hideModalQuickAdd();
+  }
+
+  function showModalQuickAdd(mode) {
+    if (!el.modalQuickAddContainer) return;
+    clearTimeout(modalQuickAddHideTimer);
+    el.modalQuickAddContainer.classList.remove('hidden');
+    if (mode === 'url') {
+      el.modalQuickAddDirectPanel?.classList.remove('hidden');
+      el.modalQuickAddDirectPanel?.setAttribute('aria-hidden', 'false');
+      el.modalQuickAddManualPanel?.classList.add('hidden');
+      el.modalQuickAddManualPanel?.setAttribute('aria-hidden', 'true');
+      setTimeout(() => el.directUrlTextarea?.focus(), 10);
+    } else if (mode === 'manual') {
+      el.modalQuickAddManualPanel?.classList.remove('hidden');
+      el.modalQuickAddManualPanel?.setAttribute('aria-hidden', 'false');
+      el.modalQuickAddDirectPanel?.classList.add('hidden');
+      el.modalQuickAddDirectPanel?.setAttribute('aria-hidden', 'true');
+      setTimeout(() => el.manualUploadSelect?.focus(), 10);
+    }
+  }
+
+  function hideModalQuickAdd({ resetMessage = true } = {}) {
+    if (!el.modalQuickAddContainer) return;
+    el.modalQuickAddContainer.classList.add('hidden');
+    el.modalQuickAddDirectPanel?.classList.add('hidden');
+    el.modalQuickAddDirectPanel?.setAttribute('aria-hidden', 'true');
+    el.modalQuickAddManualPanel?.classList.add('hidden');
+    el.modalQuickAddManualPanel?.setAttribute('aria-hidden', 'true');
+    if (resetMessage) setModalQuickAddMessage();
+    clearTimeout(modalQuickAddHideTimer);
+  }
+
+  function setModalQuickAddMessage(message = '', tone = 'info') {
+    if (!el.modalQuickAddMessage) return;
+    const node = el.modalQuickAddMessage;
+    node.classList.add('hidden');
+    node.classList.remove('alert-info', 'alert-success', 'alert-danger', 'alert-warning');
+    if (!message) {
+      node.textContent = '';
+      return;
+    }
+    const toneClass = tone === 'success'
+      ? 'alert-success'
+      : tone === 'danger'
+        ? 'alert-danger'
+        : tone === 'warning'
+          ? 'alert-warning'
+          : 'alert-info';
+    node.classList.add('alert', toneClass);
+    node.textContent = message;
+    node.classList.remove('hidden');
+    clearTimeout(modalQuickAddHideTimer);
+    modalQuickAddHideTimer = setTimeout(() => {
+      if (!node.classList.contains('hidden')) node.classList.add('hidden');
+    }, 4000);
+  }
+
+  function addUrlOptionsToContext(urls) {
+    const ctx = modalQuickAddContext;
+    if (!ctx || ctx.mode !== 'url' || !Array.isArray(urls) || !urls.length) return 0;
+    const processed = ctx.processedMap || {};
+    const sanitized = ctx.sanitized;
+    let added = 0;
+    urls.forEach(url => {
+      if (!sanitized.includes(url)) {
+        sanitized.push(url);
+        added += 1;
+      }
+    });
+    if (!added) return 0;
+    cacheUrlPromptContext(ctx.sessionId, sanitized, processed, ctx.meta);
+    const options = buildUrlOptions(sanitized, processed);
+    ctx.controller?.updateOptions(options);
+    ctx.options = options;
+    return added;
+  }
+
+  function handleModalQuickAddDirectAdd() {
+    const ctx = modalQuickAddContext;
+    if (!ctx || ctx.mode !== 'url') return;
+    const { valid, invalid } = parseDirectUrlField();
+    if (!valid.length) {
+      setModalQuickAddMessage(
+        invalid.length ? 'Fix invalid URLs before adding them.' : 'Enter at least one URL to add.',
+        invalid.length ? 'warning' : 'info'
+      );
+      return;
+    }
+    const added = addUrlOptionsToContext(valid);
+    if (!added) {
+      setModalQuickAddMessage('All URLs already exist in this list.', 'info');
+      return;
+    }
+    setModalQuickAddMessage(`Added ${added} URL${added === 1 ? '' : 's'} to selection list.`, 'success');
+  }
+
+  async function handleModalQuickAddUploadSelect(event) {
+    const ctx = modalQuickAddContext;
+    if (!ctx || ctx.mode !== 'manual') return;
+    const input = event?.target;
+    const file = input?.files?.[0];
+    if (!file) return;
+    try {
+      setModalQuickAddMessage(`Uploading ${file.name}...`, 'info');
+      const formData = new FormData();
+      formData.append('data_file', file);
+      const resp = await fetch('/upload/uploads', { method: 'POST', body: formData });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const relPath = file.name.replace(/\\/g, '/');
+      applyManualUploadSelection({ relPath, name: file.name });
+      await refreshManualUploads({ preserveSelection: true });
+      setModalQuickAddMessage(`Uploaded '${file.name}' to manual uploads.`, 'success');
+      if (!manualUploadSelection || manualUploadSelection.relPath !== relPath) {
+        applyManualUploadSelection({ relPath, name: file.name });
+      }
+    } catch (err) {
+      setModalQuickAddMessage(`Upload failed: ${err.message || err}`, 'danger');
+    } finally {
+      if (input) input.value = '';
+    }
+  }
+
+  function initModalQuickAdd() {
+    if (el.modalAddDirectUrl && !el.modalAddDirectUrl.dataset.quickAddBound) {
+      el.modalAddDirectUrl.dataset.quickAddBound = '1';
+      on(el.modalAddDirectUrl, 'click', () => {
+        if (modalQuickAddContext?.mode === 'url') {
+          showModalQuickAdd('url');
+          setModalQuickAddMessage();
+        }
+      });
+    }
+    if (el.modalAddManualUpload && !el.modalAddManualUpload.dataset.quickAddBound) {
+      el.modalAddManualUpload.dataset.quickAddBound = '1';
+      on(el.modalAddManualUpload, 'click', () => {
+        if (modalQuickAddContext?.mode === 'manual') {
+          showModalQuickAdd('manual');
+          setModalQuickAddMessage();
+        }
+      });
+    }
+    if (el.modalQuickAddDirectAdd && !el.modalQuickAddDirectAdd.dataset.quickAddBound) {
+      el.modalQuickAddDirectAdd.dataset.quickAddBound = '1';
+      on(el.modalQuickAddDirectAdd, 'click', handleModalQuickAddDirectAdd);
+    }
+    if (el.modalQuickAddDirectCancel && !el.modalQuickAddDirectCancel.dataset.quickAddBound) {
+      el.modalQuickAddDirectCancel.dataset.quickAddBound = '1';
+      on(el.modalQuickAddDirectCancel, 'click', () => hideModalQuickAdd());
+    }
+    if (el.modalQuickAddManualDone && !el.modalQuickAddManualDone.dataset.quickAddBound) {
+      el.modalQuickAddManualDone.dataset.quickAddBound = '1';
+      on(el.modalQuickAddManualDone, 'click', () => hideModalQuickAdd());
+    }
+    if (el.modalQuickAddUploadInput && !el.modalQuickAddUploadInput.dataset.quickAddBound) {
+      el.modalQuickAddUploadInput.dataset.quickAddBound = '1';
+      on(el.modalQuickAddUploadInput, 'change', handleModalQuickAddUploadSelect);
+    }
+  }
 
   // Modal helper (single reusable modal shell)
   const Modal = {
     get() {
       let modal = document.getElementById('downloadModal');
-      // Auto-create a minimal modal if missing (fallback)
       if (!modal) {
         modal = document.createElement('div');
         modal.id = 'downloadModal';
@@ -531,11 +912,69 @@
           <div class="modal-dialog modal-lg">
             <div class="modal-content">
               <div class="modal-header">
-                <h5 class="modal-title" id="downloadModalTitle">Select</h5>
-                <button type="button" class="btn-close" id="closeDownloadModal" aria-label="Close"></button>
+                <h5 class="modal-title" id="downloadModalTitle">Select URL</h5>
+                <div class="modal-header-actions ms-auto d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary hidden" id="modalAddDirectUrl">Add Direct URL</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary hidden" id="modalAddManualUpload">Upload File</button>
+                  <button type="button" class="btn-close" id="closeDownloadModal" aria-label="Close"></button>
+                </div>
               </div>
               <div class="modal-body">
-                <input type="search" id="downloadSearch" class="form-control mb-2" placeholder="Filter...">
+                <div id="modalQuickAddContainer" class="modal-quick-add hidden" aria-live="polite">
+                  <div id="modalQuickAddDirectPanel" class="quick-add-section hidden" aria-hidden="true">
+                    <label for="directUrlTextarea" class="dropdown-label">
+                      Direct URLs:
+                      <span class="help-icon" tabindex="0" aria-label="Direct URLs">
+                        ?
+                        <span class="custom-tooltip">
+                          Paste one or more election result URLs (HTTP or HTTPS). Each valid URL runs immediately and skips the urls.txt prompt.
+                        </span>
+                      </span>
+                    </label>
+                    <textarea id="directUrlTextarea" class="form-control" rows="3" placeholder="https://example.gov/results/latest"></textarea>
+                    <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+                      <span id="directUrlFeedback" class="text-muted small">Enter one URL per line.</span>
+                      <div class="btn-group btn-group-sm" role="group" aria-label="Direct URL actions">
+                        <button type="button" class="btn btn-outline-secondary" id="modalQuickAddDirectAdd">Add to List</button>
+                        <button type="button" class="btn btn-outline-secondary" id="directUrlClearBtn">Clear</button>
+                        <button type="button" class="btn btn-outline-secondary" id="modalQuickAddDirectCancel">Done</button>
+                      </div>
+                    </div>
+                    <hr class="my-3">
+                  </div>
+                  <div id="modalQuickAddManualPanel" class="quick-add-section hidden" aria-hidden="true">
+                    <div class="modal-inline-heading d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
+                      <label for="manualUploadSelect" class="dropdown-label mb-0">
+                        Manual Upload File:
+                        <span class="help-icon" tabindex="0" aria-label="Manual Upload File">
+                          ?
+                          <span class="custom-tooltip">
+                            Pick a file from the uploads folder to parse immediately. This sets the source to Manual Uploads when you run the parser.
+                          </span>
+                        </span>
+                      </label>
+                      <div class="btn-group btn-group-sm" role="group" aria-label="Manual upload actions">
+                        <button type="button" class="btn btn-outline-secondary" id="manualUploadRefreshBtn" title="Refresh uploads list">⟳</button>
+                        <button type="button" class="btn btn-outline-secondary" id="manualUploadBrowseBtn" title="Browse uploads">Browse</button>
+                        <label for="modalQuickAddUploadInput" class="btn btn-outline-secondary mb-0" title="Upload new file">Upload</label>
+                        <input type="file" id="modalQuickAddUploadInput" class="visually-hidden" aria-label="Upload new file to manual uploads">
+                      </div>
+                    </div>
+                    <select id="manualUploadSelect" class="form-select" aria-label="Select manual upload file">
+                      <option value="">— No file selected —</option>
+                    </select>
+                    <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+                      <span id="manualUploadSummary" class="text-muted small">No file selected.</span>
+                      <div class="btn-group btn-group-sm" role="group" aria-label="Manual upload selection actions">
+                        <button type="button" class="btn btn-outline-secondary" id="manualUploadClearBtn">Clear</button>
+                        <button type="button" class="btn btn-outline-secondary" id="modalQuickAddManualDone">Done</button>
+                      </div>
+                    </div>
+                    <hr class="my-3">
+                  </div>
+                  <div id="modalQuickAddMessage" class="alert hidden mt-2" role="status"></div>
+                </div>
+                <input type="search" id="downloadSearch" class="form-control mb-2" placeholder="Filter by keyword, type, or format...">
                 <div id="downloadSummary" class="mb-2"></div>
                 <div id="downloadOptions"></div>
               </div>
@@ -545,6 +984,28 @@
             </div>
           </div>`;
         document.body.appendChild(modal);
+        // Refresh handles to newly created elements and bind listeners
+        el.modalAddDirectUrl = $('#modalAddDirectUrl');
+        el.modalAddManualUpload = $('#modalAddManualUpload');
+        el.modalQuickAddContainer = $('#modalQuickAddContainer');
+        el.modalQuickAddDirectPanel = $('#modalQuickAddDirectPanel');
+        el.modalQuickAddManualPanel = $('#modalQuickAddManualPanel');
+        el.modalQuickAddMessage = $('#modalQuickAddMessage');
+        el.modalQuickAddDirectAdd = $('#modalQuickAddDirectAdd');
+        el.modalQuickAddDirectCancel = $('#modalQuickAddDirectCancel');
+        el.modalQuickAddManualDone = $('#modalQuickAddManualDone');
+        el.modalQuickAddUploadInput = $('#modalQuickAddUploadInput');
+        el.manualUploadSelect = $('#manualUploadSelect');
+        el.manualUploadSummary = $('#manualUploadSummary');
+        el.manualUploadRefreshBtn = $('#manualUploadRefreshBtn');
+        el.manualUploadBrowseBtn = $('#manualUploadBrowseBtn');
+        el.manualUploadClearBtn = $('#manualUploadClearBtn');
+        el.directUrlTextarea = $('#directUrlTextarea');
+        el.directUrlFeedback = $('#directUrlFeedback');
+        el.directUrlClearBtn = $('#directUrlClearBtn');
+        initManualUploadControl();
+        initDirectUrlControl();
+        initModalQuickAdd();
       }
       return {
         modal,
@@ -558,6 +1019,8 @@
     },
     open() {
       const { modal } = this.get();
+      hideModalQuickAdd();
+      setModalQuickAddMessage();
       const inst = window.bootstrap?.Modal.getOrCreateInstance(modal, { keyboard: true, backdrop: true });
       inst.show();
     },
@@ -565,6 +1028,8 @@
       const { modal } = this.get();
       const inst = window.bootstrap?.Modal.getOrCreateInstance(modal);
       inst?.hide();
+      setModalQuickAddContext(null);
+      hideModalQuickAdd();
     }
   };
 
@@ -1048,6 +1513,30 @@
     );
   }
 
+  function toTitleCase(val) {
+    const s = String(val || '').replace(/_/g, ' ').trim();
+    return s ? s.replace(/\b\w/g, c => c.toUpperCase()) : '';
+  }
+
+  function buildUrlOptions(urls, processedMap = {}) {
+    return urls.map((url, idx) => {
+      const entry = processedMap[url];
+      const rawStatus = entry && typeof entry.status === 'string' ? entry.status.trim().toLowerCase() : '';
+      const statusKey = rawStatus || 'unprocessed';
+      const friendlyStatus = toTitleCase(statusKey);
+      const flagged = !!(entry && (entry.flagged_for_review || entry.flagged));
+      const metaParts = [];
+      if (friendlyStatus) metaParts.push(friendlyStatus);
+      if (flagged) metaParts.push('Flagged');
+      return {
+        index: idx + 1,
+        label: url,
+        meta: metaParts.join(' • '),
+        statusKey,
+      };
+    });
+  }
+
   function openUrlSelectionModal(sessionId, urls, processed = {}, meta = {}) {
     const placeholder = meta.placeholder || 'Enter URL index or filter…';
     const hintText = meta.hint || 'Search or filter (state:/county:/text)';
@@ -1060,27 +1549,8 @@
 
     const context = getUrlPromptContext(sessionId) || { processed: {} };
     const processedMap = (context.processed && typeof context.processed === 'object') ? context.processed : {};
-    const toTitle = (val) => {
-      const s = String(val || '').replace(/_/g, ' ').trim();
-      return s ? s.replace(/\b\w/g, c => c.toUpperCase()) : '';
-    };
 
-    const options = sanitized.map((url, idx) => {
-      const entry = processedMap[url];
-      const rawStatus = entry && typeof entry.status === 'string' ? entry.status.trim().toLowerCase() : '';
-      const statusKey = rawStatus || 'unprocessed';
-      const friendlyStatus = toTitle(statusKey);
-      const flagged = !!(entry && (entry.flagged_for_review || entry.flagged));
-      const metaParts = [];
-      if (friendlyStatus) metaParts.push(friendlyStatus);
-      if (flagged) metaParts.push('Flagged');
-      return {
-        index: idx + 1,
-        label: url,
-        meta: metaParts.join(' • '),
-        statusKey,
-      };
-    });
+    const options = buildUrlOptions(sanitized, processedMap);
 
     if (sessionId === activeSessionId) {
       lastPromptContext = { kind: 'url', session_id: sessionId };
@@ -1093,7 +1563,7 @@
     }, {});
     const statusSummary = Object.entries(statusCounts)
       .filter(([, count]) => count > 0)
-      .map(([status, count]) => `${count} ${toTitle(status)}`)
+      .map(([status, count]) => `${count} ${toTitleCase(status)}`)
       .join(' • ');
     const summaryLines = [
       `${options.length} URL(s)`
@@ -1796,8 +2266,29 @@
       updatePipelineHintForPhase();
     }
     logPanelControl?.collapse();
-    // sync lastContestOptions for this session
-    lastContestOptions = getContestOptions(activeSessionId);
+    if (activeSessionId) {
+      if (pendingManualUploadSelection && !manualUploadSelectionBySession.has(activeSessionId)) {
+        manualUploadSelectionBySession.set(activeSessionId, pendingManualUploadSelection);
+      }
+      manualUploadSelection = manualUploadSelectionBySession.get(activeSessionId) || null;
+      if (pendingDirectUrlDraft && !directUrlDraftBySession.has(activeSessionId)) {
+        directUrlDraftBySession.set(activeSessionId, pendingDirectUrlDraft);
+      }
+    } else {
+      manualUploadSelection = manualUploadSelection || pendingManualUploadSelection || null;
+    }
+    if (activeSessionId) {
+      pendingManualUploadSelection = null;
+      pendingDirectUrlDraft = '';
+    }
+    syncManualUploadControls();
+    const directDraft = activeSessionId
+      ? (directUrlDraftBySession.get(activeSessionId) || '')
+      : (pendingDirectUrlDraft || el.directUrlTextarea?.value || '');
+    if (el.directUrlTextarea) {
+      el.directUrlTextarea.value = directDraft;
+    }
+    updateDirectUrlFeedback();
     if (earlyQueue.length && el.outputDiv) {
       earlyQueue.forEach(d => renderParserOutput(d));
       flushBatch();
@@ -2006,7 +2497,7 @@
 
     function deriveType() {
       if (providedType) {
-        const key = providedType.toLowerCase().replace(/[\s\-]/g,'_');
+        const key = providedType.toLowerCase().replace(/[\s-]/g, '_');
         return TYPE_CANON[key] || key;
       }
       if ('anomalies' in obj || 'integrity_issues' in obj) return 'ai_analysis';
@@ -2465,7 +2956,28 @@
         earlyQueue = [];
       }
     }
-    const desiredSource = (el.fileSourceSelect?.value === 'uploads') ? 'uploads' : 'input';
+    const { valid: directUrls, invalid: invalidUrls } = parseDirectUrlField();
+    if (invalidUrls.length) {
+      alert(`Fix ${invalidUrls.length} invalid URL${invalidUrls.length === 1 ? '' : 's'} before running.`);
+      el.directUrlTextarea?.focus();
+      return;
+    }
+    if (directUrls.length > MAX_DIRECT_URLS) {
+      alert(`Please limit direct URLs to ${MAX_DIRECT_URLS}.`);
+      el.directUrlTextarea?.focus();
+      return;
+    }
+
+    let desiredSource = (el.fileSourceSelect?.value === 'uploads') ? 'uploads' : 'input';
+    if (manualUploadSelection && desiredSource !== 'uploads') {
+      desiredSource = 'uploads';
+      if (el.fileSourceSelect) el.fileSourceSelect.value = 'uploads';
+    }
+    if (directUrls.length && desiredSource === 'uploads') {
+      alert('Direct URLs are ignored when Manual Uploads is selected. Clear the upload selection or switch the File Source.');
+      return;
+    }
+
     const desiredOrigin = desiredSource === 'uploads' ? 'user' : 'default';
     updateSessionSourceMeta(activeSessionId, desiredSource, desiredOrigin);
     emitManualFileSource();
@@ -2478,11 +2990,19 @@
     el.runBtn.setAttribute('data-running','true');
     el.runBtn.textContent = 'Running...';
     const dispatchRun = () => {
-      socket.emit('run_parser', {
+      const payload = {
         session_id: activeSessionId,
         file_source: desiredSource,
         manual_source_origin: desiredOrigin,
-      });
+      };
+      if (manualUploadSelection && desiredSource === 'uploads') {
+        payload.manual_upload_path = manualUploadSelection.relPath;
+        payload.manual_upload_name = manualUploadSelection.name;
+      }
+      if (directUrls.length) {
+        payload.direct_urls = directUrls;
+      }
+      socket.emit('run_parser', payload);
       setTimeout(() => socket && socket.emit('get_session_history', { session_id: activeSessionId }), 600);
     };
 
@@ -3111,6 +3631,8 @@
 
     function handleSessionDeleted({ session_id }) {
       sessionMirror.remove(session_id);
+      manualUploadSelectionBySession.delete(session_id);
+      directUrlDraftBySession.delete(session_id);
       const filtered = getSessions().filter(s => s !== session_id);
       syncSessionCache(filtered);
       if (activeSessionId === session_id) setActiveSession(filtered[0] || '');
@@ -3712,6 +4234,9 @@
     pipelineControl?.reset();
   updatePipelineMetadataForActive();
     initFileSource();
+  initManualUploadControl();
+  initDirectUrlControl();
+  initModalQuickAdd();
     initOutputBypass();
     initCollapsibles();
     initQuickActions();

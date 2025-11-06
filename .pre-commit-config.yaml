@@ -1,0 +1,27 @@
+repos:
+  - repo: local
+    hooks:
+      - id: eslint-strict
+        name: eslint (strict)
+        entry: npm run lint:strict
+        language: system
+        pass_filenames: false
+        types: [javascript, jsx]
+      - id: tscheck
+        name: typescript --noEmit
+        entry: npm run tscheck
+        language: system
+        pass_filenames: false
+        types: [javascript, jsx]
+      - id: ruff
+        name: ruff
+        entry: ruff check
+        language: system
+        types: [python]
+        additional_dependencies: []
+      - id: mypy
+        name: mypy
+        entry: python -m mypy
+        language: system
+        pass_filenames: false
+        types: [python]

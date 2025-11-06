@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import eventlet
-
-eventlet.monkey_patch()
-
 import gzip
 import os
 import re
@@ -14,7 +10,9 @@ import time
 from datetime import datetime, timezone
 from threading import Event, Thread
 from typing import Callable, Tuple
+from urllib.parse import urlparse
 
+import eventlet
 import orjson
 import psycopg2
 from flask import (
@@ -47,18 +45,17 @@ from webapp.parser.config import (
     POSTGRES_USER_RAW,
     RUN_HISTORY_FILE,
     SUPPORTED_EXTENSION_SET,
-    SUPPORTED_FORMATS,
     UPLOADS_DIR,
     URL_LIST_FILE,
 )
 from webapp.parser.health.session_manager import SessionManager
+from webapp.parser.utils.logger_singleton import logger, prompt
 from webapp.parser.utils.session_state import (
+    DEFAULT_PHASE_BY_STATE,
     PipelinePhase,
     SessionState,
-    DEFAULT_PHASE_BY_STATE,
     export_session_enums,
 )
-from webapp.parser.utils.logger_singleton import logger, prompt
 from webapp.parser.utils.shared_logic import (
     safe_get,
     safe_is_set,
@@ -73,6 +70,8 @@ from webapp.parser.web_pipeline import (
     cancellation_manager,
     process_urls_for_web,
 )
+
+eventlet.monkey_patch()
 
 # Lazy DB table init flag
 _tables_initialized = False
@@ -155,6 +154,8 @@ if HB_INTERVAL_OVERRIDE:
         HEARTBEAT_INTERVAL = max(3, int(HB_INTERVAL_OVERRIDE))
     except ValueError:
         pass
+
+DIRECT_URL_LIMIT = 20
 
 # 4. Utility Functions
 
@@ -1666,7 +1667,6 @@ def on_join(data):
         return
     join_room(sid)
     username = safe_get(data, 'username')
-    existed = session_manager.has_session(sid)
     meta = session_manager.ensure_session(sid, username)
     session_manager.mark_active(sid)
     session_manager.touch_session(sid)
@@ -2013,15 +2013,101 @@ def handle_run_parser(data=None) -> None:
     requested_origin = safe_lower(safe_get(payload, 'manual_source_origin', None))
     if requested_origin not in {'user', 'default', 'server'}:
         requested_origin = 'user' if safe_get(payload, 'file_source') == 'uploads' else session_manager.get_manual_source_origin(session_id)
-    session_manager.set_manual_source(session_id, requested_source, origin=requested_origin)
-    output_bypass_flag = is_output_bypassed(session_id)
-    lock_session(session_id)
 
     force_parse_input_file = None
     force_parse_format = None
-    if requested_source == 'uploads':
+    manual_upload_rel = None
+    manual_upload_name = safe_strip(safe_get(payload, 'manual_upload_name', ''))
+    raw_manual_upload_path = safe_strip(safe_get(payload, 'manual_upload_path', ''))
+    abs_uploads_dir = os.path.abspath(UPLOADS_DIR)
+
+    if raw_manual_upload_path:
+        normalized_rel = raw_manual_upload_path.replace('\\', '/').strip('/')
+        candidate_path = os.path.normpath(os.path.join(abs_uploads_dir, normalized_rel))
+        if candidate_path.startswith(abs_uploads_dir) and os.path.isfile(candidate_path):
+            manual_upload_rel = normalized_rel
+            if not manual_upload_name:
+                manual_upload_name = os.path.basename(candidate_path)
+            requested_source = 'uploads'
+            requested_origin = 'user'
+            force_parse_input_file = manual_upload_rel
+            guessed_ext = ''
+            try:
+                _, ext = os.path.splitext(manual_upload_name or manual_upload_rel)
+                guessed_ext = safe_lower(ext.lstrip('.'))
+            except Exception:
+                guessed_ext = ''
+            if guessed_ext:
+                force_parse_format = guessed_ext
+            session['FORCE_PARSE_INPUT_FILE'] = manual_upload_rel
+            session['FORCE_PARSE_FORMAT'] = force_parse_format or guessed_ext or ''
+            session['manual_source_pref'] = 'uploads'
+            logger.info({
+                "level": "INFO",
+                "type": "manual_override",
+                "message": f"[ManualOverride] Using uploaded file: {manual_upload_rel}",
+                "session_id": session_id
+            })
+        else:
+            logger.warning({
+                "level": "WARNING",
+                "type": "manual_override",
+                "message": f"[ManualOverride] Invalid manual upload selection: {raw_manual_upload_path}",
+                "session_id": session_id
+            })
+
+    if requested_source == 'uploads' and force_parse_input_file is None:
         force_parse_input_file = session.get('FORCE_PARSE_INPUT_FILE')
         force_parse_format = session.get('FORCE_PARSE_FORMAT')
+
+    raw_direct_urls = safe_get(payload, 'direct_urls', [])
+    direct_urls = []
+    if isinstance(raw_direct_urls, list):
+        for entry in raw_direct_urls:
+            url_text = safe_strip(entry)
+            if not url_text:
+                continue
+            try:
+                parsed = urlparse(url_text)
+            except Exception:
+                parsed = None
+            if not parsed or parsed.scheme not in {'http', 'https'} or parsed.username or parsed.password:
+                logger.warning({
+                    "level": "WARNING",
+                    "type": "input",
+                    "message": f"Ignoring invalid direct URL: {url_text}",
+                    "session_id": session_id
+                })
+                continue
+            direct_urls.append(url_text)
+    if len(direct_urls) > DIRECT_URL_LIMIT:
+        logger.warning({
+            "level": "WARNING",
+            "type": "input",
+            "message": f"Direct URL list trimmed to {DIRECT_URL_LIMIT} entries.",
+            "session_id": session_id
+        })
+        direct_urls = direct_urls[:DIRECT_URL_LIMIT]
+    if direct_urls and requested_source == 'uploads':
+        logger.warning({
+            "level": "WARNING",
+            "type": "input",
+            "message": "Direct URLs ignored because manual uploads source is active.",
+            "session_id": session_id
+        })
+        direct_urls = []
+    if direct_urls:
+        logger.info({
+            "level": "INFO",
+            "type": "input",
+            "message": f"Direct URL override engaged with {len(direct_urls)} link(s).",
+            "session_id": session_id,
+            "urls": direct_urls
+        })
+
+    session_manager.set_manual_source(session_id, requested_source, origin=requested_origin)
+    output_bypass_flag = is_output_bypassed(session_id)
+    lock_session(session_id)
 
 
     # --- Register per-session emitter (used by prompt/manual emits) ---
@@ -2078,7 +2164,9 @@ def handle_run_parser(data=None) -> None:
         "ts": start_ts,
         "source": requested_source,
         "output_bypass": output_bypass_flag,
-        "status": "running"
+        "status": "running",
+        "manual_upload": manual_upload_rel,
+        "direct_url_count": len(direct_urls)
     })
 
     # --- Prepare cancellation and prompt queue ---
@@ -2101,7 +2189,8 @@ def handle_run_parser(data=None) -> None:
                 manual_source=requested_source,
                 disable_internal_heartbeat=True,
                 force_parse_input_file=force_parse_input_file,
-                force_parse_format=force_parse_format
+                force_parse_format=force_parse_format,
+                urls=direct_urls if direct_urls else None
             )
             logger.info({
                 "level": "INFO",
@@ -2131,7 +2220,9 @@ def handle_run_parser(data=None) -> None:
                 "output_bypass": output_bypass_flag,
                 "status": status,
                 "error": err,
-                "duration_ms": duration_ms
+                "duration_ms": duration_ms,
+                "manual_upload": manual_upload_rel,
+                "direct_url_count": len(direct_urls)
             })
             session_manager.pop_thread(session_id)
             final_state = SessionState.COMPLETED
@@ -2144,6 +2235,9 @@ def handle_run_parser(data=None) -> None:
                 "manual_source_origin": requested_origin,
                 "run_id": run_id,
                 "output_bypass": output_bypass_flag,
+                "manual_upload_file": manual_upload_rel,
+                "direct_url_count": len(direct_urls),
+                "direct_urls": direct_urls,
             }
             if err:
                 extras["last_error"] = err

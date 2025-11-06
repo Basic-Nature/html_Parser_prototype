@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import time
 import os
+import time
 from datetime import datetime, timezone
 from queue import Queue
 from threading import RLock, Thread

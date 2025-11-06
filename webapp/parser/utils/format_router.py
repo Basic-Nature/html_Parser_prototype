@@ -4,7 +4,7 @@ import tempfile
 import time
 from difflib import get_close_matches
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import requests
 
@@ -12,18 +12,182 @@ from ..config import DISABLE_HTML_FALLBACK, SUPPORTED_FORMATS
 from ..Context_Integration.Context_Library.constants import CONTEST_KEYWORDS
 from ..handlers.formats import csv_handler, json_handler, pdf_handler, txt_handler, xlsx_handler
 from .browser_utils import (
+    safe_click,
     safe_content,
     safe_context_library,
     safe_context_result,
     safe_get_attribute,
+    safe_inner_text,
     safe_query_selector_all,
     safe_url,
+    safe_wait_for_timeout,
 )
 from .download_utils import download_file, ensure_input_directory
 from .html_scanner import append_pattern_kb, load_pattern_kb
 from .logger_singleton import logger, prompt
 from .shared_logic import safe_lower, safe_parse
 
+FORMAT_KEYWORDS = [
+    ("xlsx", {"xlsx", "excel", "spreadsheet"}),
+    ("xls", {"xls", "excel"}),
+    ("csv", {"csv", "comma", "delimited"}),
+    ("json", {"json", "geojson", "api"}),
+    ("pdf", {"pdf", "portable document", "report"}),
+    ("txt", {"txt", "text", "plain"}),
+]
+
+CONTENT_TYPE_FORMAT_MAP = {
+    "application/pdf": "pdf",
+    "application/json": "json",
+    "text/json": "json",
+    "text/csv": "csv",
+    "application/csv": "csv",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/octet-stream": None,
+    "text/plain": "txt",
+}
+
+FILENAME_FROM_DISPOSITION = re.compile(
+    r"filename\*=UTF-8''(?P<utf8>[^;]+)|filename=\"?(?P<plain>[^\";]+)\"?",
+    re.IGNORECASE,
+)
+
+
+def _normalize_text(text: Optional[str]) -> str:
+    return (text or "").strip().lower()
+
+
+def _infer_format_from_text(text: Optional[str]) -> Optional[str]:
+    norm = _normalize_text(text)
+    if not norm:
+        return None
+    for fmt, keywords in FORMAT_KEYWORDS:
+        for kw in keywords:
+            if kw in norm:
+                return fmt
+    return None
+
+
+def _infer_format_from_attr_value(attr: str, value: str) -> Optional[str]:
+    norm_val = _normalize_text(value)
+    if not norm_val:
+        return None
+    if attr in {"data-format", "data-filetype", "data-extension", "data-export", "data-type", "data-value", "aria-label", "title"}:
+        return _infer_format_from_text(norm_val)
+    if attr == "class":
+        return _infer_format_from_text(norm_val)
+    return None
+
+
+def _extract_candidate_urls(attr: str, raw_value: str) -> List[str]:
+    if not raw_value:
+        return []
+    raw_value = raw_value.strip()
+    if attr == "onclick":
+        urls = []
+        urls.extend(re.findall(r"https?://[^\s'\"<>]+", raw_value))
+        urls.extend(re.findall(r"/[^\s'\"<>]+", raw_value))
+        urls.extend(
+            match
+            for match in re.findall(r"['\"]([^'\"]+\.(?:json|csv|pdf|txt|xlsx|xls))['\"]", raw_value, re.IGNORECASE)
+        )
+        deduped = []
+        for url in urls:
+            if not url:
+                continue
+            lower = url.lower()
+            if lower in {"javascript:void(0)", "#"}:
+                continue
+            if url not in deduped:
+                deduped.append(url)
+        return deduped
+    if raw_value.lower().startswith("javascript"):
+        return []
+    return [raw_value]
+
+
+def _clean_filename(name: str) -> str:
+    name = unquote(name or "")
+    name = name.strip()
+    return name or "download"
+
+
+def _guess_filename_from_url(url: str) -> str:
+    try:
+        parsed = urlparse(url)
+        path = parsed.path or ""
+        filename = os.path.basename(path)
+        if filename:
+            return _clean_filename(filename)
+        if parsed.query:
+            for segment in parsed.query.split("&"):
+                if "=" in segment:
+                    _, val = segment.split("=", 1)
+                    val = _clean_filename(val)
+                    if any(val.lower().endswith(f".{ext}") for ext in ("csv", "json", "pdf", "txt", "xlsx", "xls")):
+                        return val
+        return _clean_filename(url.split("//")[-1].split("/")[-1])
+    except Exception:
+        return "download"
+
+
+def _extract_filename_from_disposition(disposition: Optional[str]) -> Optional[str]:
+    if not disposition:
+        return None
+    match = FILENAME_FROM_DISPOSITION.search(disposition)
+    if not match:
+        return None
+    filename = match.group("utf8") or match.group("plain")
+    return _clean_filename(filename)
+
+
+def _probe_remote_format(page, resolved_url: str, session_id: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
+    referer = getattr(page, "url", "") if page is not None else ""
+    headers = {**_browser_headers(page, referer), **_cookies_header_from_page(page)}
+    content_type = None
+    disposition = None
+    filename = None
+    status = None
+    try:
+        response = None
+        if page is not None and hasattr(page, "context") and hasattr(page.context, "request"):
+            response = page.context.request.head(resolved_url, headers=headers, timeout=20_000)
+            status = getattr(response, "status", None)
+            if status and status >= 400:
+                response = None
+        if response is None:
+            try:
+                resp = requests.head(resolved_url, headers=headers, allow_redirects=True, timeout=15)
+                status = getattr(resp, "status_code", None)
+                if status and status >= 400:
+                    resp = None
+                response = resp
+            except Exception:
+                response = None
+        if response is not None:
+            headers_map = {}
+            if hasattr(response, "headers"):
+                headers_map = dict(response.headers)
+            content_type = headers_map.get("content-type") or headers_map.get("Content-Type")
+            disposition = headers_map.get("content-disposition") or headers_map.get("Content-Disposition")
+            filename = _extract_filename_from_disposition(disposition)
+    except Exception as exc:
+        logger.debug({
+            "level": "DEBUG",
+            "type": "download",
+            "message": f"[format_router] HEAD probe failed for {resolved_url}: {exc}",
+            "session_id": session_id
+        })
+    fmt = None
+    if content_type:
+        content_type = content_type.split(";")[0].strip().lower()
+        fmt = CONTENT_TYPE_FORMAT_MAP.get(content_type)
+    if not fmt and disposition:
+        fmt = _infer_format_from_text(disposition)
+    if not fmt and filename:
+        fmt = _infer_format_from_url(filename)
+    return fmt, filename
 
 def _browser_headers(page, referer: str) -> dict:
     try:
@@ -113,6 +277,63 @@ def summarize_downloads(options):
         ext = fmt.upper()
         summary[ext] = summary.get(ext, 0) + 1
     return ", ".join(f"{k}: {v}" for k, v in summary.items())
+
+def _infer_format_from_url(url: str) -> Optional[str]:
+    lowered = safe_lower(url or "")
+    for ext in (".json", ".csv", ".pdf", ".txt", ".xlsx", ".xls"):
+        if ext in lowered:
+            return ext.strip(".")
+    return None
+
+
+def _expose_download_interfaces(page, session_id: Optional[str] = None) -> None:
+    if page is None:
+        return
+    keywords = {"download", "export", "view", "export data", "save"}
+    try:
+        elements = safe_query_selector_all(page, "a, button") or []
+    except Exception:
+        elements = []
+    seen: set[str] = set()
+    for element in elements:
+        try:
+            href = (safe_get_attribute(element, "href", logger) or "").lower()
+            if any(ext in href for ext in (".json", ".csv", ".pdf", ".txt", ".xlsx", ".xls")):
+                continue
+            text = (safe_inner_text(element, logger) or "").strip().lower()
+            attrs = " ".join(
+                filter(
+                    None,
+                    [
+                        safe_get_attribute(element, "data-toggle", logger),
+                        safe_get_attribute(element, "aria-haspopup", logger),
+                        safe_get_attribute(element, "class", logger),
+                    ],
+                )
+            ).lower()
+            identifier = safe_get_attribute(element, "id", logger) or f"{text}:{attrs}"
+            if identifier in seen:
+                continue
+            should_click = False
+            if any(keyword in text for keyword in keywords):
+                should_click = True
+            if "dropdown" in attrs or safe_get_attribute(element, "data-target", logger):
+                should_click = True
+            if not should_click:
+                continue
+            if safe_click(element, logger):
+                safe_wait_for_timeout(page, 250, logger)
+                seen.add(identifier)
+                logger.info({
+                    "level": "INFO",
+                    "type": "download",
+                    "message": "[format_router] Expanded potential download menu.",
+                    "session_id": session_id,
+                    "identifier": identifier,
+                })
+        except Exception:
+            continue
+
 
 def detect_format_from_links(page, base_url=None, auto_confirm=False) -> list[tuple[str, str]]:
     """
@@ -334,7 +555,26 @@ def prompt_and_handle_download(
         "session_id": session_id
     })
 
+    _expose_download_interfaces(page, session_id=session_id)
+
     html = safe_content(page, session_id=session_id)
+    page_url = safe_url(page)
+    probe_cache: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
+    probe_budget = 6
+
+    def probe_format_for_url(resolved_url: str) -> Tuple[Optional[str], Optional[str]]:
+        nonlocal probe_budget
+        if not resolved_url:
+            return None, None
+        if resolved_url in probe_cache:
+            return probe_cache[resolved_url]
+        if probe_budget <= 0:
+            probe_cache[resolved_url] = (None, None)
+            return probe_cache[resolved_url]
+        probe_budget -= 1
+        fmt_guess, remote_name = _probe_remote_format(page, resolved_url, session_id=session_id)
+        probe_cache[resolved_url] = (fmt_guess, remote_name)
+        return probe_cache[resolved_url]
 
     # 1) Context library links (if any)
     supported_links: List[Dict[str, str]] = []
@@ -345,20 +585,71 @@ def prompt_and_handle_download(
             supported_links = [link for link in download_links if isinstance(link, dict)]
     except Exception:
         supported_links = []
-
     # 2) DOM anchors for supported formats
     dom_links: List[Dict[str, str]] = []
     try:
-        anchors = safe_query_selector_all(page, "a") or []
-        for a in anchors:
-            href = safe_get_attribute(a, "href", logger)
-            if not href:
-                continue
-            h = str(href).lower()
-            for ext in (".json", ".csv", ".pdf", ".txt", ".xlsx", ".xls"):
-                if ext in h:
-                    dom_links.append({"href": href, "format": ext.strip("."), "source": "dom"})
-                    break
+        selectors = "a, button, [data-href], [data-url], [data-download], [data-file], [data-link], [data-src], [data-value]"
+        anchors = safe_query_selector_all(page, selectors) or []
+        base_url = page_url
+        attribute_candidates = [
+            "href",
+            "data-href",
+            "data-url",
+            "data-download",
+            "data-file",
+            "data-link",
+            "data-src",
+            "data-value",
+            "value",
+            "formaction",
+            "onclick",
+        ]
+        hint_attributes = [
+            "aria-label",
+            "title",
+            "data-format",
+            "data-filetype",
+            "data-extension",
+            "data-export",
+            "data-type",
+            "download",
+            "class",
+        ]
+        for element in anchors:
+            label_text = safe_inner_text(element, logger) or ""
+            hint_values = {attr: safe_get_attribute(element, attr, logger) or "" for attr in hint_attributes}
+            for attr in attribute_candidates:
+                raw_value = safe_get_attribute(element, attr, logger) or ""
+                if not raw_value:
+                    continue
+                for candidate in _extract_candidate_urls(attr, raw_value):
+                    resolved = _build_download_url(base_url, candidate)
+                    if not resolved or resolved in {"#", "javascript:void(0)", "about:blank"}:
+                        continue
+                    fmt = _infer_format_from_url(resolved)
+                    fmt = fmt or _infer_format_from_attr_value(attr, raw_value)
+                    fmt = fmt or _infer_format_from_text(label_text)
+                    if not fmt:
+                        for hint_attr, hint_val in hint_values.items():
+                            fmt = fmt or _infer_format_from_attr_value(hint_attr, hint_val)
+                            if fmt:
+                                break
+                    remote_filename = None
+                    if not fmt:
+                        fmt, remote_filename = probe_format_for_url(resolved)
+                    else:
+                        cached = probe_cache.get(resolved)
+                        if cached and cached[1]:
+                            remote_filename = cached[1]
+                    if not fmt:
+                        continue
+                    dom_links.append({
+                        "href": resolved,
+                        "format": fmt,
+                        "source": f"dom:{attr}",
+                        "label": label_text,
+                        "filename": remote_filename or _guess_filename_from_url(resolved),
+                    })
     except Exception as e:
         logger.warning({
             "level": "WARNING",
@@ -375,12 +666,23 @@ def prompt_and_handle_download(
     for link in (supported_links + dom_links + dynamic_links):
         href = link.get("href")
         fmt = link.get("format")
-        if href and fmt:
-            all_links[(href, fmt)] = link
+        if not (href and fmt):
+            continue
+        key = (href, fmt)
+        existing = all_links.get(key)
+        if existing:
+            if not existing.get("filename") and link.get("filename"):
+                existing["filename"] = link.get("filename")
+            continue
+        all_links[key] = link
     merged_links = list(all_links.values())
 
     # 5) Remove rejected
-    new_links = [link for link in merged_links if link.get("href") not in (rejected_downloads or set())]
+    new_links = [
+        link
+        for link in merged_links
+        if link.get("href") not in (rejected_downloads or set()) and link.get("format")
+    ]
     if not new_links:
         logger.info({
             "level": "INFO",
@@ -440,14 +742,31 @@ def prompt_and_handle_download(
         pass
 
     # 8) Build prompt with contest context
-    confirmed: List[Tuple[str, str]] = [(str(link.get("format","")).lower(), str(link.get("href",""))) for link in new_links]
-    context_options: List[Tuple[str, str, str, str]] = []
-    for fmt, url in confirmed:
-        fname = os.path.basename(url)
-        contest = extract_contest_from_filename(fname)
-        context_options.append((fmt, url, contest, fname))
+    context_options: List[Dict[str, str]] = []
+    for link in new_links:
+        fmt = str(link.get("format", "")).lower()
+        url = str(link.get("href", ""))
+        if not (fmt and url):
+            continue
+        filename = link.get("filename") or _guess_filename_from_url(url)
+        contest = extract_contest_from_filename(filename or url)
+        context_options.append({
+            "format": fmt,
+            "url": url,
+            "contest": contest,
+            "filename": filename,
+        })
 
-    summary = summarize_downloads([(fmt, url) for fmt, url, _, _ in context_options])
+    if not context_options:
+        logger.info({
+            "level": "INFO",
+            "type": "download",
+            "message": "[format_router] Detected downloads lacked recognizable formats after probing.",
+            "session_id": session_id
+        })
+        return None, False
+
+    summary = summarize_downloads([(opt["format"], opt["url"]) for opt in context_options])
     logger.info({
         "level": "INFO",
         "type": "prompt",
@@ -455,7 +774,10 @@ def prompt_and_handle_download(
         "session_id": session_id
     })
 
-    format_options = [f"{fmt.upper()} ({fname}) [{contest}]" for fmt, url, contest, fname in context_options]
+    format_options = [
+        f"{opt['format'].upper()} ({opt['filename']}) [{opt['contest']}]"
+        for opt in context_options
+    ]
     options_lines = [f"  [{i}] {opt}" for i, opt in enumerate(format_options)]
     if not DISABLE_HTML_FALLBACK:
         options_lines.append("  [n or Enter] Skip download")
@@ -509,7 +831,9 @@ def prompt_and_handle_download(
             idx = int(sel)
         else:
             idx = next(i for i, opt in enumerate(format_options) if opt.lower() == sel.lower())
-        fmt, file_url, _, _ = context_options[idx]
+        selected_option = context_options[idx]
+        fmt = selected_option.get("format", "")
+        file_url = selected_option.get("url", "")
         logger.info({
             "level": "INFO",
             "type": "prompt",

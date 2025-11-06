@@ -159,7 +159,7 @@ def process_urls_for_web(
     })
 
     try:
-        urls = kwargs.get("urls")
+        urls = kwargs.pop("urls", None)
 
         # Always pass prompt_queue and max_workers to main()
         main_kwargs = dict(
@@ -237,7 +237,13 @@ def process_urls_for_web(
                 "session_id": session_id
             })
 
-            main(urls=urls, emit_func=emit_func, **main_kwargs)
+            main(
+                urls=urls,
+                emit_func=emit_func,
+                skip_url_prompt=True,
+                url_source_label="direct override",
+                **main_kwargs
+            )
 
         # Completion (single-run)
         if safe_is_set(cancel_flag):

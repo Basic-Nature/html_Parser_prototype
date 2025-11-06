@@ -181,7 +181,7 @@ def parse(page: Page, coordinator: "ContextCoordinator", html_context: dict = No
             logger.debug(f"[DEBUG] Finished toggle second button: {toggle_name2}")
 
             # --- Only autoscroll once, after all toggles ---
-            autoscroll_until_stable(page)
+            autoscroll_until_stable(page, session_id=session_id)
             page.wait_for_timeout(3000)
 
             # --- 9. Extract ballot items using DOM scan and context/NLP ---

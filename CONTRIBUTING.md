@@ -179,6 +179,8 @@ This project is designed to be scalable, readable, and resilient — please read
 
    ```bash
    pip install -r requirements.txt
+   pip install -r requirements-dev.txt  # linting & hooks
+   npm install
    ```
 
 3. Create your `.env` file:
@@ -210,6 +212,18 @@ python webapp/Smart_Elections_Parser_Webapp.py
 - Open your browser to [http://localhost:5000](http://localhost:5000) or the link printed in terminal (often the printed IP Address).
 - The Web UI provides a dashboard, URL hint manager, change history, and a "Run Parser" page with real-time output.
 - This is ideal for teams, researchers, and those learning to code—no Python experience required to use the main features!
+
+---
+
+### 🧹 Static Analysis & Tooling
+
+- Run `npm run check-js` to ensure browser scripts parse cleanly.
+- Use `npm run lint` for the standard ESLint pass; `npm run lint:strict` enforces zero warnings for CI.
+- Apply quick fixes with `npm run lint:fix` or auto-delete dead imports via the ESLint unused-imports plugin.
+- Run `npm run lint:web` for the JavaScript/TypeScript suite only; `npm run test` now runs the full `verify:all` pipeline (syntax, ESLint strict, `tsc --noEmit`, Ruff, and MyPy).
+- Lint Python code with `npm run lint:python`; use `npm run typecheck:py` (or `npm run verify:python`) to run MyPy; both are wired into `npm run verify:all` for full coverage.
+- The TypeScript pass currently covers the Node-side tooling in `scripts/`. Front-end modules can opt in later by moving to `.ts` files or enabling `// @ts-check`.
+- Install git hooks via `pre-commit install` to run ESLint, TypeScript, Ruff, and MyPy automatically on commit.
 
 ---
 

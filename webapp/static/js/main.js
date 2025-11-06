@@ -731,9 +731,6 @@
       const mx = ex + MOON_ORBIT_R * Math.cos(moonOrbitAngle);
       const my = ey + MOON_ORBIT_R * Math.sin(moonOrbitAngle);
 
-      const earthLightAngle = Math.atan2(CX - ex ? CY - ey : 0, CX - ex);
-      const moonLightAngle = Math.atan2(CX - mx ? CY - my : 0, CX - mx);
-
       drawBodyWithShadow(ex, ey, EARTH_R, imgEarth, earthSpinAngle, Math.atan2(CY - ey, CX - ex), '#4aa3ff');
       drawBodyWithShadow(mx, my, MOON_R, imgMoon, moonSpinAngle, Math.atan2(CY - my, CX - mx), '#d0d0d0');
 

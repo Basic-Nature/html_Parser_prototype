@@ -7,7 +7,7 @@ party modules are imported. Use this sparingly to keep surprises to a minimum.
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any, Callable
+from typing import Callable
 
 
 def _alias_click_split_arg_string() -> None:

@@ -3,11 +3,11 @@ from __future__ import annotations
 # ==============================================================
 # 🗳️ Smart Elections: HTML Election Results Parser
 # ==============================================================
-import csv
 import os
 import re
 import sys
 import threading
+from collections import Counter, defaultdict
 from datetime import datetime
 from multiprocessing import Pool
 from typing import Any, Dict, List
@@ -38,11 +38,19 @@ from .utils.browser_utils import (
     sync_safe_browser_close,
 )
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
-from .utils.format_router import prompt_and_handle_download
+from .utils.dynamic_table_extractor import dynamic_table_extractor
+from .utils.format_router import prompt_and_handle_download, route_format_handler
 from .utils.logger_singleton import logger, prompt
 from .utils.misc_utils import load_processed_urls
-from .utils.shared_logic import infer_state_county_from_url, safe_is_set, safe_parse, safe_strip
-from .utils.dynamic_table_extractor import dynamic_table_extractor
+from .utils.output_utils import finalize_election_output
+from .utils.shared_logic import (
+    infer_state_county_from_url,
+    safe_is_set,
+    safe_parse,
+    safe_slug,
+    safe_strip,
+)
+from .utils.table_builder import build_table_noninteractive
 
 if CACHE_RESET and PROCESSED_URLS_FILE.exists():
     logger.warning("Deleting .processed_urls cache for fresh start...")
@@ -324,6 +332,86 @@ def process_format_override(session_id=None, source_dir='input', output_bypass=F
         })
         return None
 
+    if force_parse_input_file:
+        forced_rel = str(force_parse_input_file).replace("\\", "/").strip("/")
+        forced_path = os.path.normpath(os.path.join(input_folder, forced_rel))
+        if forced_path.startswith(input_folder) and os.path.isfile(forced_path):
+            fmt = (force_parse_format or os.path.splitext(forced_path)[1].lstrip(".")).lower()
+            if not fmt:
+                logger.error({
+                    "level": "ERROR",
+                    "type": "manual_override",
+                    "message": f"[ManualOverride] Could not infer format for {forced_rel}.",
+                    "session_id": session_id
+                })
+                return None
+            handler = route_format_handler(fmt)
+            if not handler:
+                logger.error({
+                    "level": "ERROR",
+                    "type": "manual_override",
+                    "message": f"[ManualOverride] No handler for format: {fmt}",
+                    "session_id": session_id
+                })
+                return None
+            logger.info({
+                "level": "INFO",
+                "type": "manual_override",
+                "message": f"[ManualOverride] Parsing selected upload: {forced_rel}",
+                "session_id": session_id
+            })
+            result = safe_parse(
+                handler,
+                page=None,
+                manual_file=forced_path,
+                source_url="manual_override",
+                logger=logger,
+                session_id=session_id
+            )
+            if not (isinstance(result, tuple) and len(result) == 4):
+                logger.error({
+                    "level": "ERROR",
+                    "type": "manual_override",
+                    "message": "[ManualOverride] Invalid result format from forced upload parse.",
+                    "session_id": session_id
+                })
+                return None
+            output_file_path = None
+            metadata = result[-1]
+            if isinstance(metadata, dict):
+                output_file_path = metadata.get("output_file")
+            if output_bypass and output_file_path and os.path.exists(output_file_path):
+                try:
+                    os.remove(output_file_path)
+                    logger.info({
+                        "level": "INFO",
+                        "type": "manual_override",
+                        "message": f"[ManualOverride] Output bypass active — removed {output_file_path}",
+                        "session_id": session_id
+                    })
+                except Exception as exc:
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": "manual_override",
+                        "message": f"[ManualOverride] Failed to remove bypassed file: {exc}",
+                        "session_id": session_id
+                    })
+            mark_url_processed("manual_override", status="success", session_id=session_id)
+            logger.info({
+                "level": "INFO",
+                "type": "manual_override",
+                "message": "[ManualOverride] Manual upload parse succeeded via direct selection.",
+                "session_id": session_id
+            })
+            return True
+        else:
+            logger.warning({
+                "level": "WARNING",
+                "type": "manual_override",
+                "message": f"[ManualOverride] Forced upload file not found: {force_parse_input_file}",
+                "session_id": session_id
+            })
+
     files = [f for f in os.listdir(input_folder) if os.path.isfile(os.path.join(input_folder, f))]
     if not files:
         logger.error({
@@ -538,6 +626,135 @@ def _read_text_file_with_fallback(path: str) -> str | None:
 
 
 def _extract_text_blocks(html_text: str, max_rows: int = 200) -> tuple[list[str], list[Dict[str, Any]]]:
+    def _is_numeric_like(value: str) -> bool:
+        if not value:
+            return False
+        token = value.strip().replace(",", "")
+        if token.endswith("%"):
+            token = token[:-1]
+        token = token.strip()
+        return bool(re.fullmatch(r"-?\d+(\.\d+)?", token))
+
+    def _guess_column_name(index: int, values: List[str], delimiter: str) -> str:
+        clean_vals = [v for v in (val.strip() for val in values) if v]
+        if not clean_vals:
+            return f"Column{index+1}"
+        percent_hits = sum(1 for v in clean_vals if "%" in v)
+        numeric_hits = sum(1 for v in clean_vals if _is_numeric_like(v))
+        party_tokens = {"DEM", "DEMOCRAT", "REPUBLICAN", "REP", "IND", "NP", "LIB", "GREEN"}
+        party_hits = sum(1 for v in clean_vals if v.strip().upper() in party_tokens)
+
+        majority_threshold = max(1, int(len(clean_vals) * 0.5))
+
+        if delimiter == "colon" and index == 0:
+            return "Label"
+        if delimiter == "colon" and index == 1:
+            if percent_hits >= majority_threshold:
+                return "Percent"
+            if numeric_hits >= majority_threshold:
+                return "Value"
+            return "Value"
+        if percent_hits >= majority_threshold:
+            return "Percent"
+        if numeric_hits >= majority_threshold:
+            return "Value"
+        if party_hits >= majority_threshold:
+            return "Party"
+        if index == 0:
+            return "Label"
+        return f"Column{index+1}"
+
+    def _detect_structured_lines(section_lines: List[str]) -> tuple[str, List[List[str]]] | None:
+        cleaned = [line.strip() for line in section_lines if line and line.strip()]
+        if len(cleaned) < 2:
+            return None
+        delimiter_specs = [
+            ("colon", r"\s*:\s*"),
+            ("pipe", r"\s*\|\s*"),
+            ("dash", r"\s*[-\u2013\u2014]+\s*"),
+            ("arrow", r"\s*->\s*"),
+            ("semicolon", r"\s*;\s*"),
+            ("comma", r"\s*,\s*"),
+            ("whitespace", r"\s{2,}"),
+        ]
+        for name, pattern in delimiter_specs:
+            split_rows: List[List[str]] = []
+            lengths: List[int] = []
+            for line in cleaned:
+                parts = [part.strip() for part in re.split(pattern, line) if part.strip()]
+                if len(parts) < 2:
+                    continue
+                split_rows.append(parts)
+                lengths.append(len(parts))
+            if not split_rows:
+                continue
+            length_counts = Counter(lengths)
+            most_common = length_counts.most_common(1)[0]
+            common_len, occurrences = most_common
+            if occurrences < 2 or common_len > 8:
+                continue
+            filtered = [parts for parts in split_rows if len(parts) == common_len]
+            if len(filtered) >= 2:
+                return name, filtered
+        whitespace_rows: List[List[str]] = []
+        for line in cleaned:
+            tokens = [tok.strip() for tok in line.split() if tok.strip()]
+            if len(tokens) < 2:
+                continue
+            numeric_tail = sum(1 for tok in tokens if _is_numeric_like(tok) or tok.endswith("%"))
+            if numeric_tail >= 1:
+                whitespace_rows.append(tokens)
+        if whitespace_rows:
+            length_counts = Counter(len(row) for row in whitespace_rows)
+            most_common = length_counts.most_common(1)[0]
+            common_len, occurrences = most_common
+            if occurrences >= 2 and common_len <= 8:
+                filtered = [row for row in whitespace_rows if len(row) == common_len]
+                if len(filtered) >= 2:
+                    return "whitespace", filtered
+        return None
+
+    def _build_structured_rows(sections: Dict[str, List[str]], limit: int) -> tuple[list[str], list[Dict[str, Any]]]:
+        structured: list[Dict[str, Any]] = []
+        column_order: list[str] = []
+        for section, lines in sections.items():
+            detection = _detect_structured_lines(lines)
+            if not detection:
+                continue
+            delimiter_name, parsed_rows = detection
+            if not parsed_rows:
+                continue
+            column_names: list[str] = []
+            width = len(parsed_rows[0])
+            for idx in range(width):
+                values_at_idx = [parts[idx] for parts in parsed_rows if idx < len(parts)]
+                candidate_name = _guess_column_name(idx, values_at_idx, delimiter_name)
+                dedup_index = 1
+                adjusted_name = candidate_name
+                while adjusted_name in column_names:
+                    dedup_index += 1
+                    adjusted_name = f"{candidate_name}_{dedup_index}"
+                column_names.append(adjusted_name)
+                if adjusted_name not in column_order:
+                    column_order.append(adjusted_name)
+            for parts in parsed_rows:
+                if len(structured) >= limit:
+                    break
+                row_payload = {"Section": section}
+                for idx, col_name in enumerate(column_names):
+                    row_payload[col_name] = parts[idx] if idx < len(parts) else ""
+                structured.append(row_payload)
+            if len(structured) >= limit:
+                break
+        if not structured:
+            return [], []
+        headers = ["Section"] + column_order
+        normalized_rows = [
+            {header: row.get(header, "") for header in headers}
+            for row in structured
+        ]
+        return headers, normalized_rows
+
     try:
         from selectolax.parser import HTMLParser
     except ImportError:
@@ -557,6 +774,7 @@ def _extract_text_blocks(html_text: str, max_rows: int = 200) -> tuple[list[str]
     skipped_tags = {"script", "style", "noscript", "template", "meta", "link"}
 
     rows: list[Dict[str, Any]] = []
+    sections: Dict[str, List[str]] = defaultdict(list)
     seen: set[str] = set()
     current_section = "Body"
 
@@ -581,9 +799,14 @@ def _extract_text_blocks(html_text: str, max_rows: int = 200) -> tuple[list[str]
             if text in seen:
                 continue
             seen.add(text)
+            sections[current_section].append(text)
             rows.append({"Section": current_section, "Content": text})
         if len(rows) >= max_rows:
             break
+
+    structured_headers, structured_rows = _build_structured_rows(sections, max_rows)
+    if structured_headers and structured_rows:
+        return structured_headers, structured_rows
 
     if not rows:
         return [], []
@@ -699,72 +922,111 @@ def generate_generic_html_result(
         return None
 
     fieldnames = list(headers)
+    normalized_rows: list[Dict[str, Any]] = []
     for row in rows:
         if isinstance(row, dict):
             for key in row.keys():
                 if key not in fieldnames:
                     fieldnames.append(key)
+            normalized_rows.append({key: row.get(key, "") for key in fieldnames})
+        elif isinstance(row, (list, tuple)):
+            while len(fieldnames) < len(row):
+                fieldnames.append(f"Column{len(fieldnames) + 1}")
+            normalized_rows.append({fieldnames[i]: row[i] if i < len(row) else "" for i in range(len(fieldnames))})
+        else:
+            if not fieldnames:
+                fieldnames.append("Value")
+            normalized_rows.append({fieldnames[0]: row})
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
     base_label = ctx.get("file_name") or ctx.get("county") or ctx.get("state") or ctx.get("url") or "generic_html"
     base_label = safe_strip(str(base_label)) if base_label else "generic_html"
     base_label = re.sub(r"[^A-Za-z0-9]+", "_", base_label or "generic_html")
     base_label = base_label.strip("_") or "generic_html"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = os.path.join(OUTPUT_DIR, f"{base_label}_{timestamp}_fallback.csv")
+    contest_label = ctx.get("contest") or ctx.get("state") or "Generic HTML Extraction"
+    ctx.setdefault("contest", contest_label)
+
+    builder_context = dict(ctx)
+    builder_context.update({
+        "handler": "generic_html_fallback",
+        "fallback_strategy": fallback_strategy,
+        "session_id": session_id,
+        "source_url": ctx.get("url"),
+    })
+
+    domain = safe_slug(base_label)
+    try:
+        headers_final, rows_final, entity_info = build_table_noninteractive(
+            domain=domain,
+            headers=fieldnames,
+            data=normalized_rows,
+            coordinator=active_coordinator,
+            context=builder_context,
+            pivot_to_wide=True,
+            debug=False,
+        )
+    except Exception as exc:
+        logger.warning({
+            "level": "WARNING",
+            "type": log_type,
+            "message": f"[GenericHTML] Table builder failed; using raw fallback data. ({exc})",
+            "session_id": session_id
+        })
+        headers_final, rows_final, entity_info = fieldnames, normalized_rows, {}
+
+    export_context = dict(builder_context)
+    export_context.setdefault("entity_info", entity_info)
 
     try:
-        with open(output_file, "w", encoding="utf-8", newline="") as fh:
-            writer = csv.DictWriter(fh, fieldnames=fieldnames)
-            writer.writeheader()
-            for row in rows:
-                if isinstance(row, dict):
-                    writer.writerow({
-                        key: "" if row.get(key) is None else str(row.get(key, ""))
-                        for key in fieldnames
-                    })
-                else:
-                    normalized_row = list(row) if isinstance(row, (list, tuple)) else [row]
-                    padded = {fieldnames[i]: normalized_row[i] if i < len(normalized_row) else "" for i in range(len(fieldnames))}
-                    writer.writerow(padded)
+        export_result = finalize_election_output(
+            headers=headers_final,
+            data=rows_final,
+            coordinator=active_coordinator,
+            contest=contest_label,
+            state=ctx.get("state"),
+            county=ctx.get("county"),
+            context=export_context,
+            enable_user_feedback=False,
+            session_id=session_id,
+        )
     except Exception as exc:
         logger.error({
             "level": "ERROR",
             "type": log_type,
-            "message": f"[GenericHTML] Failed to write fallback CSV: {exc}",
+            "message": f"[GenericHTML] Failed to finalize output: {exc}",
             "session_id": session_id
         })
         return None
 
     metadata = {
-        "output_file": output_file,
-        "output_dir": OUTPUT_DIR,
+        "output_file": export_result.get("csv_path"),
+        "metadata_path": export_result.get("metadata_path"),
+        "output_dir": os.path.dirname(export_result.get("csv_path", OUTPUT_DIR)),
         "handler": "generic_html_fallback",
         "fallback": True,
         "fallback_reason": ctx.get("fallback_reason"),
         "fallback_strategy": fallback_strategy,
         "source_url": ctx.get("url"),
         "session_id": session_id,
-        "row_count": len(rows),
-        "column_count": len(fieldnames)
+        "row_count": len(rows_final),
+        "column_count": len(headers_final)
     }
     if ctx.get("source_file"):
         metadata["source_file"] = ctx["source_file"]
     if resolved_source_path:
         metadata["source_file_path"] = resolved_source_path
+    if entity_info:
+        metadata["entity_info"] = entity_info
 
     logger.info({
         "level": "INFO",
         "type": log_type,
         "message": "[GenericHTML] Fallback extraction succeeded.",
         "session_id": session_id,
-        "output_file": output_file,
-        "row_count": len(rows),
-        "column_count": len(fieldnames)
+        "output_file": export_result.get("csv_path"),
+        "row_count": len(rows_final),
+        "column_count": len(headers_final)
     })
-
-    contest_label = ctx.get("contest") or ctx.get("state") or "Generic HTML Extraction"
-    return fieldnames, rows, contest_label, metadata
+    return headers_final, rows_final, contest_label, metadata
 
 def orchestrate_url(
     target_url,
@@ -834,7 +1096,8 @@ def orchestrate_url(
                     page,
                     wait_for_selector='table, a[href$=".csv"], a[href$=".json"], [role="table"]',
                     max_total_time=20000,
-                    delay_ms=250
+                    delay_ms=250,
+                    session_id=session_id,
                 )
             except Exception:
                 # Soft-fail: continue; downstream will warn if nothing found
@@ -1064,7 +1327,6 @@ def orchestrate_url(
         mark_url_processed(target_url, status="error", session_id=session_id)
     finally:
         sync_safe_browser_close(browser, session_id)
-
 def _orchestrate_url_worker(args):
     """
     args tuple:
@@ -1108,6 +1370,9 @@ def main(
             "message": f"main() called with manual_source={manual_source}",
             "session_id": session_id
         })
+
+        skip_url_prompt = bool(kwargs.pop("skip_url_prompt", False))
+        url_source_label = kwargs.pop("url_source_label", None)
 
         # --- 1. Manual Upload Override Path ---
         if manual_source == 'uploads':
@@ -1182,10 +1447,18 @@ def main(
         # --- 3. Load URLs ---
         if urls is None:
             urls = load_urls()
+            if not url_source_label:
+                url_source_label = "urls.txt"
+        else:
+            if not isinstance(urls, list):
+                urls = list(urls)
+            if not url_source_label:
+                url_source_label = "direct override"
+
         logger.info({
             "level": "INFO",
             "type": "input",
-            "message": f"Loaded {len(urls)} raw URLs from urls.txt",
+            "message": f"Loaded {len(urls)} raw URLs from {url_source_label}",
             "session_id": session_id
         })
 
@@ -1213,12 +1486,21 @@ def main(
         })
 
         # --- 6. Prompt for URL Selection ---
-        selected_urls = prompt_url_selection(
-            urls,
-            processed_info,
-            session_id=session_id,
-            cancel_flag=cancel_flag
-        )
+        if skip_url_prompt:
+            selected_urls = urls
+            logger.info({
+                "level": "INFO",
+                "type": "input",
+                "message": f"Using pre-selected URL list ({len(selected_urls)} item(s)).",
+                "session_id": session_id
+            })
+        else:
+            selected_urls = prompt_url_selection(
+                urls,
+                processed_info,
+                session_id=session_id,
+                cancel_flag=cancel_flag
+            )
         if not selected_urls:
             logger.info({
                 "level": "INFO",

@@ -122,7 +122,7 @@ def parse(
         html_context["county"] = normalize_county_name(html_context["county"])
 
     # 4. Attempt to find handler (first pass)
-    handler_info = get_handler(html_context, url=getattr(page, "url", None))
+    handler_info = get_handler(html_context, url=getattr(page, "url", None), session_id=session_id)
     handler = handler_info["handler"] if isinstance(handler_info, dict) else handler_info
     handler_found = handler and hasattr(handler, "parse") and handler is not parse
 
@@ -302,7 +302,7 @@ def parse(
 
                 html_context["state"] = user_state
                 html_context["county"] = user_county
-                handler_info = get_handler(html_context, url=url)
+                handler_info = get_handler(html_context, url=url, session_id=session_id)
                 handler = handler_info["handler"] if isinstance(handler_info, dict) else handler_info
                 handler_found = handler and hasattr(handler, "parse") and handler is not parse
                 attempts.append({

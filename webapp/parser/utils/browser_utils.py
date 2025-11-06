@@ -634,6 +634,7 @@ def autoscroll_until_stable(
     wait_for_selector=None,
     domain=None,
     coordinator_feedback=None,
+    session_id: Optional[str] = None,
 ) -> bool:
     start_time = time.time()
     safe_evaluate(page, "window.scrollTo(0, 0)", logger)
@@ -665,6 +666,9 @@ def autoscroll_until_stable(
         except Exception:
             return ""
 
+    interactive_mode = session_id is None
+    prompt_skipped_logged = False
+
     with logger.progress_bar("Scrolling page...", total=max_scrolls) as update_progress:
         while stable < max_stable_frames and scroll_attempts < max_scrolls:
             current_height = safe_evaluate(page, "document.body.scrollHeight", logger)
@@ -691,11 +695,23 @@ def autoscroll_until_stable(
                 break
             elapsed = (time.time() - start_time) * 1000
             if elapsed > max_total_time * 0.8 and scroll_attempts % 10 == 0:
-                console.print("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
-                resp = prompt.prompt_input("Continue scrolling? (y/N): ").strip().lower()
-                if resp != "y":
-                    logger and logger.warning("[SCROLL] User aborted scrolling.")
-                    break
+                if interactive_mode:
+                    console.print("[bold yellow]Scrolling is taking longer than expected. Continue waiting? (y/N)[/bold yellow]")
+                    resp = prompt.prompt_input("Continue scrolling? (y/N): ").strip().lower()
+                    if resp != "y":
+                        logger and logger.warning("[SCROLL] User aborted scrolling.")
+                        break
+                else:
+                    if not prompt_skipped_logged:
+                        logger and logger.info(
+                            {
+                                "level": "INFO",
+                                "type": "scroll",
+                                "message": "[SCROLL] Auto-advancing without interactive prompt (web session).",
+                                "session_id": session_id,
+                            }
+                        )
+                        prompt_skipped_logged = True
         update_progress(max_scrolls)
 
     if stable >= max_stable_frames:

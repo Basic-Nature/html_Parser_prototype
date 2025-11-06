@@ -337,22 +337,80 @@
     </div>
     <!-- Download Selection Modal -->
     <div id="downloadModal" class="modal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-        <div class="modal-header">
-            <h5 class="modal-title">Select Download</h5>
-            <button type="button" class="btn-close" id="closeDownloadModal" aria-label="Close"></button>
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Select URL</h5>
+                <div class="modal-header-actions ms-auto d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary hidden" id="modalAddDirectUrl">Add Direct URL</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary hidden" id="modalAddManualUpload">Upload File</button>
+                    <button type="button" class="btn-close" id="closeDownloadModal" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="modalQuickAddContainer" class="modal-quick-add hidden" aria-live="polite">
+                    <div id="modalQuickAddDirectPanel" class="quick-add-section hidden" aria-hidden="true">
+                        <label for="directUrlTextarea" class="dropdown-label">
+                            Direct URLs:
+                            <span class="help-icon" tabindex="0" aria-label="Direct URLs">
+                                ?
+                                <span class="custom-tooltip">
+                                    Paste one or more election result URLs (HTTP or HTTPS). Each valid URL runs immediately and skips the urls.txt prompt.
+                                </span>
+                            </span>
+                        </label>
+                        <textarea id="directUrlTextarea" class="form-control" rows="3" placeholder="https://example.gov/results/latest"></textarea>
+                        <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+                            <span id="directUrlFeedback" class="text-muted small">Enter one URL per line.</span>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Direct URL actions">
+                                <button type="button" class="btn btn-outline-secondary" id="modalQuickAddDirectAdd">Add to List</button>
+                                <button type="button" class="btn btn-outline-secondary" id="directUrlClearBtn">Clear</button>
+                                <button type="button" class="btn btn-outline-secondary" id="modalQuickAddDirectCancel">Done</button>
+                            </div>
+                        </div>
+                        <hr class="my-3">
+                    </div>
+                    <div id="modalQuickAddManualPanel" class="quick-add-section hidden" aria-hidden="true">
+                        <div class="modal-inline-heading d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
+                            <label for="manualUploadSelect" class="dropdown-label mb-0">
+                                Manual Upload File:
+                                <span class="help-icon" tabindex="0" aria-label="Manual Upload File">
+                                    ?
+                                    <span class="custom-tooltip">
+                                        Pick a file from the uploads folder to parse immediately. This sets the source to Manual Uploads when you run the parser.
+                                    </span>
+                                </span>
+                            </label>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Manual upload actions">
+                                <button type="button" class="btn btn-outline-secondary" id="manualUploadRefreshBtn" title="Refresh uploads list">⟳</button>
+                                <button type="button" class="btn btn-outline-secondary" id="manualUploadBrowseBtn" title="Browse uploads">Browse</button>
+                                <label for="modalQuickAddUploadInput" class="btn btn-outline-secondary mb-0" title="Upload new file">Upload</label>
+                                <input type="file" id="modalQuickAddUploadInput" class="visually-hidden" aria-label="Upload new file to manual uploads">
+                            </div>
+                        </div>
+                        <select id="manualUploadSelect" class="form-select" aria-label="Select manual upload file">
+                            <option value="">— No file selected —</option>
+                        </select>
+                        <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+                            <span id="manualUploadSummary" class="text-muted small">No file selected.</span>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Manual upload selection actions">
+                                <button type="button" class="btn btn-outline-secondary" id="manualUploadClearBtn">Clear</button>
+                                <button type="button" class="btn btn-outline-secondary" id="modalQuickAddManualDone">Done</button>
+                            </div>
+                        </div>
+                        <hr class="my-3">
+                    </div>
+                    <div id="modalQuickAddMessage" class="alert hidden mt-2" role="status"></div>
+                </div>
+                <input type="search" id="downloadSearch" class="form-control mb-2" placeholder="Filter by keyword, type, or format...">
+                <div id="downloadSummary" class="mb-2"></div>
+                <div id="downloadOptions"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="cancelDownloadModal">Cancel</button>
+            </div>
+            </div>
         </div>
-        <div class="modal-body">
-            <input type="search" id="downloadSearch" class="form-control mb-2" placeholder="Filter by keyword, type, or format...">
-            <div id="downloadSummary" class="mb-2"></div>
-            <div id="downloadOptions"></div>
-        </div>
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" id="cancelDownloadModal">Cancel</button>
-        </div>
-        </div>
-    </div>
     </div>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io-4.7.5.min.js') }}"></script>

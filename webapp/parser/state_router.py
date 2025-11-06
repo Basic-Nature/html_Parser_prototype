@@ -444,6 +444,7 @@ def get_handler(
             log.append(f"Could not import fallback state handler or missing 'parse': {fallback_path}")
             handler = None
     # Fallback: prompt user for manual selection if still not found
+    allow_manual_prompt = session_id is None
     if not handler:
         error = {
             "message": "No suitable handler found for context.",
@@ -454,23 +455,25 @@ def get_handler(
             "log": log
         }
         log.append("No suitable handler found for context.")
-        # Prompt for fallback selection
-        state, county = prompt_for_handler_fallback(
-            available_states,
-            available_counties_by_state,
-            last_error=error["message"],
-            max_attempts=3,
-            session_id=session_id,
-        )
-        if state:
-            handler_path = f"webapp.parser.handlers.states.{state}.county.{county}" if county else f"webapp.parser.handlers.states.{state}"
-            log.append(f"[Fallback][Session:{session_id}] Attempting to import handler: {handler_path}")
-            handler = import_handler(handler_path)
-            if handler and hasattr(handler, "parse"):
-                log.append(f"[Fallback][Session:{session_id}] Routed to handler: {handler_path}")
-            else:
-                log.append(f"[Fallback][Session:{session_id}] Could not import handler or missing 'parse': {handler_path}")
-                handler = None
+        if allow_manual_prompt:
+            state, county = prompt_for_handler_fallback(
+                available_states,
+                available_counties_by_state,
+                last_error=error["message"],
+                max_attempts=3,
+                session_id=session_id,
+            )
+            if state:
+                handler_path = f"webapp.parser.handlers.states.{state}.county.{county}" if county else f"webapp.parser.handlers.states.{state}"
+                log.append(f"[Fallback][Session:{session_id}] Attempting to import handler: {handler_path}")
+                handler = import_handler(handler_path)
+                if handler and hasattr(handler, "parse"):
+                    log.append(f"[Fallback][Session:{session_id}] Routed to handler: {handler_path}")
+                else:
+                    log.append(f"[Fallback][Session:{session_id}] Could not import handler or missing 'parse': {handler_path}")
+                    handler = None
+        else:
+            log.append(f"[Fallback][Session:{session_id}] Manual handler selection skipped for non-interactive session.")
     summary["log"] = log
     summary["error"] = error
     return {"handler": handler, "summary": summary}
