@@ -765,6 +765,30 @@ def build_dynamic_table(
         context["Precinct"] = safe_get(context, "panel_heading")
     page = safe_get(context, "page", [])
 
+    # Normalize jurisdiction metadata early for downstream division/party handling
+    try:
+        state_norm, county_norm = resolve_state_county_from_context(context)
+    except Exception:
+        state_norm, county_norm = None, None
+    if state_norm:
+        context.setdefault("state_original", context.get("state"))
+        if not context.get("state"):
+            context["state"] = state_norm
+        context.setdefault("state_normalized", state_norm)
+        context.setdefault("state_lookup_key", state_norm)
+    if county_norm:
+        context.setdefault("county_original", context.get("county"))
+        if not context.get("county") or safe_lower(str(context.get("county"))) in {"", "unknown"}:
+            context["county"] = county_norm.title()
+        context.setdefault("county_normalized", county_norm)
+        context.setdefault("county_lookup_key", county_norm)
+        context.setdefault("county_canonical", county_norm.title())
+
+    context.setdefault("include_division_type_column", True)
+    context.setdefault("include_division_name_column", False)
+    context.setdefault("include_party_in_wide", True)
+    context.setdefault("jurisdiction_output_mode", "auto")
+
     _emit("info", "builder", "[TABLE_BUILDER] Starting dynamic build", session_id, domain=domain, pivot_to_wide=pivot_to_wide, learning_mode=learning_mode)
 
     # --- 1. Gather all panel tables if present ---

@@ -19,7 +19,12 @@ from ...utils.location_helpers import (
 from ...utils.logger_singleton import logger
 from ...utils.output_utils import finalize_election_output
 from ...utils.pivot import expand_single_rawjson_row
-from ...utils.shared_logic import safe_get, safe_slug
+from ...utils.shared_logic import (
+    derive_candidate_party_metadata,
+    derive_state_county_from_table,
+    safe_get,
+    safe_slug,
+)
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.table_core import robust_table_extraction
 
@@ -50,10 +55,12 @@ def parse_csv_election_results(
     csv_path: str,
     session_id: Optional[str] = None,
     coordinator: Any = None,
+    html_context: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     data: List[Dict[str, Any]] = []
     headers: List[str] = []
     contest_column = None
+    html_context = dict(html_context or {})
 
     # Robust file open with encoding fallback
     try:
@@ -90,13 +97,6 @@ def parse_csv_election_results(
 
     # Light context from filename
     fname = os.path.basename(csv_path).lower()
-    state = "Unknown"
-    county = "Unknown"
-    for part in fname.replace(".csv", "").split("_"):
-        if "county" in part:
-            county = part.replace("county", "").strip().title() + " County"
-        if len(part) == 2 and part.isalpha():
-            state = part.upper()
 
     selection_context = {
         "selector_data": {
@@ -140,9 +140,41 @@ def parse_csv_election_results(
         "precinct_attached": precinct_attached,
     }
 
+    detection_context: Dict[str, Any] = {
+        "contest": contest,
+        "contests": [{"title": contest}],
+        "session_id": session_id,
+    }
+    for key in ("state", "county", "url", "source_url", "page_url"):
+        if key in html_context and html_context.get(key):
+            detection_context[key] = html_context.get(key)
+
+    state_display, county_display, state_county_diag = derive_state_county_from_table(
+        headers,
+        data,
+        context=detection_context,
+        filename=csv_path,
+    )
+    state = state_display or "Unknown"
+    county = county_display or "Unknown"
+    state_normalized = state_county_diag.get("state_normalized")
+    county_normalized = state_county_diag.get("county_normalized")
+
+    candidate_label_map, candidate_metadata, party_diag = derive_candidate_party_metadata(headers, data)
+
+    location_diagnostics["state_county_detection"] = state_county_diag
+    location_diagnostics["candidate_party_detection"] = party_diag
+
     # Build table via non-interactive builder
     m = re.search(r"(19|20)\d{2}", fname)
     year = int(m.group(0)) if m else None
+    if year is None:
+        try:
+            year_candidate = int(html_context.get("year")) if html_context.get("year") else None
+            if year_candidate and 1800 <= year_candidate <= 2100:
+                year = year_candidate
+        except (TypeError, ValueError):
+            pass
     domain = safe_slug(os.path.basename(csv_path))
     context = {
         "contest": contest,
@@ -156,7 +188,16 @@ def parse_csv_election_results(
         "location_headers": location_headers,
         "precinct_attached": precinct_attached,
         "location_diagnostics": location_diagnostics,
+        "state_normalized": state_normalized,
+        "county_normalized": county_normalized,
+        "state_county_detection": state_county_diag,
     }
+    if candidate_label_map:
+        context["candidate_label_map"] = candidate_label_map
+    if candidate_metadata:
+        context["candidate_metadata"] = candidate_metadata
+    if party_diag.get("candidate_count"):
+        context["candidate_party_detection"] = party_diag
     headers, data = expand_single_rawjson_row(headers, data, context=context)
     
     headers_final, data_final, _entity_info = build_table_noninteractive(
@@ -184,6 +225,12 @@ def parse_csv_election_results(
             "location_headers": location_headers,
             "precinct_attached": precinct_attached,
             "location_diagnostics": location_diagnostics,
+            "state": state,
+            "county": county,
+            "state_normalized": state_normalized,
+            "county_normalized": county_normalized,
+            "state_county_detection": state_county_diag,
+            "candidate_party_detection": party_diag,
         },
         enable_user_feedback=False,
         session_id=session_id
@@ -204,6 +251,12 @@ def parse_csv_election_results(
         "location_headers_detected": location_headers,
         "precinct_attached": precinct_attached,
         "location_diagnostics": location_diagnostics,
+        "state_normalized": state_normalized,
+        "county_normalized": county_normalized,
+        "state_county_detection": state_county_diag,
+        "candidate_label_map": candidate_label_map,
+        "candidate_metadata": candidate_metadata,
+        "candidate_party_detection": party_diag,
     }
 
     logger.info({
@@ -326,7 +379,12 @@ def parse(
         "session_id": session_id
     })
 
-    result = parse_csv_election_results(manual_file, session_id=session_id, coordinator=coordinator)
+    result = parse_csv_election_results(
+        manual_file,
+        session_id=session_id,
+        coordinator=coordinator,
+        html_context=html_context,
+    )
 
     result_any = cast(Any, result)
     if not (isinstance(result_any, tuple) and len(result_any) == 4):

@@ -126,6 +126,49 @@ The file `shared_logic.py` is where general shared election-logic for parsing or
 
 ---
 
+## 🎯 Real-Data Validation Snapshots (2025-11-07)
+
+Recent full runs exposed schema behaviours that handler authors should respond to quickly:
+
+- **JSON fast path (Rockland County, NY)** — `output/Orangetown_Town_Council__20251107_091920.csv`
+
+  ```csv
+  Precinct,Write-in - Total,CON Daniel W. Sullivan (Conservative) - Total,DEM Chrissy Knapp (Democratic) - Total,REP Daniel W. Sullivan (Republican) - Total,WOR Chrissy Knapp (Working Families) - Total,Grand Total
+  Orangetown,1,26,605,199,25,856
+  …
+  All Precincts,13,1466,11981,12559,742,26761
+  ```
+
+  - Pivot + party/jurisdiction refactors now render stable wide output, but the party still lives inside the candidate label. Handlers that know party affiliations should populate a `Party` field per row before calling `build_dynamic_table` so the pivot can emit `<Candidate> - Party` columns.
+  - Consider renaming the first column to the detected division type (for example `Town`) via the shared division helpers; Rockland County constants already define the correct mapping.
+
+- **PDF contest selection (Hood River County, OR)** — `output/oregon__hood_river__US_Senator__20251107_082145.csv`
+
+  ```csv
+  Candidate,Party,Total Vote
+  November,,2016
+  ```
+
+  - Contest detection succeeded but table extraction returned only boilerplate. Handlers should detect this condition and prompt the user to reselect or provide manual tables through `provided_tables` rather than emitting meaningless output.
+
+- **PDF precinct aggregation (New York County DA)** — `output/new_york__new_york__Democratic_District_Attorney_New_York_2025__20251107_083504.csv`
+
+  ```csv
+  Precinct,Precinct Total Ballots,Precinct Total Applicable Ballots,…,Assembly District,Election District,…,Candidate,Votes
+  AD 37 / Precinct 71 / Precinct 652,3543,3543,2891,…,37,,Patrick John Timmins,941
+  ```
+
+  - The composite “Precinct” cell blends assembly district, the precinct identifier, and stray affidavit/unrecorded totals. Implement a handler normalizer that splits these into discrete columns and ignores repeated totals per candidate row.
+  - The repeated “New York County / New York State” strings should be fed into `context` so the centralized division heuristics can pick an appropriate jurisdiction header automatically.
+
+**Immediate follow-up tasks**
+
+1. Ensure handlers populate canonical `Party` values so party columns appear alongside each candidate in wide output.
+2. Add PDF clean-up that separates assembly/election districts from precinct labels and pushes both into `context` and row data.
+3. When extraction yields only boilerplate (for example “November 2016”), log a high-severity warning and abort instead of generating an empty CSV.
+
+---
+
 ## 🧩 Extending Handlers
 
 ### Custom Noisy Labels/Patterns

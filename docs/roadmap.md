@@ -33,14 +33,33 @@ This document tracks the progress and next steps for the Smart Elections Parser 
 
 ## 🚧 Next Steps & Priorities
 
-### 1. **ML/NLP Library & Training**
+### 1. **Centralized Parsing & Schema Unification**
+
+- ✅ Pivot pathway now normalizes party metadata and collapses jurisdiction headers; follow up by mirroring these helpers inside `table_builder.py`/metadata writers.
+- Validate the new output schema on representative JSON + PDF contests and capture canonical samples for `docs/handlers.md`.
+- Populate a true `Division Type` column per record using shared normalization helpers and propagate the value into metadata writers for downstream consumers.
+- Drive JSON, PDF-OCR, and future formats through a single contest-selection + table-building pipeline; remove format-specific forks under `webapp/parser/parser/handlers/`.
+
+### 2. **Context Detection & OCR Reliability**
+
+- Improve state/county inference for multi-contest PDFs with better fallbacks when NLP returns `unknown`, plus structured diagnostics to aid debugging.
+- Filter contest candidates emitted from OCR so boilerplate (for example, "* Indicates Passage...") never surfaces as selectable options.
+- Align the OCR preprocessing flow with the centralized pipeline to keep contest metadata and extraction heuristics consistent across sources.
+
+### 3. **Regression, Telemetry & Documentation**
+
+- Build integration tests covering large multi-contest PDFs, JSON fast-path contests, and ward/precinct edge cases with fixture expectations in `webapp/tests/`.
+- Enrich generated `*.metadata.json` files with contest source, detection confidence, and normalization decisions to support audits.
+- Update documentation (`docs/index.md`, `docs/handlers.md`) with the refined output schema, analyst guidance for the party/division headers, and troubleshooting notes.
+
+### 4. **ML/NLP Library & Training**
 
 - Improve and expand the ML/NER models for table detection, entity recognition, and anomaly detection.
 - Integrate more robust LLM (Large Language Model) support for structure learning and context inference.
 - Build a retraining pipeline that leverages correction logs and user feedback for continuous improvement.
 - Expand `spacy_utils.py` and `ml_table_detector.py` with new entity types and training data.
 
-### 2. **Web UI & CLI Parity**
+### 5. **Web UI & CLI Parity**
 
 - Make the Web UI fully compatible with all CLI logic, including:
   - Contest selection and user prompts
@@ -49,19 +68,19 @@ This document tracks the progress and next steps for the Smart Elections Parser 
 - Add more robust error handling and user guidance in the Web UI.
 - Enable upload and manual override of input files via the Web UI.
 
-### 3. **LLM Integration**
+### 6. **LLM Integration**
 
 - Improve reliability and fallback logic for LLM-based extraction.
 - Add support for multiple LLM providers and local models.
 - Allow handler and extraction logic to select or override LLM strategies as needed.
 
-### 4. **Handler Expansion**
+### 7. **Handler Expansion**
 
 - Expand the number of state and county handlers, prioritizing high-impact or frequently requested jurisdictions.
 - Add more format-specific handlers for edge-case PDFs, JSONs, and vendor-specific HTML.
 - Encourage community contributions and provide templates for new handlers.
 
-### 5. **Testing, Validation, and Documentation**
+### 8. **Testing, Validation, and Documentation**
 
 - Expand automated and manual test coverage for handlers and extraction logic.
 - Add more sample URLs and edge cases to `urls.txt`.
@@ -69,25 +88,33 @@ This document tracks the progress and next steps for the Smart Elections Parser 
 - Add troubleshooting and FAQ sections to the Web UI.
 - Monitor upstream pytest / SeleniumBase releases so the temporary unraisable warning suppression can be removed once socket cleanup is fixed.
 
-### 6. **Performance & Scalability**
+### 9. **Performance & Scalability**
 
 - Optimize multiprocessing and memory usage for large-scale scraping.
 - Add caching and smarter deduplication for processed URLs and files.
 - Improve download and file management for large input datasets.
 
-### 7. **Election Integrity & Transparency**
+### 10. **Election Integrity & Transparency**
 
 - Expand audit trail metadata and correction logging.
 - Add more granular anomaly detection and reporting.
 - Integrate with external election data sources for cross-validation.
 
-### 8. **User Experience**
+### 11. **User Experience**
 
 - Add more informative error messages and suggestions in both CLI and Web UI.
 - Improve accessibility and onboarding for non-technical users.
 - Provide more granular progress and status updates during batch runs.
 
 ---
+
+## 🧭 Working TODO List
+
+- Document the centralized schema outputs (party, jurisdiction, division type) with before/after examples and share with stakeholders.
+- Prototype enhanced contest filtering on OCR output and validate against current PDF samples.
+- Stand up first regression fixture (multi-contest PDF) and wire it into the forthcoming integration test harness.
+- Design metadata enrichment schema updates and confirm backwards compatibility with existing analytics tooling.
+- Outline cross-format extensibility requirements (HTML, XLSX) and capture the effort in `docs/roadmap.md` for prioritization discussions.
 
 ## 📝 Additional Ideas & Stretch Goals
 

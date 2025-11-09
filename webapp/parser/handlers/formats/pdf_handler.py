@@ -107,7 +107,7 @@ from ...utils.contest_selector import (
 )
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.output_utils import finalize_election_output
-from ...utils.shared_logic import safe_get, safe_slug
+from ...utils.shared_logic import format_county_label, format_state_label, safe_get, safe_slug
 from ...utils.pivot import expand_single_rawjson_row
 from ...Context_Integration.context_coordinator import dynamic_state_county_detection
 from ...Context_Integration.Context_Library.constants import normalize_party_label
@@ -2703,6 +2703,8 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
     fname = os.path.basename(pdf_path).lower()
     state = "Unknown"
     county = "Unknown"
+    state_normalized = None
+    county_normalized = None
     year = None
     for part in fname.replace(".pdf", "").split("_"):
         if "county" in part:
@@ -2749,7 +2751,9 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         "state": state,
         "county": county,
         "handler": "pdf_handler",
-        "contest": selected_contest_title
+        "contest": selected_contest_title,
+        "state_normalized": state_normalized,
+        "county_normalized": county_normalized,
     })
 
     try:
@@ -2758,10 +2762,16 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             clean_text,
             debug=False
         )
-        if state == "Unknown" and det_state:
-            state = det_state
-        if county == "Unknown" and det_county:
-            county = det_county
+        if det_state:
+            state_normalized = det_state
+            formatted_state = format_state_label(det_state)
+            if formatted_state:
+                state = formatted_state
+        if det_county:
+            county_normalized = det_county
+            formatted_county = format_county_label(det_county, det_state or state_normalized or state)
+            if formatted_county:
+                county = formatted_county
         if det_log:
             metadata["location_detection_log"] = det_log
     except Exception:

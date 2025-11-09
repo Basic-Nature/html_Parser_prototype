@@ -393,7 +393,7 @@ def _division_type_for(division: str, state: str | None) -> str:
     if not division:
         return ""
     if state:
-        s = state.strip().lower()
+        s = _normalize_state_key(state)
         div_norm = _normalize_division_name(division)
         state_map = STATE_TO_DIVISION_TYPE_MAP.get(s)
         if state_map:
@@ -422,6 +422,15 @@ def _safe_col_name(*parts) -> str:
 
 def _norm_text(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
+
+
+def _normalize_state_key(state: str | None) -> str:
+    """Normalize arbitrary state strings to keys compatible with STATE_TO_DIVISION_TYPE_MAP."""
+    if not state:
+        return ""
+    key = re.sub(r"[^a-z0-9]+", "_", state.strip().lower())
+    key = re.sub(r"_+", "_", key).strip("_")
+    return key
 
 def _detect_division_type_for_precinct(loc: str, state: str | None, context: dict) -> str:
     """
@@ -471,7 +480,7 @@ def _detect_division_type_for_precinct(loc: str, state: str | None, context: dic
 
     # If the "loc" looks like a county/independent city known for the state
     if state:
-        smap = STATE_TO_DIVISION_TYPE_MAP.get(state.strip().lower())
+        smap = STATE_TO_DIVISION_TYPE_MAP.get(_normalize_state_key(state))
         if smap:
             # Try a cleaned base (strip trailing numbers/units)
             base = re.sub(r"\d+.*$", "", low).strip()
@@ -532,7 +541,7 @@ def _detect_division_name_for_precinct(loc: str, state: str | None, context: dic
 
     # 4) State-known base names (strip trailing numbers/units)
     if state:
-        smap = STATE_TO_DIVISION_TYPE_MAP.get(state.strip().lower()) or {}
+        smap = STATE_TO_DIVISION_TYPE_MAP.get(_normalize_state_key(state)) or {}
         base = re.sub(r"\d+.*$", "", low).strip()
         if base in smap:
             # Title-case the base as a readable name
@@ -542,6 +551,117 @@ def _detect_division_name_for_precinct(loc: str, state: str | None, context: dic
     if muni_guess:
         return muni_guess
     return loc
+
+
+def _normalize_party_value(raw: str | None) -> str:
+    party = normalize_party_label(raw) if raw else ""
+    if party:
+        return party
+    return (raw or "").strip().title()
+
+
+def _extract_party_from_label(label: str) -> str:
+    if not label:
+        return ""
+    match = re.search(r"\(([^)]+)\)\s*$", label)
+    if match:
+        inner = match.group(1)
+        normalized = normalize_party_label(inner)
+        if normalized:
+            return normalized
+    parts = label.split()
+    if parts:
+        prefix = parts[0]
+        if prefix.isupper() and len(prefix) <= 4:
+            normalized = normalize_party_label(prefix)
+            if normalized:
+                return normalized
+    return ""
+
+
+def _candidate_display_and_key(label: str, party_hint: str) -> tuple[str, str]:
+    base = _normalize_candidate_label(label)
+    party_norm = _normalize_party_value(party_hint)
+    candidate = base
+    match = re.search(r"\(([^)]+)\)\s*$", candidate)
+    if match:
+        inner = normalize_party_label(match.group(1))
+        if inner:
+            candidate = candidate[: match.start()].strip()
+    if party_norm and candidate.lower().endswith(f"({party_norm.lower()})"):
+        candidate = candidate[: -(len(party_norm) + 2)].strip()
+    candidate = re.sub(r"\s{2,}", " ", candidate).strip()
+    key = candidate.lower()
+    if not key:
+        key = base.lower()
+    return candidate or base or label, key or label.lower()
+
+
+def _normalize_ballot_suffix(label: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (label or "").lower()).strip()
+
+
+def _map_ballot_suffix(suffix: str) -> tuple[str | None, str | None]:
+    norm = _normalize_ballot_suffix(suffix)
+    if not norm:
+        return None, None
+    if any(token in norm for token in ("election day", "eday")):
+        return "Election Day Votes", None
+    if any(token in norm for token in ("early", "advance")):
+        return "Early Votes", None
+    if any(token in norm for token in ("mail", "absentee", "vote by mail", "vb m", "mail-in")):
+        return "Mail In Votes", None
+    if "provisional" in norm or "question" in norm:
+        return "Provisional Votes", None
+    if "uncategorized" in norm or "unassigned" in norm or "unreported" in norm:
+        return "Uncategorized Votes", None
+    clean = re.sub(r"\s+", " ", suffix or "").strip()
+    if not clean:
+        return None, None
+    return None, f"{clean} Votes"
+
+
+def _pluralize_division(label: str) -> str:
+    if not label:
+        return "All Divisions"
+    if label.endswith("y") and len(label) > 1 and label[-2] not in "aeiou":
+        return label[:-1] + "ies"
+    if label.endswith("s"):
+        return label
+    return label + "s"
+
+
+def _choose_division_header(rows: List[Dict[str, Any]], context: dict | None) -> tuple[str, bool]:
+    context = context or {}
+    types: List[str] = []
+    for row in rows or []:
+        dtype = (row.get("Division Type") or "").strip().lower()
+        if dtype and dtype != "aggregate" and dtype not in types:
+            types.append(dtype)
+    if types:
+        header = types[0].title()
+        return header or "Division", len(types) > 1
+    fallback = (context.get("jurisdiction_type") or "").strip()
+    state_hint = context.get("state") or context.get("State")
+    guessed: List[str] = []
+    for row in rows or []:
+        loc_label = row.get("Division Name") or row.get("Precinct")
+        if not loc_label:
+            continue
+        guess = _detect_division_type_for_precinct(loc_label, state_hint, context)
+        if guess and guess not in ("", "aggregate") and guess not in guessed:
+            guessed.append(guess)
+        if len(guessed) > 1:
+            break
+
+    if guessed:
+        header_name = (fallback or guessed[0]).title()
+        return header_name, len(guessed) > 1
+
+    if fallback:
+        return fallback.title(), False
+
+    return "Precinct", False
 
 def pivot_to_wide(
     headers: List[str],
@@ -578,9 +698,11 @@ def pivot_to_wide(
     include_division_name = context.get("include_division_name_column", False)  # <-- new flag
     merge_cross = context.get("merge_cross_endorsements", True)
 
-    state = (context.get("state") or entity_info.get("state") if entity_info else None)
-    if state:
-        state = state.lower()
+    state = context.get("state")
+    if not state and entity_info:
+        state = entity_info.get("state")
+    if state and "state" not in context:
+        context["state"] = state
     county_ctx = (context.get("county") or (entity_info or {}).get("county") if entity_info else None)
     if county_ctx:
         context["county"] = county_ctx
@@ -595,17 +717,41 @@ def pivot_to_wide(
         percent_header = percent_header or det_pct
 
     # Ensure Precinct column
+    if isinstance(location_header, str) and location_header.strip().lower() in {"", "none"}:
+        location_header = None
     if not location_header:
         location_header = "Precinct"
         default_loc = safe_get(context, "location_value", "") or safe_get(context, "contest", "") or "All"
         for r in data:
             if "Precinct" not in r:
                 r["Precinct"] = default_loc
+
+    location_alias = location_header or "Precinct"
     if location_header != "Precinct":
-        headers = ["Precinct" if h == location_header else h for h in headers]
+        original_location_header = location_header
+        headers = ["Precinct" if h == original_location_header else h for h in headers]
         for r in data:
-            r["Precinct"] = r.pop(location_header, r.get("Precinct", "")) or r.get("Precinct", "")
+            r["Precinct"] = r.pop(original_location_header, r.get("Precinct", "")) or r.get("Precinct", "")
         location_header = "Precinct"
+        location_alias = original_location_header
+    else:
+        location_alias = "Precinct"
+
+    if location_alias == "Precinct":
+        inferred_alias = None
+        for sample_row in data:
+            loc_val = safe_get(sample_row, "Precinct", "")
+            if not loc_val:
+                continue
+            guess = _detect_division_type_for_precinct(loc_val, state, context)
+            if guess and guess not in ("", "aggregate", "precinct"):
+                inferred_alias = guess.title()
+                break
+        if inferred_alias:
+            location_alias = inferred_alias
+
+    aggregate_label_value = f"All {_pluralize_division(location_alias or 'Precinct')}"
+
 
     # Normalize percent header
     if percent_header and normalize_header(percent_header) != normalize_header("Percent Reported"):
@@ -629,7 +775,7 @@ def pivot_to_wide(
                 row["Division Name"] = _detect_division_name_for_precinct(row.get("Precinct", ""), state, context)
             wh.insert(2, "Division Name")
         if include_all_row:
-            summary = {"Precinct": "All Precincts"}
+            summary = {"Precinct": aggregate_label_value}
             if "Percent Reported" in wh:
                 summary["Percent Reported"] = ""
             if "Division Type" in wh:
@@ -647,6 +793,11 @@ def pivot_to_wide(
                         total += iv
                 summary[h] = str(total)
             wd.append(summary)
+        if location_alias != "Precinct" and "Precinct" in wh:
+            idx = wh.index("Precinct")
+            wh[idx] = location_alias
+            for row in wd:
+                row[location_alias] = row.pop("Precinct", "")
         return wh, wd
 
     # ---------------- Candidate column detection ----------------
@@ -744,8 +895,8 @@ def pivot_to_wide(
                     row["Percent Reported"] = r["Percent Reported"]
             row["Grand Total"] = str(grand)
             rows_out.append(row)
-        if include_all_row and rows_out and "All Precincts" not in {r["Precinct"] for r in rows_out}:
-            agg = {"Precinct": "All Precincts"}
+        if include_all_row and rows_out and aggregate_label_value not in {r["Precinct"] for r in rows_out}:
+            agg = {"Precinct": aggregate_label_value}
             if include_division_type:
                 agg["Division Type"] = "aggregate"
             if percent_header:
@@ -753,6 +904,10 @@ def pivot_to_wide(
             agg["Grand Total"] = str(sum(int(r["Grand Total"]) for r in rows_out if r.get("Grand Total", "").isdigit()))
             rows_out.append(agg)
         logger.info("[PIVOT] Fallback simple wide applied (no candidates detected).")
+        if location_alias != "Precinct":
+            wide_headers[0] = location_alias
+            for row in rows_out:
+                row[location_alias] = row.pop("Precinct", "")
         return wide_headers, rows_out
 
     # ---------------- Order candidates ----------------
@@ -890,7 +1045,7 @@ def pivot_to_wide(
     # Aggregate row (single pass sums)
     if include_all_row and out_rows:
         agg = {h: "" for h in wide_headers}
-        agg["Precinct"] = "All Precincts"
+        agg["Precinct"] = aggregate_label_value
         if include_division_type:
             agg["Division Type"] = "aggregate"
         if include_division_name:
@@ -924,10 +1079,241 @@ def pivot_to_wide(
         agg["Grand Total"] = grand_total_all
         out_rows.append(agg)
 
+    if location_alias != "Precinct":
+        if wide_headers:
+            wide_headers[0] = location_alias
+        for row in out_rows:
+            row[location_alias] = row.pop("Precinct", "")
+
     logger.info(f"[PIVOT] wide rows={len(out_rows)} cols={len(wide_headers)} candidates={len(candidate_names)} bt={len(ballot_types)}")
     if not candidate_names:
         logger.warning("[PIVOT] No candidates detected – verify headers and candidate column extraction.")
     return wide_headers, out_rows
+
+
+def transform_wide_to_smart_standard(
+    headers: List[str],
+    rows: List[Dict[str, Any]],
+    context: dict | None = None
+) -> tuple[List[str], List[Dict[str, Any]], bool]:
+    context = context or {}
+    if not headers or not rows:
+        return headers, rows, False
+
+    has_precinct = "Precinct" in headers or any("Precinct" in r for r in rows)
+    has_division_name = "Division Name" in headers or any("Division Name" in r for r in rows)
+    if not has_precinct and not has_division_name:
+        return headers, rows, False
+
+    candidate_map: Dict[str, Dict[str, Any]] = {}
+    for header in headers:
+        if " - " not in header:
+            continue
+        base, suffix = header.split(" - ", 1)
+        suffix_norm = suffix.strip().lower()
+        info = candidate_map.setdefault(base, {"party": None, "total": None, "ballots": {}, "raw": base})
+        if suffix_norm == "party":
+            info["party"] = header
+        elif suffix_norm in ("total vote", "total"):
+            info["total"] = header
+        elif "cumulative" in suffix_norm or suffix_norm.endswith("% vote") or suffix_norm.startswith("%"):
+            continue
+        else:
+            info["ballots"][suffix] = header
+
+    candidate_map = {k: v for k, v in candidate_map.items() if v.get("total") or v.get("ballots")}
+    if not candidate_map:
+        return headers, rows, False
+
+    division_header, include_division_type = _choose_division_header(rows, context)
+    location_field = "Division Name" if has_division_name else "Precinct"
+
+    county_value = (context.get("county") or context.get("County") or "").strip()
+    county_value = county_value.title() if county_value else ""
+
+    transformed_rows: List[Dict[str, Any]] = []
+    standard_usage: Set[str] = set()
+    extra_usage: Set[str] = set()
+    mismatches: List[dict] = []
+
+    for row in rows:
+        location_raw = safe_strip(row.get(location_field, "") or row.get("Precinct", "")) or ""
+        if not location_raw:
+            continue
+        division_type_value = safe_strip(row.get("Division Type", ""))
+        if include_division_type and not division_type_value:
+            division_type_value = division_header.lower()
+        if not include_division_type:
+            division_type_value = ""
+
+        loc_lower = location_raw.lower()
+        if loc_lower.startswith("all precinct") and division_header:
+            location_value = f"All {_pluralize_division(division_header)}"
+        else:
+            location_value = location_raw
+
+        grouped_variants: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+        for cand_label, info in candidate_map.items():
+            total_col = info.get("total")
+            ballots = info.get("ballots", {})
+            party_col = info.get("party")
+
+            total_val = _coerce_int(row.get(total_col, 0)) if total_col else 0
+            ballot_values: Dict[str, int] = {}
+            for suffix, col in ballots.items():
+                val = _coerce_int(row.get(col, 0))
+                if val:
+                    ballot_values[suffix] = val
+
+            if not total_val and not ballot_values:
+                continue
+
+            party_val_raw = safe_strip(row.get(party_col, "")) if party_col else ""
+            party_val = _normalize_party_value(party_val_raw)
+            if not party_val:
+                fallback = _extract_party_from_label(cand_label)
+                party_val = fallback or party_val
+
+            display_name, base_key = _candidate_display_and_key(cand_label, party_val)
+
+            standard_values: Dict[str, int] = defaultdict(int)
+            extra_values: Dict[str, int] = defaultdict(int)
+            explicit_uncategorized: Optional[int] = None
+
+            for suffix, value in ballot_values.items():
+                std_col, extra_col = _map_ballot_suffix(suffix)
+                if std_col:
+                    if std_col == "Uncategorized Votes":
+                        explicit_uncategorized = (explicit_uncategorized or 0) + value
+                    else:
+                        standard_values[std_col] += value
+                elif extra_col:
+                    extra_values[extra_col] += value
+
+            sum_standard = sum(standard_values.values())
+            sum_extra = sum(extra_values.values())
+            uncategorized = explicit_uncategorized or 0
+
+            if explicit_uncategorized is None and total_val:
+                remainder = total_val - (sum_standard + sum_extra)
+                if remainder < 0:
+                    remainder = 0
+                uncategorized = remainder
+
+            if not total_val and (sum_standard or sum_extra or uncategorized):
+                total_val = sum_standard + sum_extra + uncategorized
+
+            calculated_total = sum_standard + sum_extra + uncategorized
+
+            if total_val and calculated_total and abs(calculated_total - total_val) > 0:
+                mismatches.append({
+                    "location": location_value,
+                    "candidate": display_name,
+                    "reported_total": total_val,
+                    "calculated_total": calculated_total,
+                })
+
+            standard_usage.update({col for col, val in standard_values.items() if val})
+            if uncategorized:
+                standard_usage.add("Uncategorized Votes")
+            extra_usage.update({col for col, val in extra_values.items() if val})
+
+            variant = {
+                "display": display_name,
+                "party": party_val,
+                "standard": dict(standard_values),
+                "extra": dict(extra_values),
+                "uncategorized": uncategorized,
+                "calculated_total": calculated_total,
+                "reported_total": total_val,
+                "write_in": display_name.lower().startswith("write"),
+            }
+
+            grouped_variants[base_key].append(variant)
+
+        for variants in grouped_variants.values():
+            if not variants:
+                continue
+
+            def _signature(entry: Dict[str, Any]) -> tuple:
+                sig: List[tuple] = [("uncategorized", entry["uncategorized"]), ("total", entry["calculated_total"])]
+                sig.extend(sorted(entry["standard"].items()))
+                sig.extend(sorted(entry["extra"].items()))
+                return tuple(sig)
+
+            signatures = {_signature(v) for v in variants}
+
+            merged_variants: List[Dict[str, Any]]
+            if len(signatures) == 1:
+                base_variant = variants[0].copy()
+                parties = [v["party"] for v in variants if v.get("party")]
+                if parties:
+                    unique = []
+                    for p in parties:
+                        if p not in unique:
+                            unique.append(p)
+                    base_variant["party"] = " / ".join(unique)
+                base_variant["write_in"] = any(v["write_in"] for v in variants)
+                merged_variants = [base_variant]
+            else:
+                merged_variants = variants
+
+            for variant in merged_variants:
+                row_out: Dict[str, Any] = {
+                    "County": county_value,
+                    division_header: location_value or "",
+                    "Ballot Candidate Name": variant["display"],
+                    "Ballot Party": variant.get("party", ""),
+                    "Uncategorized Votes": variant.get("uncategorized", 0),
+                    "Calculated Total Votes": variant.get("calculated_total", 0),
+                    "Write-In": "TRUE" if variant.get("write_in") else "FALSE",
+                }
+                if include_division_type:
+                    row_out["Division Type"] = division_type_value or division_header.lower()
+
+                for col, val in variant["standard"].items():
+                    if val:
+                        row_out[col] = val
+                for col, val in variant["extra"].items():
+                    if val:
+                        row_out[col] = val
+
+                transformed_rows.append(row_out)
+
+    if not transformed_rows:
+        return headers, rows, False
+
+    standard_order = ["Early Votes", "Election Day Votes", "Mail In Votes", "Provisional Votes"]
+    ordered_standard = [col for col in standard_order if col in standard_usage]
+    extra_columns = sorted(extra_usage)
+
+    output_headers: List[str] = ["County", division_header]
+    if include_division_type:
+        output_headers.append("Division Type")
+    output_headers.extend(["Ballot Candidate Name", "Ballot Party", "Uncategorized Votes"])
+    output_headers.extend(ordered_standard)
+    output_headers.extend(extra_columns)
+    output_headers.extend(["Calculated Total Votes", "Write-In"])
+
+    for row in transformed_rows:
+        for col in output_headers:
+            row.setdefault(col, "")
+        if include_division_type and not row.get("Division Type"):
+            row["Division Type"] = division_header.lower()
+
+    if mismatches:
+        context.setdefault("smart_standard_warnings", []).extend(mismatches[:50])
+
+    context.setdefault("smart_standard_metadata", {})["ballot_columns"] = {
+        "standard": ordered_standard,
+        "extra": extra_columns,
+        "division_header": division_header,
+    }
+
+    context["smart_standard_applied"] = True
+
+    return output_headers, transformed_rows, True
 
 # --- Single-row RawJSON expansion helper (if not already present) ---
 def expand_single_rawjson_row(headers: List[str], rows: List[Dict[str, Any]], context: dict | None = None):

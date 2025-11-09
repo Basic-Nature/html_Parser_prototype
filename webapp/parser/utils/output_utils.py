@@ -24,6 +24,7 @@ from .rawjson_utils import (
 from .rawjson_utils import (
     offload_rawjson_to_ndjson as _shared_offload_rawjson_to_ndjson,
 )
+from .pivot import transform_wide_to_smart_standard
 from .shared_logic import safe_filename, safe_get, safe_get_first, safe_items, safe_lower
 
 PERCENT_COL_REGEX = re.compile(r"(% Vote|Cumulative %|Percent Reported| - %)$", re.I)
@@ -351,6 +352,8 @@ def finalize_election_output(
     Returns: {"csv_path": ..., "metadata_path": ...}
     """
     context = context or {}
+    if "fill_blanks_with_na" not in context:
+        context["fill_blanks_with_na"] = True
     ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = OUTPUT_DIR or os.path.join(os.getcwd(), "outputs")
     _ensure_dir(out_dir)
@@ -396,25 +399,44 @@ def finalize_election_output(
     except Exception:
         pass
 
+    transformed_headers, transformed_rows, smart_applied = transform_wide_to_smart_standard(headers, data, context)
+    if smart_applied:
+        headers = transformed_headers
+        data = transformed_rows
+
     # Normalize headers and rows
     headers_final = _coerce_headers(headers or [], data or [])
+    fill_with_na = bool(context.get("fill_blanks_with_na", False))
     safe_rows: List[Dict[str, Any]] = []
     for row in (data or []):
         if not isinstance(row, dict):
-            safe_rows.append({"value": str(row)})
+            value_cell = str(row)
+            if fill_with_na and not value_cell.strip():
+                value_cell = "NA"
+            safe_rows.append({"value": value_cell})
             if "value" not in headers_final:
                 headers_final = ["value"] + headers_final
             continue
-        safe = {}
+        safe: Dict[str, Any] = {}
         for h in headers_final:
             val = row.get(h, "")
-            if isinstance(val, (str, int, float)) or val is None:
-                safe[h] = "" if val is None else val
+            if isinstance(val, bool):
+                cell = "TRUE" if val else "FALSE"
+            elif isinstance(val, (str, int, float)) or val is None:
+                if val is None:
+                    cell = "NA" if fill_with_na else ""
+                elif isinstance(val, str):
+                    cell = val if (val.strip() or not fill_with_na) else "NA"
+                else:
+                    cell = val
             else:
                 try:
-                    safe[h] = orjson.dumps(val).decode("utf-8", errors="ignore")
+                    cell = orjson.dumps(val).decode("utf-8", errors="ignore")
                 except Exception:
-                    safe[h] = str(val)
+                    cell = str(val)
+                if fill_with_na and (cell is None or not str(cell).strip()):
+                    cell = "NA"
+            safe[h] = cell
         # Coerce percent-like strings per row
         safe = coerce_percent_strings(safe)
         safe_rows.append(safe)

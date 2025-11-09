@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import eventlet
+
+eventlet.monkey_patch()
+
 import gzip
 import os
 import re
@@ -12,7 +16,6 @@ from threading import Event, Thread
 from typing import Callable, Tuple
 from urllib.parse import urlparse
 
-import eventlet
 import orjson
 import psycopg2
 from flask import (
@@ -70,9 +73,6 @@ from webapp.parser.web_pipeline import (
     cancellation_manager,
     process_urls_for_web,
 )
-
-eventlet.monkey_patch()
-
 # Lazy DB table init flag
 _tables_initialized = False
 

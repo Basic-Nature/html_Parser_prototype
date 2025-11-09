@@ -13,6 +13,7 @@ from ...Context_Integration.Context_Library.constants import (
     CONTEST_KEYWORDS,
     CONTEST_TITLE_SKIP_PHRASES,
     GROUP_RENAME_MAP,
+    KNOWN_STATE_TO_COUNTY_MAP,
     LOCATION_KEYWORDS,
     PARTY_KEYWORDS,
 )
@@ -26,7 +27,14 @@ from ...utils.location_helpers import (
 from ...utils.logger_singleton import logger
 from ...utils.output_utils import finalize_election_output
 from ...utils.pivot import expand_single_rawjson_row
-from ...utils.shared_logic import safe_get, safe_slug
+from ...utils.shared_logic import (
+    format_county_label,
+    format_state_label,
+    normalize_county_name,
+    normalize_state_name,
+    safe_get,
+    safe_slug,
+)
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.table_core import robust_table_extraction
 
@@ -88,6 +96,53 @@ def find_key_by_keywords(obj: Dict[str, Any] | Any, keywords: Iterable[str]) -> 
 def _is_dict_list(x: Any) -> bool:
     # Ensure we return a strict boolean, not a possibly-empty list via short-circuit behavior
     return isinstance(x, list) and bool(x) and all(isinstance(i, dict) for i in x)
+
+
+def _state_key_for_county(county: Optional[str]) -> Optional[str]:
+    county_norm = normalize_county_name(county) if county else None
+    if not county_norm:
+        return None
+    for state_key, counties in KNOWN_STATE_TO_COUNTY_MAP.items():
+        for candidate in counties:
+            if normalize_county_name(candidate) == county_norm:
+                return state_key
+    return None
+
+
+def _extract_first_str(obj: Dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        val = obj.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return ""
+
+
+def _derive_location_metadata(payload: Dict[str, Any]) -> tuple[str, str]:
+    """Infer state and county labels from the JSON payload."""
+    state_candidate = ""
+    county_candidate = ""
+    results_obj = payload.get("results") if isinstance(payload, dict) else None
+    if isinstance(results_obj, dict):
+        county_candidate = _extract_first_str(
+            results_obj,
+            "county",
+            "countyName",
+            "county_name",
+            "jurisdictionName",
+        ) or _extract_first_str(results_obj, "name")
+        state_candidate = _extract_first_str(results_obj, "state", "stateName", "state_name")
+
+    if not county_candidate and isinstance(payload, dict):
+        county_candidate = _extract_first_str(payload, "county", "countyName", "county_name")
+    if not state_candidate and isinstance(payload, dict):
+        state_candidate = _extract_first_str(payload, "state", "stateName", "state_name")
+
+    if not state_candidate and county_candidate:
+        state_key = _state_key_for_county(county_candidate)
+        if state_key:
+            state_candidate = state_key
+
+    return format_state_label(state_candidate), format_county_label(county_candidate, state_candidate)
 
 def parse_json_election_results(
     json_path: str,
@@ -333,13 +388,20 @@ def parse_json_election_results(
     headers, rows = expand_single_rawjson_row(headers, rows, context=pre_builder_context)
 
     fname = os.path.basename(json_path).lower()
-    state = "Unknown"
-    county = "Unknown"
+    fallback_state = ""
+    fallback_county = ""
     for part in fname.replace(".json", "").split("_"):
-        if "county" in part:
-            county = part.replace("county", "").strip().title() + " County"
-        if len(part) == 2 and part.isalpha():
-            state = part.upper()
+        if "county" in part and not fallback_county:
+            fallback_county = part.replace("county", "").strip()
+        if len(part) == 2 and part.isalpha() and not fallback_state:
+            fallback_state = part.upper()
+
+    derived_state, derived_county = _derive_location_metadata(data)
+    state = derived_state or format_state_label(fallback_state)
+    county = derived_county or format_county_label(fallback_county, state)
+    state = state or "Unknown"
+    county = county or "Unknown"
+
     m = re.search(r"(19|20)\d{2}", fname)
     year = int(m.group(0)) if m else None
 

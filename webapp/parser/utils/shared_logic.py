@@ -28,6 +28,7 @@ from typing import (
     Optional,
     Protocol,
     Sequence,
+    Set,
     Type,
     TypedDict,
     TypeVar,
@@ -54,6 +55,7 @@ from ..Context_Integration.Context_Library.constants import (
     STATE_ABBR,
     STATE_MODULE_MAP,
     build_camelot_row_filter,
+    normalize_party_label,
 )
 from ..utils.logger_singleton import logger
 
@@ -1409,6 +1411,329 @@ def resolve_state_county_from_context(context: Optional[dict]) -> tuple[Optional
     state = normalize_state_name(state) if state else None
     county = normalize_county_name(county) if county else None
     return state, county
+
+
+def format_state_label(raw: Optional[str]) -> str:
+    """Return a human-readable state label from a raw or normalized value."""
+    if not raw:
+        return ""
+    candidate = normalize_state_name(raw)
+    if candidate and candidate in set(STATE_ABBR.values()):
+        return candidate.replace("_", " ").title()
+    text = str(raw).strip()
+    if not text or text.lower() == "unknown":
+        return ""
+    text = re.sub(r"\s+state$", "", text, flags=re.I)
+    text = text.replace("_", " ")
+    return text.title()
+
+
+def canonicalize_county_label(state: Optional[str], county: Optional[str]) -> Optional[str]:
+    """Return the canonical county/parish label for a state, if known."""
+    state_norm = normalize_state_name(state) if state else None
+    county_norm = normalize_county_name(county) if county else None
+    if not state_norm or not county_norm:
+        return None
+    for candidate in KNOWN_STATE_TO_COUNTY_MAP.get(state_norm, []):
+        if normalize_county_name(candidate) == county_norm:
+            return candidate
+    return None
+
+
+def format_county_label(raw: Optional[str], state: Optional[str] = None) -> str:
+    """Return a human-readable county label from a raw or normalized value."""
+    if not raw:
+        return ""
+
+    canonical = canonicalize_county_label(state, raw)
+    text_source = canonical if canonical is not None else raw
+    candidate = normalize_county_name(text_source)
+    text = str(text_source).strip()
+    if not text or text.lower() == "unknown":
+        return ""
+
+    base = ""
+    if candidate and candidate not in {"unknown", "statewide", "total"}:
+        base = candidate.replace("_", " ").title()
+    else:
+        base = re.sub(r"\s+", " ", text.replace("_", " ")).title()
+
+    reference_lower = f"{raw or ''} {canonical or ''}".lower()
+    lower_text = reference_lower
+    if "county" in lower_text and not base.lower().endswith("county"):
+        base = f"{base} County"
+    elif "parish" in lower_text and not base.lower().endswith("parish"):
+        base = f"{base} Parish"
+    elif "borough" in lower_text and not base.lower().endswith("borough"):
+        base = f"{base} Borough"
+
+    return base.strip()
+
+
+def _table_sample_text(
+    headers: Sequence[Any],
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    max_rows: int = 200,
+    max_chars: int = 80_000,
+) -> str:
+    parts: List[str] = []
+    header_line = " | ".join(str(h).strip() for h in headers if isinstance(h, str) and h.strip())
+    if header_line:
+        parts.append(header_line)
+    for row in rows[:max_rows]:
+        if not isinstance(row, Mapping):
+            continue
+        values: List[str] = []
+        for header in headers:
+            if not isinstance(header, str):
+                continue
+            raw_val = row.get(header)
+            if raw_val is None:
+                continue
+            text = str(raw_val).strip()
+            if text:
+                values.append(text)
+        if values:
+            parts.append(" | ".join(values))
+        if sum(len(p) for p in parts) > max_chars:
+            break
+    return "\n".join(parts)
+
+
+def derive_state_county_from_table(
+    headers: Sequence[Any],
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    context: Optional[Mapping[str, Any]] = None,
+    filename: Optional[str] = None,
+    sample_text: Optional[str] = None,
+    use_dynamic_detection: bool = True,
+) -> tuple[Optional[str], Optional[str], Dict[str, Any]]:
+    """Infer state/county for tabular payloads using context, columns, filename, and NLP detection."""
+
+    diagnostics: Dict[str, Any] = {
+        "state_sources": [],
+        "county_sources": [],
+        "state_normalized": None,
+        "county_normalized": None,
+        "detection_log": [],
+    }
+
+    valid_states: Set[str] = set(STATE_ABBR.values())
+    state_norm: Optional[str] = None
+    county_norm: Optional[str] = None
+
+    def _record_state(value: Optional[str], source: str) -> None:
+        nonlocal state_norm
+        if not value:
+            return
+        candidate = normalize_state_name(value)
+        if not candidate or candidate not in valid_states or candidate in {"unknown", "statewide"}:
+            return
+        if state_norm == candidate:
+            if source not in diagnostics["state_sources"]:
+                diagnostics["state_sources"].append(source)
+            return
+        state_norm = candidate
+        diagnostics["state_sources"].append(source)
+        diagnostics["state_normalized"] = candidate
+
+    def _record_county(value: Optional[str], source: str) -> None:
+        nonlocal county_norm
+        if not value:
+            return
+        candidate = normalize_county_name(value)
+        if not candidate or candidate in {"unknown", "total", "overall", "statewide", "all"}:
+            return
+        if county_norm == candidate:
+            if source not in diagnostics["county_sources"]:
+                diagnostics["county_sources"].append(source)
+            return
+        county_norm = candidate
+        diagnostics["county_sources"].append(source)
+        diagnostics["county_normalized"] = candidate
+
+    ctx_state, ctx_county = resolve_state_county_from_context(dict(context or {}))
+    if ctx_state:
+        _record_state(ctx_state, "context")
+    if ctx_county:
+        _record_county(ctx_county, "context")
+
+    def _first_non_empty(column: str) -> str:
+        for row in rows:
+            if not isinstance(row, Mapping):
+                continue
+            val = row.get(column)
+            if val is None:
+                continue
+            text = str(val).strip()
+            if text:
+                return text
+        return ""
+
+    for header in headers:
+        if not isinstance(header, str):
+            continue
+        stripped = header.strip()
+        low = stripped.lower()
+        if re.search(r"\bstate\b", low):
+            candidate = _first_non_empty(stripped)
+            _record_state(candidate, f"column:{stripped}")
+        elif re.search(r"\b(county|parish)\b", low) or "jurisdiction" in low:
+            candidate = _first_non_empty(stripped)
+            _record_county(candidate, f"column:{stripped}")
+
+    if filename:
+        stem = os.path.splitext(os.path.basename(filename))[0]
+        _record_state(stem, "filename")
+        county_match = re.search(r"([a-z][a-z\s]+?)\s+county\b", stem.lower())
+        if county_match:
+            _record_county(county_match.group(1), "filename")
+
+    text_blob = sample_text or _table_sample_text(headers, rows)
+
+    if use_dynamic_detection and (not state_norm or not county_norm):
+        try:
+            from ..Context_Integration.context_coordinator import dynamic_state_county_detection
+
+            detection_context = dict(context or {})
+            if filename:
+                detection_context.setdefault("source_file", os.path.basename(filename))
+            if state_norm:
+                detection_context.setdefault("state", format_state_label(state_norm))
+            if county_norm:
+                detection_context.setdefault("county", format_county_label(county_norm, state_norm))
+            if detection_context.get("contest") and "contests" not in detection_context:
+                detection_context["contests"] = [{"title": detection_context.get("contest")}]  # type: ignore
+
+            det_county, det_state, _handler, det_log = dynamic_state_county_detection(
+                detection_context,
+                text_blob,
+                debug=False,
+            )
+            _record_state(det_state, "dynamic_detection")
+            _record_county(det_county, "dynamic_detection")
+            if det_log:
+                diagnostics["detection_log"] = list(det_log[:25])
+        except Exception:
+            pass
+
+    state_display = format_state_label(state_norm or ctx_state) if (state_norm or ctx_state) else None
+    county_display = format_county_label(county_norm or ctx_county, state_norm or ctx_state) if (county_norm or ctx_county) else None
+    diagnostics["state_display"] = state_display
+    diagnostics["county_display"] = county_display
+
+    return state_display, county_display, diagnostics
+
+
+def derive_candidate_party_metadata(
+    headers: Sequence[Any],
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    max_rows: int = 250,
+) -> tuple[Dict[str, str], List[Dict[str, Any]], Dict[str, Any]]:
+    """Infer candidate→party relationships from tabular rows."""
+
+    candidate_headers: List[str] = []
+    party_headers: List[str] = []
+    for header in headers:
+        if not isinstance(header, str):
+            continue
+        stripped = header.strip()
+        if not stripped:
+            continue
+        low = stripped.lower()
+        if any(token in low for token in ("party", "affiliation", "political", "designation")):
+            if stripped not in party_headers:
+                party_headers.append(stripped)
+            continue
+        if any(token in low for token in ("candidate", "choice", "option", "nominee")):
+            if stripped not in candidate_headers:
+                candidate_headers.append(stripped)
+
+    if not candidate_headers or not party_headers:
+        return {}, [], {
+            "candidate_columns": candidate_headers,
+            "party_columns": party_headers,
+            "candidate_count": 0,
+        }
+
+    def _clean(value: Any) -> str:
+        if value is None:
+            return ""
+        text = str(value).strip()
+        return text
+
+    skip_prefixes = ("total", "all", "overall", "combined")
+    candidate_map: Dict[str, Set[str]] = {}
+    for row in rows[:max_rows]:
+        if not isinstance(row, Mapping):
+            continue
+        candidate_val = ""
+        for header in candidate_headers:
+            candidate_val = _clean(row.get(header))
+            if candidate_val:
+                break
+        if not candidate_val:
+            continue
+        c_norm = candidate_val.lower()
+        if any(c_norm.startswith(prefix) for prefix in skip_prefixes):
+            continue
+        party_val = ""
+        for header in party_headers:
+            party_val = _clean(row.get(header))
+            if party_val:
+                break
+        bucket = candidate_map.setdefault(candidate_val, set())
+        if party_val:
+            bucket.add(party_val)
+
+    diagnostics = {
+        "candidate_columns": candidate_headers,
+        "party_columns": party_headers,
+        "candidate_count": len(candidate_map),
+    }
+    if not candidate_map:
+        return {}, [], diagnostics
+
+    candidate_label_map: Dict[str, str] = {}
+    candidate_metadata: List[Dict[str, Any]] = []
+    party_summary: Dict[str, List[str]] = {}
+
+    for candidate in sorted(candidate_map.keys()):
+        raw_parties = sorted({p for p in candidate_map[candidate] if p.strip()})
+        normalized_parties = []
+        for raw_party in raw_parties:
+            try:
+                norm = normalize_party_label(raw_party)
+            except Exception:
+                norm = raw_party.strip().title()
+            if norm:
+                normalized_parties.append(norm)
+        normalized_parties = sorted({p for p in normalized_parties if p})
+        if len(normalized_parties) == 1:
+            party_display = normalized_parties[0]
+        elif len(normalized_parties) > 1:
+            party_display = "/".join(normalized_parties)
+        else:
+            party_display = ""
+        display_label = f"{candidate} ({party_display})" if party_display else candidate
+        candidate_label_map[candidate] = display_label
+        candidate_metadata.append({
+            "id": safe_slug(candidate, 80),
+            "raw_name": candidate,
+            "display_label": display_label,
+            "party": party_display,
+            "party_raw_values": raw_parties,
+            "derived_from": "row_party_columns",
+        })
+        party_summary[candidate] = normalized_parties
+
+    diagnostics["party_map"] = party_summary
+    diagnostics["candidate_label_map_size"] = len(candidate_label_map)
+
+    return candidate_label_map, candidate_metadata, diagnostics
 
 def build_camelot_row_filter_for_context(context: Optional[dict], candidate_keys: tuple[str, ...] = ("Candidate", "Party")):
     """Build a Camelot row-noise predicate using jurisdiction-aware overrides resolved from context.
