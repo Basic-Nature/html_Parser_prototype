@@ -40,6 +40,7 @@ from ..Context_Integration.Context_Library.constants import (
     LOCATION_ABBREVIATIONS,
     LOCATION_KEYWORDS,
     LOCATION_SYNONYM_MAP,
+    PARTY_NORMALIZATION_MAP,
     STATE_TO_DIVISION_TYPE_MAP,
     TOTAL_KEYWORDS,
     canonical_ballot_group,
@@ -56,6 +57,12 @@ _TOTAL_LIKE = {normalize_header(t) for t in TOTAL_KEYWORDS} | {
 }
 _BALLOT_TYPE_NORM_SET = {normalize_header(bt) for bt in BALLOT_TYPES} | {
     normalize_header(bt) for bt in BALLOT_TYPES_SORT_ORDER
+}
+
+_KNOWN_PARTY_NORMALS = {
+    str(val).strip().lower()
+    for val in PARTY_NORMALIZATION_MAP.values()
+    if isinstance(val, str) and val.strip()
 }
 
 # --- Added natural sort + division heuristics (place here with other global regex/constants) ---
@@ -320,19 +327,79 @@ def debug_dump_pivot_state(tag: str, headers: List[str], data: List[Dict[str, An
     sample = data[:limit]
     logger.debug({"pivot_debug": tag, "headers": headers, "row_samples": sample})
 
+def _strip_party_fragment(label: str, party_hint: str | None = None) -> str:
+    if not label:
+        return label
+    text = str(label).strip()
+    hint_norm = normalize_party_label(party_hint) if party_hint else ""
+    hint_low = hint_norm.lower() if hint_norm else ""
+
+    def _matches(fragment: str) -> bool:
+        if not fragment:
+            return False
+        cleaned = re.sub(r"[-–—/,|:]", " ", fragment).strip()
+        normalized = normalize_party_label(fragment)
+        if not normalized and cleaned:
+            normalized = normalize_party_label(cleaned)
+        normalized = (normalized or "").strip()
+        if not normalized:
+            return False
+        norm_low = normalized.lower()
+        if norm_low not in _KNOWN_PARTY_NORMALS:
+            return False
+        if hint_low and norm_low != hint_low:
+            return False
+        return True
+
+    tokens = text.split()
+    changed = True
+    while tokens and changed:
+        changed = False
+        max_width = min(4, len(tokens))
+        for width in range(max_width, 0, -1):
+            tail_tokens = tokens[-width:]
+            tail = " ".join(tail_tokens)
+            if _matches(tail):
+                candidate_tokens = tokens[:-width]
+                candidate = " ".join(candidate_tokens).strip()
+                if candidate:
+                    tokens = candidate_tokens
+                    text = candidate
+                    changed = True
+                break
+
+    sep_match = re.search(r"(.+?)[\s]*([-–—/,|:])\s*([A-Za-z'. ]+)$", text)
+    if sep_match and _matches(sep_match.group(3)):
+        text = sep_match.group(1).strip()
+
+    text = text.rstrip("-–—/,|: ").strip()
+    return text or label.strip()
+
+
 def _normalize_candidate_label(raw: str) -> str:
     """
-    Strip leading short uppercase party token (<=4 chars) & collapse whitespace.
+    Strip leading short uppercase party token (<=4 chars) & drop trailing party parens when recognizable.
     DEM Jane Doe -> Jane Doe
-    WOR Jane Doe -> Jane Doe
+    WOR Jane Doe (Democratic) -> Jane Doe
     """
     if not raw:
         return raw
-    parts = raw.split()
+    label = raw.strip()
+    parts = label.split()
     if parts and len(parts[0]) <= 4 and parts[0].isupper():
-        core = " ".join(parts[1:]).strip()
-        return core or raw
-    return raw
+        remainder = " ".join(parts[1:]).strip()
+        label = remainder or label
+
+    match = re.search(r"\(([^)]+)\)\s*$", label)
+    if match:
+        inner = normalize_party_label(match.group(1))
+        if inner:
+            label = label[: match.start()].strip()
+
+    label = _strip_party_fragment(label)
+    label = re.sub(r"\s{2,}", " ", label).strip()
+
+    return label or raw
 
 def _collect_ballot_types(headers: List[str], data: List[Dict[str, Any]], detector=None, candidate_col: Optional[str] = None):
     if detector:
@@ -361,6 +428,7 @@ def _collect_ballot_types(headers: List[str], data: List[Dict[str, Any]], detect
                 continue
             if _is_numeric_column(h, data):
                 bt_set.add(h)
+    bt_set = {b for b in bt_set if normalize_header(b) not in _TOTAL_LIKE}
     ordered = [b for b in BALLOT_TYPES_SORT_ORDER if b in bt_set]
     for b in sorted(bt_set):
         if b not in ordered:
@@ -432,6 +500,30 @@ def _normalize_state_key(state: str | None) -> str:
     key = re.sub(r"_+", "_", key).strip("_")
     return key
 
+
+_COUNTY_DESIGNATOR_PATTERN = re.compile(r"\b(county|parish|borough|municipality|city|township|district)\b", re.I)
+
+
+def _normalize_county_key(county: str | None) -> str:
+    if not county:
+        return ""
+    key = _norm_text(county)
+    key = _COUNTY_DESIGNATOR_PATTERN.sub("", key)
+    key = re.sub(r"\s{2,}", " ", key).strip()
+    return key
+
+
+def _lookup_precinct_aliases_for_county(county: str | None) -> list[str]:
+    if not county:
+        return []
+    norm_target = _normalize_county_key(county)
+    if not norm_target:
+        return []
+    for raw_key, values in KNOWN_COUNTY_TO_PRECINCTS_MAP.items():
+        if _normalize_county_key(raw_key) == norm_target:
+            return values or []
+    return []
+
 def _detect_division_type_for_precinct(loc: str, state: str | None, context: dict) -> str:
     """
     Infer a stable division type for a given Precinct label:
@@ -447,21 +539,24 @@ def _detect_division_type_for_precinct(loc: str, state: str | None, context: dic
     if low in {"all precincts", "all districts", "overall", "total"}:
         return "aggregate"
 
-    county = _norm_text(context.get("county") or "")
-    # Municipality check by county -> precinct list map
-    if county and county in KNOWN_COUNTY_TO_PRECINCTS_MAP:
-        for muni in KNOWN_COUNTY_TO_PRECINCTS_MAP[county]:
-            mlow = _norm_text(muni)
-            if not mlow:
-                continue
-            # strong prefix or exact token match
-            if low == mlow or low.startswith(mlow + " ") or (" " + mlow + " ") in (" " + low + " "):
-                return "municipality"
-
-    # Token-based heuristics (prefer more specific matches)
     for pattern, dtype in _DIVISION_TOKEN_PATTERNS:
         if pattern.search(low):
             return dtype
+
+    county_aliases = _lookup_precinct_aliases_for_county(context.get("county") or context.get("County"))
+    if county_aliases:
+        for muni in county_aliases:
+            mlow = _norm_text(muni)
+            if not mlow:
+                continue
+            if low == mlow:
+                return "municipality"
+        for muni in county_aliases:
+            mlow = _norm_text(muni)
+            if not mlow:
+                continue
+            if low.startswith(mlow + " ") or (" " + mlow + " ") in (" " + low + " "):
+                return "municipality"
 
     wide_tokens = (
         ("countywide", "county"),
@@ -474,23 +569,23 @@ def _detect_division_type_for_precinct(loc: str, state: str | None, context: dic
         if token in low:
             return dtype
 
-    # Generic district fallback
     if re.search(r"\bdistrict\b", low, flags=re.I):
         return "district"
 
-    # If the "loc" looks like a county/independent city known for the state
+    county_norm = _normalize_county_key(context.get("county") or context.get("County"))
+    if county_norm and (low == county_norm or low.startswith(county_norm + " ")):
+        county_orig = context.get("county") or context.get("County") or county_norm
+        return str(county_orig)
+
     if state:
         smap = STATE_TO_DIVISION_TYPE_MAP.get(_normalize_state_key(state))
         if smap:
-            # Try a cleaned base (strip trailing numbers/units)
             base = re.sub(r"\d+.*$", "", low).strip()
             if base in smap:
                 return smap[base]
-            # Exact
             if low in smap:
                 return smap[low]
 
-    # Fallback to suffix heuristic
     return _division_type_for(loc, state)
 
 def _detect_division_name_for_precinct(loc: str, state: str | None, context: dict) -> str:
@@ -510,44 +605,36 @@ def _detect_division_name_for_precinct(loc: str, state: str | None, context: dic
     if low in {"all precincts", "all districts", "overall", "total"}:
         return "All"
 
-    county = _norm_text(context.get("county") or "")
-    # 1) Extract municipality from the label
+    county_norm = _normalize_county_key(context.get("county") or context.get("County"))
+    if county_norm and (low == county_norm or low.startswith(county_norm + " ")):
+        county_orig = context.get("county") or context.get("County") or county_norm
+        return str(county_orig)
+
     muni_guess = _extract_municipality(loc)
     muni_guess_low = _norm_text(muni_guess)
 
-    # Validate municipality against county’s known list (prefer canonical casing from the list)
-    if county and county in KNOWN_COUNTY_TO_PRECINCTS_MAP and muni_guess_low:
-        for canonical in KNOWN_COUNTY_TO_PRECINCTS_MAP[county]:
+    county_aliases = _lookup_precinct_aliases_for_county(context.get("county") or context.get("County"))
+    if county_aliases and muni_guess_low:
+        for canonical in county_aliases:
             if _norm_text(canonical) == muni_guess_low:
-                return canonical  # use canonical casing as defined in constants
-        # also accept strong prefix match (e.g., 'Dover 3' -> 'Dover')
-        for canonical in KNOWN_COUNTY_TO_PRECINCTS_MAP[county]:
+                return canonical
+        for canonical in county_aliases:
             cn_low = _norm_text(canonical)
             if muni_guess_low.startswith(cn_low) or cn_low.startswith(muni_guess_low):
                 return canonical
 
-    # 2) If label starts with a known municipality token from the county list, pick it
-    if county and county in KNOWN_COUNTY_TO_PRECINCTS_MAP:
-        for canonical in KNOWN_COUNTY_TO_PRECINCTS_MAP[county]:
+    if county_aliases:
+        for canonical in county_aliases:
             cn_low = _norm_text(canonical)
             if low == cn_low or low.startswith(cn_low + " ") or (" " + cn_low + " ") in (" " + low + " "):
                 return canonical
 
-    # 3) County-level label
-    if county and (low == county or low.startswith(county + " ")):
-        # Try to return a nicely cased county name using original context if provided
-        county_orig = context.get("county") or county
-        return str(county_orig)
-
-    # 4) State-known base names (strip trailing numbers/units)
     if state:
         smap = STATE_TO_DIVISION_TYPE_MAP.get(_normalize_state_key(state)) or {}
         base = re.sub(r"\d+.*$", "", low).strip()
         if base in smap:
-            # Title-case the base as a readable name
             return " ".join(w.capitalize() for w in base.split())
 
-    # 5) Fallbacks
     if muni_guess:
         return muni_guess
     return loc
@@ -569,8 +656,20 @@ def _extract_party_from_label(label: str) -> str:
         normalized = normalize_party_label(inner)
         if normalized:
             return normalized
+    tail_match = re.search(r"([-–—/,|:])\s*([A-Za-z'. ]+)$", label)
+    if tail_match:
+        tail = tail_match.group(2)
+        normalized = normalize_party_label(tail) or normalize_party_label(re.sub(r"[-–—/,|:]", " ", tail))
+        if normalized:
+            return normalized
     parts = label.split()
     if parts:
+        for width in range(1, min(4, len(parts)) + 1):
+            tail = " ".join(parts[-width:])
+            if len(parts) > width:
+                normalized = normalize_party_label(tail)
+                if normalized:
+                    return normalized
         prefix = parts[0]
         if prefix.isupper() and len(prefix) <= 4:
             normalized = normalize_party_label(prefix)
@@ -590,6 +689,8 @@ def _candidate_display_and_key(label: str, party_hint: str) -> tuple[str, str]:
             candidate = candidate[: match.start()].strip()
     if party_norm and candidate.lower().endswith(f"({party_norm.lower()})"):
         candidate = candidate[: -(len(party_norm) + 2)].strip()
+    candidate = _strip_party_fragment(candidate, party_norm)
+    candidate = candidate.rstrip("-–—/,|: ").strip()
     candidate = re.sub(r"\s{2,}", " ", candidate).strip()
     key = candidate.lower()
     if not key:
@@ -605,16 +706,18 @@ def _map_ballot_suffix(suffix: str) -> tuple[str | None, str | None]:
     norm = _normalize_ballot_suffix(suffix)
     if not norm:
         return None, None
-    if any(token in norm for token in ("election day", "eday")):
+    if any(token in norm for token in ("election day", "eday", "day of")):
         return "Election Day Votes", None
-    if any(token in norm for token in ("early", "advance")):
+    if any(token in norm for token in ("early", "advance", "in person early", "pre poll")):
         return "Early Votes", None
-    if any(token in norm for token in ("mail", "absentee", "vote by mail", "vb m", "mail-in")):
+    if any(token in norm for token in ("mail", "absentee", "vote by mail", "vb m", "mail in", "mail-in", "military", "overseas", "postal")):
         return "Mail In Votes", None
-    if "provisional" in norm or "question" in norm:
+    if "provisional" in norm or "question" in norm or "affidavit" in norm or "challenged" in norm:
         return "Provisional Votes", None
     if "uncategorized" in norm or "unassigned" in norm or "unreported" in norm:
         return "Uncategorized Votes", None
+    if norm in {"total", "total vote", "total votes", "votes total"}:
+        return None, None
     clean = re.sub(r"\s+", " ", suffix or "").strip()
     if not clean:
         return None, None
@@ -726,8 +829,8 @@ def pivot_to_wide(
             if "Precinct" not in r:
                 r["Precinct"] = default_loc
 
-    location_alias = location_header or "Precinct"
-    if location_header != "Precinct":
+    location_alias = (location_header or "Precinct").strip()
+    if location_header != "Precinct" and location_header:
         original_location_header = location_header
         headers = ["Precinct" if h == original_location_header else h for h in headers]
         for r in data:
@@ -738,17 +841,48 @@ def pivot_to_wide(
         location_alias = "Precinct"
 
     if location_alias == "Precinct":
-        inferred_alias = None
+        best_alias = None
+        best_score = float("inf")
+        alias_counts: Dict[str, int] = {}
+        county_hint = context.get("county") or context.get("County")
+        map_alias = None
+        if state and county_hint:
+            map_alias = _division_type_for(county_hint, state)
+            if map_alias in ("", None, "precinct"):
+                map_alias = None
+
+        priority_map = {dtype: idx for idx, dtype in enumerate(_DIVISION_TYPE_PRIORITY)}
+
         for sample_row in data:
             loc_val = safe_get(sample_row, "Precinct", "")
             if not loc_val:
                 continue
             guess = _detect_division_type_for_precinct(loc_val, state, context)
-            if guess and guess not in ("", "aggregate", "precinct"):
-                inferred_alias = guess.title()
-                break
-        if inferred_alias:
-            location_alias = inferred_alias
+            if not guess or guess in {"", "aggregate", "precinct", "county"}:
+                continue
+            alias_counts[guess] = alias_counts.get(guess, 0) + 1
+            score = priority_map.get(guess, len(priority_map))
+            if score < best_score:
+                best_alias = guess
+                best_score = score
+            elif score == best_score and best_alias:
+                if alias_counts[guess] > alias_counts.get(best_alias, 0):
+                    best_alias = guess
+
+        if best_alias:
+            location_alias = best_alias.title()
+        elif map_alias:
+            location_alias = map_alias.title()
+
+    location_alias = (location_alias or "Precinct").strip()
+    if location_alias:
+        location_alias = location_alias.replace("_", " ")
+        if location_alias.lower() == "precinct":
+            location_alias = "Precinct"
+        else:
+            location_alias = " ".join(part.capitalize() for part in location_alias.split())
+    else:
+        location_alias = "Precinct"
 
     aggregate_label_value = f"All {_pluralize_division(location_alias or 'Precinct')}"
 
@@ -1102,7 +1236,48 @@ def transform_wide_to_smart_standard(
 
     has_precinct = "Precinct" in headers or any("Precinct" in r for r in rows)
     has_division_name = "Division Name" in headers or any("Division Name" in r for r in rows)
-    if not has_precinct and not has_division_name:
+
+    location_field: str | None = None
+    if has_division_name:
+        location_field = "Division Name"
+    elif has_precinct:
+        location_field = "Precinct"
+    else:
+        candidate_headers: List[str] = []
+        ignore_norms = {
+            normalize_header("division type"),
+            normalize_header("percent reported"),
+            normalize_header("grand total"),
+            normalize_header("county"),
+        }
+        for h in headers:
+            if not isinstance(h, str):
+                continue
+            if " - " in h:
+                candidate_headers.append(h)
+                continue
+            nh = normalize_header(h)
+            if nh in ignore_norms:
+                continue
+            if nh == normalize_header("precinct"):
+                location_field = h
+                break
+            if location_field is None:
+                location_field = h
+        if location_field is None and candidate_headers:
+            # Inspect first row for a non-candidate key
+            sample = rows[0] if rows else {}
+            if isinstance(sample, dict):
+                for key in sample.keys():
+                    if " - " in key:
+                        continue
+                    nh = normalize_header(key)
+                    if nh in ignore_norms:
+                        continue
+                    location_field = key
+                    break
+
+    if not location_field:
         return headers, rows, False
 
     candidate_map: Dict[str, Dict[str, Any]] = {}
@@ -1126,7 +1301,6 @@ def transform_wide_to_smart_standard(
         return headers, rows, False
 
     division_header, include_division_type = _choose_division_header(rows, context)
-    location_field = "Division Name" if has_division_name else "Precinct"
 
     county_value = (context.get("county") or context.get("County") or "").strip()
     county_value = county_value.title() if county_value else ""
@@ -1147,7 +1321,7 @@ def transform_wide_to_smart_standard(
             division_type_value = ""
 
         loc_lower = location_raw.lower()
-        if loc_lower.startswith("all precinct") and division_header:
+        if loc_lower.startswith("all ") and division_header:
             location_value = f"All {_pluralize_division(division_header)}"
         else:
             location_value = location_raw
@@ -1165,8 +1339,10 @@ def transform_wide_to_smart_standard(
                 val = _coerce_int(row.get(col, 0))
                 if val:
                     ballot_values[suffix] = val
+            cand_norm = re.sub(r"\s+", " ", (cand_label or "").replace("-", " ")).strip().lower()
+            is_write_in_candidate = cand_norm.startswith("write in") or cand_norm == "writein"
 
-            if not total_val and not ballot_values:
+            if not total_val and not ballot_values and not is_write_in_candidate:
                 continue
 
             party_val_raw = safe_strip(row.get(party_col, "")) if party_col else ""
@@ -1176,6 +1352,11 @@ def transform_wide_to_smart_standard(
                 party_val = fallback or party_val
 
             display_name, base_key = _candidate_display_and_key(cand_label, party_val)
+
+            if is_write_in_candidate:
+                display_name = "Write-In"
+                base_key = "write-in"
+                party_val = "NA"
 
             standard_values: Dict[str, int] = defaultdict(int)
             extra_values: Dict[str, int] = defaultdict(int)
@@ -1227,7 +1408,7 @@ def transform_wide_to_smart_standard(
                 "uncategorized": uncategorized,
                 "calculated_total": calculated_total,
                 "reported_total": total_val,
-                "write_in": display_name.lower().startswith("write"),
+                "write_in": is_write_in_candidate,
             }
 
             grouped_variants[base_key].append(variant)
@@ -1281,6 +1462,17 @@ def transform_wide_to_smart_standard(
 
                 transformed_rows.append(row_out)
 
+    if transformed_rows and include_division_type:
+        observed_types = [safe_strip(r.get("Division Type", "")) for r in transformed_rows]
+        unique_types = [t for t in dict.fromkeys(observed_types) if t]
+        if len(unique_types) <= 1:
+            primary_type = unique_types[0] if unique_types else ""
+            for r in transformed_rows:
+                r.pop("Division Type", None)
+            include_division_type = False
+            meta = context.setdefault("smart_standard_metadata", {})
+            meta["primary_division_type"] = primary_type
+
     if not transformed_rows:
         return headers, rows, False
 
@@ -1296,12 +1488,6 @@ def transform_wide_to_smart_standard(
     output_headers.extend(extra_columns)
     output_headers.extend(["Calculated Total Votes", "Write-In"])
 
-    for row in transformed_rows:
-        for col in output_headers:
-            row.setdefault(col, "")
-        if include_division_type and not row.get("Division Type"):
-            row["Division Type"] = division_header.lower()
-
     if mismatches:
         context.setdefault("smart_standard_warnings", []).extend(mismatches[:50])
 
@@ -1310,6 +1496,26 @@ def transform_wide_to_smart_standard(
         "extra": extra_columns,
         "division_header": division_header,
     }
+
+    county_values = [row.get("County") for row in transformed_rows if row.get("County") not in (None, "")]
+    unique_counties = list(dict.fromkeys(county_values))
+    metadata = context.setdefault("smart_standard_metadata", {})
+
+    if len(unique_counties) == 1:
+        metadata["single_county"] = unique_counties[0]
+        output_headers = [col for col in output_headers if col != "County"]
+        for row in transformed_rows:
+            row.pop("County", None)
+    else:
+        for row in transformed_rows:
+            if row.get("County") is None:
+                row["County"] = ""
+
+    for row in transformed_rows:
+        for col in output_headers:
+            row.setdefault(col, "")
+        if include_division_type and "Division Type" in output_headers and not row.get("Division Type"):
+            row["Division Type"] = division_header.lower()
 
     context["smart_standard_applied"] = True
 
