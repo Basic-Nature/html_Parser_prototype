@@ -108,14 +108,19 @@ from ...utils.contest_selector import (
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.output_utils import finalize_election_output
 from ...utils.shared_logic import format_county_label, format_state_label, safe_get, safe_slug
-from ...utils.pivot import expand_single_rawjson_row
+from ...utils.pivot import expand_single_rawjson_row, transform_wide_to_smart_standard
 from ...Context_Integration.context_coordinator import dynamic_state_county_detection
 from ...Context_Integration.Context_Library.constants import normalize_party_label
 from ...utils.table_core import robust_table_extraction
+from ...utils.header_utils import (
+    compact_header_tokens as _compact_header_tokens,
+    collapse_multiline_header,
+    normalize_table_headers,
+)
 _FITZ_MODULE = None
-_FITZ_IMPORT_WARNINGS: tuple[str, ...] = ()
-_FITZ_PATCHED_TYPES: tuple[str, ...] = ()
-_FITZ_PATCH_FAILURES: tuple[str, ...] = ()
+_FITZ_IMPORT_WARNINGS: list[str] = []
+_FITZ_PATCHED_TYPES: list[str] = []
+_FITZ_PATCH_FAILURES: list[str] = []
 _FITZ_WARNING_LOGGED = False
 _SWIG_WARNING_PATTERN = re.compile(
     r"builtin type (?P<name>SwigPyObject|SwigPyPacked|swigvarlink) has no __module__ attribute"
@@ -204,39 +209,14 @@ def _ensure_fitz():
 
     if swig_msgs:
         patched, failures = _patch_fitz_swig_types(module, swig_msgs)
-        _FITZ_PATCHED_TYPES = tuple(sorted(set(patched)))
-        _FITZ_PATCH_FAILURES = tuple(sorted(set(failures)))
-        if _FITZ_PATCHED_TYPES:
-            logger.info({
-                "level": "INFO",
-                "type": "handler",
-                "message": "[INFO] Applied module metadata patches to PyMuPDF SWIG types.",
-                "patched_types": list(_FITZ_PATCHED_TYPES),
-            })
-        # Retain warnings for any types we could not patch successfully
-        unresolved = []
-        for msg in swig_msgs:
-            match = _SWIG_WARNING_PATTERN.search(msg)
-            if match and match.group("name") not in patched:
-                unresolved.append(msg)
-        _FITZ_IMPORT_WARNINGS = tuple(sorted(set(unresolved)))
-    else:
-        _FITZ_IMPORT_WARNINGS = ()
-        _FITZ_PATCHED_TYPES = ()
-        _FITZ_PATCH_FAILURES = ()
+        _FITZ_PATCHED_TYPES = patched
+        _FITZ_PATCH_FAILURES = failures
 
     if other_msgs:
-        logger.warning({
-            "level": "WARNING",
-            "type": "handler",
-            "message": "[WARN] PyMuPDF import emitted unexpected warning(s).",
-            "warning_details": other_msgs,
-        })
+        _FITZ_IMPORT_WARNINGS.extend(other_msgs)
 
     _FITZ_MODULE = module
-    globals()["fitz"] = module
     return module
-
 
 fitz = _ensure_fitz()
 
@@ -528,13 +508,307 @@ def _norm_txt(s: str) -> str:
 def _token_set(s: str) -> set[str]:
     return set(re.findall(r'[a-z0-9]+', (s or "").lower()))
 
+
+_HEADER_STOPWORDS = {
+    "total",
+    "totals",
+    "vote",
+    "votes",
+    "ballot",
+    "ballots",
+    "absentee",
+    "mail",
+    "early",
+    "provisional",
+    "grand",
+    "report",
+    "summary",
+    "precinct",
+    "precincts",
+    "district",
+    "districts",
+    "ward",
+    "wards",
+    "registered",
+    "turnout",
+    "percent",
+    "percentage",
+    "pct",
+    "%",
+    "counted",
+    "cast",
+    "election",
+    "day",
+    "poll",
+    "party",
+}
+
+_PARTY_TERMS = {str(p).lower() for p in PARTY_KEYWORDS if isinstance(p, str)} | {
+    "dem",
+    "democrat",
+    "democratic",
+    "rep",
+    "republican",
+    "gop",
+    "ind",
+    "independent",
+    "lib",
+    "libertarian",
+    "green",
+    "nonpartisan",
+    "np",
+}
+
+
+def _header_signature(label: str) -> set[str]:
+    collapsed = collapse_multiline_header(label or "")
+    tokens = set(re.findall(r"[a-z0-9]+", collapsed.lower()))
+    return {tok for tok in tokens if tok and tok not in _HEADER_STOPWORDS}
+
+
+def _looks_like_candidate_header(label: str) -> bool:
+    if not isinstance(label, str) or not label.strip():
+        return False
+    signature = _header_signature(label)
+    if not signature:
+        return "(" in label and ")" in label
+    if len(signature) == 1 and not ("(" in label and ")" in label):
+        return False
+    letters = sum(1 for ch in label if ch.isalpha())
+    if letters < 4:
+        return False
+    return True
+
+
+def _compute_header_richness(candidate_headers: list[str]) -> dict[str, float]:
+    if not candidate_headers:
+        return {
+            "parentheses_ratio": 0.0,
+            "multi_token_ratio": 0.0,
+            "party_ratio": 0.0,
+            "avg_length_norm": 0.0,
+            "richness": 0.0,
+        }
+    total = len(candidate_headers)
+    parentheses_ratio = sum(1 for h in candidate_headers if "(" in h and ")" in h) / total
+    multi_token_ratio = sum(1 for h in candidate_headers if len(_header_signature(h)) >= 2) / total
+    party_ratio = sum(1 for h in candidate_headers if any(term in h.lower() for term in _PARTY_TERMS)) / total
+    avg_length_norm = min(1.0, sum(len(h) for h in candidate_headers) / (total * 24.0))
+    richness = min(1.0, 0.4 * parentheses_ratio + 0.3 * multi_token_ratio + 0.2 * party_ratio + 0.1 * avg_length_norm)
+    return {
+        "parentheses_ratio": round(parentheses_ratio, 4),
+        "multi_token_ratio": round(multi_token_ratio, 4),
+        "party_ratio": round(party_ratio, 4),
+        "avg_length_norm": round(avg_length_norm, 4),
+        "richness": round(richness, 4),
+    }
+
+
+def _compute_numeric_fill(rows: list[dict], candidate_headers: list[str]) -> float:
+    total_cells = len(rows or []) * len(candidate_headers or [])
+    if total_cells == 0:
+        return 0.0
+    filled = 0
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        for header in candidate_headers:
+            value = row.get(header, "")
+            if value is None:
+                continue
+            if isinstance(value, (int, float)):
+                filled += 1
+                continue
+            value_str = str(value).strip()
+            if not value_str:
+                continue
+            if _is_numeric_like(value_str):
+                filled += 1
+    return round(filled / total_cells, 4)
+
+
+def _evaluate_table_candidate_quality(headers: list[str], rows: list[dict], contest_title: str) -> dict[str, object]:
+    headers = list(headers or [])
+    rows = list(rows or [])
+    candidate_headers: list[str] = []
+    seen: set[str] = set()
+    for header in headers:
+        if header in seen:
+            continue
+        if _looks_like_candidate_header(header):
+            candidate_headers.append(header)
+            seen.add(header)
+    if not candidate_headers:
+        fallback_terms = (
+            "candidate",
+            "name",
+            "party",
+            "vote",
+            "votes",
+            "total",
+            "absentee",
+            "mail",
+            "early",
+            "provisional",
+            "percent",
+            "election",
+        )
+        location_terms = (
+            "ward",
+            "precinct",
+            "district",
+            "county",
+            "town",
+            "city",
+            "parish",
+        )
+        for header in headers:
+            if not isinstance(header, str):
+                continue
+            low = header.lower()
+            if any(loc in low for loc in location_terms):
+                continue
+            if any(term in low for term in fallback_terms):
+                if header not in seen:
+                    candidate_headers.append(header)
+                    seen.add(header)
+    if not candidate_headers:
+        candidate_headers = [h for h in headers if isinstance(h, str) and h.strip()]
+    richness_metrics = _compute_header_richness(candidate_headers)
+    numeric_fill = _compute_numeric_fill(rows, candidate_headers)
+    row_density = 0.0
+    if candidate_headers:
+        row_density = min(1.0, len(rows) / max(1, len(candidate_headers)))
+    title_tokens = _token_set(contest_title)
+    table_tokens: set[str] = set()
+    for header in headers[:6]:
+        table_tokens |= _header_signature(header)
+    if rows:
+        sample_row = rows[0]
+        if isinstance(sample_row, dict):
+            for value in list(sample_row.values())[:6]:
+                table_tokens |= _header_signature(str(value))
+    alignment = 0.0
+    if title_tokens and table_tokens:
+        alignment = min(1.0, len(title_tokens & table_tokens) / len(title_tokens))
+    score = min(
+        1.0,
+        0.45 * richness_metrics["richness"]
+        + 0.3 * numeric_fill
+        + 0.15 * row_density
+        + 0.1 * alignment,
+    )
+    return {
+        "score": round(score, 4),
+        "rows": len(rows),
+        "candidate_columns": len(candidate_headers),
+        "details": {
+            **richness_metrics,
+            "numeric_fill": round(numeric_fill, 4),
+            "row_density": round(row_density, 4),
+            "contest_alignment": round(alignment, 4),
+        },
+    }
+
+
+def _find_best_header_match(source: str, targets: list[str]) -> str | None:
+    signature = _header_signature(source)
+    if not signature:
+        return next((t for t in targets if t and t.strip().lower() == source.strip().lower()), None)
+    best = (0.0, None)
+    for target in targets:
+        if not isinstance(target, str):
+            continue
+        target_sig = _header_signature(target)
+        if not target_sig:
+            continue
+        inter = len(signature & target_sig)
+        union = len(signature | target_sig) or 1
+        score = inter / union
+        if score > best[0]:
+            best = (score, target)
+    if best[0] >= 0.45:
+        return best[1]
+    return None
+
+
+def _normalize_anchor_value(value) -> str:
+    if value is None:
+        return ""
+    return re.sub(r"\s+", " ", str(value).strip()).lower()
+
+
+def _merge_camelot_with_text(
+    camelot_table: dict,
+    text_headers: list[str],
+    text_rows: list[dict],
+) -> tuple[list[str], list[dict]] | None:
+    if not camelot_table or not text_headers or not text_rows:
+        return None
+    camelot_headers = list(camelot_table.get("headers") or [])
+    camelot_rows = list(camelot_table.get("rows") or [])
+    if not camelot_headers or not camelot_rows:
+        return None
+
+    header_map: dict[str, str] = {}
+    for ch in camelot_headers:
+        best = _find_best_header_match(ch, text_headers)
+        if best:
+            header_map[ch] = best
+
+    anchor_header = camelot_headers[0]
+    anchor_text_header = header_map.get(anchor_header)
+    if not anchor_text_header and text_headers:
+        anchor_text_header = text_headers[0]
+    if not anchor_text_header:
+        return None
+
+    text_index = {
+        _normalize_anchor_value(row.get(anchor_text_header)): row
+        for row in text_rows
+        if isinstance(row, dict)
+    }
+    camelot_index = {
+        _normalize_anchor_value(row.get(anchor_header)): row
+        for row in camelot_rows
+        if isinstance(row, dict)
+    }
+
+    merged_rows: list[dict] = []
+    seen_keys: set[str] = set()
+    for key, text_row in text_index.items():
+        if not key and camelot_index:
+            continue
+        camelot_row = camelot_index.get(key)
+        merged_row: dict = {}
+        for ch in camelot_headers:
+            text_key = header_map.get(ch)
+            value = ""
+            if camelot_row and camelot_row.get(ch) not in (None, ""):
+                value = camelot_row.get(ch)
+            elif text_key and text_row.get(text_key) not in (None, ""):
+                value = text_row.get(text_key)
+            elif text_row.get(ch) not in (None, ""):
+                value = text_row.get(ch)
+            merged_row[ch] = value if value is not None else ""
+        merged_rows.append(merged_row)
+        seen_keys.add(key)
+
+    for key, camelot_row in camelot_index.items():
+        if key in seen_keys:
+            continue
+        merged_rows.append({ch: camelot_row.get(ch, "") for ch in camelot_headers})
+
+    return camelot_headers, merged_rows
+
 def _best_title_match_idx(lines: list[str], selected_title: str) -> int:
     """Find the index of the line that best matches the selected title by token overlap."""
     if not selected_title:
         return -1
     sel_tok = _token_set(selected_title)
     best = (-1.0, -1)
-    for i, line in enumerate(lines[:600]):
+    scan_limit = min(len(lines), 5000)
+    for i, line in enumerate(lines[:scan_limit]):
         lt = _token_set(line)
         if not lt:
             continue
@@ -581,6 +855,20 @@ def _parse_candidate_line(line: str, ballot_types: list[str]) -> dict | None:
     """
     if not line or sum(ch.isalpha() for ch in line) < 3:
         return None
+    # Reject obvious month/year header lines that appear above contest tables.
+    # These lines often look like "November 8, 2016, General Election Abstract of Votes"
+    # and should not be treated as candidate rows.
+    try:
+        month_pattern = r"^\s*(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+        if re.match(month_pattern + r"\b", line.strip(), re.I):
+            if re.search(r"\b(election|primary|abstract|results|ballot|statement|return)\b", line, re.I):
+                return None
+            if re.match(month_pattern + r"[\s,]+\d{1,2}(?:st|nd|rd|th)?[\s,]+\d{4}\s*$", line.strip(), re.I):
+                return None
+            if re.match(month_pattern + r"[\s,]+\d{4}\s*$", line.strip(), re.I):
+                return None
+    except Exception:
+        pass
     pct_match = _PCT_RE.search(line)
     pct_val = f"{pct_match.group('pct')}%" if pct_match else None
     nums = [m.group('num') for m in _NUM_RE.finditer(line)]
@@ -831,6 +1119,471 @@ def _extract_table_by_whitespace(lines: list[str], start_idx: int, headers: list
             data.append(row)
     return data
 
+
+_NUMERIC_TOKEN_RE = re.compile(r"^\s*[-+]?\d[\d,]*(?:\.\d+)?\s*(?:%+)?\s*$")
+
+_PARTY_KEY_PATTERN = re.compile(r"\((?P<code>[A-Za-z]{1,4})\)\s*(?P<label>[A-Za-z][A-Za-z .&'/-]*)")
+_PARTY_EQUALS_PATTERN = re.compile(r"\b(?P<code>[A-Za-z]{1,4})\b\s*=\s*(?P<label>[A-Za-z][A-Za-z .&'/-]*)")
+
+
+def _is_numeric_like(token: str) -> bool:
+    if not isinstance(token, str):
+        return False
+    text = token.strip()
+    if not text:
+        return False
+    # Allow percent suffix but reject alpha characters
+    if any(ch.isalpha() for ch in text):
+        return False
+    return bool(_NUMERIC_TOKEN_RE.match(text))
+
+
+def _normalize_numeric_token(value: str) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    if text.endswith("%"):
+        return text.replace(" ", "")
+    return text.replace(",", "").replace(" ", "")
+
+
+def _matches_anchor_header(raw: str) -> bool:
+    if not raw:
+        return False
+    text = raw.strip().lower()
+    if not text:
+        return False
+    anchors = {
+        "county",
+        "precinct",
+        "municipality",
+        "ward",
+        "district",
+        "city",
+        "town",
+        "township",
+        "borough",
+        "parish",
+        "county totals",
+        "precinct totals",
+        "precincts",
+    }
+    if text in anchors:
+        return True
+    for anchor in anchors:
+        if text.endswith(f" {anchor}"):
+            return True
+    return False
+def _reconstruct_columnar_block(lines: list[str]) -> tuple[list[str], list[dict]]:
+    cleaned = [(line or "").strip() for line in lines if (line or "").strip()]
+    if len(cleaned) <= 5:
+        return [], []
+
+    max_anchor_scan = min(len(cleaned) - 3, 800)
+    for idx in range(max_anchor_scan):
+        raw = cleaned[idx]
+        if not _matches_anchor_header(raw):
+            continue
+
+        anchor_label = cleaned[idx]
+        tail = cleaned[idx + 1:]
+        if len(tail) < 3:
+            continue
+
+        label_idx = -1
+        numeric_run = 0
+        for offset, token in enumerate(tail):
+            abs_idx = idx + 1 + offset
+            if not token or _is_numeric_like(token) or _matches_anchor_header(token):
+                continue
+            k = abs_idx + 1
+            run = 0
+            while k < len(cleaned) and _is_numeric_like(cleaned[k]):
+                run += 1
+                k += 1
+            if run >= 2:
+                label_idx = abs_idx
+                numeric_run = run
+                break
+        if label_idx < 0 or numeric_run < 2 or numeric_run > 15:
+            continue
+
+        forward_tokens: list[str] = []
+        for pos in range(idx + 1, label_idx):
+            tok = cleaned[pos]
+            if tok and not _is_numeric_like(tok) and not _matches_anchor_header(tok):
+                forward_tokens.append(tok)
+        candidate_count = max(numeric_run, len(forward_tokens))
+        if len(forward_tokens) > candidate_count:
+            forward_tokens = forward_tokens[-candidate_count:]
+
+        header_tokens = list(forward_tokens)
+        back_tokens: list[str] = []
+        back_idx = idx - 1
+        while back_idx >= 0 and len(back_tokens) < candidate_count:
+            tok = cleaned[back_idx]
+            if not tok or _is_numeric_like(tok) or _matches_anchor_header(tok):
+                break
+            back_tokens.append(tok)
+            back_idx -= 1
+
+        header_tokens = _compact_header_tokens(header_tokens, candidate_count, prior_tokens=back_tokens[::-1])
+
+        if len(header_tokens) != candidate_count:
+            continue
+
+        data_index = label_idx
+        headers = [anchor_label] + header_tokens
+        rows: list[dict] = []
+        while data_index < len(cleaned):
+            label = cleaned[data_index]
+            if not label:
+                data_index += 1
+                if rows:
+                    break
+                continue
+            if _matches_anchor_header(label) and label.lower() != anchor_label.lower() and rows:
+                break
+            if _is_numeric_like(label):
+                break
+
+            values: list[str] = []
+            cursor = data_index + 1
+            while len(values) < candidate_count and cursor < len(cleaned):
+                cell = cleaned[cursor]
+                if not _is_numeric_like(cell):
+                    break
+                values.append(_normalize_numeric_token(cell))
+                cursor += 1
+
+            if not values:
+                break
+            if len(values) < candidate_count:
+                values.extend([""] * (candidate_count - len(values)))
+
+            row = {anchor_label: label}
+            for header, value in zip(headers[1:], values):
+                row[header] = value
+            rows.append(row)
+            data_index = cursor
+
+        if len(rows) >= 2 and candidate_count >= 1:
+            return headers, rows
+
+    return [], []
+
+
+def _extract_party_lookup_from_lines(lines: list[str] | None) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    if not lines:
+        return lookup
+    for raw in lines:
+        if not isinstance(raw, str):
+            continue
+        text = raw.strip()
+        if not text:
+            continue
+        for match in _PARTY_KEY_PATTERN.finditer(text):
+            code_raw = match.group("code") or ""
+            label_raw = match.group("label") or ""
+            code = re.sub(r"[^A-Za-z0-9]+", "", code_raw).upper()
+            label = label_raw.strip()
+            if not code or not label or code in lookup:
+                continue
+            normalized = normalize_party_label(label)
+            if normalized:
+                lookup[code] = normalized
+        for match in _PARTY_EQUALS_PATTERN.finditer(text):
+            code_raw = match.group("code") or ""
+            label_raw = match.group("label") or ""
+            code = re.sub(r"[^A-Za-z0-9]+", "", code_raw).upper()
+            label = label_raw.strip()
+            if not code or not label or code in lookup:
+                continue
+            normalized = normalize_party_label(label)
+            if normalized:
+                lookup[code] = normalized
+    return lookup
+
+
+def _parse_candidate_header_with_party(header: str, party_lookup: dict[str, str]) -> tuple[str, str, dict]:
+    raw_header = str(header or "").strip()
+    sanitized = raw_header.replace(",(", " (").replace(", (", " (")
+    sanitized = re.sub(r"\s+", " ", sanitized).strip()
+    info = {
+        "source_header": raw_header,
+        "party_inference": "unknown",
+        "party_code": None,
+    }
+
+    candidate_label = sanitized
+    party_label = ""
+
+    match = re.search(r"\(([^)]+)\)\s*$", sanitized)
+    if match:
+        token = match.group(1).strip()
+        token_clean = re.sub(r"[^A-Za-z0-9]+", "", token)
+        if token_clean:
+            code = token_clean.upper()
+            info["party_code"] = code
+            mapped = party_lookup.get(code)
+            if mapped:
+                party_label = mapped
+                info["party_inference"] = "key_lookup"
+            else:
+                normalized = normalize_party_label(token)
+                if normalized:
+                    party_label = normalized
+                    info["party_inference"] = "parenthetical_abbrev"
+        candidate_label = sanitized[: match.start()].strip()
+
+    if not party_label and info.get("party_code"):
+        normalized = normalize_party_label(info["party_code"])
+        if normalized:
+            party_label = normalized
+            if info["party_inference"] == "unknown":
+                info["party_inference"] = "parenthetical_abbrev"
+
+    if not party_label:
+        for token in re.findall(r"\b([A-Za-z]{1,4})\b", sanitized):
+            mapped = party_lookup.get(token.upper())
+            if mapped:
+                party_label = mapped
+                info["party_code"] = token.upper()
+                info["party_inference"] = "key_lookup"
+                break
+
+    candidate_label = candidate_label.strip().strip("*").strip()
+    candidate_label = re.sub(r"\s{2,}", " ", candidate_label)
+    candidate_label = candidate_label.rstrip(",;")
+    if not candidate_label:
+        candidate_label = raw_header
+
+    info["candidate_label"] = candidate_label
+    info["party_label"] = party_label
+    return candidate_label, party_label, info
+
+
+def _coerce_vote_value_for_reconstruction(value):
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except Exception:
+            return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text.upper() in {"NA", "N/A", "--", "—"}:
+            return ""
+        digits = text.replace(",", "").replace(" ", "")
+        if digits.isdigit():
+            try:
+                return int(digits)
+            except Exception:
+                return digits
+        try:
+            return int(float(digits))
+        except Exception:
+            return text
+    return value
+
+
+def _try_columnar_reconstruction(
+    pdf_path: str,
+    lines: list[str],
+    selected_contest_title: str,
+    state: str,
+    county: str,
+    metadata: dict,
+    coordinator,
+    session_id: str | None,
+):
+    if not lines:
+        return None
+
+    recon_headers: list[str] = []
+    recon_rows: list[dict] = []
+    contest_scope: str | None = None
+
+    try:
+        contest_block = _extract_contest_block(lines, selected_contest_title)
+    except Exception:
+        contest_block = []
+
+    search_spaces: list[tuple[str, list[str]]] = []
+    if contest_block:
+        search_spaces.append(("contest_block", contest_block))
+    if lines:
+        search_spaces.append(("document", lines))
+
+    for scope, candidate_lines in search_spaces:
+        headers, rows = _reconstruct_columnar_block(candidate_lines)
+        if headers and rows:
+            recon_headers = headers
+            recon_rows = rows
+            contest_scope = scope
+            break
+
+    if not recon_headers or not recon_rows:
+        return None
+
+    party_lookup: dict[str, str] = {}
+    if contest_block:
+        party_lookup.update(_extract_party_lookup_from_lines(contest_block))
+    if lines:
+        doc_lookup = _extract_party_lookup_from_lines(lines)
+        for code, label in doc_lookup.items():
+            party_lookup.setdefault(code, label)
+
+    location_header = recon_headers[0]
+    candidate_headers = recon_headers[1:]
+
+    candidate_infos: list[dict] = []
+    for cand_header in candidate_headers:
+        candidate_label, party_label, info = _parse_candidate_header_with_party(cand_header, party_lookup)
+        info["candidate_label"] = candidate_label
+        info["party_label"] = party_label
+        candidate_infos.append(info)
+
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for info in candidate_infos:
+        base_key = (info.get("candidate_label") or info.get("source_header") or "").strip().lower()
+        grouped[base_key].append(info)
+
+    for bucket in grouped.values():
+        if len(bucket) == 1:
+            info = bucket[0]
+            display = info.get("candidate_label") or info.get("source_header") or ""
+            info["display_label"] = display.strip()
+            continue
+        for idx, info in enumerate(bucket, start=1):
+            base = (info.get("candidate_label") or info.get("source_header") or "").strip()
+            suffix = (info.get("party_label") or info.get("party_code") or str(idx)).strip()
+            info["display_label"] = f"{base} ({suffix})".strip()
+
+    normalized_headers = [location_header]
+    for info in candidate_infos:
+        display = info.get("display_label") or info.get("candidate_label") or info.get("source_header") or ""
+        display = re.sub(r"\s{2,}", " ", display).strip()
+        info["display_label"] = display or (info.get("source_header") or "")
+        total_key = f"{info['display_label']} - Total Vote"
+        party_key = f"{info['display_label']} - Party"
+        info["total_key"] = total_key
+        info["party_key"] = party_key
+        normalized_headers.extend([total_key, party_key])
+        if "party_label" not in info:
+            info["party_label"] = ""
+
+    normalized_rows: list[dict] = []
+    for row in recon_rows:
+        new_row = {location_header: row.get(location_header, "")}
+        for info in candidate_infos:
+            source_header = info.get("source_header")
+            total_val = _coerce_vote_value_for_reconstruction(row.get(source_header, ""))
+            new_row[info["total_key"]] = total_val
+            new_row[info["party_key"]] = info.get("party_label", "")
+        normalized_rows.append(new_row)
+
+    base_context = {
+        "state": state,
+        "county": county,
+        "contest": selected_contest_title,
+    }
+    export_context = _prepare_output_context(
+        base_context,
+        {
+            "handler": "pdf_handler",
+            "input_file": os.path.basename(pdf_path),
+            "session_id": session_id,
+            "columnar_reconstruction": True,
+        }
+    )
+
+    normalized_rows_copy = [dict(r) for r in normalized_rows]
+    transformed_headers, transformed_rows, smart_applied = transform_wide_to_smart_standard(
+        list(normalized_headers),
+        normalized_rows_copy,
+        export_context,
+    )
+    if smart_applied:
+        final_headers = transformed_headers
+        final_rows = transformed_rows
+    else:
+        final_headers = normalized_headers
+        final_rows = normalized_rows_copy
+
+    candidate_meta = []
+    for info in candidate_infos:
+        candidate_meta.append({
+            "source_header": info.get("source_header"),
+            "display_label": info.get("display_label"),
+            "party": info.get("party_label", ""),
+            "party_code": info.get("party_code"),
+            "party_inference": info.get("party_inference"),
+            "total_column": info.get("total_key"),
+            "party_column": info.get("party_key"),
+        })
+
+    columnar_meta = metadata.get("columnar_reconstruction") or {}
+    columnar_meta.update({
+        "rows": len(recon_rows),
+        "columns": len(recon_headers),
+        "scope": contest_scope,
+        "wide_rows": len(normalized_rows),
+        "final_rows": len(final_rows),
+        "party_lookup": party_lookup,
+        "party_lookup_keys": sorted(party_lookup.keys()),
+        "candidate_columns": candidate_meta,
+        "location_header": location_header,
+        "wide_headers": normalized_headers,
+        "final_headers": final_headers,
+        "smart_standard_applied": bool(smart_applied),
+    })
+    metadata["columnar_reconstruction"] = columnar_meta
+    export_context["columnar_reconstruction_details"] = columnar_meta
+
+    result = finalize_election_output(
+        headers=final_headers,
+        data=final_rows,
+        coordinator=coordinator,
+        contest=selected_contest_title,
+        state=state,
+        county=county,
+        context=export_context,
+        enable_user_feedback=False,
+        session_id=session_id
+    )
+
+    decision_entry = {
+        "stage": "columnar_reconstruction",
+        "contest": selected_contest_title,
+        "scope": contest_scope,
+        "candidates": len(candidate_infos),
+        "smart_standard_applied": bool(smart_applied),
+        "location_header": location_header,
+    }
+    metadata.setdefault("decision_trace", []).append(decision_entry)
+
+    metadata.update({
+        "output_file": os.path.basename(result.get("csv_path", "")),
+        "headers": final_headers,
+        "row_count": len(final_rows),
+        "csv_path": result.get("csv_path"),
+        "metadata_path": result.get("metadata_path"),
+        "columnar_reconstruction": columnar_meta,
+    })
+
+    logger.info({
+        "level": "INFO",
+        "type": "output",
+        "message": "[OUTPUT] Columnar reconstruction normalized to smart-standard rows.",
+        "session_id": session_id,
+        "rows": len(final_rows),
+        "candidates": len(candidate_infos),
+        "smart_standard_applied": bool(smart_applied),
+    })
+
+    return final_headers, final_rows, selected_contest_title, metadata
+
 def _log_ocr_environment(session_id=None):
     try:
         info = {
@@ -918,6 +1671,8 @@ def _detect_contest_titles_from_text(lines):
         raw = (line or "").strip()
         low = raw.lower()
         if not raw or len(raw) < 6:
+            continue
+        if raw.startswith("*"):
             continue
         if any(s in low for s in skip_set):
             continue
@@ -2272,6 +3027,8 @@ def _finalize_structured_table_output(
             location_headers=location_headers,
         )
 
+    headers, data = normalize_table_headers(headers, data)
+
     headers_adj, data_adj = harmonize_headers_and_data(
         headers,
         data,
@@ -2726,13 +3483,24 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         },
         "input_file": os.path.basename(pdf_path)
     }
-    auto_pick = select_contest_auto_first(
-        coordinator=coordinator,
-        context=selector_context,
-        session_id=session_id,
-        allow_multiple=False,
-        force_interactive=False
-    )
+    force_contest_prompt = bool(os.environ.get("SMART_ELECTIONS_FORCE_CONTEST_PROMPT"))
+    auto_kwargs = {
+        "coordinator": coordinator,
+        "context": selector_context,
+        "session_id": session_id,
+        "allow_multiple": False,
+        "force_interactive": force_contest_prompt,
+    }
+    if not force_contest_prompt:
+        auto_kwargs.update({
+            "prefer_year_match": False,
+        })
+        if _should_auto_select(detected_titles):
+            auto_kwargs["auto_confidence_threshold"] = 0.0
+        else:
+            auto_kwargs["auto_confidence_threshold"] = 0.82
+    auto_pick = select_contest_auto_first(**auto_kwargs)
+    metadata["contest_selection_mode"] = "auto" if (auto_pick and not force_contest_prompt) else "prompt"
     if not auto_pick:
         logger.warning({
             "level": "WARNING",
@@ -2818,6 +3586,9 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 })
 
     data = []
+    table_source = "text"
+    table_quality_meta = metadata.setdefault("table_quality", {})
+    camelot_best_score = 0.0
 
     if headers:
         # Locate the header line index
@@ -2878,6 +3649,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                     "csv_path": result.get("csv_path"),
                     "metadata_path": result.get("metadata_path"),
                 })
+                metadata["table_source"] = "semantic_candidates"
                 logger.info({
                     "level": "INFO",
                     "type": "output",
@@ -2885,41 +3657,114 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                     "session_id": session_id
                 })
                 return cand_headers, cand_rows, selected_contest_title, metadata
-        if camelot_tables:
-            top_c = camelot_tables[0]
-            if metadata.get("ocr_used"):
-                try:
-                    hybrid_fill_camelot(top_c, lines)
-                    metadata["camelot_hybrid_fill"] = True
-                except Exception:
-                    pass
-            use_camelot = False
-            if not data:
-                use_camelot = True
-            elif _table_looks_bad(headers, data) and top_c["score"] >= 0.8:
-                use_camelot = True
-            elif top_c["score"] >= 0.9 and len(top_c["rows"]) >= max(5, int(len(data) * 1.2)):
-                use_camelot = True
 
-            if use_camelot:
-                headers = top_c["headers"]
-                data = top_c["rows"]
-                metadata["camelot_used"] = True
-                metadata["camelot_flavor"] = top_c["flavor"]
-                metadata["camelot_score"] = float(top_c["score"])
-                metadata["camelot_rows"] = len(top_c["rows"])
+        text_quality = _evaluate_table_candidate_quality(headers, data, selected_contest_title)
+        table_quality_meta["text"] = text_quality
+
+        if camelot_tables:
+            camelot_evals: list[tuple[dict, dict]] = []
+            for entry in camelot_tables:
+                quality = _evaluate_table_candidate_quality(entry.get("headers") or [], entry.get("rows") or [], selected_contest_title)
+                camelot_evals.append((entry, quality))
+            camelot_evals = [item for item in camelot_evals if isinstance(item[1], dict)]
+            if camelot_evals:
+                camelot_evals.sort(key=lambda item: item[1]["score"], reverse=True)
+                top_c, top_quality = camelot_evals[0]
+                if metadata.get("ocr_used"):
+                    try:
+                        hybrid_fill_camelot(top_c, lines)
+                        metadata["camelot_hybrid_fill"] = True
+                        top_quality = _evaluate_table_candidate_quality(top_c.get("headers") or [], top_c.get("rows") or [], selected_contest_title)
+                        camelot_evals[0] = (top_c, top_quality)
+                    except Exception:
+                        pass
+
+                camelot_best_score = float(top_quality.get("score", 0.0))
+                text_score = float(text_quality.get("score", 0.0))
+                top_score = camelot_best_score
+                table_quality_meta["camelot_top"] = {
+                    **top_quality,
+                    "flavor": top_c.get("flavor"),
+                    "raw_score": float(top_c.get("score", 0.0)),
+                }
+                table_quality_meta["camelot_candidates"] = [
+                    {
+                        "score": eval_info.get("score", 0.0),
+                        "rows": eval_info.get("rows", 0),
+                        "candidate_columns": eval_info.get("candidate_columns", 0),
+                        "details": eval_info.get("details", {}),
+                        "flavor": entry.get("flavor"),
+                        "raw_score": float(entry.get("score", 0.0)),
+                    }
+                    for entry, eval_info in camelot_evals[:5]
+                ]
+
+                top_details = top_quality.get("details", {}) if isinstance(top_quality, dict) else {}
+                text_details = text_quality.get("details", {}) if isinstance(text_quality, dict) else {}
+                header_gain = top_details.get("richness", 0.0) - text_details.get("richness", 0.0)
+                camelot_reason = None
+                camelot_used_direct = False
+
+                if not data and top_score >= max(0.25, text_score + 0.1):
+                    camelot_used_direct = True
+                    camelot_reason = "no_text_rows"
+                elif top_score >= text_score + 0.12 and top_score >= 0.35:
+                    camelot_used_direct = True
+                    camelot_reason = "higher_quality_score"
+                elif header_gain >= 0.2 and text_score >= top_score - 0.05:
+                    text_row_count = len(data)
+                    camelot_row_count = len(top_c.get("rows") or [])
+                    merged = _merge_camelot_with_text(top_c, headers, data)
+                    if merged:
+                        headers, data = merged
+                        table_source = "camelot_merged"
+                        metadata["camelot_merge_applied"] = True
+                        metadata["camelot_merge_reason"] = "header_richness"
+                        metadata["camelot_merge_gain"] = round(header_gain, 4)
+                        metadata["camelot_merge_rows"] = {
+                            "text": text_row_count,
+                            "camelot": camelot_row_count,
+                        }
+                        metadata["camelot_merge_flavor"] = top_c.get("flavor")
+                        metadata["camelot_merge_raw_score"] = float(top_c.get("score", 0.0))
+                        metadata["camelot_used"] = False
+                    else:
+                        camelot_reason = "merge_failed"
+
+                if camelot_used_direct:
+                    headers = list(top_c.get("headers") or [])
+                    data = list(top_c.get("rows") or [])
+                    table_source = "camelot"
+                    metadata["camelot_used"] = True
+                    metadata["camelot_flavor"] = top_c.get("flavor")
+                    metadata["camelot_score"] = float(top_c.get("score", 0.0))
+                    metadata["camelot_rows"] = len(top_c.get("rows") or [])
+                    if camelot_reason:
+                        metadata["camelot_reason"] = camelot_reason
+                else:
+                    metadata["camelot_available"] = True
+                    metadata["camelot_top_score"] = float(top_c.get("score", 0.0))
+                    metadata["camelot_alt_count"] = len(camelot_tables)
+                    metadata["camelot_tables_summary"] = [
+                        {
+                            "quality_score": eval_info.get("score", 0.0),
+                            "raw_score": float(entry.get("score", 0.0)),
+                            "rows": len(entry.get("rows") or []),
+                            "cols": len(entry.get("headers") or []),
+                            "flavor": entry.get("flavor"),
+                        }
+                        for entry, eval_info in camelot_evals[:5]
+                    ]
+                    if camelot_reason:
+                        metadata["camelot_reason"] = camelot_reason
             else:
                 metadata["camelot_available"] = True
-                metadata["camelot_top_score"] = float(top_c["score"])
                 metadata["camelot_alt_count"] = len(camelot_tables)
-                metadata["camelot_tables_summary"] = [
-                    {
-                        "score": round(t["score"], 3),
-                        "rows": len(t["rows"]),
-                        "cols": len(t["headers"]),
-                        "flavor": t["flavor"]
-                    } for t in camelot_tables[:5]
-                ]
+                metadata["camelot_reason"] = "no_viable_candidates"
+
+        active_quality = _evaluate_table_candidate_quality(headers, data, selected_contest_title)
+        table_quality_meta["active"] = {**active_quality, "source": table_source}
+
         # If we got some rows, but the table looks low-quality, switch to semantic extraction
         if data and _table_looks_bad(headers, data):
             logger.info({
@@ -2958,6 +3803,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                     "csv_path": result.get("csv_path"),
                     "metadata_path": result.get("metadata_path"),
                 })
+                metadata["table_source"] = "semantic_candidates"
                 logger.info({
                     "level": "INFO",
                     "type": "output",
@@ -2977,23 +3823,35 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             best_layout = layout_tables[0]
             layout_headers = best_layout.get("headers") or []
             layout_rows = best_layout.get("rows") or []
+            layout_quality = _evaluate_table_candidate_quality(layout_headers, layout_rows, selected_contest_title)
+            table_quality_meta["layout_top"] = {
+                **layout_quality,
+                "page": best_layout.get("page"),
+            }
+            best_competing = max(active_quality["score"], camelot_best_score, text_quality["score"])
             use_layout = False
-            if not data and layout_headers and layout_rows:
-                use_layout = True
-            elif layout_headers and layout_rows:
-                if _table_looks_bad(headers, data):
+            if layout_headers and layout_rows:
+                if not data and layout_quality["score"] >= 0.3:
                     use_layout = True
-                elif len(layout_rows) >= max(len(data) + 5, int(len(data) * 1.5)):
+                elif layout_quality["score"] >= best_competing + 0.12:
+                    use_layout = True
+                elif layout_quality["score"] >= 0.4 and best_competing < 0.3:
+                    use_layout = True
+                elif layout_quality["score"] >= 0.35 and active_quality["score"] < 0.25 and camelot_best_score < 0.35:
                     use_layout = True
             if use_layout:
                 headers = layout_headers
                 data = layout_rows
                 contest_column = None
+                table_source = "layout"
                 metadata["layout_table_used"] = True
                 metadata["layout_table_rows"] = len(layout_rows)
                 metadata["layout_table_page"] = best_layout.get("page")
             elif layout_rows:
                 metadata["layout_table_candidate_rows"] = len(layout_rows)
+
+        active_quality = _evaluate_table_candidate_quality(headers, data, selected_contest_title)
+        table_quality_meta["active"] = {**active_quality, "source": table_source}
 
         if statement_rows_copy:
             use_statement = False
@@ -3008,6 +3866,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 headers = list(statement_headers_copy)
                 data = [dict(row) for row in statement_rows_copy]
                 contest_column = None
+                table_source = "statement"
                 metadata["statement_blocks_used"] = True
                 metadata["statement_blocks_rows"] = len(statement_rows_copy)
             metadata["statement_blocks_decision"] = {
@@ -3024,6 +3883,9 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 "statement_rows": len(statement_rows_copy),
                 "use_statement": use_statement,
             })
+
+        active_quality = _evaluate_table_candidate_quality(headers, data, selected_contest_title)
+        table_quality_meta["active"] = {**active_quality, "source": table_source}
 
         # If we have a contest column, filter to the selected contest
         contest = selected_contest_title
@@ -3083,6 +3945,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
 
         if data:
             metadata["pre_finalize_row_count"] = len(data)
+            metadata["table_source"] = table_source
             headers_final, data_final, _ = _finalize_structured_table_output(
                 pdf_path,
                 headers,
@@ -3109,6 +3972,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                         "rows_before": len(data_final),
                         "rows_statement": len(statement_rows_copy),
                     }
+                    metadata["table_source"] = "statement"
                     headers_final, data_final, _ = _finalize_structured_table_output(
                         pdf_path,
                         list(statement_headers_copy),
@@ -3125,9 +3989,24 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             return headers_final, data_final, selected_contest_title, metadata
 
         else:
+            # Attempt columnar reconstruction before falling back to raw text export
+            recon_result = _try_columnar_reconstruction(
+                pdf_path,
+                lines,
+                selected_contest_title,
+                state,
+                county,
+                metadata,
+                coordinator,
+                session_id,
+            )
+            if recon_result:
+                return recon_result
+
             if statement_rows_copy and statement_headers_copy:
                 metadata["statement_blocks_used"] = True
                 metadata["statement_blocks_rows"] = len(statement_rows_copy)
+                metadata["table_source"] = "statement"
                 headers_final, data_final, _ = _finalize_structured_table_output(
                     pdf_path,
                     list(statement_headers_copy),
@@ -3167,6 +4046,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                     "fallback": True,
                 }
             )
+            metadata["table_source"] = "raw_lines"
             result = finalize_election_output(
                 headers=["raw_line"],
                 data=fallback_rows,
@@ -3207,6 +4087,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             metadata["layout_table_used"] = True
             metadata["layout_table_rows"] = len(layout_rows)
             metadata["layout_table_page"] = best_layout.get("page")
+            metadata["table_source"] = "layout"
             headers_final, data_final, _ = _finalize_structured_table_output(
                 pdf_path,
                 layout_headers,
@@ -3236,6 +4117,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 metadata["layout_table_used"] = False
                 metadata["statement_blocks_used"] = True
                 metadata["statement_blocks_rows"] = len(statement_rows_copy)
+                metadata["table_source"] = "statement"
                 headers_final, data_final, _ = _finalize_structured_table_output(
                     pdf_path,
                     list(statement_headers_copy),
@@ -3259,6 +4141,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         }
         metadata["statement_blocks_used"] = True
         metadata["statement_blocks_rows"] = len(statement_rows)
+        metadata["table_source"] = "statement"
         headers_final, data_final, _ = _finalize_structured_table_output(
             pdf_path,
             list(statement_headers),
@@ -3273,6 +4156,19 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             session_id=session_id,
         )
         return headers_final, data_final, selected_contest_title, metadata
+
+    recon_result = _try_columnar_reconstruction(
+        pdf_path,
+        lines,
+        selected_contest_title,
+        state,
+        county,
+        metadata,
+        coordinator,
+        session_id,
+    )
+    if recon_result:
+        return recon_result
 
     # No headers at all: still try semantic candidate totals from entire text
     cand_headers, cand_rows = extract_candidate_totals_from_lines(lines, selected_contest_title)

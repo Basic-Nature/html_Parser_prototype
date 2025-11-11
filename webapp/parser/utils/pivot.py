@@ -734,7 +734,11 @@ def _pluralize_division(label: str) -> str:
     return label + "s"
 
 
-def _choose_division_header(rows: List[Dict[str, Any]], context: dict | None) -> tuple[str, bool]:
+def _choose_division_header(
+    rows: List[Dict[str, Any]],
+    context: dict | None,
+    location_field: str | None = None,
+) -> tuple[str, bool]:
     context = context or {}
     types: List[str] = []
     for row in rows or []:
@@ -749,6 +753,8 @@ def _choose_division_header(rows: List[Dict[str, Any]], context: dict | None) ->
     guessed: List[str] = []
     for row in rows or []:
         loc_label = row.get("Division Name") or row.get("Precinct")
+        if not loc_label and location_field:
+            loc_label = row.get(location_field)
         if not loc_label:
             continue
         guess = _detect_division_type_for_precinct(loc_label, state_hint, context)
@@ -1300,10 +1306,12 @@ def transform_wide_to_smart_standard(
     if not candidate_map:
         return headers, rows, False
 
-    division_header, include_division_type = _choose_division_header(rows, context)
+    division_header, include_division_type = _choose_division_header(rows, context, location_field)
 
     county_value = (context.get("county") or context.get("County") or "").strip()
     county_value = county_value.title() if county_value else ""
+    division_header = division_header or "Precinct"
+    include_county_column = division_header.strip().lower() != "county"
 
     transformed_rows: List[Dict[str, Any]] = []
     standard_usage: Set[str] = set()
@@ -1441,15 +1449,17 @@ def transform_wide_to_smart_standard(
                 merged_variants = variants
 
             for variant in merged_variants:
-                row_out: Dict[str, Any] = {
-                    "County": county_value,
-                    division_header: location_value or "",
+                row_out: Dict[str, Any] = {}
+                if include_county_column:
+                    row_out["County"] = county_value
+                row_out[division_header] = location_value or ""
+                row_out.update({
                     "Ballot Candidate Name": variant["display"],
                     "Ballot Party": variant.get("party", ""),
                     "Uncategorized Votes": variant.get("uncategorized", 0),
                     "Calculated Total Votes": variant.get("calculated_total", 0),
                     "Write-In": "TRUE" if variant.get("write_in") else "FALSE",
-                }
+                })
                 if include_division_type:
                     row_out["Division Type"] = division_type_value or division_header.lower()
 
@@ -1480,7 +1490,10 @@ def transform_wide_to_smart_standard(
     ordered_standard = [col for col in standard_order if col in standard_usage]
     extra_columns = sorted(extra_usage)
 
-    output_headers: List[str] = ["County", division_header]
+    output_headers: List[str] = []
+    if include_county_column:
+        output_headers.append("County")
+    output_headers.append(division_header)
     if include_division_type:
         output_headers.append("Division Type")
     output_headers.extend(["Ballot Candidate Name", "Ballot Party", "Uncategorized Votes"])
@@ -1497,19 +1510,22 @@ def transform_wide_to_smart_standard(
         "division_header": division_header,
     }
 
-    county_values = [row.get("County") for row in transformed_rows if row.get("County") not in (None, "")]
-    unique_counties = list(dict.fromkeys(county_values))
     metadata = context.setdefault("smart_standard_metadata", {})
+    if include_county_column:
+        county_values = [row.get("County") for row in transformed_rows if row.get("County") not in (None, "")]
+        unique_counties = list(dict.fromkeys(county_values))
 
-    if len(unique_counties) == 1:
-        metadata["single_county"] = unique_counties[0]
-        output_headers = [col for col in output_headers if col != "County"]
-        for row in transformed_rows:
-            row.pop("County", None)
+        if len(unique_counties) == 1:
+            metadata["single_county"] = unique_counties[0]
+            output_headers = [col for col in output_headers if col != "County"]
+            for row in transformed_rows:
+                row.pop("County", None)
+        else:
+            for row in transformed_rows:
+                if row.get("County") is None:
+                    row["County"] = ""
     else:
-        for row in transformed_rows:
-            if row.get("County") is None:
-                row["County"] = ""
+        metadata.pop("single_county", None)
 
     for row in transformed_rows:
         for col in output_headers:

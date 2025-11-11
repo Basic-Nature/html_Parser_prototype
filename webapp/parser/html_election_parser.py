@@ -828,6 +828,7 @@ def generate_generic_html_result(
     otherwise ``None``.
     """
     from .Context_Integration.context_coordinator import ContextCoordinator
+    from .utils.header_utils import normalize_table_headers
 
     ctx: Dict[str, Any] = dict(context or {})
     if session_id:
@@ -937,6 +938,8 @@ def generate_generic_html_result(
             if not fieldnames:
                 fieldnames.append("Value")
             normalized_rows.append({fieldnames[0]: row})
+
+    fieldnames, normalized_rows = normalize_table_headers(fieldnames, normalized_rows)
 
     base_label = ctx.get("file_name") or ctx.get("county") or ctx.get("state") or ctx.get("url") or "generic_html"
     base_label = safe_strip(str(base_label)) if base_label else "generic_html"

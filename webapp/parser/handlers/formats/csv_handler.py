@@ -27,6 +27,7 @@ from ...utils.shared_logic import (
 )
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.table_core import robust_table_extraction
+from ...utils.header_utils import normalize_table_headers
 
 # ==============================================================
 # 🗳️ Smart Elections: Universal CSV Election Results Parser
@@ -70,14 +71,7 @@ def parse_csv_election_results(
 
     with f:
         reader = csv.DictReader(f)
-        headers = [h.strip() for h in (reader.fieldnames or [])]
-
-        # Dynamic contest column detection (regex-tolerant)
-        possible_contest_cols = [col for col in headers if _CONTEST_RX.search((col or "").lower())]
-        if possible_contest_cols:
-            # prefer the most specific (longest) column name
-            possible_contest_cols.sort(key=lambda c: len(c or ""), reverse=True)
-            contest_column = possible_contest_cols[0]
+        raw_headers = list(reader.fieldnames or [])
 
         for row in reader:
             normalized_row: Dict[str, Any] = {
@@ -86,6 +80,14 @@ def parse_csv_election_results(
             }
             if any((val or "").strip() for val in normalized_row.values()):
                 data.append(normalized_row)
+
+    headers, data = normalize_table_headers(raw_headers, data)
+    headers = [h.strip() for h in headers]
+
+    possible_contest_cols = [col for col in headers if _CONTEST_RX.search((col or "").lower())]
+    if possible_contest_cols:
+        possible_contest_cols.sort(key=lambda c: len(c or ""), reverse=True)
+        contest_column = possible_contest_cols[0]
 
     # Build contest candidates
     contest_names = []
@@ -297,6 +299,7 @@ def parse(
             "coordinator": coordinator,
         })
         merged_headers, merged_rows = robust_table_extraction(page=None, extraction_context=ctx)
+        merged_headers, merged_rows = normalize_table_headers(merged_headers, merged_rows)
 
         contest = html_context.get("contest") or "Provided Tables"
         state = html_context.get("state") or "Unknown"
