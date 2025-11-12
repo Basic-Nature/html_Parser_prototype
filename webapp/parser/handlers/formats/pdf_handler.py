@@ -9,7 +9,6 @@ import time
 import platform
 import shutil
 import importlib
-import warnings
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageOps, ImageFilter, ImageEnhance
@@ -43,6 +42,60 @@ from ...utils.camelot_utils import (
     attempt_camelot_extraction,
     hybrid_fill_camelot,
 )
+from ...utils.pdf_table_utils import (
+    best_title_match_idx as utils_best_title_match_idx,
+    coerce_vote_value_for_reconstruction as utils_coerce_vote_value_for_reconstruction,
+    compute_header_richness as utils_compute_header_richness,
+    compute_numeric_fill as utils_compute_numeric_fill,
+    evaluate_table_candidate_quality as utils_evaluate_table_candidate_quality,
+    extract_candidate_totals_from_lines as utils_extract_candidate_totals_from_lines,
+    extract_contest_block as utils_extract_contest_block,
+    extract_party_lookup_from_lines as utils_extract_party_lookup_from_lines,
+    extract_table_by_whitespace as utils_extract_table_by_whitespace,
+    find_best_header_match as utils_find_best_header_match,
+    find_header_line as utils_find_header_line,
+    header_signature as utils_header_signature,
+    is_bad_header_line as utils_is_bad_header_line,
+    is_numeric_like as utils_is_numeric_like,
+    looks_like_candidate_header as utils_looks_like_candidate_header,
+    matches_anchor_header as utils_matches_anchor_header,
+    merge_camelot_with_text as utils_merge_camelot_with_text,
+    normalize_anchor_value as utils_normalize_anchor_value,
+    normalize_numeric_token as utils_normalize_numeric_token,
+    normalize_text_token as utils_normalize_text_token,
+    parse_candidate_header_with_party as utils_parse_candidate_header_with_party,
+    parse_candidate_line as utils_parse_candidate_line,
+    reconstruct_columnar_block as utils_reconstruct_columnar_block,
+    split_ws_blocks as utils_split_ws_blocks,
+    table_looks_bad as utils_table_looks_bad,
+    token_set as utils_token_set,
+)
+from ...utils.logger_singleton import logger
+from ...Context_Integration.Context_Library.constants import (
+    LOCATION_KEYWORDS,
+    CANDIDATE_KEYWORDS,
+    BALLOT_TYPES,
+    PARTY_KEYWORDS,
+    TOTAL_KEYWORDS,
+    MISC_FOOTER_KEYWORDS,
+    CONTEST_KEYWORDS,
+    CONTEST_TITLE_SKIP_PHRASES,
+    CONTEST_HEADER_KEYWORDS,
+    CONTEST_HEADER_PREFERENCE,
+)
+from ...utils.table_core import harmonize_headers_and_data, robust_table_extraction
+from ...utils.location_helpers import (
+    attach_precinct_column,
+    collect_location_headers,
+    is_strict_location_header,
+)
+from ...utils.contest_selector import select_contest_auto_first
+from ...utils.table_builder import build_table_noninteractive
+from ...utils.output_utils import finalize_election_output
+from ...utils.shared_logic import format_county_label, format_state_label, safe_get, safe_slug
+from ...utils.pivot import expand_single_rawjson_row, transform_wide_to_smart_standard
+from ...Context_Integration.context_coordinator import dynamic_state_county_detection
+from ...utils.header_utils import normalize_table_headers
 
 # Added optional tuning flags (safe defaults if not in config)
 try:
@@ -59,27 +112,59 @@ try:
 except Exception:
     _CAMELOT_AVAILABLE = False
 
-from ...utils.logger_singleton import logger, prompt
-from ...Context_Integration.Context_Library.constants import (
-    LOCATION_KEYWORDS,
-    CANDIDATE_KEYWORDS, BALLOT_TYPES, PARTY_KEYWORDS, TOTAL_KEYWORDS,
-    MISC_FOOTER_KEYWORDS, CONTEST_KEYWORDS, CONTEST_TITLE_SKIP_PHRASES,
-    CONTEST_HEADER_KEYWORDS, CONTEST_HEADER_PREFERENCE
-)
+_MIN_PYMUPDF_VERSION = (1, 26, 5)
+_FITZ_MODULE = None
 
-def _camelot_signal_sets():
-    # Build once (could memoize)
-    base = set()
+
+def _camelot_signal_sets() -> tuple[set[str], set[str]]:
+    """Return the Camelot signal and noise keyword sets used for scoring tables."""
+    signal: set[str] = set()
     for group in (
         CANDIDATE_KEYWORDS,
         PARTY_KEYWORDS,
         TOTAL_KEYWORDS,
         BALLOT_TYPES,
-        {"percent", "%", "election day", "early", "absentee", "provisional", "total vote", "grand total"}
+        CONTEST_KEYWORDS,
+        {"percent", "%", "election day", "early", "absentee", "provisional", "total vote", "grand total"},
     ):
-        base |= {str(x).lower() for x in group}
-    noise = {str(x).lower() for x in MISC_FOOTER_KEYWORDS}
-    return base, noise
+        for token in group or []:
+            if isinstance(token, str) and token.strip():
+                signal.add(token.lower())
+    signal.update({
+        "candidate",
+        "candidates",
+        "name",
+        "votes",
+        "vote",
+        "ballot",
+        "total",
+        "totals",
+        "party",
+        "precinct",
+        "ward",
+        "district",
+        "absentee",
+        "early",
+        "provisional",
+        "grand",
+        "write",
+        "turnout",
+    })
+
+    noise = {
+        str(token).lower()
+        for token in (MISC_FOOTER_KEYWORDS or [])
+        if isinstance(token, str) and token.strip()
+    }
+    noise.update({"page", "sheet", "summary", "report", "statement", "certificate"})
+    return signal, noise
+
+def _split_ws_blocks(s: str) -> list[str]:
+    return utils_split_ws_blocks(s)
+
+
+def _is_bad_header_line(line: str) -> bool:
+    return utils_is_bad_header_line(line)
 
 
 def _prepare_output_context(base: dict | None, extra: dict | None = None) -> dict:
@@ -94,83 +179,17 @@ def _prepare_output_context(base: dict | None, extra: dict | None = None) -> dic
         ctx.update(extra)
     return ctx
 
-from ...utils.table_core import harmonize_headers_and_data
-from ...utils.location_helpers import (
-    attach_precinct_column,
-    collect_location_headers,
-    is_strict_location_header,
-)
-import orjson
-from ...utils.contest_selector import (
-    select_contest_auto_first,
-    resolve_selection_context
-)
-from ...utils.table_builder import build_table_noninteractive
-from ...utils.output_utils import finalize_election_output
-from ...utils.shared_logic import format_county_label, format_state_label, safe_get, safe_slug
-from ...utils.pivot import expand_single_rawjson_row, transform_wide_to_smart_standard
-from ...Context_Integration.context_coordinator import dynamic_state_county_detection
-from ...Context_Integration.Context_Library.constants import normalize_party_label
-from ...utils.table_core import robust_table_extraction
-from ...utils.header_utils import (
-    compact_header_tokens as _compact_header_tokens,
-    collapse_multiline_header,
-    normalize_table_headers,
-)
-_FITZ_MODULE = None
-_FITZ_IMPORT_WARNINGS: list[str] = []
-_FITZ_PATCHED_TYPES: list[str] = []
-_FITZ_PATCH_FAILURES: list[str] = []
-_FITZ_WARNING_LOGGED = False
-_SWIG_WARNING_PATTERN = re.compile(
-    r"builtin type (?P<name>SwigPyObject|SwigPyPacked|swigvarlink) has no __module__ attribute"
-)
-_PYMUPDF_MIN_VERSION = (1, 26, 5)
+
+def _table_looks_bad(headers: list[str], rows: list[dict]) -> bool:
+    return utils_table_looks_bad(headers, rows)
 
 
-def _check_pymupdf_version(module):
-    """Emit guidance when PyMuPDF is behind the tested baseline."""
-    version_str = getattr(module, "__version__", "0.0.0")
-    try:
-        parts = tuple(int(p) for p in version_str.split(".")[:3])
-    except ValueError:
-        parts = (0, 0, 0)
-    if parts and parts < _PYMUPDF_MIN_VERSION:
-        logger.warning({
-            "level": "WARNING",
-            "type": "dependency",
-            "message": (
-                "[WARN] Detected PyMuPDF %s. Upgrade to %s or newer to incorporate "
-                "SWIG metadata fixes and avoid deprecation noise."
-            )
-            % (version_str, ".".join(str(p) for p in _PYMUPDF_MIN_VERSION)),
-        })
+def _find_header_line(lines: list[str], hints: set[str]) -> tuple[list[str], int]:
+    return utils_find_header_line(lines, hints)
 
 
-def _patch_fitz_swig_types(module, warning_messages):
-    """Assign a module name to SWIG-generated types to satisfy Python 3.12+ requirements."""
-    patched: list[str] = []
-    failures: list[str] = []
-    for message in warning_messages:
-        match = _SWIG_WARNING_PATTERN.search(message)
-        if not match:
-            continue
-        type_name = match.group("name")
-        target = getattr(module, type_name, None)
-        if not isinstance(target, type):
-            failures.append(type_name)
-            continue
-        module_name = getattr(target, "__module__", "")
-        if module_name:
-            patched.append(type_name)
-            continue
-        try:
-            setattr(target, "__module__", module.__name__)
-            patched.append(type_name)
-        except (AttributeError, TypeError):
-            failures.append(type_name)
-    return patched, failures
-
+def _extract_table_by_whitespace(lines: list[str], start_idx: int, headers: list[str]) -> list[dict]:
+    return utils_extract_table_by_whitespace(lines, start_idx, headers)
 
 try:
     import pandas as pd  # type: ignore
@@ -181,42 +200,65 @@ except Exception:  # pragma: no cover - pandas is optional but strongly recommen
 
 
 def _ensure_fitz():
-    """Import PyMuPDF while capturing its SWIG DeprecationWarnings safely."""
-    global _FITZ_MODULE, _FITZ_IMPORT_WARNINGS, _FITZ_PATCHED_TYPES, _FITZ_PATCH_FAILURES
+    """Import PyMuPDF and validate that the installed version is supported."""
+    global _FITZ_MODULE
     if _FITZ_MODULE is not None:
         return _FITZ_MODULE
 
-    captured_msgs: list[str] = []
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always", DeprecationWarning)
-        try:
-            module = importlib.import_module("fitz")
-        except ImportError as exc:
-            raise ImportError("You must install PyMuPDF to use the PDF handler: pip install pymupdf") from exc
-        captured_msgs = [str(warning.message) for warning in (caught or [])]
+    try:
+        module = importlib.import_module("fitz")
+    except ImportError as exc:
+        raise ImportError("You must install PyMuPDF to use the PDF handler: pip install pymupdf") from exc
 
     _check_pymupdf_version(module)
-
-    swig_msgs: list[str] = []
-    other_msgs: list[str] = []
-    if captured_msgs:
-        for msg in captured_msgs:
-            if _SWIG_WARNING_PATTERN.search(msg):
-                swig_msgs.append(msg)
-            else:
-                other_msgs.append(msg)
-
-    if swig_msgs:
-        patched, failures = _patch_fitz_swig_types(module, swig_msgs)
-        _FITZ_PATCHED_TYPES = patched
-        _FITZ_PATCH_FAILURES = failures
-
-    if other_msgs:
-        _FITZ_IMPORT_WARNINGS.extend(other_msgs)
-
     _FITZ_MODULE = module
     return module
+
+
+def _coerce_version_tuple(raw) -> tuple[int, ...]:
+    """Normalize heterogenous version representations into an int tuple."""
+    parts: list[int] = []
+    if isinstance(raw, (list, tuple)):
+        for item in raw:
+            parts.extend(_coerce_version_tuple(item))
+        return tuple(parts)
+    if isinstance(raw, (int, float)):
+        if isinstance(raw, float):
+            # Split float like 1.26 into (1, 26)
+            raw_str = str(raw)
+        else:
+            return (int(raw),)
+    if isinstance(raw, str):
+        raw_str = raw
+    else:
+        return tuple(parts)
+
+    for token in re.findall(r"\d+", raw_str or ""):
+        try:
+            parts.append(int(token))
+        except ValueError:
+            continue
+    return tuple(parts)
+
+
+def _check_pymupdf_version(module) -> None:
+    """Ensure the PyMuPDF version meets the minimum requirements for this handler."""
+    version = getattr(module, "version", None)
+    version_tuple = _coerce_version_tuple(version)
+    if not version_tuple:
+        return
+
+    needed = tuple(int(part) for part in _MIN_PYMUPDF_VERSION)
+    detected_version = ".".join(str(part) for part in version_tuple) or str(version)
+    if version_tuple[: len(needed)] < needed:
+        logger.warning({
+            "level": "WARNING",
+            "type": "dependency",
+            "message": (
+                "[WARN] Detected PyMuPDF %s. Upgrade to %s or newer to avoid parser instability."
+                % (detected_version, ".".join(str(v) for v in _MIN_PYMUPDF_VERSION))
+            ),
+        })
 
 fitz = _ensure_fitz()
 
@@ -501,241 +543,39 @@ _NUM_RE = re.compile(r"(?P<num>\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?")
 _PCT_RE = re.compile(r"(?P<pct>\d{1,3}(?:\.\d+)?)\s*%")
 
 def _norm_txt(s: str) -> str:
-    s = (s or "").lower().strip()
-    s = re.sub(r'[\s\-_\/]+', ' ', s)
-    return re.sub(r'[^a-z0-9 %]+', '', s)
+    return utils_normalize_text_token(s)
+
 
 def _token_set(s: str) -> set[str]:
-    return set(re.findall(r'[a-z0-9]+', (s or "").lower()))
-
-
-_HEADER_STOPWORDS = {
-    "total",
-    "totals",
-    "vote",
-    "votes",
-    "ballot",
-    "ballots",
-    "absentee",
-    "mail",
-    "early",
-    "provisional",
-    "grand",
-    "report",
-    "summary",
-    "precinct",
-    "precincts",
-    "district",
-    "districts",
-    "ward",
-    "wards",
-    "registered",
-    "turnout",
-    "percent",
-    "percentage",
-    "pct",
-    "%",
-    "counted",
-    "cast",
-    "election",
-    "day",
-    "poll",
-    "party",
-}
-
-_PARTY_TERMS = {str(p).lower() for p in PARTY_KEYWORDS if isinstance(p, str)} | {
-    "dem",
-    "democrat",
-    "democratic",
-    "rep",
-    "republican",
-    "gop",
-    "ind",
-    "independent",
-    "lib",
-    "libertarian",
-    "green",
-    "nonpartisan",
-    "np",
-}
+    return utils_token_set(s)
 
 
 def _header_signature(label: str) -> set[str]:
-    collapsed = collapse_multiline_header(label or "")
-    tokens = set(re.findall(r"[a-z0-9]+", collapsed.lower()))
-    return {tok for tok in tokens if tok and tok not in _HEADER_STOPWORDS}
+    return utils_header_signature(label)
 
 
 def _looks_like_candidate_header(label: str) -> bool:
-    if not isinstance(label, str) or not label.strip():
-        return False
-    signature = _header_signature(label)
-    if not signature:
-        return "(" in label and ")" in label
-    if len(signature) == 1 and not ("(" in label and ")" in label):
-        return False
-    letters = sum(1 for ch in label if ch.isalpha())
-    if letters < 4:
-        return False
-    return True
+    return utils_looks_like_candidate_header(label)
 
 
 def _compute_header_richness(candidate_headers: list[str]) -> dict[str, float]:
-    if not candidate_headers:
-        return {
-            "parentheses_ratio": 0.0,
-            "multi_token_ratio": 0.0,
-            "party_ratio": 0.0,
-            "avg_length_norm": 0.0,
-            "richness": 0.0,
-        }
-    total = len(candidate_headers)
-    parentheses_ratio = sum(1 for h in candidate_headers if "(" in h and ")" in h) / total
-    multi_token_ratio = sum(1 for h in candidate_headers if len(_header_signature(h)) >= 2) / total
-    party_ratio = sum(1 for h in candidate_headers if any(term in h.lower() for term in _PARTY_TERMS)) / total
-    avg_length_norm = min(1.0, sum(len(h) for h in candidate_headers) / (total * 24.0))
-    richness = min(1.0, 0.4 * parentheses_ratio + 0.3 * multi_token_ratio + 0.2 * party_ratio + 0.1 * avg_length_norm)
-    return {
-        "parentheses_ratio": round(parentheses_ratio, 4),
-        "multi_token_ratio": round(multi_token_ratio, 4),
-        "party_ratio": round(party_ratio, 4),
-        "avg_length_norm": round(avg_length_norm, 4),
-        "richness": round(richness, 4),
-    }
+    return utils_compute_header_richness(candidate_headers)
 
 
 def _compute_numeric_fill(rows: list[dict], candidate_headers: list[str]) -> float:
-    total_cells = len(rows or []) * len(candidate_headers or [])
-    if total_cells == 0:
-        return 0.0
-    filled = 0
-    for row in rows or []:
-        if not isinstance(row, dict):
-            continue
-        for header in candidate_headers:
-            value = row.get(header, "")
-            if value is None:
-                continue
-            if isinstance(value, (int, float)):
-                filled += 1
-                continue
-            value_str = str(value).strip()
-            if not value_str:
-                continue
-            if _is_numeric_like(value_str):
-                filled += 1
-    return round(filled / total_cells, 4)
+    return utils_compute_numeric_fill(rows, candidate_headers)
 
 
 def _evaluate_table_candidate_quality(headers: list[str], rows: list[dict], contest_title: str) -> dict[str, object]:
-    headers = list(headers or [])
-    rows = list(rows or [])
-    candidate_headers: list[str] = []
-    seen: set[str] = set()
-    for header in headers:
-        if header in seen:
-            continue
-        if _looks_like_candidate_header(header):
-            candidate_headers.append(header)
-            seen.add(header)
-    if not candidate_headers:
-        fallback_terms = (
-            "candidate",
-            "name",
-            "party",
-            "vote",
-            "votes",
-            "total",
-            "absentee",
-            "mail",
-            "early",
-            "provisional",
-            "percent",
-            "election",
-        )
-        location_terms = (
-            "ward",
-            "precinct",
-            "district",
-            "county",
-            "town",
-            "city",
-            "parish",
-        )
-        for header in headers:
-            if not isinstance(header, str):
-                continue
-            low = header.lower()
-            if any(loc in low for loc in location_terms):
-                continue
-            if any(term in low for term in fallback_terms):
-                if header not in seen:
-                    candidate_headers.append(header)
-                    seen.add(header)
-    if not candidate_headers:
-        candidate_headers = [h for h in headers if isinstance(h, str) and h.strip()]
-    richness_metrics = _compute_header_richness(candidate_headers)
-    numeric_fill = _compute_numeric_fill(rows, candidate_headers)
-    row_density = 0.0
-    if candidate_headers:
-        row_density = min(1.0, len(rows) / max(1, len(candidate_headers)))
-    title_tokens = _token_set(contest_title)
-    table_tokens: set[str] = set()
-    for header in headers[:6]:
-        table_tokens |= _header_signature(header)
-    if rows:
-        sample_row = rows[0]
-        if isinstance(sample_row, dict):
-            for value in list(sample_row.values())[:6]:
-                table_tokens |= _header_signature(str(value))
-    alignment = 0.0
-    if title_tokens and table_tokens:
-        alignment = min(1.0, len(title_tokens & table_tokens) / len(title_tokens))
-    score = min(
-        1.0,
-        0.45 * richness_metrics["richness"]
-        + 0.3 * numeric_fill
-        + 0.15 * row_density
-        + 0.1 * alignment,
-    )
-    return {
-        "score": round(score, 4),
-        "rows": len(rows),
-        "candidate_columns": len(candidate_headers),
-        "details": {
-            **richness_metrics,
-            "numeric_fill": round(numeric_fill, 4),
-            "row_density": round(row_density, 4),
-            "contest_alignment": round(alignment, 4),
-        },
-    }
+    return utils_evaluate_table_candidate_quality(headers, rows, contest_title)
 
 
 def _find_best_header_match(source: str, targets: list[str]) -> str | None:
-    signature = _header_signature(source)
-    if not signature:
-        return next((t for t in targets if t and t.strip().lower() == source.strip().lower()), None)
-    best = (0.0, None)
-    for target in targets:
-        if not isinstance(target, str):
-            continue
-        target_sig = _header_signature(target)
-        if not target_sig:
-            continue
-        inter = len(signature & target_sig)
-        union = len(signature | target_sig) or 1
-        score = inter / union
-        if score > best[0]:
-            best = (score, target)
-    if best[0] >= 0.45:
-        return best[1]
-    return None
+    return utils_find_best_header_match(source, targets)
 
 
 def _normalize_anchor_value(value) -> str:
-    if value is None:
-        return ""
-    return re.sub(r"\s+", " ", str(value).strip()).lower()
+    return utils_normalize_anchor_value(value)
 
 
 def _merge_camelot_with_text(
@@ -743,648 +583,52 @@ def _merge_camelot_with_text(
     text_headers: list[str],
     text_rows: list[dict],
 ) -> tuple[list[str], list[dict]] | None:
-    if not camelot_table or not text_headers or not text_rows:
-        return None
-    camelot_headers = list(camelot_table.get("headers") or [])
-    camelot_rows = list(camelot_table.get("rows") or [])
-    if not camelot_headers or not camelot_rows:
-        return None
+    return utils_merge_camelot_with_text(camelot_table, text_headers, text_rows)
 
-    header_map: dict[str, str] = {}
-    for ch in camelot_headers:
-        best = _find_best_header_match(ch, text_headers)
-        if best:
-            header_map[ch] = best
-
-    anchor_header = camelot_headers[0]
-    anchor_text_header = header_map.get(anchor_header)
-    if not anchor_text_header and text_headers:
-        anchor_text_header = text_headers[0]
-    if not anchor_text_header:
-        return None
-
-    text_index = {
-        _normalize_anchor_value(row.get(anchor_text_header)): row
-        for row in text_rows
-        if isinstance(row, dict)
-    }
-    camelot_index = {
-        _normalize_anchor_value(row.get(anchor_header)): row
-        for row in camelot_rows
-        if isinstance(row, dict)
-    }
-
-    merged_rows: list[dict] = []
-    seen_keys: set[str] = set()
-    for key, text_row in text_index.items():
-        if not key and camelot_index:
-            continue
-        camelot_row = camelot_index.get(key)
-        merged_row: dict = {}
-        for ch in camelot_headers:
-            text_key = header_map.get(ch)
-            value = ""
-            if camelot_row and camelot_row.get(ch) not in (None, ""):
-                value = camelot_row.get(ch)
-            elif text_key and text_row.get(text_key) not in (None, ""):
-                value = text_row.get(text_key)
-            elif text_row.get(ch) not in (None, ""):
-                value = text_row.get(ch)
-            merged_row[ch] = value if value is not None else ""
-        merged_rows.append(merged_row)
-        seen_keys.add(key)
-
-    for key, camelot_row in camelot_index.items():
-        if key in seen_keys:
-            continue
-        merged_rows.append({ch: camelot_row.get(ch, "") for ch in camelot_headers})
-
-    return camelot_headers, merged_rows
 
 def _best_title_match_idx(lines: list[str], selected_title: str) -> int:
     """Find the index of the line that best matches the selected title by token overlap."""
-    if not selected_title:
-        return -1
-    sel_tok = _token_set(selected_title)
-    best = (-1.0, -1)
-    scan_limit = min(len(lines), 5000)
-    for i, line in enumerate(lines[:scan_limit]):
-        lt = _token_set(line)
-        if not lt:
-            continue
-        inter = len(sel_tok & lt)
-        union = len(sel_tok | lt) or 1
-        jacc = inter / union
-        if jacc > best[0]:
-            best = (jacc, i)
-    return best[1]
+    return utils_best_title_match_idx(lines, selected_title)
+
 
 def _extract_contest_block(lines: list[str], selected_title: str) -> list[str]:
-    """
-    Extract lines starting from the best-matching title down to the next probable contest heading
-    or a gap of 3+ blank lines.
-    """
-    if not lines:
-        return []
-    start_idx = _best_title_match_idx(lines, selected_title)
-    if start_idx < 0:
-        return []
-    block = []
-    blanks = 0
-    for j in range(start_idx + 1, min(len(lines), start_idx + 800)):
-        raw = lines[j].strip()
-        low = raw.lower()
-        if not raw:
-            blanks += 1
-            if blanks >= 3 and len(block) >= 2:
-                break
-            continue
-        blanks = 0
-        # stop at next contest-like heading
-        if _CONTEST_RX.search(low) and j > start_idx + 2:
-            break
-        block.append(raw)
-    return block
+    return utils_extract_contest_block(lines, selected_title, _CONTEST_RX)
 
 def _parse_candidate_line(line: str, ballot_types: list[str]) -> dict | None:
-    """
-    Parse a single candidate result line like:
-      'Jane Doe (Democratic) Election Day 1,234 Early 567 Absentee 200 Total 2,001 54.3%'
-      'John Smith REP 3,456 45.7%'
-    Returns dict with Candidate, Party, per-group values, Total Vote, % Vote if detected.
-    """
-    if not line or sum(ch.isalpha() for ch in line) < 3:
-        return None
-    # Reject obvious month/year header lines that appear above contest tables.
-    # These lines often look like "November 8, 2016, General Election Abstract of Votes"
-    # and should not be treated as candidate rows.
-    try:
-        month_pattern = r"^\s*(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
-        if re.match(month_pattern + r"\b", line.strip(), re.I):
-            if re.search(r"\b(election|primary|abstract|results|ballot|statement|return)\b", line, re.I):
-                return None
-            if re.match(month_pattern + r"[\s,]+\d{1,2}(?:st|nd|rd|th)?[\s,]+\d{4}\s*$", line.strip(), re.I):
-                return None
-            if re.match(month_pattern + r"[\s,]+\d{4}\s*$", line.strip(), re.I):
-                return None
-    except Exception:
-        pass
-    pct_match = _PCT_RE.search(line)
-    pct_val = f"{pct_match.group('pct')}%" if pct_match else None
-    nums = [m.group('num') for m in _NUM_RE.finditer(line)]
-    if not nums:
-        return None
-
-    # Common aliases to canonical ballot groups
-    alias = {
-        "ed": "Election Day",
-        "electionday": "Election Day",
-        "inperson": "Election Day",
-        "early": "Early Voting",
-        "early voting": "Early Voting",
-        "absentee": "Absentee",
-        "mail": "Absentee",
-        "by mail": "Absentee",
-        "provisional": "Provisional",
-        "advance": "Early Voting",
-        "total": "Total Vote",
-    }
-
-    parts = line.split()
-    first_num_idx = None
-    for idx, p in enumerate(parts):
-        if _NUM_RE.fullmatch(p.strip(",%")):
-            first_num_idx = idx
-            break
-
-    party = None
-    m_paren = re.search(r"\(([^)]+)\)", line)
-    if m_paren:
-        party = normalize_party_label(m_paren.group(1))
-    else:
-        trailing = parts[:first_num_idx] if first_num_idx else parts
-        if trailing:
-            tail = trailing[-1].strip(" ,;")
-            if len(tail) <= 12 and any(x in tail.lower() for x in ("dem", "rep", "green", "ind", "wf", "conserv", "lib")):
-                party = normalize_party_label(tail)
-
-    name_region = " ".join(parts[:first_num_idx] or parts).strip()
-    name_region = re.sub(r"\([^)]*\)", "", name_region).strip()
-    name = re.sub(r"\s{2,}", " ", name_region).strip(" -:\t")
-
-    row = {"Candidate": name}
-    if party:
-        row["Party"] = normalize_party_label(party)
-
-    assigned = {}
-    norm_line = _norm_txt(line)
-    # Label-aware assignment: scan for each ballot type keyword near numbers
-    for bt in (ballot_types or []):
-        key = _norm_txt(bt).replace("_", " ")
-        if key and key in norm_line:
-            idx = norm_line.find(key)
-            tail = norm_line[idx:]
-            m = _NUM_RE.search(tail)
-            if m:
-                val = int(m.group("num").replace(",", ""))
-                assigned[bt] = val
-    # Also try alias mapping
-    for k, v in alias.items():
-        if k in norm_line and v not in assigned:
-            idx = norm_line.find(k)
-            tail = norm_line[idx:]
-            m = _NUM_RE.search(tail)
-            if m:
-                val = int(m.group("num").replace(",", ""))
-                assigned[v] = val
-
-    total_val = None
-    if not assigned:
-        try:
-            total_val = int(nums[-1].replace(",", ""))
-        except Exception:
-            total_val = None
-    else:
-        total_keys = [k for k in assigned.keys() if "total" in k.lower()]
-        if total_keys:
-            total_val = assigned.get(total_keys[0])
-        else:
-            total_val = sum(assigned.values()) if assigned else None
-
-    for k, v in assigned.items():
-        row[k] = v
-    if total_val is not None:
-        row["Total Vote"] = total_val
-    if pct_val:
-        row["% Vote"] = pct_val
-    if "Total Vote" not in row and not assigned:
-        return None
-    return row
+    """Proxy to shared candidate line parser."""
+    return utils_parse_candidate_line(line, ballot_types)
 
 def extract_candidate_totals_from_lines(lines: list[str], selected_title: str) -> tuple[list[str], list[dict]]:
-    """
-    Given page lines and a selected contest title, extract a candidate totals table
-    when no explicit table structure is present.
-    """
-    block = _extract_contest_block(lines, selected_title)
-    if not block:
-        return [], []
-    # Prefer canonical ballot types from constants
-    bt = list(BALLOT_TYPES) if BALLOT_TYPES else ["Election Day", "Early Voting", "Absentee", "Provisional"]
-    rows = []
-    present_cols = set(["Candidate", "Party"])
-    for ln in block:
-        r = _parse_candidate_line(ln, bt)
-        if r:
-            rows.append(r)
-            present_cols.update(r.keys())
-    if not rows:
-        return [], []
-    headers = ["Candidate"]
-    if "Party" in present_cols:
-        headers.append("Party")
-    for g in bt:
-        if g in present_cols:
-            headers.append(g)
-    if "Total Vote" in present_cols:
-        headers.append("Total Vote")
-    if "% Vote" in present_cols:
-        headers.append("% Vote")
-    norm_rows = [{h: rr.get(h, "") for h in headers} for rr in rows]
-    return headers, norm_rows
-
-def _split_ws_blocks(s: str) -> list[str]:
-    # Split by 2+ spaces or tab/comma
-    cells = re.split(r"\s{2,}|\t|,", s.strip())
-    return [c.strip() for c in cells if c.strip()]
-
-def _is_bad_header_line(line: str) -> bool:
-    """
-    Heuristics to reject lines as headers when they look like narrative/boilerplate or noise:
-    - Very long segment(s) or too many cells
-    - High digit density
-    - Contains boilerplate tokens like 'Statement and Return', 'Page X of Y', 'Total Applicable Ballots'
-    - Long write-in chains on one line
-    """
-    if not isinstance(line, str):
-        return True
-    s = line.strip()
-    if not s:
-        return True
-    low = s.lower()
-    # Obvious boilerplate/noise tokens
-    bad_tokens = (
-        "statement and return", "printed as of", "page", "of", "total applicable ballots",
-        "public counter", "manually counted emergency", "absentee / military",
-        "unrecorded", "affidavit", "less - inapplicable", "vote for", "page"
-    )
-    if any(bt in low for bt in bad_tokens):
-        # Allow short contest-like headings that happen to have 'vote for'
-        if "vote for" in low and len(s) < 40:
-            pass
-        else:
-            return True
-    # Too many cells
-    cells = _split_ws_blocks(s)
-    if len(cells) > 12:
-        return True
-    # Any cell extremely long (likely a whole paragraph)
-    if any(len(c) > 80 for c in cells):
-        return True
-    # Digit density
-    digits = sum(ch.isdigit() for ch in s)
-    if digits and digits / max(1, len(s)) > 0.35:
-        return True
-    return False
-
-def _table_looks_bad(headers: list[str], rows: list[dict]) -> bool:
-    """
-    Decide if the extracted table is low quality and should be replaced by semantic extraction.
-    Triggers when:
-    - Very few rows
-    - Headers look narrative/long/numeric-heavy
-    - Known boilerplate tokens present in headers
-    """
-    if not headers:
-        return True
-    if len(rows) <= 3:
-        return True
-    low = [h.lower() for h in headers if isinstance(h, str)]
-    boiler = ("statement and return", "printed as of", "total applicable ballots", "page ")
-    if any(any(b in h for b in boiler) for h in low):
-        return True
-    # Very long headers or many digits in headers
-    if any(len(h) > 80 for h in headers if isinstance(h, str)):
-        return True
-    if any((sum(ch.isdigit() for ch in h) / max(1, len(h))) > 0.35 for h in headers if isinstance(h, str)):
-        return True
-    return False
-
-def _find_header_line(lines: list[str], hints: set[str]) -> tuple[list[str], int]:
-    """
-    Return (headers, header_idx). Prefer lines containing multiple hint hits.
-    Fallback to first line with 3+ cells split by whitespace blocks.
-    Skips lines deemed noisy/narrative by _is_bad_header_line.
-    """
-    best = (-1, -1, [])
-    for idx, line in enumerate(lines[:400]):
-        if _is_bad_header_line(line):
-            continue
-        cells = _split_ws_blocks(line)
-        # Skip overly wide candidates
-        if len(cells) > 12:
-            continue
-        if len(cells) >= 2:
-            score = sum(1 for h in hints if h in line.lower())
-            if score > best[0]:
-                best = (score, idx, cells)
-    if best[1] >= 0:
-        return best[2], best[1]
-    # Fallback: first reasonable line that splits into 3+ cells and is not noisy
-    for idx, line in enumerate(lines[:400]):
-        if _is_bad_header_line(line):
-            continue
-        cells = _split_ws_blocks(line)
-        if 3 <= len(cells) <= 12:
-            return cells, idx
-    return [], -1
-
-def _extract_table_by_whitespace(lines: list[str], start_idx: int, headers: list[str]) -> list[dict]:
-    """
-    Parse rows beneath headers using whitespace block splitting; stop on blank or badly short rows.
-    """
-    data = []
-    min_cols = max(2, len(headers))
-    for raw in lines[start_idx+1:]:
-        if not raw.strip():
-            if len(data) > 0:
-                break
-            else:
-                continue
-        cells = _split_ws_blocks(raw)
-        if len(cells) < min_cols:
-            # allow one-cell tails if headers are 1 (raw lists)
-            if len(headers) == 1 and len(cells) == 1:
-                data.append({headers[0]: cells[0]})
-            else:
-                # likely end of table region
-                if len(data) > 0:
-                    break
-                continue
-        else:
-            # If row has extra cells, pad/truncate to header count
-            if len(cells) > len(headers):
-                cells = cells[:len(headers)-1] + [" ".join(cells[len(headers)-1:])]
-            row = dict(zip(headers, cells))
-            data.append(row)
-    return data
-
-
-_NUMERIC_TOKEN_RE = re.compile(r"^\s*[-+]?\d[\d,]*(?:\.\d+)?\s*(?:%+)?\s*$")
-
-_PARTY_KEY_PATTERN = re.compile(r"\((?P<code>[A-Za-z]{1,4})\)\s*(?P<label>[A-Za-z][A-Za-z .&'/-]*)")
-_PARTY_EQUALS_PATTERN = re.compile(r"\b(?P<code>[A-Za-z]{1,4})\b\s*=\s*(?P<label>[A-Za-z][A-Za-z .&'/-]*)")
-
+    """Shared extraction for candidate totals tables with local ballot defaults."""
+    ballot_types = list(BALLOT_TYPES) if BALLOT_TYPES else None
+    return utils_extract_candidate_totals_from_lines(lines, selected_title, ballot_types, _CONTEST_RX)
 
 def _is_numeric_like(token: str) -> bool:
-    if not isinstance(token, str):
-        return False
-    text = token.strip()
-    if not text:
-        return False
-    # Allow percent suffix but reject alpha characters
-    if any(ch.isalpha() for ch in text):
-        return False
-    return bool(_NUMERIC_TOKEN_RE.match(text))
+    return utils_is_numeric_like(token)
 
 
 def _normalize_numeric_token(value: str) -> str:
-    text = (value or "").strip()
-    if not text:
-        return ""
-    if text.endswith("%"):
-        return text.replace(" ", "")
-    return text.replace(",", "").replace(" ", "")
+    return utils_normalize_numeric_token(value)
 
 
 def _matches_anchor_header(raw: str) -> bool:
-    if not raw:
-        return False
-    text = raw.strip().lower()
-    if not text:
-        return False
-    anchors = {
-        "county",
-        "precinct",
-        "municipality",
-        "ward",
-        "district",
-        "city",
-        "town",
-        "township",
-        "borough",
-        "parish",
-        "county totals",
-        "precinct totals",
-        "precincts",
-    }
-    if text in anchors:
-        return True
-    for anchor in anchors:
-        if text.endswith(f" {anchor}"):
-            return True
-    return False
+    return utils_matches_anchor_header(raw)
+
+
 def _reconstruct_columnar_block(lines: list[str]) -> tuple[list[str], list[dict]]:
-    cleaned = [(line or "").strip() for line in lines if (line or "").strip()]
-    if len(cleaned) <= 5:
-        return [], []
-
-    max_anchor_scan = min(len(cleaned) - 3, 800)
-    for idx in range(max_anchor_scan):
-        raw = cleaned[idx]
-        if not _matches_anchor_header(raw):
-            continue
-
-        anchor_label = cleaned[idx]
-        tail = cleaned[idx + 1:]
-        if len(tail) < 3:
-            continue
-
-        label_idx = -1
-        numeric_run = 0
-        for offset, token in enumerate(tail):
-            abs_idx = idx + 1 + offset
-            if not token or _is_numeric_like(token) or _matches_anchor_header(token):
-                continue
-            k = abs_idx + 1
-            run = 0
-            while k < len(cleaned) and _is_numeric_like(cleaned[k]):
-                run += 1
-                k += 1
-            if run >= 2:
-                label_idx = abs_idx
-                numeric_run = run
-                break
-        if label_idx < 0 or numeric_run < 2 or numeric_run > 15:
-            continue
-
-        forward_tokens: list[str] = []
-        for pos in range(idx + 1, label_idx):
-            tok = cleaned[pos]
-            if tok and not _is_numeric_like(tok) and not _matches_anchor_header(tok):
-                forward_tokens.append(tok)
-        candidate_count = max(numeric_run, len(forward_tokens))
-        if len(forward_tokens) > candidate_count:
-            forward_tokens = forward_tokens[-candidate_count:]
-
-        header_tokens = list(forward_tokens)
-        back_tokens: list[str] = []
-        back_idx = idx - 1
-        while back_idx >= 0 and len(back_tokens) < candidate_count:
-            tok = cleaned[back_idx]
-            if not tok or _is_numeric_like(tok) or _matches_anchor_header(tok):
-                break
-            back_tokens.append(tok)
-            back_idx -= 1
-
-        header_tokens = _compact_header_tokens(header_tokens, candidate_count, prior_tokens=back_tokens[::-1])
-
-        if len(header_tokens) != candidate_count:
-            continue
-
-        data_index = label_idx
-        headers = [anchor_label] + header_tokens
-        rows: list[dict] = []
-        while data_index < len(cleaned):
-            label = cleaned[data_index]
-            if not label:
-                data_index += 1
-                if rows:
-                    break
-                continue
-            if _matches_anchor_header(label) and label.lower() != anchor_label.lower() and rows:
-                break
-            if _is_numeric_like(label):
-                break
-
-            values: list[str] = []
-            cursor = data_index + 1
-            while len(values) < candidate_count and cursor < len(cleaned):
-                cell = cleaned[cursor]
-                if not _is_numeric_like(cell):
-                    break
-                values.append(_normalize_numeric_token(cell))
-                cursor += 1
-
-            if not values:
-                break
-            if len(values) < candidate_count:
-                values.extend([""] * (candidate_count - len(values)))
-
-            row = {anchor_label: label}
-            for header, value in zip(headers[1:], values):
-                row[header] = value
-            rows.append(row)
-            data_index = cursor
-
-        if len(rows) >= 2 and candidate_count >= 1:
-            return headers, rows
-
-    return [], []
+    return utils_reconstruct_columnar_block(lines, _CONTEST_RX)
 
 
 def _extract_party_lookup_from_lines(lines: list[str] | None) -> dict[str, str]:
-    lookup: dict[str, str] = {}
-    if not lines:
-        return lookup
-    for raw in lines:
-        if not isinstance(raw, str):
-            continue
-        text = raw.strip()
-        if not text:
-            continue
-        for match in _PARTY_KEY_PATTERN.finditer(text):
-            code_raw = match.group("code") or ""
-            label_raw = match.group("label") or ""
-            code = re.sub(r"[^A-Za-z0-9]+", "", code_raw).upper()
-            label = label_raw.strip()
-            if not code or not label or code in lookup:
-                continue
-            normalized = normalize_party_label(label)
-            if normalized:
-                lookup[code] = normalized
-        for match in _PARTY_EQUALS_PATTERN.finditer(text):
-            code_raw = match.group("code") or ""
-            label_raw = match.group("label") or ""
-            code = re.sub(r"[^A-Za-z0-9]+", "", code_raw).upper()
-            label = label_raw.strip()
-            if not code or not label or code in lookup:
-                continue
-            normalized = normalize_party_label(label)
-            if normalized:
-                lookup[code] = normalized
-    return lookup
+    return utils_extract_party_lookup_from_lines(lines)
 
 
 def _parse_candidate_header_with_party(header: str, party_lookup: dict[str, str]) -> tuple[str, str, dict]:
-    raw_header = str(header or "").strip()
-    sanitized = raw_header.replace(",(", " (").replace(", (", " (")
-    sanitized = re.sub(r"\s+", " ", sanitized).strip()
-    info = {
-        "source_header": raw_header,
-        "party_inference": "unknown",
-        "party_code": None,
-    }
-
-    candidate_label = sanitized
-    party_label = ""
-
-    match = re.search(r"\(([^)]+)\)\s*$", sanitized)
-    if match:
-        token = match.group(1).strip()
-        token_clean = re.sub(r"[^A-Za-z0-9]+", "", token)
-        if token_clean:
-            code = token_clean.upper()
-            info["party_code"] = code
-            mapped = party_lookup.get(code)
-            if mapped:
-                party_label = mapped
-                info["party_inference"] = "key_lookup"
-            else:
-                normalized = normalize_party_label(token)
-                if normalized:
-                    party_label = normalized
-                    info["party_inference"] = "parenthetical_abbrev"
-        candidate_label = sanitized[: match.start()].strip()
-
-    if not party_label and info.get("party_code"):
-        normalized = normalize_party_label(info["party_code"])
-        if normalized:
-            party_label = normalized
-            if info["party_inference"] == "unknown":
-                info["party_inference"] = "parenthetical_abbrev"
-
-    if not party_label:
-        for token in re.findall(r"\b([A-Za-z]{1,4})\b", sanitized):
-            mapped = party_lookup.get(token.upper())
-            if mapped:
-                party_label = mapped
-                info["party_code"] = token.upper()
-                info["party_inference"] = "key_lookup"
-                break
-
-    candidate_label = candidate_label.strip().strip("*").strip()
-    candidate_label = re.sub(r"\s{2,}", " ", candidate_label)
-    candidate_label = candidate_label.rstrip(",;")
-    if not candidate_label:
-        candidate_label = raw_header
-
-    info["candidate_label"] = candidate_label
-    info["party_label"] = party_label
-    return candidate_label, party_label, info
+    return utils_parse_candidate_header_with_party(header, party_lookup)
 
 
 def _coerce_vote_value_for_reconstruction(value):
-    if isinstance(value, (int, float)):
-        try:
-            return int(value)
-        except Exception:
-            return value
-    if isinstance(value, str):
-        text = value.strip()
-        if not text or text.upper() in {"NA", "N/A", "--", "—"}:
-            return ""
-        digits = text.replace(",", "").replace(" ", "")
-        if digits.isdigit():
-            try:
-                return int(digits)
-            except Exception:
-                return digits
-        try:
-            return int(float(digits))
-        except Exception:
-            return text
-    return value
+    return utils_coerce_vote_value_for_reconstruction(value)
 
 
 def _try_columnar_reconstruction(
@@ -3206,23 +2450,6 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
     _log_ocr_environment(session_id=session_id)
     all_text = ""
     metadata = {}
-
-    global _FITZ_WARNING_LOGGED
-    if _FITZ_IMPORT_WARNINGS and not _FITZ_WARNING_LOGGED:
-        _FITZ_WARNING_LOGGED = True
-        logger.warning({
-            "level": "WARNING",
-            "type": "handler",
-            "message": "[WARN] PyMuPDF import emitted SWIG DeprecationWarnings; using safe import shim to avoid crashes under -W error.",
-            "session_id": session_id,
-            "warning_details": list(_FITZ_IMPORT_WARNINGS),
-        })
-    if _FITZ_IMPORT_WARNINGS:
-        metadata["fitz_import_warnings"] = list(_FITZ_IMPORT_WARNINGS)
-    if _FITZ_PATCHED_TYPES:
-        metadata["fitz_patched_types"] = list(_FITZ_PATCHED_TYPES)
-    if _FITZ_PATCH_FAILURES:
-        metadata["fitz_patch_failures"] = list(_FITZ_PATCH_FAILURES)
     headers = []
     ocr_score = 0.0
     ocr_runs = []
