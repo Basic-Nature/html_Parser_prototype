@@ -1778,6 +1778,29 @@ def get_county_precincts(county_name) -> Optional[list]:
     county_norm = normalize_county_name(county_name)
     return KNOWN_COUNTY_TO_PRECINCTS_MAP.get(county_norm)
 
+
+def normalize_county_key(county: Optional[str]) -> str:
+    """Normalize free-form county text to a lookup key for precinct maps."""
+    if not county:
+        return ""
+    normalized = normalize_county_name(county)
+    if normalized:
+        return normalized
+    lowered = re.sub(r"[^a-z0-9]+", " ", county.strip().lower())
+    lowered = re.sub(r"\s+", " ", lowered).strip()
+    return lowered
+
+
+def lookup_precinct_aliases_for_county(county: Optional[str]) -> list[str]:
+    """Return known precinct/municipality aliases for a county, if available."""
+    key = normalize_county_key(county)
+    if not key:
+        return []
+    aliases = KNOWN_COUNTY_TO_PRECINCTS_MAP.get(key, [])
+    # Return a shallow copy to prevent accidental mutation of global constants.
+    return list(aliases) if aliases else []
+
+
 def get_state_counties(state_name) -> Optional[list]:
     state_norm = normalize_state_name(state_name)
     return KNOWN_STATE_TO_COUNTY_MAP.get(state_norm)

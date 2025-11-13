@@ -8,7 +8,9 @@ logic. The functions here are intentionally lightweight and free of pipeline
 side effects (logging, file I/O, etc.).
 """
 
+import os
 import re
+from collections import Counter
 from typing import Iterable, Sequence
 
 from ..Context_Integration.Context_Library.constants import (
@@ -18,6 +20,31 @@ from ..Context_Integration.Context_Library.constants import (
     normalize_party_label,
 )
 from .header_utils import collapse_multiline_header
+
+
+_RECON_DEBUG_EVENTS: list[dict] = []
+
+
+def _recon_debug_enabled() -> bool:
+    flag = os.environ.get("SMART_ELECTIONS_RECON_DEBUG")
+    if not flag:
+        return False
+    low = flag.strip().lower()
+    return low not in {"0", "false", "no", "off"}
+
+
+def _record_recon_event(event: dict | None) -> None:
+    if not event or not _recon_debug_enabled():
+        return
+    _RECON_DEBUG_EVENTS.append(event)
+
+
+def consume_reconstruction_debug_events() -> list[dict]:
+    if not _RECON_DEBUG_EVENTS:
+        return []
+    events = list(_RECON_DEBUG_EVENTS)
+    _RECON_DEBUG_EVENTS.clear()
+    return events
 
 
 _NUM_RE = re.compile(r"(?P<num>\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?")
@@ -565,7 +592,16 @@ def extract_candidate_totals_from_lines(
 
 
 def split_ws_blocks(s: str) -> list[str]:
-    cells = re.split(r"\s{2,}|\t|,", (s or "").strip())
+    """Split a line into cells using multi-space, tab, or comma separators.
+
+    Numeric thousands separators are removed prior to splitting so values like
+    "23,476" stay in a single cell.
+    """
+    text = (s or "").strip()
+    if not text:
+        return []
+    text = re.sub(r"(?<=\d),(?=\d)", "", text)
+    cells = re.split(r"\s{2,}|\t|,", text)
     return [c.strip() for c in cells if c.strip()]
 
 
@@ -849,6 +885,11 @@ def _reconstruct_vertical_table(
     contest_regex: re.Pattern | None,
 ) -> tuple[list[str], list[dict]]:
     anchor_label = cleaned[anchor_idx]
+    _record_recon_event({
+        "phase": "vertical_attempt",
+        "anchor_label": anchor_label,
+        "anchor_index": anchor_idx,
+    })
     window_start = max(0, anchor_idx - 20)
     pre_window = cleaned[window_start:anchor_idx]
     trailing_block: list[str] = []
@@ -893,10 +934,25 @@ def _reconstruct_vertical_table(
     post_tokens = _merge_token_fragments(post_tokens_raw)
     headers = _compose_vertical_headers(anchor_label, pre_tokens, post_tokens)
     if not headers:
+        _record_recon_event({
+            "phase": "vertical_headers_empty",
+            "anchor_label": anchor_label,
+        })
         return [], []
     rows = _gather_vertical_rows(cleaned, idx, anchor_label, headers, contest_regex)
     if len(rows) < 3:
+        _record_recon_event({
+            "phase": "vertical_rows_insufficient",
+            "anchor_label": anchor_label,
+            "row_count": len(rows),
+        })
         return [], []
+    _record_recon_event({
+        "phase": "vertical_success",
+        "anchor_label": anchor_label,
+        "row_count": len(rows),
+        "header_count": len(headers),
+    })
     return headers, rows
 
 
@@ -928,15 +984,135 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
         return [], []
     regex = contest_regex or CONTEST_TITLE_REGEX
 
+    _record_recon_event({
+        "phase": "start_columnar_reconstruction",
+        "line_count": len(cleaned),
+    })
+
+    aggregated_headers: list[str] | None = None
+    aggregated_rows: list[dict] = []
+
+    def _update_aggregated(headers: list[str], rows: list[dict]) -> None:
+        nonlocal aggregated_headers, aggregated_rows
+        if not rows:
+            return
+        if not aggregated_headers or len(rows) > len(aggregated_rows):
+            aggregated_headers = headers
+            aggregated_rows = list(rows)
+        elif aggregated_headers == headers:
+            aggregated_rows.extend(rows)
+
+    def _likely_location_line(start_idx: int) -> bool:
+        numeric_seen = 0
+        lookahead_limit = start_idx + 12
+        probe_idx = start_idx
+        while probe_idx < len(cleaned) and probe_idx < lookahead_limit:
+            probe = cleaned[probe_idx]
+            if not probe:
+                probe_idx += 1
+                continue
+            cells = split_ws_blocks(probe)
+            if not cells:
+                probe_idx += 1
+                continue
+            if all(is_numeric_like(cell) for cell in cells):
+                numeric_seen += 1
+                if numeric_seen >= 2:
+                    return True
+                probe_idx += 1
+                continue
+            return False
+        return numeric_seen >= 2
+
+    def _clean_header_token(token: str) -> str:
+        text = (token or "").strip()
+        if not text:
+            return ""
+        text = re.sub(r"^\*+", "", text)
+        text = re.sub(r"\*+$", "", text)
+        text = re.sub(r"\s{2,}", " ", text)
+        return text.strip()
+
+    def _merge_parenthetical_tokens(tokens: list[str]) -> list[str]:
+        merged: list[str] = []
+        for tok in tokens:
+            clean = _clean_header_token(tok)
+            if not clean:
+                continue
+            if re.fullmatch(r"\([^)]{1,24}\)", clean) and merged:
+                merged[-1] = f"{merged[-1]} {clean}".strip()
+            else:
+                merged.append(clean)
+        return merged
+
+    def _combine_candidate_tokens(post_token: str, pre_token: str) -> str:
+        post_clean = _clean_header_token(post_token)
+        pre_clean = _clean_header_token(pre_token)
+        if not post_clean and not pre_clean:
+            return ""
+        if not pre_clean:
+            return post_clean
+        if not post_clean:
+            return pre_clean
+        if pre_clean.lower().startswith("misc"):
+            return "Misc."
+        base = post_clean
+        party = ""
+        party_match = re.search(r"\s*\([^)]*\)\s*$", base)
+        if party_match:
+            party = party_match.group(0).strip()
+            base = base[: party_match.start()].strip()
+        if pre_clean and pre_clean.lower() not in base.lower():
+            base = f"{base} {pre_clean}".strip()
+        if party:
+            return f"{base} {party}".strip()
+        return base
+
+    def _dedupe_preserve_order(tokens: list[str]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for tok in tokens:
+            key = tok.lower()
+            if not tok or key in seen:
+                continue
+            seen.add(key)
+            ordered.append(tok)
+        return ordered
+
+    def _looks_like_party_definition(token: str) -> bool:
+        text = (token or "").strip()
+        if not text:
+            return False
+        lowered = text.lower()
+        if lowered in {"party", "party preference", "party affiliation"}:
+            return True
+        if lowered.startswith("party codes") or lowered.startswith("party preference"):
+            return True
+        if _PARTY_KEY_PATTERN.search(text) or _PARTY_EQUALS_PATTERN.search(text):
+            return True
+        cells = [cell.lower() for cell in split_ws_blocks(text)]
+        if 1 < len(cells) <= 6:
+            alpha_cells = [cell for cell in cells if cell.isalpha()]
+            if alpha_cells and all(cell in _PARTY_TERMS or len(cell) <= 3 for cell in alpha_cells):
+                return True
+        return False
+
     max_anchor_scan = min(len(cleaned) - 3, 800)
-    for idx in range(max_anchor_scan):
+    idx = 0
+    while idx < max_anchor_scan:
         raw = cleaned[idx]
         if not matches_anchor_header(raw):
+            idx += 1
             continue
 
         anchor_label = cleaned[idx]
         scan_idx = idx + 1
         header_rows: list[list[str]] = []
+        _record_recon_event({
+            "phase": "anchor_detected",
+            "anchor_label": anchor_label,
+            "anchor_index": idx,
+        })
 
         while scan_idx < len(cleaned):
             token = cleaned[scan_idx]
@@ -948,76 +1124,360 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
             if not cells:
                 scan_idx += 1
                 continue
+            if len(cells) == 1 and not is_numeric_like(cells[0]) and _likely_location_line(scan_idx + 1):
+                break
             numeric_cells = sum(1 for cell in cells if is_numeric_like(cell))
             if numeric_cells >= max(1, len(cells) - 1):
                 break
             header_rows.append(list(cells))
             scan_idx += 1
-            if len(header_rows) >= 3:
+            if len(header_rows) >= 12:
                 break
 
         if not header_rows:
+            idx = max(idx + 1, scan_idx)
             continue
 
-        candidate_headers = _combine_header_rows(header_rows)
-        candidate_headers = [h for h in candidate_headers if h]
+        pre_tokens: list[str] = []
+        look_idx = idx - 1
+        while look_idx >= 0 and len(pre_tokens) < 12:
+            prev_line = cleaned[look_idx]
+            if not prev_line.strip():
+                if pre_tokens:
+                    break
+                look_idx -= 1
+                continue
+            if matches_anchor_header(prev_line):
+                break
+            if regex.search(prev_line.lower()):
+                break
+            if is_bad_header_line(prev_line):
+                break
+            candidate_cells = split_ws_blocks(prev_line)
+            if not candidate_cells:
+                look_idx -= 1
+                continue
+            if any(is_numeric_like(cell) for cell in candidate_cells):
+                break
+            token_clean = _clean_header_token(prev_line)
+            if token_clean:
+                pre_tokens.insert(0, token_clean)
+            look_idx -= 1
+
+        all_singletons = all(len(row) == 1 for row in header_rows)
+        if all_singletons:
+            post_tokens = [_clean_header_token(row[0]) for row in header_rows if row and row[0].strip()]
+            post_tokens = _merge_parenthetical_tokens(post_tokens)
+            candidate_headers = list(post_tokens)
+            if pre_tokens and len(candidate_headers) + 1 == len(pre_tokens):
+                missing = [tok for tok in pre_tokens if tok.lower().startswith("misc")]
+                if missing and missing[0].lower() not in {h.lower() for h in candidate_headers}:
+                    candidate_headers.append(missing[0])
+            if pre_tokens and len(candidate_headers) == len(pre_tokens):
+                combined = []
+                for post_token, pre_token in zip(candidate_headers, pre_tokens):
+                    combined.append(_combine_candidate_tokens(post_token, pre_token))
+                candidate_headers = combined
+            candidate_headers = _dedupe_preserve_order(candidate_headers)
+            _record_recon_event({
+                "phase": "header_rows_singletons",
+                "anchor_label": anchor_label,
+                "raw_header_rows": header_rows,
+                "pre_header_tokens": pre_tokens,
+                "derived_headers": candidate_headers,
+            })
+        else:
+            candidate_headers = _combine_header_rows(header_rows)
+            candidate_headers = [_clean_header_token(h) for h in candidate_headers if _clean_header_token(h)]
+            candidate_headers = _dedupe_preserve_order(candidate_headers)
+            if pre_tokens and len(candidate_headers) < len(pre_tokens):
+                extras = [tok for tok in pre_tokens if tok.lower() not in {h.lower() for h in candidate_headers}]
+                candidate_headers.extend(extras)
+                candidate_headers = _dedupe_preserve_order(candidate_headers)
+            _record_recon_event({
+                "phase": "header_rows_combined",
+                "anchor_label": anchor_label,
+                "raw_header_rows": header_rows,
+                "pre_header_tokens": pre_tokens,
+                "combined_headers": candidate_headers,
+            })
+
         if len(candidate_headers) <= 1:
+            _record_recon_event({
+                "phase": "header_rows_insufficient",
+                "anchor_label": anchor_label,
+                "candidate_headers": candidate_headers,
+                "reason": "<=1 headers after combine",
+            })
             alt_headers, alt_rows = _reconstruct_vertical_table(cleaned, idx, regex)
             if alt_headers and alt_rows:
-                return alt_headers, alt_rows
+                _update_aggregated(alt_headers, alt_rows)
+            idx = max(idx + 1, scan_idx)
             continue
 
         location_header = anchor_label
-        data_lines: list[list[str]] = []
+        raw_rows: list[tuple[str, list[str]]] = []
+        current_location: str | None = None
+        current_values: list[str] = []
+        stop_event: dict | None = None
+
+        def _flush_current_row(reason: str | None = None) -> None:
+            nonlocal current_location, current_values, raw_rows
+            if current_location is None:
+                return
+            if current_values:
+                raw_rows.append((current_location, list(current_values)))
+            elif reason:
+                _record_recon_event({
+                    "phase": "row_flush_no_values",
+                    "anchor_label": anchor_label,
+                    "location": current_location,
+                    "reason": reason,
+                })
+            current_location = None
+            current_values = []
+
         while scan_idx < len(cleaned):
             token = cleaned[scan_idx]
             if matches_anchor_header(token) and token.lower() != anchor_label.lower():
+                stop_event = {
+                    "reason": "next_anchor",
+                    "line": token,
+                    "line_index": scan_idx,
+                }
+                _flush_current_row("next_anchor")
                 break
-            if regex.search(token.lower()) and len(data_lines) >= 2:
+            if (
+                regex.search(token.lower())
+                and len(raw_rows) >= 2
+                and not _looks_like_party_definition(token)
+            ):
+                stop_event = {
+                    "reason": "next_contest_heading",
+                    "line": token,
+                    "line_index": scan_idx,
+                }
+                _flush_current_row("next_contest")
                 break
+
             cells = split_ws_blocks(token)
             if not cells:
-                if data_lines:
-                    break
                 scan_idx += 1
                 continue
-            numeric_cells = sum(1 for cell in cells[1:] if is_numeric_like(cell))
-            if numeric_cells == 0 and data_lines:
-                break
-            if numeric_cells == 0:
+
+            if _looks_like_party_definition(token):
                 scan_idx += 1
                 continue
-            data_lines.append(cells)
+
+            numeric_mask = [is_numeric_like(cell) for cell in cells]
+            text_cells = [cell for cell, flag in zip(cells, numeric_mask) if not flag]
+            numeric_cells = [cell for cell, flag in zip(cells, numeric_mask) if flag]
+
+            if len(text_cells) == len(cells) and len(cells) == 1:
+                _flush_current_row("new_location")
+                current_location = text_cells[0]
+                scan_idx += 1
+                continue
+
+            if text_cells and numeric_cells:
+                _flush_current_row("inline_location")
+                current_location = text_cells[0]
+                trailing_numeric = []
+                start_idx = cells.index(text_cells[0]) + 1
+                for cell in cells[start_idx:]:
+                    if is_numeric_like(cell):
+                        trailing_numeric.append(cell)
+                current_values = trailing_numeric
+                scan_idx += 1
+                continue
+
+            if numeric_cells:
+                if current_location:
+                    current_values.extend(numeric_cells)
+                scan_idx += 1
+                continue
+
+            if text_cells:
+                _flush_current_row("compound_location")
+                current_location = " ".join(text_cells)
+                scan_idx += 1
+                continue
+
             scan_idx += 1
-        if len(data_lines) < 3:
+
+        _flush_current_row("end_of_block")
+
+        if not raw_rows:
+            _record_recon_event({
+                "phase": "data_rows_insufficient",
+                "anchor_label": anchor_label,
+                "row_count": 0,
+            })
+            idx = max(idx + 1, scan_idx)
             continue
+
+        row_lengths = [len(values) for _, values in raw_rows if values]
+        if not row_lengths:
+            _record_recon_event({
+                "phase": "data_rows_insufficient",
+                "anchor_label": anchor_label,
+                "row_count": 0,
+                "reason": "no_numeric_values",
+            })
+            idx = max(idx + 1, scan_idx)
+            continue
+
+        length_counter = Counter(row_lengths)
+        candidate_count = max(length_counter.items(), key=lambda kv: (kv[1], kv[0]))[0]
+        _record_recon_event({
+            "phase": "candidate_value_span",
+            "anchor_label": anchor_label,
+            "length_frequency": dict(length_counter),
+            "selected_length": candidate_count,
+        })
+
+        if candidate_headers and len(candidate_headers) != candidate_count:
+            _record_recon_event({
+                "phase": "header_value_count_mismatch",
+                "anchor_label": anchor_label,
+                "header_count": len(candidate_headers),
+                "value_count": candidate_count,
+            })
+            if len(candidate_headers) < candidate_count:
+                extras: list[str] = []
+                lower_existing = {h.lower() for h in candidate_headers}
+                for token in pre_tokens:
+                    cleaned_token = _clean_header_token(token)
+                    if cleaned_token and cleaned_token.lower() not in lower_existing:
+                        extras.append(cleaned_token)
+                        lower_existing.add(cleaned_token.lower())
+                    if len(candidate_headers) + len(extras) >= candidate_count:
+                        break
+                while len(candidate_headers) + len(extras) < candidate_count:
+                    extras.append(f"Candidate {len(candidate_headers) + len(extras) + 1}")
+                candidate_headers.extend(extras[: candidate_count - len(candidate_headers)])
+            else:
+                candidate_headers = candidate_headers[:candidate_count]
+
+        data_lines: list[list[str]] = []
+        padded_rows = 0
+        overflow_rows = 0
+        numeric_location_rows = 0
+        month_tokens = {
+            "january",
+            "february",
+            "march",
+            "april",
+            "may",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
+        }
+
+        for location_text, values in raw_rows:
+            if not values:
+                continue
+            loc_clean = (location_text or "").strip()
+            if loc_clean and any(month in loc_clean.lower() for month in month_tokens):
+                _record_recon_event({
+                    "phase": "row_footer_skip",
+                    "anchor_label": anchor_label,
+                    "location": loc_clean,
+                    "reason": "month_token_detected",
+                })
+                continue
+            row_values = list(values)
+            if len(row_values) < candidate_count:
+                padded_rows += 1
+                _record_recon_event({
+                    "phase": "row_value_padding",
+                    "anchor_label": anchor_label,
+                    "original_length": len(row_values),
+                    "candidate_count": candidate_count,
+                    "row_sample": [location_text] + row_values,
+                })
+                row_values.extend([""] * (candidate_count - len(row_values)))
+            elif len(row_values) > candidate_count:
+                overflow = row_values[candidate_count - 1 :]
+                overflow_rows += 1
+                _record_recon_event({
+                    "phase": "row_value_overflow",
+                    "anchor_label": anchor_label,
+                    "original_length": len(row_values),
+                    "candidate_count": candidate_count,
+                    "overflow_joined": " ".join(overflow),
+                    "row_sample": [location_text] + row_values,
+                })
+                row_values = row_values[: candidate_count - 1] + [" ".join(overflow)]
+            if loc_clean and is_numeric_like(loc_clean):
+                numeric_location_rows += 1
+            data_lines.append([loc_clean] + row_values[:candidate_count])
+
+        if len(data_lines) < 3:
+            _record_recon_event({
+                "phase": "data_rows_insufficient",
+                "anchor_label": anchor_label,
+                "row_count": len(data_lines),
+                "reason": "<3 rows after normalization",
+            })
+            idx = max(idx + 1, scan_idx)
+            continue
+
+        if stop_event:
+            stop_event = {
+                "phase": "data_scan_stopped",
+                "anchor_label": anchor_label,
+                "rows_collected": len(data_lines),
+                **stop_event,
+            }
+            _record_recon_event(stop_event)
 
         rows: list[dict] = []
         candidate_count = len(candidate_headers)
-        for cells in data_lines:
-            if not cells:
-                continue
-            location = cells[0]
-            values = list(cells[1:])
-            if len(values) < candidate_count:
-                values.extend([""] * (candidate_count - len(values)))
-            elif len(values) > candidate_count:
-                overflow = values[candidate_count - 1 :]
-                values = values[: candidate_count - 1] + [" ".join(overflow)]
+        for line_cells in data_lines:
+            location = line_cells[0]
+            values = list(line_cells[1:])
             row = {location_header: location}
             for header, value in zip(candidate_headers, values):
                 row[header] = value
             rows.append(row)
 
-        if len(rows) >= 3:
-            headers = [location_header] + candidate_headers
-            return headers, rows
+        reject_reason: str | None = None
+        if padded_rows >= max(1, len(rows) // 2):
+            reject_reason = "too_many_padded_rows"
+        elif numeric_location_rows >= max(1, len(rows) // 2):
+            reject_reason = "numeric_locations"
 
-        if len(rows) < 3:
+        if reject_reason:
+            _record_recon_event({
+                "phase": "row_quality_reject",
+                "anchor_label": anchor_label,
+                "row_count": len(rows),
+                "padded_rows": padded_rows,
+                "numeric_location_rows": numeric_location_rows,
+                "reason": reject_reason,
+            })
             alt_headers, alt_rows = _reconstruct_vertical_table(cleaned, idx, regex)
             if alt_headers and alt_rows:
-                return alt_headers, alt_rows
+                _update_aggregated(alt_headers, alt_rows)
+        else:
+            headers = [location_header] + candidate_headers
+            _record_recon_event({
+                "phase": "reconstruction_success",
+                "anchor_label": anchor_label,
+                "row_count": len(rows),
+                "candidate_count": candidate_count,
+            })
+            _update_aggregated(headers, rows)
 
+        idx = max(idx + 1, scan_idx)
+
+    if aggregated_headers and aggregated_rows:
+        return aggregated_headers, aggregated_rows
     return [], []
 
 
@@ -1028,13 +1488,16 @@ def extract_party_lookup_from_lines(lines: Sequence[str] | None) -> dict[str, st
     for raw in lines:
         if not raw:
             continue
-        m = _PARTY_KEY_PATTERN.search(raw)
-        if m:
-            mapping[m.group("code").upper()] = normalize_party_label(m.group("label"))
-            continue
-        m = _PARTY_EQUALS_PATTERN.search(raw)
-        if m:
-            mapping[m.group("code").upper()] = normalize_party_label(m.group("label"))
+        for match in _PARTY_KEY_PATTERN.finditer(raw):
+            code = match.group("code").upper()
+            label = normalize_party_label(match.group("label"))
+            if code and label:
+                mapping.setdefault(code, label)
+        for match in _PARTY_EQUALS_PATTERN.finditer(raw):
+            code = match.group("code").upper()
+            label = normalize_party_label(match.group("label"))
+            if code and label:
+                mapping.setdefault(code, label)
     return mapping
 
 
@@ -1053,6 +1516,14 @@ def parse_candidate_header_with_party(header: str, party_lookup: dict[str, str])
         if equals:
             party_code = equals.group("code").upper()
             party_label = normalize_party_label(equals.group("label"))
+    if not party_code:
+        simple = re.search(r"\((?P<code>[A-Za-z]{1,4})\)", header or "")
+        if simple:
+            code = simple.group("code").upper()
+            if code.isalpha():
+                party_code = code
+    if party_code and not party_label:
+        party_label = normalize_party_label(party_code)
     if not party_label and party_code and party_code in party_lookup:
         party_label = party_lookup.get(party_code)
     tokens = token_set(header)
@@ -1064,8 +1535,6 @@ def parse_candidate_header_with_party(header: str, party_lookup: dict[str, str])
             party_label = party_lookup[token.upper()]
             break
     candidate_label = header
-    if party_label:
-        info["party_inference"] = "lookup"
     if party_code:
         info["party_code"] = party_code
     if party_label:

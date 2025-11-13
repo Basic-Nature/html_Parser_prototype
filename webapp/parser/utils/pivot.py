@@ -23,6 +23,7 @@ Context / flags (defaults shown):
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import re
 from collections import defaultdict
@@ -36,7 +37,6 @@ from ..Context_Integration.Context_Library.constants import (
     CANDIDATE_BALLOT_SPLIT_PATTERN,
     DIVISION_HEURISTIC_TERMS,
     DIVISION_SUFFIXES,
-    KNOWN_COUNTY_TO_PRECINCTS_MAP,
     LOCATION_ABBREVIATIONS,
     LOCATION_KEYWORDS,
     LOCATION_SYNONYM_MAP,
@@ -44,11 +44,17 @@ from ..Context_Integration.Context_Library.constants import (
     STATE_TO_DIVISION_TYPE_MAP,
     TOTAL_KEYWORDS,
     canonical_ballot_group,
+    normalize_party_code,
     normalize_party_label,
 )
 from .detect import dynamic_detect_location_header, normalize_header, parse_numeric
 from .logger_singleton import logger
-from .shared_logic import safe_get, safe_strip
+from .shared_logic import (
+    lookup_precinct_aliases_for_county,
+    normalize_county_key,
+    safe_get,
+    safe_strip,
+)
 
 _CAND_BT_RE = re.compile(CANDIDATE_BALLOT_SPLIT_PATTERN, re.UNICODE)
 _TOTAL_LIKE = {normalize_header(t) for t in TOTAL_KEYWORDS} | {
@@ -64,6 +70,41 @@ _KNOWN_PARTY_NORMALS = {
     for val in PARTY_NORMALIZATION_MAP.values()
     if isinstance(val, str) and val.strip()
 }
+
+_PARTY_FRAGMENT_KEYWORDS = {
+    "party",
+    "dem",
+    "democrat",
+    "democratic",
+    "rep",
+    "republican",
+    "gop",
+    "lib",
+    "libertarian",
+    "green",
+    "ind",
+    "independent",
+    "wf",
+    "working",
+    "families",
+    "constitution",
+    "conservative",
+    "progressive",
+    "nonaffiliated",
+    "unaffiliated",
+    "misc",
+    "miscellaneous",
+    "other",
+    "blank",
+    "overvote",
+    "undervote",
+    "write",
+    "writein",
+    "write-in",
+    "scattering",
+}
+
+_MISC_LABEL_RE = re.compile(r"\b(misc|miscellaneous|other|blank|scattering|overvote|undervote)\b", re.I)
 
 # --- Added natural sort + division heuristics (place here with other global regex/constants) ---
 _SPLIT_NUM_RE = re.compile(r'(\d+)')
@@ -175,6 +216,55 @@ _DIVISION_TOKEN_PATTERNS = _build_division_token_patterns()
 
 # ---- small numeric helper & slight micro-optimizations ----
 _NUM_CLEAN_RE = re.compile(r"[,\s%]+")
+
+_MISSING_NUMERIC_TOKENS = {
+    "",
+    "-",
+    "--",
+    "—",
+    "–",
+    "n/a",
+    "na",
+    "n.a.",
+    "n\\a",
+    "pending",
+    "tbd",
+}
+
+
+def _parse_numeric_token(val) -> int | None:
+    """Return int value if token looks numeric; otherwise None."""
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        return int(val)
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        if math.isnan(val) or math.isinf(val):
+            return None
+        return int(val) if val.is_integer() else int(round(val))
+    if isinstance(val, str):
+        text = val.strip()
+        if not text:
+            return None
+        lowered = text.lower()
+        if lowered in _MISSING_NUMERIC_TOKENS:
+            return None
+        cleaned = text.replace(",", "").replace("%", "")
+        lowered_clean = cleaned.strip().lower()
+        if lowered_clean in _MISSING_NUMERIC_TOKENS:
+            return None
+        try:
+            num = float(cleaned)
+        except ValueError:
+            return None
+        if math.isnan(num) or math.isinf(num):
+            return None
+        if num.is_integer():
+            return int(num)
+        return int(round(num))
+    return None
 
 def _coerce_int(val) -> int:
     """Fast numeric coerce; returns 0 if not clean int."""
@@ -504,37 +594,12 @@ def _normalize_state_key(state: str | None) -> str:
 _COUNTY_DESIGNATOR_PATTERN = re.compile(r"\b(county|parish|borough|municipality|city|township|district)\b", re.I)
 
 
-def _normalize_county_key(county: str | None) -> str:
-    if not county:
-        return ""
-    key = _norm_text(county)
-    key = _COUNTY_DESIGNATOR_PATTERN.sub("", key)
-    key = re.sub(r"\s{2,}", " ", key).strip()
-    return key
-
-
-def _lookup_precinct_aliases_for_county(county: str | None) -> list[str]:
-    if not county:
-        return []
-    norm_target = _normalize_county_key(county)
-    if not norm_target:
-        return []
-    for raw_key, values in KNOWN_COUNTY_TO_PRECINCTS_MAP.items():
-        if _normalize_county_key(raw_key) == norm_target:
-            return values or []
-    return []
-
 def _detect_division_type_for_precinct(loc: str, state: str | None, context: dict) -> str:
     """
-    Infer a stable division type for a given Precinct label:
-      - If matches known municipality of the provided county -> 'municipality'
-      - If looks like ED/Ward/District -> 'district'
-      - If equals a known division in state map -> that division type
-      - 'All Precincts' -> 'aggregate'
-      - Else: suffix heuristic fallback
+    Try to infer a Division Type label from the precinct/location string.
+    Prefers explicit tokens (Ward, ED, etc.) and falls back to county/state maps.
     """
-    if not loc:
-        return ""
+    context = context or {}
     low = _norm_text(loc)
     if low in {"all precincts", "all districts", "overall", "total"}:
         return "aggregate"
@@ -543,7 +608,7 @@ def _detect_division_type_for_precinct(loc: str, state: str | None, context: dic
         if pattern.search(low):
             return dtype
 
-    county_aliases = _lookup_precinct_aliases_for_county(context.get("county") or context.get("County"))
+    county_aliases = lookup_precinct_aliases_for_county(context.get("county") or context.get("County"))
     if county_aliases:
         for muni in county_aliases:
             mlow = _norm_text(muni)
@@ -572,7 +637,7 @@ def _detect_division_type_for_precinct(loc: str, state: str | None, context: dic
     if re.search(r"\bdistrict\b", low, flags=re.I):
         return "district"
 
-    county_norm = _normalize_county_key(context.get("county") or context.get("County"))
+    county_norm = normalize_county_key(context.get("county") or context.get("County"))
     if county_norm and (low == county_norm or low.startswith(county_norm + " ")):
         county_orig = context.get("county") or context.get("County") or county_norm
         return str(county_orig)
@@ -599,13 +664,14 @@ def _detect_division_name_for_precinct(loc: str, state: str | None, context: dic
       - Aggregates ('All Precincts', etc.) return 'All'.
       - Fallback: return extracted municipality or the raw loc.
     """
+    context = context or {}
     if not loc:
         return ""
     low = _norm_text(loc)
     if low in {"all precincts", "all districts", "overall", "total"}:
         return "All"
 
-    county_norm = _normalize_county_key(context.get("county") or context.get("County"))
+    county_norm = normalize_county_key(context.get("county") or context.get("County"))
     if county_norm and (low == county_norm or low.startswith(county_norm + " ")):
         county_orig = context.get("county") or context.get("County") or county_norm
         return str(county_orig)
@@ -613,7 +679,7 @@ def _detect_division_name_for_precinct(loc: str, state: str | None, context: dic
     muni_guess = _extract_municipality(loc)
     muni_guess_low = _norm_text(muni_guess)
 
-    county_aliases = _lookup_precinct_aliases_for_county(context.get("county") or context.get("County"))
+    county_aliases = lookup_precinct_aliases_for_county(context.get("county") or context.get("County"))
     if county_aliases and muni_guess_low:
         for canonical in county_aliases:
             if _norm_text(canonical) == muni_guess_low:
@@ -648,33 +714,74 @@ def _normalize_party_value(raw: str | None) -> str:
 
 
 def _extract_party_from_label(label: str) -> str:
+    """Extract a party hint from a candidate label, avoiding surname fragments."""
     if not label:
         return ""
+
+    base_tokens = {tok.lower() for tok in re.findall(r"[a-z0-9]+", label)}
+
+    def _candidate_party_guess(fragment: str) -> str:
+        if not fragment:
+            return ""
+        raw = fragment.strip()
+        if not raw:
+            return ""
+
+        code_guess = normalize_party_code(raw)
+        if code_guess:
+            return code_guess
+
+        tokens = [tok.lower() for tok in re.findall(r"[a-z0-9]+", raw)]
+        if not tokens:
+            return ""
+        if set(tokens).issubset(base_tokens):
+            return ""
+
+        normalized = normalize_party_label(raw)
+        if normalized and normalized.strip():
+            lower_norm = normalized.lower()
+            if lower_norm in _KNOWN_PARTY_NORMALS:
+                return normalized
+            if any(tok in _PARTY_FRAGMENT_KEYWORDS for tok in tokens):
+                return normalized
+            if len(tokens) == 1 and len(tokens[0]) <= 4 and tokens[0].isalpha():
+                if lower_norm != tokens[0]:
+                    return normalized
+        if any(tok in _PARTY_FRAGMENT_KEYWORDS for tok in tokens):
+            return raw.title()
+        return ""
+
     match = re.search(r"\(([^)]+)\)\s*$", label)
     if match:
-        inner = match.group(1)
-        normalized = normalize_party_label(inner)
-        if normalized:
-            return normalized
-    tail_match = re.search(r"([-–—/,|:])\s*([A-Za-z'. ]+)$", label)
+        candidate = _candidate_party_guess(match.group(1))
+        if candidate:
+            return candidate
+
+    tail_match = re.search(r"([-–—/,|:])\s*([A-Za-z'.\s]+)$", label)
     if tail_match:
         tail = tail_match.group(2)
-        normalized = normalize_party_label(tail) or normalize_party_label(re.sub(r"[-–—/,|:]", " ", tail))
-        if normalized:
-            return normalized
+        candidate = _candidate_party_guess(tail)
+        if not candidate:
+            candidate = _candidate_party_guess(re.sub(r"[-–—/,|:]", " ", tail))
+        if candidate:
+            return candidate
+
     parts = label.split()
     if parts:
         for width in range(1, min(4, len(parts)) + 1):
             tail = " ".join(parts[-width:])
-            if len(parts) > width:
-                normalized = normalize_party_label(tail)
-                if normalized:
-                    return normalized
+            candidate = _candidate_party_guess(tail)
+            if candidate:
+                return candidate
         prefix = parts[0]
         if prefix.isupper() and len(prefix) <= 4:
-            normalized = normalize_party_label(prefix)
-            if normalized:
-                return normalized
+            candidate = _candidate_party_guess(prefix)
+            if candidate:
+                return candidate
+
+    normalized_full = normalize_party_label(label)
+    if normalized_full and normalized_full.lower() in _KNOWN_PARTY_NORMALS:
+        return normalized_full
     return ""
 
 
@@ -700,6 +807,12 @@ def _candidate_display_and_key(label: str, party_hint: str) -> tuple[str, str]:
 
 def _normalize_ballot_suffix(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (label or "").lower()).strip()
+
+
+def _is_misc_candidate_label(label: str) -> bool:
+    if not label:
+        return False
+    return bool(_MISC_LABEL_RE.search(label))
 
 
 def _map_ballot_suffix(suffix: str) -> tuple[str | None, str | None]:
@@ -1341,16 +1454,23 @@ def transform_wide_to_smart_standard(
             ballots = info.get("ballots", {})
             party_col = info.get("party")
 
-            total_val = _coerce_int(row.get(total_col, 0)) if total_col else 0
+            total_raw = row.get(total_col) if total_col else None
+            reported_total_val = _parse_numeric_token(total_raw)
+            total_col_present = bool(total_col)
+
             ballot_values: Dict[str, int] = {}
             for suffix, col in ballots.items():
-                val = _coerce_int(row.get(col, 0))
-                if val:
-                    ballot_values[suffix] = val
+                parsed_val = _parse_numeric_token(row.get(col))
+                if parsed_val is None:
+                    continue
+                ballot_values[suffix] = parsed_val
             cand_norm = re.sub(r"\s+", " ", (cand_label or "").replace("-", " ")).strip().lower()
             is_write_in_candidate = cand_norm.startswith("write in") or cand_norm == "writein"
 
-            if not total_val and not ballot_values and not is_write_in_candidate:
+            is_misc_bucket = _is_misc_candidate_label(cand_norm)
+
+            has_numeric_source = total_col_present or bool(ballots)
+            if not has_numeric_source and not is_write_in_candidate and not is_misc_bucket:
                 continue
 
             party_val_raw = safe_strip(row.get(party_col, "")) if party_col else ""
@@ -1358,6 +1478,8 @@ def transform_wide_to_smart_standard(
             if not party_val:
                 fallback = _extract_party_from_label(cand_label)
                 party_val = fallback or party_val
+            if not party_val and is_misc_bucket:
+                party_val = "NA"
 
             display_name, base_key = _candidate_display_and_key(cand_label, party_val)
 
@@ -1382,26 +1504,39 @@ def transform_wide_to_smart_standard(
 
             sum_standard = sum(standard_values.values())
             sum_extra = sum(extra_values.values())
-            uncategorized = explicit_uncategorized or 0
+            uncategorized = explicit_uncategorized if explicit_uncategorized is not None else 0
 
-            if explicit_uncategorized is None and total_val:
-                remainder = total_val - (sum_standard + sum_extra)
+            if explicit_uncategorized is None and reported_total_val is not None:
+                remainder = reported_total_val - (sum_standard + sum_extra)
                 if remainder < 0:
                     remainder = 0
                 uncategorized = remainder
 
-            if not total_val and (sum_standard or sum_extra or uncategorized):
-                total_val = sum_standard + sum_extra + uncategorized
-
             calculated_total = sum_standard + sum_extra + uncategorized
 
-            if total_val and calculated_total and abs(calculated_total - total_val) > 0:
+            if (
+                reported_total_val is not None
+                and calculated_total
+                and abs(calculated_total - reported_total_val) > 0
+            ):
                 mismatches.append({
                     "location": location_value,
                     "candidate": display_name,
-                    "reported_total": total_val,
+                    "reported_total": reported_total_val,
                     "calculated_total": calculated_total,
                 })
+
+            mark_total_na = (
+                total_col_present
+                and reported_total_val is None
+                and calculated_total == 0
+                and (not ballot_values or all(value == 0 for value in ballot_values.values()))
+                and explicit_uncategorized is None
+            )
+
+            reported_total_for_output = (
+                reported_total_val if reported_total_val is not None else calculated_total
+            )
 
             standard_usage.update({col for col, val in standard_values.items() if val})
             if uncategorized:
@@ -1415,8 +1550,9 @@ def transform_wide_to_smart_standard(
                 "extra": dict(extra_values),
                 "uncategorized": uncategorized,
                 "calculated_total": calculated_total,
-                "reported_total": total_val,
+                "reported_total": reported_total_for_output,
                 "write_in": is_write_in_candidate,
+                "mark_total_na": mark_total_na,
             }
 
             grouped_variants[base_key].append(variant)
@@ -1453,11 +1589,15 @@ def transform_wide_to_smart_standard(
                 if include_county_column:
                     row_out["County"] = county_value
                 row_out[division_header] = location_value or ""
+                calc_total_value = variant.get("calculated_total", 0)
+                calculated_out: int | str = (
+                    "NA" if variant.get("mark_total_na") else calc_total_value
+                )
                 row_out.update({
                     "Ballot Candidate Name": variant["display"],
                     "Ballot Party": variant.get("party", ""),
                     "Uncategorized Votes": variant.get("uncategorized", 0),
-                    "Calculated Total Votes": variant.get("calculated_total", 0),
+                    "Calculated Total Votes": calculated_out,
                     "Write-In": "TRUE" if variant.get("write_in") else "FALSE",
                 })
                 if include_division_type:

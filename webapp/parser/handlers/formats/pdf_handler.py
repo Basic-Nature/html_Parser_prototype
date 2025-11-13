@@ -66,6 +66,7 @@ from ...utils.pdf_table_utils import (
     parse_candidate_header_with_party as utils_parse_candidate_header_with_party,
     parse_candidate_line as utils_parse_candidate_line,
     reconstruct_columnar_block as utils_reconstruct_columnar_block,
+    consume_reconstruction_debug_events as utils_consume_reconstruction_debug_events,
     split_ws_blocks as utils_split_ws_blocks,
     table_looks_bad as utils_table_looks_bad,
     token_set as utils_token_set,
@@ -659,8 +660,14 @@ def _try_columnar_reconstruction(
     if lines:
         search_spaces.append(("document", lines))
 
+    debug_events: list[dict] = []
     for scope, candidate_lines in search_spaces:
         headers, rows = _reconstruct_columnar_block(candidate_lines)
+        scope_events = utils_consume_reconstruction_debug_events()
+        if scope_events:
+            for event in scope_events:
+                event.setdefault("scope", scope)
+            debug_events.extend(scope_events)
         if headers and rows:
             recon_headers = headers
             recon_rows = rows
@@ -782,6 +789,8 @@ def _try_columnar_reconstruction(
         "final_headers": final_headers,
         "smart_standard_applied": bool(smart_applied),
     })
+    if debug_events:
+        columnar_meta["debug_events"] = debug_events
     metadata["columnar_reconstruction"] = columnar_meta
     export_context["columnar_reconstruction_details"] = columnar_meta
 
