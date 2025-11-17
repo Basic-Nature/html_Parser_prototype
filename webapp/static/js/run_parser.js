@@ -327,13 +327,114 @@
   // Contest options store (per session) + helpers
   const CONTEST_STORE_KEY = 'contest_opts_by_session_v1';
   let contestOptionsBySession = lsGetJSON(CONTEST_STORE_KEY, {});
+  function cloneContestOption(opt) {
+    if (!opt || typeof opt !== 'object') return opt;
+    const cloned = { ...opt };
+    if (opt.metadata && typeof opt.metadata === 'object') {
+      try {
+        cloned.metadata = JSON.parse(JSON.stringify(opt.metadata));
+      } catch {
+        cloned.metadata = { ...opt.metadata };
+      }
+    }
+    return cloned;
+  }
+  function cloneContestOptions(list) {
+    return Array.isArray(list) ? list.map(cloneContestOption) : [];
+  }
   function getContestOptions(sessionId = activeSessionId) {
-    return (contestOptionsBySession[sessionId] || []).slice();
+    return cloneContestOptions(contestOptionsBySession[sessionId] || []);
   }
   function setContestOptions(sessionId, opts) {
-    contestOptionsBySession[sessionId] = (opts || []).slice();
+    contestOptionsBySession[sessionId] = cloneContestOptions(opts || []);
     lsSetJSON(CONTEST_STORE_KEY, contestOptionsBySession);
   }
+  const tablePreviewBySession = new Map();
+
+  function cloneTablePreviewEntry(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    const headers = Array.isArray(entry.headers) ? entry.headers.map(h => String(h)) : [];
+    const rows = Array.isArray(entry.rows)
+      ? entry.rows.map(row => {
+          if (!row || typeof row !== 'object') return {};
+          const copy = {};
+          Object.keys(row).forEach(key => { copy[key] = row[key]; });
+          return copy;
+        })
+      : [];
+    return {
+      index: Number(entry.index) || 0,
+      total: Number(entry.total) || 0,
+      confidence: typeof entry.confidence === 'number' ? entry.confidence : null,
+      headers,
+      rows,
+      contest: entry.contest || '',
+      receivedAt: Number(entry.receivedAt) || Date.now(),
+    };
+  }
+
+  function cloneTablePreviewState(state) {
+    if (!state || typeof state !== 'object') return { contest: '', entries: [] };
+    return {
+      contest: state.contest || '',
+      entries: Array.isArray(state.entries)
+        ? state.entries.map(entry => cloneTablePreviewEntry(entry)).filter(Boolean)
+        : [],
+    };
+  }
+
+  function getTablePreviewState(sessionId = activeSessionId) {
+    return cloneTablePreviewState(tablePreviewBySession.get(sessionId));
+  }
+
+  function recordTablePreview(sessionId, raw) {
+    if (!sessionId || !raw || typeof raw !== 'object') return;
+    const preview = raw.preview;
+    if (!preview || typeof preview !== 'object') return;
+    const headers = Array.isArray(preview.headers) ? preview.headers.map(h => String(h)) : [];
+    const rows = Array.isArray(preview.rows_preview)
+      ? preview.rows_preview.map(row => {
+          if (!row || typeof row !== 'object') return {};
+          const copy = {};
+          Object.keys(row).forEach(key => { copy[key] = row[key]; });
+          return copy;
+        })
+      : [];
+    const entry = {
+      index: Number(raw.candidate_index || raw.preview_index || rows.index) || 1,
+      total: Number(raw.candidates_total || raw.total_candidates || preview.candidates_total) || Math.max(rows.length, 0),
+      confidence: typeof raw.ml_avg_confidence === 'number' ? raw.ml_avg_confidence : null,
+      headers,
+      rows,
+      contest: raw.contest || preview.contest || '',
+      receivedAt: raw.timestamp || Date.now(),
+    };
+    const state = tablePreviewBySession.get(sessionId) || { contest: entry.contest || '', entries: [] };
+    if (entry.contest) state.contest = entry.contest;
+    const existingIdx = state.entries.findIndex(e => Number(e.index) === Number(entry.index));
+    if (existingIdx >= 0) {
+      state.entries[existingIdx] = entry;
+    } else {
+      state.entries.push(entry);
+    }
+    state.entries.sort((a, b) => Number(a.index) - Number(b.index));
+    // Limit to most recent 12 entries to avoid unbounded growth
+    if (state.entries.length > 12) {
+      state.entries = state.entries.slice(-12);
+    }
+    tablePreviewBySession.set(sessionId, state);
+    if (typeof document !== 'undefined' && document) {
+      try {
+        document.dispatchEvent(new CustomEvent('table-preview:updated', {
+          detail: { sessionId }
+        }));
+      } catch (err) {
+        void err;
+      }
+    }
+  }
+
+  window.getTablePreviews = (sessionId = activeSessionId) => getTablePreviewState(sessionId);
   // Handy globals for console/UI hooks
   window.getLastContestOptions = () => getContestOptions();
   window.showContestPicker = function(sessionId = activeSessionId) {
@@ -345,14 +446,47 @@
       pipelineControl?.focusStep('resolve', { scroll: false, highlight: true });
       logPanelControl?.expand();
     }
-    showIndexedSelectionModalWithContext('Select Contest', opts, ctxSummary, (selection) => {
-      if (!selection) return;
-      if (socket) socket.emit('parser_prompt', { session_id: sessionId, value: selection.join(',') });
-      if (sessionId === activeSessionId) {
-        pipelineControl?.clearAttention('resolve');
-        pipelineControl?.setPhase('resolve');
-      }
+
+    const restoreKey = sessionId ? `contest:manual:${sessionId}` : 'contest:manual';
+    const restoreTitle = 'Contest Selection';
+    const restoreDetail = 'Finish choosing the contest for this parser session.';
+    const restoreMessage = `${restoreTitle}. ${restoreDetail}`;
+    modalRestore.register({
+      key: restoreKey,
+      sessionId,
+      message: restoreMessage,
+      title: restoreTitle,
+      detail: restoreDetail,
+      icon: '🎯',
+      buttonLabel: 'Resume Contest',
+      buttonTitle: 'Reopen the contest selection dialog',
+      reopen: () => window.showContestPicker(sessionId)
     });
+    modalRestore.markActive(restoreKey);
+
+    showContestSelectionModal(
+      'Select Contest',
+      opts,
+      ctxSummary,
+      (selection) => {
+        if (!selection || !selection.length) return;
+        respondToPrompt(sessionId, selection.join(','));
+        if (sessionId === activeSessionId) {
+          pipelineControl?.clearAttention('resolve');
+          pipelineControl?.setPhase('resolve');
+        }
+        modalRestore.clear(restoreKey);
+      },
+      {
+        sessionId,
+        onCancel: () => {
+          modalRestore.markDismissed(restoreKey);
+        },
+        onSubmit: () => {
+          modalRestore.clear(restoreKey);
+        }
+      }
+    );
     return true;
   };
   let lastPromptContext = null;
@@ -899,6 +1033,8 @@
 
   // Modal helper (single reusable modal shell)
   const Modal = {
+    FOCUSABLE_SELECTOR: 'a[href], area[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    RESTORE_TABINDEX_ATTR: 'data-modal-restore-tabindex',
     get() {
       let modal = document.getElementById('downloadModal');
       if (!modal) {
@@ -1007,6 +1143,66 @@
         initDirectUrlControl();
         initModalQuickAdd();
       }
+      modal.removeAttribute('aria-hidden');
+      if (!modal.dataset.modalA11yBound) {
+        modal.dataset.modalA11yBound = '1';
+        const clearAriaHidden = () => {
+          try { modal.removeAttribute('aria-hidden'); } catch (err) { void err; }
+        };
+        const setInertState = (value) => {
+          try {
+            if ('inert' in modal) {
+              modal.inert = !!value;
+            }
+            if (value) {
+              modal.setAttribute('inert', '');
+              modal.setAttribute('data-modal-inert', '1');
+            } else {
+              modal.removeAttribute('inert');
+              modal.removeAttribute('data-modal-inert');
+            }
+          } catch (err) {
+            void err;
+          }
+          if (value) {
+            modal.querySelectorAll(Modal.FOCUSABLE_SELECTOR).forEach(node => {
+              if (node.hasAttribute('tabindex')) return;
+              node.setAttribute(Modal.RESTORE_TABINDEX_ATTR, '1');
+              node.setAttribute('tabindex', '-1');
+            });
+          } else {
+            modal.querySelectorAll(`[${Modal.RESTORE_TABINDEX_ATTR}]`).forEach(node => {
+              node.removeAttribute('tabindex');
+              node.removeAttribute(Modal.RESTORE_TABINDEX_ATTR);
+            });
+          }
+        };
+        const prepareHideState = () => {
+          const active = document.activeElement;
+          if (active && modal.contains(active) && typeof active.blur === 'function') {
+            try { active.blur(); } catch (err) { void err; }
+          }
+          setInertState(true);
+        };
+        modal.addEventListener('show.bs.modal', () => {
+          setInertState(false);
+          clearAriaHidden();
+        });
+        modal.addEventListener('shown.bs.modal', () => {
+          setInertState(false);
+          clearAriaHidden();
+        });
+        modal.addEventListener('hide.bs.modal', () => {
+          clearAriaHidden();
+          prepareHideState();
+        });
+        modal.addEventListener('hidden.bs.modal', () => {
+          clearAriaHidden();
+          setInertState(true);
+        });
+        clearAriaHidden();
+        setInertState(true);
+      }
       return {
         modal,
         titleEl: modal.querySelector('.modal-title'),
@@ -1027,11 +1223,526 @@
     close() {
       const { modal } = this.get();
       const inst = window.bootstrap?.Modal.getOrCreateInstance(modal);
+      if (modal && modal.contains(document.activeElement)) {
+        try { document.activeElement.blur(); } catch (err) { void err; }
+      }
       inst?.hide();
       setModalQuickAddContext(null);
       hideModalQuickAdd();
     }
   };
+
+  const PendingOverlay = (() => {
+    let bannerEl = null;
+    let textEl = null;
+    let hideTimer = null;
+    let minVisibleUntil = 0;
+
+    function resolveHost() {
+      const modalBanner = document.getElementById('modalRestoreBanner');
+      if (modalBanner && modalBanner.parentElement) return modalBanner.parentElement;
+      const hint = document.getElementById('pipelineHint');
+      if (hint && hint.parentElement) return hint.parentElement;
+      const main = document.querySelector('.container-main');
+      if (main) return main;
+      return document.body || document.documentElement;
+    }
+
+    function placeBanner(host) {
+      if (!host || !bannerEl) return;
+      const modalBanner = document.getElementById('modalRestoreBanner');
+      const hint = document.getElementById('pipelineHint');
+      if (modalBanner && modalBanner.parentElement === host) {
+        host.insertBefore(bannerEl, modalBanner);
+        return;
+      }
+      if (hint && hint.parentElement === host) {
+        host.insertBefore(bannerEl, hint.nextSibling);
+        return;
+      }
+      if (host.firstChild) host.insertBefore(bannerEl, host.firstChild);
+      else host.appendChild(bannerEl);
+    }
+
+    function ensureBanner() {
+      const host = resolveHost();
+      if (!bannerEl) {
+        bannerEl = document.createElement('div');
+        bannerEl.id = 'appPendingBanner';
+        bannerEl.className = 'app-pending-banner hidden';
+        bannerEl.setAttribute('role', 'status');
+        bannerEl.setAttribute('aria-live', 'polite');
+        bannerEl.setAttribute('aria-hidden', 'true');
+        bannerEl.innerHTML = `
+          <div class="app-pending-banner-shell">
+            <div class="app-pending-spinner" aria-hidden="true"></div>
+            <div class="app-pending-text">Please wait…</div>
+          </div>`;
+        textEl = bannerEl.querySelector('.app-pending-text');
+        placeBanner(host);
+      } else if (!bannerEl.isConnected || (host && bannerEl.parentElement !== host)) {
+        placeBanner(host);
+      }
+      return bannerEl;
+    }
+
+    function scheduleHide(delay = 0) {
+      if (hideTimer) clearTimeout(hideTimer);
+      if (delay <= 0) {
+        hideTimer = null;
+        performHide(true);
+      } else {
+        hideTimer = setTimeout(() => performHide(true), delay);
+      }
+    }
+
+    function performHide(force = false) {
+      const el = ensureBanner();
+      const now = Date.now();
+      if (!force && now < minVisibleUntil) {
+        scheduleHide(minVisibleUntil - now);
+        return;
+      }
+      el.classList.add('hidden');
+      el.setAttribute('aria-hidden', 'true');
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+      minVisibleUntil = 0;
+    }
+
+    function show(message = 'Please wait…', options = {}) {
+      const { minimumMs = 400, autoHideMs = 0 } = options || {};
+      const el = ensureBanner();
+      if (textEl) textEl.textContent = message;
+      el.classList.remove('hidden');
+      el.removeAttribute('aria-hidden');
+      const now = Date.now();
+      minVisibleUntil = Math.max(minVisibleUntil, now + Math.max(0, minimumMs));
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+      if (autoHideMs && autoHideMs > 0) {
+        scheduleHide(autoHideMs);
+      }
+    }
+
+    function hide() {
+      performHide(false);
+    }
+
+    return { show, hide };
+  })();
+  window.PendingOverlay = PendingOverlay;
+
+  function ensureModalRestoreStyles() {
+    // Styles now live in webapp/static/css/run_parser.css to satisfy strict CSS loading policies.
+  }
+
+  const modalRestore = (() => {
+    const contexts = new Map();
+    const pendingTimers = new Map();
+    let bannerCtx = null;
+    let resizeHandler = null;
+    let scrollHandler = null;
+    let viewportHandler = null;
+    let footerObserver = null;
+    let anchorObserver = null;
+    let observedAnchor = null;
+    let lastContainer = null;
+    let anchorElement = null;
+
+    const debug = (...args) => {
+      if (typeof window !== 'undefined' && window.DEBUG_MODAL_RESTORE) {
+        try { console.debug('[modalRestore]', ...args); } catch (err) { void err; }
+      }
+    };
+
+    const coerceText = (val, fallback = '') => {
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (trimmed) return trimmed;
+      }
+      return fallback;
+    };
+
+    function deriveTitleFromMessage(message) {
+      const raw = coerceText(message);
+      if (!raw) return 'Resume Work';
+      const firstSentence = raw.split(/[.!?]/)[0] || raw;
+      const cleaned = firstSentence
+        .replace(/reopen it here/gi, '')
+        .replace(/window closed/gi, '')
+        .replace(/dialog closed/gi, '')
+        .replace(/closed$/i, '')
+        .trim();
+      if (!cleaned) return 'Resume Work';
+      return cleaned.replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    function clearPending(key) {
+      if (!key) return;
+      const pending = pendingTimers.get(key);
+      if (!pending) return;
+      if (pending.timeout) {
+        clearTimeout(pending.timeout);
+      }
+      if (pending.modal && pending.listener) {
+        try { pending.modal.removeEventListener('hidden.bs.modal', pending.listener); } catch (err) { void err; }
+      }
+      pendingTimers.delete(key);
+    }
+
+    function measureFooterHeight() {
+      const footer = document.getElementById('sessionFooter');
+      if (!footer) return 0;
+      const rect = footer.getBoundingClientRect();
+      return Math.max(0, rect.height || (window.innerHeight - rect.top));
+    }
+
+    function getSafeInsets() {
+      const vv = window.visualViewport;
+      if (!vv) {
+        return { top: 0, right: 0, bottom: 0, left: 0 };
+      }
+      const top = Math.max(0, vv.offsetTop || 0);
+      const left = Math.max(0, vv.offsetLeft || 0);
+      const right = Math.max(0, window.innerWidth - (vv.offsetLeft + vv.width));
+      const bottom = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
+      return { top, right, bottom, left };
+    }
+
+    function resolveAnchor() {
+      if (anchorElement && document.contains(anchorElement)) return anchorElement;
+      const selectors = ['[data-modal-anchor="true"]', '.container-main', '.layout-flex', '#pipelineStepper'];
+      for (const sel of selectors) {
+        const candidate = document.querySelector(sel);
+        if (candidate) {
+          anchorElement = candidate;
+          if (candidate instanceof HTMLElement && !candidate.dataset.modalAnchor) {
+            candidate.dataset.modalAnchor = 'true';
+          }
+          return anchorElement;
+        }
+      }
+      anchorElement = document.body;
+      return anchorElement;
+    }
+
+    function relocateBanner(container) {
+      if (!container) return;
+      const hint = document.getElementById('pipelineHint');
+      const main = document.querySelector('.container-main');
+      const host = hint?.parentElement || main || document.body || document.documentElement;
+      if (!host) return;
+      const reference = hint && hint.parentElement === host ? hint.nextSibling : null;
+      if (reference) {
+        if (reference !== container) host.insertBefore(container, reference);
+      } else if (container.parentElement !== host) {
+        host.appendChild(container);
+      }
+    }
+
+    function applyBannerPlacement(container) {
+      if (!container) return;
+      relocateBanner(container);
+      container.classList.add('modal-restore-banner-hosted');
+    }
+
+    function ensurePlacementHooks(container) {
+      if (!container) return;
+      lastContainer = container;
+      applyBannerPlacement(container);
+    }
+
+    function ensureUI() {
+      ensureModalRestoreStyles();
+      let container = document.getElementById('modalRestoreBanner');
+      if (!container) {
+        const host = document.body || document.documentElement;
+        if (!host) return null;
+        container = document.createElement('div');
+        container.id = 'modalRestoreBanner';
+        container.className = 'modal-restore-banner hidden';
+        container.tabIndex = -1;
+        container.setAttribute('role', 'status');
+        container.setAttribute('aria-live', 'polite');
+        const messageId = 'modalRestoreMessage';
+        const titleId = 'modalRestoreTitle';
+        const detailId = 'modalRestoreDetail';
+        container.setAttribute('aria-describedby', messageId);
+        container.setAttribute('aria-labelledby', titleId);
+        container.innerHTML = `
+          <span class="modal-restore-message" id="${messageId}">Dialog closed. Reopen it here.</span>
+          <div class="modal-restore-shell" role="group" aria-labelledby="${titleId}" aria-describedby="${messageId} ${detailId}">
+            <div class="modal-restore-badge" aria-hidden="true">↺</div>
+            <div class="modal-restore-copy">
+              <div class="modal-restore-title" id="${titleId}">Dialog paused</div>
+              <div class="modal-restore-detail" id="${detailId}">Reopen to continue where you left off.</div>
+            </div>
+            <div class="modal-restore-actions">
+              <button type="button" class="modal-restore-reopen" aria-describedby="${messageId} ${detailId}">
+                <span class="modal-restore-text text-shimmer">Reopen</span>
+              </button>
+              <button type="button" class="modal-restore-dismiss" aria-label="Dismiss restore banner"></button>
+            </div>
+          </div>`;
+        host.appendChild(container);
+      }
+      relocateBanner(container);
+      const messageEl = container.querySelector('.modal-restore-message');
+      const reopenBtn = container.querySelector('.modal-restore-reopen');
+      const dismissBtn = container.querySelector('.modal-restore-dismiss');
+      const titleEl = container.querySelector('.modal-restore-title');
+      const detailEl = container.querySelector('.modal-restore-detail');
+      const badgeEl = container.querySelector('.modal-restore-badge');
+      const reopenTextEl = reopenBtn ? reopenBtn.querySelector('.modal-restore-text') : null;
+      if (titleEl && !titleEl.classList.contains('text-shimmer-soft')) {
+        titleEl.classList.add('text-shimmer-soft');
+      }
+      if (detailEl && !detailEl.classList.contains('text-shimmer-soft')) {
+        detailEl.classList.add('text-shimmer-soft');
+      }
+      if (messageEl && !messageEl.classList.contains('text-shimmer-soft')) {
+        messageEl.classList.add('text-shimmer-soft');
+      }
+      if (reopenTextEl && !reopenTextEl.classList.contains('text-shimmer')) {
+        reopenTextEl.classList.add('text-shimmer');
+      }
+      if (titleEl && !titleEl.id) {
+        titleEl.id = 'modalRestoreTitle';
+      }
+      if (detailEl && !detailEl.id) {
+        detailEl.id = 'modalRestoreDetail';
+      }
+      if (messageEl && reopenBtn) {
+        if (!messageEl.id) {
+          messageEl.id = 'modalRestoreMessage';
+        }
+        if (!reopenBtn.getAttribute('aria-describedby')) {
+          reopenBtn.setAttribute('aria-describedby', messageEl.id);
+        }
+        if (!container.getAttribute('aria-describedby')) {
+          container.setAttribute('aria-describedby', messageEl.id);
+        }
+        if (!container.getAttribute('aria-labelledby') && titleEl && titleEl.id) {
+          container.setAttribute('aria-labelledby', titleEl.id);
+        }
+      }
+      ensurePlacementHooks(container);
+      return { container, messageEl, reopenBtn, dismissBtn, titleEl, detailEl, badgeEl, reopenTextEl };
+    }
+
+    function hideBanner() {
+      const ui = ensureUI();
+      if (!ui) return;
+      ui.container.classList.add('hidden');
+      debug('banner:hidden');
+    }
+
+    function showBanner(ctx) {
+      const ui = ensureUI();
+      if (!ui) return;
+      bannerCtx = ctx;
+      ensurePlacementHooks(ui.container);
+      const visibleMessage = coerceText(ctx.message, 'Dialog closed. Reopen it here.');
+      const heading = coerceText(ctx.title, deriveTitleFromMessage(visibleMessage));
+      const baseDetail = coerceText(ctx.detail, visibleMessage);
+      const busyMessage = coerceText(ctx.busyMessage, baseDetail);
+      const isBusy = ctx.busy === true;
+      const baseButtonLabel = coerceText(ctx.buttonLabel, 'Reopen');
+      const busyButtonLabel = coerceText(ctx.busyButtonLabel, 'Please wait…');
+      const buttonLabel = isBusy ? busyButtonLabel : baseButtonLabel;
+      const displayDetail = isBusy ? busyMessage : baseDetail;
+      const announcement = coerceText(ctx.announcement, `${heading}. ${displayDetail}`);
+      const icon = coerceText(ctx.icon, '↺');
+      if (ui.messageEl) ui.messageEl.textContent = announcement;
+      if (ui.titleEl) ui.titleEl.textContent = heading;
+      if (ui.detailEl) ui.detailEl.textContent = displayDetail;
+      if (ui.badgeEl) ui.badgeEl.textContent = icon;
+      if (ui.reopenTextEl) ui.reopenTextEl.textContent = buttonLabel;
+      if (ui.reopenBtn) {
+        ui.reopenBtn.setAttribute('title', coerceText(ctx.buttonTitle, displayDetail || heading));
+        ui.reopenBtn.setAttribute('aria-label', `${buttonLabel}: ${heading}`);
+        ui.reopenBtn.disabled = isBusy;
+        ui.reopenBtn.classList.toggle('busy', isBusy);
+        if (isBusy) {
+          ui.reopenBtn.setAttribute('aria-disabled', 'true');
+          ui.reopenBtn.setAttribute('aria-busy', 'true');
+        } else {
+          ui.reopenBtn.removeAttribute('aria-disabled');
+          ui.reopenBtn.removeAttribute('aria-busy');
+        }
+      }
+      if (ui.dismissBtn) {
+        ui.dismissBtn.setAttribute('aria-label', `Dismiss ${heading} restore banner`);
+      }
+      ui.container.classList.remove('hidden');
+      requestAnimationFrame(() => {
+        applyBannerPlacement(ui.container);
+        if (ctx.scrollIntoView !== false) {
+          try { ui.container.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (err) { void err; }
+        }
+        const focusTarget = (!isBusy && ui.reopenBtn) ? ui.reopenBtn : ui.container;
+        try { focusTarget.focus({ preventScroll: true }); } catch (err) { void err; }
+      });
+      if (ui.reopenBtn) {
+        ui.reopenBtn.onclick = () => {
+          const latest = contexts.get(ctx.key);
+          if (latest && latest.busy) return;
+          bannerCtx = null;
+          hideBanner();
+          contexts.set(ctx.key, ctx);
+          try { ctx.reopen && ctx.reopen(); } catch (err) { void err; }
+        };
+      }
+      if (ui.dismissBtn) {
+        ui.dismissBtn.onclick = () => {
+          hideBanner();
+          if (bannerCtx && bannerCtx.key === ctx.key) {
+            bannerCtx = null;
+          }
+          contexts.delete(ctx.key);
+        };
+      }
+      debug('banner:shown', ctx.key);
+    }
+
+    return {
+      register(input) {
+        if (!input || !input.key) return null;
+        const message = coerceText(input.message, 'Dialog closed. Reopen it here.');
+        const ctx = {
+          key: input.key,
+          message,
+          detail: coerceText(input.detail),
+          title: coerceText(input.title),
+          icon: coerceText(input.icon),
+          buttonLabel: coerceText(input.buttonLabel),
+          buttonTitle: coerceText(input.buttonTitle),
+          announcement: coerceText(input.announcement),
+          scrollIntoView: input.scrollIntoView !== false,
+          sessionId: input.sessionId || null,
+          busy: input.busy === true,
+          busyMessage: coerceText(input.busyMessage),
+          busyButtonLabel: coerceText(input.busyButtonLabel),
+          reopen: () => {
+            hideBanner();
+            bannerCtx = null;
+            try { input.reopen && input.reopen(); } catch (err) { void err; }
+          }
+        };
+        contexts.set(ctx.key, ctx);
+        debug('register', ctx.key);
+        return ctx;
+      },
+      markActive(key) {
+        if (!key) return;
+        clearPending(key);
+        if (bannerCtx && bannerCtx.key === key) {
+          debug('markActive:hide', key);
+          bannerCtx = null;
+          hideBanner();
+        } else {
+          debug('markActive:noop', key);
+        }
+      },
+      markDismissed(key) {
+        if (!key) return;
+        const ctx = contexts.get(key);
+        if (!ctx) return;
+        bannerCtx = ctx;
+        clearPending(key);
+
+        const finish = () => {
+          const activeKey = bannerCtx && bannerCtx.key;
+          clearPending(key);
+          if (!activeKey || activeKey !== key) {
+            debug('markDismissed:skip-show', key);
+            return;
+          }
+          const emit = () => showBanner(ctx);
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(emit);
+          } else {
+            emit();
+          }
+        };
+
+        let delayMs = 360;
+        let modalEl = null;
+        if (typeof document !== 'undefined') {
+          modalEl = document.getElementById('downloadModal');
+        }
+        if (modalEl && typeof window !== 'undefined') {
+          try {
+            const parsed = (value) => {
+              if (!value) return 0;
+              const segment = String(value).split(',')[0].trim();
+              if (segment.endsWith('ms')) return parseFloat(segment);
+              if (segment.endsWith('s')) return parseFloat(segment) * 1000;
+              return parseFloat(segment) || 0;
+            };
+            const styles = window.getComputedStyle(modalEl);
+            const transition = parsed(styles.transitionDuration);
+            const delay = parsed(styles.transitionDelay);
+            delayMs = Math.max(280, Math.round(transition + delay + 200));
+          } catch (err) {
+            void err;
+          }
+        }
+
+        if (modalEl) {
+          const listener = () => finish();
+          modalEl.addEventListener('hidden.bs.modal', listener, { once: true });
+          const timeout = setTimeout(listener, delayMs);
+          pendingTimers.set(key, { timeout, modal: modalEl, listener });
+          debug('markDismissed:await-hidden', key, delayMs);
+        } else {
+          const timeout = setTimeout(() => finish(), delayMs);
+          pendingTimers.set(key, { timeout });
+          debug('markDismissed:await-timeout', key, delayMs);
+        }
+      },
+      clear(key) {
+        if (!key) return;
+        clearPending(key);
+        contexts.delete(key);
+        if (bannerCtx && bannerCtx.key === key) {
+          debug('clear:hide', key);
+          bannerCtx = null;
+          hideBanner();
+        }
+      },
+      setBusy(key, busy, options = {}) {
+        if (!key) return;
+        const ctx = contexts.get(key);
+        if (!ctx) return;
+        const wasBusy = ctx.busy === true;
+        ctx.busy = !!busy;
+        if (options.message !== undefined) {
+          ctx.busyMessage = coerceText(options.message, ctx.busyMessage || ctx.detail || ctx.message);
+        }
+        if (options.buttonLabel !== undefined) {
+          ctx.busyButtonLabel = coerceText(options.buttonLabel, ctx.busyButtonLabel || ctx.buttonLabel || 'Please wait…');
+        }
+        contexts.set(key, ctx);
+        if ((ctx.busy || wasBusy) && bannerCtx && bannerCtx.key === key) {
+          showBanner(ctx);
+        }
+      },
+      setBusyForSession(sessionId, busy, options = {}) {
+        if (!sessionId) return;
+        contexts.forEach((ctx) => {
+          if (ctx.sessionId && ctx.sessionId === sessionId) {
+            this.setBusy(ctx.key, busy, options);
+          }
+        });
+      }
+    };
+  })();
 
   // Compact text-input modal for naming folders
   const NameModal = {
@@ -1161,6 +1872,8 @@
         groups[key].push(opt);
       });
       optionsDiv.innerHTML = '';
+      optionsDiv.classList.remove('table-preview-container');
+      optionsDiv.classList.add('table-preview-container');
       Object.keys(groups).sort().forEach(group => {
         const groupDiv = document.createElement('div');
         groupDiv.className = 'download-group';
@@ -1193,6 +1906,1212 @@
     searchEl.focus();
   }
 
+  function openTableStructurePreview(sessionId, state) {
+    const data = cloneTablePreviewState(state || getTablePreviewState(sessionId));
+    if (!data.entries.length) {
+      alert('No table previews captured yet for this session.');
+      return;
+    }
+    const refs = Modal.get();
+    if (!refs) return;
+    const { modal, titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
+    titleEl.textContent = 'Table Structure Preview';
+    searchEl.value = '';
+    searchEl.placeholder = 'Search columns or values…';
+    summaryDiv.innerHTML = `<div class="small text-muted">${esc(data.contest || 'Contest Pending')} • ${data.entries.length} candidate${data.entries.length === 1 ? '' : 's'}</div>`;
+
+    function renderTable(filter = '') {
+      const q = filter.trim().toLowerCase();
+      optionsDiv.innerHTML = '';
+      data.entries.forEach(entry => {
+        const headers = entry.headers || [];
+        const rows = entry.rows || [];
+        if (q) {
+          const headerMatch = headers.some(h => h.toLowerCase().includes(q));
+          const rowMatch = rows.some(row => Object.values(row || {}).some(v => String(v).toLowerCase().includes(q)));
+          if (!headerMatch && !rowMatch) return;
+        }
+        const card = document.createElement('div');
+        card.className = 'table-preview-card';
+        const confidenceText = typeof entry.confidence === 'number' ? `conf ${entry.confidence.toFixed(2)}` : 'confidence n/a';
+        card.innerHTML = `
+          <header class="table-preview-header">
+            <div class="table-preview-title">Candidate ${entry.index}/${entry.total || data.entries.length}</div>
+            <div class="table-preview-meta">${esc(confidenceText)} • ${headers.length} columns</div>
+          </header>
+        `;
+        const table = document.createElement('table');
+        table.className = 'table-preview-grid';
+        const thead = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        headers.forEach(h => {
+          const th = document.createElement('th');
+          th.textContent = h;
+          headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        rows.forEach(row => {
+          const tr = document.createElement('tr');
+          headers.forEach(h => {
+            const td = document.createElement('td');
+            td.textContent = row && h in row ? String(row[h]) : '';
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        if (!rows.length) {
+          const tr = document.createElement('tr');
+          const td = document.createElement('td');
+          td.colSpan = Math.max(headers.length, 1);
+          td.className = 'table-preview-empty';
+          td.textContent = 'No sample rows available.';
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        card.appendChild(table);
+        optionsDiv.appendChild(card);
+      });
+      if (!optionsDiv.children.length) {
+        const empty = document.createElement('div');
+        empty.className = 'contest-empty';
+        empty.textContent = 'No table previews match your search.';
+        optionsDiv.appendChild(empty);
+      }
+    }
+
+    const close = () => Modal.close();
+    closeBtn.onclick = cancelBtn.onclick = close;
+    if (modal) {
+      modal.addEventListener('hide.bs.modal', close, { once: true });
+    }
+    searchEl.oninput = e => renderTable(e.target.value || '');
+    renderTable();
+    Modal.open();
+    setTimeout(() => searchEl.focus(), 0);
+  }
+
+  function showContestSelectionModal(title, options, ctxSummaryHtml, onSelect, extras = {}) {
+    const refs = Modal.get();
+    if (!refs) {
+      if (typeof onSelect === 'function') onSelect(null);
+      return;
+    }
+    const { modal, titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
+    const placeholder = extras.placeholder || 'Search contests…';
+    const onCancel = typeof extras.onCancel === 'function' ? extras.onCancel : null;
+    const onSubmit = typeof extras.onSubmit === 'function' ? extras.onSubmit : null;
+    const sessionForModal = extras.sessionId || activeSessionId;
+
+    const baseOptions = cloneContestOptions(options || []);
+    const summaryIsDefault = !ctxSummaryHtml;
+    const baseSummaryHtml = ctxSummaryHtml || `<div class="small text-muted">${baseOptions.length} option(s)</div>`;
+    let tableState = getTablePreviewState(sessionForModal);
+    let closed = false;
+    let lastContestFilter = '';
+    let lastTableFilter = '';
+    const bundleChildren = new Map();
+    const bundleFamilies = new Map();
+    const bundleAssignments = new Map();
+    const optionOrder = new Map();
+    const optionByIndex = new Map();
+    const expandedOffices = new Set();
+    let viewMode = 'contest';
+
+    const handlePreviewUpdated = (event) => {
+      if (!event || !event.detail) return;
+      const { sessionId } = event.detail;
+      if (sessionId !== sessionForModal) return;
+      refreshTableState();
+      if (viewMode === 'table') {
+        renderTableCards(lastTableFilter);
+      } else {
+        renderContestList(currentContestList);
+      }
+    };
+
+    document.addEventListener('table-preview:updated', handlePreviewUpdated);
+    const cleanup = () => {
+      document.removeEventListener('table-preview:updated', handlePreviewUpdated);
+    };
+
+    baseOptions.forEach((opt, idx) => {
+      if (!opt || opt.index == null) return;
+      if (!optionOrder.has(opt.index)) optionOrder.set(opt.index, idx);
+      if (!optionByIndex.has(opt.index)) optionByIndex.set(opt.index, opt);
+    });
+
+    const preferredBundleKeys = [
+      'bundle_key', 'bundleKey', 'bundle_id', 'bundleId', 'bundle_slug', 'bundleSlug',
+      'bundle_hash', 'bundleHash', 'bundle_group', 'bundleGroup', 'bundle_parent_key', 'bundleParentKey',
+      'bundle', 'bundle_uid', 'bundleUid', 'bundle_guid', 'bundleGuid',
+      'group_key', 'groupKey', 'group_id', 'groupId', 'cluster_key', 'clusterKey',
+      'aggregate_key', 'aggregateKey', 'family_key', 'familyKey', 'contest_group_id', 'contestGroupId',
+      'contest_bundle', 'contestBundle'
+    ];
+
+    const truthyKeys = ['bundle_anchor', 'bundle_primary', 'is_primary', 'primary', 'preferred'];
+
+    function canonicalize(text) {
+      return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
+    function rawOfficeLabel(opt) {
+      if (!opt || typeof opt !== 'object') return '';
+      const meta = opt.metadata || {};
+      const prefer = meta.display_header || meta.bundle_office_label;
+      if (prefer) return String(prefer);
+      const office = meta.office_title || meta.office || meta.officeName || meta.primary_title;
+      if (office) return String(office);
+      const label = String(opt.label || '');
+      const head = label.includes(' – ') ? label.split(' – ')[0] : label;
+      return head || label;
+    }
+
+    function normalizeOfficeTitle(text) {
+      if (!text) return '';
+      let value = stripContestSuffix(String(text));
+      value = value.replace(/\s*\(\s*\d+\s+(?:contest|race|entry|variation)s?\s*\)\s*$/i, '');
+      value = value.replace(/\s*(?:,|-)?\s*(?:district|dist\.|place|seat|position|ward|post)\s*(?:no\.?\s*)?[#\-]?\s*\d+[a-z]?$/gi, '');
+      value = value.replace(/\s*(?:,|-)?\s*(?:subdistrict|sub-?division|area|division)\s*(?:no\.?\s*)?[#\-]?\s*\d+[a-z]?$/gi, '');
+      value = value.replace(/\s*(?:,|-)?\s*(?:group|zone|precinct)\s*(?:no\.?\s*)?[#\-]?\s*\d+[a-z]?$/gi, '');
+      value = value.replace(/\s+/g, ' ').trim();
+      if (!value) value = String(text).trim();
+      return value;
+    }
+
+    function deriveOfficeTitle(opt) {
+      const raw = rawOfficeLabel(opt) || 'Other';
+      const normalized = normalizeOfficeTitle(raw);
+      return normalized || raw || 'Other';
+    }
+
+    function deriveOfficeKey(opt) {
+      if (!opt || typeof opt !== 'object') return 'other';
+      const meta = opt.metadata || {};
+      if (meta.bundle_office_key) return canonicalize(meta.bundle_office_key);
+      return canonicalize(deriveOfficeTitle(opt)) || 'other';
+    }
+
+    function resolveExplicitBundleKey(meta) {
+      if (!meta || typeof meta !== 'object') return '';
+      for (const key of preferredBundleKeys) {
+        if (!(key in meta)) continue;
+        const value = meta[key];
+        if (value == null || value === '') continue;
+        const str = String(value).trim();
+        if (str) return str;
+      }
+      for (const key of Object.keys(meta)) {
+        const value = meta[key];
+        if (value == null || value === '') continue;
+        if (typeof value !== 'string' && typeof value !== 'number') continue;
+        if (!/bundle|cluster|family|group|aggregate|package|set|pack/i.test(key)) continue;
+        const str = String(value).trim();
+        if (str) return str;
+      }
+      return '';
+    }
+
+    function resolveFallbackBundleKey(opt) {
+      if (!opt) return '';
+      const meta = opt.metadata || {};
+      const label = canonicalize(opt.label);
+      if (!label) return '';
+      const office = canonicalize(meta.office_title || meta.office || meta.officeName);
+      const scope = canonicalize(meta.scope_label || meta.scope || meta.division_scope);
+      const variant = canonicalize(meta.variant_label || meta.variant);
+      const year = canonicalize(meta.year || meta.election_year);
+      const contest = canonicalize(meta.contest_title || meta.contest_name || meta.primary_title);
+      const countyCount = Array.isArray(meta.counties) ? meta.counties.filter(Boolean).length : 0;
+      const parts = [label, office, scope, variant, year, contest];
+      if (countyCount > 1) parts.push(`counties:${countyCount}`);
+      const key = parts.filter(Boolean).join('|');
+      return key ? `label:${key}` : '';
+    }
+
+    function ensureFamily(key, priority = 1) {
+      if (!bundleFamilies.has(key)) {
+        bundleFamilies.set(key, { key, priority, members: [] });
+      }
+      const family = bundleFamilies.get(key);
+      if (priority === 0 && family.priority !== 0) family.priority = 0;
+      return family;
+    }
+
+    function addToFamily(key, opt, priority = 1) {
+      if (!key || !opt) return;
+      const family = ensureFamily(key, priority);
+      if (!family.members.includes(opt)) {
+        family.members.push(opt);
+      }
+      if (priority === 0) {
+        bundleAssignments.set(opt.index, key);
+      } else if (priority === 1 && !bundleAssignments.has(opt.index)) {
+        bundleAssignments.set(opt.index, key);
+      }
+    }
+
+    function hasTruthy(meta, keys) {
+      if (!meta || typeof meta !== 'object') return false;
+      return keys.some(key => {
+        if (!(key in meta)) return false;
+        const value = meta[key];
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value !== 0;
+        if (typeof value === 'string') {
+          const trimmed = value.trim().toLowerCase();
+          if (!trimmed) return false;
+          return trimmed !== 'false' && trimmed !== '0' && trimmed !== 'no';
+        }
+        return !!value;
+      });
+    }
+
+    function pickAggregateOption(options) {
+      if (!options.length) return null;
+      const ranked = options.map(opt => {
+        const meta = opt.metadata || {};
+        const order = optionOrder.has(opt.index) ? optionOrder.get(opt.index) : Number.MAX_SAFE_INTEGER;
+        const mode = String(meta.bundle_mode || '').toLowerCase();
+        let score = 3;
+        if (mode === 'aggregate') score = 0;
+        else if (hasTruthy(meta, truthyKeys)) score = 1;
+        else if (!meta.bundle_member && !hasTruthy(meta, ['bundle_member'])) score = 2;
+        return { opt, score, order };
+      });
+      ranked.sort((a, b) => {
+        if (a.score !== b.score) return a.score - b.score;
+        return a.order - b.order;
+      });
+      return ranked[0]?.opt || options[0];
+    }
+
+    function ensureArrayField(meta, key) {
+      if (!meta || typeof meta !== 'object') return [];
+      const current = meta[key];
+      if (Array.isArray(current)) return current;
+      if (current == null || current === '') {
+        meta[key] = [];
+        return meta[key];
+      }
+      meta[key] = [current];
+      return meta[key];
+    }
+
+    function stripContestSuffix(label) {
+      if (!label) return '';
+      return String(label).replace(/\s*\(\s*\d+\s+contest[s]?\s*\)\s*$/i, '').trim();
+    }
+
+    function shouldAutoBundleFallback(opt) {
+      if (!opt || typeof opt !== 'object') return false;
+      const meta = opt.metadata || {};
+      const mode = String(meta.bundle_mode || '').toLowerCase();
+      if (mode === 'aggregate' || meta.bundle_member || hasTruthy(meta, truthyKeys)) return true;
+      const contestTypes = [];
+      if (Array.isArray(meta.contest_types)) contestTypes.push(...meta.contest_types);
+      if (meta.contest_type) contestTypes.push(meta.contest_type);
+      const normalizedTypes = contestTypes.map(val => String(val).toLowerCase());
+      if (normalizedTypes.some(type => type.includes('candidate') || type.includes('office'))) return true;
+      const office = String(meta.office_title || meta.office || '').toLowerCase();
+      if (office) {
+        if (/commissioner|representative|senator|council|board|judge|attorney|sheriff|mayor|superintendent/.test(office)) return true;
+      }
+      const scope = String(meta.scope_label || '').toLowerCase();
+      if (scope && scope !== 'statewide') return true;
+      const counties = Array.isArray(meta.counties) ? meta.counties.filter(Boolean) : [];
+      if (counties.length > 1) return true;
+      const divisions = Array.isArray(meta.division_identifiers) ? meta.division_identifiers.filter(Boolean) : [];
+      if (divisions.length > 1) return true;
+      return false;
+    }
+
+    function attachOfficeAggregateChildren() {
+      const officeAggregates = new Map();
+      const officeMembers = new Map();
+
+      baseOptions.forEach(opt => {
+        if (!opt || opt.index == null) return;
+        const officeKey = deriveOfficeKey(opt);
+        if (!officeKey) return;
+        if (!officeMembers.has(officeKey)) officeMembers.set(officeKey, []);
+        officeMembers.get(officeKey).push(opt);
+        if (isAggregateOption(opt)) {
+          if (!officeAggregates.has(officeKey)) officeAggregates.set(officeKey, []);
+          officeAggregates.get(officeKey).push(opt);
+        }
+      });
+
+      officeAggregates.forEach((aggregateList, officeKey) => {
+        const roster = officeMembers.get(officeKey) || [];
+        const nonAggregates = roster.filter(entry => !isAggregateOption(entry));
+        if (!nonAggregates.length) return;
+
+        const sortedAggregates = aggregateList.slice().sort((a, b) => {
+          const sizeA = Number((a.metadata || {}).bundle_size) || 0;
+          const sizeB = Number((b.metadata || {}).bundle_size) || 0;
+          if (sizeA !== sizeB) return sizeB - sizeA;
+          return (optionOrder.get(a.index) || 0) - (optionOrder.get(b.index) || 0);
+        });
+
+        const remaining = new Set(nonAggregates);
+        sortedAggregates.forEach(aggregate => {
+          const meta = aggregate.metadata || (aggregate.metadata = {});
+          const existingChildren = (bundleChildren.get(aggregate.index) || []).filter(Boolean);
+          existingChildren.forEach(child => remaining.delete(child));
+
+          const newlyAssigned = [];
+          remaining.forEach(child => {
+            if (child === aggregate) return;
+            const childMeta = child.metadata || (child.metadata = {});
+            if (childMeta.bundle_member && childMeta.bundle_parent_index != null && childMeta.bundle_parent_index !== aggregate.index) {
+              return;
+            }
+            newlyAssigned.push(child);
+          });
+
+          if (!existingChildren.length && !newlyAssigned.length) return;
+
+          const combined = existingChildren.concat(newlyAssigned);
+          if (!combined.length) return;
+
+          const bundleKey = meta.bundle_key || meta.aggregate_key || meta.family_key || `office:${officeKey}`;
+          meta.bundle_key = bundleKey;
+          bundleChildren.set(aggregate.index, combined);
+          meta.bundle_child_count = combined.length;
+
+          const inferredTotal = Number(meta.bundle_size);
+          const totalForSummary = Number.isFinite(inferredTotal) && inferredTotal >= combined.length + 1
+            ? inferredTotal
+            : combined.length + 1;
+          meta.bundle_size = totalForSummary;
+
+          combined.forEach(child => {
+            const childMeta = child.metadata || (child.metadata = {});
+            childMeta.bundle_member = true;
+            childMeta.bundle_parent_index = aggregate.index;
+            if (!childMeta.bundle_key) childMeta.bundle_key = bundleKey;
+            if (!childMeta.bundle_mode) childMeta.bundle_mode = 'member';
+            remaining.delete(child);
+          });
+
+          applyAggregatePresentation(aggregate, combined, totalForSummary);
+        });
+      });
+    }
+
+    function insertUniqueLine(list, line, front = false) {
+      if (!Array.isArray(list)) return;
+      const str = String(line || '').trim();
+      if (!str) return;
+      const lower = str.toLowerCase();
+      const existingIndex = list.findIndex(entry => String(entry).toLowerCase() === lower);
+      if (existingIndex !== -1) {
+        if (front && existingIndex !== 0) {
+          const [existing] = list.splice(existingIndex, 1);
+          list.unshift(existing);
+        }
+        return;
+      }
+      if (front) list.unshift(str);
+      else list.push(str);
+    }
+
+    function applyAggregatePresentation(aggregate, childList, expectedTotal) {
+      if (!aggregate) return;
+      const children = Array.isArray(childList) ? childList.filter(Boolean) : [];
+      if (!children.length) return;
+      const meta = aggregate.metadata || (aggregate.metadata = {});
+      const inferredTotal = Number.isFinite(expectedTotal) && expectedTotal > 0 ? Number(expectedTotal) : children.length + 1;
+      const totalContests = inferredTotal;
+
+      const unionCounties = new Set(Array.isArray(meta.counties) ? meta.counties.filter(Boolean).map(String) : []);
+      const scopeSet = new Set();
+      const divisionSet = new Set();
+      const variantSet = new Set();
+
+      const collect = (entryMeta) => {
+        if (!entryMeta || typeof entryMeta !== 'object') return;
+        if (Array.isArray(entryMeta.counties)) {
+          entryMeta.counties.filter(Boolean).forEach(val => unionCounties.add(String(val)));
+        }
+        const scopePrimary = entryMeta.scope_label || entryMeta.scope;
+        if (scopePrimary) scopeSet.add(String(scopePrimary));
+        if (Array.isArray(entryMeta.scope_labels)) {
+          entryMeta.scope_labels.filter(Boolean).forEach(val => scopeSet.add(String(val)));
+        }
+        if (Array.isArray(entryMeta.division_identifiers)) {
+          entryMeta.division_identifiers.filter(Boolean).forEach(val => divisionSet.add(String(val)));
+        }
+        if (entryMeta.variant_label) variantSet.add(String(entryMeta.variant_label));
+        if (Array.isArray(entryMeta.variant_labels)) {
+          entryMeta.variant_labels.filter(Boolean).forEach(val => variantSet.add(String(val)));
+        }
+      };
+
+      collect(meta);
+      children.forEach(child => collect(child.metadata || (child.metadata = {})));
+
+      meta.counties = Array.from(unionCounties);
+      if (meta.counties.length) {
+        meta.county_label = `${meta.counties.length} county${meta.counties.length === 1 ? '' : 'ies'}`;
+      }
+
+      const totalCounties = unionCounties.size;
+      const summaryParts = [`${totalContests} contest${totalContests === 1 ? '' : 's'} grouped`];
+      if (totalCounties > 1) summaryParts.push(`${totalCounties} counties`);
+      else if (totalCounties === 1) summaryParts.push('1 county');
+      if (divisionSet.size > 1) summaryParts.push(`${divisionSet.size} districts`);
+      if (scopeSet.size === 1) summaryParts.push(`${Array.from(scopeSet)[0]} scope`);
+      else if (scopeSet.size > 1) summaryParts.push(`${scopeSet.size} scope types`);
+      if (variantSet.size > 1) summaryParts.push(`${variantSet.size} variants`);
+
+      const summaryLine = summaryParts.join(' • ');
+      meta.aggregate_summary_line = summaryLine;
+      aggregate.meta = summaryLine;
+
+      const displayDetails = ensureArrayField(meta, 'display_details');
+      insertUniqueLine(displayDetails, summaryLine, true);
+      const summaryList = ensureArrayField(meta, 'summary');
+      insertUniqueLine(summaryList, summaryLine, true);
+      insertUniqueLine(summaryList, `${totalContests} contest${totalContests === 1 ? '' : 's'}`);
+
+      const childCount = children.length;
+      meta.bundle_child_count = Math.max(childCount, totalContests - 1);
+
+      const originalLabel = String(aggregate.label || '');
+      const initialOffice = meta.office_title || meta.office || stripContestSuffix(originalLabel.split(' – ')[0]);
+      const labelBase = initialOffice || stripContestSuffix(originalLabel) || 'Contest';
+      const normalizedLabelBase = stripContestSuffix(labelBase);
+      aggregate.label = `${normalizedLabelBase} (${totalContests} contest${totalContests === 1 ? '' : 's'})`;
+      const finalOffice = initialOffice || normalizedLabelBase;
+      if (finalOffice) {
+        meta.office_title = finalOffice;
+        meta.office = finalOffice;
+        if (!meta.display_header) meta.display_header = finalOffice;
+      }
+    }
+
+    function hydrateProvidedBundles() {
+      baseOptions.forEach(opt => {
+        if (!opt || opt.index == null) return;
+        const meta = opt.metadata || {};
+        const mode = String(meta.bundle_mode || '').toLowerCase();
+        if (mode !== 'aggregate') return;
+        const indices = Array.isArray(meta.bundle_member_indices) ? meta.bundle_member_indices : [];
+        if (!indices.length) return;
+        const existing = bundleChildren.get(opt.index) || [];
+        const seen = new Set(existing);
+        indices.forEach(idx => {
+          const child = optionByIndex.get(idx);
+          if (!child || child === opt) return;
+          if (!seen.has(child)) {
+            seen.add(child);
+            existing.push(child);
+          }
+          const childMeta = child.metadata || (child.metadata = {});
+          childMeta.bundle_member = true;
+          childMeta.bundle_parent_index = opt.index;
+          if (!childMeta.bundle_key && meta.bundle_key) childMeta.bundle_key = meta.bundle_key;
+          if (!childMeta.bundle_mode) childMeta.bundle_mode = 'member';
+        });
+        if (existing.length) {
+          bundleChildren.set(opt.index, existing);
+          if (typeof meta.bundle_child_count !== 'number' || meta.bundle_child_count < existing.length) {
+            meta.bundle_child_count = existing.length;
+          }
+          const expectedTotal = Number(meta.bundle_size);
+          const totalForSummary = Number.isFinite(expectedTotal) && expectedTotal > 0 ? expectedTotal : existing.length + 1;
+          meta.bundle_size = totalForSummary;
+          applyAggregatePresentation(opt, existing, totalForSummary);
+        }
+      });
+
+      baseOptions.forEach(opt => {
+        if (!opt || opt.index == null) return;
+        const meta = opt.metadata || {};
+        if (!meta.bundle_member || meta.bundle_parent_index == null) return;
+        if (!bundleChildren.has(meta.bundle_parent_index)) return;
+        const siblings = bundleChildren.get(meta.bundle_parent_index);
+        if (!siblings.includes(opt)) siblings.push(opt);
+      });
+    }
+
+    function isAggregateOption(opt) {
+      if (!opt || typeof opt !== 'object') return false;
+      const meta = opt.metadata || {};
+      const mode = String(meta.bundle_mode || '').toLowerCase();
+      if (mode === 'aggregate') return true;
+      if (hasTruthy(meta, ['bundle_summary', 'is_aggregate', 'aggregate', 'aggregate_entry'])) return true;
+      const label = String(opt.label || '');
+      if (/\(\s*\d+\s+(contest|race|entry)/i.test(label)) return true;
+      if (/all\s+(counties|contests|districts|races)/i.test(label)) return true;
+      return false;
+    }
+
+    baseOptions.forEach(opt => {
+      if (!opt || opt.index == null) return;
+      const key = resolveExplicitBundleKey(opt.metadata || {});
+      if (!key) return;
+      addToFamily(`explicit:${key}`, opt, 0);
+    });
+
+    for (const [key, family] of Array.from(bundleFamilies.entries())) {
+      if (family.priority === 0 && (!family.members || family.members.length <= 1)) {
+        family.members.forEach(opt => {
+          if (bundleAssignments.get(opt.index) === key) {
+            bundleAssignments.delete(opt.index);
+          }
+        });
+        bundleFamilies.delete(key);
+      }
+    }
+
+    baseOptions.forEach(opt => {
+      if (!opt || opt.index == null) return;
+      if (bundleAssignments.has(opt.index)) return;
+      if (!shouldAutoBundleFallback(opt)) return;
+      const key = resolveFallbackBundleKey(opt);
+      if (!key) return;
+      addToFamily(`fallback:${key}`, opt, 1);
+    });
+
+    for (const [key, family] of Array.from(bundleFamilies.entries())) {
+      if (!family.members || family.members.length <= 1) {
+        family.members.forEach(opt => {
+          if (bundleAssignments.get(opt.index) === key) {
+            bundleAssignments.delete(opt.index);
+          }
+        });
+        bundleFamilies.delete(key);
+      }
+    }
+
+    bundleFamilies.forEach(family => {
+      if (!family.members || family.members.length <= 1) return;
+      const aggregate = pickAggregateOption(family.members);
+      if (!aggregate) return;
+      const children = family.members.filter(opt => opt !== aggregate);
+      if (!children.length) return;
+
+      const aggregateMeta = aggregate.metadata || (aggregate.metadata = {});
+      let bundleKey = resolveExplicitBundleKey(aggregateMeta);
+      if (!bundleKey) bundleKey = family.key.replace(/^(explicit|fallback):/, '');
+      aggregateMeta.bundle_mode = 'aggregate';
+      aggregateMeta.bundle_key = bundleKey;
+      aggregateMeta.bundle_child_count = children.length;
+      delete aggregateMeta.bundle_member;
+      delete aggregateMeta.bundle_parent_index;
+
+      const unionCounties = new Set(Array.isArray(aggregateMeta.counties) ? aggregateMeta.counties.map(c => String(c)) : []);
+      family.members.forEach(opt => {
+        const meta = opt.metadata || {};
+        if (Array.isArray(meta.counties)) {
+          meta.counties.filter(Boolean).forEach(c => unionCounties.add(String(c)));
+        }
+      });
+      aggregateMeta.counties = Array.from(unionCounties);
+
+      const existingSize = Number(aggregateMeta.bundle_size);
+      const totalForSummary = Number.isFinite(existingSize) && existingSize > 0 ? existingSize : family.members.length;
+      aggregateMeta.bundle_size = totalForSummary;
+
+      const details = ensureArrayField(aggregateMeta, 'display_details');
+      const variationsLine = `${totalForSummary} contest variation${totalForSummary === 1 ? '' : 's'}`;
+      insertUniqueLine(details, variationsLine, true);
+
+      children.forEach(child => {
+        const meta = child.metadata || (child.metadata = {});
+        meta.bundle_member = true;
+        meta.bundle_parent_index = aggregate.index;
+        meta.bundle_key = bundleKey;
+        if (!meta.bundle_mode) meta.bundle_mode = 'member';
+      });
+
+      applyAggregatePresentation(aggregate, children, totalForSummary);
+      bundleChildren.set(aggregate.index, children.slice());
+    });
+
+    hydrateProvidedBundles();
+    attachOfficeAggregateChildren();
+    bundleChildren.forEach(list => list.sort((a, b) => String(a.label || '').localeCompare(String(b.label || ''))));
+    const expandedBundles = new Set();
+    const OFFICE_COLLAPSE_THRESHOLD = typeof extras.collapseThreshold === 'number'
+      ? Math.max(3, Number(extras.collapseThreshold))
+      : 18;
+    let currentContestList = baseOptions.slice();
+
+    function refreshTableState() {
+      tableState = getTablePreviewState(sessionForModal);
+      return tableState;
+    }
+
+    titleEl.textContent = title || 'Select Contest';
+    searchEl.value = '';
+    searchEl.placeholder = placeholder;
+
+    function requiresGrouping(opt) {
+      const meta = opt.metadata || {};
+      if (meta.bundle_mode === 'aggregate') {
+        return true;
+      }
+      const variants = Number(meta.variants || (Array.isArray(meta.contest_ids) ? meta.contest_ids.length : 0));
+      if (variants > 1) return true;
+      const counties = Array.isArray(meta.counties) ? meta.counties.filter(Boolean) : [];
+      if (counties.length > 1) {
+        const scope = (meta.scope_label || '').toLowerCase();
+        if (scope !== 'single county') return true;
+      }
+      const scopes = Array.isArray(meta.division_scopes) ? meta.division_scopes : [];
+      if (scopes.some(s => s && s.toLowerCase() !== 'single-county')) {
+        return (Array.isArray(meta.counties) ? meta.counties.length : 0) > 1;
+      }
+      return false;
+    }
+
+    function createBadge(text, extraClass = '') {
+      if (!text) return '';
+      const cls = extraClass ? ` ${extraClass}` : '';
+      return `<span class="contest-badge${cls}">${esc(String(text))}</span>`;
+    }
+
+    function formatCounties(meta) {
+      const counties = Array.isArray(meta.counties) ? meta.counties.filter(Boolean) : [];
+      if (!counties.length) return '';
+      const preview = counties.slice(0, 4).map(c => esc(String(c)));
+      if (counties.length > 4) preview.push(esc(`+${CountiesRemaining(counties.length - 4)}`));
+      const label = meta.county_label ? esc(String(meta.county_label)) : 'Counties';
+      return `${label}: ${preview.join(', ')}`;
+    }
+
+    function CountiesRemaining(n) {
+      return `${n} more`;
+    }
+
+    function buildDetails(meta, fallback) {
+      const lines = [];
+      const variant = meta.variant_label;
+      if (variant) lines.push(String(variant));
+      const details = Array.isArray(meta.display_details)
+        ? meta.display_details
+        : meta.display_details ? [meta.display_details] : [];
+      details.forEach(val => {
+        if (!val) return;
+        const lower = String(val).toLowerCase();
+        if (!lines.some(existing => existing.toLowerCase() === lower)) lines.push(String(val));
+      });
+      const summary = Array.isArray(meta.summary)
+        ? meta.summary
+        : meta.summary ? [meta.summary] : [];
+      summary.forEach(val => {
+        if (!val) return;
+        const lower = String(val).toLowerCase();
+        if (!lines.some(existing => existing.toLowerCase() === lower)) lines.push(String(val));
+      });
+      if (!lines.length && fallback) lines.push(String(fallback));
+      return lines.map(val => esc(val)).join(' • ');
+    }
+
+    function createOption(opt, arg) {
+      const options = typeof arg === 'boolean' ? { isChild: arg } : (arg || {});
+      const {
+        isChild = false,
+        extraClass = '',
+        disableCountyPreview = false,
+      } = options;
+      const meta = opt.metadata || {};
+      const scopeBadge = createBadge(meta.scope_label, 'badge-scope');
+      const groupedBadge = requiresGrouping(opt) ? createBadge('Grouped', 'badge-group') : '';
+      const bundleBadge = !isChild && Number.isFinite(Number(meta.bundle_child_count)) && Number(meta.bundle_child_count) >= 1
+        ? createBadge(`${Number(meta.bundle_child_count) + 1} variations`, 'badge-bundle-size')
+        : '';
+      const variants = Number(meta.variants || (Array.isArray(meta.contest_ids) ? meta.contest_ids.length : 0));
+      const variantBadge = variants > 1 ? createBadge(`${variants} IDs`, 'badge-variant') : '';
+      const counties = Array.isArray(meta.counties) ? meta.counties.filter(Boolean) : [];
+      const countyBadge = !disableCountyPreview && counties.length > 1 ? createBadge(`${counties.length} counties`, 'badge-count') : '';
+      const yearBadge = meta.year ? createBadge(meta.year, 'badge-year') : '';
+      const confidence = typeof meta.confidence === 'number' ? createBadge(`conf ${meta.confidence.toFixed(2)}`, 'badge-confidence') : '';
+      const badgeLine = [groupedBadge, bundleBadge, scopeBadge, variantBadge, countyBadge, yearBadge, confidence].filter(Boolean).join('');
+      const countiesText = disableCountyPreview ? '' : formatCounties(meta);
+      const detailText = buildDetails(meta, opt.meta);
+      const item = document.createElement('button');
+      item.type = 'button';
+      const classNames = ['contest-option'];
+      if (isChild) classNames.push('contest-option-child');
+      if (extraClass) classNames.push(extraClass);
+      item.className = classNames.join(' ');
+      item.dataset.index = String(opt.index);
+      item.innerHTML = `
+        <div class="contest-line">
+          <span class="contest-index">[${esc(String(opt.index))}]</span>
+          <span class="contest-title">${esc(opt.label || '')}</span>
+        </div>
+        ${badgeLine ? `<div class="contest-meta-line">${badgeLine}</div>` : ''}
+        ${countiesText ? `<div class="contest-counties">${countiesText}</div>` : ''}
+        ${detailText ? `<div class="contest-details">${detailText}</div>` : ''}
+      `;
+      item.onclick = () => closeWith('submit', [opt.index]);
+      return item;
+    }
+
+    function matches(opt, query) {
+      const q = query.toLowerCase();
+      if (String(opt.index).toLowerCase().includes(q)) return true;
+      if ((opt.label || '').toLowerCase().includes(q)) return true;
+      if ((opt.meta || '').toLowerCase().includes(q)) return true;
+      const meta = opt.metadata || {};
+      const fields = [meta.scope_label, meta.variant_label, meta.office_title, meta.primary_title];
+      if (fields.some(val => val && String(val).toLowerCase().includes(q))) return true;
+      if (Array.isArray(meta.counties) && meta.counties.some(c => String(c).toLowerCase().includes(q))) return true;
+      const flatDetails = [];
+      if (Array.isArray(meta.display_details)) flatDetails.push(...meta.display_details);
+      else if (meta.display_details) flatDetails.push(meta.display_details);
+      if (Array.isArray(meta.summary)) flatDetails.push(...meta.summary);
+      else if (meta.summary) flatDetails.push(meta.summary);
+      return flatDetails.some(val => val && String(val).toLowerCase().includes(q));
+    }
+
+    function groupOptions(list) {
+      const officeMap = new Map();
+      list.forEach(opt => {
+        const key = deriveOfficeKey(opt) || 'other';
+        const meta = opt.metadata || {};
+        const candidateLabel = meta.display_header || meta.bundle_office_label || deriveOfficeTitle(opt);
+        if (!officeMap.has(key)) {
+          officeMap.set(key, {
+            key,
+            office: normalizeOfficeTitle(candidateLabel) || 'Other',
+            options: [],
+            hasExplicit: Boolean(meta.display_header || meta.bundle_office_label)
+          });
+        }
+        const entry = officeMap.get(key);
+        entry.options.push(opt);
+        if (!entry.hasExplicit) {
+          const normalized = normalizeOfficeTitle(candidateLabel);
+          if (normalized && (!entry.office || normalized.length > entry.office.length)) {
+            entry.office = normalized;
+          }
+          if (meta.display_header || meta.bundle_office_label) {
+            entry.hasExplicit = true;
+          }
+        }
+      });
+      return Array.from(officeMap.values()).sort((a, b) => a.office.localeCompare(b.office));
+    }
+
+    function renderContestList(list) {
+      const latest = refreshTableState();
+      optionsDiv.innerHTML = '';
+      currentContestList = list.slice();
+      let renderedCount = 0;
+      let visibleGrouped = 0;
+      if (!list.length) {
+        const empty = document.createElement('div');
+        empty.className = 'contest-empty';
+        empty.textContent = 'No contests match your search.';
+        optionsDiv.appendChild(empty);
+      } else {
+        const renderAggregateOption = (aggregateOpt, officeKey) => {
+          if (!aggregateOpt) return null;
+          const wrapper = document.createElement('div');
+          wrapper.className = 'contest-bundle';
+          const header = document.createElement('div');
+          header.className = 'contest-bundle-header';
+          const meta = aggregateOpt.metadata || {};
+          const children = (bundleChildren.get(aggregateOpt.index) || []).slice();
+          const availableChildCount = children.length;
+          const storedChildCount = Number(meta.bundle_child_count);
+          const bundleSize = Number(meta.bundle_size);
+          const totalContests = Number.isFinite(bundleSize) && bundleSize > 0
+            ? bundleSize
+            : Number.isFinite(storedChildCount) && storedChildCount >= 0
+              ? storedChildCount + 1
+              : availableChildCount + 1;
+          const toggleContestCount = Math.max(totalContests, availableChildCount || 0);
+          const isExpanded = expandedBundles.has(aggregateOpt.index);
+          const primaryBtn = createOption(aggregateOpt, {
+            disableCountyPreview: true,
+            extraClass: 'contest-option-bundle-primary'
+          });
+
+          if (availableChildCount > 0) {
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'contest-bundle-toggle';
+            toggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+            const actionText = isExpanded ? 'Hide' : 'Show';
+            const quantityText = `${toggleContestCount} contest${toggleContestCount === 1 ? '' : 's'}`;
+            const toggleLabel = `${actionText} ${quantityText} for ${aggregateOpt.label || 'this bundle'}`;
+            toggle.setAttribute('aria-label', toggleLabel);
+            toggle.innerHTML = `<span class="bundle-caret" aria-hidden="true"></span><span class="visually-hidden">${esc(toggleLabel)}</span>`;
+            toggle.onclick = () => {
+              const willExpand = !expandedBundles.has(aggregateOpt.index);
+              if (willExpand) {
+                expandedBundles.add(aggregateOpt.index);
+                if (officeKey) expandedOffices.add(officeKey);
+              } else {
+                expandedBundles.delete(aggregateOpt.index);
+                if (officeKey) expandedOffices.delete(officeKey);
+              }
+              renderContestList(currentContestList);
+            };
+            header.appendChild(toggle);
+          } else {
+            wrapper.classList.add('contest-bundle-static');
+          }
+
+          header.appendChild(primaryBtn);
+          wrapper.appendChild(header);
+
+          renderedCount += 1;
+          if (requiresGrouping(aggregateOpt)) visibleGrouped += 1;
+
+          if (availableChildCount && isExpanded) {
+            const childContainer = document.createElement('div');
+            childContainer.className = 'contest-bundle-children';
+            children.sort((aChild, bChild) => String(aChild.label || '').localeCompare(String(bChild.label || '')));
+            children.forEach(childOpt => {
+              childContainer.appendChild(createOption(childOpt, { isChild: true }));
+              renderedCount += 1;
+              if (requiresGrouping(childOpt)) visibleGrouped += 1;
+            });
+            wrapper.appendChild(childContainer);
+          }
+
+          return wrapper;
+        };
+
+        const offices = groupOptions(list);
+        offices.forEach(group => {
+          const officeKey = group.key || canonicalize(group.office || '');
+          const section = document.createElement('section');
+          section.className = 'contest-group';
+
+          const aggregateOptions = [];
+          const regularOptions = [];
+          group.options.forEach(opt => {
+            if (isAggregateOption(opt)) aggregateOptions.push(opt);
+            else regularOptions.push(opt);
+          });
+          const aggregateSet = new Set(aggregateOptions);
+
+          const totalRegular = regularOptions.length;
+          const searchActive = !!lastContestFilter.trim();
+          const hasAggregate = aggregateOptions.length > 0;
+          const aggregatedTotal = hasAggregate
+            ? aggregateOptions.reduce((max, opt) => {
+                const meta = opt.metadata || {};
+                const size = Number(meta.bundle_size);
+                const childCount = Number(meta.bundle_child_count);
+                const inferred = Number.isFinite(size) && size > 0
+                  ? size
+                  : Number.isFinite(childCount) && childCount >= 0
+                    ? childCount + 1
+                    : totalRegular;
+                return Math.max(max, inferred || 0);
+              }, 0)
+            : 0;
+          const displayCount = hasAggregate
+            ? (aggregatedTotal || totalRegular || aggregateOptions.length)
+            : totalRegular;
+
+          const header = document.createElement('div');
+          header.className = 'contest-group-title';
+          header.innerHTML = `${esc(group.office)} <span class="contest-count">(${displayCount || group.options.length})</span>`;
+
+          const shouldCollapse = !searchActive && ((hasAggregate && totalRegular > 0) || totalRegular > OFFICE_COLLAPSE_THRESHOLD);
+          if (!shouldCollapse && !searchActive) {
+            expandedOffices.add(officeKey);
+          }
+          const officeExpanded = searchActive || !shouldCollapse || expandedOffices.has(officeKey);
+
+          if (shouldCollapse) {
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'contest-group-toggle';
+            toggle.setAttribute('aria-expanded', officeExpanded ? 'true' : 'false');
+            const expandTotal = hasAggregate
+              ? (aggregatedTotal || totalRegular || aggregateOptions.length)
+              : totalRegular;
+            toggle.textContent = officeExpanded ? 'Hide contests' : `Show ${expandTotal} contests`;
+            const bundleIndexes = aggregateOptions
+              .filter(opt => (bundleChildren.get(opt.index) || []).length > 0)
+              .map(opt => opt.index);
+            toggle.onclick = () => {
+              if (officeExpanded) {
+                expandedOffices.delete(officeKey);
+                bundleIndexes.forEach(idx => expandedBundles.delete(idx));
+              } else {
+                expandedOffices.add(officeKey);
+                bundleIndexes.forEach(idx => expandedBundles.add(idx));
+              }
+              renderContestList(currentContestList);
+            };
+            header.appendChild(toggle);
+          }
+
+          section.appendChild(header);
+
+          if (aggregateOptions.length) {
+            const aggregateContainer = document.createElement('div');
+            aggregateContainer.className = 'contest-aggregate-container';
+            aggregateOptions.forEach(opt => {
+              const node = renderAggregateOption(opt, officeKey);
+              if (node) aggregateContainer.appendChild(node);
+            });
+            if (aggregateContainer.children.length) {
+              section.appendChild(aggregateContainer);
+            }
+          }
+
+          if (!officeExpanded && shouldCollapse) {
+            const collapsedNote = document.createElement('div');
+            collapsedNote.className = 'contest-collapsed-note';
+            const collapseTotal = hasAggregate
+              ? (aggregatedTotal || totalRegular)
+              : totalRegular;
+            const collapseLabel = collapseTotal === 1 ? 'contest' : 'contests';
+            collapsedNote.textContent = hasAggregate
+              ? `Expand to view all ${collapseTotal} grouped ${collapseLabel}.`
+              : `Expand to view ${collapseTotal} individual ${collapseLabel}.`;
+            section.appendChild(collapsedNote);
+            optionsDiv.appendChild(section);
+            return;
+          }
+
+          const scopeMap = new Map();
+          regularOptions.forEach(opt => {
+            const meta = opt.metadata || {};
+            const scopeRaw = meta.scope_label || 'General';
+            const scope = String(scopeRaw || 'General').trim() || 'General';
+            const key = scope.toLowerCase();
+            if (!scopeMap.has(key)) scopeMap.set(key, { scope, options: [] });
+            scopeMap.get(key).options.push(opt);
+          });
+
+          const scopes = Array.from(scopeMap.values()).sort((a, b) => a.scope.localeCompare(b.scope));
+          scopes.forEach(bucket => {
+            const block = document.createElement('div');
+            block.className = 'contest-subgroup';
+            block.innerHTML = `<div class="contest-subgroup-title">${esc(bucket.scope)}</div>`;
+            const sortedOptions = bucket.options.slice().sort((a, b) => {
+              const rankFor = (entry) => {
+                const meta = entry.metadata || {};
+                if (meta.bundle_mode === 'aggregate') return 0;
+                if (meta.bundle_member) return 2;
+                return 1;
+              };
+              const rankDiff = rankFor(a) - rankFor(b);
+              if (rankDiff !== 0) return rankDiff;
+              return String(a.label || '').localeCompare(String(b.label || ''));
+            });
+            sortedOptions.forEach(opt => {
+              if (aggregateSet.has(opt)) return;
+              const meta = opt.metadata || {};
+              if (meta.bundle_member && !lastContestFilter) {
+                return;
+              }
+              block.appendChild(createOption(opt, { isChild: !!meta.bundle_member }));
+              renderedCount += 1;
+              if (requiresGrouping(opt)) visibleGrouped += 1;
+            });
+            if (block.children.length > 1) {
+              section.appendChild(block);
+            }
+          });
+
+          optionsDiv.appendChild(section);
+        });
+      }
+      if (summaryDiv) {
+        if (summaryIsDefault) {
+          summaryDiv.innerHTML = `<div class="small text-muted">${renderedCount} option${renderedCount === 1 ? '' : 's'}</div>`;
+        } else {
+          summaryDiv.innerHTML = baseSummaryHtml;
+        }
+        const filteredCount = renderedCount;
+        const groupedCount = visibleGrouped;
+        const stats = document.createElement('div');
+        stats.className = 'small contest-summary-hint text-shimmer';
+        const summaryParts = [`${filteredCount} shown`, `${groupedCount} grouped contest${groupedCount === 1 ? '' : 's'}`];
+        if (latest.entries.length) {
+          const last = latest.entries[latest.entries.length - 1];
+          if (last && Array.isArray(last.headers) && last.headers.length) {
+            summaryParts.push(`${last.headers.length} column preview`);
+          }
+        } else {
+          summaryParts.push('preview pending');
+        }
+        stats.textContent = summaryParts.join(' • ');
+        summaryDiv.appendChild(stats);
+        const previewBtn = document.createElement('button');
+        previewBtn.type = 'button';
+        previewBtn.className = 'btn btn-outline-info btn-sm contest-preview-btn';
+        previewBtn.textContent = 'Show Table Preview';
+        if (!latest.entries.length) {
+          previewBtn.title = 'No table previews captured yet; opens placeholder view.';
+        }
+        previewBtn.onclick = () => {
+          switchToTableView({ focusSearch: true });
+        };
+        summaryDiv.appendChild(previewBtn);
+      }
+    }
+
+    function applyContestFilter(query) {
+      const current = query || '';
+      lastContestFilter = current;
+      const trimmed = current.trim();
+      if (!trimmed) {
+        renderContestList(baseOptions);
+        return;
+      }
+      const lowered = trimmed.toLowerCase();
+      const filtered = baseOptions.filter(opt => matches(opt, lowered));
+      renderContestList(filtered);
+    }
+
+    function renderTableCards(filter = '') {
+      const latest = refreshTableState();
+      const q = filter.trim().toLowerCase();
+      const entries = latest.entries.slice();
+      const filteredEntries = q
+        ? entries.filter(entry => {
+            const headers = entry.headers || [];
+            const rows = entry.rows || [];
+            const headerMatch = headers.some(h => h.toLowerCase().includes(q));
+            const rowMatch = rows.some(row => Object.values(row || {}).some(v => String(v).toLowerCase().includes(q)));
+            return headerMatch || rowMatch;
+          })
+        : entries;
+
+      optionsDiv.innerHTML = '';
+      if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'contest-empty';
+        empty.textContent = 'Table preview not available yet. Run the parser to capture structure samples.';
+        optionsDiv.appendChild(empty);
+      } else if (!filteredEntries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'contest-empty';
+        empty.textContent = 'No table previews match your search.';
+        optionsDiv.appendChild(empty);
+      } else {
+        filteredEntries.forEach(entry => {
+          const headers = entry.headers || [];
+          const rows = entry.rows || [];
+          const card = document.createElement('div');
+          card.className = 'table-preview-card';
+          const confidenceText = typeof entry.confidence === 'number' ? `conf ${entry.confidence.toFixed(2)}` : 'confidence n/a';
+          card.innerHTML = `
+            <header class="table-preview-header">
+              <div class="table-preview-title">Candidate ${entry.index}/${entry.total || entries.length}</div>
+              <div class="table-preview-meta">${esc(confidenceText)} • ${headers.length} columns</div>
+            </header>
+          `;
+          const table = document.createElement('table');
+          table.className = 'table-preview-grid';
+          const thead = document.createElement('thead');
+          const headRow = document.createElement('tr');
+          headers.forEach(h => {
+            const th = document.createElement('th');
+            th.textContent = h;
+            headRow.appendChild(th);
+          });
+          thead.appendChild(headRow);
+          table.appendChild(thead);
+          const tbody = document.createElement('tbody');
+          rows.forEach(row => {
+            const tr = document.createElement('tr');
+            headers.forEach(h => {
+              const td = document.createElement('td');
+              td.textContent = row && h in row ? String(row[h]) : '';
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+          if (!rows.length) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = Math.max(headers.length, 1);
+            td.className = 'table-preview-empty';
+            td.textContent = 'No sample rows available.';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+          }
+          table.appendChild(tbody);
+          card.appendChild(table);
+          optionsDiv.appendChild(card);
+        });
+      }
+
+      if (summaryDiv) {
+        summaryDiv.innerHTML = `<div class="small text-muted">${esc(latest.contest || 'Contest Pending')} • ${latest.entries.length} candidate${latest.entries.length === 1 ? '' : 's'}</div>`;
+        const backBtn = document.createElement('button');
+        backBtn.type = 'button';
+        backBtn.className = 'btn btn-outline-secondary btn-sm contest-preview-btn';
+        backBtn.textContent = 'Back to Contest List';
+        backBtn.onclick = () => {
+          switchToContestView({ focusSearch: true });
+        };
+        summaryDiv.appendChild(backBtn);
+      }
+    }
+
+    function switchToContestView({ focusSearch = false } = {}) {
+      searchEl.placeholder = placeholder;
+      searchEl.value = lastContestFilter;
+      searchEl.oninput = event => {
+        applyContestFilter(event.target.value || '');
+      };
+      applyContestFilter(lastContestFilter);
+      if (focusSearch) setTimeout(() => searchEl.focus(), 0);
+    }
+
+    function switchToTableView({ focusSearch = false } = {}) {
+      searchEl.placeholder = 'Search columns or values…';
+      searchEl.value = lastTableFilter;
+      searchEl.oninput = event => {
+        lastTableFilter = event.target.value || '';
+        renderTableCards(lastTableFilter);
+      };
+      renderTableCards(lastTableFilter);
+      if (focusSearch) setTimeout(() => searchEl.focus(), 0);
+    }
+
+    function closeWith(mode, payload) {
+      if (closed) return;
+      closed = true;
+      cleanup();
+      if (mode === 'submit' && typeof onSubmit === 'function') {
+        try { onSubmit(payload); } catch (err) { void err; }
+      }
+      Modal.close();
+      if (mode === 'submit') {
+        if (typeof onSelect === 'function') onSelect(payload);
+      } else {
+        if (typeof onCancel === 'function') onCancel();
+        if (typeof onSelect === 'function') onSelect(null);
+      }
+    }
+
+    closeBtn.onclick = cancelBtn.onclick = () => closeWith('cancel');
+    if (modal) {
+      modal.addEventListener('hide.bs.modal', () => {
+        if (closed) return;
+        closeWith('cancel');
+      }, { once: true });
+    }
+
+    switchToContestView();
+    Modal.open();
+    setTimeout(() => searchEl.focus(), 0);
+  }
+
   // Parse “[i] Label (meta)” lines from a backend menu string
   function parseIndexedMenu(message) {
     const opts = [];
@@ -1217,25 +3136,33 @@
       if (typeof onSelect === 'function') onSelect(null);
       return;
     }
-    const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
-    const { onCancel } = extras || {};
+    const { modal, titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
+    const { onCancel, onSubmit } = extras || {};
 
-    const closeModal = (notifyCancel = false) => {
-      Modal.close();
-      if (notifyCancel && typeof onCancel === 'function') {
+    let closed = false;
+
+    const finalize = (mode, payload) => {
+      if (closed) return;
+      closed = true;
+      if (mode === 'cancel' && typeof onCancel === 'function') {
         try { onCancel(); } catch (err) { void err; }
+      }
+      if (mode === 'submit' && typeof onSubmit === 'function') {
+        try { onSubmit(payload); } catch (err) { void err; }
       }
     };
 
-    const cancelSelection = () => {
-      closeModal(true);
-      if (typeof onSelect === 'function') onSelect(null);
+    const closeModal = (mode, payload) => {
+      finalize(mode, payload);
+      Modal.close();
+      if (typeof onSelect === 'function') {
+        if (mode === 'submit') onSelect(payload);
+        else onSelect(null);
+      }
     };
 
-    const emitSelection = (value) => {
-      closeModal(false);
-      if (typeof onSelect === 'function') onSelect(value);
-    };
+    const cancelSelection = () => closeModal('cancel', null);
+    const emitSelection = (value) => closeModal('submit', value);
 
     titleEl.textContent = title || 'Select';
     summaryDiv.innerHTML = ctxSummaryHtml || `${options.length} option(s)`;
@@ -1311,6 +3238,14 @@
     searchEl.oninput = (event) => renderList(event.target.value);
     closeBtn.onclick = cancelBtn.onclick = cancelSelection;
 
+    if (modal) {
+      modal.addEventListener('hide.bs.modal', () => {
+        if (closed) return;
+        finalize('cancel', null);
+        if (typeof onSelect === 'function') onSelect(null);
+      }, { once: true });
+    }
+
     Modal.open();
     searchEl.focus();
   }
@@ -1379,8 +3314,32 @@
     }
   }
 
-  function respondToPrompt(sessionId, value) {
+  function respondToPrompt(sessionId, value, options = {}) {
     if (!socket || !sessionId || value == null) return;
+    const opts = typeof options === 'object' && options !== null ? options : {};
+    const message = typeof opts.message === 'string' && opts.message.trim()
+      ? opts.message.trim()
+      : 'Processing selection…';
+    const minimumMs = Number.isFinite(opts.minimumMs) ? Math.max(0, opts.minimumMs) : 600;
+    const autoHideMs = Number.isFinite(opts.autoHideMs) ? Math.max(0, opts.autoHideMs) : 12000;
+    const buttonLabel = typeof opts.buttonLabel === 'string' && opts.buttonLabel.trim()
+      ? opts.buttonLabel.trim()
+      : 'Please wait…';
+    const overlayEnabled = opts.showOverlay !== false;
+
+    try {
+      if (overlayEnabled) {
+        PendingOverlay.show(message, { minimumMs, autoHideMs });
+      }
+      if (modalRestore && typeof modalRestore.setBusyForSession === 'function') {
+        modalRestore.setBusyForSession(sessionId, true, {
+          message,
+          buttonLabel
+        });
+      }
+    } catch (err) {
+      void err;
+    }
     socket.emit('parser_prompt', { session_id: sessionId, value: String(value) });
   }
 
@@ -1457,6 +3416,23 @@
       return;
     }
 
+    const restoreKey = `manual:${sessionId}`;
+    const restoreTitle = 'Manual Uploads';
+    const restoreDetail = 'Resume picking the upload you want to parse.';
+    const restoreMessage = promptMeta.restoreMessage || `${restoreTitle}. ${restoreDetail}`;
+    modalRestore.register({
+      key: restoreKey,
+      sessionId,
+      message: restoreMessage,
+      title: restoreTitle,
+      detail: restoreDetail,
+      icon: '📦',
+      buttonLabel: 'Resume Uploads',
+      buttonTitle: 'Reopen the manual uploads picker',
+      reopen: () => openManualSelectionModal(sessionId, promptMeta)
+    });
+    modalRestore.markActive(restoreKey);
+
     showIndexedSelectionModalWithContext(
       'Select Upload File',
       files.map(file => ({ index: file.index, label: file.label, meta: file.meta || '' })),
@@ -1472,10 +3448,15 @@
         respondToPrompt(sessionId, value);
         pipelineControl?.clearAttention('source');
         state.lastSelection = value;
+        modalRestore.clear(restoreKey);
         setTimeout(() => showPromptInput('Type a command...'), 600);
       },
       {
-        onCancel: () => showPromptInput(placeholder)
+        onCancel: () => {
+          showPromptInput(placeholder);
+          modalRestore.markDismissed(restoreKey);
+        },
+        onSubmit: () => modalRestore.clear(restoreKey)
       }
     );
   }
@@ -1493,7 +3474,25 @@
 
     hidePromptInput();
 
-    showIndexedSelectionModalWithContext(
+    const restoreKey = `contest:${sessionId}`;
+    const restoreTitle = meta.restoreTitle || 'Contest Selection';
+    const restoreDetail = meta.restoreDetail || 'Contest choice still needs your input.';
+    const restoreMessage = meta.restoreMessage || `${restoreTitle}. ${restoreDetail}`;
+    const optionSnapshot = cloneContestOptions(options);
+    modalRestore.register({
+      key: restoreKey,
+      sessionId,
+      message: restoreMessage,
+      title: restoreTitle,
+      detail: restoreDetail,
+      icon: meta.restoreIcon || '🎯',
+      buttonLabel: meta.restoreButtonLabel || 'Resume Contest',
+      buttonTitle: meta.restoreButtonTitle || 'Reopen the contest selection dialog',
+      reopen: () => openContestSelectionModal(sessionId, cloneContestOptions(optionSnapshot), ctxSummaryHtml, meta)
+    });
+    modalRestore.markActive(restoreKey);
+
+    showContestSelectionModal(
       meta.title || 'Select Contest',
       options,
       ctxSummaryHtml || `${options.length} option(s)`,
@@ -1505,10 +3504,17 @@
         const payload = selection.join(',');
         respondToPrompt(sessionId, payload);
         pipelineControl?.clearAttention('resolve');
+        modalRestore.clear(restoreKey);
         setTimeout(() => showPromptInput('Type a command...'), 600);
       },
       {
-        onCancel: () => showPromptInput(meta.placeholder || 'Enter contest index…')
+        placeholder: meta.placeholder || 'Enter contest index…',
+        onCancel: () => {
+          showPromptInput(meta.placeholder || 'Enter contest index…');
+          modalRestore.markDismissed(restoreKey);
+        },
+        onSubmit: () => modalRestore.clear(restoreKey),
+        sessionId
       }
     );
   }
@@ -1579,6 +3585,24 @@
 
     hidePromptInput();
 
+    const restoreKey = `url:${sessionId}`;
+    const restoreTitle = meta.restoreTitle || 'URL Selection';
+    const restoreDetail = meta.restoreDetail || 'Pick which URL to process next.';
+    const restoreMessage = meta.restoreMessage || `${restoreTitle}. ${restoreDetail}`;
+    const reopenUrls = sanitized.slice();
+    modalRestore.register({
+      key: restoreKey,
+      sessionId,
+      message: restoreMessage,
+      title: restoreTitle,
+      detail: restoreDetail,
+      icon: meta.restoreIcon || '🔗',
+      buttonLabel: meta.restoreButtonLabel || 'Resume URLs',
+      buttonTitle: meta.restoreButtonTitle || 'Reopen the URL selection dialog',
+      reopen: () => openUrlSelectionModal(sessionId, reopenUrls.slice(), processed, meta)
+    });
+    modalRestore.markActive(restoreKey);
+
     showIndexedSelectionModalWithContext(
       meta.title || 'Select URL',
       options,
@@ -1591,10 +3615,15 @@
         const payload = selection.join(',');
         respondToPrompt(sessionId, payload);
         pipelineControl?.clearAttention('source');
+        modalRestore.clear(restoreKey);
         setTimeout(() => showPromptInput('Type a command...'), 600);
       },
       {
-        onCancel: () => showPromptInput(placeholder)
+        onCancel: () => {
+          showPromptInput(placeholder);
+          modalRestore.markDismissed(restoreKey);
+        },
+        onSubmit: () => modalRestore.clear(restoreKey)
       }
     );
   }
@@ -1718,14 +3747,27 @@
         slice.forEach(ent => {
           const row = document.createElement('div');
           row.className = 'download-option folder-row';
-          row.tabIndex = 0;
-          row.setAttribute('role','button');
 
-          const name = document.createElement('div');
-          name.className = 'item-name';
           const icon = ent.type === 'dir' ? '📁' : '📄';
-          name.title = ent.name;
-          name.innerText = `${icon} ${ent.name}`;
+          const description = ent.type === 'dir' ? `Open folder ${ent.name}` : `Use ${ent.name}`;
+          const nameBtn = document.createElement('button');
+          nameBtn.type = 'button';
+          nameBtn.className = 'item-name';
+          nameBtn.title = ent.name;
+          nameBtn.setAttribute('aria-label', description);
+          nameBtn.textContent = `${icon} ${ent.name}`;
+
+          const activateFile = () => {
+            const rel = joinPath(cwd, ent.name);
+            if (activeSessionId) {
+              respondToPrompt(activeSessionId, rel);
+            }
+          };
+
+          const openFolder = async () => {
+            cwd = joinPath(cwd, ent.name);
+            await refresh();
+          };
 
           const actions = document.createElement('div');
           actions.className = 'file-actions';
@@ -1739,8 +3781,8 @@
             useBtn.addEventListener('click', (e) => {
               e.stopPropagation();
               const rel = joinPath(cwd, ent.name);
-              if (socket && activeSessionId) {
-                socket.emit('parser_prompt', { session_id: activeSessionId, value: rel });
+              if (activeSessionId) {
+                respondToPrompt(activeSessionId, rel);
               }
             });
 
@@ -1774,18 +3816,21 @@
             actions.appendChild(useBtn);
             actions.appendChild(dl);
             actions.appendChild(del);
-            // Clicking the row uses the file (quick action)
             row.addEventListener('click', () => {
-              const rel = joinPath(cwd, ent.name);
-              if (socket && activeSessionId) {
-                socket.emit('parser_prompt', { session_id: activeSessionId, value: rel });
-              }
+              activateFile();
+            });
+            nameBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              activateFile();
             });
           } else {
             // Directory: click to open
-            row.addEventListener('click', async () => {
-              cwd = joinPath(cwd, ent.name);
-              await refresh();
+            row.addEventListener('click', () => {
+              openFolder();
+            });
+            nameBtn.addEventListener('click', async (e) => {
+              e.stopPropagation();
+              await openFolder();
             });
 
             // Folder delete (Shift = recursive)
@@ -1813,7 +3858,7 @@
             actions.appendChild(delDir);
           }
 
-          row.appendChild(name);
+          row.appendChild(nameBtn);
           row.appendChild(actions);
           results.appendChild(row);
         });
@@ -1898,10 +3943,68 @@
     if (uploadsPanel) mountFolderPanel('uploads', uploadsPanel);
   }
   // Folder browser (uploads, input, output) with search + breadcrumbs
-  function showFolderBrowser(root, initialPath = '', onSelect) {
+  function showFolderBrowser(root, initialPath = '', onSelect, options = {}) {
+    if (typeof onSelect === 'object' && options === undefined) {
+      options = onSelect || {};
+      onSelect = undefined;
+    }
+    options = options || {};
+    const selectCallback = typeof onSelect === 'function' ? onSelect : () => {};
+    const label = ROOT_LABELS[root] || root;
+    const restoreKey = options.restoreKey ?? `folder:${root}`;
+    const restoreTitle = options.restoreTitle ?? `${label} Browser`;
+    const restoreDetail = options.restoreDetail ?? `Reopen to keep browsing ${label.toLowerCase()} items.`;
+    const restoreMessage = options.restoreMessage ?? `${restoreTitle}. ${restoreDetail}`;
+    const restoreIcon = options.restoreIcon ?? (root === 'output' ? '📤' : root === 'uploads' ? '📁' : '🗂️');
+    const restoreButtonLabel = options.restoreButtonLabel ?? 'Resume Browsing';
+    const restoreButtonTitle = options.restoreButtonTitle ?? `Reopen the ${label} browser`;
+    const skipRegister = options.skipRegister === true;
+
+    if (restoreKey && !skipRegister) {
+      modalRestore.register({
+        key: restoreKey,
+        message: restoreMessage,
+        title: restoreTitle,
+        detail: restoreDetail,
+        icon: restoreIcon,
+        buttonLabel: restoreButtonLabel,
+        buttonTitle: restoreButtonTitle,
+        scrollIntoView: options.scrollIntoView !== false,
+        reopen: () => showFolderBrowser(root, initialPath, onSelect, { ...options, skipRegister: true })
+      });
+    }
+
     const refs = Modal.get();
-    if (!refs) return onSelect(null);
-    const { titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
+    if (!refs) {
+      selectCallback(null);
+      return;
+    }
+    const { modal, titleEl, searchEl, optionsDiv, summaryDiv, closeBtn, cancelBtn } = refs;
+
+    if (restoreKey) modalRestore.markActive(restoreKey);
+
+    let closed = false;
+    const finish = (reason, payload = null) => {
+      if (closed) return;
+      closed = true;
+      if (reason === 'submit') {
+        if (restoreKey) modalRestore.clear(restoreKey);
+        selectCallback(payload);
+      } else {
+        if (restoreKey) modalRestore.markDismissed(restoreKey);
+        selectCallback(null);
+      }
+    };
+
+    if (modal) {
+      modal.addEventListener('hide.bs.modal', () => finish('cancel'), { once: true });
+    }
+
+    const shutdown = (reason, payload = null) => {
+      if (closed) return;
+      Modal.close();
+      finish(reason, payload);
+    };
 
     let cwd = initialPath || '';
     let allEntries = []; // {name,type:'dir'|'file', size, modified}
@@ -2059,10 +4162,9 @@
           useBtn.onclick = (e) => {
             e.stopPropagation();
             const rel = cwd ? `${cwd}/${ent.name}` : ent.name;
-            hide();
-            onSelect({ root, path: cwd, name: ent.name });
-            if (socket && activeSessionId) {
-              socket.emit('parser_prompt', { session_id: activeSessionId, value: rel });
+            shutdown('submit', { root, path: cwd, name: ent.name });
+            if (activeSessionId) {
+              respondToPrompt(activeSessionId, rel);
             }
           };
 
@@ -2099,10 +4201,9 @@
           // Keep row click as "Use"
           item.onclick = () => {
             const rel = cwd ? `${cwd}/${ent.name}` : ent.name;
-            hide();
-            onSelect({ root, path: cwd, name: ent.name });
-            if (socket && activeSessionId) {
-              socket.emit('parser_prompt', { session_id: activeSessionId, value: rel });
+            shutdown('submit', { root, path: cwd, name: ent.name });
+            if (activeSessionId) {
+              respondToPrompt(activeSessionId, rel);
             }
           };
           item.onkeydown = (e) => { if (e.key === 'Enter') { item.onclick(); } };
@@ -2126,11 +4227,9 @@
       renderList(searchEl.value);
     }
 
-    function hide() { Modal.close(); }
-
     searchEl.value = '';
     searchEl.oninput = e => renderList(e.target.value);
-    closeBtn.onclick = cancelBtn.onclick = () => { hide(); onSelect(null); };
+    closeBtn.onclick = cancelBtn.onclick = () => shutdown('cancel');
 
     Modal.open();
     searchEl.focus();
@@ -2170,8 +4269,8 @@
             showFolderBrowser(root, '', (sel) => {
               if (!sel) return;
               const rel = sel.path ? `${sel.path}/${sel.name}` : sel.name;
-              if (socket && activeSessionId) {
-                socket.emit('parser_prompt', { session_id: activeSessionId, value: rel });
+              if (activeSessionId) {
+                respondToPrompt(activeSessionId, rel);
               }
             });
           };
@@ -3056,7 +5155,7 @@
       }
     }
 
-    socket.emit('parser_prompt', { session_id: activeSessionId, value: raw });
+    respondToPrompt(activeSessionId, raw, { message: 'Submitting response…' });
     el.promptInput.value = '';
     pipelineControl?.clearAttention('resolve');
     pipelineControl?.setPhase('resolve');
@@ -3090,8 +5189,9 @@
       listBox.querySelectorAll('.url-sidebar-item').forEach(el => {
         el.onclick = () => {
           const url = decodeURIComponent(el.getAttribute('data-url'));
-          if (window.socket && window.getActiveSessionId) {
-            socket.emit('parser_prompt', { session_id: getActiveSessionId(), value: url });
+          if (typeof window.getActiveSessionId === 'function') {
+            const sid = getActiveSessionId();
+            if (sid) respondToPrompt(sid, url, { message: 'Processing URL…' });
           }
         };
       });
@@ -3355,6 +5455,7 @@
     }
 
     function handleParserOutput(d) {
+      try { PendingOverlay.hide(); } catch (err) { void err; }
       if (!activeSessionId) {
         earlyQueue.push(d);
         return;
@@ -3364,6 +5465,9 @@
         updatePipelineForStatusLog(d.message);
       }
       if (d && d.session_id) {
+        if (modalRestore && typeof modalRestore.setBusyForSession === 'function') {
+          modalRestore.setBusyForSession(d.session_id, false);
+        }
         if (d.type === 'manual_override') {
           const sessionId = d.session_id;
           const msg = String(d.message || d.full_text || '');
@@ -3431,10 +5535,11 @@
         }
       }
       if (d && d.type === 'contest_options' && Array.isArray(d.options)) {
-        const normalized = d.options.map(o => ({
+        const normalized = d.options.map(o => cloneContestOption({
           index: Number(o.index),
           label: o.label,
-          meta: o.meta || ''
+          meta: o.meta || '',
+          metadata: o.metadata || {}
         }));
         setContestOptions(d.session_id, normalized);
 
@@ -3466,10 +5571,11 @@
               return {
                 index: Number(m[1]),
                 label: m[2],
-                meta: m[3] || ''
+                meta: m[3] || '',
+                metadata: {}
               };
             }
-            return { index: i, label: s, meta: '' };
+            return { index: i, label: s, meta: '', metadata: {} };
         });
         if (parsed.length) {
           setContestOptions(d.session_id, parsed);
@@ -3501,7 +5607,7 @@
       
       // Detect and render backend contest menus (“Available contests:”)
       if (d && typeof d.message === 'string' && /available contests:/i.test(d.message)) {
-        const options = parseIndexedMenu(d.message);
+        const options = parseIndexedMenu(d.message).map(opt => ({ ...opt, metadata: {} }));
         if (options.length) {
           setContestOptions(d.session_id, options);
           contestIndexMap = Object.fromEntries(options.map(o => [String(o.index), o.label]));
@@ -3544,10 +5650,8 @@
           // Hide inline prompt while modal is used
           if (el.promptInput && el.promptInput.parentElement) el.promptInput.parentElement.classList.add('hidden');
           showDownloadModal(opts, ctx.summary || '', function(selectedIdx) {
-            socket.emit('parser_prompt', {
-              session_id: activeSessionId,
-              value: selectedIdx == null ? 'n' : String(selectedIdx)
-            });
+            const value = selectedIdx == null ? 'n' : String(selectedIdx);
+            respondToPrompt(activeSessionId, value, { message: 'Processing download choice…' });
             pipelineControl?.clearAttention('resolve');
             pipelineControl?.setPhase('resolve');
           });
@@ -3565,16 +5669,14 @@
           });
           if (el.promptInput && el.promptInput.parentElement) el.promptInput.parentElement.classList.add('hidden');
           showDownloadModal(opts, ctx.summary || '', function(selectedIdx) {
-            socket.emit('parser_prompt', {
-              session_id: activeSessionId,
-              value: selectedIdx == null ? 'n' : String(selectedIdx)
-            });
+            const value = selectedIdx == null ? 'n' : String(selectedIdx);
+            respondToPrompt(activeSessionId, value, { message: 'Processing download choice…' });
             pipelineControl?.clearAttention('resolve');
             pipelineControl?.setPhase('resolve');
           });
         } else {
           showPromptModal(d.message, function(userInput) {
-            socket.emit('parser_prompt', { session_id: activeSessionId, value: userInput });
+            respondToPrompt(activeSessionId, userInput, { message: 'Submitting response…' });
           });
         }
       }
@@ -3643,6 +5745,10 @@
       if (!payload || typeof payload !== 'object') return;
       const sid = payload.session_id || (payload.metadata && payload.metadata.session_id);
       if (!sid) return;
+      try { PendingOverlay.hide(); } catch (err) { void err; }
+      if (modalRestore && typeof modalRestore.setBusyForSession === 'function') {
+        modalRestore.setBusyForSession(sid, false);
+      }
       const meta = (payload.metadata && typeof payload.metadata === 'object')
         ? payload.metadata
         : { session_id: sid, state: payload.state, phase: payload.phase };
@@ -3904,8 +6010,11 @@
     const nav = document.querySelector('.navbar');
     const footer = document.getElementById('sessionFooter');
     const mql = window.matchMedia('(max-width: 900px)');
+    const mobileFloatMql = window.matchMedia('(max-width: 700px)');
+    const bodyEl = document.body;
     let lastFocus = null;
     let untrap = null;
+    let resetSwipe = () => {};
 
     const getFocusable = (root) =>
       Array.from(root.querySelectorAll('a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])'))
@@ -3938,10 +6047,54 @@
       });
     }
 
+    const FLOAT_CLASS = 'sidebar-float-enabled';
+    const applyFloatState = () => {
+      const enabled = mobileFloatMql.matches && !!(aside && drawerBtn);
+      bodyEl.classList.toggle(FLOAT_CLASS, enabled);
+      if (!enabled) resetSwipe?.();
+    };
+    applyFloatState();
+    mobileFloatMql.addEventListener?.('change', applyFloatState);
+
     // Mobile drawer behavior (off-canvas)
     if (aside && drawerBtn && backdrop) {
+      let swipeZone = aside.querySelector('.sidebar-swipe-zone');
+      if (!swipeZone) {
+        swipeZone = document.createElement('div');
+        swipeZone.className = 'sidebar-swipe-zone';
+        swipeZone.setAttribute('aria-hidden', 'true');
+        aside.appendChild(swipeZone);
+      }
+
+      const swipeState = {
+        active: false,
+        pointerId: null,
+        startX: 0,
+        startY: 0,
+        deltaX: 0,
+        locked: false,
+      };
+      const SWIPE_ACTIVATION = 26;
+      const SWIPE_THRESHOLD = 120;
+      const SWIPE_SLOPE_RATIO = 1.35;
+
+      function resetSwipeState(forceTransform = true) {
+        swipeState.active = false;
+        swipeState.pointerId = null;
+        swipeState.deltaX = 0;
+        swipeState.locked = false;
+        aside.style.transition = '';
+        if (forceTransform) {
+          aside.style.transform = '';
+          aside.classList.remove('sidebar-dragging');
+        }
+      }
+
+      resetSwipe = () => resetSwipeState(true);
+
       const open = () => {
         lastFocus = document.activeElement;
+        resetSwipeState();
         document.body.classList.add('sidebar-open');
         drawerBtn.setAttribute('aria-expanded', 'true');
         setInert(true);
@@ -3949,6 +6102,7 @@
         setTimeout(() => aside.querySelector('.url-search-box')?.focus(), 0);
       };
       const close = () => {
+        resetSwipeState();
         document.body.classList.remove('sidebar-open');
         drawerBtn.setAttribute('aria-expanded', 'false');
         setInert(false);
@@ -3963,6 +6117,68 @@
         if (e.key === 'Escape' && document.body.classList.contains('sidebar-open')) close();
       });
       mql.addEventListener?.('change', (e) => { if (!e.matches) close(); });
+
+      function onSwipePointerDown(event) {
+        if (!mobileFloatMql.matches) return;
+        if (!document.body.classList.contains('sidebar-open')) return;
+        if (event.pointerType && event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+        swipeState.active = true;
+        swipeState.pointerId = event.pointerId;
+        swipeState.startX = event.clientX;
+        swipeState.startY = event.clientY;
+        swipeState.deltaX = 0;
+        swipeState.locked = false;
+        aside.classList.add('sidebar-dragging');
+        aside.style.transition = 'none';
+        try { swipeZone.setPointerCapture(event.pointerId); } catch { /* no-op */ }
+      }
+
+      function onSwipePointerMove(event) {
+        if (!swipeState.active || event.pointerId !== swipeState.pointerId) return;
+        const deltaX = event.clientX - swipeState.startX;
+        const deltaY = event.clientY - swipeState.startY;
+        if (!swipeState.locked) {
+          if (Math.abs(deltaX) < SWIPE_ACTIVATION) return;
+          if (Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_SLOPE_RATIO) {
+            cancelSwipe(event);
+            return;
+          }
+          swipeState.locked = true;
+        }
+        event.preventDefault();
+        const translate = Math.min(0, deltaX);
+        swipeState.deltaX = translate;
+        aside.style.transform = `translateX(${translate}px)`;
+      }
+
+      function finalizeSwipe(event) {
+        if (!swipeState.active || event.pointerId !== swipeState.pointerId) return;
+        try { swipeZone.releasePointerCapture(event.pointerId); } catch { /* no-op */ }
+        aside.style.transition = '';
+        aside.classList.remove('sidebar-dragging');
+        const distance = Math.abs(swipeState.deltaX);
+        const shouldClose = swipeState.locked && distance >= SWIPE_THRESHOLD;
+        resetSwipeState(!shouldClose);
+        if (shouldClose) {
+          close();
+        } else {
+          aside.style.transform = '';
+        }
+      }
+
+      function cancelSwipe(event) {
+        if (!swipeState.active || (event && event.pointerId !== swipeState.pointerId)) return;
+        if (event?.pointerId != null) {
+          try { swipeZone.releasePointerCapture(event.pointerId); } catch { /* ignore */ }
+        }
+        aside.style.transition = '';
+        resetSwipeState();
+      }
+
+      swipeZone.addEventListener('pointerdown', onSwipePointerDown);
+      swipeZone.addEventListener('pointermove', onSwipePointerMove);
+      swipeZone.addEventListener('pointerup', finalizeSwipe);
+      swipeZone.addEventListener('pointercancel', cancelSwipe);
     }
 
     // Desktop: collapse/expand the URL section

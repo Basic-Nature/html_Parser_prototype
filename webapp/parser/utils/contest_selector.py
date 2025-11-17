@@ -72,7 +72,343 @@ class ContestRecord:
     source: str | None = None
     confidence: float | None = None
     session_id: str | None = None 
+    metadata: dict | None = None
+
+
+def _bundle_key(record: ContestRecord) -> str:
+    """Return a stable key for grouping related contest variants."""
+    meta = record.metadata or {}
+    office_label = meta.get("office_title") or meta.get("display_header") or record.title
+    canonical = _base_canonical_key(office_label)
+    year_token = record.year or meta.get("year") or ""
+    scope_hint = safe_lower(meta.get("contest_type") or meta.get("election_type") or "")
+    jurisdiction = safe_lower(record.jurisdiction or meta.get("jurisdiction") or "")
+    return "::".join(
+        part for part in [canonical or "", str(year_token or ""), scope_hint, jurisdiction] if str(part).strip()
+    ) or canonical or ""
+
+
+def _collect_bundle_members(members: list[ContestRecord]) -> dict[str, Any]:
+    """Aggregate metadata across bundle members for modal display and downstream logic."""
+    bundle_meta: dict[str, Any] = {}
+    union_ids: set[str] = set()
+    union_counties: set[str] = set()
+    union_scopes: set[str] = set()
+    union_variants: set[str] = set()
+    union_vote_for: set[str] = set()
+    bundle_confidences: list[float] = []
+    members_serialized: list[dict[str, Any]] = []
+    summary_list: list[str] = []
+
+    def _append_summary(text: str | None) -> None:
+        if not text:
+            return
+        text_s = str(text)
+        lowered = text_s.lower()
+        for existing in summary_list:
+            if existing.lower() == lowered:
+                return
+        summary_list.append(text_s)
+
+    for member in members:
+        meta = dict(member.metadata or {})
+        contest_ids = meta.get("contest_ids") or meta.get("bundle_contest_ids") or []
+        union_ids.update(str(cid) for cid in contest_ids)
+        for county in meta.get("counties") or []:
+            if county:
+                union_counties.add(str(county))
+        for scope in meta.get("division_scopes") or []:
+            if scope:
+                union_scopes.add(str(scope))
+        variant_label = meta.get("variant_label")
+        if variant_label:
+            union_variants.add(str(variant_label))
+        for vote_for in meta.get("vote_for") or []:
+            if vote_for is not None:
+                union_vote_for.add(str(vote_for))
+        summary_val = meta.get("summary")
+        if isinstance(summary_val, (list, tuple)):
+            for item in summary_val:
+                _append_summary(item)
+        elif isinstance(summary_val, str):
+            _append_summary(summary_val)
+        members_serialized.append(asdict(member))
+        if member.confidence is not None:
+            try:
+                bundle_confidences.append(float(member.confidence))
+            except Exception:
+                pass
+
+    if members_serialized:
+        bundle_meta["bundle_members"] = members_serialized
+    if union_ids:
+        bundle_meta["contest_ids"] = sorted(union_ids)
+    if union_counties:
+        bundle_meta["counties"] = sorted(union_counties)
+    if union_scopes:
+        bundle_meta["division_scopes"] = sorted(union_scopes)
+        if "scope_label" not in bundle_meta:
+            pretty_scopes = ", ".join(sorted(union_scopes))
+            bundle_meta["scope_label"] = pretty_scopes
+    if union_variants:
+        _append_summary(f"{len(union_variants)} variants")
+    if union_ids:
+        _append_summary(f"{len(union_ids)} contest ids")
+    if union_counties:
+        _append_summary(f"{len(union_counties)} counties")
+    if union_vote_for:
+        bundle_meta.setdefault("vote_for", sorted(union_vote_for))
+    if bundle_confidences:
+        avg_conf = sum(bundle_confidences) / max(len(bundle_confidences), 1)
+        bundle_meta["confidence"] = float(round(avg_conf, 4))
+    bundle_meta["bundle_size"] = len(members)
+    bundle_meta["bundle_mode"] = "aggregate"
+    if summary_list:
+        bundle_meta["summary"] = summary_list
+    return bundle_meta
+
+
+def _should_bundle(records: list[ContestRecord]) -> bool:
+    """Determine if the provided records qualify for bundle aggregation."""
+    if len(records) < 2:
+        return False
+    union_ids: set[str] = set()
+    union_variants: set[str] = set()
+    union_counties: set[str] = set()
+    total_counties = 0
+    has_scope_hint = False
+    for rec in records:
+        meta = rec.metadata or {}
+        for cid in meta.get("contest_ids") or meta.get("bundle_contest_ids") or []:
+            if cid is None:
+                continue
+            union_ids.add(str(cid))
+        counties = meta.get("counties") or []
+        cleaned_counties = [str(c) for c in counties if c]
+        union_counties.update(cleaned_counties)
+        total_counties += len(cleaned_counties)
+        variant_label = meta.get("variant_label")
+        if variant_label:
+            union_variants.add(str(variant_label))
+        scope_label = meta.get("scope_label")
+        if scope_label:
+            has_scope_hint = True
+    if union_ids:
+        return True
+    if len(union_variants) >= 2:
+        return True
+    if total_counties >= len(records) + 2:
+        return True
+    if len(records) >= 3 and (union_counties or has_scope_hint):
+        return True
+    return False
+
+
+def _inject_bundle_records(candidates: list[ContestRecord]) -> list[ContestRecord]:
+    """Insert aggregate contest bundle records ahead of their members."""
+    grouped: dict[str, list[ContestRecord]] = defaultdict(list)
+    for record in candidates:
+        key = _bundle_key(record)
+        grouped[key].append(record)
+
+    output: list[ContestRecord] = []
+    for key, members in grouped.items():
+        if not _should_bundle(members):
+            output.extend(members)
+            continue
+
+        primary = members[0]
+        bundle_meta = _collect_bundle_members(members)
+        bundle_meta["bundle_key"] = key
+        primary_meta = dict(primary.metadata or {})
+        office_title = primary_meta.get("office_title") or primary_meta.get("display_header") or primary.title
+        base_title = office_title or primary.title
+        size = bundle_meta.get("bundle_size", len(members))
+        pretty_label = f"{base_title} ({size} contests)"
+
+        aggregate_metadata = {**primary_meta, **bundle_meta}
+        aggregate_metadata["display_title"] = pretty_label
+        aggregate_metadata.setdefault("display_header", base_title)
+
+        aggregate_record = ContestRecord(
+            title=pretty_label,
+            year=primary.year,
+            jurisdiction=primary.jurisdiction,
+            level=primary.level,
+            type_=primary.type_,
+            canonical_key=primary.canonical_key,
+            cluster_id=primary.cluster_id,
+            source="bundle",
+            confidence=bundle_meta.get("confidence", primary.confidence),
+            session_id=primary.session_id,
+            metadata=aggregate_metadata,
+        )
+        output.append(aggregate_record)
+
+        for member in members:
+            member_meta = dict(member.metadata or {})
+            member_meta["bundle_member"] = True
+            member_meta["bundle_mode"] = "member"
+            member_meta["bundle_key"] = key
+            member_meta.setdefault("bundle_size", len(members))
+            if member_meta.get("contest_ids"):
+                member_meta.setdefault("bundle_contest_ids", member_meta["contest_ids"])
+            member.metadata = member_meta
+            output.append(member)
+
+    return output
+
+
+def _merge_contest_metadata(entries: list[dict]) -> dict | None:
+    """Aggregate contest metadata payloads for clustered options."""
+    if not entries:
+        return None
+    merged_entries: list[dict] = []
+    contest_ids: set[str] = set()
+    primary_titles: list[str] = []
+    summaries: list[str] = []
+    first_display_title: str | None = None
+    group_meta: dict | None = None
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        sanitized: dict = {}
+        for key, value in entry.items():
+            if key == "title":
+                if first_display_title is None and isinstance(value, str):
+                    first_display_title = value
+                continue
+            sanitized[key] = value
+        merged_entries.append(sanitized)
+        for cid in entry.get("contest_ids") or []:
+            contest_ids.add(str(cid))
+        if entry.get("primary_title"):
+            primary_titles.append(entry["primary_title"])
+        summary_val = entry.get("summary")
+        if summary_val:
+            if isinstance(summary_val, (list, tuple)):
+                for item in summary_val:
+                    if item is not None and str(item):
+                        summaries.append(str(item))
+            else:
+                summaries.append(str(summary_val))
+        group_metadata = entry.get("group_metadata")
+        if isinstance(group_metadata, dict):
+            # Ensure nested group metadata is preserved without mutation
+            merged_entries[-1]["group_metadata"] = group_metadata
+            if group_meta is None:
+                group_meta = dict(group_metadata)
+
+    if not merged_entries and not contest_ids and not primary_titles:
+        return None
+
+    payload: dict[str, Any] = {}
+    if merged_entries:
+        payload["entries"] = merged_entries
+    if contest_ids:
+        payload["contest_ids"] = sorted(contest_ids)
+    if primary_titles:
+        payload["primary_title"] = primary_titles[0]
+    if summaries:
+        deduped = list(dict.fromkeys(summaries))
+        payload["summary"] = " | ".join(deduped)
+    if first_display_title:
+        payload["display_title"] = first_display_title
+    if group_meta:
+        payload["group_metadata"] = group_meta
+        for key in (
+            "display_title",
+            "display_header",
+            "display_details",
+            "display_full",
+            "office_title",
+            "variant_label",
+            "scope_label",
+            "county_label",
+            "county_preview",
+            "summary",
+        ):
+            if key in group_meta and key not in payload and group_meta[key] is not None:
+                payload[key] = group_meta[key]
+    return payload or None
     
+
+def _extract_first_int(text: str | None) -> Optional[int]:
+    if not text:
+        return None
+    match = re.search(r"\d+", text)
+    if not match:
+        return None
+    try:
+        return int(match.group(0))
+    except Exception:
+        return None
+
+
+def _contest_sort_key(record: ContestRecord) -> tuple[Any, ...]:
+    meta = record.metadata or {}
+    confidence = float(record.confidence or 0.0)
+    office = safe_lower(meta.get("office_title") or record.title or "")
+    variant_label = meta.get("variant_label") or ""
+    variant_num = _extract_first_int(variant_label)
+    variant_key: tuple[int, Any]
+    if variant_num is not None:
+        variant_key = (0, variant_num)
+    else:
+        variant_key = (1, safe_lower(variant_label))
+    mode = meta.get("bundle_mode")
+    if mode == "aggregate":
+        bundle_rank = 0
+    elif meta.get("bundle_member"):
+        bundle_rank = 2
+    else:
+        bundle_rank = 1
+    return (
+        bundle_rank,
+        -confidence,
+        office,
+        variant_key,
+        safe_lower(record.title or ""),
+    )
+
+
+def _extract_display_details(meta: dict | None) -> List[str]:
+    if not isinstance(meta, dict):
+        return []
+    details_raw = meta.get("display_details")
+    out: List[str] = []
+    if isinstance(details_raw, (list, tuple)):
+        out.extend(str(item) for item in details_raw if item)
+    elif isinstance(details_raw, str) and details_raw.strip():
+        out.append(details_raw.strip())
+    if not out:
+        summary_raw = meta.get("summary")
+        if isinstance(summary_raw, (list, tuple)):
+            out.extend(str(item) for item in summary_raw if item)
+        elif isinstance(summary_raw, str) and summary_raw.strip():
+            out.append(summary_raw.strip())
+    if not out:
+        county_label = meta.get("county_label")
+        county_preview = meta.get("county_preview")
+        if county_label:
+            segment = str(county_label)
+            if county_preview:
+                segment += f": {county_preview}"
+            out.append(segment)
+    scope_label = meta.get("scope_label")
+    if scope_label and all(scope_label.lower() not in item.lower() for item in out):
+        out.append(str(scope_label))
+    seen: set[str] = set()
+    deduped: List[str] = []
+    for item in out:
+        lowered = item.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(item)
+    return deduped
+
 # ------------------ Normalization helpers (keep existing _norm_key / _tokens / _jaccard) ------------------
 
 def _extract_year_tokens(title: str) -> list[int]:
@@ -846,6 +1182,11 @@ def select_contest_noninteractive(
     selector_data = context.get("selector_data") or {}
     base_contests = selector_data.get("contests") or []
     base_titles = [safe_get(c, "title", "") for c in base_contests]
+    title_to_entries: Dict[str, List[dict]] = defaultdict(list)
+    for entry in base_contests:
+        title = safe_get(entry, "title", "")
+        if title:
+            title_to_entries[title].append(entry)
     extra = _expand_contests_from_context(context, base_titles)
     if extra:
         base_contests = _merge_expanded_contests(base_contests, extra)
@@ -862,8 +1203,20 @@ def select_contest_noninteractive(
         yrs = _extract_year_tokens(rep)
         rep_year = yrs[0] if yrs else None
         score = _score_title(coordinator, rep, {"state": state, "county": county, "year": year})
+        cluster_entries: list[dict] = []
+        for option in cl:
+            cluster_entries.extend(title_to_entries.get(option, []))
+        metadata = _merge_contest_metadata(cluster_entries) or {}
+        preferred_title = (
+            safe_get(metadata, "display_header")
+            or safe_get(metadata, "display_title")
+            or rep
+        )
+        metadata.setdefault("display_title", preferred_title)
+        metadata.setdefault("display_header", preferred_title)
+        metadata.setdefault("primary_title", safe_get(metadata, "primary_title") or rep)
         reps.append(ContestRecord(
-            title=rep,
+            title=preferred_title,
             year=rep_year,
             jurisdiction=county,
             level=None,
@@ -872,7 +1225,8 @@ def select_contest_noninteractive(
             cluster_id=idx,
             source="auto",
             confidence=score,
-            session_id=session_id
+            session_id=session_id,
+            metadata=metadata
         ))
 
     # Optional year preference
@@ -881,8 +1235,9 @@ def select_contest_noninteractive(
         if year_matches:
             reps = year_matches
 
-    # Sort by confidence desc then shorter stripped title
-    reps.sort(key=lambda r: (-float(r.confidence or 0.0), len(_strip_years(r.title)), r.title.lower()))
+    # Sort deterministically by confidence, office, then variant index if present
+    reps = _inject_bundle_records(reps)
+    reps.sort(key=_contest_sort_key)
 
     if return_mode == "json":
         return json.dumps([asdict(r) for r in reps], ensure_ascii=False)
@@ -924,6 +1279,12 @@ def select_contest(
     if expanded:
         base_contests = _merge_expanded_contests(base_contests, expanded)
 
+    title_to_entries: Dict[str, List[dict]] = defaultdict(list)
+    for entry in base_contests:
+        title = safe_get(entry, "title", "")
+        if title:
+            title_to_entries[title].append(entry)
+
     raw_titles = [safe_get(c, "title", "") for c in base_contests if safe_get(c, "title")]
     raw_titles = list(dict.fromkeys(raw_titles))
     if not raw_titles:
@@ -936,21 +1297,38 @@ def select_contest(
         yrs = _extract_year_tokens(rep)
         rep_year = yrs[0] if yrs else None
         score = _score_title(coordinator, rep, {"state": state, "county": county, "year": year})
+        cluster_entries: list[dict] = []
+        for option in cl:
+            cluster_entries.extend(title_to_entries.get(option, []))
+        metadata = _merge_contest_metadata(cluster_entries) or {}
+        preferred_title = (
+            safe_get(metadata, "display_header")
+            or safe_get(metadata, "display_title")
+            or rep
+        )
+        metadata.setdefault("display_title", preferred_title)
+        metadata.setdefault("display_header", preferred_title)
+        metadata.setdefault("primary_title", safe_get(metadata, "primary_title") or rep)
         candidates.append(ContestRecord(
-            title=rep,
+            title=preferred_title,
             year=rep_year,
             jurisdiction=county,
             canonical_key=_base_canonical_key(rep),
             cluster_id=idx,
             source="cluster_rep",
             confidence=score,
-            session_id=session_id
+            session_id=session_id,
+            metadata=metadata
         ))
 
     if year:
         year_pref = [c for c in candidates if c.year == year]
         if year_pref:
             candidates = year_pref
+
+    if candidates:
+        candidates = _inject_bundle_records(candidates)
+        candidates = sorted(candidates, key=_contest_sort_key)
 
     # Detect webapp mode and disable pagination (show all in one page)
     is_webapp = bool((context or {}).get("webapp") or (context or {}).get("web_use_full_menu")) \
@@ -969,9 +1347,8 @@ def select_contest(
         return result
 
     if auto_when_confident and not force_interactive:
-        top_sorted = sorted(candidates, key=lambda r: -float(r.confidence or 0.0))
-        if top_sorted and (top_sorted[0].confidence or 0.0) >= auto_confidence_threshold:
-            result = [asdict(top_sorted[0])]
+        if candidates and (candidates[0].confidence or 0.0) >= auto_confidence_threshold:
+            result = [asdict(candidates[0])]
             if return_mode == "json":
                 return json.dumps(result, ensure_ascii=False)
             if return_mode == "titles":
@@ -979,23 +1356,64 @@ def select_contest(
             return result
 
     # Interactive path
-    candidates = sorted(
-        candidates,
-        key=lambda r: (-float(r.confidence or 0.0), len(_strip_years(r.title)), r.title.lower())
-    )
     titles = [c.title for c in candidates]
     structured_options = []
     for idx, c in enumerate(candidates):
         meta_parts = []
+        variant = safe_get(c.metadata, "variant_label")
+        scope_label = safe_get(c.metadata, "scope_label")
+        if variant:
+            meta_parts.append(str(variant))
+        elif scope_label:
+            meta_parts.append(str(scope_label))
+        detail_list = _extract_display_details(c.metadata)
+        if detail_list:
+            meta_parts.append(" | ".join(detail_list))
         if c.year:
             meta_parts.append(str(c.year))
         if c.confidence is not None:
             meta_parts.append(f"conf={c.confidence:.2f}")
+        bundle_size = None
+        if c.metadata:
+            bundle_size = safe_get(c.metadata, "bundle_size")
+        if bundle_size and (c.metadata or {}).get("bundle_mode") == "aggregate":
+            meta_parts.append(f"{int(bundle_size)} sections")
+        meta_text = ", ".join(meta_parts) if meta_parts else ""
+        option_meta = dict(c.metadata or {})
+        if c.confidence is not None and "confidence" not in option_meta:
+            option_meta["confidence"] = float(c.confidence)
+        if c.year is not None and "year" not in option_meta:
+            option_meta["year"] = c.year
+        option_meta.setdefault("bundle_mode", option_meta.get("bundle_mode"))
+        if bundle_size and "bundle_size" not in option_meta:
+            option_meta["bundle_size"] = bundle_size
         structured_options.append({
             "index": idx,
             "label": c.title,
-            "meta": ", ".join(meta_parts) if meta_parts else ""
+            "meta": meta_text,
+            "metadata": option_meta
         })
+
+    bundle_parent_by_key: dict[str, int] = {}
+    bundle_children_by_parent: dict[int, list[int]] = defaultdict(list)
+    for opt in structured_options:
+        meta = opt.get("metadata") or {}
+        bundle_key = meta.get("bundle_key")
+        if meta.get("bundle_mode") == "aggregate" and bundle_key:
+            bundle_parent_by_key[bundle_key] = opt["index"]
+    for opt in structured_options:
+        meta = opt.get("metadata") or {}
+        bundle_key = meta.get("bundle_key")
+        if meta.get("bundle_member") and bundle_key in bundle_parent_by_key:
+            parent_idx = bundle_parent_by_key[bundle_key]
+            meta["bundle_parent_index"] = parent_idx
+            bundle_children_by_parent[parent_idx].append(opt["index"])
+    for opt in structured_options:
+        meta = opt.get("metadata") or {}
+        if meta.get("bundle_mode") == "aggregate":
+            children = bundle_children_by_parent.get(opt["index"], [])
+            if children:
+                meta["bundle_member_indices"] = sorted(children)
 
     logger.info({
         "level": "INFO",
@@ -1035,6 +1453,9 @@ def select_contest(
         for idx in range(start, end):
             c = candidates[idx]
             meta = []
+            detail_list = _extract_display_details(c.metadata)
+            if detail_list:
+                meta.append(" | ".join(detail_list))
             if c.year:
                 meta.append(str(c.year))
             if c.confidence is not None:
@@ -1137,7 +1558,17 @@ def select_contest(
                         meta_parts.append(str(c.year))
                     if c.confidence is not None:
                         meta_parts.append(f"conf={c.confidence:.2f}")
-                    new_opts.append({"index": i, "label": c.title, "meta": ", ".join(meta_parts) if meta_parts else ""})
+                    refreshed_meta = dict(c.metadata or {})
+                    if c.confidence is not None and "confidence" not in refreshed_meta:
+                        refreshed_meta["confidence"] = float(c.confidence)
+                    if c.year is not None and "year" not in refreshed_meta:
+                        refreshed_meta["year"] = c.year
+                    new_opts.append({
+                        "index": i,
+                        "label": c.title,
+                        "meta": ", ".join(meta_parts) if meta_parts else "",
+                        "metadata": refreshed_meta
+                    })
                 logger.info({
                     "level": "INFO",
                     "type": "contest_options",

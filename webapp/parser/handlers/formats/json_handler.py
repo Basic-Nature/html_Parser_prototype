@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Set, Tuple, cast
 
 import orjson
@@ -20,6 +21,7 @@ from ...Context_Integration.Context_Library.constants import (
 from ...utils.contest_selector import (
     select_contest_auto_first,
 )
+from ...utils.json_export_loader import _ALL_COUNTIES_LABEL, load_json_export
 from ...utils.location_helpers import (
     attach_precinct_column,
     collect_location_headers,
@@ -74,6 +76,215 @@ def _build_contest_regex(keywords: Iterable[str] | None) -> re.Pattern:
 
 # Precompile regex once
 _CONTEST_RX: re.Pattern = _build_contest_regex(CONTEST_KEYWORDS)
+
+
+def _canonical_contest_key(title: str) -> str:
+    if not isinstance(title, str):
+        return ""
+    normalized = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+    return re.sub(r"\s+", " ", normalized)
+
+
+def _split_primary_title_for_grouping(title: str) -> tuple[str, str]:
+    """Split an office title into (office, variant/locality) parts."""
+    if not isinstance(title, str):
+        return "", ""
+    text = title.strip()
+    if not text:
+        return "", ""
+
+    # Prefer explicit separators first
+    for sep in (" - ", " – ", " — ", ":", " –", " —", "-", ","):
+        if sep in text:
+            head, tail = text.split(sep, 1)
+            return head.strip(" ,:-"), tail.strip(" ,:-")
+
+    # Heuristic: extract trailing district/circuit labels
+    match = re.search(r"(District\s+[\w\-()#]+.*)$", text, re.IGNORECASE)
+    if match and match.start() > 0:
+        office = text[:match.start()].strip(" ,:-")
+        variant = match.group(1).strip()
+        if office:
+            return office, variant
+
+    match = re.search(r"(Circuit\s+-?\s+.+)$", text, re.IGNORECASE)
+    if match and match.start() > 0:
+        office = text[:match.start()].strip(" ,:-")
+        variant = match.group(1).strip()
+        if office:
+            return office, variant
+
+    return text, ""
+
+
+def _format_county_preview(counties: Iterable[str], limit: int = 3, scope_hint: str | None = None) -> tuple[str, str]:
+    """Return (label, preview) for a counties list, truncated for readability."""
+    cleaned: List[str] = []
+    for county in counties or []:
+        if isinstance(county, str):
+            county_s = county.strip()
+            if county_s:
+                cleaned.append(county_s)
+    if not cleaned:
+        return "", ""
+    label = f"{len(cleaned)} county" if len(cleaned) == 1 else f"{len(cleaned)} counties"
+    normalized_scope = (scope_hint or "").strip().lower()
+
+    if normalized_scope == "statewide" or len(cleaned) >= 25:
+        preview = "Statewide" if normalized_scope == "statewide" else f"{cleaned[0]}, +{len(cleaned) - 1} more"
+        return label, preview
+
+    if len(cleaned) <= limit:
+        return label, ", ".join(cleaned)
+
+    preview_items = cleaned[:limit]
+    preview = ", ".join(preview_items)
+    remaining = len(cleaned) - limit
+    preview = f"{preview}, +{remaining} more"
+    return label, preview
+
+
+def _format_scope_label(scopes: Iterable[str]) -> str:
+    """Convert division scopes into a single human-readable label."""
+    cleaned: List[str] = []
+    seen: Set[str] = set()
+    for scope in scopes or []:
+        if not scope:
+            continue
+        scope_s = scope.replace("_", " ").strip().lower()
+        if not scope_s or scope_s == "unknown" or scope_s in seen:
+            continue
+        seen.add(scope_s)
+        if scope_s == "statewide":
+            cleaned.append("Statewide")
+        elif scope_s == "single-county":
+            cleaned.append("Single County")
+        else:
+            cleaned.append(scope_s.title())
+    return " | ".join(cleaned)
+
+
+def _collect_contest_groups(export) -> List[Dict[str, Any]]:
+    groups: Dict[str, Dict[str, Any]] = {}
+    for contest_id, coverage in (export.coverage or {}).items():
+        name = coverage.contest_name or str(contest_id)
+        key = _canonical_contest_key(name)
+        bucket = groups.setdefault(key, {
+            "title_samples": [],
+            "contest_ids": set(),
+            "division_scopes": set(),
+            "division_identifiers": set(),
+            "counties": set(),
+            "vote_for": set(),
+            "contest_types": set(),
+            "ballot_items": [],
+            "questions": set(),
+            "raw_titles": set(),
+        })
+        bucket["title_samples"].append(name)
+        bucket["contest_ids"].add(str(contest_id))
+        if getattr(coverage, "division_scope", None):
+            bucket["division_scopes"].add(coverage.division_scope)
+        if getattr(coverage, "division_identifier", None):
+            bucket["division_identifiers"].add(coverage.division_identifier)
+        bucket["counties"].update(getattr(coverage, "counties_in_scope", []) or [])
+        if getattr(coverage, "vote_for", None) is not None:
+            bucket["vote_for"].add(coverage.vote_for)
+        if getattr(coverage, "contest_type", None):
+            bucket["contest_types"].add(coverage.contest_type)
+        if getattr(coverage, "contest_question", None):
+            bucket["questions"].add(coverage.contest_question)
+        if getattr(coverage, "contest_name_raw", None):
+            bucket["raw_titles"].add(coverage.contest_name_raw)
+        ballot_meta = {
+            "contest_id": str(contest_id),
+            "vote_for": coverage.vote_for,
+            "contest_type": coverage.contest_type,
+            "division_scope": coverage.division_scope,
+            "division_identifier": coverage.division_identifier,
+            "counties_in_scope": list(getattr(coverage, "counties_in_scope", []) or []),
+        }
+        bucket["ballot_items"].append(ballot_meta)
+
+    group_list: List[Dict[str, Any]] = []
+    for key, data in groups.items():
+        title_counts = Counter(data["title_samples"] or ["Election Results"])
+        primary_title = title_counts.most_common(1)[0][0]
+        contest_ids = sorted(data["contest_ids"])
+        division_scopes = sorted(scope for scope in data["division_scopes"] if scope and scope != "unknown")
+        metadata = {
+            "contest_ids": contest_ids,
+            "primary_title": primary_title,
+            "counties": sorted(data["counties"]),
+            "division_scopes": division_scopes,
+            "division_identifiers": sorted(data["division_identifiers"]),
+            "variants": len(contest_ids),
+            "vote_for": sorted(data["vote_for"]),
+            "contest_types": sorted(data["contest_types"]),
+            "ballot_items": data["ballot_items"],
+        }
+        questions = sorted(q for q in data["questions"] if q)
+        if questions:
+            metadata["questions"] = questions
+            if "question" not in metadata and questions:
+                metadata["question"] = questions[0]
+        raw_titles = sorted(t for t in data["raw_titles"] if t)
+        if raw_titles:
+            metadata["raw_titles"] = raw_titles
+        summary_parts: List[str] = []
+        if metadata["variants"] > 1:
+            summary_parts.append(f"{metadata['variants']} variants")
+        if metadata["counties"]:
+            summary_parts.append(f"{len(metadata['counties'])} counties")
+        if division_scopes:
+            summary_parts.append("/".join(division_scopes))
+
+        office_title, variant_label = _split_primary_title_for_grouping(primary_title)
+        scope_label = _format_scope_label(division_scopes)
+        county_label, county_preview = _format_county_preview(metadata["counties"], scope_hint=scope_label)
+
+        metadata["office_title"] = office_title or primary_title
+        metadata["variant_label"] = variant_label
+        if scope_label:
+            metadata["scope_label"] = scope_label
+        if county_label:
+            metadata["county_label"] = county_label
+        if county_preview:
+            metadata["county_preview"] = county_preview
+
+        detail_segments: List[str] = []
+        if county_label:
+            detail_segments.append(county_label + (f": {county_preview}" if county_preview else ""))
+        if scope_label and scope_label.lower() not in (variant_label or "").lower():
+            detail_segments.append(scope_label)
+        if metadata["variants"] > 1:
+            detail_segments.append(f"{metadata['variants']} contest ids")
+
+        base_office = office_title or primary_title
+        header_label = base_office
+        if variant_label:
+            header_label = f"{base_office} – {variant_label}"
+        elif scope_label and scope_label.lower() != base_office.lower():
+            header_label = f"{base_office} – {scope_label}"
+
+        display_title = header_label
+        if detail_segments:
+            display_title = f"{header_label} [{' | '.join(detail_segments)}]"
+
+        metadata["summary"] = summary_parts
+        metadata["display_title"] = display_title
+        metadata["display_header"] = header_label
+        metadata["display_details"] = detail_segments
+        group_list.append({
+            "key": key,
+            "primary_title": primary_title,
+            "display_title": display_title,
+            "contest_ids": contest_ids,
+            "metadata": metadata,
+        })
+
+    group_list.sort(key=lambda g: g["primary_title"].lower())
+    return group_list
 
 def find_key_by_keywords(obj: Dict[str, Any] | Any, keywords: Iterable[str]) -> Optional[str]:
     """Find the first key in obj that matches any keyword (case-insensitive, partial match allowed)."""
@@ -144,6 +355,436 @@ def _derive_location_metadata(payload: Dict[str, Any]) -> tuple[str, str]:
 
     return format_state_label(state_candidate), format_county_label(county_candidate, state_candidate)
 
+
+def _fastpath_county_results(
+    json_path: str,
+    payload: Dict[str, Any],
+    session_id: Optional[str],
+    coordinator: Any,
+) -> Optional[Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]]:
+    if not isinstance(payload, dict) or not payload.get("localResults"):
+        return None
+
+    try:
+        export = load_json_export(Path(json_path))
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.warning({
+            "level": "WARNING",
+            "type": "handler",
+            "message": f"Fast-path json_export_loader failed: {exc}",
+            "session_id": session_id,
+        })
+        return None
+
+    if not export.county_rows and not export.statewide_rows:
+        return None
+
+    fname = os.path.basename(json_path).lower()
+    fallback_state = ""
+    fallback_county = ""
+    for part in fname.replace(".json", "").split("_"):
+        if "county" in part and not fallback_county:
+            fallback_county = part.replace("county", "").strip()
+        if len(part) == 2 and part.isalpha() and not fallback_state:
+            fallback_state = part.upper()
+
+    derived_state, derived_county = _derive_location_metadata(payload)
+    state = derived_state or format_state_label(fallback_state)
+    county = derived_county or format_county_label(fallback_county, state)
+    state = state or "Unknown"
+    county = county or "Unknown"
+
+    m = re.search(r"(19|20)\d{2}", fname)
+    year = int(m.group(0)) if m else None
+
+    contest_groups = _collect_contest_groups(export)
+    if not contest_groups:
+        return None
+
+    selected_group = contest_groups[0]
+    selected_metadata: Dict[str, Any] = dict(selected_group["metadata"])
+    selected_ids: Set[str] = set(selected_group["contest_ids"])
+
+    if len(contest_groups) > 1:
+        selector_entries = []
+        for group in contest_groups:
+            selector_entries.append({
+                "title": group["display_title"],
+                "primary_title": group["primary_title"],
+                "contest_ids": group["contest_ids"],
+                "group_metadata": group["metadata"],
+                "summary": group["metadata"].get("summary"),
+            })
+        selection_context = {
+            "selector_data": {"contests": selector_entries},
+            "handler": "json_handler",
+            "input_file": os.path.basename(json_path),
+            "state": state,
+            "county": county,
+            "year": year,
+            "webapp": True,
+        }
+        choice = select_contest_auto_first(
+            coordinator=coordinator,
+            context=selection_context,
+            session_id=session_id,
+            allow_multiple=False,
+            force_interactive=True,
+        )
+        if not choice:
+            logger.info({
+                "level": "INFO",
+                "type": "handler",
+                "message": "JSON contest selection cancelled; falling back to standard pipeline.",
+                "session_id": session_id,
+            })
+            return None
+        picked = choice[0]
+        choice_meta: Dict[str, Any] = dict(picked.get("metadata") or {})
+        selected_ids = set(choice_meta.get("contest_ids") or [])
+        if not selected_ids:
+            picked_title = picked.get("title")
+            for group in contest_groups:
+                if group["display_title"] == picked_title:
+                    selected_ids = set(group["contest_ids"])
+                    choice_meta.setdefault("contest_ids", group["contest_ids"])
+                    choice_meta.setdefault("primary_title", group["primary_title"])
+                    choice_meta.setdefault("display_title", group["display_title"])
+                    choice_meta.setdefault("summary", group["metadata"].get("summary"))
+                    break
+        for group in contest_groups:
+            if set(group["contest_ids"]) == selected_ids:
+                selected_group = group
+                break
+        selected_metadata = {**selected_group["metadata"], **choice_meta}
+        if "contest_ids" not in selected_metadata:
+            selected_metadata["contest_ids"] = selected_group["contest_ids"]
+
+    if not selected_ids:
+        selected_ids = set(selected_group["contest_ids"])
+
+    contest_name = selected_metadata.get("primary_title") or selected_group["primary_title"] or "Election Results"
+
+    headers = [
+        "Division",
+        "Ballot",
+        "Candidate",
+        "Party",
+        "Votes",
+    ]
+
+    selected_county_rows = [row for row in export.county_rows if row.contest_id in selected_ids]
+    selected_statewide_rows = [row for row in export.statewide_rows if row.contest_id in selected_ids]
+
+    if not selected_statewide_rows and not any(row.county == _ALL_COUNTIES_LABEL for row in export.county_rows):
+        all_ids = {row.contest_id for row in export.statewide_rows}
+        if all_ids and selected_ids != all_ids:
+            logger.info({
+                "level": "INFO",
+                "type": "handler",
+                "message": "Selected contest lacks statewide totals; retrying with full statewide grouping.",
+                "session_id": session_id,
+            })
+            selected_ids = all_ids
+            selected_county_rows = [row for row in export.county_rows if row.contest_id in selected_ids]
+            selected_statewide_rows = list(export.statewide_rows)
+            for group in contest_groups:
+                if set(group["contest_ids"]) == selected_ids:
+                    selected_group = group
+                    selected_metadata = dict(group["metadata"])
+                    break
+
+    if not selected_county_rows and not selected_statewide_rows:
+        logger.warning({
+            "level": "WARNING",
+            "type": "handler",
+            "message": "Selected contest did not yield any result rows; aborting fast-path.",
+            "session_id": session_id,
+        })
+        return None
+
+    bundle_audit: Optional[Dict[str, Any]] = None
+    bundle_metadata: Optional[Dict[str, Any]] = None
+    bundle_summary_text: Optional[str] = None
+    if selected_metadata.get("bundle_mode") == "aggregate":
+        row_counts = Counter()
+        for record in selected_county_rows + selected_statewide_rows:
+            if getattr(record, "contest_id", None) is not None:
+                row_counts[str(record.contest_id)] += 1
+
+        raw_members = selected_metadata.get("bundle_members") or []
+        member_entries: List[Dict[str, Any]] = []
+        aggregated_ids: Set[str] = set()
+        for member in raw_members:
+            if not isinstance(member, dict):
+                continue
+            meta = dict(member.get("metadata") or {})
+            member_ids = meta.get("contest_ids") or meta.get("bundle_contest_ids") or []
+            member_ids_list = [str(cid) for cid in member_ids if cid is not None]
+            if member_ids_list:
+                aggregated_ids.update(member_ids_list)
+            entry = {
+                "title": member.get("title"),
+                "contest_ids": member_ids_list,
+                "variant_label": meta.get("variant_label"),
+                "scope_label": meta.get("scope_label"),
+                "county_label": meta.get("county_label"),
+                "county_preview": meta.get("county_preview"),
+                "division_scopes": list(meta.get("division_scopes") or []),
+                "vote_for": meta.get("vote_for"),
+            }
+            entry["row_count"] = int(sum(row_counts.get(cid, 0) for cid in member_ids_list)) if member_ids_list else 0
+            member_entries.append(entry)
+
+        if not member_entries:
+            fallback_ids = aggregated_ids or {str(cid) for cid in selected_ids}
+            fallback_row_count = int(sum(row_counts.get(cid, 0) for cid in fallback_ids)) if fallback_ids else 0
+            member_entries.append({
+                "title": contest_name,
+                "contest_ids": sorted(fallback_ids),
+                "row_count": fallback_row_count,
+            })
+            aggregated_ids.update(fallback_ids)
+
+        bundle_size = int(selected_metadata.get("bundle_size") or len(member_entries) or len(selected_ids))
+        summary_field = selected_metadata.get("summary")
+        if isinstance(summary_field, (list, tuple)):
+            summary_text = " | ".join(str(item) for item in summary_field if item)
+        elif isinstance(summary_field, str):
+            summary_text = summary_field
+        else:
+            summary_text = ""
+        display_details = selected_metadata.get("display_details")
+        if isinstance(display_details, (list, tuple)):
+            detail_text = " | ".join(str(item) for item in display_details if item)
+        elif isinstance(display_details, str):
+            detail_text = display_details
+        else:
+            detail_text = ""
+        bundle_summary_text = selected_metadata.get("display_title") or selected_metadata.get("primary_title") or contest_name
+        bundle_audit = {
+            "bundle_key": selected_metadata.get("bundle_key"),
+            "bundle_mode": "aggregate",
+            "bundle_size": bundle_size,
+            "contest_ids": sorted(aggregated_ids or {str(cid) for cid in selected_ids}),
+            "summary": summary_text,
+            "details": detail_text,
+            "display_title": bundle_summary_text,
+            "members": member_entries,
+            "row_count_total": int(sum(entry.get("row_count", 0) for entry in member_entries)),
+        }
+        bundle_metadata = {
+            "bundle_key": selected_metadata.get("bundle_key"),
+            "bundle_mode": "aggregate",
+            "bundle_size": bundle_size,
+            "contest_ids": sorted(aggregated_ids or {str(cid) for cid in selected_ids}),
+            "summary": summary_text,
+            "display_title": bundle_summary_text,
+            "details": detail_text,
+            "members": member_entries,
+        }
+        if raw_members:
+            bundle_metadata["raw_members_count"] = len(raw_members)
+        selected_metadata["bundle_audit"] = bundle_audit
+
+    rows: List[Dict[str, Any]] = []
+    candidate_header_map: DefaultDict[str, Set[str]] = defaultdict(set)
+    candidate_id_to_label: Dict[str, str] = {}
+    candidate_metadata_map: Dict[str, Dict[str, Any]] = {}
+    candidate_label_map: Dict[str, str] = {}
+
+    for record in selected_county_rows + selected_statewide_rows:
+        rows.append({
+            "Division": record.county,
+            "Ballot": record.group_display,
+            "Candidate": record.candidate_name,
+            "Party": record.party_full,
+            "Votes": record.vote_count,
+        })
+        candidate_header_map[record.candidate_name].add(record.group_display)
+        if record.candidate_id:
+            candidate_id_to_label.setdefault(record.candidate_id, record.candidate_name)
+        candidate_key = record.candidate_id or record.candidate_name.lower()
+        if candidate_key not in candidate_metadata_map:
+            candidate_metadata_map[candidate_key] = {
+                "id": record.candidate_id,
+                "raw_name": record.candidate_raw,
+                "display_label": record.candidate_name,
+                "party": record.party_full,
+            }
+        candidate_label_map.setdefault(record.candidate_raw, record.candidate_name)
+
+    candidate_metadata = list(candidate_metadata_map.values())
+    candidate_header_map_serializable = {
+        label: sorted({m for m in methods if m})
+        for label, methods in candidate_header_map.items()
+    }
+
+    location_headers = ["Division"]
+    location_diagnostics = {
+        "detected_location_headers": location_headers,
+        "precinct_attached": False,
+    }
+
+    domain = safe_slug(os.path.basename(json_path))
+
+    selected_coverage = {
+        cid: export.coverage[cid]
+        for cid in selected_ids
+        if cid in export.coverage
+    }
+    contest_question = selected_metadata.get("question")
+    if not contest_question:
+        for coverage_entry in selected_coverage.values():
+            if getattr(coverage_entry, "contest_question", None):
+                contest_question = coverage_entry.contest_question
+                break
+    contest_name_raw = selected_metadata.get("raw_titles")
+    if isinstance(contest_name_raw, list):
+        contest_name_raw = contest_name_raw[0] if contest_name_raw else None
+    if not contest_name_raw:
+        for coverage_entry in selected_coverage.values():
+            if getattr(coverage_entry, "contest_name_raw", None):
+                contest_name_raw = coverage_entry.contest_name_raw
+                break
+    coverage_serializable = {
+        cid: data.__dict__
+        for cid, data in selected_coverage.items()
+    }
+    total_counties = len(selected_metadata.get("counties", [])) or export.total_counties
+
+    context_snapshot = dict(export.context_snapshot or {})
+    context_snapshot["selected_contest_ids"] = sorted(selected_ids)
+    context_snapshot["selected_contest_title"] = contest_name
+    context_snapshot["selected_contest_summary"] = selected_metadata
+    if contest_question:
+        context_snapshot["selected_contest_question"] = contest_question
+    if contest_name_raw and contest_name_raw != contest_name:
+        context_snapshot["selected_contest_name_raw"] = contest_name_raw
+    if bundle_metadata:
+        context_snapshot["bundle_mode"] = "aggregate"
+        context_snapshot["bundle_metadata"] = bundle_metadata
+        if bundle_audit:
+            context_snapshot["bundle_audit"] = bundle_audit
+
+    context = {
+        "contest": contest_name,
+        "state": state,
+        "county": county,
+        "year": year,
+        "session_id": session_id,
+        "handler": "json_handler",
+        "contest_slug": safe_slug(contest_name, 80),
+        "source_slug": domain,
+        "candidate_label_map": candidate_label_map,
+        "candidate_header_map": candidate_header_map_serializable,
+        "candidate_metadata": candidate_metadata,
+        "candidate_id_to_label": candidate_id_to_label,
+        "location_headers": location_headers,
+        "precinct_attached": False,
+        "location_diagnostics": location_diagnostics,
+        "coverage": coverage_serializable,
+        "context_snapshot": context_snapshot,
+        "selected_contest_ids": sorted(selected_ids),
+        "selected_contest_summary": selected_metadata,
+        "contest_question": contest_question,
+        "contest_name_raw": contest_name_raw,
+    }
+    if bundle_metadata:
+        context["bundle_mode"] = "aggregate"
+        context["bundle_metadata"] = bundle_metadata
+        context["bundle_summary"] = bundle_summary_text
+        context["bundle_key"] = bundle_metadata.get("bundle_key")
+        context["bundle_size"] = bundle_metadata.get("bundle_size")
+        if bundle_audit:
+            context["bundle_audit"] = bundle_audit
+
+
+    headers_final, data_final, _entity_info = build_table_noninteractive(
+        domain=domain,
+        headers=headers,
+        data=rows,
+        coordinator=coordinator,
+        context=context,
+        pivot_to_wide=False,
+        debug=False,
+    )
+
+    export_context = {
+        **{k: v for k, v in context.items() if k != "coordinator"},
+        "handler": "json_handler",
+        "input_file": os.path.basename(json_path),
+        "race": contest_name,
+        "location_headers": location_headers,
+        "precinct_attached": False,
+    }
+    if bundle_metadata:
+        export_context.setdefault("bundle_mode", "aggregate")
+        export_context.setdefault("bundle_metadata", bundle_metadata)
+        export_context.setdefault("bundle_summary", bundle_summary_text)
+        if bundle_audit:
+            export_context.setdefault("bundle_audit", bundle_audit)
+
+
+    finalized = finalize_election_output(
+        headers=headers_final,
+        data=data_final,
+        coordinator=coordinator,
+        contest=contest_name,
+        state=state,
+        county=county,
+        context=export_context,
+        enable_user_feedback=False,
+        session_id=session_id,
+    )
+
+    metadata = {
+        "race": contest_name,
+        "input_file": os.path.basename(json_path),
+        "output_file": os.path.basename(finalized.get("csv_path", "")),
+        "headers": headers_final,
+        "row_count": len(data_final),
+        "handler": "json_handler",
+        "state": state,
+        "county": county,
+        "year": year,
+        "csv_path": finalized.get("csv_path"),
+        "metadata_path": finalized.get("metadata_path"),
+        "candidate_label_map": candidate_label_map,
+        "candidate_header_map": candidate_header_map_serializable,
+        "candidate_metadata": candidate_metadata,
+        "candidate_id_to_label": candidate_id_to_label,
+        "location_headers_detected": location_headers,
+        "precinct_attached": False,
+        "location_diagnostics": location_diagnostics,
+        "coverage": coverage_serializable,
+        "total_counties": total_counties,
+        "context_snapshot": context_snapshot,
+        "selected_contest_ids": sorted(selected_ids),
+        "selected_contest_summary": selected_metadata,
+        "contest_question": contest_question,
+        "contest_name_raw": contest_name_raw,
+    }
+    if bundle_metadata:
+        metadata["bundle_mode"] = "aggregate"
+        metadata["bundle_metadata"] = bundle_metadata
+        metadata["bundle_summary"] = bundle_summary_text
+        metadata["bundle_size"] = bundle_metadata.get("bundle_size")
+        if bundle_audit:
+            metadata["bundle_audit"] = bundle_audit
+
+    logger.info({
+        "level": "INFO",
+        "type": "output",
+        "message": (
+            "✅ Completed via json_export_loader fast-path! "
+            f"Output CSV: {finalized.get('csv_path')}, Metadata: {finalized.get('metadata_path')}"
+        ),
+        "session_id": session_id,
+    })
+
+    return headers_final, data_final, contest_name, metadata
+
 def parse_json_election_results(
     json_path: str,
     session_id: Optional[str] = None,
@@ -151,6 +792,10 @@ def parse_json_election_results(
 ) -> Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]:
     with open(json_path, "rb") as f:
         data = orjson.loads(f.read())
+
+    fastpath = _fastpath_county_results(json_path, data, session_id, coordinator)
+    if fastpath:
+        return fastpath
 
     # --- Resolve where "ballot items/contests" live ---
     results_obj = data.get("results")

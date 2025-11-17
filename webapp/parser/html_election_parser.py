@@ -1211,7 +1211,9 @@ def orchestrate_url(
                         stream_results=stream_results,
                         mark_url_processed=mark_url_processed,
                         output_dir=OUTPUT_DIR,
-                        session_id=session_id
+                        session_id=session_id,
+                        handler=handler,
+                        initial_result=(headers, data, contest, metadata)
                     )
                 except Exception as e:
                     msg = f"[Batch Mode] Coordinator batch handling failed: {e} (Session: {session_id})"

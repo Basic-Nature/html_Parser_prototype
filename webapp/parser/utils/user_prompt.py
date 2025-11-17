@@ -151,6 +151,8 @@ class UserPrompt(ContextManager):
         self.file_path = file_path
         self._pending_delete: Dict[str, float] = {}  # session_id -> delete_at timestamp
         self._cleanup_lock = threading.Lock()
+        self._queued_responses: List[Dict[str, Any]] = []
+        self._queue_lock = threading.Lock()
         self._cleanup_thread_started = False
         self._start_cleanup_thread()      
 
@@ -174,6 +176,56 @@ class UserPrompt(ContextManager):
                 time.sleep(5)
         t = threading.Thread(target=cleanup_loop, daemon=True)
         t.start()
+
+    def queue_response(
+        self,
+        session_id: Optional[str],
+        response: Any,
+        matcher: Optional[Callable[[Any], bool]] = None,
+        consume: bool = True,
+    ) -> None:
+        """Queue a response that will be used the next time the session prompts."""
+        if not session_id:
+            return
+        entry = {
+            "session_id": session_id,
+            "response": response,
+            "matcher": matcher,
+            "consume": consume,
+        }
+        with self._queue_lock:
+            self._queued_responses.append(entry)
+
+    def clear_queued_responses(self, session_id: Optional[str] = None) -> None:
+        """Clear queued responses, optionally filtered by session."""
+        with self._queue_lock:
+            if session_id is None:
+                self._queued_responses.clear()
+            else:
+                self._queued_responses = [
+                    entry for entry in self._queued_responses if entry.get("session_id") != session_id
+                ]
+
+    def _pop_queued_response(self, session_id: Optional[str], context: Any) -> Optional[Any]:
+        if not session_id:
+            return None
+        with self._queue_lock:
+            for idx, entry in enumerate(self._queued_responses):
+                if entry.get("session_id") != session_id:
+                    continue
+                matcher = entry.get("matcher")
+                if matcher:
+                    try:
+                        if not matcher(context):
+                            continue
+                    except Exception:
+                        # Matcher should not break prompt flow
+                        continue
+                response = entry.get("response")
+                if entry.get("consume", True):
+                    self._queued_responses.pop(idx)
+                return response
+        return None
 
     def create_prompt_session(self, session_id: str, context: Optional[dict] = None) -> PromptSession:
         with self._cleanup_lock:
@@ -440,7 +492,6 @@ class UserPrompt(ContextManager):
         Returns the validated input or raises PromptCancelled if cancelled.
         """
         from .logger_singleton import logger
-        print("Creating prompt session for", session_id)
         self.cleanup_sessions()
         def input_with_timeout(prompt: str, timeout: float) -> Optional[str]:
             result = [None]
@@ -468,7 +519,11 @@ class UserPrompt(ContextManager):
                 prompt_str += " (type 'cancel' to abort)"
             prompt_str += " "
             try:
-                if self.mode == "webapp" and self.socketio_emit_func and session_id:
+                queued = self._pop_queued_response(session_id, context)
+                if queued is not None:
+                    response = queued
+                    logger.info(f"[Prompt Queue] Using queued response for session {session_id}: {response}")
+                elif self.mode == "webapp" and self.socketio_emit_func and session_id:
                     # Emit prompt payload to frontend
                     # Ensure the prompt session exists before notifying the frontend to avoid
                     # race conditions where the response arrives before the session is registered.
@@ -480,10 +535,7 @@ class UserPrompt(ContextManager):
                         "context": context
                     }
                     self.socketio_emit_func(orjson.dumps(payload).decode("utf-8"))
-                    # Wait for frontend response
-                    print("TRACE: Waiting for frontend response for session", session_id)
                     response = prompt_session.wait_for_response(timeout)
-                    print("TRACE: Received response from frontend:", response)
                     if response is None:
                         self._emit_prompt(
                             f"Prompt timed out or cancelled. Using default: {default}",
@@ -505,6 +557,8 @@ class UserPrompt(ContextManager):
             except EOFError:
                 logger.warning("\n[Prompt] No input available (EOF). Exiting prompt.")
                 return default
+            if isinstance(response, PromptCancelled):
+                raise response
             if response is None:
                 if timeout:
                     if on_error:
@@ -514,6 +568,8 @@ class UserPrompt(ContextManager):
                     self._log_to_file(prompt_str + " [Timed out]", context)
                     return default
                 continue
+            if not isinstance(response, str):
+                response = str(response)
             if allow_cancel and safe_lower(safe_strip(response)) == "cancel":
                 if log_func:
                     log_func(f"[PROMPT] User cancelled at {datetime.datetime.now()}")
@@ -571,6 +627,36 @@ class UserPrompt(ContextManager):
         if allow_cancel:
             prompt_str += " (type 'cancel' to abort)"
         prompt_str += ": "
+        queued = self._pop_queued_response(session_id, context)
+        if queued is not None:
+            if isinstance(queued, PromptCancelled):
+                raise queued
+            if isinstance(queued, bool):
+                resp_bool = queued
+                if log_func:
+                    log_func(f"[PROMPT] Queued yes/no: {'YES' if resp_bool else 'NO'} at {datetime.datetime.now()}")
+                self._log_to_file(prompt_str + (" [YES]" if resp_bool else " [NO]"), context)
+                return resp_bool
+            resp_str = str(queued) if queued is not None else ""
+            if not resp_str and default is not None:
+                resp_str = default
+            resp = safe_lower(safe_strip(resp_str))
+            if allow_cancel and resp == "cancel":
+                if log_func:
+                    log_func(f"[PROMPT] Queued cancellation at {datetime.datetime.now()}")
+                self._log_to_file(prompt_str + " [Queued cancel]", context)
+                raise PromptCancelled("User cancelled the prompt.")
+            if resp in ("y", "yes", "true", "t", "1"):
+                if log_func:
+                    log_func(f"[PROMPT] Queued yes at {datetime.datetime.now()}")
+                self._log_to_file(prompt_str + " [YES]", context)
+                return True
+            if resp in ("n", "no", "false", "f", "0"):
+                if log_func:
+                    log_func(f"[PROMPT] Queued no at {datetime.datetime.now()}")
+                self._log_to_file(prompt_str + " [NO]", context)
+                return False
+            logger.warning("[Prompt Queue] Invalid queued yes/no response; falling back to interactive prompt.")
         while True:
             if self.mode == "webapp" and session_id:
                 resp = self.prompt_input(prompt_str, session_id=session_id, timeout=timeout, default=default, context=context)

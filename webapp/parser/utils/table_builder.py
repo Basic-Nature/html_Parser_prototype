@@ -668,6 +668,14 @@ def _drop_title_noise_rows(headers: list[str], rows: list[dict], *, context: dic
         row_noise = build_camelot_row_filter_for_context(context)
     except Exception:
         row_noise = None
+    safe_noise_headers = {
+        _norm_header("Votes"),
+        _norm_header("Ballot"),
+        _norm_header("Ballot Type"),
+        _norm_header("Total Votes"),
+        _norm_header("Grand Total"),
+    }
+
     for r in rows or []:
         try:
             if not isinstance(r, dict):
@@ -694,7 +702,9 @@ def _drop_title_noise_rows(headers: list[str], rows: list[dict], *, context: dic
             # Any cell match to boilerplate/title patterns
             is_noise = False
             matched_cat = None
-            for v in r.values():
+            for key, v in r.items():
+                if _norm_header(key) in safe_noise_headers:
+                    continue
                 s = str(v or "").strip()
                 if not s:
                     continue

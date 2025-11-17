@@ -167,6 +167,10 @@ FAST_MODE = os.environ.get("FAST_MODE", "false").lower() == "true"
 FLUSH_CACHE = os.environ.get("FLUSH_CACHE", "false").lower() == "true"
 CACHE_EXPIRE_DAYS = os.environ.get("CACHE_EXPIRE_DAYS")
 EXPORT_AUDIT_LOG = os.environ.get("EXPORT_AUDIT_LOG")
+try:
+    BATCH_MAX_WORKERS = max(1, int(os.environ.get("BATCH_MAX_WORKERS", "2")))
+except (TypeError, ValueError):
+    BATCH_MAX_WORKERS = 2
 REST_API = os.environ.get("REST_API", "false").lower() == "true"
 SELF_HEAL = os.environ.get("SELF_HEAL", "false").lower() == "true"
 MAX_RETRIES = os.environ.get("MAX_RETRIES")

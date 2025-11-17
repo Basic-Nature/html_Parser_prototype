@@ -373,8 +373,18 @@ def finalize_election_output(
     parts_for_name.append(ct_slug or "contest")
     parts_for_name.append(ts)
     base_name = "__".join(parts_for_name)
-    csv_path = os.path.join(out_dir, f"{base_name}.csv")
-    meta_path = os.path.join(out_dir, f"{base_name}.metadata.json")
+    bundle_metadata_context = context.get("bundle_metadata")
+    bundle_mode = context.get("bundle_mode")
+    if not bundle_mode and isinstance(bundle_metadata_context, dict):
+        bundle_mode = bundle_metadata_context.get("bundle_mode")
+    if bundle_mode == "aggregate":
+        bundle_dir = os.path.join(out_dir, base_name)
+        _ensure_dir(bundle_dir)
+        csv_path = os.path.join(bundle_dir, "results.csv")
+        meta_path = os.path.join(bundle_dir, "results.metadata.json")
+    else:
+        csv_path = os.path.join(out_dir, f"{base_name}.csv")
+        meta_path = os.path.join(out_dir, f"{base_name}.metadata.json")
 
     # Establish structure hash early (stable NDJSON filename)
     context["structure_hash"] = context.get("structure_hash") or _compute_structure_hash(headers, data)
@@ -533,6 +543,7 @@ def finalize_election_output(
         "row_count": len(safe_rows),
         "headers": headers_final,
         "csv_path": csv_path,
+        "output_dir": os.path.dirname(csv_path),
         "context": context,
         "user_feedback_enabled": bool(enable_user_feedback),
         "hierarchical_header_rows": context.get("hierarchical_header_rows"),
@@ -541,6 +552,21 @@ def finalize_election_output(
         "rawjson_enrichment_slim": context.get("rawjson_enrichment_slim"),
         "structure_hash": context.get("structure_hash"),
     }
+    if bundle_mode == "aggregate":
+        meta["bundle_mode"] = "aggregate"
+        if not isinstance(bundle_metadata_context, dict):
+            bundle_metadata_context = context.get("bundle_metadata") if isinstance(context.get("bundle_metadata"), dict) else {}
+        meta["bundle_size"] = context.get("bundle_size") or (
+            bundle_metadata_context.get("bundle_size") if isinstance(bundle_metadata_context, dict) else None
+        )
+        if context.get("bundle_key"):
+            meta["bundle_key"] = context.get("bundle_key")
+        if context.get("bundle_metadata"):
+            meta["bundle_metadata"] = context.get("bundle_metadata")
+        if context.get("bundle_audit"):
+            meta["bundle_audit"] = context.get("bundle_audit")
+        if context.get("bundle_summary"):
+            meta["bundle_summary"] = context.get("bundle_summary")
     try:
         with open(meta_path, "wb") as f:
             f.write(orjson.dumps(meta, option=orjson.OPT_INDENT_2))
@@ -557,7 +583,10 @@ def finalize_election_output(
     try:
         if context.get("generate_xlsx", True):
             from .xlsx_exporter import export_candidate_group_pivot_xlsx
-            xlsx_path = os.path.join(os.path.dirname(csv_path), base_name + ".xlsx")
+            if bundle_mode == "aggregate":
+                xlsx_path = os.path.join(os.path.dirname(csv_path), "results.xlsx")
+            else:
+                xlsx_path = os.path.join(os.path.dirname(csv_path), base_name + ".xlsx")
             export_candidate_group_pivot_xlsx(
                 flat_headers=headers_final,
                 rows=safe_rows,

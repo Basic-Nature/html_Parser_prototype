@@ -25,7 +25,8 @@ import orjson
 from rapidfuzz import fuzz, process
 from sklearn.preprocessing import LabelEncoder
 
-from ..config import CONTEXT_LIBRARY_PATH, LOG_DIR, PROJECT_ROOT
+from ..config import BATCH_MAX_WORKERS, CONTEXT_LIBRARY_PATH, LOG_DIR, PROJECT_ROOT
+from ..handlers.batch_handler import BatchProcessor
 from ..services.election_data_services import ElectionDataService
 from ..utils.browser_utils import (
     safe_click,
@@ -841,6 +842,76 @@ class ContextCoordinator(object):
         except Exception as e:
             logger.error(f"[pattern_kb property] Fallback load failed: {e}")
             return []
+
+    # --- Batch orchestration ---
+
+    def handle_batch(
+        self,
+        *,
+        page: Any,
+        context: Optional[dict],
+        target_url: str,
+        processed_info: Any,
+        ai_analyze_results: Callable[[List[str], List[Dict[str, Any]], str, Dict[str, Any]], None],
+        stream_results: Callable[[List[str], List[Dict[str, Any]], str, Dict[str, Any]], None],
+        mark_url_processed: Callable[..., None],
+        output_dir: str,
+        session_id: Optional[str],
+        handler: Any,
+        initial_result: Optional[Tuple[List[str], List[Dict[str, Any]], str, Dict[str, Any]]] = None,
+    ) -> None:
+        """
+        Entry point for batch execution when multiple contests are selected.
+
+        Parameters mirror the HTML orchestrator so the coordinator can invoke
+        downstream post-processing hooks (AI analysis, streaming, output tracking).
+        """
+        selected_races: List[Dict[str, Any]] = []
+        if isinstance(context, dict):
+            selected_races_raw = context.get("selected_races") or []
+            if isinstance(selected_races_raw, list):
+                selected_races = [race for race in selected_races_raw if race]
+
+        if not selected_races and not initial_result:
+            logger.warning({
+                "level": "WARNING",
+                "type": "batch",
+                "message": "Batch mode requested but no selected races or initial result provided.",
+                "session_id": session_id,
+                "url": target_url,
+            })
+            return
+
+        if handler is None or not hasattr(handler, "parse"):
+            raise ValueError("Batch mode requires a handler with a callable 'parse' method.")
+
+        try:
+            processor = BatchProcessor(
+                coordinator=self,
+                handler=handler,
+                page=page,
+                base_context=context,
+                selected_races=selected_races,
+                initial_result=initial_result,
+                session_id=session_id,
+                target_url=target_url,
+                output_dir=output_dir,
+                processed_info=processed_info,
+                ai_analyze_results=ai_analyze_results,
+                stream_results=stream_results,
+                mark_url_processed=mark_url_processed,
+                max_workers=max(1, int(BATCH_MAX_WORKERS)),
+            )
+            processor.run()
+        except Exception as exc:
+            logger.error({
+                "level": "ERROR",
+                "type": "batch",
+                "message": f"[Batch] Execution failed: {exc}",
+                "session_id": session_id,
+                "url": target_url,
+            }, exc_info=True)
+            raise
 
     def append_to_context_library(self, organized, path=None, merge_lists=True, deduplicate=True) -> bool:
         """

@@ -1857,6 +1857,15 @@ def handle_cancel_parser(data=None) -> None:
     })
     session_manager.pop_thread(session_id)
     session_manager.drop_prompt_queue(session_id)
+    try:
+        prompt.clear_queued_responses(session_id)
+    except Exception:
+        logger.debug({
+            "level": "DEBUG",
+            "type": "cancel",
+            "message": "Failed to clear queued prompt responses during cancel.",
+            "session_id": session_id
+        })
     session_manager.pop_emitter(session_id)
     transition_session(
         session_id,
