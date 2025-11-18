@@ -377,14 +377,15 @@ def finalize_election_output(
     bundle_mode = context.get("bundle_mode")
     if not bundle_mode and isinstance(bundle_metadata_context, dict):
         bundle_mode = bundle_metadata_context.get("bundle_mode")
+
+    output_folder = os.path.join(out_dir, base_name)
+    _ensure_dir(output_folder)
+    csv_path = os.path.join(output_folder, "results.csv")
+    meta_path = os.path.join(output_folder, "results.metadata.json")
+    context["output_folder"] = output_folder
+    context.setdefault("output_base_name", base_name)
     if bundle_mode == "aggregate":
-        bundle_dir = os.path.join(out_dir, base_name)
-        _ensure_dir(bundle_dir)
-        csv_path = os.path.join(bundle_dir, "results.csv")
-        meta_path = os.path.join(bundle_dir, "results.metadata.json")
-    else:
-        csv_path = os.path.join(out_dir, f"{base_name}.csv")
-        meta_path = os.path.join(out_dir, f"{base_name}.metadata.json")
+        context.setdefault("bundle_mode", "aggregate")
 
     # Establish structure hash early (stable NDJSON filename)
     context["structure_hash"] = context.get("structure_hash") or _compute_structure_hash(headers, data)
@@ -544,6 +545,8 @@ def finalize_election_output(
         "headers": headers_final,
         "csv_path": csv_path,
         "output_dir": os.path.dirname(csv_path),
+        "output_folder": output_folder,
+        "output_base_name": base_name,
         "context": context,
         "user_feedback_enabled": bool(enable_user_feedback),
         "hierarchical_header_rows": context.get("hierarchical_header_rows"),
@@ -583,10 +586,7 @@ def finalize_election_output(
     try:
         if context.get("generate_xlsx", True):
             from .xlsx_exporter import export_candidate_group_pivot_xlsx
-            if bundle_mode == "aggregate":
-                xlsx_path = os.path.join(os.path.dirname(csv_path), "results.xlsx")
-            else:
-                xlsx_path = os.path.join(os.path.dirname(csv_path), base_name + ".xlsx")
+            xlsx_path = os.path.join(os.path.dirname(csv_path), "results.xlsx")
             export_candidate_group_pivot_xlsx(
                 flat_headers=headers_final,
                 rows=safe_rows,

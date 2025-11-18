@@ -21,6 +21,7 @@ from ...Context_Integration.Context_Library.constants import (
     PARTY_KEYWORDS,
     canonical_ballot_group,
 )
+from ...utils.salvage import normalize_ballot_column_name
 from ...utils.contest_selector import (
     select_contest_auto_first,
 )
@@ -610,6 +611,27 @@ def _fastpath_county_results(
     candidate_metadata = list(candidate_metadata_map.values())
 
     REPORTED_TOTAL_COLUMN = "Reported Vote Total"
+    CALCULATED_TOTAL_COLUMN = "Calculated Vote Total"
+
+    def _coerce_vote_value(value: Any) -> int:
+        if value in (None, "", "NA"):
+            return 0
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float)):
+            return int(value)
+        try:
+            text = str(value).strip()
+            if not text:
+                return 0
+            if text.endswith("%"):
+                text = text[:-1].strip()
+            text = text.replace(",", "")
+            if not text:
+                return 0
+            return int(float(text))
+        except Exception:
+            return 0
 
     order_lookup = {canonical_ballot_group(name).lower(): idx for idx, name in enumerate(BALLOT_TYPES_SORT_ORDER)}
     ballot_display_map: OrderedDict[str, str] = OrderedDict()
@@ -638,8 +660,17 @@ def _fastpath_county_results(
             continue
 
         if canonical_label:
-            ballot_display_map.setdefault(canonical_label, display_label or canonical_label)
-            column_label = ballot_display_map.get(canonical_label, display_label or canonical_label)
+            preferred_label = (display_label or canonical_label or "").strip() or canonical_label
+            existing = ballot_display_map.get(canonical_label)
+            if existing is None:
+                ballot_display_map[canonical_label] = preferred_label
+            else:
+                existing_text = (existing or "").strip().lower()
+                canonical_text = (canonical_label or "").strip().lower()
+                preferred_text = (preferred_label or "").strip().lower()
+                if existing_text == canonical_text and preferred_text and preferred_text != canonical_text:
+                    ballot_display_map[canonical_label] = preferred_label
+            column_label = ballot_display_map.get(canonical_label) or preferred_label or canonical_label
         else:
             column_label = display_label or canonical_label
 
@@ -678,6 +709,8 @@ def _fastpath_county_results(
             continue
         if row.get(REPORTED_TOTAL_COLUMN) not in (None, "", 0):
             candidate_header_map[candidate_name].add(REPORTED_TOTAL_COLUMN)
+        if row.get(CALCULATED_TOTAL_COLUMN) not in (None, "", 0):
+            candidate_header_map[candidate_name].add(CALCULATED_TOTAL_COLUMN)
         for ballot_label in ballot_headers:
             if row.get(ballot_label) not in (None, "", 0):
                 candidate_header_map[candidate_name].add(ballot_label)
@@ -786,6 +819,34 @@ def _fastpath_county_results(
         debug=False,
     )
 
+    ballot_columns_detected: List[str] = []
+    for column in headers_final:
+        norm = normalize_ballot_column_name(column)
+        if not norm:
+            continue
+        norm_low = norm.lower()
+        if norm_low in {"total vote", "total votes", "grand total", "reported vote total", "votes", CALCULATED_TOTAL_COLUMN.lower()}:
+            continue
+        if norm in BALLOT_TYPES or norm in BALLOT_TYPES_SORT_ORDER or norm in GROUP_RENAME_MAP.values():
+            ballot_columns_detected.append(column)
+
+    if "Total Vote" in headers_final:
+        headers_final = [col for col in headers_final if col != "Total Vote"]
+        for row in data_final:
+            row.pop("Total Vote", None)
+
+    if ballot_columns_detected:
+        for row in data_final:
+            calculated_total = sum(_coerce_vote_value(row.get(col)) for col in ballot_columns_detected)
+            row[CALCULATED_TOTAL_COLUMN] = calculated_total
+        if CALCULATED_TOTAL_COLUMN not in headers_final:
+            insert_idx = headers_final.index(REPORTED_TOTAL_COLUMN) + 1 if REPORTED_TOTAL_COLUMN in headers_final else len(headers_final)
+            headers_final = headers_final[:insert_idx] + [CALCULATED_TOTAL_COLUMN] + headers_final[insert_idx:]
+        context.setdefault("ballot_columns_detected", ballot_columns_detected)
+
+    if REPORTED_TOTAL_COLUMN in headers_final and ballot_columns_detected:
+        context.setdefault("ballot_columns_tracked", ballot_columns_detected)
+
     metric_columns = [
         column
         for column in headers_final
@@ -806,7 +867,7 @@ def _fastpath_county_results(
             for label, columns in candidate_header_map_post.items()
         }
 
-    if REPORTED_TOTAL_COLUMN in headers_final:
+    if REPORTED_TOTAL_COLUMN in headers_final or CALCULATED_TOTAL_COLUMN in headers_final:
         preferred_order: List[str] = []
         for base in ("Division", "Precinct", "County"):
             if base in headers_final and base not in preferred_order:
@@ -814,7 +875,7 @@ def _fastpath_county_results(
         for base in ("Candidate", "Party"):
             if base in headers_final and base not in preferred_order:
                 preferred_order.append(base)
-        appendables = [col for col in (REPORTED_TOTAL_COLUMN, "Total Vote") if col in headers_final]
+        appendables = [col for col in (REPORTED_TOTAL_COLUMN, CALCULATED_TOTAL_COLUMN) if col in headers_final]
         preferred_order.extend(col for col in appendables if col not in preferred_order)
         preferred_order.extend(
             col for col in headers_final
