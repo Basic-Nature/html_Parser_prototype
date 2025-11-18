@@ -124,6 +124,7 @@
     SessionEnums.phase.REVIEW,
   ];
   let pipelinePhase = PIPELINE_PHASES[0];
+  let lastCelebrationTs = 0;
 
   fetch('/api/session/enums', { cache: 'no-store' })
     .then(res => (res.ok ? res.json() : null))
@@ -2591,17 +2592,43 @@
       return `${n} more`;
     }
 
-    function buildDetails(meta, fallback) {
+    function normalizeContestQuestion(meta) {
+      if (!meta || typeof meta !== 'object') return '';
+      const direct = typeof meta.question === 'string' ? meta.question.trim() : '';
+      if (direct) return direct;
+      if (Array.isArray(meta.questions)) {
+        for (const entry of meta.questions) {
+          if (typeof entry === 'string') {
+            const trimmed = entry.trim();
+            if (trimmed) return trimmed;
+          }
+        }
+      }
+      return '';
+    }
+
+    function buildDetails(meta, fallback, exclude) {
+      meta = meta || {};
       const lines = [];
       const variant = meta.variant_label;
-      if (variant) lines.push(String(variant));
+      const excludeKey = typeof exclude === 'string' && exclude.trim()
+        ? exclude.trim().toLowerCase()
+        : '';
+      const shouldSkip = (val) => {
+        if (!excludeKey) return false;
+        const candidate = String(val || '').trim().toLowerCase();
+        return candidate === excludeKey;
+      };
+      if (variant && !shouldSkip(variant)) lines.push(String(variant));
       const details = Array.isArray(meta.display_details)
         ? meta.display_details
         : meta.display_details ? [meta.display_details] : [];
       details.forEach(val => {
         if (!val) return;
         const lower = String(val).toLowerCase();
-        if (!lines.some(existing => existing.toLowerCase() === lower)) lines.push(String(val));
+        if (!shouldSkip(val) && !lines.some(existing => existing.toLowerCase() === lower)) {
+          lines.push(String(val));
+        }
       });
       const summary = Array.isArray(meta.summary)
         ? meta.summary
@@ -2609,9 +2636,11 @@
       summary.forEach(val => {
         if (!val) return;
         const lower = String(val).toLowerCase();
-        if (!lines.some(existing => existing.toLowerCase() === lower)) lines.push(String(val));
+        if (!shouldSkip(val) && !lines.some(existing => existing.toLowerCase() === lower)) {
+          lines.push(String(val));
+        }
       });
-      if (!lines.length && fallback) lines.push(String(fallback));
+      if (!lines.length && fallback && !shouldSkip(fallback)) lines.push(String(fallback));
       return lines.map(val => esc(val)).join(' • ');
     }
 
@@ -2623,6 +2652,7 @@
         disableCountyPreview = false,
       } = options;
       const meta = opt.metadata || {};
+      const questionText = normalizeContestQuestion(meta);
       const scopeBadge = createBadge(meta.scope_label, 'badge-scope');
       const groupedBadge = requiresGrouping(opt) ? createBadge('Grouped', 'badge-group') : '';
       const bundleBadge = !isChild && Number.isFinite(Number(meta.bundle_child_count)) && Number(meta.bundle_child_count) >= 1
@@ -2636,7 +2666,8 @@
       const confidence = typeof meta.confidence === 'number' ? createBadge(`conf ${meta.confidence.toFixed(2)}`, 'badge-confidence') : '';
       const badgeLine = [groupedBadge, bundleBadge, scopeBadge, variantBadge, countyBadge, yearBadge, confidence].filter(Boolean).join('');
       const countiesText = disableCountyPreview ? '' : formatCounties(meta);
-      const detailText = buildDetails(meta, opt.meta);
+      const detailText = buildDetails(meta, opt.meta, questionText);
+      const questionHtml = questionText ? `<div class="contest-question">${esc(questionText)}</div>` : '';
       const item = document.createElement('button');
       item.type = 'button';
       const classNames = ['contest-option'];
@@ -2651,8 +2682,11 @@
         </div>
         ${badgeLine ? `<div class="contest-meta-line">${badgeLine}</div>` : ''}
         ${countiesText ? `<div class="contest-counties">${countiesText}</div>` : ''}
+        ${questionHtml}
         ${detailText ? `<div class="contest-details">${detailText}</div>` : ''}
       `;
+      if (questionText) item.title = questionText;
+      else if (opt.label) item.title = opt.label;
       item.onclick = () => closeWith('submit', [opt.index]);
       return item;
     }
@@ -3296,21 +3330,110 @@
     return state ? state.files.slice() : [];
   }
 
-  function ensureSectionExpanded(sectionId) {
+  function ensureSectionExpanded(sectionId, options = {}) {
     if (!sectionId) return;
     const panel = document.getElementById(sectionId);
     if (!panel) return;
+    const opts = typeof options === 'object' && options !== null ? options : {};
     const btn = document.querySelector(`.collapsible-btn[data-target="${sectionId}"]`);
     const wasHidden = panel.classList.contains('hidden');
     if (wasHidden) {
       panel.classList.remove('hidden');
       if (btn) btn.setAttribute('aria-expanded', 'true');
-      panel.querySelectorAll('.folder-panel').forEach(fp => fp._refresh && fp._refresh());
     }
+    panel.querySelectorAll('.folder-panel').forEach(fp => fp._refresh && fp._refresh());
     const container = panel.closest('.section');
-    if (container) {
+    if (!container) return;
+
+    const highlight = opts.highlight !== false;
+    const scrollIntoView = !!opts.scrollIntoView;
+    const focusButton = !!opts.focusButton;
+    const flashClass = typeof opts.flashClass === 'string' && opts.flashClass.trim() ? opts.flashClass.trim() : '';
+    const flashDuration = Number.isFinite(opts.flashDuration) ? Math.max(0, opts.flashDuration) : 2400;
+
+    if (highlight) {
       container.classList.add('manual-highlight');
       setTimeout(() => container.classList.remove('manual-highlight'), 1600);
+    }
+
+    if (flashClass) {
+      container.classList.add(flashClass);
+      setTimeout(() => container.classList.remove(flashClass), flashDuration);
+    }
+
+    if (scrollIntoView) {
+      try {
+        container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (err) {
+        void err;
+      }
+    }
+
+    if (focusButton && btn) {
+      try {
+        btn.focus({ preventScroll: true });
+      } catch (err) {
+        void err;
+      }
+    }
+  }
+
+  function clearParserCompletionVisuals() {
+    document.querySelectorAll('.container-main.parser-finished').forEach(node => {
+      node.classList.remove('parser-finished');
+      node.removeAttribute('data-celebrate');
+    });
+    document.querySelectorAll('.container-main .celebrate-sparkles').forEach(node => node.remove());
+    const outputSection = document.getElementById('outputSection');
+    if (outputSection) {
+      const container = outputSection.closest('.section');
+      if (container) {
+        container.classList.remove('celebrate-pulse');
+      }
+    }
+  }
+
+  function spawnCelebrateSparkles(hostElement) {
+    if (PREFERS_REDUCED_MOTION) return;
+    const host = hostElement || document.querySelector('.container-main') || document.body;
+    if (!host) return;
+    const sparkles = document.createElement('div');
+    sparkles.className = 'celebrate-sparkles';
+    const total = 14;
+    for (let i = 0; i < total; i += 1) {
+      const dot = document.createElement('span');
+      dot.className = 'sparkle';
+      dot.style.setProperty('--x', `${Math.random() * 100}%`);
+      dot.style.setProperty('--y', `${Math.random() * 100}%`);
+      dot.style.setProperty('--delay', `${(Math.random() * 0.4).toFixed(2)}s`);
+      dot.style.setProperty('--drift', `${(Math.random() * 28 + 18).toFixed(1)}px`);
+      sparkles.appendChild(dot);
+    }
+    host.appendChild(sparkles);
+    setTimeout(() => sparkles.remove(), 2600);
+  }
+
+  function celebrateParserCompletion() {
+    const now = Date.now();
+    if (now - lastCelebrationTs < 1000) return;
+    lastCelebrationTs = now;
+    ensureSectionExpanded('outputSection', {
+      scrollIntoView: true,
+      focusButton: true,
+      flashClass: 'celebrate-pulse',
+      flashDuration: 2600,
+    });
+    const container = document.querySelector('.container-main');
+    if (container) {
+      container.classList.add('parser-finished');
+      container.setAttribute('data-celebrate', 'output-ready');
+      spawnCelebrateSparkles(container);
+      setTimeout(() => {
+        container.classList.remove('parser-finished');
+        container.removeAttribute('data-celebrate');
+      }, 5200);
+    } else {
+      spawnCelebrateSparkles(document.body);
     }
   }
 
@@ -3655,6 +3778,7 @@
     if (/parser run completed|completed! output csv|manual upload parse succeeded/i.test(lower)) {
       pipelineControl.setPhase('review');
       pipelineControl.focusStep('review', { scroll: false, highlight: true });
+      celebrateParserCompletion();
     }
   }
 
@@ -5030,6 +5154,7 @@
 
   function runParser() {
     if (!socket || !el.runBtn) return;
+    clearParserCompletionVisuals();
     const stored = localStorage.getItem('session_id');
     if (!activeSessionId && stored) {
       setActiveSession(stored);
@@ -5455,8 +5580,25 @@
     }
 
     function handleParserOutput(d) {
-      try { PendingOverlay.hide(); } catch (err) { void err; }
+      let overlayHidden = false;
+      const hideOverlay = (options = {}) => {
+        if (overlayHidden) return;
+        overlayHidden = true;
+        const opts = typeof options === 'object' && options !== null ? options : {};
+        const delayMs = Number.isFinite(opts.delayMs) && opts.delayMs > 0 ? opts.delayMs : 0;
+        const afterFrame = opts.afterFrame === true;
+        const runner = () => { try { PendingOverlay.hide(); } catch (err) { void err; } };
+        if (afterFrame && typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => requestAnimationFrame(runner));
+        } else if (delayMs > 0) {
+          setTimeout(runner, delayMs);
+        } else {
+          runner();
+        }
+      };
+
       if (!activeSessionId) {
+        hideOverlay();
         earlyQueue.push(d);
         return;
       }
@@ -5558,6 +5700,7 @@
             </div>`.trim();
 
           openContestSelectionModal(d.session_id, normalized, ctxSummary, { placeholder: 'Enter contest index…' });
+          hideOverlay({ afterFrame: true });
         }
       }
 
@@ -5592,6 +5735,7 @@
             contestIndexMap = Object.fromEntries(parsed.map(o => [String(o.index), o.label]));
             lastPromptContext = { kind: 'contest', options: parsed.map(o => `[${o.index}] ${o.label}`), session_id: d.session_id };
             openContestSelectionModal(d.session_id, parsed, ctxSummary, { placeholder: 'Enter contest index…' });
+            hideOverlay({ afterFrame: true });
           }
         }
       }
@@ -5616,6 +5760,7 @@
           if (d.session_id === activeSessionId) {
             handledCustomPrompt = true;
             openContestSelectionModal(d.session_id, options, ctxSummary, { placeholder: 'Enter contest index…' });
+            hideOverlay({ afterFrame: true });
           }
         }
       }
@@ -5628,12 +5773,13 @@
             handledCustomPrompt = true;
             const ctxSummary = `<div class="small text-muted">${options.length} option(s)</div>`;
             openContestSelectionModal(sid, options, ctxSummary, { placeholder: 'Enter contest index…' });
+            hideOverlay({ afterFrame: true });
           }
         }
       }
 
-      // Prompt handling
-  if (d && d.type === 'prompt' && d.session_id === activeSessionId && !handledCustomPrompt) {
+        // Prompt handling
+      if (d && d.type === 'prompt' && d.session_id === activeSessionId && !handledCustomPrompt) {
         const ctx = d.context || {};
         pipelineControl?.markAttention('resolve');
         pipelineControl?.focusStep('resolve', { scroll: false, highlight: true });
@@ -5716,6 +5862,8 @@
           }
         }
       }
+
+      hideOverlay();
     }
 
     function handleManualSourceState({ session_id, file_source, manual_source_origin }) {

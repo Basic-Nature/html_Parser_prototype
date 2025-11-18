@@ -267,6 +267,7 @@ def _merge_contest_metadata(entries: list[dict]) -> dict | None:
     contest_ids: set[str] = set()
     primary_titles: list[str] = []
     summaries: list[str] = []
+    questions: list[str] = []
     first_display_title: str | None = None
     group_meta: dict | None = None
 
@@ -300,6 +301,24 @@ def _merge_contest_metadata(entries: list[dict]) -> dict | None:
             if group_meta is None:
                 group_meta = dict(group_metadata)
 
+        question_value = None
+        for lookup_key in ("question", "contest_question"):
+            if lookup_key in entry and isinstance(entry[lookup_key], str):
+                question_value = entry[lookup_key]
+                break
+        if question_value is None:
+            metadata = entry.get("metadata")
+            if isinstance(metadata, dict):
+                for lookup_key in ("question", "contest_question"):
+                    candidate = metadata.get(lookup_key)
+                    if isinstance(candidate, str):
+                        question_value = candidate
+                        break
+        if question_value:
+            cleaned_question = question_value.strip()
+            if cleaned_question:
+                questions.append(cleaned_question)
+
     if not merged_entries and not contest_ids and not primary_titles:
         return None
 
@@ -313,6 +332,11 @@ def _merge_contest_metadata(entries: list[dict]) -> dict | None:
     if summaries:
         deduped = list(dict.fromkeys(summaries))
         payload["summary"] = " | ".join(deduped)
+    if questions:
+        deduped_questions = list(dict.fromkeys(questions))
+        payload.setdefault("questions", deduped_questions)
+        if deduped_questions and not payload.get("question"):
+            payload["question"] = deduped_questions[0]
     if first_display_title:
         payload["display_title"] = first_display_title
     if group_meta:

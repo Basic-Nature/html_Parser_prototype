@@ -709,6 +709,16 @@ def _detect_division_name_for_precinct(loc: str, state: str | None, context: dic
 def _normalize_party_value(raw: str | None) -> str:
     party = normalize_party_label(raw) if raw else ""
     if party:
+        lowered = party.lower()
+        if lowered in {"democratic", "democrat", "democratic party"}:
+            return "Democrat"
+        if lowered == "republican party":
+            return "Republican"
+        if lowered.endswith(" party"):
+            core = party[: -len(" party")].strip()
+            if core.lower() == "democratic":
+                return "Democrat"
+            return core or party
         return party
     return (raw or "").strip().title()
 

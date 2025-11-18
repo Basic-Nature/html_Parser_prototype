@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, OrderedDict
 from pathlib import Path
 from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Set, Tuple, cast
 
@@ -10,13 +10,16 @@ import orjson
 
 from ...Context_Integration.Context_Library.constants import (
     BALLOT_TYPES,
+    BALLOT_TYPES_SORT_ORDER,
     CANDIDATE_KEYWORDS,
     CONTEST_KEYWORDS,
     CONTEST_TITLE_SKIP_PHRASES,
+    DEFAULT_TOTAL_RESULT_DISPLAY,
     GROUP_RENAME_MAP,
     KNOWN_STATE_TO_COUNTY_MAP,
     LOCATION_KEYWORDS,
     PARTY_KEYWORDS,
+    canonical_ballot_group,
 )
 from ...utils.contest_selector import (
     select_contest_auto_first,
@@ -465,12 +468,10 @@ def _fastpath_county_results(
 
     contest_name = selected_metadata.get("primary_title") or selected_group["primary_title"] or "Election Results"
 
-    headers = [
+    base_headers = [
         "Division",
-        "Ballot",
         "Candidate",
         "Party",
-        "Votes",
     ]
 
     selected_county_rows = [row for row in export.county_rows if row.contest_id in selected_ids]
@@ -587,21 +588,13 @@ def _fastpath_county_results(
             bundle_metadata["raw_members_count"] = len(raw_members)
         selected_metadata["bundle_audit"] = bundle_audit
 
-    rows: List[Dict[str, Any]] = []
-    candidate_header_map: DefaultDict[str, Set[str]] = defaultdict(set)
+    candidate_header_map_raw: DefaultDict[str, Set[str]] = defaultdict(set)
     candidate_id_to_label: Dict[str, str] = {}
     candidate_metadata_map: Dict[str, Dict[str, Any]] = {}
     candidate_label_map: Dict[str, str] = {}
 
     for record in selected_county_rows + selected_statewide_rows:
-        rows.append({
-            "Division": record.county,
-            "Ballot": record.group_display,
-            "Candidate": record.candidate_name,
-            "Party": record.party_full,
-            "Votes": record.vote_count,
-        })
-        candidate_header_map[record.candidate_name].add(record.group_display)
+        candidate_header_map_raw[record.candidate_name].add(record.group_display)
         if record.candidate_id:
             candidate_id_to_label.setdefault(record.candidate_id, record.candidate_name)
         candidate_key = record.candidate_id or record.candidate_name.lower()
@@ -615,6 +608,89 @@ def _fastpath_county_results(
         candidate_label_map.setdefault(record.candidate_raw, record.candidate_name)
 
     candidate_metadata = list(candidate_metadata_map.values())
+
+    REPORTED_TOTAL_COLUMN = "Reported Vote Total"
+
+    order_lookup = {canonical_ballot_group(name).lower(): idx for idx, name in enumerate(BALLOT_TYPES_SORT_ORDER)}
+    ballot_display_map: OrderedDict[str, str] = OrderedDict()
+    aggregated_rows: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    aggregated_order: List[Tuple[str, str, str]] = []
+
+    for record in selected_county_rows + selected_statewide_rows:
+        division = record.county
+        candidate = record.candidate_name
+        party = record.party_full
+        key = (division, candidate, party)
+        if key not in aggregated_rows:
+            aggregated_rows[key] = {
+                "Division": division,
+                "Candidate": candidate,
+                "Party": party,
+            }
+            aggregated_order.append(key)
+
+        entry = aggregated_rows[key]
+        display_label = (record.group_display or "").strip()
+        canonical_label = canonical_ballot_group(display_label) if display_label else ""
+
+        if record.group_name == "total" or canonical_label.lower() == "total":
+            entry[REPORTED_TOTAL_COLUMN] = entry.get(REPORTED_TOTAL_COLUMN, 0) + record.vote_count
+            continue
+
+        if canonical_label:
+            ballot_display_map.setdefault(canonical_label, display_label or canonical_label)
+            column_label = ballot_display_map.get(canonical_label, display_label or canonical_label)
+        else:
+            column_label = display_label or canonical_label
+
+        if column_label:
+            entry[column_label] = entry.get(column_label, 0) + record.vote_count
+        else:
+            entry[REPORTED_TOTAL_COLUMN] = entry.get(REPORTED_TOTAL_COLUMN, 0) + record.vote_count
+
+    def _ballot_sort_key(item: Tuple[str, str]) -> Tuple[int, str]:
+        canon, label = item
+        return (order_lookup.get(canon.lower(), len(order_lookup)), label.lower())
+
+    ballot_headers: List[str] = [label for canon, label in sorted(ballot_display_map.items(), key=_ballot_sort_key)]
+
+    headers = base_headers + [REPORTED_TOTAL_COLUMN] + ballot_headers
+    rows: List[Dict[str, Any]] = []
+    numeric_columns = set(ballot_headers + [REPORTED_TOTAL_COLUMN])
+
+    for key in aggregated_order:
+        entry = aggregated_rows[key]
+        if REPORTED_TOTAL_COLUMN not in entry or entry.get(REPORTED_TOTAL_COLUMN) in (None, ""):
+            computed_total = sum(entry.get(col, 0) for col in ballot_headers)
+            entry[REPORTED_TOTAL_COLUMN] = computed_total
+        row = {}
+        for column in headers:
+            if column in numeric_columns:
+                row[column] = entry.get(column, 0)
+            else:
+                row[column] = entry.get(column, "")
+        rows.append(row)
+
+    candidate_header_map: DefaultDict[str, Set[str]] = defaultdict(set)
+    for row in rows:
+        candidate_name = str(row.get("Candidate") or "").strip()
+        if not candidate_name:
+            continue
+        if row.get(REPORTED_TOTAL_COLUMN) not in (None, "", 0):
+            candidate_header_map[candidate_name].add(REPORTED_TOTAL_COLUMN)
+        for ballot_label in ballot_headers:
+            if row.get(ballot_label) not in (None, "", 0):
+                candidate_header_map[candidate_name].add(ballot_label)
+
+    for label, original_methods in candidate_header_map_raw.items():
+        for method in original_methods:
+            if not method:
+                continue
+            if method == DEFAULT_TOTAL_RESULT_DISPLAY:
+                candidate_header_map[label].add(REPORTED_TOTAL_COLUMN)
+            else:
+                candidate_header_map[label].add(method)
+
     candidate_header_map_serializable = {
         label: sorted({m for m in methods if m})
         for label, methods in candidate_header_map.items()
@@ -709,6 +785,47 @@ def _fastpath_county_results(
         pivot_to_wide=False,
         debug=False,
     )
+
+    metric_columns = [
+        column
+        for column in headers_final
+        if column not in {"Division", "Precinct", "Candidate", "Party", "County"}
+    ]
+    candidate_header_map_post: DefaultDict[str, Set[str]] = defaultdict(set)
+    for row in data_final:
+        candidate_name = str(row.get("Candidate") or "").strip()
+        if not candidate_name:
+            continue
+        for column in metric_columns:
+            value = row.get(column)
+            if value not in (None, "", 0):
+                candidate_header_map_post[candidate_name].add(column)
+    if candidate_header_map_post:
+        candidate_header_map_serializable = {
+            label: sorted(columns)
+            for label, columns in candidate_header_map_post.items()
+        }
+
+    if REPORTED_TOTAL_COLUMN in headers_final:
+        preferred_order: List[str] = []
+        for base in ("Division", "Precinct", "County"):
+            if base in headers_final and base not in preferred_order:
+                preferred_order.append(base)
+        for base in ("Candidate", "Party"):
+            if base in headers_final and base not in preferred_order:
+                preferred_order.append(base)
+        appendables = [col for col in (REPORTED_TOTAL_COLUMN, "Total Vote") if col in headers_final]
+        preferred_order.extend(col for col in appendables if col not in preferred_order)
+        preferred_order.extend(
+            col for col in headers_final
+            if col not in preferred_order
+        )
+        if preferred_order != headers_final:
+            headers_final = preferred_order
+            reordered_rows: List[Dict[str, Any]] = []
+            for row in data_final:
+                reordered_rows.append({col: row.get(col, "") for col in headers_final})
+            data_final = reordered_rows
 
     export_context = {
         **{k: v for k, v in context.items() if k != "coordinator"},

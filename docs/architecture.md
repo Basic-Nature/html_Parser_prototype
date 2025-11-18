@@ -68,7 +68,7 @@ This document provides a high-level overview of the architecture and responsibil
   - NLP-powered entity recognition and context enrichment.
 
 - **`utils/browser_utils.py`**
-  - Launches Playwright or Selenium browser, supports headless/GUI, and user-agent spoofing.
+  - Launches Playwright by default with optional Selenium fallback (when installed), supports headless/GUI, and user-agent spoofing.
 
 - **`utils/captcha_tools.py`**
   - Detects and handles CAPTCHA pages.
@@ -300,7 +300,7 @@ Contributions welcome! See `CONTRIBUTING.md` to get started.
 ## 📂 Data Flow Example
 
 1. **User chooses URL** from `urls.txt` (prompted via `prompt_user_input`).
-2. **Browser is launched** via `browser_utils` (Playwright or Selenium).
+2. **Browser is launched** via `browser_utils` (Playwright-first; Selenium fallback only if optional dependency is installed).
 3. **CAPTCHA page is detected**, `captcha_tools` attempts resolution.
 4. HTML is scanned by `html_scanner` to gather:
    - Election year (e.g. 2022)

@@ -1,13 +1,35 @@
 from __future__ import annotations
 
 import time
+from typing import Optional
 
 # webapp/parser/utils/seleniumbase_launcher.py
 # -----------------------------------------------------------------------------------
 # This file contains functions to launch and manage SeleniumBase browsers
 # for web scraping and automation tasks, including handling CAPTCHAs and stealth mode.
 # -----------------------------------------------------------------------------------
-from seleniumbase import Driver
+try:
+    from seleniumbase import Driver as _SeleniumBaseDriver
+except ImportError as exc:  # pragma: no cover - optional dependency
+    _SeleniumBaseDriver = None
+    _SELENIUMBASE_IMPORT_ERROR: Optional[Exception] = exc
+else:  # pragma: no cover - exercised only when dependency is installed
+    _SELENIUMBASE_IMPORT_ERROR = None
+
+
+class _MissingDriver:
+    """Raised when SeleniumBase is requested without the optional dependency."""
+
+    def __init__(self, *args, **kwargs) -> None:  # pylint: disable=unused-argument
+        message = (
+            "SeleniumBase is not installed. Install it with `pip install seleniumbase` "
+            "to enable the manual CAPTCHA fallback."
+        )
+        raise RuntimeError(message) from _SELENIUMBASE_IMPORT_ERROR
+
+
+Driver = _SeleniumBaseDriver or _MissingDriver  # type: ignore[assignment]
+SELENIUMBASE_AVAILABLE = _SeleniumBaseDriver is not None
 
 from ..config import HEADLESS_DEFAULT
 from .logger_singleton import logger

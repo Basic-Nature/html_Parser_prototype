@@ -1417,12 +1417,15 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
                 numeric_location_rows += 1
             data_lines.append([loc_clean] + row_values[:candidate_count])
 
-        if len(data_lines) < 3:
+        min_rows_required = 3
+        if candidate_count >= 2:
+            min_rows_required = 2
+        if len(data_lines) < min_rows_required:
             _record_recon_event({
                 "phase": "data_rows_insufficient",
                 "anchor_label": anchor_label,
                 "row_count": len(data_lines),
-                "reason": "<3 rows after normalization",
+                "reason": f"<{min_rows_required} rows after normalization",
             })
             idx = max(idx + 1, scan_idx)
             continue

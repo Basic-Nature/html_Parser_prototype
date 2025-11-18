@@ -72,3 +72,9 @@ module = ["webapp.tests.*"]
 ignore_errors = false
 check_untyped_defs = true
 
+[tool.setuptools.optional-dependencies]
+# Install with: `pip install .[selenium]`
+selenium = [
+  "seleniumbase>=4.40.8",
+]
+

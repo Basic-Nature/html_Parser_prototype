@@ -13,7 +13,7 @@ import os
 import random
 import re
 import time
-from typing import Any, Dict, Optional, Protocol, Sequence, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Protocol, Sequence, Tuple, TypeVar, Union
 
 from playwright.async_api import Browser as AsyncBrowser
 from playwright.async_api import BrowserContext as AsyncBrowserContext
@@ -30,7 +30,17 @@ from playwright.sync_api import Locator as SyncLocator
 from playwright.sync_api import Page as SyncPage
 from playwright.sync_api import sync_playwright
 from selectolax.parser import Node as SelectolaxNode
-from selenium.webdriver.remote.webelement import WebElement as SeleniumElement
+
+if TYPE_CHECKING:  # pragma: no cover - import only used for type hints
+    from selenium.webdriver.remote.webelement import WebElement as SeleniumElement
+else:
+    try:
+        from selenium.webdriver.remote.webelement import WebElement as SeleniumElement
+    except ImportError:
+        class SeleniumElement:  # type: ignore[no-redef]
+            """Runtime stub used when Selenium is not installed."""
+
+            pass
 
 from ..config import CONTEXT_LIBRARY_PATH, HEADLESS_DEFAULT
 from .logger_singleton import console, logger, prompt

@@ -632,6 +632,26 @@ def _coerce_vote_value_for_reconstruction(value):
     return utils_coerce_vote_value_for_reconstruction(value)
 
 
+def _normalize_party_display(label: str | None) -> str:
+    """Return a short, reader-friendly party label for output columns."""
+    if label is None:
+        return ""
+    text = str(label).strip()
+    if not text:
+        return ""
+    lowered = text.lower()
+    if lowered in {"democrat", "democratic", "democratic party"}:
+        return "Democrat"
+    if lowered == "republican party":
+        return "Republican"
+    if lowered.endswith(" party"):
+        core = text[: -len(" party")].strip()
+        if core.lower() == "democratic":
+            return "Democrat"
+        return core or text
+    return text
+
+
 def _try_columnar_reconstruction(
     pdf_path: str,
     lines: list[str],
@@ -692,7 +712,7 @@ def _try_columnar_reconstruction(
     for cand_header in candidate_headers:
         candidate_label, party_label, info = _parse_candidate_header_with_party(cand_header, party_lookup)
         info["candidate_label"] = candidate_label
-        info["party_label"] = party_label
+        info["party_label"] = _normalize_party_display(party_label)
         candidate_infos.append(info)
 
     grouped: dict[str, list[dict]] = defaultdict(list)
@@ -723,6 +743,8 @@ def _try_columnar_reconstruction(
         normalized_headers.extend([total_key, party_key])
         if "party_label" not in info:
             info["party_label"] = ""
+        else:
+            info["party_label"] = _normalize_party_display(info.get("party_label"))
 
     normalized_rows: list[dict] = []
     for row in recon_rows:
@@ -731,7 +753,7 @@ def _try_columnar_reconstruction(
             source_header = info.get("source_header")
             total_val = _coerce_vote_value_for_reconstruction(row.get(source_header, ""))
             new_row[info["total_key"]] = total_val
-            new_row[info["party_key"]] = info.get("party_label", "")
+            new_row[info["party_key"]] = _normalize_party_display(info.get("party_label", ""))
         normalized_rows.append(new_row)
 
     base_context = {
@@ -767,7 +789,7 @@ def _try_columnar_reconstruction(
         candidate_meta.append({
             "source_header": info.get("source_header"),
             "display_label": info.get("display_label"),
-            "party": info.get("party_label", ""),
+            "party": _normalize_party_display(info.get("party_label", "")),
             "party_code": info.get("party_code"),
             "party_inference": info.get("party_inference"),
             "total_column": info.get("total_key"),

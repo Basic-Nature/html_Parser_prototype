@@ -43,6 +43,14 @@
   - Try switching User-Agent (rotate via `.env` or update `user_agents.py`).
   - If using a VPN or proxy, try disabling it.
 
+### ❗ Problem: Selenium fallback not available
+
+- **Possible Cause**: The optional SeleniumBase dependency is not installed.
+- **Fix**:
+  - Install SeleniumBase only when you need the manual CAPTCHA workflow: `pip install seleniumbase`.
+  - Leave it uninstalled to keep default Playwright-only runs lighter and avoid pytest plugin hooks.
+  - If you re-enable SeleniumBase, run pytest with `-p no:seleniumbase` if its plugin causes conflicts.
+
 ### ❗ Problem: Output file not written
 
 - **Possible Cause**: No data returned from handler, or handler returned wrong tuple structure.
