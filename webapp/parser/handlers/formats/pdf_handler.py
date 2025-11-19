@@ -6,6 +6,7 @@ import os
 import re
 import csv
 import time
+import math
 import platform
 import shutil
 import importlib
@@ -61,6 +62,7 @@ from ...utils.pdf_table_utils import (
     extract_table_by_whitespace as utils_extract_table_by_whitespace,
     find_best_header_match as utils_find_best_header_match,
     find_header_line as utils_find_header_line,
+    detect_district_heading as utils_detect_district_heading,
     header_signature as utils_header_signature,
     is_bad_header_line as utils_is_bad_header_line,
     is_numeric_like as utils_is_numeric_like,
@@ -130,6 +132,10 @@ _SANITIZE_VERTICAL_JOIN_LIMIT = 50
 _SANITIZE_CACHE: OrderedDict[str, tuple[str, float]] = OrderedDict()
 _POPPLER_WARNING_SHOWN = False
 _PDF2IMAGE_DISABLED_REASON: str | None = None
+_PAGE_ORIENTATION_CACHE: dict[str, dict[int, int]] = {}
+_PAGE_ORIENTATION_DEFAULT: dict[str, int] = {}
+_PAGE_ORIENTATION_LOGGED: set[str] = set()
+_PAGE_ORIENTATION_APPLIED: set[tuple[str, int, int]] = set()
 
 
 def _sanitize_cache_get(key: str) -> str | None:
@@ -152,6 +158,128 @@ def _sanitize_cache_set(key: str, value: str, confidence: float) -> None:
     _SANITIZE_CACHE.move_to_end(key)
     while len(_SANITIZE_CACHE) > _SANITIZE_CACHE_LIMIT:
         _SANITIZE_CACHE.popitem(last=False)
+
+
+def _normalize_angle(angle: float) -> float:
+    while angle <= -180.0:
+        angle += 360.0
+    while angle > 180.0:
+        angle -= 360.0
+    return angle
+
+
+def _quantize_angle(angle: float) -> int:
+    angle = _normalize_angle(angle)
+    quantized = int(round(angle / 45.0)) * 45
+    if quantized <= -180:
+        quantized += 360
+    if quantized > 180:
+        quantized -= 360
+    return quantized
+
+
+def _collect_page_orientation(page) -> tuple[int | None, float, int]:
+    try:
+        raw = page.get_text("rawdict") or {}
+    except Exception:
+        return None, 0.0, 0
+    blocks = raw.get("blocks", [])
+    votes: list[int] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        lines = block.get("lines")
+        if not isinstance(lines, list):
+            continue
+        for line in lines:
+            spans = line.get("spans") if isinstance(line, dict) else None
+            if not isinstance(spans, list):
+                continue
+            for span in spans:
+                if not isinstance(span, dict):
+                    continue
+                direction = span.get("dir")
+                if not direction or not isinstance(direction, (tuple, list)) or len(direction) != 2:
+                    continue
+                dx, dy = direction
+                if dx == 0 and dy == 0:
+                    continue
+                try:
+                    angle = math.degrees(math.atan2(dy, dx))
+                except Exception:
+                    continue
+                angle = _normalize_angle(angle)
+                votes.append(_quantize_angle(angle))
+    if not votes:
+        return None, 0.0, 0
+    counts: Counter[int] = Counter(votes)
+    dominant, count = counts.most_common(1)[0]
+    coverage = count / max(1, len(votes))
+    return dominant, coverage, len(votes)
+
+
+def _get_page_orientation_map(pdf_path: str, session_id=None) -> tuple[dict[int, int], int]:
+    abs_path = os.path.abspath(pdf_path)
+    cached = _PAGE_ORIENTATION_CACHE.get(abs_path)
+    if cached is not None:
+        return cached, _PAGE_ORIENTATION_DEFAULT.get(abs_path, 0)
+    orientation_map: dict[int, int] = {}
+    orientation_counts: Counter[int] = Counter()
+    try:
+        doc = fitz.open(pdf_path)
+        total_pages = len(doc)
+        max_pages = min(total_pages, 120)
+        for page_index in range(max_pages):
+            page = doc[page_index]
+            angle, coverage, vote_count = _collect_page_orientation(page)
+            if angle is None or vote_count < 5:
+                continue
+            if abs(angle) < 45:
+                continue
+            if coverage < 0.35:
+                continue
+            orientation_map[page_index] = angle
+            orientation_counts[angle] += 1
+        doc.close()
+    except Exception as exc:
+        logger.debug({
+            "level": "DEBUG",
+            "type": "handler",
+            "message": f"[DEBUG] Page orientation analysis skipped: {exc}",
+            "session_id": session_id
+        })
+    default_angle = 0
+    if orientation_counts:
+        dominant_angle, count = orientation_counts.most_common(1)[0]
+        total_votes = sum(orientation_counts.values())
+        if count / max(1, total_votes) >= 0.6:
+            default_angle = dominant_angle
+    _PAGE_ORIENTATION_CACHE[abs_path] = orientation_map
+    _PAGE_ORIENTATION_DEFAULT[abs_path] = default_angle
+    if abs_path not in _PAGE_ORIENTATION_LOGGED:
+        if orientation_counts or default_angle:
+            logged_angles = sorted(set(orientation_counts.keys()) | ({default_angle} if default_angle else set()))
+            logger.info({
+                "level": "INFO",
+                "type": "handler",
+                "message": f"[INFO] Page orientation hints detected: {logged_angles} degrees (default={default_angle})",
+                "session_id": session_id
+            })
+        _PAGE_ORIENTATION_LOGGED.add(abs_path)
+    return orientation_map, default_angle
+
+
+def _log_orientation_application(pdf_path: str, page_index: int, angle: int, session_id=None) -> None:
+    key = (pdf_path, page_index, angle)
+    if key in _PAGE_ORIENTATION_APPLIED:
+        return
+    _PAGE_ORIENTATION_APPLIED.add(key)
+    logger.info({
+        "level": "INFO",
+        "type": "handler",
+        "message": f"[INFO] Applied rotation={angle}° for page={page_index}",
+        "session_id": session_id
+    })
 
 
 def _camelot_signal_sets() -> tuple[set[str], set[str]]:
@@ -702,10 +830,6 @@ def _try_columnar_reconstruction(
     if not lines:
         return None
 
-    recon_headers: list[str] = []
-    recon_rows: list[dict] = []
-    contest_scope: str | None = None
-
     try:
         contest_block = _extract_contest_block(lines, selected_contest_title)
     except Exception:
@@ -717,7 +841,11 @@ def _try_columnar_reconstruction(
     if lines:
         search_spaces.append(("document", lines))
 
+    recon_headers: list[str] = []
+    recon_rows: list[dict] = []
+    contest_scope: str | None = None
     debug_events: list[dict] = []
+
     for scope, candidate_lines in search_spaces:
         headers, rows = _reconstruct_columnar_block(candidate_lines)
         scope_events = utils_consume_reconstruction_debug_events()
@@ -754,8 +882,8 @@ def _try_columnar_reconstruction(
 
     grouped: dict[str, list[dict]] = defaultdict(list)
     for info in candidate_infos:
-        base_key = (info.get("candidate_label") or info.get("source_header") or "").strip().lower()
-        grouped[base_key].append(info)
+        key = (info.get("candidate_label") or info.get("source_header") or "").strip().lower()
+        grouped[key].append(info)
 
     for bucket in grouped.values():
         if len(bucket) == 1:
@@ -778,59 +906,347 @@ def _try_columnar_reconstruction(
         info["total_key"] = total_key
         info["party_key"] = party_key
         normalized_headers.extend([total_key, party_key])
-        if "party_label" not in info:
-            info["party_label"] = ""
-        else:
-            info["party_label"] = _normalize_party_display(info.get("party_label"))
+        info["party_label"] = _normalize_party_display(info.get("party_label", "")) or ""
 
-    normalized_rows: list[dict] = []
-    for row in recon_rows:
-        new_row = {location_header: row.get(location_header, "")}
+    def _normalize_candidate_row(row: dict) -> dict:
+        normalized = {location_header: row.get(location_header, "")}
         for info in candidate_infos:
             source_header = info.get("source_header")
             total_val = _coerce_vote_value_for_reconstruction(row.get(source_header, ""))
-            new_row[info["total_key"]] = total_val
-            new_row[info["party_key"]] = _normalize_party_display(info.get("party_label", ""))
-        normalized_rows.append(new_row)
+            normalized[info["total_key"]] = total_val
+            normalized[info["party_key"]] = info.get("party_label", "")
+        return normalized
+
+    segments_map: OrderedDict[str, dict] = OrderedDict()
+    default_rows: list[dict] = []
+
+    for row in recon_rows:
+        sub_label = row.pop("_subcontest_label", None)
+        sub_number_raw = row.pop("_subcontest_number", None)
+        number_val: int | None = None
+        if sub_number_raw is not None:
+            try:
+                number_val = int(sub_number_raw)
+            except Exception:
+                try:
+                    number_val = int(str(sub_number_raw).strip())
+                except Exception:
+                    number_val = None
+        normalized_row = _normalize_candidate_row(row)
+        if sub_label or number_val is not None:
+            label_clean = re.sub(r"\s{2,}", " ", str(sub_label or "")).strip()
+            if not label_clean and number_val is not None:
+                label_clean = f"District {number_val}"
+            if not label_clean:
+                label_clean = "Segment"
+            key = f"{label_clean.lower()}::{number_val if number_val is not None else ''}"
+            segment_entry = segments_map.setdefault(key, {
+                "label": label_clean,
+                "number": number_val,
+                "rows": [],
+            })
+            if not segment_entry.get("label"):
+                segment_entry["label"] = label_clean
+            if segment_entry.get("number") is None and number_val is not None:
+                segment_entry["number"] = number_val
+            segment_entry["rows"].append(normalized_row)
+        else:
+            default_rows.append(normalized_row)
+
+    candidate_meta = [{
+        "source_header": info.get("source_header"),
+        "display_label": info.get("display_label"),
+        "party": info.get("party_label", ""),
+        "party_code": info.get("party_code"),
+        "party_inference": info.get("party_inference"),
+        "total_column": info.get("total_key"),
+        "party_column": info.get("party_key"),
+    } for info in candidate_infos]
 
     base_context = {
         "state": state,
         "county": county,
         "contest": selected_contest_title,
     }
-    export_context = _prepare_output_context(
-        base_context,
-        {
+
+    def _run_single_output(rows: list[dict], contest_title: str, extra_context: dict | None = None):
+        context_extra = {
             "handler": "pdf_handler",
             "input_file": os.path.basename(pdf_path),
             "session_id": session_id,
             "columnar_reconstruction": True,
         }
-    )
+        if extra_context:
+            context_extra.update(extra_context)
+        export_context = _prepare_output_context(base_context, context_extra)
+        rows_copy = [dict(r) for r in rows]
+        transformed_headers, transformed_rows, smart_applied = transform_wide_to_smart_standard(
+            list(normalized_headers),
+            rows_copy,
+            export_context,
+        )
+        if smart_applied:
+            final_headers_local = transformed_headers
+            final_rows_local = transformed_rows
+        else:
+            final_headers_local = list(normalized_headers)
+            final_rows_local = rows_copy
+        result_paths = finalize_election_output(
+            headers=final_headers_local,
+            data=final_rows_local,
+            coordinator=coordinator,
+            contest=contest_title,
+            state=state,
+            county=county,
+            context=export_context,
+            enable_user_feedback=False,
+            session_id=session_id,
+        )
+        return final_headers_local, final_rows_local, export_context, bool(smart_applied), result_paths
 
-    normalized_rows_copy = [dict(r) for r in normalized_rows]
-    transformed_headers, transformed_rows, smart_applied = transform_wide_to_smart_standard(
-        list(normalized_headers),
-        normalized_rows_copy,
-        export_context,
-    )
-    if smart_applied:
-        final_headers = transformed_headers
-        final_rows = transformed_rows
-    else:
-        final_headers = normalized_headers
-        final_rows = normalized_rows_copy
+    if not segments_map:
+        final_headers, final_rows, export_context, smart_applied, result_paths = _run_single_output(default_rows, selected_contest_title)
+        columnar_meta = metadata.get("columnar_reconstruction") or {}
+        columnar_meta.update({
+            "rows": len(recon_rows),
+            "columns": len(recon_headers),
+            "scope": contest_scope,
+            "wide_rows": len(default_rows),
+            "final_rows": len(final_rows),
+            "party_lookup": party_lookup,
+            "party_lookup_keys": sorted(party_lookup.keys()),
+            "candidate_columns": candidate_meta,
+            "location_header": location_header,
+            "wide_headers": normalized_headers,
+            "final_headers": final_headers,
+            "smart_standard_applied": bool(smart_applied),
+        })
+        if debug_events:
+            columnar_meta["debug_events"] = debug_events
+        metadata["columnar_reconstruction"] = columnar_meta
+        export_context["columnar_reconstruction_details"] = columnar_meta
+        metadata.setdefault("decision_trace", []).append({
+            "stage": "columnar_reconstruction",
+            "contest": selected_contest_title,
+            "scope": contest_scope,
+            "candidates": len(candidate_infos),
+            "smart_standard_applied": bool(smart_applied),
+            "location_header": location_header,
+        })
+        metadata.update({
+            "output_file": os.path.basename(result_paths.get("csv_path", "")),
+            "headers": final_headers,
+            "row_count": len(final_rows),
+            "csv_path": result_paths.get("csv_path"),
+            "metadata_path": result_paths.get("metadata_path"),
+            "columnar_reconstruction": columnar_meta,
+        })
+        logger.info({
+            "level": "INFO",
+            "type": "output",
+            "message": "[OUTPUT] Columnar reconstruction normalized to smart-standard rows.",
+            "session_id": session_id,
+            "rows": len(final_rows),
+            "candidates": len(candidate_infos),
+            "smart_standard_applied": bool(smart_applied),
+        })
+        return final_headers, final_rows, selected_contest_title, metadata
 
-    candidate_meta = []
-    for info in candidate_infos:
-        candidate_meta.append({
-            "source_header": info.get("source_header"),
-            "display_label": info.get("display_label"),
-            "party": _normalize_party_display(info.get("party_label", "")),
-            "party_code": info.get("party_code"),
-            "party_inference": info.get("party_inference"),
-            "total_column": info.get("total_key"),
-            "party_column": info.get("party_key"),
+    segments_sequence: list[dict] = []
+    for entry in segments_map.values():
+        rows_group = entry.get("rows") or []
+        if rows_group:
+            segments_sequence.append({
+                "label": entry.get("label"),
+                "number": entry.get("number"),
+                "rows": rows_group,
+            })
+    if default_rows:
+        segments_sequence.append({
+            "label": "Summary",
+            "number": None,
+            "rows": default_rows,
+        })
+
+    segments_with_rows = [segment for segment in segments_sequence if segment.get("rows")]
+    if not segments_with_rows:
+        final_headers, final_rows, export_context, smart_applied, result_paths = _run_single_output(default_rows, selected_contest_title)
+        columnar_meta = metadata.get("columnar_reconstruction") or {}
+        columnar_meta.update({
+            "rows": len(recon_rows),
+            "columns": len(recon_headers),
+            "scope": contest_scope,
+            "wide_rows": len(default_rows),
+            "final_rows": len(final_rows),
+            "party_lookup": party_lookup,
+            "party_lookup_keys": sorted(party_lookup.keys()),
+            "candidate_columns": candidate_meta,
+            "location_header": location_header,
+            "wide_headers": normalized_headers,
+            "final_headers": final_headers,
+            "smart_standard_applied": bool(smart_applied),
+        })
+        if debug_events:
+            columnar_meta["debug_events"] = debug_events
+        metadata["columnar_reconstruction"] = columnar_meta
+        export_context["columnar_reconstruction_details"] = columnar_meta
+        metadata.setdefault("decision_trace", []).append({
+            "stage": "columnar_reconstruction",
+            "contest": selected_contest_title,
+            "scope": contest_scope,
+            "candidates": len(candidate_infos),
+            "smart_standard_applied": bool(smart_applied),
+            "location_header": location_header,
+        })
+        metadata.update({
+            "output_file": os.path.basename(result_paths.get("csv_path", "")),
+            "headers": final_headers,
+            "row_count": len(final_rows),
+            "csv_path": result_paths.get("csv_path"),
+            "metadata_path": result_paths.get("metadata_path"),
+            "columnar_reconstruction": columnar_meta,
+        })
+        logger.info({
+            "level": "INFO",
+            "type": "output",
+            "message": "[OUTPUT] Columnar reconstruction normalized to smart-standard rows.",
+            "session_id": session_id,
+            "rows": len(final_rows),
+            "candidates": len(candidate_infos),
+            "smart_standard_applied": bool(smart_applied),
+        })
+        return final_headers, final_rows, selected_contest_title, metadata
+
+    def _normalize_spaces(value: str | None) -> str:
+        return re.sub(r"\s{2,}", " ", (value or "")).strip()
+
+    def _to_ordinal(number: int | None) -> str:
+        if number is None:
+            return ""
+        if 10 <= number % 100 <= 20:
+            suffix = "th"
+        else:
+            suffix = {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th")
+        return f"{number}{suffix}"
+
+    def _segment_contest_title(base: str, label: str | None, number: int | None) -> str:
+        base_norm = _normalize_spaces(base)
+        base_lower = base_norm.lower()
+        label_norm = _normalize_spaces(label)
+        ordinal = _to_ordinal(number).lower()
+        if label_norm and label_norm.lower() in base_lower:
+            return base_norm
+        if number is not None:
+            phrase = f"district {number}".lower()
+            if phrase in base_lower or ordinal in base_lower or f"{number} district" in base_lower:
+                return base_norm
+        suffix = label_norm or (f"District {number}" if number is not None else "Segment")
+        return f"{base_norm} - {suffix}"
+
+    def _segment_matches_title(segment: dict, title: str) -> bool:
+        title_low = _normalize_spaces(title).lower()
+        label_low = _normalize_spaces(segment.get("label")).lower()
+        if label_low and label_low in title_low:
+            return True
+        number = segment.get("number")
+        if number is not None:
+            ordinal = _to_ordinal(number).lower()
+            if (
+                f"district {number}" in title_low
+                or f"{number} district" in title_low
+                or ordinal in title_low
+            ):
+                return True
+        return False
+
+    bundle_seed = f"{os.path.abspath(pdf_path)}::{selected_contest_title}"
+    bundle_key = hashlib.sha1(bundle_seed.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+    for segment in segments_with_rows:
+        segment["contest_title"] = _segment_contest_title(
+            selected_contest_title,
+            segment.get("label"),
+            segment.get("number"),
+        )
+
+    bundle_members = []
+    for idx, segment in enumerate(segments_with_rows):
+        bundle_members.append({
+            "title": segment.get("contest_title"),
+            "row_count": len(segment.get("rows") or []),
+            "metadata": {
+                "sub_contest_label": segment.get("label"),
+                "sub_contest_number": segment.get("number"),
+                "bundle_index": idx,
+            },
+        })
+
+    bundle_metadata = {
+        "bundle_mode": "aggregate",
+        "bundle_key": bundle_key,
+        "bundle_size": len(bundle_members),
+        "display_title": selected_contest_title,
+        "summary": f"{len(bundle_members)} segments",
+        "members": bundle_members,
+    }
+
+    selected_segment = None
+    for segment in segments_with_rows:
+        if _segment_matches_title(segment, selected_contest_title):
+            selected_segment = segment
+            break
+    if selected_segment is None:
+        selected_segment = segments_with_rows[0]
+
+    bundle_outputs: list[dict] = []
+    selected_final_headers: list[str] = []
+    selected_final_rows: list[dict] = []
+    selected_result_paths: dict[str, str] = {"csv_path": "", "metadata_path": ""}
+    selected_export_context: dict | None = None
+    selected_smart_applied = False
+
+    total_wide_rows = sum(len(segment.get("rows") or []) for segment in segments_with_rows)
+
+    for idx, segment in enumerate(segments_with_rows):
+        label = segment.get("label")
+        number = segment.get("number")
+        contest_title = segment.get("contest_title") or selected_contest_title
+        extra_context = {
+            "bundle_mode": "aggregate",
+            "bundle_key": bundle_key,
+            "bundle_size": len(bundle_members),
+            "bundle_metadata": bundle_metadata,
+            "bundle_member_index": idx,
+            "bundle_member_label": label,
+            "bundle_member_number": number,
+            "sub_contest_label": label,
+            "sub_contest_number": number,
+            "contest": contest_title,
+        }
+        final_headers_seg, final_rows_seg, export_context_seg, smart_applied_seg, result_seg = _run_single_output(segment.get("rows") or [], contest_title, extra_context)
+        bundle_outputs.append({
+            "label": label,
+            "number": number,
+            "contest": contest_title,
+            "csv_path": result_seg.get("csv_path"),
+            "metadata_path": result_seg.get("metadata_path"),
+            "row_count": len(final_rows_seg),
+            "headers": final_headers_seg,
+            "smart_standard_applied": smart_applied_seg,
+        })
+        if segment is selected_segment:
+            selected_final_headers = final_headers_seg
+            selected_final_rows = final_rows_seg
+            selected_result_paths = result_seg
+            selected_export_context = export_context_seg
+            selected_smart_applied = smart_applied_seg
+
+    if selected_export_context is None:
+        selected_export_context = _prepare_output_context(base_context, {
+            "handler": "pdf_handler",
+            "input_file": os.path.basename(pdf_path),
+            "session_id": session_id,
+            "columnar_reconstruction": True,
         })
 
     columnar_meta = metadata.get("columnar_reconstruction") or {}
@@ -838,63 +1254,66 @@ def _try_columnar_reconstruction(
         "rows": len(recon_rows),
         "columns": len(recon_headers),
         "scope": contest_scope,
-        "wide_rows": len(normalized_rows),
-        "final_rows": len(final_rows),
+        "wide_rows": total_wide_rows,
+        "final_rows": len(selected_final_rows),
         "party_lookup": party_lookup,
         "party_lookup_keys": sorted(party_lookup.keys()),
         "candidate_columns": candidate_meta,
         "location_header": location_header,
         "wide_headers": normalized_headers,
-        "final_headers": final_headers,
-        "smart_standard_applied": bool(smart_applied),
+        "final_headers": selected_final_headers,
+        "smart_standard_applied": bool(selected_smart_applied),
+        "bundle_mode": "aggregate",
+        "bundle_outputs": bundle_outputs,
+        "bundle_key": bundle_key,
+        "bundle_metadata": bundle_metadata,
+        "selected_sub_contest": {
+            "label": selected_segment.get("label"),
+            "number": selected_segment.get("number"),
+            "contest": selected_segment.get("contest_title"),
+        },
     })
     if debug_events:
         columnar_meta["debug_events"] = debug_events
     metadata["columnar_reconstruction"] = columnar_meta
-    export_context["columnar_reconstruction_details"] = columnar_meta
+    selected_export_context["columnar_reconstruction_details"] = columnar_meta
 
-    result = finalize_election_output(
-        headers=final_headers,
-        data=final_rows,
-        coordinator=coordinator,
-        contest=selected_contest_title,
-        state=state,
-        county=county,
-        context=export_context,
-        enable_user_feedback=False,
-        session_id=session_id
-    )
-
-    decision_entry = {
+    metadata.setdefault("decision_trace", []).append({
         "stage": "columnar_reconstruction",
         "contest": selected_contest_title,
         "scope": contest_scope,
         "candidates": len(candidate_infos),
-        "smart_standard_applied": bool(smart_applied),
+        "smart_standard_applied": bool(selected_smart_applied),
         "location_header": location_header,
-    }
-    metadata.setdefault("decision_trace", []).append(decision_entry)
+        "bundle_mode": "aggregate",
+        "segments": len(bundle_outputs),
+    })
 
     metadata.update({
-        "output_file": os.path.basename(result.get("csv_path", "")),
-        "headers": final_headers,
-        "row_count": len(final_rows),
-        "csv_path": result.get("csv_path"),
-        "metadata_path": result.get("metadata_path"),
+        "output_file": os.path.basename(selected_result_paths.get("csv_path", "")),
+        "headers": selected_final_headers,
+        "row_count": len(selected_final_rows),
+        "csv_path": selected_result_paths.get("csv_path"),
+        "metadata_path": selected_result_paths.get("metadata_path"),
         "columnar_reconstruction": columnar_meta,
+        "bundle_outputs": bundle_outputs,
+        "bundle_metadata": bundle_metadata,
+        "sub_contest_label": selected_segment.get("label"),
+        "sub_contest_number": selected_segment.get("number"),
+        "contest": selected_segment.get("contest_title"),
     })
 
     logger.info({
         "level": "INFO",
         "type": "output",
-        "message": "[OUTPUT] Columnar reconstruction normalized to smart-standard rows.",
+        "message": "[OUTPUT] Columnar reconstruction emitted bundled sub-contests.",
         "session_id": session_id,
-        "rows": len(final_rows),
+        "segments": len(bundle_outputs),
         "candidates": len(candidate_infos),
-        "smart_standard_applied": bool(smart_applied),
+        "smart_standard_applied": bool(selected_smart_applied),
     })
 
-    return final_headers, final_rows, selected_contest_title, metadata
+    return selected_final_headers, selected_final_rows, selected_segment.get("contest_title"), metadata
 
 def _log_ocr_environment(session_id=None):
     try:
@@ -979,6 +1398,7 @@ def _detect_contest_titles_from_text(lines):
     """
     titles = []
     skip_set = {s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())}
+    last_contest_title: str | None = None
     for line in lines:
         raw = (line or "").strip()
         low = raw.lower()
@@ -991,6 +1411,16 @@ def _detect_contest_titles_from_text(lines):
         # Use robust regex to detect contest references
         if _CONTEST_RX.search(low):
             titles.append(raw)
+            last_contest_title = raw
+            continue
+
+        is_district, district_number, district_label = utils_detect_district_heading(raw)
+        if is_district:
+            display_label = district_label or raw
+            titles.append(display_label)
+            if last_contest_title:
+                combined = f"{last_contest_title} - {display_label}"
+                titles.append(combined)
     # Deduplicate while preserving order
     seen = set()
     uniq = []
@@ -1154,6 +1584,20 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
     - Else, try pdf2image (Poppler) then fallback to PyMuPDF for all pages.
     """
     images = []
+    orientation_map, default_angle = _get_page_orientation_map(pdf_path, session_id=session_id)
+
+    def _apply_orientation(img: Image.Image, page_index: int) -> Image.Image:
+        angle = orientation_map.get(page_index)
+        if angle is None:
+            angle = default_angle
+        if not angle:
+            return img
+        rotation = _quantize_angle(-angle)
+        if not rotation:
+            return img
+        rotated = img.rotate(rotation, expand=True)
+        _log_orientation_application(pdf_path, page_index, rotation, session_id=session_id)
+        return rotated
     # Try pdf2image first if available
     # If specific pages requested, use PyMuPDF directly (efficient random-page render)
     if page_indices is not None or max_pages is not None:
@@ -1171,7 +1615,7 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
                 pix = page.get_pixmap(dpi=dpi)
                 mode = "RGBA" if pix.alpha else "RGB"
                 pil_img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
-                images.append(pil_img)
+                images.append(_apply_orientation(pil_img, i))
             doc.close()
             return images
         except Exception as e:
@@ -1205,7 +1649,7 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
                     kwargs["poppler_path"] = poppler_path
                 images = pdf2image.convert_from_path(pdf_path, **kwargs)
                 if images:
-                    return images
+                    return [_apply_orientation(img, idx) for idx, img in enumerate(images)]
         except Exception as e:
             reason = (str(e) or "pdf2image_failed").strip()
             reason_lower = reason.lower()
@@ -1238,7 +1682,7 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
             pix = page.get_pixmap(dpi=dpi)
             mode = "RGBA" if pix.alpha else "RGB"
             pil_img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
-            images.append(pil_img)
+            images.append(_apply_orientation(pil_img, i))
         doc.close()
     except Exception as e:
         logger.error({

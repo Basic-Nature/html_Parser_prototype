@@ -67,5 +67,5 @@ COPY . .
 # App Service listens on WEBSITES_PORT (set via app settings). Expose for local runs.
 EXPOSE 8000
 
-# Start the app
-CMD ["python", "-m", "webapp.Smart_Elections_Parser_Webapp"]
+# Start the app with Gunicorn + eventlet for production deployments
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "webapp.Smart_Elections_Parser_Webapp:app"]

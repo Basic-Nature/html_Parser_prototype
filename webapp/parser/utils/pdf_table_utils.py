@@ -11,7 +11,7 @@ side effects (logging, file I/O, etc.).
 import os
 import re
 from collections import Counter
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Sequence
 
 from ..Context_Integration.Context_Library.constants import (
     BALLOT_TYPES,
@@ -103,6 +103,77 @@ _PARTY_TERMS = {str(p).lower() for p in PARTY_KEYWORDS if isinstance(p, str)} | 
 _NUMERIC_TOKEN_RE = re.compile(r"^\s*[-+]?\d[\d,]*(?:\.\d+)?\s*(?:%+)?\s*$")
 _PARTY_KEY_PATTERN = re.compile(r"\((?P<code>[A-Za-z]{1,4})\)\s*(?P<label>[A-Za-z][A-Za-z .&'/-]*)")
 _PARTY_EQUALS_PATTERN = re.compile(r"\b(?P<code>[A-Za-z]{1,4})\b\s*=\s*(?P<label>[A-Za-z][A-Za-z .&'/-]*)")
+
+_DISTRICT_NUM_RE = re.compile(r"^(?P<num>\d{1,3})(?:st|nd|rd|th)?$", re.I)
+_DISTRICT_KEYWORDS = {"district", "dist"}
+_DISTRICT_HEADING_EXCLUDE = {"total", "totals", "summary", "report", "results"}
+
+
+def detect_district_heading(text: str) -> tuple[bool, str | None, str | None]:
+    """Identify district boundary headings and return (matched, district_number, display_label)."""
+    if not isinstance(text, str):
+        return False, None, None
+    cleaned = re.sub(r"\s{2,}", " ", text.strip())
+    if not cleaned:
+        return False, None, None
+    lowered = cleaned.lower()
+    if "district" not in lowered and "dist" not in lowered:
+        return False, None, None
+    if any(token in lowered for token in _DISTRICT_HEADING_EXCLUDE):
+        return False, None, None
+    if "districts" in lowered:
+        return False, None, None
+
+    tokens = [tok.strip(".,;:()[]{}#") for tok in cleaned.replace("-", " ").split()]
+    if not tokens:
+        return False, None, None
+
+    def _parse_number(token: str) -> str | None:
+        candidate = token.strip().lower().strip(".,;:()[]{}#")
+        match = _DISTRICT_NUM_RE.match(candidate)
+        if match:
+            return match.group("num")
+        return None
+
+    district_positions: list[int] = []
+    for idx, token in enumerate(tokens):
+        normalized = token.lower().strip(".,;:()[]{}")
+        if normalized in _DISTRICT_KEYWORDS or normalized.startswith("district"):
+            district_positions.append(idx)
+
+    if not district_positions:
+        return False, None, None
+
+    district_number: str | None = None
+    for pos in district_positions:
+        # Look for number immediately before the keyword
+        if pos > 0:
+            candidate = _parse_number(tokens[pos - 1])
+            if candidate:
+                district_number = candidate
+        if district_number:
+            break
+        # Look for number after the keyword (skip "No." / "Number" / "#")
+        if pos + 1 < len(tokens):
+            look_idx = pos + 1
+            if tokens[look_idx].lower() in {"no", "number", "#"} and look_idx + 1 < len(tokens):
+                look_idx += 1
+            candidate = _parse_number(tokens[look_idx])
+            if candidate:
+                district_number = candidate
+        if district_number:
+            break
+
+    if not district_number:
+        return False, None, None
+
+    try:
+        district_number = str(int(district_number))
+    except Exception:
+        district_number = district_number.lstrip("0") or district_number
+
+    display_label = cleaned.strip("-: ")
+    return True, district_number, display_label
 
 
 def build_contest_regex(keywords: Iterable[str]) -> re.Pattern:
@@ -449,6 +520,9 @@ def extract_contest_block(
             continue
         blanks = 0
         if regex.search(low) and len(block) >= 2:
+            break
+        is_district, _district_num, _district_label = detect_district_heading(text)
+        if block and is_district and len(block) >= 2:
             break
         block.append(text)
     return block
@@ -1216,9 +1290,11 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
             continue
 
         location_header = anchor_label
-        raw_rows: list[tuple[str, list[str]]] = []
+        raw_rows: list[dict[str, Any]] = []
         current_location: str | None = None
         current_values: list[str] = []
+        active_subcontest_label: str | None = None
+        active_subcontest_number: str | None = None
         stop_event: dict | None = None
 
         def _flush_current_row(reason: str | None = None) -> None:
@@ -1226,7 +1302,12 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
             if current_location is None:
                 return
             if current_values:
-                raw_rows.append((current_location, list(current_values)))
+                raw_rows.append({
+                    "location": current_location,
+                    "values": list(current_values),
+                    "subcontest_label": active_subcontest_label,
+                    "subcontest_number": active_subcontest_number,
+                })
             elif reason:
                 _record_recon_event({
                     "phase": "row_flush_no_values",
@@ -1247,10 +1328,12 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
                 }
                 _flush_current_row("next_anchor")
                 break
+            token_is_district, district_number, district_label = detect_district_heading(token)
             if (
                 regex.search(token.lower())
                 and len(raw_rows) >= 2
                 and not _looks_like_party_definition(token)
+                and not token_is_district
             ):
                 stop_event = {
                     "reason": "next_contest_heading",
@@ -1259,6 +1342,22 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
                 }
                 _flush_current_row("next_contest")
                 break
+
+            if token_is_district:
+                _record_recon_event({
+                    "phase": "district_boundary_detected",
+                    "anchor_label": anchor_label,
+                    "district_label": district_label,
+                    "district_number": district_number,
+                    "line_index": scan_idx,
+                })
+                _flush_current_row("district_boundary")
+                current_location = None
+                current_values = []
+                active_subcontest_label = district_label or token.strip()
+                active_subcontest_number = district_number
+                scan_idx += 1
+                continue
 
             cells = split_ws_blocks(token)
             if not cells:
@@ -1316,7 +1415,7 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
             idx = max(idx + 1, scan_idx)
             continue
 
-        row_lengths = [len(values) for _, values in raw_rows if values]
+        row_lengths = [len(entry.get("values") or []) for entry in raw_rows if entry.get("values")]
         if not row_lengths:
             _record_recon_event({
                 "phase": "data_rows_insufficient",
@@ -1378,9 +1477,13 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
             "december",
         }
 
-        for location_text, values in raw_rows:
+        filtered_entries: list[dict[str, Any]] = []
+
+        for entry in raw_rows:
+            values = entry.get("values") or []
             if not values:
                 continue
+            location_text = entry.get("location", "")
             loc_clean = (location_text or "").strip()
             if loc_clean and any(month in loc_clean.lower() for month in month_tokens):
                 _record_recon_event({
@@ -1415,7 +1518,14 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
                 row_values = row_values[: candidate_count - 1] + [" ".join(overflow)]
             if loc_clean and is_numeric_like(loc_clean):
                 numeric_location_rows += 1
-            data_lines.append([loc_clean] + row_values[:candidate_count])
+            normalized_values = row_values[:candidate_count]
+            data_lines.append([loc_clean] + normalized_values)
+            filtered_entries.append({
+                "location": loc_clean,
+                "values": normalized_values,
+                "subcontest_label": entry.get("subcontest_label"),
+                "subcontest_number": entry.get("subcontest_number"),
+            })
 
         min_rows_required = 3
         if candidate_count >= 2:
@@ -1441,12 +1551,18 @@ def reconstruct_columnar_block(lines: Sequence[str], contest_regex: re.Pattern |
 
         rows: list[dict] = []
         candidate_count = len(candidate_headers)
-        for line_cells in data_lines:
-            location = line_cells[0]
-            values = list(line_cells[1:])
+        for entry in filtered_entries:
+            location = entry.get("location", "")
+            values = list(entry.get("values") or [])
+            if len(values) < candidate_count:
+                values.extend([""] * (candidate_count - len(values)))
             row = {location_header: location}
             for header, value in zip(candidate_headers, values):
                 row[header] = value
+            if entry.get("subcontest_label"):
+                row["_subcontest_label"] = entry["subcontest_label"]
+            if entry.get("subcontest_number"):
+                row["_subcontest_number"] = entry["subcontest_number"]
             rows.append(row)
 
         reject_reason: str | None = None
@@ -1584,6 +1700,7 @@ __all__ = [
     "extract_contest_block",
     "extract_party_lookup_from_lines",
     "extract_table_by_whitespace",
+    "detect_district_heading",
     "find_best_header_match",
     "find_header_line",
     "header_signature",

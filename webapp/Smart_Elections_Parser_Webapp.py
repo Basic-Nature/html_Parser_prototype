@@ -2371,6 +2371,14 @@ cleanup_old_log_files(LOG_DIR, session_manager.list_active_session_ids(), keep_d
 if __name__ == "__main__":
     try:
         port = int(os.environ.get("PORT", 5000))
-        socketio.run(app, host="0.0.0.0", port=port, debug=False, use_reloader=False)
+        allow_unsafe = _env_flag("SMART_ELECTIONS_ALLOW_UNSAFE_WERKZEUG", False)
+        socketio.run(
+            app,
+            host="0.0.0.0",
+            port=port,
+            debug=False,
+            use_reloader=False,
+            allow_unsafe_werkzeug=allow_unsafe,
+        )
     finally:
         _shutdown_event.set()
