@@ -9,7 +9,8 @@ import time
 import platform
 import shutil
 import importlib
-from collections import defaultdict
+import hashlib
+from collections import Counter, OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageOps, ImageFilter, ImageEnhance
 from ...config import (
@@ -37,6 +38,12 @@ try:
     from ...config import ENABLE_CAMELOT
 except Exception:
     ENABLE_CAMELOT = True
+
+try:
+    from ...config import ENABLE_SANITIZE_DEBUG_LOG, SANITIZE_LOGGING_LIMIT
+except Exception:
+    ENABLE_SANITIZE_DEBUG_LOG = False
+    SANITIZE_LOGGING_LIMIT = 200
 
 from ...utils.camelot_utils import (
     attempt_camelot_extraction,
@@ -115,6 +122,36 @@ except Exception:
 
 _MIN_PYMUPDF_VERSION = (1, 26, 5)
 _FITZ_MODULE = None
+
+_SANITIZE_CACHE_VERSION = "v2"
+_SANITIZE_CACHE_LIMIT = 128
+_SANITIZE_CACHE_MIN_CONFIDENCE = 0.20
+_SANITIZE_VERTICAL_JOIN_LIMIT = 50
+_SANITIZE_CACHE: OrderedDict[str, tuple[str, float]] = OrderedDict()
+_POPPLER_WARNING_SHOWN = False
+_PDF2IMAGE_DISABLED_REASON: str | None = None
+
+
+def _sanitize_cache_get(key: str) -> str | None:
+    entry = _SANITIZE_CACHE.get(key)
+    if not entry:
+        return None
+    value, confidence = entry
+    if confidence < _SANITIZE_CACHE_MIN_CONFIDENCE:
+        return None
+    _SANITIZE_CACHE.move_to_end(key)
+    return value
+
+
+def _sanitize_cache_set(key: str, value: str, confidence: float) -> None:
+    if not key:
+        return
+    if confidence < _SANITIZE_CACHE_MIN_CONFIDENCE:
+        return
+    _SANITIZE_CACHE[key] = (value, confidence)
+    _SANITIZE_CACHE.move_to_end(key)
+    while len(_SANITIZE_CACHE) > _SANITIZE_CACHE_LIMIT:
+        _SANITIZE_CACHE.popitem(last=False)
 
 
 def _camelot_signal_sets() -> tuple[set[str], set[str]]:
@@ -991,6 +1028,14 @@ def _sanitize_extracted_text(text: str) -> str:
     """
     if not isinstance(text, str):
         return ""
+    cache_key = None
+    try:
+        cache_key = f"{_SANITIZE_CACHE_VERSION}:{hashlib.sha1(text.encode('utf-8', errors='ignore')).hexdigest()}"
+        cached_value = _sanitize_cache_get(cache_key)
+        if cached_value is not None:
+            return cached_value
+    except Exception:
+        cache_key = None
     # Remove data:image base64 attributes entirely
     text = re.sub(r'src\s*=\s*"data:image/[^"]+"', 'src="[image]"', text, flags=re.IGNORECASE)
     # Remove long base64-like runs that may appear outside attributes
@@ -1002,34 +1047,105 @@ def _sanitize_extracted_text(text: str) -> str:
         text = html.unescape(text)
     except Exception:
         pass
-    # Normalize whitespace but keep line structure
-    lines = []
-    for raw in text.splitlines():
-        s = raw.strip()
-        if not s:
+    raw_lines = text.splitlines()
+    candidate_lines = []
+    vertical_buffer: list[str] = []
+    vertical_chunks = 0
+
+    def _vertical_buffer_length(buffer: list[str]) -> int:
+        return sum(len(token.strip()) for token in buffer)
+
+    def flush_vertical_buffer():
+        nonlocal vertical_chunks
+        if not vertical_buffer:
+            return
+        joined = "".join(token.strip() for token in vertical_buffer)
+        joined = re.sub(r'([^\w\s])\1{2,}', r'\1', joined)
+        joined = joined.strip()
+        if len(joined) > 1 and re.search(r"[A-Za-z0-9]", joined):
+            candidate_lines.append(joined)
+            vertical_chunks += 1
+        else:
+            for token in vertical_buffer:
+                candidate_lines.append(token)
+        vertical_buffer.clear()
+
+    for raw in raw_lines:
+        stripped = raw.strip()
+        if not stripped:
+            flush_vertical_buffer()
             continue
-        # Collapse internal whitespace
-        s = re.sub(r'\s+', ' ', s)
-        # Heuristics: keep lines that have some alphanum signal
+        collapsed = re.sub(r'\s+', ' ', stripped)
+        alnum = sum(ch.isalnum() for ch in collapsed)
+        is_vertical_char = bool(alnum == 1 and len(collapsed) <= 3 and re.search(r"[A-Za-z]", collapsed))
+        if is_vertical_char:
+            if _vertical_buffer_length(vertical_buffer) + len(collapsed) > _SANITIZE_VERTICAL_JOIN_LIMIT:
+                flush_vertical_buffer()
+            vertical_buffer.append(collapsed)
+            continue
+        flush_vertical_buffer()
+        candidate_lines.append(collapsed)
+
+    flush_vertical_buffer()
+
+    drop_stats = Counter()
+    kept_stats = Counter()
+    lines = []
+    candidate_total = len(candidate_lines)
+    for s in candidate_lines:
+        s = s.strip()
+        if not s:
+            drop_stats["empty"] += 1
+            continue
+        if s in {"[image]", "[data]"}:
+            drop_stats["placeholder"] += 1
+            continue
         alnum = sum(ch.isalnum() for ch in s)
         if alnum < 2:
+            if not re.search(r"[A-Za-z]", s):
+                drop_stats["lonely_low_signal"] += 1
+                continue
+            kept_stats["alpha_low_signal"] += 1
+            lines.append(s)
             continue
-        # Drop bracket-only image placeholders
-        if s in {"[image]", "[data]"}:
-            continue
-        # Avoid lines that are mostly punctuation
         punct = sum(not ch.isalnum() and not ch.isspace() for ch in s)
         if alnum and punct / max(1, len(s)) > 0.6:
+            drop_stats["punct_ratio"] += 1
             continue
         lines.append(s)
-    # Deduplicate consecutive duplicates
+
     neat = []
     last = None
-    for l in lines:
-        if l != last:
-            neat.append(l)
-            last = l
-    return "\n".join(neat)
+    for value in lines:
+        if value != last:
+            neat.append(value)
+            last = value
+
+    confidence = len(neat) / max(1, candidate_total)
+    try:
+        total_dropped = sum(drop_stats.values())
+        if (ENABLE_SANITIZE_DEBUG_LOG or candidate_total <= SANITIZE_LOGGING_LIMIT) and (total_dropped or vertical_chunks or kept_stats):
+            drop_preview = dict(list(drop_stats.items())[:6])
+            kept_preview = dict(list(kept_stats.items())[:6])
+            logger.info({
+                "level": "INFO",
+                "type": "handler",
+                "message": (
+                    f"[INFO] sanitize_extracted_text kept={len(neat)} dropped={total_dropped} "
+                    f"vertical_chunks={vertical_chunks} confidence={confidence:.2f} "
+                    f"drop_reasons={drop_preview} kept_flags={kept_preview}"
+                )
+            })
+    except Exception:
+        pass
+
+    result = "\n".join(neat)
+    try:
+        if cache_key:
+            _sanitize_cache_set(cache_key, result, confidence)
+    except Exception:
+        pass
+    return result
 
 def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices: list[int] | None = None, max_pages: int | None = None):
     """
@@ -1067,21 +1183,44 @@ def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices:
             })
             images = []
 
-    # Try full-document pdf2image first if available
-    if pdf2image and (page_indices is None and max_pages is None):
+    global _POPPLER_WARNING_SHOWN, _PDF2IMAGE_DISABLED_REASON
+    # Try full-document pdf2image first if available and not previously disabled
+    if pdf2image and _PDF2IMAGE_DISABLED_REASON is None and (page_indices is None and max_pages is None):
         try:
             poppler_path = _detect_poppler_path()
-            kwargs = {"dpi": dpi}
-            if poppler_path and platform.system().lower().startswith("win"):
-                kwargs["poppler_path"] = poppler_path
-            images = pdf2image.convert_from_path(pdf_path, **kwargs)
-            if images:
-                return images
+            is_windows = platform.system().lower().startswith("win")
+            if is_windows and not poppler_path:
+                if not _POPPLER_WARNING_SHOWN:
+                    logger.warning({
+                        "level": "WARNING",
+                        "type": "handler",
+                        "message": "[WARN] Poppler binaries not detected; skipping pdf2image and using PyMuPDF fallback.",
+                        "session_id": session_id
+                    })
+                    _POPPLER_WARNING_SHOWN = True
+                _PDF2IMAGE_DISABLED_REASON = "poppler_not_found"
+            else:
+                kwargs = {"dpi": dpi}
+                if poppler_path and is_windows:
+                    kwargs["poppler_path"] = poppler_path
+                images = pdf2image.convert_from_path(pdf_path, **kwargs)
+                if images:
+                    return images
         except Exception as e:
-            logger.error({
-                "level": "ERROR",
+            reason = (str(e) or "pdf2image_failed").strip()
+            reason_lower = reason.lower()
+            disable_future = any(token in reason_lower for token in ("poppler", "nonetype", "win32", "pdftoppm", "pdftocairo"))
+            if disable_future:
+                _PDF2IMAGE_DISABLED_REASON = reason[:160]
+            logger.warning({
+                "level": "WARNING",
                 "type": "handler",
-                "message": f"[ERROR] pdf2image conversion failed (Poppler missing or error). Falling back to PyMuPDF render. {e}",
+                "message": (
+                    "[WARN] pdf2image conversion failed; "
+                    + ("disabling future attempts and " if disable_future else "")
+                    + "falling back to PyMuPDF render. "
+                    + f"reason={reason}"
+                ),
                 "session_id": session_id
             })
             images = []
@@ -2613,8 +2752,8 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 pdf_path,
                 session_id=session_id,
                 target_conf=70.0,
-                max_seconds=150,
-                max_runs=28
+                max_seconds=100,
+                max_runs=18
             )
             candidate_ocr_params = dict(ocr_params or {})
             if candidate_ocr_params:

@@ -61,7 +61,7 @@ module = ["webapp.parser.handlers.formats.pdf_handler"]
 ignore_errors = true
 
 [tool.pytest.ini_options]
-addopts = "-p no:unraisableexception"
+addopts = "-p no:unraisableexception -p no:seleniumbase"
 filterwarnings = [
   "ignore:Importing 'parser.split_arg_string' is deprecated, it will only be available in 'shell_completion' in Click 9.0.:DeprecationWarning"
 ]

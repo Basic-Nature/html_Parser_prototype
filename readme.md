@@ -70,6 +70,7 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 - **Web UI:** Real-time log streaming, data management, and user-friendly contest/table review.
 - **Batch & Parallel Processing:** Multiprocessing support for large-scale scraping.
 - **Security:** Path safety, .env config, and no credential storage.
+- **Optimized PDF Parsing:** pdf2image acceleration when Poppler is installed (automatic fallback to PyMuPDF otherwise).
 
 ---
 
@@ -257,6 +258,28 @@ html_Parser_prototype/
 
    pip install -r requirements.txt
    python -m spacy download en_core_web_sm
+
+### 📦 Poppler Setup (PDF acceleration)
+
+- **Windows (local development):**
+   1. Download the latest Poppler build from [https://github.com/oschwartz10612/poppler-windows/releases](https://github.com/oschwartz10612/poppler-windows/releases) and unzip it (for example to `C:\poppler`).
+   2. Set the environment variable so the parser can find the binaries:
+
+       ```powershell
+       setx POPPLER_PATH "C:\\poppler\\Library\\bin"
+       ```
+
+   3. Restart any running parser/webapp processes so the change takes effect.
+- **Linux / Azure (production):**
+   - Install Poppler utilities during provisioning or container build:
+
+      ```bash
+      sudo apt-get update
+      sudo apt-get install -y poppler-utils
+      ```
+
+   - The handler automatically detects `pdftoppm`/`pdftocairo` once they are on PATH.
+- **Verification:** rerun a PDF-heavy sample (for example the Minnesota 2016 PDF) and confirm the logs no longer emit `pdf2image conversion failed` messages.
 
 - 2. ## Add URLs
    - Populate `urls.txt` with target election result URLs.

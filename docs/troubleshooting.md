@@ -75,6 +75,40 @@
   - Use `ENABLE_DOWNLOAD_DISCOVERY=true` in `.env` to allow automatic retrieval.
   - For manual override, ensure `FORCE_PARSE_INPUT_FILE=true` and `FORCE_PARSE_FORMAT` are set in `.env`.
 
+### ❗ Problem: `[ERROR] pdf2image conversion failed ... Poppler missing`
+
+- **Cause**: Poppler utilities (pdftoppm/pdftocairo) are not installed, so `pdf2image` cannot rasterize pages and the handler falls back to PyMuPDF every run.
+- **Fix (Windows local development)**:
+  1. Download the latest Poppler zip from [https://github.com/oschwartz10612/poppler-windows/releases](https://github.com/oschwartz10612/poppler-windows/releases) (or poppler.org) and unzip it, e.g., to `C:\poppler`.
+  2. Set `POPPLER_PATH` (or `CONFIG_POPPLER_PATH` in `webapp/config.py`) to the extracted `bin` folder, for example:
+
+     ```powershell
+     setx POPPLER_PATH "C:\\poppler\\Library\\bin"
+     ```
+
+     Restart the parser process so the cached disable flag clears.
+- **Fix (Linux / Azure)**:
+  - Install Poppler utilities during provisioning:
+
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y poppler-utils
+    ```
+
+  - Ensure the command above runs in your deployment script or container build. Once `pdftoppm` is on PATH, the handler automatically re-enables `pdf2image`.
+- **Verification**:
+  - Re-run the problematic PDF (e.g., the Minnesota 2016 sample) and confirm the logs show `pdf2image` succeeded or that the Poppler warning no longer appears.
+
+### ❗ Problem: Eventlet monkey patching interferes with threads or teardown
+
+- **Symptoms**: Background threads fail with `'NoneType' object is not callable'` during shutdown, or sessions bleed across users when running the web UI under heavy load.
+- **Cause**: Aggressive eventlet monkey patching replaces native threading primitives; during tests or in environments that rely on OS threads this can lead to cleanup failures.
+- **Fix**:
+  - To disable patching (e.g., in unit tests), set `SMART_ELECTIONS_SKIP_EVENTLET_PATCH=1` or `SMART_ELECTIONS_FORCE_THREADING=1` before importing the web app.
+  - To keep eventlet but avoid patching the threading module, leave the defaults in place or explicitly set `SMART_ELECTIONS_EVENTLET_PATCH_THREAD=0`.
+  - If you need full eventlet patching, set `SMART_ELECTIONS_EVENTLET_PATCH_THREAD=1` and restart the process.
+- **Diagnostics**: The web app logs the chosen async mode and patch configuration on startup. You can also inspect `webapp.Smart_Elections_Parser_Webapp.EVENTLET_STATUS` in a Python shell to verify the current settings.
+
 ### ❗ Problem: PyMuPDF emits `swigvarlink` DeprecationWarning on import
 
 - **Root Cause**: Python 3.12 tightened validation around C-extension types that lack a `__module__` attribute. PyMuPDF wheels prior to the upstream fix still expose several SWIG-generated builtin types (`SwigPyObject`, `SwigPyPacked`, `swigvarlink`) without that metadata, triggering a warning the first time the module loads.
