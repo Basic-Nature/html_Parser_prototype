@@ -500,31 +500,119 @@ def extract_contest_block(
     lines: Sequence[str],
     selected_title: str,
     contest_regex: re.Pattern | None = None,
-) -> list[str]:
+    *,
+    line_records: Sequence[dict] | None = None,
+    include_metadata: bool = False,
+) -> list[str] | tuple[list[str], dict]:
     if not lines:
-        return []
+        result: list[str] | tuple[list[str], dict]
+        if include_metadata:
+            result = ([], {
+                "selected_title": selected_title,
+                "heading_index": None,
+                "line_slice": None,
+                "line_count": 0,
+                "page_range": None,
+                "pages": [],
+                "termination_reason": "no_lines",
+            })
+        else:
+            result = []
+        return result
+
     regex = contest_regex or CONTEST_TITLE_REGEX
     start_idx = best_title_match_idx(lines, selected_title, regex)
     if start_idx < 0:
+        if include_metadata:
+            return [], {
+                "selected_title": selected_title,
+                "heading_index": None,
+                "line_slice": None,
+                "line_count": 0,
+                "page_range": None,
+                "pages": [],
+                "termination_reason": "heading_not_found",
+            }
         return []
+
     block: list[str] = []
+    block_indices: list[int] = []
     blanks = 0
     limit = min(len(lines), start_idx + 800)
-    for raw in lines[start_idx + 1 : limit]:
+    termination_reason = "end_of_document"
+
+    last_page = None
+    if line_records and 0 <= start_idx < len(line_records):
+        last_page = line_records[start_idx].get("page")
+
+    for rel_idx, raw in enumerate(lines[start_idx + 1 : limit], start=1):
+        global_idx = start_idx + rel_idx
+        record = None
+        if line_records and 0 <= global_idx < len(line_records):
+            record = line_records[global_idx]
+            current_page = record.get("page")
+            if current_page != last_page:
+                blanks = 0
+                last_page = current_page
+
         text = (raw or "").strip()
         low = text.lower()
         if not text:
             blanks += 1
             if blanks >= 3 and len(block) >= 2:
+                termination_reason = "blank_gap"
                 break
             continue
+
         blanks = 0
         if regex.search(low) and len(block) >= 2:
+            termination_reason = "next_heading"
             break
+
         is_district, _district_num, _district_label = detect_district_heading(text)
         if block and is_district and len(block) >= 2:
+            termination_reason = "district_heading"
             break
+
         block.append(text)
+        block_indices.append(global_idx)
+
+    if include_metadata:
+        start_line = block_indices[0] if block_indices else None
+        end_line = block_indices[-1] if block_indices else None
+
+        page_values: list[int] = []
+        page_offsets: dict[int, list[int]] = {}
+
+        if line_records:
+            for idx in block_indices:
+                if 0 <= idx < len(line_records):
+                    page_value = line_records[idx].get("page")
+                    if isinstance(page_value, int):
+                        page_values.append(page_value)
+                        span = page_offsets.setdefault(page_value, [None, None])
+                        if span[0] is None or idx < span[0]:
+                            span[0] = idx
+                        if span[1] is None or idx > span[1]:
+                            span[1] = idx
+
+        pages_sorted = sorted(dict.fromkeys(page_values)) if page_values else []
+        page_range = [pages_sorted[0], pages_sorted[-1]] if pages_sorted else None
+
+        metadata = {
+            "selected_title": selected_title,
+            "heading_index": start_idx,
+            "line_slice": [start_line, end_line] if start_line is not None else None,
+            "line_count": len(block_indices),
+            "pages": pages_sorted,
+            "page_range": page_range,
+            "page_offsets": {
+                page: offsets for page, offsets in page_offsets.items() if offsets[0] is not None
+            },
+            "termination_reason": termination_reason,
+        }
+        return block, metadata
+
     return block
 
 

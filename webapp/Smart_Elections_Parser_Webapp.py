@@ -169,6 +169,9 @@ from webapp.parser.web_pipeline import (
 # Lazy DB table init flag
 _tables_initialized = False
 
+# Global storage for last contest options for re-emission on reconnect
+last_contest_options = {}
+
 try:
     import dotenv
     dotenv.load_dotenv()
@@ -268,6 +271,7 @@ def cleanup_sessions():
                 os.remove(log_path)
         except Exception:
             pass
+        last_contest_options.pop(sid, None)
     if expired:
         emit('session_expired', {'expired_sessions': expired}, broadcast=True)
         broadcast_sessions()
@@ -402,6 +406,9 @@ def emit_contest_options(session_id: str, contests: list[dict], context: dict | 
             "options": contests or []
         }
         socketio.emit("contest_options", payload, room=session_id)
+        # Store for re-emission on reconnect
+        session_manager.set_last_contest_options(session_id, payload)
+        last_contest_options[session_id] = payload
         logger.info({
             "level": "INFO",
             "type": "prompt",
@@ -1268,6 +1275,10 @@ def favicon():
     resp.headers.pop("X-XSS-Protection", None)
     return resp
 
+@app.route("/robots.txt")
+def robots_txt():
+    return "User-agent: *\nDisallow: /", 200, {"Content-Type": "text/plain"}
+
 @app.route("/api/warehouse_election_results", methods=["GET"])
 def api_warehouse_election_results():
     state = request.args.get("state")
@@ -1523,6 +1534,10 @@ def upload_to_uploads() -> str:
 @app.route("/health")
 def health() -> str:
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+@app.route("/heartbeat")
+def heartbeat() -> str:
+    return {"status": "ok"}
 
 @app.route("/clear_history", methods=["POST"])
 def clear_history():
@@ -1835,6 +1850,8 @@ def handle_connect(auth=None):
 
         if revived:
             session_manager.mark_active(revived)
+            if revived in last_contest_options:
+                socketio.emit("contest_options", last_contest_options[revived], room=revived)
         active = session_manager.list_active_metadata()
         emit('session_list', {'sessions': active})
         logger.info({

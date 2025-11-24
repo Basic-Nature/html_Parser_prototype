@@ -5497,11 +5497,39 @@
         const { session_id, context, total_count, options } = payload || {};
         if (!Array.isArray(options) || !session_id) return;
 
-        const normalized = options.map(opt => ({
-          index: Number(opt.index ?? opt[0] ?? 0),
-          label: opt.label ?? opt.name ?? String(opt.title ?? opt[1] ?? opt),
-          meta: opt.meta ?? opt.summary ?? ''
-        }));
+        const normalized = options.map(raw => {
+          const index = Number(raw?.index ?? raw?.[0] ?? 0);
+          const label = raw?.label ?? raw?.name ?? String(raw?.title ?? raw?.[1] ?? raw ?? '');
+          let meta = raw?.meta ?? raw?.summary ?? '';
+          const metadataSource = (raw && typeof raw.metadata === 'object' && raw.metadata !== null)
+            ? raw.metadata
+            : (raw && typeof raw.meta_data === 'object' && raw.meta_data !== null)
+              ? raw.meta_data
+              : {};
+          const metadata = metadataSource;
+
+          const ensureSummaryText = (value) => {
+            if (!value) return '';
+            if (typeof value === 'string') return value.trim();
+            if (Array.isArray(value)) {
+              const filtered = value
+                .map(entry => (entry == null ? '' : String(entry).trim()))
+                .filter(Boolean);
+              return filtered.join(' • ');
+            }
+            return '';
+          };
+
+          if (!meta) {
+            const aggregateLine = ensureSummaryText(metadata.aggregate_summary_line);
+            const summaryLine = ensureSummaryText(metadata.summary);
+            const detailLine = ensureSummaryText(metadata.display_details);
+            const bundleSummary = ensureSummaryText(metadata.bundle_metadata && metadata.bundle_metadata.summary);
+            meta = aggregateLine || summaryLine || detailLine || bundleSummary || '';
+          }
+
+          return cloneContestOption({ index, label, meta, metadata });
+        });
 
         setContestOptions(session_id, normalized);
         contestIndexMap = Object.fromEntries(normalized.map(o => [String(o.index), o.label]));

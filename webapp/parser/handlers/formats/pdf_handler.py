@@ -733,7 +733,14 @@ def _compute_numeric_fill(rows: list[dict], candidate_headers: list[str]) -> flo
 
 
 def _evaluate_table_candidate_quality(headers: list[str], rows: list[dict], contest_title: str) -> dict[str, object]:
-    return utils_evaluate_table_candidate_quality(headers, rows, contest_title)
+    result = utils_evaluate_table_candidate_quality(headers, rows, contest_title)
+    # Boost score for tables with location headers if no contest title present
+    if not contest_title and headers:
+        header_text = " ".join(h.lower() for h in headers if h)
+        has_location_keywords = any(kw.lower() in header_text for kw in LOCATION_KEYWORDS)
+        if has_location_keywords and isinstance(result, dict) and "score" in result:
+            result["score"] = (result["score"] or 0) + 10  # Boost by 10 points
+    return result
 
 
 def _find_best_header_match(source: str, targets: list[str]) -> str | None:
@@ -756,9 +763,20 @@ def _best_title_match_idx(lines: list[str], selected_title: str) -> int:
     """Find the index of the line that best matches the selected title by token overlap."""
     return utils_best_title_match_idx(lines, selected_title)
 
-
-def _extract_contest_block(lines: list[str], selected_title: str) -> list[str]:
-    return utils_extract_contest_block(lines, selected_title, _CONTEST_RX)
+def _extract_contest_block(
+    lines: list[str],
+    selected_contest_title: str,
+    *,
+    line_records: list[dict] | None = None,
+    include_metadata: bool = False,
+):
+    return utils_extract_contest_block(
+        lines,
+        selected_contest_title,
+        _CONTEST_RX,
+        line_records=line_records,
+        include_metadata=include_metadata,
+    )
 
 def _parse_candidate_line(line: str, ballot_types: list[str]) -> dict | None:
     """Proxy to shared candidate line parser."""
@@ -820,6 +838,7 @@ def _normalize_party_display(label: str | None) -> str:
 def _try_columnar_reconstruction(
     pdf_path: str,
     lines: list[str],
+    line_records: list[dict] | None,
     selected_contest_title: str,
     state: str,
     county: str,
@@ -830,10 +849,30 @@ def _try_columnar_reconstruction(
     if not lines:
         return None
 
+    contest_block: list[str] = []
+    contest_block_meta: dict = {}
     try:
-        contest_block = _extract_contest_block(lines, selected_contest_title)
+        contest_result = _extract_contest_block(
+            lines,
+            selected_contest_title,
+            line_records=line_records,
+            include_metadata=True,
+        )
+        if isinstance(contest_result, tuple):
+            contest_block = contest_result[0] or []
+            contest_block_meta = contest_result[1] or {}
+        else:
+            contest_block = contest_result or []
     except Exception:
         contest_block = []
+        contest_block_meta = {}
+
+    if contest_block_meta:
+        contest_block_meta = dict(contest_block_meta)
+        contest_block_meta.setdefault("selected_title", selected_contest_title)
+        contest_block_meta.setdefault("line_count", len(contest_block))
+        contest_block_meta.setdefault("line_records_available", bool(line_records))
+        metadata.setdefault("contest_segments", {})[selected_contest_title] = contest_block_meta
 
     search_spaces: list[tuple[str, list[str]]] = []
     if contest_block:
@@ -858,6 +897,11 @@ def _try_columnar_reconstruction(
             recon_rows = rows
             contest_scope = scope
             break
+
+    if contest_block_meta and contest_scope:
+        contest_block_meta = metadata.get("contest_segments", {}).get(selected_contest_title, {})
+        if isinstance(contest_block_meta, dict):
+            contest_block_meta.setdefault("reconstruction_scope", contest_scope)
 
     if not recon_headers or not recon_rows:
         return None
@@ -1390,46 +1434,86 @@ def _build_contest_regex(keywords) -> re.Pattern:
 
 _CONTEST_RX = _build_contest_regex(CONTEST_KEYWORDS)
 
-def _detect_contest_titles_from_text(lines):
-    """
-    Heuristic detection of contest titles from plain PDF text using constants.
-    - Keep lines containing contest/office keywords (regex tolerant)
-    - Drop known skip phrases and very short/noisy lines
-    """
-    titles = []
-    skip_set = {s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())}
-    last_contest_title: str | None = None
-    for line in lines:
-        raw = (line or "").strip()
-        low = raw.lower()
-        if not raw or len(raw) < 6:
-            continue
-        if raw.startswith("*"):
-            continue
-        if any(s in low for s in skip_set):
-            continue
-        # Use robust regex to detect contest references
-        if _CONTEST_RX.search(low):
-            titles.append(raw)
-            last_contest_title = raw
-            continue
+_CONTEST_NAME_REGEX = re.compile(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:\s*\([^)]*\))?)\b')
 
-        is_district, district_number, district_label = utils_detect_district_heading(raw)
-        if is_district:
-            display_label = district_label or raw
-            titles.append(display_label)
-            if last_contest_title:
-                combined = f"{last_contest_title} - {display_label}"
-                titles.append(combined)
-    # Deduplicate while preserving order
-    seen = set()
-    uniq = []
-    for t in titles:
-        k = t.lower()
-        if k not in seen:
-            seen.add(k)
-            uniq.append(t)
-    return uniq[:50]
+def _detect_contest_titles_from_text(lines: list[str], pdf_path: str | None = None) -> list[str]:
+    """Detect contest titles from text lines using regex patterns."""
+    titles = []
+    filename_title = None
+    if pdf_path:
+        filename_line = os.path.basename(pdf_path).replace(".pdf", "")
+        if _CONTEST_RX.search(filename_line):
+            matches = _CONTEST_NAME_REGEX.findall(filename_line)
+            for match in matches:
+                # Parse filename like "Democratic District Attorney New York 2025" -> "Democratic District Attorney (New York)"
+                parts = match.split()
+                if len(parts) >= 3 and parts[-1].isdigit():
+                    # Last part is year, second last is location
+                    year = parts[-1]
+                    location = parts[-2]
+                    contest = " ".join(parts[:-2])
+                    formatted = f"{contest} ({location})"
+                    filename_title = formatted
+                else:
+                    filename_title = match
+        lines = lines + [filename_line]
+    for line in lines:
+        text = line.strip()
+        if not text:
+            continue
+        if _CONTEST_RX.search(text):
+            # Extract specific contest names
+            matches = _CONTEST_NAME_REGEX.findall(text)
+            titles.extend(matches)
+    # Put filename title first if available
+    if filename_title:
+        titles.insert(0, filename_title)
+    return titles
+
+
+def _detect_contest_positions(line_records: list[dict]) -> list[dict]:
+    """Detect contest titles and their positions by page from line records."""
+    contest_positions = []
+    for record in line_records:
+        text = record.get("text", "").strip()
+        if not text:
+            continue
+        page = record.get("page")
+        if page is None:
+            continue
+        # Check if line matches contest keywords
+        if _CONTEST_RX.search(text):
+            contest_positions.append({
+                "title": text,
+                "page": page,
+                "line_index": record.get("global_line_index", 0)
+            })
+    return contest_positions
+
+
+def _associate_tables_with_contests(contest_positions: list[dict], tables: list[dict], page_text_map: list[dict]) -> list[dict]:
+    """Associate tables with the nearest previous contest and evaluate quality."""
+    associated = []
+    for table in tables:
+        page = table.get('page', 0)
+        # Find the nearest previous contest
+        contest = None
+        for pos in reversed(contest_positions):
+            if pos['page'] <= page:
+                contest = pos
+                break
+        if contest:
+            contest_title = contest['title']
+            headers = table.get('headers', [])
+            data = table.get('data', [])
+            score = _evaluate_table_candidate_quality(headers, data, contest_title).get('score', 0.0)
+            associated.append({
+                'score': score,
+                'headers': headers,
+                'data': data,
+                'contest_title': contest_title
+            })
+    return associated
 
 def _is_mostly_markup(text: str) -> bool:
     """
@@ -1576,6 +1660,70 @@ def _sanitize_extracted_text(text: str) -> str:
     except Exception:
         pass
     return result
+
+
+def _assemble_page_line_records(
+    page_text_map: list[dict],
+    fallback_text: str,
+) -> tuple[str, list[str], list[dict], list[dict], bool]:
+    """Build sanitized line records with page context.
+
+    Returns the joined clean text, the list of lines, a parallel list of line
+    records (with page and index metadata), per-page summaries, and a boolean
+    indicating whether a fallback (page-agnostic) build was required.
+    """
+
+    aggregated_lines: list[str] = []
+    line_records: list[dict] = []
+    page_summaries: list[dict] = []
+
+    for entry in page_text_map or []:
+        page_index = entry.get("page")
+        raw_text = entry.get("raw_text") or ""
+        clean_page_text = _sanitize_extracted_text(raw_text)
+        entry["clean_text"] = clean_page_text
+        page_lines = clean_page_text.splitlines()
+        start_offset = len(aggregated_lines)
+
+        for page_line_idx, text in enumerate(page_lines):
+            aggregated_lines.append(text)
+            line_records.append({
+                "page": page_index,
+                "page_line_index": page_line_idx,
+                "global_line_index": start_offset + page_line_idx,
+                "text": text,
+            })
+
+        page_summaries.append({
+            "page": page_index,
+            "lines": len(page_lines),
+            "start_index": start_offset if page_lines else None,
+            "end_index": (start_offset + len(page_lines) - 1) if page_lines else None,
+            "raw_chars": len(raw_text),
+        })
+
+    used_fallback = False
+
+    if not aggregated_lines:
+        fallback_clean = _sanitize_extracted_text(fallback_text)
+        aggregated_lines = fallback_clean.splitlines()
+        line_records = [{
+            "page": None,
+            "page_line_index": idx,
+            "global_line_index": idx,
+            "text": text,
+        } for idx, text in enumerate(aggregated_lines)]
+        page_summaries = [{
+            "page": None,
+            "lines": len(aggregated_lines),
+            "start_index": 0 if aggregated_lines else None,
+            "end_index": (len(aggregated_lines) - 1) if aggregated_lines else None,
+            "raw_chars": len(fallback_text),
+        }]
+        used_fallback = True
+
+    clean_text = "\n".join(aggregated_lines)
+    return clean_text, aggregated_lines, line_records, page_summaries, used_fallback
 
 def _pdf_to_images(pdf_path: str, session_id=None, dpi: int = 200, page_indices: list[int] | None = None, max_pages: int | None = None):
     """
@@ -2770,7 +2918,16 @@ def _extract_statement_return_blocks(pdf_path: str, session_id=None, ocr_params:
             prec_match = _STATEMENT_PRECINCT_RE.search(text)
             if prec_match:
                 if _ensure_record():
-                    current_record["Precinct"] = prec_match.group(1)
+                    # Check if text contains aggregated precinct info with "/"
+                    if "/" in text.lower() and "precinct" in text.lower():
+                        # Extract all precinct numbers from aggregated strings like "AD 37 / Precinct 71 / Precinct 652"
+                        precinct_nums = re.findall(r'precinct\s+(\d+)', text, re.I)
+                        if len(precinct_nums) > 1:
+                            current_record["Precinct"] = " / ".join(precinct_nums)
+                        else:
+                            current_record["Precinct"] = prec_match.group(1)
+                    else:
+                        current_record["Precinct"] = prec_match.group(1)
                 continue
 
             key_val = _split_key_value_line(text)
@@ -3053,17 +3210,56 @@ def _pick_representative_title(titles: list[str]) -> str:
             inter = len(a & b)
             union = max(1, len(a | b))
             score += inter / union
-        # Prefer shorter representative on tie
-        key = (score, -len(t.strip()))
+        # Prefer longer representative on tie
+        key = (score, len(t.strip()))
         if key > (best[0], -len(best[1].strip())):
             best = (score, t)
     return best[1] or titles[0]
+
+def _dedupe_contest_titles(titles):
+    return list(dict.fromkeys(titles))
+
+def _detect_contest_titles_from_text(lines, pdf_path):
+    titles = []
+    if pdf_path:
+        filename_line = os.path.basename(pdf_path).replace(".pdf", "")
+        m = re.search(r'(\d{4})$', filename_line)
+        if m:
+            year = m.group(1)
+            before_year = filename_line[:m.start()].strip()
+            words = before_year.split()
+            if len(words) >= 2 and (words[-2].lower() in ['new', 'los', 'san', 'el', 'las', 'la', 'del', 'de', 'da', 'di', 'du', 'des', 'der', 'den', 'dem'] or words[-1].lower() in ['city', 'county', 'state', 'district', 'town', 'village']):
+                location = " ".join(words[-2:])
+                contest = " ".join(words[:-2])
+            else:
+                location = words[-1] if words else ""
+                contest = " ".join(words[:-1]) if len(words) > 1 else ""
+            if contest and location:
+                filename_title = f"{contest} ({location})"
+                titles.append(filename_title)
+    for line in lines:
+        text = line.strip()
+        if _CONTEST_RX.search(text):
+            matches = _CONTEST_NAME_REGEX.findall(text)
+            for match in matches:
+                parts = match.split()
+                if len(parts) >= 3 and parts[-1].isdigit():
+                    year = parts[-1]
+                    location = parts[-2]
+                    contest = " ".join(parts[:-2])
+                    title = f"{contest} ({location})"
+                else:
+                    title = match
+                titles.append(title)
+    return titles
     
 def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> tuple[list[str], list[dict], str, dict]:
     """ Main PDF handler function."""
     _log_ocr_environment(session_id=session_id)
     all_text = ""
+    page_text_map: list[dict] = []
     metadata = {}
+    tried_associated = False
     headers = []
     ocr_score = 0.0
     ocr_runs = []
@@ -3072,7 +3268,15 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
     try:
         doc = fitz.open(pdf_path)
         for i in range(len(doc)):
-            all_text += doc[i].get_text()
+            page_text = doc[i].get_text()
+            if not isinstance(page_text, str):
+                page_text = str(page_text or "")
+            all_text += page_text
+            page_text_map.append({
+                "page": i,
+                "raw_text": page_text,
+                "char_count": len(page_text),
+            })
         doc.close()
     except Exception as e:
         logger.warning({
@@ -3082,6 +3286,7 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             "session_id": session_id
         })
         all_text = ""
+        page_text_map = []
 
     # If empty or forced, try alternative extract modes
     if (not all_text.strip()) or ENABLE_OCR_FORCE:
@@ -3145,27 +3350,6 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             metadata["ocr_used"] = False
 
     clean_text = _sanitize_extracted_text(all_text)
-    try:
-        logger.info({
-            "level": "INFO",
-            "type": "handler",
-            "message": f"[INFO] Text lengths — raw={len(all_text or '')}, clean={len(clean_text or '')}",
-            "session_id": session_id
-        })
-    except Exception:
-        pass
-
-    if clean_text:
-        debug_path = _write_debug_text(pdf_path, clean_text, "clean", session_id=session_id)
-        if debug_path:
-            metadata["ocr_clean_text_path"] = debug_path
-    if all_text and len(all_text) <= 2_500_000:
-        raw_debug_path = _write_debug_text(pdf_path, all_text, "raw", session_id=session_id)
-        if raw_debug_path:
-            metadata["ocr_raw_text_path"] = raw_debug_path
-    if not clean_text and all_text:
-        # If sanitization nuked everything (e.g., fully-tagged), keep minimal fallback
-        clean_text = os.path.splitext(os.path.basename(pdf_path))[0]
 
     # Force OCR when sanitized signal is very low vs raw fitz text (markup dump case)
     low_signal_force = False
@@ -3224,10 +3408,63 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 "session_id": session_id
             })
 
+    clean_text, lines, line_records, page_summaries, page_lines_fallback = _assemble_page_line_records(
+        page_text_map,
+        all_text or "",
+    )
+
+    if not clean_text:
+        fallback_label = os.path.splitext(os.path.basename(pdf_path))[0]
+        clean_text = fallback_label
+        lines = clean_text.splitlines()
+        line_records = [{
+            "page": None,
+            "page_line_index": idx,
+            "global_line_index": idx,
+            "text": text,
+        } for idx, text in enumerate(lines)]
+        page_summaries = [{
+            "page": None,
+            "lines": len(lines),
+            "start_index": 0 if lines else None,
+            "end_index": (len(lines) - 1) if lines else None,
+            "raw_chars": len(clean_text),
+        }]
+        page_lines_fallback = True
+
+    metadata["page_line_total"] = len(line_records)
+    metadata["page_line_source"] = "fallback" if page_lines_fallback else "page_map"
+    metadata["page_line_pages"] = len(page_summaries)
+    metadata["page_line_index_available"] = bool(line_records)
+    metadata["page_lines_fallback"] = bool(page_lines_fallback)
+    if page_summaries:
+        metadata["page_line_summary"] = page_summaries[:25]
+
+    try:
+        logger.info({
+            "level": "INFO",
+            "type": "handler",
+            "message": f"[INFO] Text lengths — raw={len(all_text or '')}, clean={len(clean_text or '')} \n Please wait a moment for data to compile.",
+            "session_id": session_id
+        })
+    except Exception:
+        pass
+
+    if clean_text:
+        debug_path = _write_debug_text(pdf_path, clean_text, "clean", session_id=session_id)
+        if debug_path:
+            metadata["ocr_clean_text_path"] = debug_path
+    if all_text and len(all_text) <= 2_500_000:
+        raw_debug_path = _write_debug_text(pdf_path, all_text, "raw", session_id=session_id)
+        if raw_debug_path:
+            metadata["ocr_raw_text_path"] = raw_debug_path
+
     logger.debug({
         "level": "DEBUG",
         "type": "handler",
-        "message": "[DEBUG] PDF extracted text preview (first 500 chars):" + (clean_text[:500] if isinstance(clean_text, str) else str(clean_text)[:500]),
+        "message": "[DEBUG] PDF extracted text preview (first 500 chars):" + (
+            clean_text[:500] if isinstance(clean_text, str) else str(clean_text)[:500]
+        ),
         "session_id": session_id
     })
 
@@ -3235,8 +3472,6 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         set(LOCATION_KEYWORDS) | set(CANDIDATE_KEYWORDS) | set(BALLOT_TYPES) |
         set(PARTY_KEYWORDS) | set(TOTAL_KEYWORDS) | set(MISC_FOOTER_KEYWORDS) | set(CONTEST_KEYWORDS)
     )
-    # Use sanitized text from here on
-    lines = clean_text.splitlines()
     camelot_tables = attempt_camelot_extraction(pdf_path, session_id=session_id)
     layout_tables = _extract_tables_via_layout(
         pdf_path,
@@ -3288,10 +3523,26 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             "raw_rows": len(statement_rows_raw)
         }
 
+    table_candidates = []
+    for entry in camelot_tables or []:
+        table_candidates.append({
+            'page': entry.get('page', 0),
+            'headers': entry.get('headers', []),
+            'data': entry.get('rows', []),
+            'source': 'camelot'
+        })
+    for entry in layout_tables or []:
+        table_candidates.append({
+            'page': entry.get('page', 0),
+            'headers': entry.get('headers', []),
+            'data': entry.get('rows', []),
+            'source': 'layout'
+        })
+
     headers, header_candidate = infer_headers_and_methods(lines, table_hints)
 
     # Detect potential contests from text as hints
-    detected_titles = _detect_contest_titles_from_text(lines)
+    detected_titles = _detect_contest_titles_from_text(lines, pdf_path)
     # Deduplicate aggressively – single-race PDFs often repeat the same heading
     detected_titles = _dedupe_contest_titles(detected_titles)
     if not detected_titles:
@@ -3352,6 +3603,26 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         selected_contest_title = os.path.basename(pdf_path).replace(".pdf", "")
     else:
         selected_contest_title = safe_get(auto_pick[0], "title") or detected_titles[0]
+    
+    # Override with formatted filename if available and detected
+    filename_formatted = None
+    if pdf_path:
+        filename_line = os.path.basename(pdf_path).replace(".pdf", "")
+        m = re.search(r'(\d{4})$', filename_line)
+        if m:
+            year = m.group(1)
+            before_year = filename_line[:m.start()].strip()
+            words = before_year.split()
+            if len(words) >= 2 and (words[-2].lower() in ['new', 'los', 'san', 'el', 'las', 'la', 'del', 'de', 'da', 'di', 'du', 'des', 'der', 'den', 'dem'] or words[-1].lower() in ['city', 'county', 'state', 'district', 'town', 'village']):
+                location = " ".join(words[-2:])
+                contest = " ".join(words[:-2])
+            else:
+                location = words[-1] if words else ""
+                contest = " ".join(words[:-1]) if len(words) > 1 else ""
+            if contest and location:
+                filename_formatted = f"{contest} ({location})"
+    if filename_formatted and filename_formatted in detected_titles:
+        selected_contest_title = filename_formatted
     contest_slug = safe_slug(selected_contest_title, 80)
     
     # Update metadata using derived context
@@ -3830,10 +4101,22 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
             return headers_final, data_final, selected_contest_title, metadata
 
         else:
+            tried_associated = True
+            # Try associated tables as fallback
+            contest_positions = _detect_contest_positions(page_text_map)
+            associated_tables = _associate_tables_with_contests(contest_positions, table_candidates, page_text_map)
+            if associated_tables:
+                best_associated = max(associated_tables, key=lambda x: x['score'])
+                if best_associated['score'] >= 0.3:
+                    headers, data = best_associated['headers'], best_associated['data']
+                    metadata['associated_table'] = True
+                    metadata['associated_contest'] = best_associated['contest_title']
+                    return headers, data, all_text, metadata
             # Attempt columnar reconstruction before falling back to raw text export
             recon_result = _try_columnar_reconstruction(
                 pdf_path,
                 lines,
+                line_records,
                 selected_contest_title,
                 state,
                 county,
@@ -3998,9 +4281,22 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
         )
         return headers_final, data_final, selected_contest_title, metadata
 
+    if not tried_associated:
+        # Try associated tables as fallback
+        contest_positions = _detect_contest_positions(page_text_map)
+        associated_tables = _associate_tables_with_contests(contest_positions, table_candidates, page_text_map)
+        if associated_tables:
+            best_associated = max(associated_tables, key=lambda x: x['score'])
+            if best_associated['score'] >= 0.3:
+                headers, data = best_associated['headers'], best_associated['data']
+                metadata['associated_table'] = True
+                metadata['associated_contest'] = best_associated['contest_title']
+                return headers, data, all_text, metadata
+
     recon_result = _try_columnar_reconstruction(
         pdf_path,
         lines,
+        line_records,
         selected_contest_title,
         state,
         county,

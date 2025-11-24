@@ -31,6 +31,7 @@ class SessionManager:
         self._ip_ua_to_session: Dict[str, str] = {}
         self._session_emitters: Dict[str, EmitterFn] = {}
         self._thread_session_map: Dict[int, str] = {}
+        self._last_contest_options: Dict[str, Dict[str, Any]] = {}
         self._profile_enabled = os.environ.get("SESSION_PROFILE", "false").lower() in {"1", "true", "yes"}
         self._profile_counts: Dict[str, int] = {}
         self._profile_durations: Dict[str, float] = {}
@@ -342,6 +343,20 @@ class SessionManager:
             return session_id in self._output_bypass
 
     # ------------------------------------------------------------------
+    # Last contest options for re-emission on reconnect
+    # ------------------------------------------------------------------
+    def set_last_contest_options(self, session_id: str, payload: Dict[str, Any]) -> None:
+        with self._lock:
+            # Ensure session exists to handle inferred sessions
+            if session_id not in self._metadata:
+                self.ensure_session(session_id)
+            self._last_contest_options[session_id] = payload
+
+    def get_last_contest_options(self, session_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            return self._last_contest_options.get(session_id)
+
+    # ------------------------------------------------------------------
     # Deduplication cache
     # ------------------------------------------------------------------
     def should_emit_message(self, session_id: str, cache_key: str, *, now: float, window: float, max_entries: int) -> bool:
@@ -425,6 +440,7 @@ class SessionManager:
                 self._ip_ua_to_session.clear()
                 self._session_emitters.clear()
                 self._thread_session_map.clear()
+                self._last_contest_options.clear()
                 if self._profile_enabled:
                     self._profile_counts.clear()
                     self._profile_durations.clear()
@@ -459,6 +475,7 @@ class SessionManager:
         self._last_active.pop(session_id, None)
         self._session_emitters.pop(session_id, None)
         self._recent_cache.pop(session_id, None)
+        self._last_contest_options.pop(session_id, None)
         self._sid_to_session = {k: v for k, v in self._sid_to_session.items() if v != session_id}
         self._ip_ua_to_session = {k: v for k, v in self._ip_ua_to_session.items() if v != session_id}
         self._thread_session_map = {k: v for k, v in self._thread_session_map.items() if v != session_id}
