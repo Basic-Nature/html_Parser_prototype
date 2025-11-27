@@ -1,0 +1,209 @@
+---
+---
+
+/* Smart Elections Parser - Documentation Styles
+ * Futuristic metallic theme using project colors
+ * Overrides jekyll-theme-primer for cohesive branding
+ */
+
+:root {
+  --main-blue: #45818e;
+  --main-red: #eb4f43;
+  --main-bg: #1a232a;
+  --neon: #00ffe7;
+  --neon2: #d4af37;
+  --gold: #ffd700;
+  --glass: rgba(40, 60, 80, 0.82);
+  --glass-soft: rgba(220, 230, 240, 0.13);
+  --gradient-app: linear-gradient(120deg, var(--main-red) 0%, var(--main-blue) 100%);
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.07);
+  --shadow-elev: 0 8px 32px rgba(0, 0, 0, 0.18);
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --font-sans: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Body background with metallic gradient */
+body {
+  background: var(--gradient-app) !important;
+  font-family: var(--font-sans) !important;
+  color: #222 !important;
+  position: relative;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 38px),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 26px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.22) 0 14px, transparent 14px 72px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.12) 0 10px, transparent 10px 56px),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 18px),
+    var(--gradient-app);
+  animation: fractalSteps 64s ease-in-out infinite,
+             breathZoom 16s ease-in-out infinite,
+             fractalPulse 24s ease-in-out infinite;
+  opacity: 0.95;
+}
+
+/* Container styling */
+.main-content {
+  background: var(--glass-soft) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-elev) !important;
+  padding: 2.5em 2em !important;
+  margin: 2em auto !important;
+  max-width: 900px !important;
+  position: relative;
+  z-index: 1;
+  backdrop-filter: saturate(135%) blur(4px);
+}
+
+@supports not (backdrop-filter: blur(4px)) {
+  .main-content { background: rgba(255, 255, 255, 0.18) !important; }
+}
+
+/* Headers with metallic gradient */
+h1, h2, h3, h4, h5, h6 {
+  background: linear-gradient(120deg, #bfc9d1 10%, #e6e8ea 40%, #bfc9d1 90%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  filter: drop-shadow(0 2px 12px #bfc9d1) brightness(0.85) !important;
+  font-weight: 900 !important;
+  letter-spacing: 1px !important;
+}
+
+h1 {
+  animation: shimmerTitle 3s linear infinite !important;
+  text-align: center !important;
+  margin: 0.1em 0 0.5em !important;
+  font-size: clamp(2rem, 2.2rem + 1vw, 2.5rem) !important;
+}
+
+/* Links with neon accents */
+a {
+  color: var(--main-blue) !important;
+  text-decoration: none !important;
+  transition: color 0.3s ease, text-shadow 0.3s ease !important;
+}
+
+a:hover, a:focus {
+  color: var(--main-red) !important;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Code blocks with metallic background */
+pre, code {
+  background: var(--main-bg) !important;
+  color: var(--neon) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 0 12px rgba(0, 255, 231, 0.07) !important;
+}
+
+pre {
+  border: 1px solid rgba(0, 255, 231, 0.3) !important;
+  padding: 1em !important;
+}
+
+/* Tables with glass effect */
+table {
+  background: var(--glass) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-soft) !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+th, td {
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  padding: 0.5em 1em !important;
+}
+
+th {
+  background: rgba(0, 255, 231, 0.1) !important;
+  color: var(--neon) !important;
+  font-weight: 700 !important;
+}
+
+/* Mermaid diagrams styling */
+.mermaid {
+  background: var(--main-bg) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 0 18px rgba(0, 255, 231, 0.12) !important;
+  padding: 1em !important;
+}
+
+/* Navigation breadcrumb */
+.breadcrumb {
+  background: rgba(255, 255, 255, 0.82) !important;
+  border: 1.5px solid #e0e6eb !important;
+  border-radius: 10px !important;
+  padding: 0.5em 0.75em !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06) !important;
+}
+
+.breadcrumb-item a {
+  color: var(--main-blue) !important;
+  text-decoration: none !important;
+}
+
+.breadcrumb-item a:hover {
+  color: #fff !important;
+  background: var(--main-blue) !important;
+  border-radius: 6px !important;
+  padding: 0.1em 0.35em !important;
+}
+
+/* Footer */
+.site-footer {
+  background: var(--main-bg) !important;
+  color: #e6e8ea !important;
+  border-top: 1px solid rgba(0, 255, 231, 0.3) !important;
+}
+
+/* Animations */
+@keyframes fractalSteps {
+  0% { background-position: 12px -12px, 6px -6px, -10px 10px, -6px 6px, -3px 3px, 0 0; }
+  25% { background-position: -6px 6px, -12px 12px, 8px -8px, 12px -12px, -6px 6px, 0 0; }
+  50% { background-position: -48px 48px, -24px 24px, 36px -36px, 20px -20px, -10px 10px, 0 0; }
+  75% { background-position: -18px 18px, -10px 10px, 16px -16px, 10px -10px, -6px 6px, 0 0; }
+  100% { background-position: 12px -12px, 6px -6px, -10px 10px, -6px 6px, -3px 3px, 0 0; }
+}
+
+@keyframes breathZoom {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+}
+
+@keyframes fractalPulse {
+  0%, 100% { opacity: 0.95; filter: contrast(1.04) saturate(1.02); }
+  50% { opacity: 0.88; filter: contrast(1.12) saturate(1.08); }
+}
+
+@keyframes shimmerTitle {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  .main-content {
+    padding: 1.75em 1.25em !important;
+    margin: 1em auto !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .main-content {
+    padding: 1.25em 1em !important;
+  }
+}

@@ -1,3 +1,4 @@
 theme: jekyll-theme-primer
 plugins:
   - jekyll-mermaid
+baseurl: "/html_Parser_prototype"
