@@ -143,29 +143,6 @@ graph TD
   output_utils -->|1| xlsx_exporter
   salvage -->|1| constants
   shared_logger -->|1| shared_logic
-  classDef entry fill:#ffeb3b,stroke:#f57c00,stroke-width:3px
-  classDef pipeline fill:#e1f5fe,stroke:#01579b,stroke-width:2px
-  classDef routing fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-  classDef handlers fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
-  classDef services fill:#fff3e0,stroke:#e65100,stroke-width:2px
-  classDef utils fill:#fce4ec,stroke:#880e4f,stroke-width:2px
-  classDef context fill:#f1f8e9,stroke:#33691e,stroke-width:2px
-  classDef health fill:#e0f2f1,stroke:#00695c,stroke-width:2px
-  classDef other fill:#fafafa,stroke:#424242,stroke-width:1px
-  class html_election_parser entry
-  class state_router routing
-  class rockland,example_state,example_county handlers
-class html_handler,json_handler,txt_handler,pdf_handler,xlsx_handler,csv_handler
-handlers
-  class election_data_services services
-class
-contest_normalization,pattern_extractor,dynamic_table_extractor,output_utils,models,detector,json_export_loader,contest_selector,header_utils,user_prompt,detect,format_router,download_utils,shared_logic,html_scanner,browser_utils,table_core,xlsx_exporter,salvage,logger_singleton,extraction_strategies,ml_table_detector,shared_logger,table_builder,pivot,db_utils
-utils
-class Integrity_check,context_organizer,context_coordinator,librarian,constants
-context
-class
-log_cache_cleaner_bot,scan_misaligned_ner,manual_correction_bot,retrain_table_structure_models
-health
 ```
 
 **✨ Legend:** Colors indicate module categories with metallic accents. Click

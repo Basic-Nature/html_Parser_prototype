@@ -2978,22 +2978,6 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             lines.append(f"  {src.replace('.', '_')} -->|{cnt}| {dst.replace('.', '_')}")
         if not top_edges:
             lines.append("  A[no data] --> B[no data]")
-        # Styles with shimmer-like effects (Mermaid supports basic colors)
-        lines.append("  classDef entry fill:#ffeb3b,stroke:#f57c00,stroke-width:3px")  # Bright yellow for entry
-        lines.append("  classDef pipeline fill:#e1f5fe,stroke:#01579b,stroke-width:2px")
-        lines.append("  classDef routing fill:#f3e5f5,stroke:#4a148c,stroke-width:2px")
-        lines.append("  classDef handlers fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px")
-        lines.append("  classDef services fill:#fff3e0,stroke:#e65100,stroke-width:2px")
-        lines.append("  classDef utils fill:#fce4ec,stroke:#880e4f,stroke-width:2px")  # Pink for utils
-        lines.append("  classDef context fill:#f1f8e9,stroke:#33691e,stroke-width:2px")  # Light green for context
-        lines.append("  classDef health fill:#e0f2f1,stroke:#00695c,stroke-width:2px")  # Teal for health
-        lines.append("  classDef other fill:#fafafa,stroke:#424242,stroke-width:1px")
-        # Assign classes
-        for cname, cclass in [("Entry", "entry"), ("Pipeline", "pipeline"), ("Routing", "routing"), ("State Handlers", "handlers"), ("Format Handlers", "handlers"), ("Shared Handlers", "handlers"), ("Services", "services"), ("Utils", "utils"), ("Context Integration", "context"), ("Health", "health")]:
-            nodes = cluster_nodes.get(cname, [])
-            if nodes:
-                node_list = ",".join(n.replace('.', '_') for n in nodes)
-                lines.append(f"  class {node_list} {cclass}")
         lines.append("```")
         lines.append("")
         lines.append("**✨ Legend:** Colors indicate module categories with metallic accents. Click nodes for details below.")

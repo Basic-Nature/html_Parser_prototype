@@ -1,6 +1,6 @@
 # Project Audit — webapp
 
-Modules scanned: 98 | ~53695 non-empty LOC
+Modules scanned: 98 | ~53764 non-empty LOC
 
 ## Pipeline map (Mermaid)
 
@@ -10,13 +10,13 @@ graph LR
   context_organizer[context_organizer] -->|238| isinstance[isinstance]
   html_scanner[html_scanner] -->|225| safe_get[safe_get]
   context_organizer[context_organizer] -->|212| get[get]
-  shared_logic[shared_logic] -->|206| append[append]
+  shared_logic[shared_logic] -->|208| append[append]
   pdf_handler[pdf_handler] -->|200| len[len]
   context_coordinator[context_coordinator] -->|177| get[get]
   models[models] -->|176| Column[Column]
   pivot[pivot] -->|173| get[get]
   context_coordinator[context_coordinator] -->|154| isinstance[isinstance]
-  shared_logic[shared_logic] -->|140| get[get]
+  shared_logic[shared_logic] -->|139| get[get]
   pdf_table_utils[pdf_table_utils] -->|127| len[len]
   shared_logic[shared_logic] -->|117| isinstance[isinstance]
   json_handler[json_handler] -->|104| get[get]
@@ -39,11 +39,11 @@ graph LR
 graph LR
   pdf_handler[pdf_handler] -->|267| get[get]
   html_scanner[html_scanner] -->|225| safe_get[safe_get]
-  shared_logic[shared_logic] -->|206| append[append]
+  shared_logic[shared_logic] -->|208| append[append]
   pdf_handler[pdf_handler] -->|200| len[len]
   models[models] -->|176| Column[Column]
   pivot[pivot] -->|173| get[get]
-  shared_logic[shared_logic] -->|140| get[get]
+  shared_logic[shared_logic] -->|139| get[get]
   pdf_table_utils[pdf_table_utils] -->|127| len[len]
   shared_logic[shared_logic] -->|117| isinstance[isinstance]
   json_handler[json_handler] -->|104| get[get]
@@ -137,13 +137,13 @@ graph LR
   context_organizer -->|238| isinstance
   html_scanner -->|225| safe_get
   context_organizer -->|212| get
-  shared_logic -->|206| append
+  shared_logic -->|208| append
   pdf_handler -->|200| len
   context_coordinator -->|177| get
   models -->|176| Column
   pivot -->|173| get
   context_coordinator -->|154| isinstance
-  shared_logic -->|140| get
+  shared_logic -->|139| get
   pdf_table_utils -->|127| len
   shared_logic -->|117| isinstance
   json_handler -->|104| get
@@ -303,33 +303,33 @@ graph LR
   - `from webapp.parser.web_pipeline import cancellation_manager (line 164)`
   - `from webapp.parser.web_pipeline import process_urls_for_web (line 164)`
 - TODO/FIXME/WARN:
-  - L210: WEBAPP_CONSOLE_LEVELS = set(os.environ.get("WEBAPP_CONSOLE_LEVELS", "ERROR,WARNING").upper().split(","))
-  - L480:     Levels: INFO, DEBUG, WARNING, ERROR, CRITICAL, TRACE
-  - L519:     LEVELS = {"INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL", "TRACE"}
-  - L555:             elif "warning" in mlow:
-  - L954:         # For websocket handshake only: add Cache-Control so webhint stops warning
-  - L1229:         logger.warning({"type": "sec", "message": "Favicon path escape blocked", "requested": ico_path})
-  - L1331:             logger.warning({
-  - L1332:                 "level": "WARNING",
-  - L1641:             "level": "WARNING",
-  - L1724:         logger.warning(
-  - L1726:                 "level": "WARNING",
-  - L1736:         logger.warning(
-  - L1738:                 "level": "WARNING",
-  - L1768:         logger.warning(
-  - L1770:                 "level": "WARNING",
-  - L2055:         logger.warning({
-  - L2056:             "level": "WARNING",
-  - L2120:         logger.warning({
-  - L2121:             "level": "WARNING",
-  - L2171:             logger.warning({
-  - L2172:                 "level": "WARNING",
-  - L2194:                 logger.warning({
-  - L2195:                     "level": "WARNING",
-  - L2203:         logger.warning({
-  - L2204:             "level": "WARNING",
-  - L2211:         logger.warning({
-  - L2212:             "level": "WARNING",
+  - L210 **WARNING**: ").upper().split(","))
+  - L480 **WARNING**: , ERROR, CRITICAL, TRACE
+  - L519 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
+  - L555 **WARNING**: " in mlow:
+  - L954 **WARNING**:         # For websocket handshake only: add Cache-Control so webhint stops warning
+  - L1229 **WARNING**: ({"type": "sec", "message": "Favicon path escape blocked", "requested": ico_path})
+  - L1331 **WARNING**: ({
+  - L1332 **WARNING**: ",
+  - L1641 **WARNING**: ",
+  - L1724 **WARNING**: (
+  - L1726 **WARNING**: ",
+  - L1736 **WARNING**: (
+  - L1738 **WARNING**: ",
+  - L1768 **WARNING**: (
+  - L1770 **WARNING**: ",
+  - L2055 **WARNING**: ({
+  - L2056 **WARNING**: ",
+  - L2120 **WARNING**: ({
+  - L2121 **WARNING**: ",
+  - L2171 **WARNING**: ({
+  - L2172 **WARNING**: ",
+  - L2194 **WARNING**: ({
+  - L2195 **WARNING**: ",
+  - L2203 **WARNING**: ({
+  - L2204 **WARNING**: ",
+  - L2211 **WARNING**: ({
+  - L2212 **WARNING**: ",
 - Outgoing cross-module calls (sample):
   - raw.strip (line 10)
   - _EVENTLET_BOOT_NOTES.append (line 29)
@@ -465,8 +465,12 @@ graph LR
   - `from typing import Set (line 3)`
   - `from typing import Tuple (line 3)`
 - TODO/FIXME/WARN:
-  - L2020:         "icon-bg-dark", "icon-bg-primary", "icon-bg-secondary", "icon-bg-success", "icon-bg-danger", "icon-bg-warning",
-  - L2111:     "warning", "info_box", "navigation", "pagination", "tab", "modal", "tooltip", "ignore", "unknown"
+  - L1831 **NOTE**: .*$",                     # Note
+  - L2020 **WARNING**: ",
+  - L2111 **WARNING**: ", "info_box", "navigation", "pagination", "tab", "modal", "tooltip", "ignore", "unknown"
+  - L2144 **NOTE**: ", "comment",
+  - L2220 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
+  - L2236 **NOTE**: ", "Comment", "Feedback", "Suggestion",
 - Outgoing cross-module calls (sample):
   - DEFAULT_DIVISION_TYPE_BY_STATE.get (line 707)
   - KNOWN_STATE_TO_COUNTY_MAP.items (line 710)
@@ -765,39 +769,39 @@ graph LR
   - `from librarian import atomic_write_json (line 94)`
   - `from librarian import clean_for_json (line 94)`
 - TODO/FIXME/WARN:
-  - L788:                     logger.warning("\[ALERT MONITOR\] Thread did not stop cleanly.")
-  - L876:             logger.warning({
-  - L877:                 "level": "WARNING",
-  - L995:             logger.warning(f"\[yellow\]Integrity issues:\[/yellow\] {issues\['integrity_issues'\]}")
-  - L1234:                 logger.warning(f"\[ContextCoordinator\] No table structure found for contest: {contest}")
-  - L1403:                     logger.warning(f"\[get_feedback_pattern_kb\] Skipping corrupt line: {e}")
-  - L1515:                 logger.warning("\[group_dom_nodes_by_label\] No organized DOM parts. (Further warnings suppressed)")
-  - L1517:                 logger.warning(f"\[group_dom_nodes_by_label\] No organized DOM parts. (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
-  - L1522:             logger.warning("\[group_dom_nodes_by_label\] No DOM nodes found.")
-  - L1540:                 logger.warning("\[submit_user_feedback\] ContextOrganizer has no submit_user_feedback method.")
-  - L1568:                 logger.warning(f"\[correct_and_update_contest\] Contest {contest_id} missing type/election_types after sync.")
-  - L1592:             logger.warning("\[print_contest_summary\] No organized contests to summarize.")
-  - L1605:             logger.warning("\[plot_contest_distribution\] No organized contests to plot.")
-  - L1656:                 logger.warning("No organized DOM parts.")
-  - L1659:                 logger.warning("No organized DOM parts. (Further warnings suppressed)")
-  - L1670:             logger.warning("\[get_contest_groups\] No contest groups found.")
-  - L1679:             logger.warning("\[get_panel_groups\] No panel groups found.")
-  - L1688:             logger.warning("\[get_button_groups\] No button groups found.")
-  - L1697:             logger.warning("\[get_table_groups\] No table groups found.")
-  - L1706:             logger.warning("\[get_relationships\] No organized context.")
-  - L1814:                 logger.warning(f"\[fuzzy_score\] One or both inputs are empty: a='{a_str}', b='{b_str}'")
-  - L1820:                 logger.warning(f"\[fuzzy_score\] One or both inputs are too short: a='{a_str}', b='{b_str}'")
-  - L2266:             logger.warning(f"\[extract_field\] Unknown field_type: {field_type}")
-  - L2524:                     logger.warning(f"\[get_full_contest\] Contest {contest_id} missing type/election_types after sync.")
-  - L2609:                         logger.warning(f"\[list_tables\] Table '{tbl}' missing metadata or columns.")
-  - L2641:                 logger.warning(f"\[get_table_metadata\] Table '{table_name}' missing columns.")
-  - L2659:                 logger.warning(f"\[check_missing_tables\] Missing tables: {missing}")
-  - L2720:                 logger.warning(f"\[save_table_structure\] Failed to save structure for contest: {contest}")
-  - L2897:             logger.warning(f"\[get_best_button_advanced\] Contest argument was not a dict. Converted to: {contest}")
-  - L2901:             logger.warning(f"\[get_best_button_advanced\] Keywords argument was not a list. Converted to: {keywords}")
-  - L2905:             logger.warning(f"\[get_best_button_advanced\] Context argument was not a dict. Converted to: {context}")
-  - L2912:             logger.warning("\[get_best_button_advanced\]_semantic_model is not set or is not an object. Using None.")
-  - L3057:                             logger.warning(f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}' rejected, retrying...\[/yellow\]")
+  - L788 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
+  - L876 **WARNING**: ({
+  - L877 **WARNING**: ",
+  - L995 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\] {issues\['integrity_issues'\]}")
+  - L1234 **WARNING**: (f"\[ContextCoordinator\] No table structure found for contest: {contest}")
+  - L1403 **WARNING**: (f"\[get_feedback_pattern_kb\] Skipping corrupt line: {e}")
+  - L1515 **WARNING**: ("\[group_dom_nodes_by_label\] No organized DOM parts. (Further warnings suppressed)")
+  - L1517 **WARNING**: (f"\[group_dom_nodes_by_label\] No organized DOM parts. (Occurred {ContextCoordinator._dom_parts_warning_count} times)")
+  - L1522 **WARNING**: ("\[group_dom_nodes_by_label\] No DOM nodes found.")
+  - L1540 **WARNING**: ("\[submit_user_feedback\] ContextOrganizer has no submit_user_feedback method.")
+  - L1568 **WARNING**: (f"\[correct_and_update_contest\] Contest {contest_id} missing type/election_types after sync.")
+  - L1592 **WARNING**: ("\[print_contest_summary\] No organized contests to summarize.")
+  - L1605 **WARNING**: ("\[plot_contest_distribution\] No organized contests to plot.")
+  - L1656 **WARNING**: ("No organized DOM parts.")
+  - L1659 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
+  - L1670 **WARNING**: ("\[get_contest_groups\] No contest groups found.")
+  - L1679 **WARNING**: ("\[get_panel_groups\] No panel groups found.")
+  - L1688 **WARNING**: ("\[get_button_groups\] No button groups found.")
+  - L1697 **WARNING**: ("\[get_table_groups\] No table groups found.")
+  - L1706 **WARNING**: ("\[get_relationships\] No organized context.")
+  - L1814 **WARNING**: (f"\[fuzzy_score\] One or both inputs are empty: a='{a_str}', b='{b_str}'")
+  - L1820 **WARNING**: (f"\[fuzzy_score\] One or both inputs are too short: a='{a_str}', b='{b_str}'")
+  - L2266 **WARNING**: (f"\[extract_field\] Unknown field_type: {field_type}")
+  - L2524 **WARNING**: (f"\[get_full_contest\] Contest {contest_id} missing type/election_types after sync.")
+  - L2609 **WARNING**: (f"\[list_tables\] Table '{tbl}' missing metadata or columns.")
+  - L2641 **WARNING**: (f"\[get_table_metadata\] Table '{table_name}' missing columns.")
+  - L2659 **WARNING**: (f"\[check_missing_tables\] Missing tables: {missing}")
+  - L2720 **WARNING**: (f"\[save_table_structure\] Failed to save structure for contest: {contest}")
+  - L2897 **WARNING**: (f"\[get_best_button_advanced\] Contest argument was not a dict. Converted to: {contest}")
+  - L2901 **WARNING**: (f"\[get_best_button_advanced\] Keywords argument was not a list. Converted to: {keywords}")
+  - L2905 **WARNING**: (f"\[get_best_button_advanced\] Context argument was not a dict. Converted to: {context}")
+  - L2912 **WARNING**: ("\[get_best_button_advanced\]_semantic_model is not set or is not an object. Using None.")
+  - L3057 **WARNING**: (f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}' rejected, retrying...\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - utils.logger_singleton.logger.error (line 105)
   - utils.logger_singleton.logger.error (line 109)
@@ -962,18 +966,18 @@ graph LR
   - `from librarian import load_context_library (line 57)`
   - `from librarian import update_context_library (line 57)`
 - TODO/FIXME/WARN:
-  - L282:             logger.warning(
-  - L407:                 logger.warning(f"\[CONTEST\] Skipping contest with suspiciously large or missing title: {str(title)\[:100\]}...")
-  - L495:             logger.warning(f"\[CONTEST\] Filtered out {len(filtered_out)} contests due to missing required fields.")
-  - L497:                 logger.warning(f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
-  - L500:             logger.warning("\[CONTEST\] No contests with required fields for downstream output.")
-  - L816:                             logger.warning(f"\[ML\] Anomaly index {idx} out of range for contests list of length {len(contests)}")
-  - L1500:                     logger.warning(f"  \[yellow\]{title}\[/yellow\]: {fixes}")
-  - L1505:                     logger.warning(f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate contest detected.\n  \[dim\]Context:\[/dim\] {contest}")
-  - L1507:                     logger.warning(f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest missing location info.\n  \[dim\]Context:\[/dim\] {contest}")
-  - L1509:                     logger.warning(f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest missing year.\n  \[dim\]Context:\[/dim\] {contest}")
-  - L1972:             logger.warning(f"\[ContextOrganizer\] Could not update context library with feedback: {e}")
-  - L2049:                 logger.warning(f"\[CONTEXT ORGANIZER\] No table structure found for contest: {contest}")
+  - L282 **WARNING**: (
+  - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or missing title: {str(title)\[:100\]}...")
+  - L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered_out)} contests due to missing required fields.")
+  - L497 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
+  - L500 **WARNING**: ("\[CONTEST\] No contests with required fields for downstream output.")
+  - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests list of length {len(contests)}")
+  - L1500 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
+  - L1505 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate contest detected.\n  \[dim\]Context:\[/dim\] {contest}")
+  - L1507 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest missing location info.\n  \[dim\]Context:\[/dim\] {contest}")
+  - L1509 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest missing year.\n  \[dim\]Context:\[/dim\] {contest}")
+  - L1972 **WARNING**: (f"\[ContextOrganizer\] Could not update context library with feedback: {e}")
+  - L2049 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for contest: {contest}")
 - Outgoing cross-module calls (sample):
   - utils.misc_utils.load_processed_urls (line 59)
   - utils.misc_utils.load_output_cache (line 60)
@@ -1142,9 +1146,9 @@ graph LR
   - `from Context_Library.constants import PANEL_TAGS (line 37)`
   - `from Context_Library.constants import STATE_ABBR (line 37)`
 - TODO/FIXME/WARN:
-  - L652:         logger.warning(f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
-  - L658:         logger.warning("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching manual_correction...")
-  - L661:         logger.warning(f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
+  - L652 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
+  - L658 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching manual_correction...")
+  - L661 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
 - Outgoing cross-module calls (sample):
   - threading.Lock (line 51)
   - os.makedirs (line 73)
@@ -1267,7 +1271,7 @@ graph LR
   - `from sqlalchemy import create_engine (line 16)`
   - `from utils.logger_singleton import logger (line 18)`
 - TODO/FIXME/WARN:
-  - L328:                 logger.warning("\[DB\]\[AAD\] Falling back to password auth.")
+  - L328 **WARNING**: ("\[DB\]\[AAD\] Falling back to password auth.")
 - Outgoing cross-module calls (sample):
   - dotenv.load_dotenv (line 22)
   - pathlib.Path (line 31)
@@ -1335,9 +1339,9 @@ graph LR
   - `from utils.logger_singleton import logger (line 5)`
   - `from utils.logger_singleton import prompt (line 5)`
 - TODO/FIXME/WARN:
-  - L83:             logger.warning(f"\[REMOVED\] {popped}")
-  - L90:             logger.warning(f"\[REMOVED\] {index_or_value}")
-  - L129:                     logger.warning(f"\[DELETED\] {files\[idx\]}")
+  - L83 **WARNING**: (f"\[REMOVED\] {popped}")
+  - L90 **WARNING**: (f"\[REMOVED\] {index_or_value}")
+  - L129 **WARNING**: (f"\[DELETED\] {files\[idx\]}")
 - Outgoing cross-module calls (sample):
   - re.compile (line 7)
   - os.makedirs (line 12)
@@ -1439,10 +1443,10 @@ graph LR
   - `from utils.shared_logic import safe_strip (line 10)`
   - `from utils.user_prompt import PromptCancelled (line 11)`
 - TODO/FIXME/WARN:
-  - L134:                 logger.warning({
-  - L135:                     "level": "WARNING",
-  - L426:             logger.warning({
-  - L427:                 "level": "WARNING",
+  - L134 **WARNING**: ({
+  - L135 **WARNING**: ",
+  - L426 **WARNING**: ({
+  - L427 **WARNING**: ",
 - Outgoing cross-module calls (sample):
   - utils.shared_logic.safe_strip (line 19)
   - utils.shared_logic.safe_lower (line 19)
@@ -1618,10 +1622,10 @@ graph LR
   - `from utils.shared_logic import safe_get (line 16)`
   - `from utils.shared_logic import safe_parse (line 16)`
 - TODO/FIXME/WARN:
-  - L216:                 app_logger.warning(f"\[HTML Handler\] County '{county}' not found. Closest matches: {matches}")
-  - L220:                 app_logger.warning(f"\[HTML Handler\] Detected county '{county}' is not in known counties for state '{suggested_state or state}'.")
-  - L241:                     app_logger.warning(f"\[HTML Handler\] State '{user_state}' not found. Closest matches: {matches}")
-  - L285:                         app_logger.warning(f"\[HTML Handler\] County '{user_county}' not found. Closest matches: {matches}")
+  - L216 **WARNING**: (f"\[HTML Handler\] County '{county}' not found. Closest matches: {matches}")
+  - L220 **WARNING**: (f"\[HTML Handler\] Detected county '{county}' is not in known counties for state '{suggested_state or state}'.")
+  - L241 **WARNING**: (f"\[HTML Handler\] State '{user_state}' not found. Closest matches: {matches}")
+  - L285 **WARNING**: (f"\[HTML Handler\] County '{user_county}' not found. Closest matches: {matches}")
 - Outgoing cross-module calls (sample):
   - fallback_ctx.setdefault (line 42)
   - fallback_ctx.setdefault (line 44)
@@ -1741,10 +1745,10 @@ graph LR
   - `from utils.table_builder import build_table_noninteractive (line 45)`
   - `from utils.table_core import robust_table_extraction (line 46)`
 - TODO/FIXME/WARN:
-  - L376:         logger.warning({
-  - L377:             "level": "WARNING",
-  - L489:         logger.warning({
-  - L490:             "level": "WARNING",
+  - L376 **WARNING**: ({
+  - L377 **WARNING**: ",
+  - L489 **WARNING**: ({
+  - L490 **WARNING**: ",
 - Outgoing cross-module calls (sample):
   - phrase.strip (line 62)
   - re.split (line 65)
@@ -2005,40 +2009,40 @@ graph LR
   - `from Context_Integration.context_coordinator import dynamic_state_county_detection (line 108)`
   - `from utils.header_utils import normalize_table_headers (line 109)`
 - TODO/FIXME/WARN:
-  - L421:         logger.warning({
-  - L422:             "level": "WARNING",
-  - L425:                 "\[WARN\] Detected PyMuPDF %s. Upgrade to %s or newer to avoid parser instability."
-  - L1787:                     logger.warning({
-  - L1788:                         "level": "WARNING",
-  - L1790:                         "message": "\[WARN\] Poppler binaries not detected; skipping pdf2image and using PyMuPDF fallback.",
-  - L1808:             logger.warning({
-  - L1809:                 "level": "WARNING",
-  - L1812:                     "\[WARN\] pdf2image conversion failed; "
-  - L2184:         logger.warning({
-  - L2185:             "level": "WARNING",
-  - L2187:             "message": f"\[WARN\] Multi-mode text extraction failed: {e}",
-  - L3283:         logger.warning({
-  - L3284:             "level": "WARNING",
-  - L3286:             "message": f"\[WARN\] fitz text extraction failed: {e}",
-  - L3315:         logger.warning({
-  - L3316:             "level": "WARNING",
-  - L3318:             "message": "\[WARN\] ENABLE_OCR_FORCE is set but Tesseract is unavailable; skipping OCR fallback.",
-  - L3366:             logger.warning({
-  - L3367:                 "level": "WARNING",
-  - L3369:                 "message": "\[WARN\] Low-signal text detected but OCR is unavailable or disabled.",
-  - L3586:         logger.warning({
-  - L3587:             "level": "WARNING",
-  - L3589:             "message": "\[WARN\] No contest selected. Using filename fallback.",
-  - L4034:                 logger.warning({
-  - L4035:                     "level": "WARNING",
-  - L4037:                     "message": f"\[WARN\] Selected contest '{contest}' not found in column '{contest_column}'. Skipping row filter.",
-  - L4136:             logger.warning({
-  - L4137:                 "level": "WARNING",
-  - L4139:                 "message": f"\[WARN\] No structured rows matched the inferred column count of {len(headers)}. Total lines scanned: {unmatched_count}",
-  - L4178:             logger.warning({
-  - L4179:                 "level": "WARNING",
-  - L4367:     logger.warning({
-  - L4368:         "level": "WARNING",
+  - L421 **WARNING**: ({
+  - L422 **WARNING**: ",
+  - L425 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid parser instability."
+  - L1787 **WARNING**: ({
+  - L1788 **WARNING**: ",
+  - L1790 **WARN**: \] Poppler binaries not detected; skipping pdf2image and using PyMuPDF fallback.",
+  - L1808 **WARNING**: ({
+  - L1809 **WARNING**: ",
+  - L1812 **WARN**: \] pdf2image conversion failed; "
+  - L2184 **WARNING**: ({
+  - L2185 **WARNING**: ",
+  - L2187 **WARN**: \] Multi-mode text extraction failed: {e}",
+  - L3283 **WARNING**: ({
+  - L3284 **WARNING**: ",
+  - L3286 **WARN**: \] fitz text extraction failed: {e}",
+  - L3315 **WARNING**: ({
+  - L3316 **WARNING**: ",
+  - L3318 **WARN**: \] ENABLE_OCR_FORCE is set but Tesseract is unavailable; skipping OCR fallback.",
+  - L3366 **WARNING**: ({
+  - L3367 **WARNING**: ",
+  - L3369 **WARN**: \] Low-signal text detected but OCR is unavailable or disabled.",
+  - L3586 **WARNING**: ({
+  - L3587 **WARNING**: ",
+  - L3589 **WARN**: \] No contest selected. Using filename fallback.",
+  - L4034 **WARNING**: ({
+  - L4035 **WARNING**: ",
+  - L4037 **WARN**: \] Selected contest '{contest}' not found in column '{contest_column}'. Skipping row filter.",
+  - L4136 **WARNING**: ({
+  - L4137 **WARNING**: ",
+  - L4139 **WARN**: \] No structured rows matched the inferred column count of {len(headers)}. Total lines scanned: {unmatched_count}",
+  - L4178 **WARNING**: ({
+  - L4179 **WARNING**: ",
+  - L4367 **WARNING**: ({
+  - L4368 **WARNING**: ",
 - Outgoing cross-module calls (sample):
   - os.makedirs (line 27)
   - collections.OrderedDict (line 133)
@@ -2342,12 +2346,12 @@ graph LR
   - `from utils.logger_singleton import logger (line 12)`
   - `from utils.output_utils import finalize_election_output (line 13)`
 - TODO/FIXME/WARN:
-  - L25:     logger.warning("\[WARN\] context_library.json not found. Using fallback config for Arizona handler.")
-  - L51:                 logger.warning(f"\[WARN\] Could not expand card {i+1}: {e}")
-  - L64:             logger.warning(f"\[WARN\] Vote Type toggle failed: {e}")
-  - L77:             logger.warning(f"\[WARN\] County toggle failed: {e}")
-  - L164:         logger.warning("\[FALLBACK\] No tables were parsed. Either no results are published yet or the structure has changed.")
-  - L165:         logger.warning("\[FALLBACK\] Please verify that the site has posted election data.")
+  - L25 **WARNING**: ("\[WARN\] context_library.json not found. Using fallback config for Arizona handler.")
+  - L51 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
+  - L64 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
+  - L77 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
+  - L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results are published yet or the structure has changed.")
+  - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted election data.")
 - Outgoing cross-module calls (sample):
   - orjson.loads (line 21)
   - f.read (line 21)
@@ -2415,7 +2419,7 @@ graph LR
   - `from utils.table_builder import build_dynamic_table (line 9)`
   - `from utils.table_core import robust_table_extraction (line 10)`
 - TODO/FIXME/WARN:
-  - L123:         logger.warning("\[yellow\]\[WARNING\] No ballot items found by div selectors. Trying table-based extraction...\[/yellow\]")
+  - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div selectors. Trying table-based extraction...\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - utils.logger_singleton.logger.info (line 28)
   - utils.html_scanner.scan_html_for_context (line 31)
@@ -2475,8 +2479,8 @@ graph LR
   - `from utils.table_builder import build_dynamic_table (line 16)`
   - `from utils.table_core import robust_table_extraction (line 17)`
 - TODO/FIXME/WARN:
-  - L51:             logger.warning(f"\[Example Handler\] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
-  - L152:         logger.warning("\[yellow\]\[WARNING\] No ballot items found by div selectors. Trying table-based extraction...\[/yellow\]")
+  - L51 **WARNING**: (f"\[Example Handler\] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
+  - L152 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div selectors. Trying table-based extraction...\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - utils.shared_logic.safe_get (line 36)
   - utils.shared_logic.safe_lower (line 37)
@@ -2550,10 +2554,10 @@ graph LR
   - `from utils.table_builder import build_dynamic_table (line 17)`
   - `from utils.table_core import harmonize_headers_and_data (line 18)`
 - TODO/FIXME/WARN:
-  - L72:         logger.warning("\[WARNING\] dom_parts missing after organize_and_enrich.")
-  - L95:         logger.warning("\[red\]No contest selected. Skipping.\[/red\]")
-  - L139:                         logger.warning(f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}' is not clickable (visible={safe_is_visible(element, logger)}, enabled={safe_is_enabled(element, logger)})\[/yellow\]")
-  - L176:                         logger.warning(f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}' is not clickable (visible={safe_is_visible(element, logger)}, enabled={safe_is_enabled(element, logger)})\[/yellow\]")
+  - L72 **WARNING**: ("\[WARNING\] dom_parts missing after organize_and_enrich.")
+  - L95 **WARNING**: ("\[red\]No contest selected. Skipping.\[/red\]")
+  - L139 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}' is not clickable (visible={safe_is_visible(element, logger)}, enabled={safe_is_enabled(element, logger)})\[/yellow\]")
+  - L176 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}' is not clickable (visible={safe_is_visible(element, logger)}, enabled={safe_is_enabled(element, logger)})\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - utils.logger_singleton.logger.info (line 40)
   - utils.html_scanner.scan_html_for_context (line 43)
@@ -2622,8 +2626,8 @@ graph LR
   - `from utils.shared_logic import safe_parse (line 7)`
   - `from utils.shared_logic import safe_strip (line 7)`
 - TODO/FIXME/WARN:
-  - L27:         logger.warning("\[NY Handler\] No county specified in html_context.")
-  - L43:         logger.warning(f"\[NY Handler\] No specific parser implemented for county: '{county}'. Please add it under {module_path}.py")
+  - L27 **WARNING**: ("\[NY Handler\] No county specified in html_context.")
+  - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for county: '{county}'. Please add it under {module_path}.py")
 - Outgoing cross-module calls (sample):
   - utils.shared_logic.safe_get (line 24)
   - utils.shared_logic.safe_lower (line 25)
@@ -2662,14 +2666,14 @@ graph LR
   - `from utils.shared_logic import safe_replace (line 14)`
   - `from utils.shared_logic import safe_strip (line 14)`
 - TODO/FIXME/WARN:
-  - L44:             logger.warning(f"\[NAV\] Step failed: {step} — {e}")
-  - L55:     logger.warning(f"\[bold yellow\]Detected election:\[/bold yellow\] {header_text}")
-  - L76:                     logger.warning("\[PA\] Invalid index input for election selection.")
-  - L78:                 logger.warning("\[PA\] Elections dropdown not found.")
-  - L80:             logger.warning(f"\[PA\] Failed to expand Elections menu or load selection: {e}")
-  - L96:                 logger.warning("\[PA\] County Breakdown link not found.")
-  - L98:             logger.warning(f"\[PA\] Failed to click County Breakdown link: {e}")
-  - L113:         logger.warning("\[yellow\]Multiple CSV files found in input. Please select one:\[/yellow\]")
+  - L44 **WARNING**: (f"\[NAV\] Step failed: {step} — {e}")
+  - L55 **WARNING**: (f"\[bold yellow\]Detected election:\[/bold yellow\] {header_text}")
+  - L76 **WARNING**: ("\[PA\] Invalid index input for election selection.")
+  - L78 **WARNING**: ("\[PA\] Elections dropdown not found.")
+  - L80 **WARNING**: (f"\[PA\] Failed to expand Elections menu or load selection: {e}")
+  - L96 **WARNING**: ("\[PA\] County Breakdown link not found.")
+  - L98 **WARNING**: (f"\[PA\] Failed to click County Breakdown link: {e}")
+  - L113 **WARNING**: ("\[yellow\]Multiple CSV files found in input. Please select one:\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - pathlib.Path (line 22)
   - pathlib.Path (line 23)
@@ -2892,14 +2896,14 @@ graph LR
   - `from utils.logger_singleton import logger (line 47)`
   - `from utils.models import Base (line 48)`
 - TODO/FIXME/WARN:
-  - L252:                     logger.warning(f"\[health_router\] manual_correction failed (attempt {attempt}): {result.stderr}")
-  - L336:             logger.warning("\[SELF-HEAL\] Misalignments found. Launching manual_correction...")
-  - L338:             logger.warning(f"\[SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
-  - L340:         logger.warning("\[SELF-HEAL\] Max retries reached. Some misalignments may remain.")
-  - L375:                 logger.warning(f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
-  - L380:                 logger.warning("\[PIPELINE\] Misaligned NER examples found. Self-heal loop will be handled by scan_misaligned_ner.")
-  - L382:                 logger.warning("\[PIPELINE\] scan_misaligned_ner failed or file missing. Proceeding with caution.")
-  - L414:                 logger.warning("\[PIPELINE\] Model retraining failed.")
+  - L252 **WARNING**: (f"\[health_router\] manual_correction failed (attempt {attempt}): {result.stderr}")
+  - L336 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching manual_correction...")
+  - L338 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
+  - L340 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments may remain.")
+  - L375 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
+  - L380 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal loop will be handled by scan_misaligned_ner.")
+  - L382 **WARNING**: ("\[PIPELINE\] scan_misaligned_ner failed or file missing. Proceeding with caution.")
+  - L414 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
 - Outgoing cross-module calls (sample):
   - ORCHESTRATION_PLUGINS.append (line 58)
   - suggestions.extend (line 64)
@@ -2991,10 +2995,10 @@ graph LR
   - `from utils.logger_singleton import logger (line 36)`
   - `from context_migration import migrate_all (line 37)`
 - TODO/FIXME/WARN:
-  - L151:                     logger.warning(f"Skipping non-dict entry in spacy_ner_train_data.jsonl: {entry}")
-  - L460:                 logger.warning("\[DB\]\[WARNING\] No user tables found in schema 'public'.")
-  - L503:         logger.warning("\[CLEAN\]\[WARNING\] The following files are still too large after cleaning:")
-  - L507:         logger.warning("\[MISALIGNED\] Consider cleaning or pattern-excluding these from your training data:")
+  - L151 **WARNING**: (f"Skipping non-dict entry in spacy_ner_train_data.jsonl: {entry}")
+  - L460 **WARNING**: ("\[DB\]\[WARNING\] No user tables found in schema 'public'.")
+  - L503 **WARNING**: ("\[CLEAN\]\[WARNING\] The following files are still too large after cleaning:")
+  - L507 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding these from your training data:")
 - Outgoing cross-module calls (sample):
   - fname.endswith (line 45)
   - fname.endswith (line 48)
@@ -3160,34 +3164,34 @@ graph LR
   - `from utils.misc_utils import file_hash (line 54)`
   - `from utils.model_registry import ModelRegistry (line 55)`
 - TODO/FIXME/WARN:
-  - L322:             logger.warning(f"Coordinator ML scoring failed: {e}")
-  - L343:             logger.warning(f"Coordinator field suggestion failed: {e}")
-  - L355:         logger.warning(f"Log file not found: {path}")
-  - L364:                     logger.warning(f"\[CORRUPT\] {path} line {i}: {e}")
-  - L396:                             logger.warning(f"\[SKIP\] File not found: {file}")
-  - L400:                             logger.warning(f"\[SKIP\] File too large: {file}")
-  - L422:                                         logger.warning(f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}... ({e})")
-  - L434:                                 logger.warning(f"\[CORRUPT\] {len(corrupt_items)} lines saved to {corrupt_path}")
-  - L439:                                 logger.warning(f"\[FIXED\] All lines invalid, recreated empty .jsonl file: {file}")
-  - L453:                                 logger.warning(f"\[CORRUPT\] {file}: {e}")
-  - L465:                                 logger.warning(f"\[CORRUPT\] Corrupt JSON saved to {corrupt_path}")
-  - L471:                                 logger.warning(f"\[FIXED\] All content invalid, recreated minimal valid JSON in {file}")
-  - L476:                         logger.warning(f"\[CORRUPT\] {file}: {e}")
-  - L485:                                         logger.warning(f"\[QUARANTINED\] {file} -&gt; {quarantine_dir / file.name}")
-  - L489:                                         logger.warning(f"\[DELETED\] {file}")
-  - L492:                                     logger.warning(f"\[SKIP-DELETE\] File already missing: {file}")
-  - L537:             logger.warning(f"\[FIND-LOGS\] Skipped {d}: {e}")
-  - L562:                     logger.warning(f"\[CORRUPT\] {path} line {line_num}: {e}")
-  - L717:                     logger.warning(f"Invalid JSON, skipping edit: {e}")
-  - L750:     # TODO: Add JSON schema validation here if desired
-  - L989:         logger.warning(
-  - L1079:     If missing, create with DEFAULT_STRUCTURE. Warn if schema version mismatches.
-  - L1098:         logger.warning(f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
-  - L1141:                     logger.warning(f"\[AUTO\] Could not delete log file {log_file}: {e}")
-  - L1257:             logger.warning(f"\[SKIP\] Could not load {log_file}: {e}")
-  - L1273:         logger.warning("No log files matched any of the specified fields. Will attempt to process all log files for all fields.")
-  - L1356:                 logger.warning(f"Could not delete log file {log_file}: {e}")
-  - L1376:         logger.warning("\[WARNING\] No entries were processed. Check your log file naming, field configuration, or use --dry-run for debugging.")
+  - L322 **WARNING**: (f"Coordinator ML scoring failed: {e}")
+  - L343 **WARNING**: (f"Coordinator field suggestion failed: {e}")
+  - L355 **WARNING**: (f"Log file not found: {path}")
+  - L364 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
+  - L396 **WARNING**: (f"\[SKIP\] File not found: {file}")
+  - L400 **WARNING**: (f"\[SKIP\] File too large: {file}")
+  - L422 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}... ({e})")
+  - L434 **WARNING**: (f"\[CORRUPT\] {len(corrupt_items)} lines saved to {corrupt_path}")
+  - L439 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl file: {file}")
+  - L453 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+  - L465 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt_path}")
+  - L471 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid JSON in {file}")
+  - L476 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
+  - L485 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {quarantine_dir / file.name}")
+  - L489 **WARNING**: (f"\[DELETED\] {file}")
+  - L492 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
+  - L537 **WARNING**: (f"\[FIND-LOGS\] Skipped {d}: {e}")
+  - L562 **WARNING**: (f"\[CORRUPT\] {path} line {line_num}: {e}")
+  - L717 **WARNING**: (f"Invalid JSON, skipping edit: {e}")
+  - L750 **TODO**: Add JSON schema validation here if desired
+  - L989 **WARNING**: (
+  - L1079 **WARN**: if schema version mismatches.
+  - L1098 **WARNING**: (f"Schema version mismatch: found {context_lib.get('schema_version')}, expected {SCHEMA_VERSION}. Consider migrating.")
+  - L1141 **WARNING**: (f"\[AUTO\] Could not delete log file {log_file}: {e}")
+  - L1257 **WARNING**: (f"\[SKIP\] Could not load {log_file}: {e}")
+  - L1273 **WARNING**: ("No log files matched any of the specified fields. Will attempt to process all log files for all fields.")
+  - L1356 **WARNING**: (f"Could not delete log file {log_file}: {e}")
+  - L1376 **WARNING**: ("\[WARNING\] No entries were processed. Check your log file naming, field configuration, or use --dry-run for debugging.")
 - Outgoing cross-module calls (sample):
   - pathlib.Path (line 58)
   - pathlib.Path (line 59)
@@ -3401,26 +3405,26 @@ graph LR
   - `from utils.shared_logic import safe_scalar_one_or_none (line 70)`
   - `from utils.shared_logic import safe_update (line 70)`
 - TODO/FIXME/WARN:
-  - L178:         logger.warning(f"\[CLEAN\] File not found: {jsonl_path}")
-  - L186:                 logger.warning(f"\[CLEAN\] Could not parse line: {e}")
-  - L201:                 logger.warning(f"\[CLEAN\] Alignment check failed for text: {text\[:50\]}... ({e})")
-  - L274:             logger.warning(f"Failed to load {path}: {e}")
-  - L403:                     logger.warning(f"Skipping misaligned entity in: {text}")
-  - L408:                 logger.warning(f"Error validating entity alignment: {e}")
-  - L434:         logger.warning(f"\[spaCy\] Could not check GPU availability: {e}")
-  - L450:         logger.warning(f"\[spaCy\] Could not load lexeme normalization table. You may ignore this for English. Error: {e}")
-  - L536:         logger.warning(f"\[NER\] Skipped {misaligned_count} misaligned examples. Saved to {misaligned_path}")
-  - L550:         logger.warning("No NER training examples found. Skipping spaCy NER retraining.")
-  - L619:         logger.warning("\[SUGGESTION\] Consider lowering min_delta or increasing patience if you want longer training.")
-  - L621:         logger.warning("\[SUGGESTION\] Model improved until the last epoch. Consider increasing epochs for further improvement.")
-  - L622:     logger.warning(f"\[SUGGESTION\] Next run: patience={patience}, min_delta={min_delta:.2f}, epochs={epochs}")
-  - L708:         logger.warning("No training examples found. Aborting retraining.")
-  - L727:             logger.warning(f"\[WARN\] Could not delete old model directory {oldest_path}: {e}")
-  - L739:             logger.warning(f"\[WARN\] Failed to load existing model: {e}")
-  - L742:         logger.warning("Falling back to base model (all-MiniLM-L6-v2).")
-  - L782:             logger.warning(f"\[WARN\] Could not update canonical model directory: {e}")
-  - L810:                     logger.warning(f"MISALIGNED: {text} {annots\['entities'\]}")
-  - L840:             logger.warning("\[DB\] Base.metadata.tables is empty. No models registered? Did you import all model classes?")
+  - L178 **WARNING**: (f"\[CLEAN\] File not found: {jsonl_path}")
+  - L186 **WARNING**: (f"\[CLEAN\] Could not parse line: {e}")
+  - L201 **WARNING**: (f"\[CLEAN\] Alignment check failed for text: {text\[:50\]}... ({e})")
+  - L274 **WARNING**: (f"Failed to load {path}: {e}")
+  - L403 **WARNING**: (f"Skipping misaligned entity in: {text}")
+  - L408 **WARNING**: (f"Error validating entity alignment: {e}")
+  - L434 **WARNING**: (f"\[spaCy\] Could not check GPU availability: {e}")
+  - L450 **WARNING**: (f"\[spaCy\] Could not load lexeme normalization table. You may ignore this for English. Error: {e}")
+  - L536 **WARNING**: (f"\[NER\] Skipped {misaligned_count} misaligned examples. Saved to {misaligned_path}")
+  - L550 **WARNING**: ("No NER training examples found. Skipping spaCy NER retraining.")
+  - L619 **WARNING**: ("\[SUGGESTION\] Consider lowering min_delta or increasing patience if you want longer training.")
+  - L621 **WARNING**: ("\[SUGGESTION\] Model improved until the last epoch. Consider increasing epochs for further improvement.")
+  - L622 **WARNING**: (f"\[SUGGESTION\] Next run: patience={patience}, min_delta={min_delta:.2f}, epochs={epochs}")
+  - L708 **WARNING**: ("No training examples found. Aborting retraining.")
+  - L727 **WARNING**: (f"\[WARN\] Could not delete old model directory {oldest_path}: {e}")
+  - L739 **WARNING**: (f"\[WARN\] Failed to load existing model: {e}")
+  - L742 **WARNING**: ("Falling back to base model (all-MiniLM-L6-v2).")
+  - L782 **WARNING**: (f"\[WARN\] Could not update canonical model directory: {e}")
+  - L810 **WARNING**: (f"MISALIGNED: {text} {annots\['entities'\]}")
+  - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models registered? Did you import all model classes?")
 - Outgoing cross-module calls (sample):
   - value.strip (line 101)
   - utils.misc_utils.safe_db_path (line 115)
@@ -3530,17 +3534,17 @@ graph LR
   - `from config import PROJECT_ROOT (line 11)`
   - `from utils.logger_singleton import logger (line 12)`
 - TODO/FIXME/WARN:
-  - L62:                     logger.warning(f"\[CORRUPT\] Could not parse line: {e}")
-  - L83:             logger.warning(f"\n\[MISALIGNED\] Top {top_n} most frequent misaligned NER texts:")
-  - L85:                 logger.warning(f"  {repr(text)}: {count} times")
-  - L86:             logger.warning("\[MISALIGNED\] Consider cleaning or pattern-excluding these from your training data.")
-  - L87:         logger.warning("Run the manual_correction to review and clean these examples before retraining.")
-  - L88:         logger.warning("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
-  - L98:                 logger.warning(f"\[WARN\] Could not remove old misaligned file: {e}")
-  - L112:         logger.warning("\[SELF-HEAL\] Misalignments found. Launching manual_correction for spacy_ner_misaligned...")
-  - L119:             logger.warning(f"\[SELF-HEAL\] manual_correction exited with code {result.returncode}")
-  - L120:         logger.warning(f"\[SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
-  - L122:     logger.warning("\[SELF-HEAL\] Max retries reached. Some misalignments may remain.")
+  - L62 **WARNING**: (f"\[CORRUPT\] Could not parse line: {e}")
+  - L83 **WARNING**: (f"\n\[MISALIGNED\] Top {top_n} most frequent misaligned NER texts:")
+  - L85 **WARNING**: (f"  {repr(text)}: {count} times")
+  - L86 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding these from your training data.")
+  - L87 **WARNING**: ("Run the manual_correction to review and clean these examples before retraining.")
+  - L88 **WARNING**: ("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
+  - L98 **WARNING**: (f"\[WARN\] Could not remove old misaligned file: {e}")
+  - L112 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching manual_correction for spacy_ner_misaligned...")
+  - L119 **WARNING**: (f"\[SELF-HEAL\] manual_correction exited with code {result.returncode}")
+  - L120 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
+  - L122 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments may remain.")
 - Outgoing cross-module calls (sample):
   - pathlib.Path (line 17)
   - p.is_absolute (line 18)
@@ -3724,40 +3728,40 @@ graph LR
   - `from utils.shared_logic import safe_strip (line 46)`
   - `from utils.table_builder import build_table_noninteractive (line 53)`
 - TODO/FIXME/WARN:
-  - L56:     logger.warning("Deleting .processed_urls cache for fresh start...")
-  - L393:                     logger.warning({
-  - L394:                         "level": "WARNING",
-  - L408:             logger.warning({
-  - L409:                 "level": "WARNING",
-  - L469:                 logger.warning({
-  - L470:                     "level": "WARNING",
-  - L543:                 logger.warning(payload_2)
-  - L870:                     logger.warning({
-  - L871:                         "level": "WARNING",
-  - L917:         logger.warning({
-  - L918:             "level": "WARNING",
-  - L971:         logger.warning({
-  - L972:             "level": "WARNING",
-  - L1076:                         "level": "WARNING",
-  - L1081:                     logger.warning(payload)
-  - L1106:                 # Soft-fail: continue; downstream will warn if nothing found
-  - L1166:                     "level": "WARNING",
-  - L1171:                 logger.warning(payload)
-  - L1249:                                 logger.warning({
-  - L1250:                                     "level": "WARNING",
-  - L1267:                             "level": "WARNING",
-  - L1272:                         logger.warning(payload)
-  - L1283:                             "level": "WARNING",
-  - L1288:                         logger.warning(payload)
-  - L1290:                         msg = "\[WARN\] No output file path returned from parser and no output files found."
-  - L1292:                             "level": "WARNING",
-  - L1297:                         logger.warning(payload)
-  - L1302:                     "level": "WARNING",
-  - L1307:                 logger.warning(payload)
-  - L1425:                     logger.warning({
-  - L1426:                         "level": "WARNING",
-  - L1486:         logger.warning({
-  - L1487:             "level": "WARNING",
+  - L56 **WARNING**: ("Deleting .processed_urls cache for fresh start...")
+  - L393 **WARNING**: ({
+  - L394 **WARNING**: ",
+  - L408 **WARNING**: ({
+  - L409 **WARNING**: ",
+  - L469 **WARNING**: ({
+  - L470 **WARNING**: ",
+  - L543 **WARNING**: (payload_2)
+  - L870 **WARNING**: ({
+  - L871 **WARNING**: ",
+  - L917 **WARNING**: ({
+  - L918 **WARNING**: ",
+  - L971 **WARNING**: ({
+  - L972 **WARNING**: ",
+  - L1076 **WARNING**: ",
+  - L1081 **WARNING**: (payload)
+  - L1106 **WARN**: if nothing found
+  - L1166 **WARNING**: ",
+  - L1171 **WARNING**: (payload)
+  - L1249 **WARNING**: ({
+  - L1250 **WARNING**: ",
+  - L1267 **WARNING**: ",
+  - L1272 **WARNING**: (payload)
+  - L1283 **WARNING**: ",
+  - L1288 **WARNING**: (payload)
+  - L1290 **WARN**: \] No output file path returned from parser and no output files found."
+  - L1292 **WARNING**: ",
+  - L1297 **WARNING**: (payload)
+  - L1302 **WARNING**: ",
+  - L1307 **WARNING**: (payload)
+  - L1425 **WARNING**: ({
+  - L1426 **WARNING**: ",
+  - L1486 **WARNING**: ({
+  - L1487 **WARNING**: ",
 - Outgoing cross-module calls (sample):
   - config.PROCESSED_URLS_FILE.exists (line 55)
   - utils.logger_singleton.logger.warning (line 56)
@@ -4127,21 +4131,21 @@ graph LR
   - `from utils.shared_logic import safe_lower (line 23)`
   - `from utils.user_prompt import PromptCancelled (line 30)`
 - TODO/FIXME/WARN:
-  - L49:         logger.warning("\[Router\] handlers/states directory not found.")
-  - L66:             logger.warning(f"\[Router\] counties directory not found for state: {state_key}")
-  - L137:         logger.warning(f"\[Fallback\]\[Session:{session_id}\] No handler states available for manual selection.")
-  - L154:             logger.warning(f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
-  - L157:             logger.warning(f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
-  - L160:             logger.warning(f"\[Fallback\]\[Session:{session_id}\] State '{state}' not found. Please try again.")
-  - L179:                 logger.warning(f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
-  - L182:                 logger.warning(f"\[Fallback\]\[Session:{session_id}\] County '{county}' not found for state '{state}'. Please try again.")
-  - L189:     logger.warning(f"\[Fallback\]\[Session:{session_id}\] Too many failed attempts. Exiting fallback.")
-  - L205:                 logger.warning(f"\[Router\] Requested state '{state_name}' not found on disk. Skipping restrict filter.")
-  - L512:             logger.warning(f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
-  - L523:                     logger.warning(f"Failed to load context from file: {e}")
-  - L533:             logger.warning("No suitable handler found.")
-  - L540:                 logger.warning("No handler selected. Exiting.")
-  - L547:                 logger.warning("Still could not import a suitable handler.")
+  - L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
+  - L66 **WARNING**: (f"\[Router\] counties directory not found for state: {state_key}")
+  - L137 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] No handler states available for manual selection.")
+  - L154 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
+  - L157 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
+  - L160 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] State '{state}' not found. Please try again.")
+  - L179 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Aborted by user.")
+  - L182 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] County '{county}' not found for state '{state}'. Please try again.")
+  - L189 **WARNING**: (f"\[Fallback\]\[Session:{session_id}\] Too many failed attempts. Exiting fallback.")
+  - L205 **WARNING**: (f"\[Router\] Requested state '{state_name}' not found on disk. Skipping restrict filter.")
+  - L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
+  - L523 **WARNING**: (f"Failed to load context from file: {e}")
+  - L533 **WARNING**: ("No suitable handler found.")
+  - L540 **WARNING**: ("No handler selected. Exiting.")
+  - L547 **WARNING**: ("Still could not import a suitable handler.")
 - Outgoing cross-module calls (sample):
   - utils.logger_singleton.logger.warning (line 49)
   - utils.shared_logic.normalize_state_name (line 52)
@@ -4299,23 +4303,23 @@ graph LR
   - `from shared_logic import safe_get_first (line 47)`
   - `from shared_logic import safe_lower (line 47)`
 - TODO/FIXME/WARN:
-  - L89:                     logger.warning(f"\[browser_utils\] Failed to safely parse context_library value for key '{key}'")
-  - L91:                 logger.warning(f"\[browser_utils\] Skipping unsafe context_library value for key '{key}'")
-  - L295:                     logger.warning(f"\[safe_attributes\] Playwright JS extraction failed: {e}")
-  - L309:                 logger.warning(f"\[safe_attributes\] Playwright fallback extraction failed: {e}")
-  - L395:         logger and logger.warning(f"\[safe_count\] Object is not countable: {type(obj)}")
-  - L441:             logger.warning(f"\[safe_launch\] browser_type is not a SyncBrowserType: {type(browser_type)}")
-  - L461:             logger.warning(f"\[async_safe_launch\] browser_type is not an AsyncBrowserType: {type(browser_type)}")
-  - L540:             logger.warning({
-  - L541:                 "level": "WARNING",
-  - L569:             logger.warning(f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
-  - L578:     logger.warning(f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual intervention not implemented. (Session: {session_id})")
-  - L602:             logger.warning(f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
-  - L611:             logger.warning({
-  - L612:                 "level": "WARNING",
-  - L623:     logger.warning(f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual intervention not implemented. (Session: {session_id})")
-  - L712:                         logger and logger.warning("\[SCROLL\] User aborted scrolling.")
-  - L733:         logger and logger.warning("\[SCROLL\] Max scroll time/attempts exceeded. Page may not be fully loaded.")
+  - L89 **WARNING**: (f"\[browser_utils\] Failed to safely parse context_library value for key '{key}'")
+  - L91 **WARNING**: (f"\[browser_utils\] Skipping unsafe context_library value for key '{key}'")
+  - L295 **WARNING**: (f"\[safe_attributes\] Playwright JS extraction failed: {e}")
+  - L309 **WARNING**: (f"\[safe_attributes\] Playwright fallback extraction failed: {e}")
+  - L395 **WARNING**: (f"\[safe_count\] Object is not countable: {type(obj)}")
+  - L441 **WARNING**: (f"\[safe_launch\] browser_type is not a SyncBrowserType: {type(browser_type)}")
+  - L461 **WARNING**: (f"\[async_safe_launch\] browser_type is not an AsyncBrowserType: {type(browser_type)}")
+  - L540 **WARNING**: ({
+  - L541 **WARNING**: ",
+  - L569 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
+  - L578 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual intervention not implemented. (Session: {session_id})")
+  - L602 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
+  - L611 **WARNING**: ({
+  - L612 **WARNING**: ",
+  - L623 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual intervention not implemented. (Session: {session_id})")
+  - L712 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
+  - L733 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may not be fully loaded.")
 - Outgoing cross-module calls (sample):
   - typing.TypeVar (line 57)
   - orjson.loads (line 71)
@@ -4492,8 +4496,8 @@ graph LR
   - `from shared_logic import safe_get (line 18)`
   - `from shared_logic import safe_lower (line 18)`
 - TODO/FIXME/WARN:
-  - L118:         logger.warning(f"\[CAPTCHA\] Foreground window fallback failed: {e}")
-  - L154:     logger.warning("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
+  - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
+  - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
 - Outgoing cross-module calls (sample):
   - orjson.loads (line 49)
   - f.read (line 49)
@@ -4642,12 +4646,12 @@ graph LR
   - `from shared_logic import safe_strip (line 23)`
   - `from user_prompt import PromptCancelled (line 32)`
 - TODO/FIXME/WARN:
-  - L635:     elif lvl == "warning":
-  - L636:         logger.warning(entry)
-  - L1029: _log("warning", "selector", f"Feedback loop {loop+1}: verifying contests", session_id=session_id,
-  - L1565:                 logger.warning({"level": "WARNING", "type": "selector", "message": "Empty search term", "session_id": session_id})
-  - L1570:                 logger.warning({"level": "WARNING", "type": "selector", "message": f"No matches for '{term}'", "session_id": session_id})
-  - L1642:         logger.warning({"level": "WARNING", "type": "selector", "message": "No match; try again.", "session_id": session_id})
+  - L635 **WARNING**: ":
+  - L636 **WARNING**: (entry)
+  - L1029 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying contests", session_id=session_id,
+  - L1565 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "Empty search term", "session_id": session_id})
+  - L1570 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No matches for '{term}'", "session_id": session_id})
+  - L1642 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No match; try again.", "session_id": session_id})
 - Outgoing cross-module calls (sample):
   - stopwords.words (line 46)
   - nltk.download (line 48)
@@ -5162,7 +5166,7 @@ graph LR
   - `from detect import normalize_header (line 12)`
   - `from logger_singleton import logger (line 13)`
 - TODO/FIXME/WARN:
-  - L153:         logger.warning(f"\[DOM_EXTRACTOR\] failure: {e}")
+  - L153 **WARNING**: (f"\[DOM_EXTRACTOR\] failure: {e}")
 - Outgoing cross-module calls (sample):
   - c.strip (line 20)
   - browser_utils.safe_locator (line 24)
@@ -5377,17 +5381,17 @@ graph LR
   - `from shared_logic import safe_values (line 64)`
   - `from table_core import robust_table_extraction (line 74)`
 - TODO/FIXME/WARN:
-  - L124: _emit("warning", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in provided table_html.", session_id)
-  - L129: _emit("warning", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in table_html.", session_id)
-  - L171: _emit("warning", "extractor", "\[EXTRACTOR\] Candidate NLP/score step failed", session_id, error=str(e))
-  - L187: _emit("warning", "extractor", "\[EXTRACTOR\] No suitable table candidates found.", session_id)
-  - L217: _emit("warning", "extractor", "\[EXTRACTOR\] Error while scanning &lt;table&gt; elements", session_id, error=str(e))
-  - L229: _emit("warning", "extractor", "\[EXTRACTOR\] DOM extraction failed", session_id, error=str(e))
-  - L272: _emit("warning", "extractor", "\[EXTRACTOR\] Pattern extraction failed", session_id, error=str(e))
-  - L776: _emit("warning", "extractor", "No learned DOM patterns found.")
-  - L800: _emit("warning", "extractor", "Entry deleted.")
-  - L805: _emit("warning", "extractor", "Unknown action.")
-  - L807: _emit("warning", "extractor", "Invalid entry number.")
+  - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in provided table_html.", session_id)
+  - L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in table_html.", session_id)
+  - L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step failed", session_id, error=str(e))
+  - L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table candidates found.", session_id)
+  - L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning &lt;table&gt; elements", session_id, error=str(e))
+  - L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed", session_id, error=str(e))
+  - L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed", session_id, error=str(e))
+  - L776 **WARNING**: ", "extractor", "No learned DOM patterns found.")
+  - L800 **WARNING**: ", "extractor", "Entry deleted.")
+  - L805 **WARNING**: ", "extractor", "Unknown action.")
+  - L807 **WARNING**: ", "extractor", "Invalid entry number.")
 - Outgoing cross-module calls (sample):
   - level.upper (line 95)
   - fields.items (line 100)
@@ -5525,7 +5529,7 @@ graph LR
   - `from models import EmbeddingCache (line 24)`
   - `from shared_logger import SQLAlchemyToSharedLoggerHandler (line 25)`
 - TODO/FIXME/WARN:
-  - L178:                 logger.warning(msg)
+  - L178 **WARNING**: (msg)
 - Outgoing cross-module calls (sample):
   - logging.getLogger (line 40)
   - logger_obj.addHandler (line 41)
@@ -5631,7 +5635,7 @@ graph LR
   - `from pattern_extractor import extract_with_patterns (line 28)`
   - `from shared_logic import safe_append (line 29)`
 - TODO/FIXME/WARN:
-  - L68:             logger.warning(f"\[STRATEGY\] {name} failed: {e}")
+  - L68 **WARNING**: (f"\[STRATEGY\] {name} failed: {e}")
 - Outgoing cross-module calls (sample):
   - STRATEGY_REGISTRY.append (line 37)
   - time.perf_counter (line 48)
@@ -5756,20 +5760,20 @@ graph LR
   - `from shared_logic import safe_lower (line 28)`
   - `from shared_logic import safe_parse (line 28)`
 - TODO/FIXME/WARN:
-  - L374:         logger.warning({
-  - L375:             "level": "WARNING",
-  - L377:             "message": "\[WARN\] No supported file formats found on the page.",
-  - L402:         logger.warning({
-  - L403:             "level": "WARNING",
-  - L405:             "message": f"\[WARN\] Unsupported format requested: {format_str}",
-  - L409:         logger.warning({
-  - L410:             "level": "WARNING",
-  - L654:         logger.warning({
-  - L655:             "level": "WARNING",
-  - L874:             logger.warning({
-  - L875:                 "level": "WARNING",
-  - L950:         logger.warning({
-  - L951:             "level": "WARNING",
+  - L374 **WARNING**: ({
+  - L375 **WARNING**: ",
+  - L377 **WARN**: \] No supported file formats found on the page.",
+  - L402 **WARNING**: ({
+  - L403 **WARNING**: ",
+  - L405 **WARN**: \] Unsupported format requested: {format_str}",
+  - L409 **WARNING**: ({
+  - L410 **WARNING**: ",
+  - L654 **WARNING**: ({
+  - L655 **WARNING**: ",
+  - L874 **WARNING**: ({
+  - L875 **WARNING**: ",
+  - L950 **WARNING**: ({
+  - L951 **WARNING**: ",
 - Outgoing cross-module calls (sample):
   - re.compile (line 51)
   - raw_value.strip (line 86)
@@ -6095,56 +6099,56 @@ graph LR
   - `from shared_logic import safe_model_encode (line 92)`
   - `from shared_logic import safe_setdefault (line 92)`
 - TODO/FIXME/WARN:
-  - L163:                 "level": "WARNING",
-  - L167:             logger.warning(payload)
-  - L189:                             "level": "WARNING",
-  - L193:                         logger.warning(payload)
-  - L288:                 "level": "WARNING",
-  - L292:             logger.warning(payload)
-  - L315:                             "level": "WARNING",
-  - L319:                         logger.warning(payload)
-  - L353:                 "level": "WARNING",
-  - L357:             logger.warning(payload)
-  - L380:                             "level": "WARNING",
-  - L384:                         logger.warning(payload)
-  - L579:                     "level": "WARNING",
-  - L583:                 logger.warning(payload)
-  - L784:                 logger.warning(f"\[ML SIMILARITY\] No embedding computed for segment: {safe_get(segment, 'segment_hash', None)}")
-  - L807:                 logger.warning(f"\[ML SIMILARITY\] No embedding computed for segment: {safe_get(segment, 'segment_hash', None)}")
-  - L1034:                     "level": "WARNING",
-  - L1038:                 logger.warning(payload)
-  - L1045:                     "level": "WARNING",
-  - L1049:                 logger.warning(payload)
-  - L1376:                         "level": "WARNING",
-  - L1380:                     logger.warning(payload)
-  - L1438:                         "level": "WARNING",
-  - L1442:                     logger.warning(payload)
-  - L1691:                 logger.warning({"level": "WARNING", "type": "dom_segments", "message": msg_warn})
-  - L1747:                     logger.warning({"level": "WARNING", "type": "page_hash", "message": msg})
-  - L1754:                 logger.warning({"level": "WARNING", "type": "page_hash", "message": msg})
-  - L1766:                 logger.warning({"level": "WARNING", "type": "page_hash", "message": msg})
-  - L1789:             logger.warning({"level": "WARNING", "type": "cache", "message": msg})
-  - L1824:             logger.warning({"level": "WARNING", "type": "cache", "message": msg})
-  - L2003:         logger.warning({"level": "WARNING", "type": "segment_review", "message": msg})
-  - L2012:             else logger.warning({
-  - L2013:                 "level": "WARNING",
-  - L2129:                         "level": "WARNING",
-  - L2133:                     logger.warning(payload)
-  - L2145:                         "level": "WARNING",
-  - L2149:                     logger.warning(payload)
-  - L2158:                         "level": "WARNING",
-  - L2162:                     logger.warning(payload)
-  - L2177:                             "level": "WARNING",
-  - L2181:                         logger.warning(payload)
-  - L2193:                                 "level": "WARNING",
-  - L2197:                             logger.warning(payload)
-  - L2206:                                 "level": "WARNING",
-  - L2210:                             logger.warning(payload)
-  - L2219:                                 "level": "WARNING",
-  - L2223:                             logger.warning(payload)
-  - L2233:                                     "level": "WARNING",
-  - L2237:                                 logger.warning(payload)
-  - L2248:                                         "level": "WARNING",
+  - L163 **WARNING**: ",
+  - L167 **WARNING**: (payload)
+  - L189 **WARNING**: ",
+  - L193 **WARNING**: (payload)
+  - L288 **WARNING**: ",
+  - L292 **WARNING**: (payload)
+  - L315 **WARNING**: ",
+  - L319 **WARNING**: (payload)
+  - L353 **WARNING**: ",
+  - L357 **WARNING**: (payload)
+  - L380 **WARNING**: ",
+  - L384 **WARNING**: (payload)
+  - L579 **WARNING**: ",
+  - L583 **WARNING**: (payload)
+  - L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment: {safe_get(segment, 'segment_hash', None)}")
+  - L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment: {safe_get(segment, 'segment_hash', None)}")
+  - L1034 **WARNING**: ",
+  - L1038 **WARNING**: (payload)
+  - L1045 **WARNING**: ",
+  - L1049 **WARNING**: (payload)
+  - L1376 **WARNING**: ",
+  - L1380 **WARNING**: (payload)
+  - L1438 **WARNING**: ",
+  - L1442 **WARNING**: (payload)
+  - L1691 **WARNING**: ({"level": "WARNING", "type": "dom_segments", "message": msg_warn})
+  - L1747 **WARNING**: ({"level": "WARNING", "type": "page_hash", "message": msg})
+  - L1754 **WARNING**: ({"level": "WARNING", "type": "page_hash", "message": msg})
+  - L1766 **WARNING**: ({"level": "WARNING", "type": "page_hash", "message": msg})
+  - L1789 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
+  - L1824 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
+  - L2003 **WARNING**: ({"level": "WARNING", "type": "segment_review", "message": msg})
+  - L2012 **WARNING**: ({
+  - L2013 **WARNING**: ",
+  - L2129 **WARNING**: ",
+  - L2133 **WARNING**: (payload)
+  - L2145 **WARNING**: ",
+  - L2149 **WARNING**: (payload)
+  - L2158 **WARNING**: ",
+  - L2162 **WARNING**: (payload)
+  - L2177 **WARNING**: ",
+  - L2181 **WARNING**: (payload)
+  - L2193 **WARNING**: ",
+  - L2197 **WARNING**: (payload)
+  - L2206 **WARNING**: ",
+  - L2210 **WARNING**: (payload)
+  - L2219 **WARNING**: ",
+  - L2223 **WARNING**: (payload)
+  - L2233 **WARNING**: ",
+  - L2237 **WARNING**: (payload)
+  - L2248 **WARNING**: ",
 - Outgoing cross-module calls (sample):
   - threading.Lock (line 118)
   - val.isascii (line 134)
@@ -6634,10 +6638,10 @@ graph LR
   - `from Context_Integration.librarian import load_context_library (line 26)`
   - `from logger_singleton import logger (line 27)`
 - TODO/FIXME/WARN:
-  - L389:                     logger.warning(f"Failed loading local override for SentenceTransformer: {e}")
-  - L409:                 logger.warning("TRANSFORMERS_OFFLINE/HUGGINGFACE_HUB_OFFLINE set; skipping HF download. Embeddings disabled.")
-  - L426:                 # Downgrade DNS/network errors to WARNING for noisy environments
-  - L429:                     logger.warning(f"Failed to load base SentenceTransformer (network/DNS). Running without embeddings. Error: {e}")
+  - L389 **WARNING**: (f"Failed loading local override for SentenceTransformer: {e}")
+  - L409 **WARNING**: ("TRANSFORMERS_OFFLINE/HUGGINGFACE_HUB_OFFLINE set; skipping HF download. Embeddings disabled.")
+  - L426 **WARNING**: for noisy environments
+  - L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS). Running without embeddings. Error: {e}")
 - Outgoing cross-module calls (sample):
   - threading.Lock (line 39)
   - os.getenv (line 43)
@@ -6871,10 +6875,10 @@ graph LR
   - `from shared_logic import safe_items (line 28)`
   - `from shared_logic import safe_lower (line 28)`
 - TODO/FIXME/WARN:
-  - L105:         logger.warning("\[yellow\]\[OUTPUT\] Year could not be verified. Using 'Unknown'.\[/yellow\]")
-  - L108:         logger.warning("\[yellow\]\[OUTPUT\] contests could not be verified. Using 'unknown_contests'.\[/yellow\]")
-  - L531:         logger.warning(f"\[OUTPUT_UTILS\] Enrichment build failed: {e}")
-  - L607:         logger.warning(f"\[OUTPUT_UTILS\] XLSX export failed: {e}")
+  - L105 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using 'Unknown'.\[/yellow\]")
+  - L108 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified. Using 'unknown_contests'.\[/yellow\]")
+  - L531 **WARNING**: (f"\[OUTPUT_UTILS\] Enrichment build failed: {e}")
+  - L607 **WARNING**: (f"\[OUTPUT_UTILS\] XLSX export failed: {e}")
 - Outgoing cross-module calls (sample):
   - re.compile (line 30)
   - row.items (line 33)
@@ -6966,8 +6970,8 @@ graph LR
   - `from logger_singleton import logger (line 13)`
   - `from shared_logic import safe_get (line 14)`
 - TODO/FIXME/WARN:
-  - L26:         logger.warning(f"\[PATTERN\] load fail {e}")
-  - L95:             logger.warning(f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
+  - L26 **WARNING**: (f"\[PATTERN\] load fail {e}")
+  - L95 **WARNING**: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
 - Outgoing cross-module calls (sample):
   - json.load (line 22)
   - logger_singleton.logger.warning (line 26)
@@ -7230,7 +7234,7 @@ graph LR
   - `from shared_logic import safe_get (line 52)`
   - `from shared_logic import safe_strip (line 52)`
 - TODO/FIXME/WARN:
-  - L1353:         logger.warning("\[PIVOT\] No candidates detected – verify headers and candidate column extraction.")
+  - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and candidate column extraction.")
 - Outgoing cross-module calls (sample):
   - re.compile (line 59)
   - detect.normalize_header (line 60)
@@ -7551,15 +7555,15 @@ graph LR
   - `from rich.progress import TimeRemainingColumn (line 27)`
   - `from rich.table import Table (line 35)`
 - TODO/FIXME/WARN:
-  - L159:         elif record.levelno &gt;= logging.WARNING:
-  - L160:             self.shared_logger.warning(msg)
-  - L236:             "WARNING": logging.WARNING,
-  - L307:                 "WARNING": "yellow",
-  - L369:     def warning(self, msg, context=None, exc_info=None):
-  - L371:         self._log("WARNING", msg, context, color="yellow")
-  - L385:             "warning": "yellow",
-  - L598:                 self.warning(f"Log directory does not exist: {log_dir}")
-  - L615:                         self.warning(f"Corrupt line in {path}: {e}")
+  - L159 **WARNING**:         elif record.levelno &gt;= logging.WARNING:
+  - L160 **WARNING**: (msg)
+  - L236 **WARNING**: ": logging.WARNING,
+  - L307 **WARNING**: ": "yellow",
+  - L369 **WARNING**: (self, msg, context=None, exc_info=None):
+  - L371 **WARNING**: ", msg, context, color="yellow")
+  - L385 **WARNING**: ": "yellow",
+  - L598 **WARNING**: (f"Log directory does not exist: {log_dir}")
+  - L615 **WARNING**: (f"Corrupt line in {path}: {e}")
 - Outgoing cross-module calls (sample):
   - file_obj.getvalue (line 44)
   - logging.error (line 46)
@@ -7730,15 +7734,15 @@ graph LR
   - function: `_read_file_text` (line 2167)
   - function: `_extract_top_comment_block` (line 2173)
   - function: `_harvest_todos` (line 2203)
-  - function: `_module_info_from_ast` (line 2213)
-  - function: `_scan_webapp_modules` (line 2307)
-  - function: `_index_defs` (line 2326)
-  - function: `_resolve_targets` (line 2346)
-  - function: `_render_audit_md` (line 2382)
-  - function: `generate_project_audit` (line 2662)
-  - function: `generate_todos_index` (line 2682)
-  - function: `generate_noise_override_suggestions` (line 2724)
-  - function: `generate_pipeline_map` (line 2835)
+  - function: `_module_info_from_ast` (line 2219)
+  - function: `_scan_webapp_modules` (line 2313)
+  - function: `_index_defs` (line 2332)
+  - function: `_resolve_targets` (line 2352)
+  - function: `_render_audit_md` (line 2388)
+  - function: `generate_project_audit` (line 2668)
+  - function: `generate_todos_index` (line 2688)
+  - function: `generate_noise_override_suggestions` (line 2765)
+  - function: `generate_pipeline_map` (line 2876)
 - Imports:
   - `from __future__ import annotations (line 1)`
   - `import copy as copy (line 3)`
@@ -7786,30 +7790,33 @@ graph LR
   - `from Context_Integration.Context_Library.constants import normalize_party_label (line 52)`
   - `from utils.logger_singleton import logger (line 60)`
 - TODO/FIXME/WARN:
-  - L236:         logger.warning(f"\[safe_query\] session.query({model}) failed: {e}")
-  - L259:             logger.warning(f"\[safe_filter_by\] No mapper found for model {model}")
-  - L265:         logger.warning(f"\[safe_filter_by\] Could not inspect model {model}: {e}")
-  - L279:         logger.warning(f"\[safe_filter_by\] filter_by failed: {e}")
-  - L292:         logger.warning(f"\[safe_first\] query.first() failed: {e}")
-  - L362:             logger.warning(f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable 'extract' method.")
-  - L496:                 logger.warning(f"\[WARN\] Model save failed (attempt {attempt}): {e}")
-  - L710:                     logger.warning(f"\[safe_append\] Target is not a list: {type(lst)}; coercing to list.")
-  - L732:             logger.warning(f"\[safe_update\] Target is not a dict: {type(dct)}")
-  - L736:             logger.warning(f"\[safe_update\] Updates is not a dict: {type(updates)}")
-  - L756:                     logger.warning(f"\[safe_extend\] Target is not a list: {type(lst)}; coercing to list.")
-  - L1096:         logger.warning(f"\[DOM_PARTS\] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
-  - L1359:             logger.warning(f"State '{state_norm}' not found in county map")
-  - L2137:             logger.warning(f"\[inventory\] architecture.md not found at {md_file}")
-  - L2143:             logger.warning("\[inventory\] Markers not found in architecture.md; aborting replace.")
-  - L2158:         logger.warning("\[inventory\] generate_project_map completed with warnings; check markers and path.")
-  - L2204:     """Find lines containing TODO/FIXME/WARN (case-insensitive). Returns list of (lineno, text)."""
-  - L2206:     pat = re.compile(r"\b(TODO|FIXME|WARN|WARNING)\b", re.IGNORECASE)
-  - L2613:         # TODO/FIXME/WARN
-  - L2616:             lines.append("- TODO/FIXME/WARN:")
-  - L2683:     """Aggregate TODO/FIXME/WARN lines from webapp/ into a compact index.
-  - L2692:         lines.append("# TODO/FIXME index — webapp\n")
-  - L2743:             logger.warning(f"\[noise\] No suggestions file found at {path}")
-  - L3039:                 lines.append("### ⚠️ TODO/FIXME/WARN")
+  - L236 **WARNING**: (f"\[safe_query\] session.query({model}) failed: {e}")
+  - L259 **WARNING**: (f"\[safe_filter_by\] No mapper found for model {model}")
+  - L265 **WARNING**: (f"\[safe_filter_by\] Could not inspect model {model}: {e}")
+  - L279 **WARNING**: (f"\[safe_filter_by\] filter_by failed: {e}")
+  - L292 **WARNING**: (f"\[safe_first\] query.first() failed: {e}")
+  - L362 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable 'extract' method.")
+  - L496 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+  - L710 **WARNING**: (f"\[safe_append\] Target is not a list: {type(lst)}; coercing to list.")
+  - L732 **WARNING**: (f"\[safe_update\] Target is not a dict: {type(dct)}")
+  - L736 **WARNING**: (f"\[safe_update\] Updates is not a dict: {type(updates)}")
+  - L756 **WARNING**: (f"\[safe_extend\] Target is not a list: {type(lst)}; coercing to list.")
+  - L1096 **WARNING**: (f"\[DOM_PARTS\] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
+  - L1359 **WARNING**: (f"State '{state_norm}' not found in county map")
+  - L2137 **WARNING**: (f"\[inventory\] architecture.md not found at {md_file}")
+  - L2143 **WARNING**: ("\[inventory\] Markers not found in architecture.md; aborting replace.")
+  - L2158 **WARNING**: ("\[inventory\] generate_project_map completed with warnings; check markers and path.")
+  - L2204 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned_text)."""
+  - L2206 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+  - L2619 **TODO**: /FIXME/WARN
+  - L2622 **TODO**: /FIXME/WARN:")
+  - L2689 **TODO**: /FIXME/WARN lines from webapp/ into a compact index.
+  - L2699 **FIXME**: ', 'BUG'\]
+  - L2700 **TODO**: ', 'HACK', 'XXX'\]
+  - L2701 **WARN**: ', 'WARNING', 'NOTE'\]
+  - L2736 **TODO**: /FIXME index — webapp\n")
+  - L2784 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
+  - L3070 **TODO**: /FIXME/WARN ({mod_name})")
 - Outgoing cross-module calls (sample):
   - Context_Integration.Context_Library.constants.STATE_MODULE_MAP.keys (line 65)
   - Context_Integration.Context_Library.constants.KNOWN_STATE_TO_COUNTY_MAP.keys (line 65)
@@ -8062,11 +8069,11 @@ graph LR
   - `from browser_utils import safe_content (line 13)`
   - `from logger_singleton import logger (line 14)`
 - TODO/FIXME/WARN:
-  - L37:             logger.warning(f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
-  - L65:                 logger.warning(f"\[CONCURRENCY\] Strategy {name} error: {e}")
-  - L73:         logger.warning(f"\[CONCURRENCY\] {_safe_run_strategy.__name__} {name} failed: {e}")
-  - L102:             logger.warning(f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed: {e}")
-  - L120:             logger.warning(f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
+  - L37 **WARNING**: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
+  - L65 **WARNING**: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
+  - L73 **WARNING**: (f"\[CONCURRENCY\] {_safe_run_strategy.__name__} {name} failed: {e}")
+  - L102 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed: {e}")
+  - L120 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
 - Outgoing cross-module calls (sample):
   - results.append (line 35)
   - logger_singleton.logger.warning (line 37)
@@ -8196,21 +8203,21 @@ graph LR
   - `from structure_cache import cache_table_structure (line 57)`
   - `from structure_cache import table_signature (line 57)`
 - TODO/FIXME/WARN:
-  - L816: _emit("warning", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor failed for panel table", session_id, error=str(e))
-  - L828: _emit("warning", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor failed (no panels path)", session_id, error=str(e))
-  - L836: _emit("warning", "builder", "\[TABLE_BUILDER\] all_panel_tables was not a list; coercing to empty list", session_id, got_type=str(type(all_panel_tables)))
-  - L845: _emit("warning", "builder", "\[TABLE_BUILDER\] Dropping invalid table entry", session_id, entry_type=str(type(item)))
-  - L862: _emit("warning", "builder", "\[TABLE_BUILDER\] sanitize failed", session_id, error=str(e))
-  - L867: _emit("warning", "builder", "\[TABLE_BUILDER\] harmonize failed", session_id, error=str(e))
-  - L873: _emit("warning", "builder", "\[TABLE_BUILDER\] collapse_ballot_synonym_columns failed", session_id, error=str(e))
-  - L925:                 "info" if status == "ok" else "warning",
-  - L950: _emit("warning", "builder", "\[TABLE_BUILDER\] entity annotate failed", session_id, error=str(e))
-  - L955: _emit("warning", "builder", "\[TABLE_BUILDER\] stringify entity_info failed", session_id, error=str(e))
-  - L975: _emit("warning", "builder", "\[TABLE_BUILDER\] pivot_to_wide failed", session_id, error=str(e))
-  - L995: _emit("warning", "builder", "\[TABLE_BUILDER\] ensure division totals failed", session_id, error=str(e))
-  - L1288: _emit("warning", "builder", f"\[TABLE_BUILDER\] Column marked incorrect: {col_name}", session_id, contest=contest)
-  - L1361: _emit("warning", "builder", "\[TABLE_BUILDER\] Failed to persist table structure logs", session_id, error=str(e))
-  - L1376: _emit("warning", "builder", "\[TABLE_BUILDER\] Failed to persist coordinator DB log", session_id, error=str(e))
+  - L816 **WARNING**: ", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor failed for panel table", session_id, error=str(e))
+  - L828 **WARNING**: ", "builder", "\[TABLE_BUILDER\] dynamic_table_extractor failed (no panels path)", session_id, error=str(e))
+  - L836 **WARNING**: ", "builder", "\[TABLE_BUILDER\] all_panel_tables was not a list; coercing to empty list", session_id, got_type=str(type(all_panel_tables)))
+  - L845 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Dropping invalid table entry", session_id, entry_type=str(type(item)))
+  - L862 **WARNING**: ", "builder", "\[TABLE_BUILDER\] sanitize failed", session_id, error=str(e))
+  - L867 **WARNING**: ", "builder", "\[TABLE_BUILDER\] harmonize failed", session_id, error=str(e))
+  - L873 **WARNING**: ", "builder", "\[TABLE_BUILDER\] collapse_ballot_synonym_columns failed", session_id, error=str(e))
+  - L925 **WARNING**: ",
+  - L950 **WARNING**: ", "builder", "\[TABLE_BUILDER\] entity annotate failed", session_id, error=str(e))
+  - L955 **WARNING**: ", "builder", "\[TABLE_BUILDER\] stringify entity_info failed", session_id, error=str(e))
+  - L975 **WARNING**: ", "builder", "\[TABLE_BUILDER\] pivot_to_wide failed", session_id, error=str(e))
+  - L995 **WARNING**: ", "builder", "\[TABLE_BUILDER\] ensure division totals failed", session_id, error=str(e))
+  - L1288 **WARNING**: ", "builder", f"\[TABLE_BUILDER\] Column marked incorrect: {col_name}", session_id, contest=contest)
+  - L1361 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Failed to persist table structure logs", session_id, error=str(e))
+  - L1376 **WARNING**: ", "builder", "\[TABLE_BUILDER\] Failed to persist coordinator DB log", session_id, error=str(e))
 - Outgoing cross-module calls (sample):
   - detect.normalize_header (line 73)
   - functools.lru_cache (line 70)
@@ -8362,13 +8369,13 @@ graph LR
   - `from strategy_concurrency import run_strategies_concurrently (line 79)`
   - `from strategy_concurrency import run_strategies_concurrently_async (line 79)`
 - TODO/FIXME/WARN:
-  - L231:         logger.warning(f"\[TABLE BUILDER\] Concurrent strategies execution failed: {e}")
-  - L288:             logger.warning(f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
-  - L296:             logger.warning(f"\[TABLE BUILDER\] pivot_to_wide signature mismatch (skipped): {e}")
-  - L298:             logger.warning(f"\[TABLE BUILDER\] pivot_to_wide failed (skipped): {e}")
-  - L349:                 logger.warning(f"\[TABLE BUILDER\] finalize output failed: {e}")
-  - L414:         logger.warning(f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies execution failed: {e}")
-  - L477:                 logger.warning(f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed: {e}")
+  - L231 **WARNING**: (f"\[TABLE BUILDER\] Concurrent strategies execution failed: {e}")
+  - L288 **WARNING**: (f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
+  - L296 **WARNING**: (f"\[TABLE BUILDER\] pivot_to_wide signature mismatch (skipped): {e}")
+  - L298 **WARNING**: (f"\[TABLE BUILDER\] pivot_to_wide failed (skipped): {e}")
+  - L349 **WARNING**: (f"\[TABLE BUILDER\] finalize output failed: {e}")
+  - L414 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies execution failed: {e}")
+  - L477 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed: {e}")
 - Outgoing cross-module calls (sample):
   - r.items (line 88)
   - out.append (line 97)
@@ -8472,18 +8479,18 @@ graph LR
   - `from rich.progress import TimeElapsedColumn (line 22)`
   - `from rich.progress import TimeRemainingColumn (line 22)`
 - TODO/FIXME/WARN:
-  - L312:                 logger.warning("\[UserPrompt\] Webapp mode active but no socketio_emit_func set!")
-  - L349:             logger.warning("\[CLI Prompt\] EOFError encountered.")
-  - L370:             logger.warning("\[Webapp Prompt\] socketio_emit_func not set.")
-  - L428:             "WARNING": 30,
-  - L507:                 logger.warning("\n\[Prompt\] Timed out.")
-  - L558:                 logger.warning("\n\[Prompt\] No input available (EOF). Exiting prompt.")
-  - L592:                 logger.warning("Invalid input. Please try again.")
-  - L594:                     logger.warning("\[Prompt\] Too many invalid attempts.")
-  - L659:             logger.warning("\[Prompt Queue\] Invalid queued yes/no response; falling back to interactive prompt.")
-  - L674:                     logger.warning("\n\[Prompt\] Timed out.")
-  - L881:                 logger.warning("\[yellow\]\[FEEDBACK\] Skipped manual correction.\[/yellow\]")
-  - L913:             logger.warning("\[yellow\]Button confirmation cancelled by user.\[/yellow\]")
+  - L312 **WARNING**: ("\[UserPrompt\] Webapp mode active but no socketio_emit_func set!")
+  - L349 **WARNING**: ("\[CLI Prompt\] EOFError encountered.")
+  - L370 **WARNING**: ("\[Webapp Prompt\] socketio_emit_func not set.")
+  - L428 **WARNING**: ": 30,
+  - L507 **WARNING**: ("\n\[Prompt\] Timed out.")
+  - L558 **WARNING**: ("\n\[Prompt\] No input available (EOF). Exiting prompt.")
+  - L592 **WARNING**: ("Invalid input. Please try again.")
+  - L594 **WARNING**: ("\[Prompt\] Too many invalid attempts.")
+  - L659 **WARNING**: ("\[Prompt Queue\] Invalid queued yes/no response; falling back to interactive prompt.")
+  - L674 **WARNING**: ("\n\[Prompt\] Timed out.")
+  - L881 **WARNING**: ("\[yellow\]\[FEEDBACK\] Skipped manual correction.\[/yellow\]")
+  - L913 **WARNING**: ("\[yellow\]Button confirmation cancelled by user.\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - val.lower (line 34)
   - val.strip (line 40)
@@ -8645,12 +8652,12 @@ graph LR
   - `from utils.shared_logic import safe_is_set (line 15)`
   - `from utils.shared_logic import safe_set (line 15)`
 - TODO/FIXME/WARN:
-  - L49:                 logger.warning({
-  - L50:                     "level": "WARNING",
-  - L66:                     logger.warning({
-  - L67:                         "level": "WARNING",
-  - L83:                     logger.warning({
-  - L84:                         "level": "WARNING",
+  - L49 **WARNING**: ({
+  - L50 **WARNING**: ",
+  - L66 **WARNING**: ({
+  - L67 **WARNING**: ",
+  - L83 **WARNING**: ({
+  - L84 **WARNING**: ",
 - Outgoing cross-module calls (sample):
   - threading.Lock (line 25)
   - threading.Event (line 31)
@@ -8731,9 +8738,9 @@ graph LR
   - `import warnings as warnings (line 7)`
   - `import pytest as pytest (line 9)`
 - TODO/FIXME/WARN:
-  - L17:  alive.  When we run with ⁣`⁣`PYTHONWARNINGS=error⁣`⁣` this warning escalates to
-  - L21:  1. Ignore the specific warning category so it never escalates.
-  - L23:     otherwise raise an ⁣`⁣`ExceptionGroup⁣`⁣` even if the warning was ignored.
+  - L17 **WARNING**: escalates to
+  - L21 **WARNING**: category so it never escalates.
+  - L23 **WARNING**: was ignored.
 - Outgoing cross-module calls (sample):
   - warnings.filterwarnings (line 26)
 
@@ -9199,10 +9206,10 @@ graph LR
   - `from webapp.parser.utils.table_builder import build_table_noninteractive (line 8)`
   - `from webapp.parser.utils.logger_singleton import logger (line 9)`
 - TODO/FIXME/WARN:
-  - L17:     # Build a table that lacks candidate/ballot/total columns, forcing a 'normalized schema weak' warning
-  - L39:                 return lvl=="warning" and msg.get("status")=="weak"
-  - L44:                     return lvl=="warning" and inner.get("status")=="weak"
-  - L49:     assert found, f"Expected a schema weak warning in captured logs; got: {captured}"
+  - L17 **WARNING**:     # Build a table that lacks candidate/ballot/total columns, forcing a 'normalized schema weak' warning
+  - L39 **WARNING**: " and msg.get("status")=="weak"
+  - L44 **WARNING**: " and inner.get("status")=="weak"
+  - L49 **WARNING**: in captured logs; got: {captured}"
 - Outgoing cross-module calls (sample):
   - webapp.parser.utils.logger_singleton.logger.add_test_sink (line 15)
   - webapp.parser.utils.table_builder.build_table_noninteractive (line 24)
@@ -9335,7 +9342,7 @@ graph LR
   - `from typing import Dict (line 6)`
   - `import pytest as pytest (line 8)`
 - TODO/FIXME/WARN:
-  - L17:     mp.setenv("WEBAPP_CONSOLE_LEVELS", "INFO,WARNING,ERROR")
+  - L17 **WARNING**: ,ERROR")
 - Outgoing cross-module calls (sample):
   - pytest.MonkeyPatch (line 14)
   - mp.setenv (line 15)
