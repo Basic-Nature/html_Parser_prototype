@@ -2419,13 +2419,13 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             continue
         edge_counts[(src, dst)] = edge_counts.get((src, dst), 0) + 1
     # Top 25
-    top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:25]
+    top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:15]
     lines.append("")
     lines.append("```mermaid")
     lines.append("graph LR")
     # Subgraphs
     for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
-        nodes = sorted(list(cluster_nodes.get(cname, [])))[:12]
+        nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
@@ -2462,12 +2462,12 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             dst = _to_mod(dp or e.get("target"))
             if src != dst and dst != "unknown":
                 pipe_counts[(src, dst)] = pipe_counts.get((src, dst), 0) + 1
-    top_pipe = sorted(pipe_counts.items(), key=lambda kv: -kv[1])[:15]
+    top_pipe = sorted(pipe_counts.items(), key=lambda kv: -kv[1])[:10]
     lines.append("```mermaid")
     lines.append("graph LR")
     # Subgraphs
     for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
-        nodes = sorted(list(cluster_nodes.get(cname, [])))[:12]
+        nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
@@ -2562,12 +2562,12 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         cluster_nodes[dc].add(dm)
         cluster_edges[(sm, dm)] = cluster_edges.get((sm, dm), 0) + 1
     # Keep only top 20 edges for compactness
-    top_cluster_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:20]
+    top_cluster_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:15]
     lines.append("```mermaid")
     lines.append("graph LR")
     # Subgraphs
     for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
-        nodes = sorted(list(cluster_nodes.get(cname, [])))[:12]
+        nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
@@ -2960,9 +2960,9 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             cluster_nodes[dc].add(dst)
             cluster_edges[(src, dst)] = cluster_edges.get((src, dst), 0) + 1
         # Top edges
-        top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:40]  # Reduced for GitHub compatibility
+        top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:20]  # Further reduced for readability
         lines: list[str] = []
-        lines.append("# 🚀 Comprehensive Pipeline Audit & Map")
+        lines.append("# Comprehensive Pipeline Audit & Map")
         lines.append("")
         lines.append("## 📋 Table of Contents")
         lines.append("- [Overview](#overview)")
@@ -2984,7 +2984,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         lines.append("graph TD")
         # Subgraphs
         for cname in ["Entry", "Pipeline", "Routing", "State Handlers", "Format Handlers", "Shared Handlers", "Services", "Utils", "Context Integration", "Health"]:
-            nodes = sorted(list(cluster_nodes.get(cname, [])))[:15]  # Reduced for GitHub compatibility
+            nodes = sorted(list(cluster_nodes.get(cname, [])))[:10]  # Further reduced for readability
             if not nodes:
                 continue
             lines.append(f"  subgraph {cname.replace(' ', '_')}[\"{cname}\"]")
