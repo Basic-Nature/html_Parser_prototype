@@ -16,7 +16,7 @@ from ..Context_Integration.Context_Library.constants import (
 from .salvage import normalize_ballot_column_name
 
 # Centralized, canonical noise detectors from constants.py
-_TITLE_NOISE_RE = get_camelot_title_regex()
+TITLE_NOISE_RE = get_camelot_title_regex()
 _ROW_NOISE_FN = build_camelot_row_filter()
 
 def _normalize_headers(raw_headers: List[str]) -> List[str]:
@@ -123,5 +123,5 @@ __all__ = [
     "_normalize_headers",
     "_row_is_title_noise",
     "_table_to_rows",
-    "_TITLE_NOISE_RE",
+    "TITLE_NOISE_RE",
 ]

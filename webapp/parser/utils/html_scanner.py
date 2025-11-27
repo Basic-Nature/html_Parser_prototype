@@ -90,9 +90,9 @@ from .embedding_cache import (
 from .logger_singleton import console, logger, prompt
 from .model_registry import ModelRegistry
 from .shared_logic import (
-    _keyword_in_text,
-    _normalize_html_for_hash,
-    _sync_type_and_election_types,
+    keyword_in_text,
+    normalize_html_for_hash,
+    sync_type_and_election_types,
     clean_cache_inplace,
     convert_ndarrays,
     safe_add,
@@ -508,7 +508,7 @@ def embedding_cache_hash(segment, model_id) -> str:
     }
     html = safe_get(segment, "html", "")
     attrs_sorted = {k: attrs_filtered[k] for k in sorted(attrs_filtered)}
-    html_norm = _normalize_html_for_hash(html)
+    html_norm = normalize_html_for_hash(html)
     base = tag + orjson.dumps(attrs_sorted, option=orjson.OPT_SORT_KEYS).decode() + html_norm + str(model_id)
     return hashlib.sha256(safe_encode(base, "utf-8")).hexdigest()
 
@@ -818,17 +818,17 @@ def auto_label_segment(
     id_ = safe_lower(safe_get(segment, "id", ""))
     text = safe_lower(safe_strip(safe_get(segment, "text", ""))) if safe_get(segment, "text", None) else safe_lower(_extract_clean_text(html))
     # --- Use librarian keywords for robust labeling ---
-    if _keyword_in_text(text, CONTEST_KEYWORDS) or _keyword_in_text(html, CONTEST_KEYWORDS):
+    if keyword_in_text(text, CONTEST_KEYWORDS) or keyword_in_text(html, CONTEST_KEYWORDS):
         return "contest"
-    if _keyword_in_text(text, CANDIDATE_KEYWORDS) or _keyword_in_text(html, CANDIDATE_KEYWORDS):
+    if keyword_in_text(text, CANDIDATE_KEYWORDS) or keyword_in_text(html, CANDIDATE_KEYWORDS):
         return "candidate_panel"
-    if _keyword_in_text(text, PARTY_KEYWORDS) or _keyword_in_text(html, PARTY_KEYWORDS):
+    if keyword_in_text(text, PARTY_KEYWORDS) or keyword_in_text(html, PARTY_KEYWORDS):
         return "party_label"
-    if _keyword_in_text(text, LOCATION_KEYWORDS) or _keyword_in_text(html, LOCATION_KEYWORDS):
+    if keyword_in_text(text, LOCATION_KEYWORDS) or keyword_in_text(html, LOCATION_KEYWORDS):
         return "location_panel"
-    if _keyword_in_text(text, BALLOT_TYPES) or _keyword_in_text(html, BALLOT_TYPES):
+    if keyword_in_text(text, BALLOT_TYPES) or keyword_in_text(html, BALLOT_TYPES):
         return "ballot_types"
-    if tag == "table" or _keyword_in_text(text, TOTAL_KEYWORDS | PERCENT_KEYWORDS | MISC_FOOTER_KEYWORDS):
+    if tag == "table" or keyword_in_text(text, TOTAL_KEYWORDS | PERCENT_KEYWORDS | MISC_FOOTER_KEYWORDS):
         return "results_table"
     if tag in HEADING_TAGS or HEADING_CLASSES & set(classes):
         return "heading"
@@ -3173,7 +3173,7 @@ def _enrich_and_validate_context(
                     item["year"] = year
                 if "type_" not in item or item["type_"] is None:
                     item["type_"] = type_
-                _sync_type_and_election_types(item, fallback_types=election_types or [type_] if type_ else None, fallback_type=type_)
+                sync_type_and_election_types(item, fallback_types=election_types or [type_] if type_ else None, fallback_type=type_)
     for section in ["tables", "candidate_panels", "location_panels", "ballot_types"]:
         propagate_year_type(safe_get(context_result, section, []), best_year, best_type, best_election_types)
 
@@ -3311,7 +3311,7 @@ def _enrich_and_validate_context(
                 
     # --- 7. Final type/election type propagation for all sections ---
     for contest in safe_get(context_result, "contests", []):
-        _sync_type_and_election_types(contest)
+        sync_type_and_election_types(contest)
     best_contest = safe_get_first(
         safe_get(context_result, "contests", []),
         "contests",
@@ -3323,7 +3323,7 @@ def _enrich_and_validate_context(
     best_election_types = safe_get(best_contest, "election_types", [])
     for section in ["tables", "candidate_panels", "location_panels", "ballot_types"]:
         for item in safe_get(context_result, section, []):
-            _sync_type_and_election_types(item, fallback_types=best_election_types, fallback_type=best_type)
-    _sync_type_and_election_types(context_result, fallback_types=best_election_types, fallback_type=best_type)
+            sync_type_and_election_types(item, fallback_types=best_election_types, fallback_type=best_type)
+    sync_type_and_election_types(context_result, fallback_types=best_election_types, fallback_type=best_type)
 
     return context_result

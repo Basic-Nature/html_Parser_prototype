@@ -36,13 +36,13 @@ def load_processed_urls() -> Dict[str, Any]:
     return processed
 
 # --- DB Path Safety (for legacy compatibility, not used for SQLAlchemy) ---
-def _safe_db_path(path) -> str:
+def safe_db_path(path) -> str:
     return str(Path(path or CONTEXT_LIBRARY_PATH).resolve())
 
 def load_output_cache(path=None) -> List[dict]:
     if path is None:
         path = OUTPUT_CACHE
-    safe_path = Path(_safe_db_path(path)).resolve()
+    safe_path = Path(safe_db_path(path)).resolve()
     if not safe_path.exists():
         return []
     with open(safe_path, "rb") as f:

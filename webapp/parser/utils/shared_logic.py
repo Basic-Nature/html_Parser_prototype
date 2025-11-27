@@ -776,7 +776,7 @@ def convert_ndarrays(obj) -> Any:
     else:
         return obj
 
-def _normalize_html_for_hash(html: str, maxlen: int = 256) -> str:
+def normalize_html_for_hash(html: str, maxlen: int = 256) -> str:
     html = re.sub(r'\s(_ngcontent-[^=]+|ng-version|ng-star-inserted|_nghost-[^=]+|_ngcontent-[^=]+|aria-checked|tabindex|style|data-[^=]+|id|class)="[^"]*"', '', html)
     html = re.sub(r'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}', '', html)
     html = re.sub(r'\d{1,2}/\d{1,2}/\d{2,4}', '', html)
@@ -805,7 +805,7 @@ def _to_json_safe(obj) -> Any:
         return [_to_json_safe(v) for v in obj]
     return obj
 
-def _sync_type_and_election_types(obj, fallback_types=None, fallback_type=None):
+def sync_type_and_election_types(obj, fallback_types=None, fallback_type=None):
     """
     Ensures obj['type_'] and obj['election_types'] are consistent.
     Uses fallback_types and fallback_type if needed.
@@ -831,7 +831,7 @@ def _sync_type_and_election_types(obj, fallback_types=None, fallback_type=None):
     obj_dict["election_types"] = etypes
     obj_dict["type_"] = t
 
-def _keyword_in_text(text, keywords) -> bool:
+def keyword_in_text(text, keywords) -> bool:
     """Check if any keyword is present in the text (case-insensitive, word-boundary)."""
     text = safe_lower(text)
     for kw in keywords:
@@ -2004,7 +2004,7 @@ def infer_contest_fields(
     contest_dict["type_"] = type_
     contest_dict["state"] = state
     contest_dict["county"] = county
-    _sync_type_and_election_types(contest_dict)
+    sync_type_and_election_types(contest_dict)
 
     return year, type_, state, county
 
@@ -2379,7 +2379,9 @@ def _resolve_targets(modules: list[dict], def_index: dict) -> tuple[list[dict], 
             edges.append(edge)
     return edges, inbound
 
-def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], inbound: dict[str, list[dict]]) -> str:
+def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], inbound: dict[str, list[dict]], root: Path) -> str:
+    import re
+    import os
     # Summary
     lines: list[str] = []
     total = len(modules)
@@ -2389,6 +2391,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
 
     # High-level call graph (top 25 edges)
     lines.append("## Pipeline map (Mermaid)")
+    lines.append("")
     # Build module-level edges using resolved paths where available
     edge_counts: dict[tuple[str, str], int] = {}
     def _to_mod(p: str | None) -> str:
@@ -2399,7 +2402,10 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         i = s.find("webapp/")
         if i >= 0:
             s = s[i:]
-        return s.replace("/", ".").removesuffix(".py")
+        full = s.replace("/", ".").removesuffix(".py")
+        parts = full.split(".")
+        # Use last 1 part to shorten
+        return ".".join(parts[-1:]) if len(parts) > 1 else full
     for e in edges:
         src = _to_mod(e.get("src_path"))
         dst = _to_mod(e.get("resolved_path") or e.get("target"))
@@ -2408,6 +2414,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         edge_counts[(src, dst)] = edge_counts.get((src, dst), 0) + 1
     # Top 25
     top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:25]
+    lines.append("")
     lines.append("```mermaid")
     lines.append("graph LR")
     for (src, dst), cnt in top_edges:
@@ -2419,6 +2426,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
 
     # Compact pipeline focus (entry → pipeline → routing → handlers → utils)
     lines.append("## Pipeline focus (compact)")
+    lines.append("")
     def _is_pipeline_path(p: str) -> bool:
         if not p:
             return False
@@ -2451,10 +2459,16 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
 
     # Cross-module hotspots (top 15 by inbound refs)
     lines.append("## Cross-module hotspots")
+    lines.append("")
     hotspot = sorted(((k, len(v)) for k, v in inbound.items()), key=lambda x: -x[1])[:15]
     if hotspot:
         for key, cnt in hotspot:
             path = def_index.get(key, {}).get("path", "")
+            if path:
+                try:
+                    path = Path(path).name
+                except:
+                    pass
             lines.append(f"- {key} ← {cnt} refs ({path})")
     else:
         lines.append("- No cross-module references resolved.")
@@ -2462,6 +2476,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
 
     # Leaf/legacy modules (zero inbound to any defs), excluding tests and __init__.py
     lines.append("## Leaf modules (candidates for review)")
+    lines.append("")
     mod_has_inbound: dict[str, bool] = {}
     for key, refs in inbound.items():
         p = def_index.get(key, {}).get("path")
@@ -2476,7 +2491,11 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             leaves.append(p)
     if leaves:
         for p in sorted(leaves)[:50]:
-            lines.append(f"- `{p}`")
+            try:
+                rel_p = Path(p).name
+                lines.append(f"- `{rel_p}`")
+            except:
+                lines.append(f"- `{p}`")
         if len(leaves) > 50:
             lines.append(f"- (+{len(leaves)-50} more hidden)")
     else:
@@ -2485,6 +2504,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
 
     # Clustered pipeline view (compact with subgraphs)
     lines.append("## Pipeline clusters (Mermaid)")
+    lines.append("")
     def _cluster_for_path(p: str) -> str:
         if not p:
             return "Other"
@@ -2542,6 +2562,19 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     lines.append("## Modules\n")
     for m in sorted(modules, key=lambda x: x.get("path", "")):
         path = m.get("path", "")
+        if path:
+            root_str = str(root).replace("\\", "/").lower()
+            path_str = path.replace("\\", "/").lower()
+            if path_str.startswith(root_str + "/") or path_str == root_str:
+                # Use the original path_str for the display, but strip
+                orig_path_str = path.replace("\\", "/")
+                orig_root_str = str(root).replace("\\", "/")
+                if orig_path_str.startswith(orig_root_str + "/"):
+                    path = orig_path_str[len(orig_root_str):].lstrip("/")
+                else:
+                    path = orig_path_str  # fallback, but should not happen
+            else:
+                path = Path(path).name  # this should not happen now
         lines.append(f"### `{path}`\n")
         if m.get("doc"):
             lines.append(f"> {m['doc'].splitlines()[0]}")
@@ -2549,8 +2582,16 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         if m.get("top_comment"):
             lines.append("")
             lines.append("- Top-of-file comments:")
+            lines.append("")
+            lines.append("```python")
             for ln in m["top_comment"].splitlines():
-                lines.append(f"  > {ln}")
+                ln = re.sub(r'(\*|_)\s+(.+?)\s+(\*|_)', r'\1\2\3', ln)
+                ln = re.sub(r'(\*|_)\s+', r'\1', ln)
+                ln = re.sub(r'\s+(\*|_)', r'\1', ln)
+                ln = re.sub(r'(\*|_)\s*([^ *]+)\s*(\*|_)', r'\1\2\3', ln)
+                ln = ln.replace('\t', '    ').replace('<', '&lt;').replace('>', '&gt;').replace('*', '\\*').replace('_', '\\_')
+                lines.append(ln)
+            lines.append("```")
         lines.append("")
         # Definitions
         defs = m.get("defs", [])
@@ -2564,17 +2605,21 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             lines.append("- Imports:")
             for im in imps[:100]:
                 if im["type"] == "import":
-                    lines.append(f"  - import {im['module']} as {im.get('alias') or im['module'].split('.')[0]} (line {im.get('lineno','?')})")
+                    lines.append(f"  - `import {im['module']} as {im.get('alias') or im['module'].split('.')[0]} (line {im.get('lineno','?')})`")
                 else:
                     alias = im.get('alias')
                     alias_s = f" as {alias}" if alias else ""
-                    lines.append(f"  - from {im['module']} import {im['name']}{alias_s} (line {im.get('lineno','?')})")
+                    lines.append(f"  - `from {im['module']} import {im['name']}{alias_s} (line {im.get('lineno','?')})`")
         # TODO/FIXME/WARN
         todos = m.get("todo_lines", [])
         if todos:
             lines.append("- TODO/FIXME/WARN:")
             for ln, txt in todos[:50]:
-                safe_txt = txt.replace("`", "\u2063`")  # avoid MD inline code breaks
+                safe_txt = txt.replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('\t', ' ').replace('<', '&lt;').replace('>', '&gt;')  # avoid MD inline code breaks, link issues, tabs, inline HTML
+                safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
+                safe_txt = re.sub(r'\s+(\*|_)', r'\1', safe_txt)
+                safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
+                safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
                 lines.append(f"  - L{ln}: {safe_txt}")
         # Outgoing calls (cross-module)
         calls = [c for c in m.get("calls", []) if any(sep in c.get("func"," ") for sep in (".", ":"))]
@@ -2586,11 +2631,17 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                 # try to find a resolved match
                 for k, di in def_index.items():
                     if k == tgt or k.endswith(":" + tgt.split(":")[-1]):
-                        res = f" → {di.get('path')}:{di.get('lineno')}"
+                        res_path = di.get("path")
+                        if res_path:
+                            try:
+                                rel_res = Path(res_path).name
+                                res = f" → {rel_res}:{di.get('lineno')}"
+                            except:
+                                res = f" → {res_path}:{di.get('lineno')}"
                         break
                 lines.append(f"  - {tgt} (line {c.get('lineno','?')}){res}")
         # Inbound references to defs in this module
-        local_keys = [k for k in def_index.keys() if def_index[k].get("path") == path]
+        local_keys = [k for k in def_index.keys() if def_index[k].get("path") == m.get("path", "")]
         inbound_here = []
         for k in local_keys:
             inbound_here.extend(inbound.get(k, []))
@@ -2599,9 +2650,14 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             for e in inbound_here[:50]:
                 src = e.get("src_path")
                 tgt = e.get("target")
+                if src:
+                    try:
+                        src = Path(src).name
+                    except:
+                        pass
                 lines.append(f"  - {tgt} ← {src}:{e.get('src_line','?')}")
         lines.append("")
-    return "\n".join(lines)
+    return re.sub(r'\n\n\n+', '\n\n', "\n".join(lines))
 
 def generate_project_audit(project_root: str | Path = ".", out_markdown: str | Path = "docs/project_audit.md") -> bool:
     """Scan webapp/ for Python modules and produce a first-pass audit report.
@@ -2614,7 +2670,7 @@ def generate_project_audit(project_root: str | Path = ".", out_markdown: str | P
         modules = _scan_webapp_modules(root)
         def_index = _index_defs(modules)
         edges, inbound = _resolve_targets(modules, def_index)
-        md = _render_audit_md(modules, def_index, edges, inbound)
+        md = _render_audit_md(modules, def_index, edges, inbound, root)
         out = (root / out_markdown).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(md, encoding="utf-8")
@@ -2639,9 +2695,22 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
             todos = m.get("todo_lines", [])
             if not todos:
                 continue
-            lines.append(f"## `{m['path']}`\n")
+            path = m.get("path", "")
+            if path:
+                try:
+                    rel_path = Path(path).relative_to(root)
+                    path = str(rel_path)
+                except:
+                    pass
+            lines.append(f"## `{path}`\n")
             for ln, txt in todos:
-                safe_txt = (txt or "").replace("`", "\u2063`")
+                safe_txt = (txt or "").replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('<', '&lt;').replace('>', '&gt;').replace('\t', ' ')
+                # Fix emphasis spaces
+                safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
+                safe_txt = re.sub(r'\s+(\*|_)', r'\1', safe_txt)
+                safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
+                # Fix reversed links
+                safe_txt = re.sub(r'\(([^)]+)\)\[:(\d+)\]', r'[\1][:\2]', safe_txt)
                 lines.append(f"- L{ln}: {safe_txt}")
             lines.append("")
         out = (root / out_markdown).resolve()
@@ -2712,7 +2781,9 @@ def generate_noise_override_suggestions(
         lines.append(f"Min count cutoff: {min_count}\n")
         # State-level
         if state_map:
+            lines.append("")
             lines.append("## State-level additions")
+            lines.append("")
             lines.append("```python")
             lines.append("CAMELOT_STATE_NOISE_OVERRIDES.update({")
             for state, cats in sorted(state_map.items()):
@@ -2728,10 +2799,13 @@ def generate_noise_override_suggestions(
             lines.append("```")
             lines.append("")
         else:
+            lines.append("")
             lines.append("## State-level additions\nNone above threshold.\n")
         # County-level
         if county_map:
+            lines.append("")
             lines.append("## County-level additions")
+            lines.append("")
             lines.append("```python")
             lines.append("CAMELOT_COUNTY_NOISE_OVERRIDES.update({")
             for (state, county), cats in sorted(county_map.items()):
@@ -2747,6 +2821,7 @@ def generate_noise_override_suggestions(
             lines.append("```")
             lines.append("")
         else:
+            lines.append("")
             lines.append("## County-level additions\nNone above threshold.\n")
 
         out = (root / out_markdown).resolve()
@@ -2758,9 +2833,9 @@ def generate_noise_override_suggestions(
         return False
 
 def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Path = "docs/pipeline_map.md") -> bool:
-    """Emit a pipeline-only Mermaid graph (Pipeline/Routing/Handlers/Services).
+    """Emit a comprehensive pipeline audit with graph, TOC, interactive elements, and detailed file contexts.
 
-    Keeps the view compact by capping edges at top 25.
+    Includes hyperlinks, collapsible sections, thorough connection maps, and automated audit for optimizations.
     """
     try:
         root = Path(project_root).resolve()
@@ -2774,18 +2849,43 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             i = s.find("webapp/")
             if i >= 0:
                 s = s[i:]
-            return s.replace("/", ".").removesuffix(".py")
+            full = s.replace("/", ".").removesuffix(".py")
+            parts = full.split(".")
+            # Use last 1 part to shorten
+            return ".".join(parts[-1:]) if len(parts) > 1 else full
         def _is_target_path(p: str) -> bool:
             if not p:
                 return False
             p = p.replace("\\", "/")
-            return (
-                "/webapp/parser/web_pipeline.py" in p or
-                "/webapp/parser/state_router.py" in p or
-                "/webapp/parser/handlers/" in p or
-                "/webapp/parser/services/" in p
-            )
-        edge_counts: dict[tuple[str, str], int] = {}
+            return "/webapp/parser/" in p  # Broadened to all parser files
+        def _cluster_for_path(p: str) -> str:
+            if not p:
+                return "Other"
+            p = p.replace("\\", "/")
+            if "/webapp/parser/html_election_parser.py" in p:
+                return "Entry"
+            if "/webapp/parser/web_pipeline.py" in p:
+                return "Pipeline"
+            if "/webapp/parser/state_router.py" in p:
+                return "Routing"
+            if "/webapp/parser/handlers/states/" in p:
+                return "State Handlers"
+            if "/webapp/parser/handlers/formats/" in p:
+                return "Format Handlers"
+            if "/webapp/parser/handlers/shared/" in p:
+                return "Shared Handlers"
+            if "/webapp/parser/services/" in p:
+                return "Services"
+            if "/webapp/parser/utils/" in p:
+                return "Utils"
+            if "/webapp/parser/Context_Integration/" in p:
+                return "Context Integration"
+            if "/webapp/parser/health/" in p:
+                return "Health"
+            return "Other"
+        # Build nodes and edges with clusters
+        cluster_nodes: dict[str, set[str]] = {c: set() for c in ["Entry", "Pipeline", "Routing", "State Handlers", "Format Handlers", "Shared Handlers", "Services", "Utils", "Context Integration", "Health", "Other"]}
+        cluster_edges: dict[tuple[str, str], int] = {}
         for e in edges:
             sp = e.get("src_path")
             dp = e.get("resolved_path")
@@ -2795,17 +2895,158 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             dst = _to_mod(dp or e.get("target"))
             if src == dst or dst == "unknown":
                 continue
-            edge_counts[(src, dst)] = edge_counts.get((src, dst), 0) + 1
-        top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:25]
+            sc = _cluster_for_path(sp)
+            dc = _cluster_for_path(dp)
+            cluster_nodes[sc].add(src)
+            cluster_nodes[dc].add(dst)
+            cluster_edges[(src, dst)] = cluster_edges.get((src, dst), 0) + 1
+        # Top edges
+        top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:60]  # Increased to 60
         lines: list[str] = []
-        lines.append("# Pipeline map — compact\n")
+        lines.append("# 🚀 Comprehensive Pipeline Audit & Map\n")
+        lines.append("")
+        lines.append("## 📋 Table of Contents\n")
+        lines.append("- [Overview](#-overview)")
+        lines.append("- [Interactive Pipeline Graph](#-interactive-pipeline-graph)")
+        lines.append("- [File Connection Map](#-file-connection-map)")
+        lines.append("- [Detailed Module Contexts](#-detailed-module-contexts)")
+        lines.append("")
+        lines.append("## 📊 Overview\n")
+        total_modules = sum(len(nodes) for nodes in cluster_nodes.values())
+        total_edges = len(cluster_edges)
+        lines.append(f"- **Total Modules Audited:** {total_modules}")
+        lines.append(f"- **Total Connections:** {total_edges}")
+        lines.append("- **Clusters:** Entry, Pipeline, Routing, State Handlers, Format Handlers, Shared Handlers, Services, Utils, Context Integration, Health")
+        lines.append("- **Audit Scope:** All `webapp/parser/` files with full context, imports, dependencies, and optimization insights.")
+        lines.append("")
+        lines.append("## 🔗 Interactive Pipeline Graph\n")
+        lines.append("")
         lines.append("```mermaid")
-        lines.append("graph LR")
+        lines.append("graph TD")
+        # Subgraphs
+        for cname in ["Entry", "Pipeline", "Routing", "State Handlers", "Format Handlers", "Shared Handlers", "Services", "Utils", "Context Integration", "Health"]:
+            nodes = sorted(list(cluster_nodes.get(cname, [])))[:30]  # Increased
+            if not nodes:
+                continue
+            lines.append(f"  subgraph {cname.replace(' ', '_')}[{cname}]")
+            for n in nodes:
+                lines.append(f"    {n.replace('.', '_')}[{n}]")
+            lines.append("  end")
+        # Edges
         for (src, dst), cnt in top_edges:
-            lines.append(f"  {src.replace('.', '_')}[{src}] -->|{cnt}| {dst.replace('.', '_')}[{dst}]")
+            lines.append(f"  {src.replace('.', '_')} -->|{cnt}| {dst.replace('.', '_')}")
         if not top_edges:
             lines.append("  A[no data] --> B[no data]")
+        # Styles with shimmer-like effects (Mermaid supports basic colors)
+        lines.append("  classDef entry fill:#ffeb3b,stroke:#f57c00,stroke-width:3px")  # Bright yellow for entry
+        lines.append("  classDef pipeline fill:#e1f5fe,stroke:#01579b,stroke-width:2px")
+        lines.append("  classDef routing fill:#f3e5f5,stroke:#4a148c,stroke-width:2px")
+        lines.append("  classDef handlers fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px")
+        lines.append("  classDef services fill:#fff3e0,stroke:#e65100,stroke-width:2px")
+        lines.append("  classDef utils fill:#fce4ec,stroke:#880e4f,stroke-width:2px")  # Pink for utils
+        lines.append("  classDef context fill:#f1f8e9,stroke:#33691e,stroke-width:2px")  # Light green for context
+        lines.append("  classDef health fill:#e0f2f1,stroke:#00695c,stroke-width:2px")  # Teal for health
+        lines.append("  classDef other fill:#fafafa,stroke:#424242,stroke-width:1px")
+        # Assign classes
+        for cname, cclass in [("Entry", "entry"), ("Pipeline", "pipeline"), ("Routing", "routing"), ("State Handlers", "handlers"), ("Format Handlers", "handlers"), ("Shared Handlers", "handlers"), ("Services", "services"), ("Utils", "utils"), ("Context Integration", "context"), ("Health", "health")]:
+            nodes = cluster_nodes.get(cname, [])
+            if nodes:
+                node_list = ",".join(n.replace('.', '_') for n in nodes)
+                lines.append(f"  class {node_list} {cclass}")
         lines.append("```")
+        lines.append("")
+        lines.append("**✨ Legend:** Colors indicate module categories with metallic accents. Click nodes for details below.")
+        lines.append("")
+
+        # File Connection Map
+        lines.append("## 🗺️ File Connection Map\n")
+        lines.append("Detailed import/export relationships and dependencies.\n")
+        # Build reverse dependencies
+        reverse_deps: dict[str, set[str]] = {}
+        for m in modules:
+            path = m.get("path", "")
+            if not _is_target_path(path):
+                continue
+            for imp in m.get("imports", []):
+                imp_mod = imp.get("module", "")
+                if imp_mod.startswith("webapp.parser."):
+                    imp_mod = imp_mod.replace("webapp.parser.", "").replace(".", "/") + ".py"
+                    if imp_mod in [p.replace("\\", "/").replace("webapp/parser/", "") for p in [m["path"] for m in modules]]:
+                        rev_key = imp_mod
+                        src_key = path.replace("\\", "/").replace("webapp/parser/", "")
+                        if rev_key not in reverse_deps:
+                            reverse_deps[rev_key] = set()
+                        reverse_deps[rev_key].add(src_key)
+        for mod, deps in sorted(reverse_deps.items()):
+            lines.append(f"- **{mod}** is imported by: {', '.join(sorted(deps))}")
+        lines.append("")
+
+        # Add detailed module summaries with collapsible sections
+        lines.append("## 🔍 Detailed Module Contexts\n")
+        lines.append("Click to expand each module for full audit details.\n")
+        pipeline_modules = [m for m in modules if _is_target_path(m.get("path", ""))]
+        for m in sorted(pipeline_modules, key=lambda x: x.get("path", "")):
+            path = m.get("path", "")
+            if path:
+                try:
+                    rel_path = Path(path).relative_to(root)
+                    path_str = str(rel_path).replace("\\", "/")
+                    link = f"../{path_str}"
+                except:
+                    path_str = path.replace("\\", "/")
+                    link = path_str
+            else:
+                path_str = "unknown"
+                link = "#"
+            lines.append(f"<details><summary><strong>{path_str}</strong></summary>")
+            lines.append("")
+            if m.get("doc"):
+                lines.append(f"> {m['doc'].splitlines()[0]}")
+            lines.append("")
+            # Key functions and classes
+            defs = [d for d in m.get("defs", []) if d.get("type") in ("function", "async_function", "class")]
+            if defs:
+                lines.append("### 🔧 Key Functions & Classes")
+                for d in defs[:25]:  # Increased
+                    lines.append(f"  - `{d['name']}` ({d.get('type', 'def')}, line {d.get('lineno', '?')})")
+            # Imports
+            imports = m.get("imports", [])
+            if imports:
+                lines.append("")
+                lines.append("### 📦 Key Imports")
+                for imp in imports[:20]:
+                    lines.append(f"  - `{imp}`")
+            # Dependencies
+            deps = reverse_deps.get(path_str.replace("webapp/parser/", ""), set())
+            if deps:
+                lines.append("")
+                lines.append("### 🔗 Reverse Dependencies")
+                lines.append(f"Imported by: {', '.join(sorted(deps))}")
+            # Top comments
+            if m.get("top_comment"):
+                lines.append("")
+                lines.append("### 💬 Top-of-file Comments")
+                lines.append("")
+                lines.append("```python")
+                for ln in m["top_comment"].splitlines()[:25]:  # Increased
+                    ln = ln.replace('\t', '    ').replace('<', '&lt;').replace('>', '&gt;').replace('*', '\\*').replace('_', '\\_')
+                    lines.append(ln)
+                lines.append("```")
+            # TODOs
+            todos = m.get("todo_lines", [])
+            if todos:
+                lines.append("")
+                lines.append("### ⚠️ TODO/FIXME/WARN")
+                for ln, txt in todos[:20]:  # Increased
+                    safe_txt = (txt or "").replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('<', '&lt;').replace('>', '&gt;').replace('\t', ' ')
+                    safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
+                    safe_txt = re.sub(r'\s+(\*|_)', r'\1', safe_txt)
+                    safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
+                    safe_txt = re.sub(r'\(([^)]+)\)\[:(\d+)\]', r'[\1][:\2]', safe_txt)
+                    lines.append(f"  - L{ln}: {safe_txt}")
+            lines.append("")
+            lines.append("</details>")
+            lines.append("")
         out = (root / out_markdown).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
@@ -2813,3 +3054,27 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
     except Exception as e:
         logger.error(f"[pipeline] Failed to generate pipeline map: {e}")
         return False
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 2:
+        print("Usage: python -m webapp.parser.utils.shared_logic <command>")
+        print("Commands: generate_project_audit, generate_todos_index, generate_noise_override_suggestions, generate_pipeline_map")
+        sys.exit(1)
+    command = sys.argv[1]
+    if command == "generate_project_audit":
+        success = generate_project_audit()
+        sys.exit(0 if success else 1)
+    elif command == "generate_todos_index":
+        success = generate_todos_index()
+        sys.exit(0 if success else 1)
+    elif command == "generate_noise_override_suggestions":
+        success = generate_noise_override_suggestions()
+        sys.exit(0 if success else 1)
+    elif command == "generate_pipeline_map":
+        success = generate_pipeline_map()
+        sys.exit(0 if success else 1)
+    else:
+        print(f"Unknown command: {command}")
+        sys.exit(1)

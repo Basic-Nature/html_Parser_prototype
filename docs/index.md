@@ -21,6 +21,15 @@ This index links to all core documents and resources for building, extending, an
 
 ---
 
+## 🔍 Automated Audit & Analysis
+
+- [`project_audit.md`](project_audit.md): Comprehensive audit of webapp modules, dependencies, and cross-references
+- [`todos.md`](todos.md): Index of all TODO/FIXME/WARN annotations across the codebase
+- [`pipeline_map.md`](pipeline_map.md): Visual pipeline overview with module details and Mermaid diagrams
+- [`noise_override_suggestions.md`](noise_override_suggestions.md): Suggested overrides for PDF/OCR noise filtering
+
+---
+
 ## 🖥️ Web UI (Optional)
 
 The Smart Elections Parser includes an **optional Flask-based Web UI** for users who prefer a graphical experience or are new to coding.

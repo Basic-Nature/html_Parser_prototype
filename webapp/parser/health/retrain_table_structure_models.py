@@ -50,7 +50,7 @@ from ..Context_Integration.Context_Library.constants import (
 from ..Context_Integration.librarian import load_context_library
 from ..utils.db_utils import get_session
 from ..utils.logger_singleton import console, logger
-from ..utils.misc_utils import _safe_db_path
+from ..utils.misc_utils import safe_db_path
 from ..utils.model_registry import ModelRegistry
 from ..utils.models import (
     Base,
@@ -112,7 +112,7 @@ def update_advanced_entities(parsed_data: List[Dict[str, Any]], db_path: str) ->
     """
 
     results = []
-    safe_db = _safe_db_path(db_path)
+    safe_db = safe_db_path(db_path)
     with get_session(safe_db) as session:
         for row in parsed_data:
             try:
@@ -336,7 +336,7 @@ def update_db_with_new_entities(new_entities, db_path: str = None) -> None:
     Update the Entity table in PostgreSQL with new entities using SQLAlchemy.
     All DB operations are wrapped in safe_* helpers.
     """
-    safe_path = _safe_db_path(db_path)
+    safe_path = safe_db_path(db_path)
     with get_session(safe_path) as session:
         for entity_type, values in safe_items(new_entities):
             for value in values:
@@ -642,7 +642,7 @@ def retrain_spacy_ner_advanced(
             if not values:
                 values = safe_get(context_library, f"known_{label.lower()}", [])
         new_entities[label] = normalize_entity_list(values)
-    update_db_with_new_entities(new_entities, _safe_db_path(CONTEXT_DB_PATH))
+    update_db_with_new_entities(new_entities, safe_db_path(CONTEXT_DB_PATH))
     logger.info(f"[DB] Updated with entities: {{ { {k: len(v) for k, v in new_entities.items()} } }}")
 
 def get_all_confirmed_structures() -> List[Dict[str, Any]]:

@@ -161,7 +161,7 @@ Recent full runs exposed schema behaviours that handler authors should respond t
   - The composite “Precinct” cell blends assembly district, the precinct identifier, and stray affidavit/unrecorded totals. Implement a handler normalizer that splits these into discrete columns and ignores repeated totals per candidate row.
   - The repeated “New York County / New York State” strings should be fed into `context` so the centralized division heuristics can pick an appropriate jurisdiction header automatically.
 
-**Immediate follow-up tasks**
+### Immediate follow-up tasks
 
 1. Ensure handlers populate canonical `Party` values so party columns appear alongside each candidate in wide output.
 2. Add PDF clean-up that separates assembly/election districts from precinct labels and pushes both into `context` and row data.

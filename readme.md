@@ -254,51 +254,73 @@ html_Parser_prototype/
 ---
 ## 🧪 How to Use
 
-- 1. ## Install Requirements
+### Install Requirements
 
    pip install -r requirements.txt
    python -m spacy download en_core_web_sm
 
+### 🤖 Run Automated Scripts
+
+For comprehensive automation including pipeline audits, health checks, web asset validation, and testing:
+
+```bash
+python automate.py  # Run all automated tasks
+```
+
+Options:
+
+- `--skip-web`: Skip web asset checks (JS/CSS/HTML linting)
+- `--skip-health`: Skip health bots and integrity checks
+- `--skip-tests`: Skip automated tests
+- `--skip-webapp-check`: Skip webapp import validation
+
+This central script ensures the project stays healthy and up-to-date.
+
 ### 📦 Poppler Setup (PDF acceleration)
 
 - **Windows (local development):**
-   1. Download the latest Poppler build from [https://github.com/oschwartz10612/poppler-windows/releases](https://github.com/oschwartz10612/poppler-windows/releases) and unzip it (for example to `C:\poppler`).
-   2. Set the environment variable so the parser can find the binaries:
+  1. Download the latest Poppler build from [https://github.com/oschwartz10612/poppler-windows/releases](https://github.com/oschwartz10612/poppler-windows/releases) and unzip it (for example to `C:\poppler`).
+  2. Set the environment variable so the parser can find the binaries:
 
-       ```powershell
-       setx POPPLER_PATH "C:\\poppler\\Library\\bin"
-       ```
+     ```powershell
+     setx POPPLER_PATH "C:\\poppler\\Library\\bin"
+     ```
 
-   3. Restart any running parser/webapp processes so the change takes effect.
+  3. Restart any running parser/webapp processes so the change takes effect.
 - **Linux / Azure (production):**
-   - Install Poppler utilities during provisioning or container build:
+  - Install Poppler utilities during provisioning or container build:
 
-      ```bash
-      sudo apt-get update
-      sudo apt-get install -y poppler-utils
-      ```
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y poppler-utils
+    ```
 
-   - The handler automatically detects `pdftoppm`/`pdftocairo` once they are on PATH.
+  - The handler automatically detects `pdftoppm`/`pdftocairo` once they are on PATH.
 - **Verification:** rerun a PDF-heavy sample (for example the Minnesota 2016 PDF) and confirm the logs no longer emit `pdf2image conversion failed` messages.
 
-- 2. ## Add URLs
-   - Populate `urls.txt` with target election result URLs.
-   `state_router.py` when dynamic state detection fails.
+### Add URLs
 
-- 3. ## Run Parser (Web UI)
+- Populate `urls.txt` with target election result URLs.
+- `state_router.py` when dynamic state detection fails.
+
+### Run Parser (Web UI)
+
    python -m webapp.Smart_Elections_Parser_Webapp
-   - <Same as above with "" and folder path>
-   - \cd ...full path...\html_Parser_prototype\
-   - Then visit [http://localhost:5000](http://localhost:5000) in your browser or more likely the printed to terminal IP address pasted into browser of choice. This script activates the postgreSQL database so it must be ran first.
 
-- 4. ## Run Parser (CLI)
+- <Same as above with "" and folder path>
+- \cd ...full path...\html_Parser_prototype\
+- Then visit [http://localhost:5000](http://localhost:5000) in your browser or more likely the printed to terminal IP address pasted into browser of choice. This script activates the postgreSQL database so it must be ran first.
+
+### Run Parser (CLI)
+
    python -m webapp.parser.html_election_parser
-   - `(uncomment the "")
-   - ``
-   - if terminal already in root folder; otherwise,
-    (replace full path with the actual path to the folder)
-    "cd ...full path...\html_Parser_prototype"
-   `
+
+- `(uncomment the "")
+- ``
+- if terminal already in root folder; otherwise,
+  (replace full path with the actual path to the folder)
+  "cd ...full path...\html_Parser_prototype"
+
 ---
 
 ## 📦 Output Format
@@ -311,8 +333,7 @@ output/{state}/{county}/{race}/{contest}_results.csv
 
 **Example:**
 
-output/arizona/maricopa/us_senate/kari_lake_results.csv
-```
+`output/arizona/maricopa/us_senate/kari_lake_results.csv`
 
 ### 📄 Output Files
 

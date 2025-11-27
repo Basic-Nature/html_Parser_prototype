@@ -28,6 +28,8 @@ This document tracks the progress and next steps for the Smart Elections Parser 
   CSV, PDF, JSON, and HTML fallback handlers are implemented and registered.
 - **Shared Utilities:**  
   Centralized browser, CAPTCHA, download, and output logic in `utils/`.
+- **Centralized Automation Script:**  
+  `automate.py` provides a single entry point for running pipeline audits, health checks, web asset validation, and testing.
 
 ---
 

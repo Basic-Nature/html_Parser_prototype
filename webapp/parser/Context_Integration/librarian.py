@@ -35,7 +35,7 @@ from ..utils.shared_logic import (
     safe_startswith,
 )
 from .Context_Library.constants import (
-    _CANONICAL_STATE_ABBR,
+    CANONICAL_STATE_ABBR,
     BALLOT_TYPES,
     CANDIDATE_KEYWORDS,
     CANONICAL_SEGMENT_LABELS,
@@ -593,7 +593,7 @@ def get_state_abbr(state_name: str) -> str | None:
     if not state_name:
         return None
     state_name = state_name.lower().replace(' ', '_')
-    abbrs = _CANONICAL_STATE_ABBR.get(state_name)
+    abbrs = CANONICAL_STATE_ABBR.get(state_name)
     if abbrs:
         # Return the first (should be the standard two-letter abbr)
         return abbrs[0].upper()
@@ -671,4 +671,63 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.self_heal:
         sys.exit(self_heal_context_library(args.max_retries, args.cooldown))
-# --- Export all sets for use in other modules ---
+def parse_filename_for_location(filename: str) -> dict:
+    """
+    Parse filename for location hints, returning a dict with 'state', 'county', 'location', 'contest'.
+    Special handling for known patterns like 'New York' locations.
+    """
+    fname = filename.lower().replace(".pdf", "").replace(".csv", "").replace(".json", "")
+    state = "Unknown"
+    county = "Unknown"
+    location = ""
+    contest = ""
+    year = None
+
+    # Extract year
+    m = re.search(r"(19|20)\d{2}", fname)
+    if m:
+        try:
+            year = int(m.group(0))
+        except Exception:
+            year = None
+
+    # Split and parse parts
+    parts = fname.split("_")
+    for part in parts:
+        if "county" in part:
+            county = part.replace("county", "").strip().title() + " County"
+        if len(part) == 2 and part.isalpha():
+            state = part.upper()
+
+    # Parse location and contest from remaining parts
+    if len(parts) >= 2:
+        # Find parts that look like locations
+        location_parts = []
+        contest_parts = []
+        for part in parts:
+            if not part.isdigit() and len(part) > 2:
+                if part in ['democratic', 'republican', 'district', 'attorney', 'senator', 'governor', 'assembly', 'congressional', 'judicial', 'supervisorial', 'school', 'voting', 'community', 'council', 'senate', 'mayor', 'president', 'secretary', 'treasurer', 'auditor', 'controller', 'sheriff', 'clerk', 'recorder', 'assessor', 'tax', 'collector', 'coroner', 'surveyor', 'superintendent', 'commissioner', 'judge', 'justice', 'magistrate', 'prosecutor', 'public', 'defender', 'marshal', 'constable', 'solicitor', 'general', 'lieutenant', 'governor']:
+                    contest_parts.append(part.title())
+                else:
+                    location_parts.append(part.title())
+        if location_parts:
+            if len(location_parts) >= 2 and (location_parts[-2].lower() in ['new', 'los', 'san', 'el', 'las', 'la', 'del', 'de', 'da', 'di', 'du', 'des', 'der', 'den', 'dem'] or location_parts[-1].lower() in ['city', 'county', 'state', 'district', 'town', 'village']):
+                location = " ".join(location_parts[-2:])
+                contest = " ".join(contest_parts + location_parts[:-2])
+            else:
+                location = location_parts[-1]
+                contest = " ".join(contest_parts + location_parts[:-1])
+        else:
+            contest = " ".join(contest_parts)
+
+    # Special handling for New York location
+    if location == "New York":
+        county = "New York"
+
+    return {
+        "state": state,
+        "county": county,
+        "location": location,
+        "contest": contest.strip(),
+        "year": year,
+    }

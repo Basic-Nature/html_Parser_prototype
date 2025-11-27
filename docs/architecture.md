@@ -119,6 +119,7 @@ This document provides a high-level overview of the architecture and responsibil
     - `context_coordinator.py`: Orchestrates context analysis, NLP, and ML integrity checks.
     - `context_organizer.py`: Context enrichment, clustering, and persistent context library management.
     - `Integrity_check.py`: Election integrity and anomaly detection logic.
+    - `librarian.py`: Manages context library loading/saving, and centralized filename parsing for location detection (state, county, contest, year) across all format handlers.
 
 - **`context_library.json`**
   - Persistent context and feedback for smarter extraction and correction.
@@ -424,7 +425,9 @@ You can safely ignore these warnings when exploring new formats—they’re ther
 Run this to rebuild the inventory section from source files:
 
 ```bash
-python -c "from webapp.parser.utils.shared_logic import generate_project_map; generate_project_map(project_root=r'.', out_markdown=r'docs/architecture.md')"
+python automate.py  # Runs all automated scripts including pipeline audit
+# Or specifically for pipeline audit:
+python -c "from webapp.parser.utils.shared_logic import generate_pipeline_map; generate_pipeline_map(project_root=r'.', out_markdown=r'docs/pipeline_map.md')"
 ```
 
 The block below is auto-generated. Do not edit between markers.

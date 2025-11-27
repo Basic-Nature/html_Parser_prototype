@@ -16,6 +16,7 @@ from ...utils.location_helpers import (
     attach_precinct_column,
     collect_location_headers,
 )
+from ...Context_Integration.librarian import parse_filename_for_location
 from ...utils.logger_singleton import logger
 from ...utils.output_utils import finalize_election_output
 from ...utils.pivot import expand_single_rawjson_row
@@ -95,7 +96,12 @@ def parse_csv_election_results(
         contest_names = sorted({(row.get(contest_column, "") or "").strip() for row in data if row.get(contest_column)})
         contest_names = [c for c in contest_names if c]  # drop blanks
     if not contest_names:
-        contest_names = [os.path.basename(csv_path).replace(".csv", "")]
+        parsed_location = parse_filename_for_location(os.path.basename(csv_path))
+        contest_from_filename = parsed_location.get('contest', '')
+        if contest_from_filename:
+            contest_names = [contest_from_filename]
+        else:
+            contest_names = [os.path.basename(csv_path).replace(".csv", "")]
 
     # Light context from filename
     fname = os.path.basename(csv_path).lower()

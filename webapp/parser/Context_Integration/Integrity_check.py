@@ -324,7 +324,7 @@ def log_integrity_issues(issues: List[Tuple[str, Dict[str, Any]]], log_path: str
         # Ensure .jsonl extension
         if not log_path.endswith(".jsonl"):
             log_path = re.sub(r"\.[^.]+$", "", log_path) + ".jsonl"
-        log_path = misc_utils._safe_db_path(log_path)
+        log_path = misc_utils.safe_db_path(log_path)
     else:
         log_path = str((Path(CONTEXT_DB_PATH).parent / default_name).resolve())
     # Write each issue as a JSON object per line

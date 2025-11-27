@@ -30,7 +30,7 @@ from ..utils.logger_singleton import console, logger
 from ..utils.misc_utils import load_output_cache, load_processed_urls
 from ..utils.model_registry import ModelRegistry
 from ..utils.shared_logic import (
-    _sync_type_and_election_types,
+    sync_type_and_election_types,
     flatten_raw_field,
     infer_contest_fields,
     normalize_label,
@@ -828,7 +828,7 @@ class ContextOrganizer(object):
         )
 
         for contest in contests:
-            _sync_type_and_election_types(contest)
+            sync_type_and_election_types(contest)
 
         best_contest = contests[0] if contests else {}
         best_type = best_contest.get("type_")
@@ -1214,7 +1214,7 @@ class ContextOrganizer(object):
         Return a contest with all related data (state, county, office, candidates, results).
         """
         contest = self.data_service.get_full_contest(contest_id)
-        _sync_type_and_election_types(contest)
+        sync_type_and_election_types(contest)
         return contest
 
     def get_all_full_contests(self, filters=None, limit=100) -> list[dict]:
@@ -1516,7 +1516,7 @@ class ContextOrganizer(object):
             for section in [tables, candidate_panels, location_panels, ballot_types]:
                 for bucket in section.values():
                     for item in bucket:
-                        _sync_type_and_election_types(item, fallback_types=best_election_types, fallback_type=best_type)
+                        sync_type_and_election_types(item, fallback_types=best_election_types, fallback_type=best_type)
 
             organized = {
                 "contests": contests,
@@ -1550,8 +1550,8 @@ class ContextOrganizer(object):
             }
 
             metadata = organized["metadata"]
-            _sync_type_and_election_types(organized, fallback_types=best_election_types, fallback_type=best_type)
-            _sync_type_and_election_types(metadata, fallback_types=best_election_types, fallback_type=best_type)
+            sync_type_and_election_types(organized, fallback_types=best_election_types, fallback_type=best_type)
+            sync_type_and_election_types(metadata, fallback_types=best_election_types, fallback_type=best_type)
             valid_years = [
                 c.get("year")
                 for c in contests

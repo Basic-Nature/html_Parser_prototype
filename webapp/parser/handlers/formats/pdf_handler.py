@@ -99,6 +99,7 @@ from ...utils.location_helpers import (
     collect_location_headers,
     is_strict_location_header,
 )
+from ...Context_Integration.librarian import parse_filename_for_location
 from ...utils.contest_selector import select_contest_auto_first
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.output_utils import finalize_election_output
@@ -3550,22 +3551,10 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
 
     # Derive light context from filename for better selection (before prompting)
     fname = os.path.basename(pdf_path).lower()
-    state = "Unknown"
-    county = "Unknown"
-    state_normalized = None
-    county_normalized = None
-    year = None
-    for part in fname.replace(".pdf", "").split("_"):
-        if "county" in part:
-            county = part.replace("county", "").strip().title() + " County"
-        if len(part) == 2 and part.isalpha():
-            state = part.upper()
-    m = re.search(r"(19|20)\d{2}", fname)
-    if m:
-        try:
-            year = int(m.group(0))
-        except Exception:
-            year = None
+    parsed_location = parse_filename_for_location(fname)
+    state = parsed_location.get("state", "Unknown")
+    county = parsed_location.get("county", "Unknown")
+    year = parsed_location.get("year")
 
     # Single contest fast-path or unified selector pass (no duplicate prompts)
     selector_context = {
@@ -3606,26 +3595,21 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
     
     # Override with formatted filename if available and detected
     filename_formatted = None
+    year = None
     if pdf_path:
-        filename_line = os.path.basename(pdf_path).replace(".pdf", "")
-        m = re.search(r'(\d{4})$', filename_line)
-        if m:
-            year = m.group(1)
-            before_year = filename_line[:m.start()].strip()
-            words = before_year.split()
-            if len(words) >= 2 and (words[-2].lower() in ['new', 'los', 'san', 'el', 'las', 'la', 'del', 'de', 'da', 'di', 'du', 'des', 'der', 'den', 'dem'] or words[-1].lower() in ['city', 'county', 'state', 'district', 'town', 'village']):
-                location = " ".join(words[-2:])
-                contest = " ".join(words[:-2])
-            else:
-                location = words[-1] if words else ""
-                contest = " ".join(words[:-1]) if len(words) > 1 else ""
-            if contest and location:
-                filename_formatted = f"{contest} ({location})"
+        parsed_location = parse_filename_for_location(os.path.basename(pdf_path))
+        contest = parsed_location.get('contest', '')
+        location = parsed_location.get('location', '')
+        year = parsed_location.get('year')
+        if contest and location:
+            filename_formatted = f"{contest} ({location})"
     if filename_formatted and filename_formatted in detected_titles:
         selected_contest_title = filename_formatted
     contest_slug = safe_slug(selected_contest_title, 80)
     
-    # Update metadata using derived context
+    # Special handling for New York location
+    if location == "New York":
+        county = "New York"    # Update metadata using derived context
     metadata.update({
         "source_file": os.path.basename(pdf_path),
         "state": state,
@@ -4056,6 +4040,8 @@ def parse_pdf_election_results(pdf_path, session_id=None, coordinator=None) -> t
                 })
 
         if data:
+            # Deduplicate exact duplicate rows
+            data = [dict(t) for t in dict.fromkeys(tuple(sorted(row.items())) for row in data)]
             metadata["pre_finalize_row_count"] = len(data)
             metadata["table_source"] = table_source
             headers_final, data_final, _ = _finalize_structured_table_output(

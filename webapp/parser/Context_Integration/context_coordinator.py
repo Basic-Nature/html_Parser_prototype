@@ -49,7 +49,7 @@ from ..utils.html_scanner import (
 from ..utils.logger_singleton import logger
 from ..utils.model_registry import ModelRegistry
 from ..utils.shared_logic import (
-    _sync_type_and_election_types,
+    sync_type_and_election_types,
     keyphrase_match,
     normalize_county_name,
     normalize_state_name,
@@ -1562,7 +1562,7 @@ class ContextCoordinator(object):
         - Optionally validates and reports type consistency.
         """
         contest = {"id": contest_id, **correction_data}
-        _sync_type_and_election_types(contest)
+        sync_type_and_election_types(contest)
         if validate_types:
             if not contest.get("type_") or not contest.get("election_types"):
                 logger.warning(f"[correct_and_update_contest] Contest {contest_id} missing type/election_types after sync.")
@@ -1738,7 +1738,7 @@ class ContextCoordinator(object):
                     c["locations"] = all_locations[idx]
                     c["dates"] = all_dates[idx]
                     if sync_types:
-                        _sync_type_and_election_types(c)
+                        sync_type_and_election_types(c)
                     if log_enrichment and idx < 5:
                         logger.info(f"[enrich_contests_with_nlp] Enriched contest: {c.get('title', '')}")
             except Exception as e:
@@ -1754,7 +1754,7 @@ class ContextCoordinator(object):
                     c["locations"] = extract_locations(title)
                     c["dates"] = extract_dates(title)
                     if sync_types:
-                        _sync_type_and_election_types(c)
+                        sync_type_and_election_types(c)
                     if log_enrichment and idx < 5:
                         logger.info(f"[enrich_contests_with_nlp] Enriched contest: {title}")
                 except Exception as e:
@@ -2515,7 +2515,7 @@ class ContextCoordinator(object):
         contest = self.data_service.get_full_contest(contest_id)
         if isinstance(contest, dict):
             try:
-                _sync_type_and_election_types(contest)
+                sync_type_and_election_types(contest)
                 if enrich:
                     contest["entities"] = self.extract_entities(contest.get("title", ""))
                     contest["locations"] = self.extract_locations(contest.get("title", ""))
@@ -2555,7 +2555,7 @@ class ContextCoordinator(object):
             for c in contests:
                 if not isinstance(c, dict):
                     continue
-                _sync_type_and_election_types(c)
+                sync_type_and_election_types(c)
                 if enrich:
                     c["entities"] = self.extract_entities(c.get("title", ""))
                     c["locations"] = self.extract_locations(c.get("title", ""))
@@ -2739,7 +2739,7 @@ class ContextCoordinator(object):
             if not isinstance(c, dict):
                 continue
             try:
-                _sync_type_and_election_types(c)
+                sync_type_and_election_types(c)
                 if enrich:
                     c["entities"] = self.extract_entities(c.get("title", ""))
                     c["locations"] = self.extract_locations(c.get("title", ""))

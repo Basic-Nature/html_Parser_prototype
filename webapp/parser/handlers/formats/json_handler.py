@@ -30,6 +30,7 @@ from ...utils.location_helpers import (
     attach_precinct_column,
     collect_location_headers,
 )
+from ...Context_Integration.librarian import parse_filename_for_location
 from ...utils.logger_singleton import logger
 from ...utils.output_utils import finalize_election_output
 from ...utils.pivot import expand_single_rawjson_row
@@ -384,22 +385,10 @@ def _fastpath_county_results(
         return None
 
     fname = os.path.basename(json_path).lower()
-    fallback_state = ""
-    fallback_county = ""
-    for part in fname.replace(".json", "").split("_"):
-        if "county" in part and not fallback_county:
-            fallback_county = part.replace("county", "").strip()
-        if len(part) == 2 and part.isalpha() and not fallback_state:
-            fallback_state = part.upper()
-
-    derived_state, derived_county = _derive_location_metadata(payload)
-    state = derived_state or format_state_label(fallback_state)
-    county = derived_county or format_county_label(fallback_county, state)
-    state = state or "Unknown"
-    county = county or "Unknown"
-
-    m = re.search(r"(19|20)\d{2}", fname)
-    year = int(m.group(0)) if m else None
+    parsed_location = parse_filename_for_location(os.path.basename(json_path))
+    fallback_state = parsed_location.get('state', '')
+    fallback_county = parsed_location.get('county', '')
+    year = parsed_location.get('year')
 
     contest_groups = _collect_contest_groups(export)
     if not contest_groups:
@@ -1211,22 +1200,10 @@ def parse_json_election_results(
     headers, rows = expand_single_rawjson_row(headers, rows, context=pre_builder_context)
 
     fname = os.path.basename(json_path).lower()
-    fallback_state = ""
-    fallback_county = ""
-    for part in fname.replace(".json", "").split("_"):
-        if "county" in part and not fallback_county:
-            fallback_county = part.replace("county", "").strip()
-        if len(part) == 2 and part.isalpha() and not fallback_state:
-            fallback_state = part.upper()
-
-    derived_state, derived_county = _derive_location_metadata(data)
-    state = derived_state or format_state_label(fallback_state)
-    county = derived_county or format_county_label(fallback_county, state)
-    state = state or "Unknown"
-    county = county or "Unknown"
-
-    m = re.search(r"(19|20)\d{2}", fname)
-    year = int(m.group(0)) if m else None
+    parsed_location = parse_filename_for_location(os.path.basename(json_path))
+    fallback_state = parsed_location.get('state', '')
+    fallback_county = parsed_location.get('county', '')
+    year = parsed_location.get('year')
 
     domain = safe_slug(os.path.basename(json_path))
     candidate_header_map_serializable: Dict[str, List[str]] = {}
