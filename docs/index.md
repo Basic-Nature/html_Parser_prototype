@@ -5,7 +5,7 @@ title: Smart Elections Parser Documentation
 
 <!-- markdownlint-disable MD033 -->
 
-# 📁 Smart Elections Parser Documentation
+## 📁 Smart Elections Parser Documentation
 
 Welcome to the comprehensive documentation for the **Smart Elections Parser** - a modular web scraper for U.S. election results supporting HTML, PDF, CSV, and JSON formats with browser automation, OCR, and ML-powered integrity checks.
 
@@ -49,6 +49,7 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
 </div>
 
 ### Core Technical Documentation
+
 - [**System Architecture**](architecture.md) - Component design, data flows, and orchestration
 - [**Handler Development**](handlers.md) - Building state/county/format parsers
 - [**Project Audit**](project_audit.md) - Automated code analysis and cross-references
@@ -56,6 +57,7 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
 - [**Pipeline Mapping**](pipeline_map.md) - Visual execution flow and module relationships
 
 ### Specialized Documentation
+
 - [**Noise Filtering**](noise_override_suggestions.md) - PDF/OCR processing overrides
 - [**Troubleshooting**](troubleshooting.md) - Common issues and solutions
 - [**Project Audit**](project_audit.md) - Code quality and dependency analysis
@@ -69,6 +71,7 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
   <div class="content-section">
     <h3>📚 Main Project Files</h3>
     <p>Access the core project files and documentation:</p>
+
     <ul>
       <li><a href="https://github.com/Basic-Nature/html_Parser_prototype/blob/main/README.md" target="_blank">README.md</a> - Installation, usage, and overview</li>
       <li><a href="https://github.com/Basic-Nature/html_Parser_prototype/blob/main/CONTRIBUTING.md" target="_blank">CONTRIBUTING.md</a> - Contribution guidelines</li>
@@ -80,6 +83,7 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
   <div class="content-section">
     <h3>🛠️ Development Tools</h3>
     <p>Explore the project's technical infrastructure:</p>
+
     <ul>
       <li><a href="https://github.com/Basic-Nature/html_Parser_prototype/tree/main/webapp" target="_blank">Web UI</a> - Flask-based interface</li>
       <li><a href="https://github.com/Basic-Nature/html_Parser_prototype/tree/main/handlers" target="_blank">Handlers</a> - State/county parsers</li>
@@ -103,18 +107,21 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
 </div>
 
 ### Technical Architecture
+
 - System component relationships and data flows
 - Handler architecture and extension patterns
 - ML/NLP integration for data extraction
 - Browser automation and CAPTCHA handling
 
 ### Development Workflow
+
 - Code contribution standards and review process
 - Testing methodologies and debugging tools
 - Performance optimization and error handling
 - Deployment and maintenance procedures
 
 ### Data Processing
+
 - Multi-format parsing (HTML/PDF/CSV/JSON)
 - Integrity checking and anomaly detection
 - Context learning and feedback systems
@@ -156,6 +163,7 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
 <div class="status-badge in-progress">Active Development</div>
 
 ### Key Metrics
+
 - **Formats Supported**: HTML, PDF, CSV, JSON, TXT, XLSX
 - **States Covered**: Multiple state parsers implemented
 - **ML Integration**: Active context learning and anomaly detection
@@ -186,4 +194,6 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
 
 ---
 
-*This documentation is automatically generated and updated with each code change. Last updated: November 27, 2025*
+## 📝 Documentation Notes
+
+This documentation is automatically generated and updated with each code change. Last updated: November 27, 2025
