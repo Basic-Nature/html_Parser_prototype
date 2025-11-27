@@ -53,7 +53,7 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
 
 - [**Noise Filtering**](noise_override_suggestions) - PDF/OCR processing overrides
 - [**Troubleshooting**](troubleshooting) - Common issues and solutions
-- [**Election Integrity Guidelines**](Election%20Integrity%20Guidelines) - Integrity and transparency practices
+- [**Election Integrity Guidelines**](Election_Integrity_Guidelines) - Integrity and transparency practices
 
 ---
 
