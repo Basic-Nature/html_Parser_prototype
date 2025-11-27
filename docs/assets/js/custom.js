@@ -12,7 +12,10 @@ function convertMermaidCodeBlocks() {
   
   codeBlocks.forEach((codeBlock) => {
     const pre = codeBlock.parentElement;
-    if (!pre) return;
+    const parent = pre.parentNode;
+    
+    // Safety check: ensure pre is still in the DOM
+    if (!parent) return;
     
     // Create a new div with mermaid class
     const mermaidDiv = document.createElement('div');
@@ -21,7 +24,7 @@ function convertMermaidCodeBlocks() {
     mermaidDiv.textContent = codeBlock.textContent;
     
     // Replace the <pre><code> with the mermaid div
-    pre.parentNode.replaceChild(mermaidDiv, pre);
+    parent.replaceChild(mermaidDiv, pre);
   });
 }
 
