@@ -1,4 +1,4 @@
-# 🚀 Comprehensive Pipeline Audit & Map
+# Comprehensive Pipeline Audit & Map
 
 ## 📋 Table of Contents
 
@@ -53,11 +53,6 @@ graph TD
     dynamic_table_extractor[dynamic_table_extractor]
     extraction_strategies[extraction_strategies]
     format_router[format_router]
-    header_utils[header_utils]
-    html_scanner[html_scanner]
-    json_export_loader[json_export_loader]
-    logger_singleton[logger_singleton]
-    ml_table_detector[ml_table_detector]
   end
   subgraph Context_Integration["Context Integration"]
     Integrity_check[Integrity_check]
@@ -92,26 +87,6 @@ graph TD
   state_router -->|2| context_coordinator
   context_organizer -->|2| html_scanner
   context_organizer -->|2| db_utils
-  pdf_handler -->|2| contest_selector
-  example_county -->|2| example_state
-  manual_correction_bot -->|2| librarian
-  manual_correction_bot -->|2| Integrity_check
-  manual_correction_bot -->|2| html_election_parser
-  browser_utils -->|2| shared_logic
-  contest_selector -->|2| context_coordinator
-  db_utils -->|2| librarian
-  detector -->|2| detect
-  extraction_strategies -->|2| detect
-  html_scanner -->|2| context_organizer
-  html_scanner -->|2| retrain_table_structure_models
-  pivot -->|2| contest_normalization
-  table_core -->|2| output_utils
-  html_election_parser -->|1| header_utils
-  html_election_parser -->|1| data_manager
-  context_organizer -->|1| context_coordinator
-  html_handler -->|1| html_election_parser
-  html_handler -->|1| context_coordinator
-  json_handler -->|1| csv_handler
 ```
 
 **✨ Legend:** Colors indicate module categories with metallic accents. Click
