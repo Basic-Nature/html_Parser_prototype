@@ -1,11 +1,8 @@
----
-// ---
-
 // Smart Elections Parser - Documentation JavaScript
 // Ensures Mermaid graphs render and adds theme enhancements
 
 document.addEventListener('DOMContentLoaded', function() {
-  // Initialize Mermaid for graph rendering
+  // Initialize Mermaid for graph rendering with CDN
   if (typeof mermaid !== 'undefined') {
     mermaid.initialize({
       startOnLoad: true,
@@ -38,6 +35,9 @@ document.addEventListener('DOMContentLoaded', function() {
         useMaxWidth: true
       }
     });
+
+    // Re-render any mermaid diagrams that might have loaded before initialization
+    mermaid.init();
   }
 
   // Add metallic glow effects to interactive elements
