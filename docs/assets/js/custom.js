@@ -1,8 +1,8 @@
 // Smart Elections Parser - Documentation JavaScript
 // Ensures Mermaid graphs render and adds theme enhancements
 
-document.addEventListener('DOMContentLoaded', function() {
-  // Initialize Mermaid for graph rendering with CDN
+// Wait for Mermaid to load, then initialize
+function initializeMermaid() {
   if (typeof mermaid !== 'undefined') {
     mermaid.initialize({
       startOnLoad: true,
@@ -33,12 +33,23 @@ document.addEventListener('DOMContentLoaded', function() {
       },
       gantt: {
         useMaxWidth: true
-      }
+      },
+      securityLevel: 'loose'
     });
 
-    // Re-render any mermaid diagrams that might have loaded before initialization
-    mermaid.init();
+    // Render all mermaid diagrams on the page
+    setTimeout(() => {
+      mermaid.init();
+    }, 100);
+  } else {
+    // Retry if Mermaid not loaded yet
+    setTimeout(initializeMermaid, 100);
   }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize Mermaid with retry logic
+  initializeMermaid();
 
   // Add metallic glow effects to interactive elements
   const addGlowEffect = (element) => {
@@ -116,16 +127,36 @@ document.addEventListener('DOMContentLoaded', function() {
       color: #00ffe7;
       font-style: italic;
       padding: 20px;
+      background: rgba(26, 42, 42, 0.8);
+      border-radius: 8px;
+      margin: 10px 0;
     `;
     diagram.appendChild(loading);
 
-    // Remove loading after a short delay (Mermaid should render)
+    // Remove loading after rendering
     setTimeout(() => {
       if (loading.parentNode) {
         loading.remove();
       }
-    }, 2000);
+    }, 3000);
   });
+
+  // Force re-render of all diagrams after initialization
+  setTimeout(() => {
+    if (typeof mermaid !== 'undefined') {
+      document.querySelectorAll('.mermaid').forEach((element, index) => {
+        const id = 'mermaid-' + index;
+        element.id = id;
+        try {
+          mermaid.render(id, element.textContent.trim()).then((result) => {
+            element.innerHTML = result.svg;
+          });
+        } catch (e) {
+          console.log('Mermaid render failed for element:', element);
+        }
+      });
+    }
+  }, 500);
 
   // Add theme toggle (optional future enhancement)
   console.log('Smart Elections Documentation loaded with metallic theme');

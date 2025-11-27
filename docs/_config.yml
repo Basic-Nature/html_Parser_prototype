@@ -1,5 +1,8 @@
 theme: jekyll-theme-primer
-plugins:
-  - jekyll-mermaid
 baseurl: "/html_Parser_prototype"
 url: "https://basic-nature.github.io"
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor/
+plugins: []

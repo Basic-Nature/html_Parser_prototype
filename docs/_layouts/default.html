@@ -10,6 +10,14 @@ layout: default
   <title>{% if page.title %}{{ page.title }}{% else %}{{ site.title | default: "Smart Elections Parser" }}{% endif %}</title>
   <link rel="stylesheet" href="/html_Parser_prototype/assets/css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+  <script>
+    // Configure Mermaid before it initializes
+    window.mermaidConfig = {
+      startOnLoad: false,
+      theme: 'dark',
+      securityLevel: 'loose'
+    };
+  </script>
 </head>
 <body>
 {{ content }}
