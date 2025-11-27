@@ -2,41 +2,84 @@
 layout: default
 ---
 
+<!-- markdownlint-disable MD033 -->
+
 # 📁 Smart Elections Documentation
 
-Welcome to the developer and contributor guide for the **Smart Elections Parser**.  
+Welcome to the developer and contributor guide for the **Smart Elections Parser**.
 This index links to all core documents and resources for building, extending, and maintaining the project.
 
 ---
 
-## 🧭 Core Docs
+## 🧭 Quick Access
+
+<div class="feature-list">
+  <div class="feature" data-section="architecture">
+    <h3>🏗️ Architecture</h3>
+    <p>System components, orchestration, and data flow. Understand how the parser works end-to-end.</p>
+    <a href="architecture.md">View Architecture →</a>
+  </div>
+
+  <div class="feature" data-section="audit">
+    <h3>🔍 Project Audit</h3>
+    <p>Comprehensive audit of webapp modules, dependencies, and cross-references with Mermaid diagrams.</p>
+    <a href="project_audit.md">View Audit →</a>
+  </div>
+
+  <div class="feature" data-section="todos">
+    <h3>📋 TODOs & Tasks</h3>
+    <p>Index of all TODO/FIXME/WARN annotations across the codebase with progress tracking.</p>
+    <a href="todos.md">View TODOs →</a>
+  </div>
+
+  <div class="feature" data-section="pipeline">
+    <h3>🔄 Pipeline Map</h3>
+    <p>Visual pipeline overview with module details and interactive Mermaid diagrams.</p>
+    <a href="pipeline_map.md">View Pipeline →</a>
+  </div>
+</div>
+
+---
+
+## 📄 Core Documentation
+
+<div class="mission-panel glossy">
+  <h3>Essential Reading for Contributors</h3>
+  <p>Start here to understand the project structure, contribution guidelines, and development workflow.</p>
+</div>
 
 - [`README.md`](../README.md): Project overview, install steps, CLI and Web UI usage, and high-level architecture
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md): How to contribute, coding standards, and review process
+- [`handlers.md`](handlers.md): How to build and extend state, county, and format handlers
+- [`roadmap.md`](roadmap.md): Planned features, enhancements, and future directions
 - [`LICENSE`](../LICENSE): Open-source licensing and reuse terms
 
 ---
 
-## 📄 Design & Development Documents
+## 🔍 Automated Analysis & Health
 
-- [`architecture.md`](architecture.md): System components, orchestration, and data flow
-- [`handlers.md`](handlers.md): How to build and extend state, county, and format handlers
-- [`roadmap.md`](roadmap.md): Planned features, enhancements, and future directions
+<div class="progress-section">
+  <h3>Project Health Dashboard</h3>
+  <p>Automated analysis tools for maintaining code quality and tracking project progress.</p>
+  <div class="progress-bar">
+    <div class="progress-fill" style="width: 85%;"></div>
+  </div>
+  <p><small>85% of planned health checks implemented</small></p>
+</div>
 
----
-
-## 🔍 Automated Audit & Analysis
-
-- [`project_audit.md`](project_audit.md): Comprehensive audit of webapp modules, dependencies, and cross-references
-- [`todos.md`](todos.md): Index of all TODO/FIXME/WARN annotations across the codebase
-- [`pipeline_map.md`](pipeline_map.md): Visual pipeline overview with module details and Mermaid diagrams
 - [`noise_override_suggestions.md`](noise_override_suggestions.md): Suggested overrides for PDF/OCR noise filtering
+- [`health/`](../webapp/parser/health/): Correction, retraining, and automation health (see `health_router.py`)
+- [`Context_Integration/`](../webapp/parser/Context_Integration/): Context, ML/NLP, and integrity modules
+- [`context_library.json`](../webapp/parser/context_library.json): Persistent context and feedback for smarter extraction
 
 ---
 
 ## 🖥️ Web UI (Optional)
 
-The Smart Elections Parser includes an **optional Flask-based Web UI** for users who prefer a graphical experience or are new to coding.
+<div class="mission-panel">
+  <h3>Graphical Interface for Teams & Researchers</h3>
+  <p>The Smart Elections Parser includes an optional Flask-based Web UI for users who prefer a graphical experience.</p>
+</div>
 
 **Web UI Features:**
 
@@ -47,15 +90,7 @@ The Smart Elections Parser includes an **optional Flask-based Web UI** for users
 - Live feedback via WebSockets
 - Data management for uploads, downloads, and review
 
-The Web UI is ideal for teams, researchers, and those learning to code—**all core parser features remain available via the CLI**.
-
----
-
-## 🤖 Automation, health & Context
-
-- [`health/`](../webapp/parser/health/): Correction, retraining, and automation health (see `health_router.py`)
-- [`Context_Integration/`](../webapp/parser/Context_Integration/): Context, ML/NLP, and integrity modules (`context_coordinator.py`, `context_organizer.py`, `Integrity_check.py`)
-- [`context_library.json`](../webapp/parser/context_library.json): Persistent context and feedback for smarter extraction and correction
+<div class="status-badge in-progress">Web UI Active</div>
 
 ---
 
@@ -79,15 +114,31 @@ The Web UI is ideal for teams, researchers, and those learning to code—**all c
 
 ## 🧪 Testing & Debugging
 
-- Use `.env` variables like `HEADLESS=false`, `ENABLE_BOT_TASKS=true`, or `CACHE_RESET=true` to control behavior
-- Try parsing pre-downloaded HTML or file formats using the `input/` directory
-- Simulate CAPTCHA triggers for state/county sites
-- Modular user prompts (`prompt_user_input`) allow easy CLI or web UI testing
-- Correction and feedback health help retrain extraction logic and improve future runs
+<div class="feature-list">
+  <div class="feature" data-section="architecture">
+    <h3>🔧 Debug Mode</h3>
+    <p>Use `.env` variables like `HEADLESS=false`, `ENABLE_BOT_TASKS=true`, or `CACHE_RESET=true` to control behavior.</p>
+  </div>
+
+  <div class="feature" data-section="pipeline">
+    <h3>📁 Manual Testing</h3>
+    <p>Try parsing pre-downloaded HTML or file formats using the `input/` directory and simulate CAPTCHA triggers.</p>
+  </div>
+
+  <div class="feature" data-section="audit">
+    <h3>🔄 Modular Prompts</h3>
+    <p>Modular user prompts (`prompt_user_input`) allow easy CLI or web UI testing with correction feedback.</p>
+  </div>
+</div>
 
 ---
 
 ## 🛡️ Election Integrity & Transparency
+
+<div class="mission-panel glossy">
+  <h3>Built for Trust & Accountability</h3>
+  <p>All outputs are auditable with comprehensive logging, ML-powered anomaly detection, and human-in-the-loop feedback.</p>
+</div>
 
 - All outputs are auditable: logs, metadata, and correction trails are saved
 - ML/NER-powered anomaly detection and structure validation

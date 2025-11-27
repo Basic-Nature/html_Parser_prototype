@@ -1,6 +1,3 @@
----
----
-
 // Smart Elections Parser - Documentation JavaScript
 // Ensures Mermaid graphs render and adds theme enhancements
 
