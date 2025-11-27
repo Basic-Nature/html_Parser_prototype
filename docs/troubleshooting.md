@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # 🛠️ Troubleshooting Guide
 
 ## ❗ Problem: Parser exits without processing any data

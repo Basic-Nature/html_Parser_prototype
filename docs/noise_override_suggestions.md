@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Suggested Camelot noise overrides
 
 Min count cutoff: 1

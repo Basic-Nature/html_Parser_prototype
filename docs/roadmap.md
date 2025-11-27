@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Smart Elections Parser — Roadmap
 
 This document tracks the progress and next steps for the Smart Elections Parser project.

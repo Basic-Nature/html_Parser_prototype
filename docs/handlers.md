@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Handler Development Guide for Smart Elections Parser
 
 This document outlines how to develop and maintain **state-level** and **format-level** handlers inside the `handlers/` directory.

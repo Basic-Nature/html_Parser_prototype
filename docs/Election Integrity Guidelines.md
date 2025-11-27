@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # 🗳️ Smart Elections: Data Integrity & Transparency Guidelines
 
 This project is committed to upholding the highest standards in election data handling. The following practices are informed by leading organizations and aim to ensure transparency, security, and public trust in electoral processes.

@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Working TODOs
 
 Last updated: 2025-11-07

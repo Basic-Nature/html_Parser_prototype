@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Smart Elections Parser — Architecture Overview
 
 This document provides a high-level overview of the architecture and responsibilities across modules in the Smart Elections Parser repository, reflecting the latest modular, ML/NLP-integrated, and integrity-focused design.

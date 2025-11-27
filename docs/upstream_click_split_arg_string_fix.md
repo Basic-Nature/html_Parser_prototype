@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Proposed Upstream Fix: Click `split_arg_string` Deprecation
 
 spaCy (>=3.8) and its dependency weasel still import `split_arg_string` from

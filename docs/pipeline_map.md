@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Comprehensive Pipeline Audit & Map
 
 ## 📋 Table of Contents

@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Project Audit — webapp
 
 Modules scanned: 98 | ~53764 non-empty LOC
@@ -7801,7 +7805,7 @@ graph LR
   - L732 **WARNING**: (f"\[safe_update\] Target is not a dict: {type(dct)}")
   - L736 **WARNING**: (f"\[safe_update\] Updates is not a dict: {type(updates)}")
   - L756 **WARNING**: (f"\[safe_extend\] Target is not a list: {type(lst)}; coercing to list.")
-  - L1096 **WARNING**: (f"\[DOM_PARTS\] '{label}' is not a list for URL: {url} (type: {type(lst).__name__})")
+  - L1096 **WARNING**: (f"\[DOM_PARTS\] '{label}' is not a list for URL: {url} (type: {type(lst).\_\_name\_\_})")
   - L1359 **WARNING**: (f"State '{state_norm}' not found in county map")
   - L2137 **WARNING**: (f"\[inventory\] architecture.md not found at {md_file}")
   - L2143 **WARNING**: ("\[inventory\] Markers not found in architecture.md; aborting replace.")
@@ -8071,7 +8075,7 @@ graph LR
 - TODO/FIXME/WARN:
   - L37 **WARNING**: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
   - L65 **WARNING**: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
-  - L73 **WARNING**: (f"\[CONCURRENCY\] {_safe_run_strategy.__name__} {name} failed: {e}")
+  - L73 **WARNING**: (f"\[CONCURRENCY\] {\_safe\_run\_strategy.\_\_name\_\_} {name} failed: {e}")
   - L102 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed: {e}")
   - L120 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
 - Outgoing cross-module calls (sample):

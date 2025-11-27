@@ -2622,7 +2622,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         if defs:
             lines.append("- Definitions:")
             for d in defs:
-                lines.append(f"  - {d['type']}: `{d['name']}` (line {d.get('lineno', '?')})")
+                lines.append(f"  - {d['type']}: `{d['name'].replace('_', '\\_')}` (line {d.get('lineno', '?')})")
         # Imports
         imps = m.get("imports", [])
         if imps:
@@ -2651,6 +2651,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             lines.append("- Outgoing cross-module calls (sample):")
             for c in calls[:50]:
                 tgt = c.get("func")
+                tgt = tgt.replace('_', '\\_')
                 res = ""
                 # try to find a resolved match
                 for k, di in def_index.items():
@@ -2674,6 +2675,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             for e in inbound_here[:50]:
                 src = e.get("src_path")
                 tgt = e.get("target")
+                tgt = tgt.replace('_', '\\_')
                 if src:
                     try:
                         src = Path(src).name

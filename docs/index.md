@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # 📁 Smart Elections Documentation
 
 Welcome to the developer and contributor guide for the **Smart Elections Parser**.  
