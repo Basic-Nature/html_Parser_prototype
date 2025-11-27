@@ -58,17 +58,6 @@ graph TD
     json_export_loader[json_export_loader]
     logger_singleton[logger_singleton]
     ml_table_detector[ml_table_detector]
-    models[models]
-    output_utils[output_utils]
-    pattern_extractor[pattern_extractor]
-    pivot[pivot]
-    salvage[salvage]
-    shared_logger[shared_logger]
-    shared_logic[shared_logic]
-    table_builder[table_builder]
-    table_core[table_core]
-    user_prompt[user_prompt]
-    xlsx_exporter[xlsx_exporter]
   end
   subgraph Context_Integration[Context Integration]
     Integrity_check[Integrity_check]
@@ -123,26 +112,6 @@ graph TD
   html_handler -->|1| html_election_parser
   html_handler -->|1| context_coordinator
   json_handler -->|1| csv_handler
-  pdf_handler -->|1| csv_handler
-  txt_handler -->|1| csv_handler
-  xlsx_handler -->|1| csv_handler
-  example_state -->|1| context_coordinator
-  example_county -->|1| context_coordinator
-  rockland -->|1| context_coordinator
-  log_cache_cleaner_bot -->|1| html_election_parser
-  retrain_table_structure_models -->|1| html_election_parser
-  scan_misaligned_ner -->|1| html_election_parser
-  extraction_strategies -->|1| ml_table_detector
-  format_router -->|1| download_utils
-  html_scanner -->|1| shared_logic
-  logger_singleton -->|1| user_prompt
-  models -->|1| db_utils
-  models -->|1| html_election_parser
-  output_utils -->|1| context_coordinator
-  output_utils -->|1| librarian
-  output_utils -->|1| xlsx_exporter
-  salvage -->|1| constants
-  shared_logger -->|1| shared_logic
 ```
 
 **✨ Legend:** Colors indicate module categories with metallic accents. Click

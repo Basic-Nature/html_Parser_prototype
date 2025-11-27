@@ -2942,7 +2942,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             cluster_nodes[dc].add(dst)
             cluster_edges[(src, dst)] = cluster_edges.get((src, dst), 0) + 1
         # Top edges
-        top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:60]  # Increased to 60
+        top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:40]  # Reduced for GitHub compatibility
         lines: list[str] = []
         lines.append("# 🚀 Comprehensive Pipeline Audit & Map")
         lines.append("")
@@ -2966,7 +2966,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         lines.append("graph TD")
         # Subgraphs
         for cname in ["Entry", "Pipeline", "Routing", "State Handlers", "Format Handlers", "Shared Handlers", "Services", "Utils", "Context Integration", "Health"]:
-            nodes = sorted(list(cluster_nodes.get(cname, [])))[:30]  # Increased
+            nodes = sorted(list(cluster_nodes.get(cname, [])))[:15]  # Reduced for GitHub compatibility
             if not nodes:
                 continue
             lines.append(f"  subgraph {cname.replace(' ', '_')}[{cname}]")
