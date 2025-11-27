@@ -2200,13 +2200,19 @@ def _extract_top_comment_block(src: str) -> str:
     return "\n".join(out)
 
 
-def _harvest_todos(src: str) -> list[tuple[int, str]]:
-    """Find lines containing TODO/FIXME/WARN (case-insensitive). Returns list of (lineno, text)."""
-    hits: list[tuple[int, str]] = []
-    pat = re.compile(r"\b(TODO|FIXME|WARN|WARNING)\b", re.IGNORECASE)
+def _harvest_todos(src: str) -> list[tuple[int, str, str]]:
+    """Find lines containing TODO/FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned_text)."""
+    hits: list[tuple[int, str, str]] = []
+    pat = re.compile(r"\b(TODO|FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
     for i, line in enumerate(src.splitlines(), start=1):
-        if pat.search(line):
-            hits.append((i, line.rstrip()))
+        match = pat.search(line)
+        if match:
+            keyword = match.group(1).upper()
+            # Extract text after the keyword, clean it
+            after = line[match.end():].strip()
+            # Remove leading punctuation like :, -, etc.
+            after = re.sub(r'^[:\-\s]*', '', after).strip()
+            hits.append((i, keyword, after or line.rstrip()))
     return hits
 
 
@@ -2614,13 +2620,13 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         todos = m.get("todo_lines", [])
         if todos:
             lines.append("- TODO/FIXME/WARN:")
-            for ln, txt in todos[:50]:
-                safe_txt = txt.replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('\t', ' ').replace('<', '&lt;').replace('>', '&gt;')  # avoid MD inline code breaks, link issues, tabs, inline HTML
+            for ln, keyword, cleaned_txt in todos[:50]:
+                safe_txt = cleaned_txt.replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('\t', ' ').replace('<', '&lt;').replace('>', '&gt;')  # avoid MD inline code breaks, link issues, tabs, inline HTML
                 safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
                 safe_txt = re.sub(r'\s+(\*|_)', r'\1', safe_txt)
                 safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
                 safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
-                lines.append(f"  - L{ln}: {safe_txt}")
+                lines.append(f"  - L{ln} **{keyword}**: {safe_txt}")
         # Outgoing calls (cross-module)
         calls = [c for c in m.get("calls", []) if any(sep in c.get("func"," ") for sep in (".", ":"))]
         if calls:
@@ -2688,13 +2694,20 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
         root = Path(project_root).resolve()
         modules = _scan_webapp_modules(root)
         total = sum(len(m.get("todo_lines", [])) for m in modules)
-        lines: list[str] = []
-        lines.append("# TODO/FIXME index — webapp\n")
-        lines.append(f"Total annotations: {total}\n")
-        for m in sorted(modules, key=lambda x: x.get("path", "")):
-            todos = m.get("todo_lines", [])
-            if not todos:
-                continue
+        
+        # Define priorities
+        high_keywords = ['FIXME', 'BUG']
+        medium_keywords = ['TODO', 'HACK', 'XXX']
+        low_keywords = ['WARN', 'WARNING', 'NOTE']
+        
+        # Collect todos by priority
+        priority_todos = {
+            'high': [],
+            'medium': [],
+            'low': []
+        }
+        
+        for m in modules:
             path = m.get("path", "")
             if path:
                 try:
@@ -2702,17 +2715,45 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
                     path = str(rel_path)
                 except:
                     pass
-            lines.append(f"## `{path}`\n")
-            for ln, txt in todos:
-                safe_txt = (txt or "").replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('<', '&lt;').replace('>', '&gt;').replace('\t', ' ')
+            todos = m.get("todo_lines", [])
+            for ln, keyword, cleaned_txt in todos:
+                safe_txt = (cleaned_txt or "").replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('<', '&lt;').replace('>', '&gt;').replace('\t', ' ')
                 # Fix emphasis spaces
                 safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
                 safe_txt = re.sub(r'\s+(\*|_)', r'\1', safe_txt)
                 safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
                 # Fix reversed links
                 safe_txt = re.sub(r'\(([^)]+)\)\[:(\d+)\]', r'[\1][:\2]', safe_txt)
-                lines.append(f"- L{ln}: {safe_txt}")
-            lines.append("")
+                item = (path, ln, keyword, safe_txt)
+                if keyword in high_keywords:
+                    priority_todos['high'].append(item)
+                elif keyword in medium_keywords:
+                    priority_todos['medium'].append(item)
+                elif keyword in low_keywords:
+                    priority_todos['low'].append(item)
+        
+        lines: list[str] = []
+        lines.append("# TODO/FIXME index — webapp\n")
+        lines.append(f"Total annotations: {total}\n")
+        
+        # Output by priority
+        for priority, label in [('high', 'High Priority'), ('medium', 'Medium Priority'), ('low', 'Low Priority')]:
+            todos = priority_todos[priority]
+            if not todos:
+                continue
+            lines.append(f"## {label}\n")
+            # Group by file
+            file_groups = {}
+            for path, ln, keyword, safe_txt in todos:
+                if path not in file_groups:
+                    file_groups[path] = []
+                file_groups[path].append((ln, keyword, safe_txt))
+            for path in sorted(file_groups.keys()):
+                lines.append(f"### `{path}` ({label})\n")
+                for ln, keyword, safe_txt in file_groups[path]:
+                    lines.append(f"- L{ln} *{keyword}*: {safe_txt}")
+                lines.append("")
+        
         out = (root / out_markdown).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
@@ -2903,15 +2944,15 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         # Top edges
         top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:60]  # Increased to 60
         lines: list[str] = []
-        lines.append("# 🚀 Comprehensive Pipeline Audit & Map\n")
+        lines.append("# 🚀 Comprehensive Pipeline Audit & Map")
         lines.append("")
-        lines.append("## 📋 Table of Contents\n")
-        lines.append("- [Overview](#-overview)")
-        lines.append("- [Interactive Pipeline Graph](#-interactive-pipeline-graph)")
-        lines.append("- [File Connection Map](#-file-connection-map)")
-        lines.append("- [Detailed Module Contexts](#-detailed-module-contexts)")
+        lines.append("## 📋 Table of Contents")
+        lines.append("- [Overview](#overview)")
+        lines.append("- [Interactive Pipeline Graph](#interactive-pipeline-graph)")
+        lines.append("- [File Connection Map](#file-connection-map)")
+        lines.append("- [Detailed Module Contexts](#detailed-module-contexts)")
         lines.append("")
-        lines.append("## 📊 Overview\n")
+        lines.append("## Overview")
         total_modules = sum(len(nodes) for nodes in cluster_nodes.values())
         total_edges = len(cluster_edges)
         lines.append(f"- **Total Modules Audited:** {total_modules}")
@@ -2919,7 +2960,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         lines.append("- **Clusters:** Entry, Pipeline, Routing, State Handlers, Format Handlers, Shared Handlers, Services, Utils, Context Integration, Health")
         lines.append("- **Audit Scope:** All `webapp/parser/` files with full context, imports, dependencies, and optimization insights.")
         lines.append("")
-        lines.append("## 🔗 Interactive Pipeline Graph\n")
+        lines.append("## Interactive Pipeline Graph")
         lines.append("")
         lines.append("```mermaid")
         lines.append("graph TD")
@@ -2957,10 +2998,10 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         lines.append("")
         lines.append("**✨ Legend:** Colors indicate module categories with metallic accents. Click nodes for details below.")
         lines.append("")
-
         # File Connection Map
-        lines.append("## 🗺️ File Connection Map\n")
-        lines.append("Detailed import/export relationships and dependencies.\n")
+        lines.append("## File Connection Map")
+        lines.append("Detailed import/export relationships and dependencies.")
+        lines.append("")
         # Build reverse dependencies
         reverse_deps: dict[str, set[str]] = {}
         for m in modules:
@@ -2980,10 +3021,10 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         for mod, deps in sorted(reverse_deps.items()):
             lines.append(f"- **{mod}** is imported by: {', '.join(sorted(deps))}")
         lines.append("")
-
         # Add detailed module summaries with collapsible sections
-        lines.append("## 🔍 Detailed Module Contexts\n")
-        lines.append("Click to expand each module for full audit details.\n")
+        lines.append("## Detailed Module Contexts")
+        lines.append("Click to expand each module for full audit details.")
+        lines.append("")
         pipeline_modules = [m for m in modules if _is_target_path(m.get("path", ""))]
         for m in sorted(pipeline_modules, key=lambda x: x.get("path", "")):
             path = m.get("path", "")
@@ -2998,58 +3039,106 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             else:
                 path_str = "unknown"
                 link = "#"
-            lines.append(f"<details><summary><strong>{path_str}</strong></summary>")
+            mod_name = path_str.replace("webapp/parser/", "").replace("/", "_").replace(".py", "")
+            lines.append(f"### {path_str.replace('_', r'\_')}")
             lines.append("")
             if m.get("doc"):
-                lines.append(f"> {m['doc'].splitlines()[0]}")
+                safe_doc = m['doc'].splitlines()[0].replace('_', '*')
+                lines.append(f"> {safe_doc}")
             lines.append("")
             # Key functions and classes
             defs = [d for d in m.get("defs", []) if d.get("type") in ("function", "async_function", "class")]
             if defs:
-                lines.append("### 🔧 Key Functions & Classes")
+                lines.append(f"#### 🔧 Key Functions & Classes ({mod_name})")
+                lines.append("")
                 for d in defs[:25]:  # Increased
-                    lines.append(f"  - `{d['name']}` ({d.get('type', 'def')}, line {d.get('lineno', '?')})")
+                    lines.append(f"- `{d['name']}` ({d.get('type', 'def')}, line {d.get('lineno', '?')})")
+                lines.append("")
             # Imports
             imports = m.get("imports", [])
             if imports:
+                lines.append(f"#### 📦 Key Imports ({mod_name})")
                 lines.append("")
-                lines.append("### 📦 Key Imports")
                 for imp in imports[:20]:
-                    lines.append(f"  - `{imp}`")
+                    mod = imp.get('module', '')
+                    lines.append(f"- `{mod}`")
+                lines.append("")
             # Dependencies
             deps = reverse_deps.get(path_str.replace("webapp/parser/", ""), set())
             if deps:
+                lines.append(f"#### 🔗 Reverse Dependencies ({mod_name})")
                 lines.append("")
-                lines.append("### 🔗 Reverse Dependencies")
                 lines.append(f"Imported by: {', '.join(sorted(deps))}")
+                lines.append("")
             # Top comments
             if m.get("top_comment"):
-                lines.append("")
-                lines.append("### 💬 Top-of-file Comments")
+                lines.append(f"#### 💬 Top-of-file Comments ({mod_name})")
                 lines.append("")
                 lines.append("```python")
                 for ln in m["top_comment"].splitlines()[:25]:  # Increased
                     ln = ln.replace('\t', '    ').replace('<', '&lt;').replace('>', '&gt;').replace('*', '\\*').replace('_', '\\_')
                     lines.append(ln)
                 lines.append("```")
+                lines.append("")
             # TODOs
             todos = m.get("todo_lines", [])
             if todos:
+                lines.append(f"#### ⚠️ TODO/FIXME/WARN ({mod_name})")
                 lines.append("")
-                lines.append("### ⚠️ TODO/FIXME/WARN")
-                for ln, txt in todos[:20]:  # Increased
-                    safe_txt = (txt or "").replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('<', '&lt;').replace('>', '&gt;').replace('\t', ' ')
+                for ln, keyword, cleaned_txt in todos[:20]:  # Increased
+                    safe_txt = (cleaned_txt or "").replace("`", "\u2063`").replace("[", "\\[").replace("]", "\\]").replace('<', '&lt;').replace('>', '&gt;').replace('\t', ' ')
                     safe_txt = re.sub(r'(\*|_)\s+', r'\1', safe_txt)
                     safe_txt = re.sub(r'\s+(\*|_)', r'\1', safe_txt)
                     safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
                     safe_txt = re.sub(r'\(([^)]+)\)\[:(\d+)\]', r'[\1][:\2]', safe_txt)
-                    lines.append(f"  - L{ln}: {safe_txt}")
-            lines.append("")
-            lines.append("</details>")
-            lines.append("")
+                    safe_txt = safe_txt.replace('_', '*')  # Replace any remaining _ with *
+                    lines.append(f"- L{ln} **{keyword}**: {safe_txt}")
+                lines.append("")
+        # Post-process lines for markdownlint compliance
+        def wrap_line(line: str, max_len: int = 80) -> list[str]:
+            if len(line) <= max_len:
+                return [line]
+            words = line.split()
+            wrapped = []
+            current = ""
+            for word in words:
+                if len(current) + len(word) + 1 <= max_len:
+                    current += (" " + word) if current else word
+                else:
+                    if current:
+                        wrapped.append(current)
+                    current = word
+            if current:
+                wrapped.append(current)
+            return wrapped
+        new_lines = []
+        for line in lines:
+            if line.startswith("#"):
+                # Ensure blank line before heading
+                if new_lines and new_lines[-1] != "":
+                    new_lines.append("")
+                new_lines.append(line)  # Don't wrap headings
+                new_lines.append("")  # Blank after heading
+            elif line.startswith("- "):
+                # List item, wrap if long
+                wrapped = wrap_line(line, 78)  # Leave space for -
+                new_lines.extend(wrapped)
+            else:
+                new_lines.extend(wrap_line(line))
+        # Remove multiple consecutive blanks
+        final_lines = []
+        prev_blank = False
+        for line in new_lines:
+            if line == "":
+                if not prev_blank:
+                    final_lines.append(line)
+                prev_blank = True
+            else:
+                final_lines.append(line)
+                prev_blank = False
         out = (root / out_markdown).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        out.write_text("\n".join(final_lines).rstrip() + "\n", encoding="utf-8")
         return True
     except Exception as e:
         logger.error(f"[pipeline] Failed to generate pipeline map: {e}")
