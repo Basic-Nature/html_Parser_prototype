@@ -1,4 +1,4 @@
 source "https://rubygems.org"
 
 gem "jekyll", "~> 4.2.0"
-gem "jekyll-mermaid-plugin"
+gem "jekyll-mermaid"
