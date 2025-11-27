@@ -1,11 +1,38 @@
 // Smart Elections Parser - Documentation JavaScript
 // Ensures Mermaid graphs render and adds theme enhancements
 
+/**
+ * Convert fenced code blocks (```mermaid) to Mermaid-compatible div elements.
+ * Jekyll/GitHub Pages converts ```mermaid blocks to <pre><code class="language-mermaid">
+ * but Mermaid.js expects <div class="mermaid"> elements.
+ */
+function convertMermaidCodeBlocks() {
+  // Find all code blocks with language-mermaid class
+  const codeBlocks = document.querySelectorAll('pre > code.language-mermaid');
+  
+  codeBlocks.forEach((codeBlock) => {
+    const pre = codeBlock.parentElement;
+    if (!pre) return;
+    
+    // Create a new div with mermaid class
+    const mermaidDiv = document.createElement('div');
+    mermaidDiv.className = 'mermaid';
+    // Get the text content (the Mermaid diagram definition)
+    mermaidDiv.textContent = codeBlock.textContent;
+    
+    // Replace the <pre><code> with the mermaid div
+    pre.parentNode.replaceChild(mermaidDiv, pre);
+  });
+}
+
 // Wait for Mermaid to load, then initialize
 function initializeMermaid() {
   if (typeof mermaid !== 'undefined') {
+    // First, convert fenced code blocks to mermaid divs
+    convertMermaidCodeBlocks();
+    
     mermaid.initialize({
-      startOnLoad: true,
+      startOnLoad: false,
       theme: 'dark',
       themeVariables: {
         primaryColor: '#45818e',
@@ -37,10 +64,10 @@ function initializeMermaid() {
       securityLevel: 'loose'
     });
 
-    // Render all mermaid diagrams on the page
-    setTimeout(() => {
-      mermaid.init();
-    }, 100);
+    // Run mermaid on all .mermaid elements
+    mermaid.run({
+      querySelector: '.mermaid'
+    });
   } else {
     // Retry if Mermaid not loaded yet
     setTimeout(initializeMermaid, 100);
@@ -117,46 +144,6 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   });
-
-  // Add loading animation for Mermaid diagrams
-  document.querySelectorAll('.mermaid').forEach(function(diagram) {
-    const loading = document.createElement('div');
-    loading.textContent = 'Rendering diagram...';
-    loading.style.cssText = `
-      text-align: center;
-      color: #00ffe7;
-      font-style: italic;
-      padding: 20px;
-      background: rgba(26, 42, 42, 0.8);
-      border-radius: 8px;
-      margin: 10px 0;
-    `;
-    diagram.appendChild(loading);
-
-    // Remove loading after rendering
-    setTimeout(() => {
-      if (loading.parentNode) {
-        loading.remove();
-      }
-    }, 3000);
-  });
-
-  // Force re-render of all diagrams after initialization
-  setTimeout(() => {
-    if (typeof mermaid !== 'undefined') {
-      document.querySelectorAll('.mermaid').forEach((element, index) => {
-        const id = 'mermaid-' + index;
-        element.id = id;
-        try {
-          mermaid.render(id, element.textContent.trim()).then((result) => {
-            element.innerHTML = result.svg;
-          });
-        } catch (e) {
-          console.log('Mermaid render failed for element:', element);
-        }
-      });
-    }
-  }, 500);
 
   // Add theme toggle (optional future enhancement)
   console.log('Smart Elections Documentation loaded with metallic theme');
