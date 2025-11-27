@@ -17,31 +17,31 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
   <div class="feature" data-section="architecture">
     <h3>🏗️ System Architecture</h3>
     <p>Complete system overview, data flow, and component interactions. Understand how the parser orchestrates multi-format extraction.</p>
-    <a href="architecture.md">View Architecture →</a>
+    <a href="architecture">View Architecture →</a>
   </div>
 
   <div class="feature" data-section="audit">
     <h3>🔍 Project Audit</h3>
     <p>Automated analysis of all modules, dependencies, and cross-references with interactive Mermaid diagrams.</p>
-    <a href="project_audit.md">View Audit →</a>
+    <a href="project_audit">View Audit →</a>
   </div>
 
   <div class="feature" data-section="todos">
     <h3>📋 Development Roadmap</h3>
     <p>Current TODOs, planned features, and development priorities across the codebase.</p>
-    <a href="todos.md">View Roadmap →</a>
+    <a href="todos">View Roadmap →</a>
   </div>
 
   <div class="feature" data-section="pipeline">
     <h3>🔄 Pipeline Flow</h3>
     <p>Visual pipeline mapping with module details, execution paths, and Mermaid-rendered flow diagrams.</p>
-    <a href="pipeline_map.md">View Pipeline →</a>
+    <a href="pipeline_map">View Pipeline →</a>
   </div>
 
   <div class="feature" data-section="handlers">
     <h3>🔧 Handler Development</h3>
     <p>Building state/county/format parsers with modular architecture and extension patterns.</p>
-    <a href="handlers.md">Contribute →</a>
+    <a href="handlers">Contribute →</a>
   </div>
 </div>
 
@@ -49,19 +49,11 @@ Welcome to the comprehensive documentation for the **Smart Elections Parser** - 
 
 ## 📖 Documentation Overview
 
-### Core Technical Documentation
-
-- [**System Architecture**](architecture.md) - Component design, data flows, and orchestration
-- [**Handler Development**](handlers.md) - Building state/county/format parsers
-- [**Project Audit**](project_audit.md) - Automated code analysis and cross-references
-- [**Development Roadmap**](todos.md) - Current tasks and future enhancements
-- [**Pipeline Mapping**](pipeline_map.md) - Visual execution flow and module relationships
-
 ### Specialized Documentation
 
-- [**Noise Filtering**](noise_override_suggestions.md) - PDF/OCR processing overrides
-- [**Troubleshooting**](troubleshooting.md) - Common issues and solutions
-- [**Election Integrity Guidelines**](Election%20Integrity%20Guidelines.md) - Integrity and transparency practices
+- [**Noise Filtering**](noise_override_suggestions) - PDF/OCR processing overrides
+- [**Troubleshooting**](troubleshooting) - Common issues and solutions
+- [**Election Integrity Guidelines**](Election%20Integrity%20Guidelines) - Integrity and transparency practices
 
 ---
 
