@@ -2423,6 +2423,15 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     lines.append("")
     lines.append("```mermaid")
     lines.append("graph LR")
+    # Subgraphs
+    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
+        nodes = sorted(list(cluster_nodes.get(cname, [])))[:12]
+        if not nodes:
+            continue
+        lines.append(f"  subgraph {cname}[\"{cname}\"]")
+        for n in nodes:
+            lines.append(f"    {n.replace('.', '_')}[{n}]")
+        lines.append("  end")
     for (src, dst), cnt in top_edges:
         lines.append(f"  {src.replace('.', '_')}[{src}] -->|{cnt}| {dst.replace('.', '_')}[{dst}]")
     if not top_edges:
@@ -2456,6 +2465,15 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     top_pipe = sorted(pipe_counts.items(), key=lambda kv: -kv[1])[:15]
     lines.append("```mermaid")
     lines.append("graph LR")
+    # Subgraphs
+    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
+        nodes = sorted(list(cluster_nodes.get(cname, [])))[:12]
+        if not nodes:
+            continue
+        lines.append(f"  subgraph {cname}[\"{cname}\"]")
+        for n in nodes:
+            lines.append(f"    {n.replace('.', '_')}[{n}]")
+        lines.append("  end")
     for (src, dst), cnt in top_pipe:
         lines.append(f"  {src.replace('.', '_')}[{src}] -->|{cnt}| {dst.replace('.', '_')}[{dst}]")
     if not top_pipe:
@@ -2552,7 +2570,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         nodes = sorted(list(cluster_nodes.get(cname, [])))[:12]
         if not nodes:
             continue
-        lines.append(f"  subgraph {cname}")
+        lines.append(f"  subgraph {cname}[\"{cname}\"]")
         for n in nodes:
             lines.append(f"    {n.replace('.', '_')}[{n}]")
         lines.append("  end")
@@ -2969,7 +2987,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             nodes = sorted(list(cluster_nodes.get(cname, [])))[:15]  # Reduced for GitHub compatibility
             if not nodes:
                 continue
-            lines.append(f"  subgraph {cname.replace(' ', '_')}[{cname}]")
+            lines.append(f"  subgraph {cname.replace(' ', '_')}[\"{cname}\"]")
             for n in nodes:
                 lines.append(f"    {n.replace('.', '_')}[{n}]")
             lines.append("  end")

@@ -20,18 +20,18 @@ dependencies, and optimization insights.
 
 ```mermaid
 graph TD
-  subgraph Entry[Entry]
+  subgraph Entry["Entry"]
     html_election_parser[html_election_parser]
   end
-  subgraph Routing[Routing]
+  subgraph Routing["Routing"]
     state_router[state_router]
   end
-  subgraph State_Handlers[State Handlers]
+  subgraph State_Handlers["State Handlers"]
     example_county[example_county]
     example_state[example_state]
     rockland[rockland]
   end
-  subgraph Format_Handlers[Format Handlers]
+  subgraph Format_Handlers["Format Handlers"]
     csv_handler[csv_handler]
     html_handler[html_handler]
     json_handler[json_handler]
@@ -39,10 +39,10 @@ graph TD
     txt_handler[txt_handler]
     xlsx_handler[xlsx_handler]
   end
-  subgraph Services[Services]
+  subgraph Services["Services"]
     election_data_services[election_data_services]
   end
-  subgraph Utils[Utils]
+  subgraph Utils["Utils"]
     browser_utils[browser_utils]
     contest_normalization[contest_normalization]
     contest_selector[contest_selector]
@@ -59,14 +59,14 @@ graph TD
     logger_singleton[logger_singleton]
     ml_table_detector[ml_table_detector]
   end
-  subgraph Context_Integration[Context Integration]
+  subgraph Context_Integration["Context Integration"]
     Integrity_check[Integrity_check]
     constants[constants]
     context_coordinator[context_coordinator]
     context_organizer[context_organizer]
     librarian[librarian]
   end
-  subgraph Health[Health]
+  subgraph Health["Health"]
     log_cache_cleaner_bot[log_cache_cleaner_bot]
     manual_correction_bot[manual_correction_bot]
     retrain_table_structure_models[retrain_table_structure_models]
@@ -3015,8 +3015,8 @@ warnings; check markers and path.")
 - L2204 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
 list of (lineno, keyword, cleaned*text)."""
 - L2206 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-- L2619 **TODO**: /FIXME/WARN
-- L2622 **TODO**: /FIXME/WARN:")
+- L2637 **TODO**: /FIXME/WARN
+- L2640 **TODO**: /FIXME/WARN:")
 
 ### webapp/parser/utils/spacy\_utils.py
 
