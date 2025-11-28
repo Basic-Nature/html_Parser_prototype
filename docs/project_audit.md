@@ -1,8 +1,3 @@
----
-layout: default
-title: "Project Audit"
----
-
 # Project Audit — webapp
 
 Modules scanned: 98 | ~53870 non-empty LOC
