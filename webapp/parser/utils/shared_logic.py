@@ -2390,6 +2390,12 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     import os
     # Summary
     lines: list[str] = []
+    # Add YAML front matter for GitHub Pages
+    lines.append("---")
+    lines.append("layout: default")
+    lines.append('title: "Project Audit"')
+    lines.append("---")
+    lines.append("")
     total = len(modules)
     total_loc = sum(m.get("loc", 0) for m in modules)
     lines.append("# Project Audit — webapp\n")
@@ -2397,13 +2403,16 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
 
     # Helper function to build cluster nodes
     def _build_cluster_nodes() -> dict[str, set[str]]:
-        cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Other"]}
+        cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health","Other"]}
         for e in edges:
             sp = e.get("src_path")
             dp = e.get("resolved_path")
+            # Only include edges where both src and dst are resolved module paths
+            if not sp or not dp:
+                continue
             sm = _to_mod(sp)
-            dm = _to_mod(dp or e.get("target"))
-            if not sm or not dm or dm == "unknown" or sm == dm:
+            dm = _to_mod(dp)
+            if not sm or not dm or dm == "unknown" or sm == "unknown" or sm == dm:
                 continue
             sc = _cluster_for_path(sp)
             dc = _cluster_for_path(dp)
@@ -2440,28 +2449,65 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             return "Services"
         if "/webapp/parser/utils/" in p:
             return "Utils"
+        if "/webapp/parser/Context_Integration/" in p:
+            return "Context_Integration"
+        if "/webapp/parser/health/" in p:
+            return "Health"
         return "Other"
 
     # High-level call graph (top 25 edges)
     lines.append("## Pipeline map (Mermaid)")
     lines.append("")
-    # Build module-level edges using resolved paths where available
+    # Build module-level edges using resolved paths ONLY (skip if no resolved_path)
     edge_counts: dict[tuple[str, str], int] = {}
     for e in edges:
-        src = _to_mod(e.get("src_path"))
-        dst = _to_mod(e.get("resolved_path") or e.get("target"))
-        if src == dst or dst == "unknown":
+        sp = e.get("src_path")
+        dp = e.get("resolved_path")
+        # Only include edges where both src and dst resolve to actual modules
+        if not sp or not dp:
+            continue
+        src = _to_mod(sp)
+        dst = _to_mod(dp)
+        if src == dst or dst == "unknown" or src == "unknown":
             continue
         edge_counts[(src, dst)] = edge_counts.get((src, dst), 0) + 1
-    # Top 25
+    # Top 15
     top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:15]
+    
+    # Build node-to-cluster mapping from edges to ensure all edge nodes are included
+    node_to_cluster: dict[str, str] = {}
+    for e in edges:
+        sp = e.get("src_path")
+        dp = e.get("resolved_path")
+        if sp:
+            sm = _to_mod(sp)
+            if sm != "unknown":
+                node_to_cluster[sm] = _cluster_for_path(sp)
+        if dp:
+            dm = _to_mod(dp)
+            if dm != "unknown":
+                node_to_cluster[dm] = _cluster_for_path(dp)
+    
+    # Collect all edge nodes
+    edge_nodes: set[str] = set()
+    for (src, dst), _ in top_edges:
+        edge_nodes.add(src)
+        edge_nodes.add(dst)
+    
     lines.append("")
     lines.append("```mermaid")
     lines.append("graph LR")
-    # Subgraphs
+    # Subgraphs - prioritize nodes that appear in edges
     cluster_nodes = _build_cluster_nodes()
-    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
-        nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
+    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health"]:
+        all_cluster_nodes = cluster_nodes.get(cname, set())
+        # Prioritize edge nodes in this cluster
+        priority_nodes = [n for n in edge_nodes if node_to_cluster.get(n) == cname]
+        other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
+        # Include all priority nodes first, then fill up to limit
+        max_nodes = max(8, len(priority_nodes))
+        nodes = sorted(priority_nodes) + sorted(other_nodes)
+        nodes = nodes[:max_nodes]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
@@ -2493,18 +2539,49 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     for e in edges:
         sp = e.get("src_path")
         dp = e.get("resolved_path")
-        if _is_pipeline_path(sp) and (_is_pipeline_path(dp) if dp else True):
+        # Only include edges where both src and dst are resolved module paths
+        if not sp or not dp:
+            continue
+        if _is_pipeline_path(sp) and _is_pipeline_path(dp):
             src = _to_mod(sp)
-            dst = _to_mod(dp or e.get("target"))
-            if src != dst and dst != "unknown":
+            dst = _to_mod(dp)
+            if src != dst and dst != "unknown" and src != "unknown":
                 pipe_counts[(src, dst)] = pipe_counts.get((src, dst), 0) + 1
     top_pipe = sorted(pipe_counts.items(), key=lambda kv: -kv[1])[:10]
+    
+    # Build node-to-cluster mapping for pipe edges
+    pipe_node_to_cluster: dict[str, str] = {}
+    for e in edges:
+        sp = e.get("src_path")
+        dp = e.get("resolved_path")
+        if sp and _is_pipeline_path(sp):
+            sm = _to_mod(sp)
+            if sm != "unknown":
+                pipe_node_to_cluster[sm] = _cluster_for_path(sp)
+        if dp and _is_pipeline_path(dp):
+            dm = _to_mod(dp)
+            if dm != "unknown":
+                pipe_node_to_cluster[dm] = _cluster_for_path(dp)
+    
+    # Collect all pipe edge nodes
+    pipe_edge_nodes: set[str] = set()
+    for (src, dst), _ in top_pipe:
+        pipe_edge_nodes.add(src)
+        pipe_edge_nodes.add(dst)
+    
     lines.append("```mermaid")
     lines.append("graph LR")
-    # Subgraphs
+    # Subgraphs - prioritize nodes that appear in pipe edges
     cluster_nodes = _build_cluster_nodes()
-    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
-        nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
+    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health"]:
+        all_cluster_nodes = cluster_nodes.get(cname, set())
+        # Prioritize edge nodes in this cluster
+        priority_nodes = [n for n in pipe_edge_nodes if pipe_node_to_cluster.get(n) == cname]
+        other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
+        # Include all priority nodes first, then fill up to limit
+        max_nodes = max(8, len(priority_nodes))
+        nodes = sorted(priority_nodes) + sorted(other_nodes)
+        nodes = nodes[:max_nodes]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
@@ -2582,29 +2659,53 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             return "Services"
         if "/webapp/parser/utils/" in p:
             return "Utils"
+        if "/webapp/parser/Context_Integration/" in p:
+            return "Context_Integration"
+        if "/webapp/parser/health/" in p:
+            return "Health"
         return "Other"
     # Build node sets by cluster and limited edges between them
-    cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Other"]}
+    cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health","Other"]}
     cluster_edges: dict[tuple[str,str], int] = {}
+    node_to_cluster_map: dict[str, str] = {}
     for e in edges:
         sp = e.get("src_path")
         dp = e.get("resolved_path")
+        # Only include edges where both src and dst are resolved module paths
+        if not sp or not dp:
+            continue
         sm = _to_mod(sp)
-        dm = _to_mod(dp or e.get("target"))
-        if not sm or not dm or dm == "unknown" or sm == dm:
+        dm = _to_mod(dp)
+        if not sm or not dm or dm == "unknown" or sm == "unknown" or sm == dm:
             continue
         sc = _cluster_for_path(sp)
         dc = _cluster_for_path(dp)
         cluster_nodes[sc].add(sm)
         cluster_nodes[dc].add(dm)
+        node_to_cluster_map[sm] = sc
+        node_to_cluster_map[dm] = dc
         cluster_edges[(sm, dm)] = cluster_edges.get((sm, dm), 0) + 1
-    # Keep only top 20 edges for compactness
+    # Keep only top 15 edges for compactness
     top_cluster_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:15]
+    
+    # Collect all cluster edge nodes
+    cluster_edge_nodes: set[str] = set()
+    for (src, dst), _ in top_cluster_edges:
+        cluster_edge_nodes.add(src)
+        cluster_edge_nodes.add(dst)
+    
     lines.append("```mermaid")
     lines.append("graph LR")
-    # Subgraphs
-    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
-        nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
+    # Subgraphs - prioritize nodes that appear in edges
+    for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Context_Integration","Health"]:
+        all_cluster_nodes = cluster_nodes.get(cname, set())
+        # Prioritize edge nodes in this cluster
+        priority_nodes = [n for n in cluster_edge_nodes if node_to_cluster_map.get(n) == cname]
+        other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
+        # Include all priority nodes first, then fill up to limit
+        max_nodes = max(8, len(priority_nodes))
+        nodes = sorted(priority_nodes) + sorted(other_nodes)
+        nodes = nodes[:max_nodes]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
@@ -2848,6 +2949,12 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
                     priority_todos['low'].append(item)
         
         lines: list[str] = []
+        # Add YAML front matter for GitHub Pages
+        lines.append("---")
+        lines.append("layout: default")
+        lines.append('title: "TODO/FIXME Index"')
+        lines.append("---")
+        lines.append("")
         lines.append("# TODO/FIXME index — webapp\n")
         lines.append(f"Total annotations: {total}\n")
         
@@ -2933,6 +3040,12 @@ def generate_noise_override_suggestions(
 
         # Render markdown
         lines: list[str] = []
+        # Add YAML front matter for GitHub Pages
+        lines.append("---")
+        lines.append("layout: default")
+        lines.append('title: "Noise Override Suggestions"')
+        lines.append("---")
+        lines.append("")
         lines.append("# Suggested Camelot noise overrides\n")
         lines.append(f"Min count cutoff: {min_count}\n")
         # State-level
@@ -3049,23 +3162,42 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         # Build nodes and edges with clusters
         cluster_nodes: dict[str, set[str]] = {c: set() for c in ["Entry", "Pipeline", "Routing", "State Handlers", "Format Handlers", "Shared Handlers", "Services", "Utils", "Context Integration", "Health", "Other"]}
         cluster_edges: dict[tuple[str, str], int] = {}
+        node_to_cluster: dict[str, str] = {}
         for e in edges:
             sp = e.get("src_path")
             dp = e.get("resolved_path")
-            if not _is_target_path(sp) or not _is_target_path(dp or ""):
+            # Only include edges where both src and dst are resolved module paths
+            if not sp or not dp:
+                continue
+            if not _is_target_path(sp) or not _is_target_path(dp):
                 continue
             src = _to_mod(sp)
-            dst = _to_mod(dp or e.get("target"))
-            if src == dst or dst == "unknown":
+            dst = _to_mod(dp)
+            if src == dst or dst == "unknown" or src == "unknown":
                 continue
             sc = _cluster_for_path(sp)
             dc = _cluster_for_path(dp)
             cluster_nodes[sc].add(src)
             cluster_nodes[dc].add(dst)
+            node_to_cluster[src] = sc
+            node_to_cluster[dst] = dc
             cluster_edges[(src, dst)] = cluster_edges.get((src, dst), 0) + 1
         # Top edges
         top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:20]  # Further reduced for readability
+        
+        # Collect all edge nodes
+        edge_nodes: set[str] = set()
+        for (src, dst), _ in top_edges:
+            edge_nodes.add(src)
+            edge_nodes.add(dst)
+        
         lines: list[str] = []
+        # Add YAML front matter for GitHub Pages
+        lines.append("---")
+        lines.append("layout: default")
+        lines.append('title: "Comprehensive Pipeline Audit & Map"')
+        lines.append("---")
+        lines.append("")
         lines.append("# Comprehensive Pipeline Audit & Map")
         lines.append("")
         lines.append("## 📋 Table of Contents")
@@ -3086,9 +3218,16 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         lines.append("")
         lines.append("```mermaid")
         lines.append("graph TD")
-        # Subgraphs
+        # Subgraphs - prioritize nodes that appear in edges
         for cname in ["Entry", "Pipeline", "Routing", "State Handlers", "Format Handlers", "Shared Handlers", "Services", "Utils", "Context Integration", "Health"]:
-            nodes = sorted(list(cluster_nodes.get(cname, [])))[:10]  # Further reduced for readability
+            all_cluster_nodes = cluster_nodes.get(cname, set())
+            # Prioritize edge nodes in this cluster
+            priority_nodes = [n for n in edge_nodes if node_to_cluster.get(n) == cname]
+            other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
+            # Include all priority nodes first, then fill up to limit
+            max_nodes = max(10, len(priority_nodes))
+            nodes = sorted(priority_nodes) + sorted(other_nodes)
+            nodes = nodes[:max_nodes]
             if not nodes:
                 continue
             lines.append(f"  subgraph {cname.replace(' ', '_')}[\"{cname}\"]")
