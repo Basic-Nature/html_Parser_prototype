@@ -14,8 +14,8 @@ title: "Comprehensive Pipeline Audit & Map"
 
 ## Overview
 
-- **Total Modules Audited:** 48
-- **Total Connections:** 64
+- **Total Modules Audited:** 49
+- **Total Connections:** 63
 - **Clusters:** Entry, Pipeline, Routing, State Handlers, Format Handlers,
 Shared Handlers, Services, Utils, Context Integration, Health
 - **Audit Scope:** All `webapp/parser/` files with full context, imports,
@@ -37,10 +37,10 @@ graph TD
     rockland["rockland"]
   end
   subgraph Format_Handlers["Format Handlers"]
+    pdf_handler["pdf_handler"]
     csv_handler["csv_handler"]
     html_handler["html_handler"]
     json_handler["json_handler"]
-    pdf_handler["pdf_handler"]
     txt_handler["txt_handler"]
     xlsx_handler["xlsx_handler"]
   end
@@ -51,20 +51,25 @@ graph TD
     browser_utils["browser_utils"]
     contest_normalization["contest_normalization"]
     contest_selector["contest_selector"]
-    db_utils["db_utils"]
     detect["detect"]
-    detector["detector"]
-    download_utils["download_utils"]
     dynamic_table_extractor["dynamic_table_extractor"]
-    extraction_strategies["extraction_strategies"]
     format_router["format_router"]
+    html_scanner["html_scanner"]
+    json_export_loader["json_export_loader"]
+    models["models"]
+    pattern_extractor["pattern_extractor"]
+    pdf_table_utils["pdf_table_utils"]
+    pivot["pivot"]
+    shared_logic["shared_logic"]
+    table_builder["table_builder"]
+    user_prompt["user_prompt"]
   end
   subgraph Context_Integration["Context Integration"]
     Integrity_check["Integrity_check"]
-    constants["constants"]
     context_coordinator["context_coordinator"]
-    context_organizer["context_organizer"]
     librarian["librarian"]
+    constants["constants"]
+    context_organizer["context_organizer"]
   end
   subgraph Health["Health"]
     log_cache_cleaner_bot["log_cache_cleaner_bot"]
@@ -81,17 +86,17 @@ graph TD
   html_scanner -->|9| librarian
   user_prompt -->|9| shared_logic
   pattern_extractor -->|7| browser_utils
-  election_data_services -->|6| models
   html_scanner -->|6| context_coordinator
+  detect -->|6| shared_logic
+  election_data_services -->|6| models
+  contest_normalization -->|4| pivot
   table_builder -->|4| pivot
   table_builder -->|4| context_coordinator
   html_election_parser -->|3| Integrity_check
   shared_logic -->|3| format_router
-  html_election_parser -->|2| pdf_handler
-  html_election_parser -->|2| context_coordinator
+  pdf_handler -->|3| pdf_table_utils
   state_router -->|2| context_coordinator
-  context_organizer -->|2| html_scanner
-  context_organizer -->|2| db_utils
+  html_election_parser -->|2| pdf_handler
 ```
 
 **✨ Legend:** Colors indicate module categories with metallic accents. Click
@@ -2995,8 +3000,8 @@ warnings; check markers and path.")
 - L2204 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
 list of (lineno, keyword, cleaned*text)."""
 - L2206 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-- L2730 **TODO**: /FIXME/WARN
-- L2733 **TODO**: /FIXME/WARN:")
+- L2836 **TODO**: /FIXME/WARN
+- L2839 **TODO**: /FIXME/WARN:")
 
 ### webapp/parser/utils/spacy\_utils.py
 
