@@ -1,11 +1,41 @@
 // Smart Elections Parser - Documentation JavaScript
 // Ensures Mermaid graphs render and adds theme enhancements
 
+/**
+ * Convert fenced code blocks (```mermaid) to Mermaid-compatible div elements.
+ * Jekyll/GitHub Pages converts ```mermaid blocks to <pre><code class="language-mermaid">
+ * but Mermaid.js expects <div class="mermaid"> elements.
+ */
+function convertMermaidCodeBlocks() {
+  // Find all code blocks with language-mermaid class
+  const codeBlocks = document.querySelectorAll('pre > code.language-mermaid');
+  
+  codeBlocks.forEach((codeBlock) => {
+    const pre = codeBlock.parentElement;
+    const parent = pre.parentNode;
+    
+    // Safety check: ensure pre is still in the DOM
+    if (!parent) return;
+    
+    // Create a new div with mermaid class
+    const mermaidDiv = document.createElement('div');
+    mermaidDiv.className = 'mermaid';
+    // Get the text content (the Mermaid diagram definition)
+    mermaidDiv.textContent = codeBlock.textContent;
+    
+    // Replace the <pre><code> with the mermaid div
+    parent.replaceChild(mermaidDiv, pre);
+  });
+}
+
 // Wait for Mermaid to load, then initialize
 function initializeMermaid() {
   if (typeof mermaid !== 'undefined') {
+    // First, convert fenced code blocks to mermaid divs
+    convertMermaidCodeBlocks();
+    
     mermaid.initialize({
-      startOnLoad: true,
+      startOnLoad: false,
       theme: 'dark',
       themeVariables: {
         primaryColor: '#45818e',
@@ -37,10 +67,10 @@ function initializeMermaid() {
       securityLevel: 'loose'
     });
 
-    // Render all mermaid diagrams on the page
-    setTimeout(() => {
-      mermaid.init();
-    }, 100);
+    // Run mermaid on all .mermaid elements
+    mermaid.run({
+      querySelector: '.mermaid'
+    });
   } else {
     // Retry if Mermaid not loaded yet
     setTimeout(initializeMermaid, 100);
