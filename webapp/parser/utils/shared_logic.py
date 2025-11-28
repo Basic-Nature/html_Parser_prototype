@@ -2395,11 +2395,22 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     lines.append("# Project Audit — webapp\n")
     lines.append(f"Modules scanned: {total} | ~{total_loc} non-empty LOC\n")
 
-    # High-level call graph (top 25 edges)
-    lines.append("## Pipeline map (Mermaid)")
-    lines.append("")
-    # Build module-level edges using resolved paths where available
-    edge_counts: dict[tuple[str, str], int] = {}
+    # Helper function to build cluster nodes
+    def _build_cluster_nodes() -> dict[str, set[str]]:
+        cluster_nodes: dict[str, set[str]] = {k: set() for k in ["Entry","Pipeline","Routing","Handlers","Services","Utils","Other"]}
+        for e in edges:
+            sp = e.get("src_path")
+            dp = e.get("resolved_path")
+            sm = _to_mod(sp)
+            dm = _to_mod(dp or e.get("target"))
+            if not sm or not dm or dm == "unknown" or sm == dm:
+                continue
+            sc = _cluster_for_path(sp)
+            dc = _cluster_for_path(dp)
+            cluster_nodes[sc].add(sm)
+            cluster_nodes[dc].add(dm)
+        return cluster_nodes
+
     def _to_mod(p: str | None) -> str:
         if not p:
             return "unknown"
@@ -2412,6 +2423,30 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         parts = full.split(".")
         # Use last 1 part to shorten
         return ".".join(parts[-1:]) if len(parts) > 1 else full
+
+    def _cluster_for_path(p: str) -> str:
+        if not p:
+            return "Other"
+        p = p.replace("\\", "/")
+        if p.endswith("/webapp/Smart_Elections_Parser_Webapp.py"):
+            return "Entry"
+        if "/webapp/parser/web_pipeline.py" in p:
+            return "Pipeline"
+        if "/webapp/parser/state_router.py" in p:
+            return "Routing"
+        if "/webapp/parser/handlers/" in p:
+            return "Handlers"
+        if "/webapp/parser/services/" in p:
+            return "Services"
+        if "/webapp/parser/utils/" in p:
+            return "Utils"
+        return "Other"
+
+    # High-level call graph (top 25 edges)
+    lines.append("## Pipeline map (Mermaid)")
+    lines.append("")
+    # Build module-level edges using resolved paths where available
+    edge_counts: dict[tuple[str, str], int] = {}
     for e in edges:
         src = _to_mod(e.get("src_path"))
         dst = _to_mod(e.get("resolved_path") or e.get("target"))
@@ -2424,16 +2459,17 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     lines.append("```mermaid")
     lines.append("graph LR")
     # Subgraphs
+    cluster_nodes = _build_cluster_nodes()
     for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
         nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
         for n in nodes:
-            lines.append(f"    {n.replace('.', '_')}[{n}]")
+            lines.append(f"    {n.replace('.', '_')}[\"{n}\"]")
         lines.append("  end")
     for (src, dst), cnt in top_edges:
-        lines.append(f"  {src.replace('.', '_')}[{src}] -->|{cnt}| {dst.replace('.', '_')}[{dst}]")
+        lines.append(f"  {src.replace('.', '_')} -->|{cnt}| {dst.replace('.', '_')}")
     if not top_edges:
         lines.append("  A[no data] --> B[no data]")
     lines.append("```")
@@ -2466,16 +2502,17 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     lines.append("```mermaid")
     lines.append("graph LR")
     # Subgraphs
+    cluster_nodes = _build_cluster_nodes()
     for cname in ["Entry","Pipeline","Routing","Handlers","Services","Utils"]:
         nodes = sorted(list(cluster_nodes.get(cname, [])))[:8]
         if not nodes:
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
         for n in nodes:
-            lines.append(f"    {n.replace('.', '_')}[{n}]")
+            lines.append(f"    {n.replace('.', '_')}[\"{n}\"]")
         lines.append("  end")
     for (src, dst), cnt in top_pipe:
-        lines.append(f"  {src.replace('.', '_')}[{src}] -->|{cnt}| {dst.replace('.', '_')}[{dst}]")
+        lines.append(f"  {src.replace('.', '_')} -->|{cnt}| {dst.replace('.', '_')}")
     if not top_pipe:
         lines.append("  A[no data] --> B[no data]")
     lines.append("```")
@@ -2572,7 +2609,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             continue
         lines.append(f"  subgraph {cname}[\"{cname}\"]")
         for n in nodes:
-            lines.append(f"    {n.replace('.', '_')}[{n}]")
+            lines.append(f"    {n.replace('.', '_')}[\"{n}\"]")
         lines.append("  end")
     # Edges
     for (src, dst), cnt in top_cluster_edges:
@@ -2626,14 +2663,70 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         # Imports
         imps = m.get("imports", [])
         if imps:
-            lines.append("- Imports:")
-            for im in imps[:100]:
-                if im["type"] == "import":
-                    lines.append(f"  - `import {im['module']} as {im.get('alias') or im['module'].split('.')[0]} (line {im.get('lineno','?')})`")
+            # Categorize imports
+            stdlib_imports = []
+            third_party_imports = []
+            local_imports = []
+            
+            # Standard library modules (built-in)
+            stdlib_modules = {
+                'abc', 'argparse', 'ast', 'asyncio', 'base64', 'collections', 'contextlib', 
+                'copy', 'csv', 'dataclasses', 'datetime', 'decimal', 'enum', 'functools', 
+                'hashlib', 'heapq', 'html', 'http', 'inspect', 'io', 'itertools', 'json', 
+                'logging', 'math', 'multiprocessing', 'operator', 'os', 'pathlib', 'pickle', 
+                'platform', 'queue', 'random', 're', 'shutil', 'socket', 'sqlite3', 'ssl', 
+                'statistics', 'string', 'subprocess', 'sys', 'tempfile', 'threading', 'time', 
+                'timeit', 'traceback', 'typing', 'unittest', 'urllib', 'uuid', 'warnings', 
+                'weakref', 'xml', 'zipfile', 'zlib'
+            }
+            
+            for im in imps:
+                module_name = im['module'].split('.')[0]
+                if module_name in stdlib_modules:
+                    stdlib_imports.append(im)
+                elif module_name in ('webapp', 'flask', 'werkzeug', 'jinja2', 'click', 'itsdangerous',
+                                   'blinker', 'markupsafe', 'orjson', 'python-dotenv', 'playwright',
+                                   'PIL', 'pytesseract', 'spacy', 'transformers', 'torch', 'numpy',
+                                   'pandas', 'requests', 'beautifulsoup4', 'lxml', 'selenium',
+                                   'pytest', 'coverage', 'black', 'flake8', 'mypy', 'bandit',
+                                   'sqlalchemy', 'psycopg2', 'pymongo', 'redis', 'celery',
+                                   'twilio', 'sendgrid', 'boto3', 'google', 'azure', 'openai',
+                                   'huggingface', 'sentence-transformers', 'scikit-learn', 'nltk'):
+                    third_party_imports.append(im)
                 else:
-                    alias = im.get('alias')
-                    alias_s = f" as {alias}" if alias else ""
-                    lines.append(f"  - `from {im['module']} import {im['name']}{alias_s} (line {im.get('lineno','?')})`")
+                    local_imports.append(im)
+            
+            lines.append("- Imports:")
+            
+            if stdlib_imports:
+                lines.append("  - **Standard Library** (%d):" % len(stdlib_imports))
+                for im in stdlib_imports[:50]:
+                    if im["type"] == "import":
+                        lines.append(f"    - `import {im['module']} as {im.get('alias') or im['module'].split('.')[0]}` (line {im.get('lineno','?')})")
+                    else:
+                        alias = im.get('alias')
+                        alias_s = f" as {alias}" if alias else ""
+                        lines.append(f"    - `from {im['module']} import {im['name']}{alias_s}` (line {im.get('lineno','?')})")
+            
+            if third_party_imports:
+                lines.append("  - **Third-party** (%d):" % len(third_party_imports))
+                for im in third_party_imports[:50]:
+                    if im["type"] == "import":
+                        lines.append(f"    - `import {im['module']} as {im.get('alias') or im['module'].split('.')[0]}` (line {im.get('lineno','?')})")
+                    else:
+                        alias = im.get('alias')
+                        alias_s = f" as {alias}" if alias else ""
+                        lines.append(f"    - `from {im['module']} import {im['name']}{alias_s}` (line {im.get('lineno','?')})")
+            
+            if local_imports:
+                lines.append("  - **Local/Project** (%d):" % len(local_imports))
+                for im in local_imports[:50]:
+                    if im["type"] == "import":
+                        lines.append(f"    - `import {im['module']} as {im.get('alias') or im['module'].split('.')[0]}` (line {im.get('lineno','?')})")
+                    else:
+                        alias = im.get('alias')
+                        alias_s = f" as {alias}" if alias else ""
+                        lines.append(f"    - `from {im['module']} import {im['name']}{alias_s}` (line {im.get('lineno','?')})")
         # TODO/FIXME/WARN
         todos = m.get("todo_lines", [])
         if todos:
@@ -2644,6 +2737,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                 safe_txt = re.sub(r'\s+(\*|_)', r'\1', safe_txt)
                 safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
                 safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
+                safe_txt = safe_txt.replace('_', '*')  # Replace any remaining _ with *
                 lines.append(f"  - L{ln} **{keyword}**: {safe_txt}")
         # Outgoing calls (cross-module)
         calls = [c for c in m.get("calls", []) if any(sep in c.get("func"," ") for sep in (".", ":"))]
@@ -2744,6 +2838,7 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
                 safe_txt = re.sub(r'(\*|_)\s*([^ *]*)\s*(\*|_)', r'\1\2\3', safe_txt)
                 # Fix reversed links
                 safe_txt = re.sub(r'\(([^)]+)\)\[:(\d+)\]', r'[\1][:\2]', safe_txt)
+                safe_txt = safe_txt.replace('_', '*')  # Replace any remaining _ with *
                 item = (path, ln, keyword, safe_txt)
                 if keyword in high_keywords:
                     priority_todos['high'].append(item)
@@ -2919,6 +3014,13 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
                 return False
             p = p.replace("\\", "/")
             return "/webapp/parser/" in p  # Broadened to all parser files
+        def get_key_funcs(modules: list[dict], path: str) -> list[str]:
+            for m in modules:
+                if m.get("path") == path:
+                    defs = m.get("defs", [])
+                    funcs = [d["name"] for d in defs if d.get("type") in ("function", "async_function")]
+                    return funcs[:5]  # Top 5 functions
+            return []
         def _cluster_for_path(p: str) -> str:
             if not p:
                 return "Other"
@@ -2991,7 +3093,14 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
                 continue
             lines.append(f"  subgraph {cname.replace(' ', '_')}[\"{cname}\"]")
             for n in nodes:
-                lines.append(f"    {n.replace('.', '_')}[{n}]")
+                funcs = get_key_funcs(modules, f"webapp/parser/{cname.lower().replace(' ', '/')}/{n}.py")
+                if funcs:
+                    lines.append(f"    subgraph {n.replace('.', '_')}[\"{n}\"]")
+                    for f in funcs:
+                        lines.append(f"      {n.replace('.', '_')}_{f}[\"{f}\"]")
+                    lines.append("    end")
+                else:
+                    lines.append(f"    {n.replace('.', '_')}[\"{n}\"]")
             lines.append("  end")
         # Edges
         for (src, dst), cnt in top_edges:
