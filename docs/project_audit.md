@@ -5,7 +5,7 @@ title: "Project Audit"
 
 # Project Audit — webapp
 
-Modules scanned: 78 | ~51773 non-empty LOC
+Modules scanned: 78 | ~51779 non-empty LOC
 
 ## Pipeline map (Mermaid)
 
@@ -86,12 +86,12 @@ graph LR
     state_router["state_router"]
   end
   subgraph Handlers["Handlers"]
+    pdf_handler["pdf_handler"]
     csv_handler["csv_handler"]
     example_county["example_county"]
     example_state["example_state"]
     html_handler["html_handler"]
     json_handler["json_handler"]
-    pdf_handler["pdf_handler"]
     rockland["rockland"]
     txt_handler["txt_handler"]
   end
@@ -104,12 +104,16 @@ graph LR
     contest_selector["contest_selector"]
     detect["detect"]
     dynamic_table_extractor["dynamic_table_extractor"]
+    extraction_strategies["extraction_strategies"]
     format_router["format_router"]
     json_export_loader["json_export_loader"]
+    output_utils["output_utils"]
     pattern_extractor["pattern_extractor"]
+    pdf_table_utils["pdf_table_utils"]
     pivot["pivot"]
     shared_logic["shared_logic"]
     table_builder["table_builder"]
+    table_core["table_core"]
     user_prompt["user_prompt"]
   end
   subgraph Context_Integration["Context_Integration"]
@@ -135,6 +139,11 @@ graph LR
   contest_normalization -->|4| pivot
   table_builder -->|4| pivot
   shared_logic -->|3| format_router
+  pdf_handler -->|3| pdf_table_utils
+  table_core -->|2| output_utils
+  extraction_strategies -->|2| detect
+  browser_utils -->|2| shared_logic
+  pdf_handler -->|2| contest_selector
 ```
 
 ## Cross-module hotspots
@@ -7918,10 +7927,10 @@ graph LR
   - function: `\_index\_defs` (line 2332)
   - function: `\_resolve\_targets` (line 2352)
   - function: `\_render\_audit\_md` (line 2388)
-  - function: `generate\_project\_audit` (line 2883)
-  - function: `generate\_todos\_index` (line 2903)
-  - function: `generate\_noise\_override\_suggestions` (line 2987)
-  - function: `generate\_pipeline\_map` (line 3104)
+  - function: `generate\_project\_audit` (line 2888)
+  - function: `generate\_todos\_index` (line 2908)
+  - function: `generate\_noise\_override\_suggestions` (line 2992)
+  - function: `generate\_pipeline\_map` (line 3109)
 - Imports:
   - **Standard Library** (28):
     - `import copy as copy` (line 3)
@@ -7990,16 +7999,16 @@ graph LR
   - L2158 **WARNING**: ("\[inventory\] generate*project*map completed with warnings; check markers and path.")
   - L2204 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned*text)."""
   - L2206 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-  - L2831 **TODO**: /FIXME/WARN
-  - L2834 **TODO**: /FIXME/WARN:")
-  - L2904 **TODO**: /FIXME/WARN lines from webapp/ into a compact index.
-  - L2914 **FIXME**: ', 'BUG'\]
-  - L2915 **TODO**: ', 'HACK', 'XXX'\]
-  - L2916 **WARN**: ', 'WARNING', 'NOTE'\]
-  - L2955 **TODO**: /FIXME Index"')
-  - L2958 **TODO**: /FIXME index — webapp\n")
-  - L3006 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
-  - L3338 **TODO**: /FIXME/WARN ({mod*name})")
+  - L2836 **TODO**: /FIXME/WARN
+  - L2839 **TODO**: /FIXME/WARN:")
+  - L2909 **TODO**: /FIXME/WARN lines from webapp/ into a compact index.
+  - L2919 **FIXME**: ', 'BUG'\]
+  - L2920 **TODO**: ', 'HACK', 'XXX'\]
+  - L2921 **WARN**: ', 'WARNING', 'NOTE'\]
+  - L2960 **TODO**: /FIXME Index"')
+  - L2963 **TODO**: /FIXME index — webapp\n")
+  - L3011 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
+  - L3347 **TODO**: /FIXME/WARN ({mod*name})")
 - Outgoing cross-module calls (sample):
   - Context\_Integration.Context\_Library.constants.STATE\_MODULE\_MAP.keys (line 65)
   - Context\_Integration.Context\_Library.constants.KNOWN\_STATE\_TO\_COUNTY\_MAP.keys (line 65)

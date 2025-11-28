@@ -3000,8 +3000,8 @@ warnings; check markers and path.")
 - L2204 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
 list of (lineno, keyword, cleaned*text)."""
 - L2206 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-- L2831 **TODO**: /FIXME/WARN
-- L2834 **TODO**: /FIXME/WARN:")
+- L2836 **TODO**: /FIXME/WARN
+- L2839 **TODO**: /FIXME/WARN:")
 
 ### webapp/parser/utils/spacy\_utils.py
 

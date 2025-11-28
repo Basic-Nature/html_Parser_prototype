@@ -11,7 +11,7 @@ Total annotations: 519
 
 ### `webapp/parser/utils/shared_logic.py` (High Priority)
 
-- L2914 *FIXME*: ', 'BUG'\]
+- L2919 *FIXME*: ', 'BUG'\]
 
 ## Medium Priority
 
@@ -23,13 +23,13 @@ Total annotations: 519
 
 - L2204 *TODO*: /FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned*text)."""
 - L2206 *TODO*: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-- L2831 *TODO*: /FIXME/WARN
-- L2834 *TODO*: /FIXME/WARN:")
-- L2904 *TODO*: /FIXME/WARN lines from webapp/ into a compact index.
-- L2915 *TODO*: ', 'HACK', 'XXX'\]
-- L2955 *TODO*: /FIXME Index"')
-- L2958 *TODO*: /FIXME index — webapp\n")
-- L3338 *TODO*: /FIXME/WARN ({mod*name})")
+- L2836 *TODO*: /FIXME/WARN
+- L2839 *TODO*: /FIXME/WARN:")
+- L2909 *TODO*: /FIXME/WARN lines from webapp/ into a compact index.
+- L2920 *TODO*: ', 'HACK', 'XXX'\]
+- L2960 *TODO*: /FIXME Index"')
+- L2963 *TODO*: /FIXME index — webapp\n")
+- L3347 *TODO*: /FIXME/WARN ({mod*name})")
 
 ## Low Priority
 
@@ -610,8 +610,8 @@ Total annotations: 519
 - L2137 *WARNING*: (f"\[inventory\] architecture.md not found at {md*file}")
 - L2143 *WARNING*: ("\[inventory\] Markers not found in architecture.md; aborting replace.")
 - L2158 *WARNING*: ("\[inventory\] generate*project*map completed with warnings; check markers and path.")
-- L2916 *WARN*: ', 'WARNING', 'NOTE'\]
-- L3006 *WARNING*: (f"\[noise\] No suggestions file found at {path}")
+- L2921 *WARN*: ', 'WARNING', 'NOTE'\]
+- L3011 *WARNING*: (f"\[noise\] No suggestions file found at {path}")
 
 ### `webapp/parser/utils/strategy_concurrency.py` (Low Priority)
 

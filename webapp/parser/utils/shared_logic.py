@@ -2388,6 +2388,11 @@ def _resolve_targets(modules: list[dict], def_index: dict) -> tuple[list[dict], 
 def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], inbound: dict[str, list[dict]], root: Path) -> str:
     import re
     import os
+    
+    # Diagram rendering constants
+    MAX_DIAGRAM_EDGES = 15  # Maximum number of edges to show in mermaid diagrams
+    MAX_SUBGRAPH_NODES = 8  # Maximum nodes per cluster subgraph
+    
     # Summary
     lines: list[str] = []
     # Add YAML front matter for GitHub Pages
@@ -2471,8 +2476,8 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         if src == dst or dst == "unknown" or src == "unknown":
             continue
         edge_counts[(src, dst)] = edge_counts.get((src, dst), 0) + 1
-    # Top 15
-    top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:15]
+    # Top edges (limited for readability)
+    top_edges = sorted(edge_counts.items(), key=lambda kv: -kv[1])[:MAX_DIAGRAM_EDGES]
     
     # Build node-to-cluster mapping from edges to ensure all edge nodes are included
     node_to_cluster: dict[str, str] = {}
@@ -2505,7 +2510,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         priority_nodes = [n for n in edge_nodes if node_to_cluster.get(n) == cname]
         other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
         # Include all priority nodes first, then fill up to limit
-        max_nodes = max(8, len(priority_nodes))
+        max_nodes = max(MAX_SUBGRAPH_NODES, len(priority_nodes))
         nodes = sorted(priority_nodes) + sorted(other_nodes)
         nodes = nodes[:max_nodes]
         if not nodes:
@@ -2547,7 +2552,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             dst = _to_mod(dp)
             if src != dst and dst != "unknown" and src != "unknown":
                 pipe_counts[(src, dst)] = pipe_counts.get((src, dst), 0) + 1
-    top_pipe = sorted(pipe_counts.items(), key=lambda kv: -kv[1])[:10]
+    top_pipe = sorted(pipe_counts.items(), key=lambda kv: -kv[1])[:MAX_DIAGRAM_EDGES]
     
     # Build node-to-cluster mapping for pipe edges
     pipe_node_to_cluster: dict[str, str] = {}
@@ -2579,7 +2584,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         priority_nodes = [n for n in pipe_edge_nodes if pipe_node_to_cluster.get(n) == cname]
         other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
         # Include all priority nodes first, then fill up to limit
-        max_nodes = max(8, len(priority_nodes))
+        max_nodes = max(MAX_SUBGRAPH_NODES, len(priority_nodes))
         nodes = sorted(priority_nodes) + sorted(other_nodes)
         nodes = nodes[:max_nodes]
         if not nodes:
@@ -2595,10 +2600,10 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     lines.append("```")
     lines.append("")
 
-    # Cross-module hotspots (top 15 by inbound refs)
+    # Cross-module hotspots (by inbound refs)
     lines.append("## Cross-module hotspots")
     lines.append("")
-    hotspot = sorted(((k, len(v)) for k, v in inbound.items()), key=lambda x: -x[1])[:15]
+    hotspot = sorted(((k, len(v)) for k, v in inbound.items()), key=lambda x: -x[1])[:MAX_DIAGRAM_EDGES]
     if hotspot:
         for key, cnt in hotspot:
             path = def_index.get(key, {}).get("path", "")
@@ -2685,8 +2690,8 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         node_to_cluster_map[sm] = sc
         node_to_cluster_map[dm] = dc
         cluster_edges[(sm, dm)] = cluster_edges.get((sm, dm), 0) + 1
-    # Keep only top 15 edges for compactness
-    top_cluster_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:15]
+    # Keep only top edges for compactness
+    top_cluster_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:MAX_DIAGRAM_EDGES]
     
     # Collect all cluster edge nodes
     cluster_edge_nodes: set[str] = set()
@@ -2703,7 +2708,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         priority_nodes = [n for n in cluster_edge_nodes if node_to_cluster_map.get(n) == cname]
         other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
         # Include all priority nodes first, then fill up to limit
-        max_nodes = max(8, len(priority_nodes))
+        max_nodes = max(MAX_SUBGRAPH_NODES, len(priority_nodes))
         nodes = sorted(priority_nodes) + sorted(other_nodes)
         nodes = nodes[:max_nodes]
         if not nodes:
@@ -3106,6 +3111,10 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
 
     Includes hyperlinks, collapsible sections, thorough connection maps, and automated audit for optimizations.
     """
+    # Diagram rendering constants
+    MAX_DIAGRAM_EDGES = 20  # Maximum number of edges to show in mermaid diagrams
+    MAX_SUBGRAPH_NODES = 10  # Maximum nodes per cluster subgraph
+    
     try:
         root = Path(project_root).resolve()
         modules = _scan_webapp_modules(root)
@@ -3182,8 +3191,8 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             node_to_cluster[src] = sc
             node_to_cluster[dst] = dc
             cluster_edges[(src, dst)] = cluster_edges.get((src, dst), 0) + 1
-        # Top edges
-        top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:20]  # Further reduced for readability
+        # Top edges (limited for readability)
+        top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:MAX_DIAGRAM_EDGES]
         
         # Collect all edge nodes
         edge_nodes: set[str] = set()
@@ -3225,7 +3234,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             priority_nodes = [n for n in edge_nodes if node_to_cluster.get(n) == cname]
             other_nodes = [n for n in all_cluster_nodes if n not in priority_nodes]
             # Include all priority nodes first, then fill up to limit
-            max_nodes = max(10, len(priority_nodes))
+            max_nodes = max(MAX_SUBGRAPH_NODES, len(priority_nodes))
             nodes = sorted(priority_nodes) + sorted(other_nodes)
             nodes = nodes[:max_nodes]
             if not nodes:
