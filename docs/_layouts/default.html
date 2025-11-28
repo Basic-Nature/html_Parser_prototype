@@ -1,5 +1,4 @@
 ---
-layout: default
 ---
 
 <!DOCTYPE html>
@@ -8,7 +7,11 @@ layout: default
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% if page.title %}{{ page.title }}{% else %}{{ site.title | default: "Smart Elections Parser" }}{% endif %}</title>
-  <link rel="stylesheet" href="/html_Parser_prototype/assets/css/style.css">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+  
+  <!-- Mermaid for diagram rendering -->
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
   <script>
     // Configure Mermaid before it initializes
@@ -20,7 +23,11 @@ layout: default
   </script>
 </head>
 <body>
-{{ content }}
-<script src="/html_Parser_prototype/assets/js/custom.js"></script>
+  <div class="main-content">
+    {{ content }}
+  </div>
+  
+  <!-- Custom scripts -->
+  <script src="{{ '/assets/js/custom.js' | relative_url }}"></script>
 </body>
 </html>
