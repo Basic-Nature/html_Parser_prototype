@@ -3,7 +3,7 @@ layout: default
 title: "Comprehensive Pipeline Audit & Map"
 ---
 
-# Comprehensive Pipeline Audit & Map
+Comprehensive pipeline audit for `webapp/parser/`.
 
 ## 📋 Table of Contents
 
@@ -14,8 +14,8 @@ title: "Comprehensive Pipeline Audit & Map"
 
 ## Overview
 
-- **Total Modules Audited:** 49
-- **Total Connections:** 63
+- **Total Modules Audited:** 48
+- **Total Connections:** 64
 - **Clusters:** Entry, Pipeline, Routing, State Handlers, Format Handlers,
 Shared Handlers, Services, Utils, Context Integration, Health
 - **Audit Scope:** All `webapp/parser/` files with full context, imports,
@@ -49,8 +49,8 @@ graph TD
   end
   subgraph Utils["Utils"]
     browser_utils["browser_utils"]
-    contest_normalization["contest_normalization"]
     contest_selector["contest_selector"]
+    db_utils["db_utils"]
     detect["detect"]
     dynamic_table_extractor["dynamic_table_extractor"]
     format_router["format_router"]
@@ -58,7 +58,6 @@ graph TD
     json_export_loader["json_export_loader"]
     models["models"]
     pattern_extractor["pattern_extractor"]
-    pdf_table_utils["pdf_table_utils"]
     pivot["pivot"]
     shared_logic["shared_logic"]
     table_builder["table_builder"]
@@ -67,9 +66,9 @@ graph TD
   subgraph Context_Integration["Context Integration"]
     Integrity_check["Integrity_check"]
     context_coordinator["context_coordinator"]
+    context_organizer["context_organizer"]
     librarian["librarian"]
     constants["constants"]
-    context_organizer["context_organizer"]
   end
   subgraph Health["Health"]
     log_cache_cleaner_bot["log_cache_cleaner_bot"]
@@ -86,17 +85,17 @@ graph TD
   html_scanner -->|9| librarian
   user_prompt -->|9| shared_logic
   pattern_extractor -->|7| browser_utils
-  html_scanner -->|6| context_coordinator
-  detect -->|6| shared_logic
   election_data_services -->|6| models
-  contest_normalization -->|4| pivot
+  html_scanner -->|6| context_coordinator
   table_builder -->|4| pivot
   table_builder -->|4| context_coordinator
   html_election_parser -->|3| Integrity_check
   shared_logic -->|3| format_router
-  pdf_handler -->|3| pdf_table_utils
-  state_router -->|2| context_coordinator
   html_election_parser -->|2| pdf_handler
+  html_election_parser -->|2| context_coordinator
+  state_router -->|2| context_coordinator
+  context_organizer -->|2| html_scanner
+  context_organizer -->|2| db_utils
 ```
 
 **✨ Legend:** Colors indicate module categories with metallic accents. Click
@@ -2992,16 +2991,16 @@ coercing to list.")
 - L1096 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
 (type: {type(lst).**name**})")
 - L1359 **WARNING**: (f"State '{state*norm}' not found in county map")
-- L2137 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
-- L2143 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L2138 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+- L2144 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
 aborting replace.")
-- L2158 **WARNING**: ("\[inventory\] generate*project*map completed with
+- L2159 **WARNING**: ("\[inventory\] generate*project*map completed with
 warnings; check markers and path.")
-- L2204 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
+- L2205 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
 list of (lineno, keyword, cleaned*text)."""
-- L2206 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-- L2836 **TODO**: /FIXME/WARN
-- L2839 **TODO**: /FIXME/WARN:")
+- L2207 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L2839 **TODO**: /FIXME/WARN
+- L2842 **TODO**: /FIXME/WARN:")
 
 ### webapp/parser/utils/spacy\_utils.py
 

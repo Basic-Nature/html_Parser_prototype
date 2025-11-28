@@ -3,37 +3,37 @@ layout: default
 title: "TODO/FIXME Index"
 ---
 
-# TODO/FIXME index — webapp
+Index scope: TODO/FIXME annotations under `webapp/`.
 
-Total annotations: 519
+Total annotations: 527
 
 ## High Priority
 
-### `webapp/parser/utils/shared_logic.py` (High Priority)
+### `webapp\parser\utils\shared_logic.py` (High Priority)
 
-- L2919 *FIXME*: ', 'BUG'\]
+- L2947 *FIXME*: ', 'BUG'\]
 
 ## Medium Priority
 
-### `webapp/parser/health/manual_correction_bot.py` (Medium Priority)
+### `webapp\parser\health\manual_correction_bot.py` (Medium Priority)
 
 - L750 *TODO*: Add JSON schema validation here if desired
 
-### `webapp/parser/utils/shared_logic.py` (Medium Priority)
+### `webapp\parser\utils\shared_logic.py` (Medium Priority)
 
-- L2204 *TODO*: /FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned*text)."""
-- L2206 *TODO*: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-- L2836 *TODO*: /FIXME/WARN
-- L2839 *TODO*: /FIXME/WARN:")
-- L2909 *TODO*: /FIXME/WARN lines from webapp/ into a compact index.
-- L2920 *TODO*: ', 'HACK', 'XXX'\]
-- L2960 *TODO*: /FIXME Index"')
-- L2963 *TODO*: /FIXME index — webapp\n")
-- L3347 *TODO*: /FIXME/WARN ({mod*name})")
+- L2230 *TODO*: /FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned*text)."""
+- L2232 *TODO*: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L2864 *TODO*: /FIXME/WARN
+- L2867 *TODO*: /FIXME/WARN:")
+- L2937 *TODO*: /FIXME/WARN lines from webapp/ into a compact index.
+- L2948 *TODO*: ', 'HACK', 'XXX'\]
+- L2988 *TODO*: /FIXME Index"')
+- L2991 *TODO*: /FIXME annotations under ⁣`webapp/⁣`.")
+- L3371 *TODO*: /FIXME/WARN ({mod*name})")
 
 ## Low Priority
 
-### `webapp/Smart_Elections_Parser_Webapp.py` (Low Priority)
+### `webapp\Smart_Elections_Parser_Webapp.py` (Low Priority)
 
 - L210 *WARNING*: ").upper().split(","))
 - L480 *WARNING*: , ERROR, CRITICAL, TRACE
@@ -63,7 +63,7 @@ Total annotations: 519
 - L2211 *WARNING*: ({
 - L2212 *WARNING*: ",
 
-### `webapp/parser/Context_Integration/Context_Library/constants.py` (Low Priority)
+### `webapp\parser\Context_Integration\Context_Library\constants.py` (Low Priority)
 
 - L1831 *NOTE*: .*$",                     # Note
 - L2020 *WARNING*: ",
@@ -72,7 +72,7 @@ Total annotations: 519
 - L2220 *NOTE*: ", "Comment", "Feedback", "Suggestion", "Recommendation",
 - L2236 *NOTE*: ", "Comment", "Feedback", "Suggestion",
 
-### `webapp/parser/Context_Integration/context_coordinator.py` (Low Priority)
+### `webapp\parser\Context_Integration\context_coordinator.py` (Low Priority)
 
 - L788 *WARNING*: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
 - L876 *WARNING*: ({
@@ -108,7 +108,7 @@ Total annotations: 519
 - L2912 *WARNING*: ("\[get*best*button*advanced\]*semantic*model is not set or is not an object. Using None.")
 - L3057 *WARNING*: (f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}' rejected, retrying...\[/yellow\]")
 
-### `webapp/parser/Context_Integration/context_organizer.py` (Low Priority)
+### `webapp\parser\Context_Integration\context_organizer.py` (Low Priority)
 
 - L282 *WARNING*: (
 - L407 *WARNING*: (f"\[CONTEST\] Skipping contest with suspiciously large or missing title: {str(title)\[:100\]}...")
@@ -123,44 +123,44 @@ Total annotations: 519
 - L1972 *WARNING*: (f"\[ContextOrganizer\] Could not update context library with feedback: {e}")
 - L2049 *WARNING*: (f"\[CONTEXT ORGANIZER\] No table structure found for contest: {contest}")
 
-### `webapp/parser/Context_Integration/librarian.py` (Low Priority)
+### `webapp\parser\Context_Integration\librarian.py` (Low Priority)
 
 - L652 *WARNING*: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
 - L658 *WARNING*: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching manual*correction...")
 - L661 *WARNING*: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
 
-### `webapp/parser/config.py` (Low Priority)
+### `webapp\parser\config.py` (Low Priority)
 
 - L328 *WARNING*: ("\[DB\]\[AAD\] Falling back to password auth.")
 
-### `webapp/parser/data_manager.py` (Low Priority)
+### `webapp\parser\data_manager.py` (Low Priority)
 
 - L83 *WARNING*: (f"\[REMOVED\] {popped}")
 - L90 *WARNING*: (f"\[REMOVED\] {index*or*value}")
 - L129 *WARNING*: (f"\[DELETED\] {files\[idx\]}")
 
-### `webapp/parser/handlers/batch_handler.py` (Low Priority)
+### `webapp\parser\handlers\batch_handler.py` (Low Priority)
 
 - L134 *WARNING*: ({
 - L135 *WARNING*: ",
 - L426 *WARNING*: ({
 - L427 *WARNING*: ",
 
-### `webapp/parser/handlers/formats/html_handler.py` (Low Priority)
+### `webapp\parser\handlers\formats\html_handler.py` (Low Priority)
 
 - L216 *WARNING*: (f"\[HTML Handler\] County '{county}' not found. Closest matches: {matches}")
 - L220 *WARNING*: (f"\[HTML Handler\] Detected county '{county}' is not in known counties for state '{suggested*state or state}'.")
 - L241 *WARNING*: (f"\[HTML Handler\] State '{user*state}' not found. Closest matches: {matches}")
 - L285 *WARNING*: (f"\[HTML Handler\] County '{user*county}' not found. Closest matches: {matches}")
 
-### `webapp/parser/handlers/formats/json_handler.py` (Low Priority)
+### `webapp\parser\handlers\formats\json_handler.py` (Low Priority)
 
 - L376 *WARNING*: ({
 - L377 *WARNING*: ",
 - L489 *WARNING*: ({
 - L490 *WARNING*: ",
 
-### `webapp/parser/handlers/formats/pdf_handler.py` (Low Priority)
+### `webapp\parser\handlers\formats\pdf_handler.py` (Low Priority)
 
 - L421 *WARNING*: ({
 - L422 *WARNING*: ",
@@ -197,7 +197,7 @@ Total annotations: 519
 - L4367 *WARNING*: ({
 - L4368 *WARNING*: ",
 
-### `webapp/parser/handlers/states/arizona/arizona.py` (Low Priority)
+### `webapp\parser\handlers\states\arizona\arizona.py` (Low Priority)
 
 - L25 *WARNING*: ("\[WARN\] context*library.json not found. Using fallback config for Arizona handler.")
 - L51 *WARNING*: (f"\[WARN\] Could not expand card {i+1}: {e}")
@@ -206,28 +206,28 @@ Total annotations: 519
 - L164 *WARNING*: ("\[FALLBACK\] No tables were parsed. Either no results are published yet or the structure has changed.")
 - L165 *WARNING*: ("\[FALLBACK\] Please verify that the site has posted election data.")
 
-### `webapp/parser/handlers/states/example state/example_county/example_county.py` (Low Priority)
+### `webapp\parser\handlers\states\example state\example_county\example_county.py` (Low Priority)
 
 - L123 *WARNING*: ("\[yellow\]\[WARNING\] No ballot items found by div selectors. Trying table-based extraction...\[/yellow\]")
 
-### `webapp/parser/handlers/states/example state/example_state.py` (Low Priority)
+### `webapp\parser\handlers\states\example state\example_state.py` (Low Priority)
 
 - L51 *WARNING*: (f"\[Example Handler\] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
 - L152 *WARNING*: ("\[yellow\]\[WARNING\] No ballot items found by div selectors. Trying table-based extraction...\[/yellow\]")
 
-### `webapp/parser/handlers/states/new_york/county/rockland.py` (Low Priority)
+### `webapp\parser\handlers\states\new_york\county\rockland.py` (Low Priority)
 
 - L72 *WARNING*: ("\[WARNING\] dom*parts missing after organize*and*enrich.")
 - L95 *WARNING*: ("\[red\]No contest selected. Skipping.\[/red\]")
 - L139 *WARNING*: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}' is not clickable (visible={safe*is*visible(element, logger)}, enabled={safe*is*enabled(element, logger)})\[/yellow\]")
 - L176 *WARNING*: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}' is not clickable (visible={safe*is*visible(element, logger)}, enabled={safe*is*enabled(element, logger)})\[/yellow\]")
 
-### `webapp/parser/handlers/states/new_york/new_york.py` (Low Priority)
+### `webapp\parser\handlers\states\new_york\new_york.py` (Low Priority)
 
 - L27 *WARNING*: ("\[NY Handler\] No county specified in html*context.")
 - L43 *WARNING*: (f"\[NY Handler\] No specific parser implemented for county: '{county}'. Please add it under {module*path}.py")
 
-### `webapp/parser/handlers/states/pennsylvania/pennsylvania.py` (Low Priority)
+### `webapp\parser\handlers\states\pennsylvania\pennsylvania.py` (Low Priority)
 
 - L44 *WARNING*: (f"\[NAV\] Step failed: {step} — {e}")
 - L55 *WARNING*: (f"\[bold yellow\]Detected election:\[/bold yellow\] {header*text}")
@@ -238,7 +238,7 @@ Total annotations: 519
 - L98 *WARNING*: (f"\[PA\] Failed to click County Breakdown link: {e}")
 - L113 *WARNING*: ("\[yellow\]Multiple CSV files found in input. Please select one:\[/yellow\]")
 
-### `webapp/parser/health/health_router.py` (Low Priority)
+### `webapp\parser\health\health_router.py` (Low Priority)
 
 - L252 *WARNING*: (f"\[health*router\] manual*correction failed (attempt {attempt}): {result.stderr}")
 - L336 *WARNING*: ("\[SELF-HEAL\] Misalignments found. Launching manual*correction...")
@@ -249,14 +249,14 @@ Total annotations: 519
 - L382 *WARNING*: ("\[PIPELINE\] scan*misaligned*ner failed or file missing. Proceeding with caution.")
 - L414 *WARNING*: ("\[PIPELINE\] Model retraining failed.")
 
-### `webapp/parser/health/log_cache_cleaner_bot.py` (Low Priority)
+### `webapp\parser\health\log_cache_cleaner_bot.py` (Low Priority)
 
 - L151 *WARNING*: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl: {entry}")
 - L460 *WARNING*: ("\[DB\]\[WARNING\] No user tables found in schema 'public'.")
 - L503 *WARNING*: ("\[CLEAN\]\[WARNING\] The following files are still too large after cleaning:")
 - L507 *WARNING*: ("\[MISALIGNED\] Consider cleaning or pattern-excluding these from your training data:")
 
-### `webapp/parser/health/manual_correction_bot.py` (Low Priority)
+### `webapp\parser\health\manual_correction_bot.py` (Low Priority)
 
 - L322 *WARNING*: (f"Coordinator ML scoring failed: {e}")
 - L343 *WARNING*: (f"Coordinator field suggestion failed: {e}")
@@ -286,7 +286,7 @@ Total annotations: 519
 - L1356 *WARNING*: (f"Could not delete log file {log*file}: {e}")
 - L1376 *WARNING*: ("\[WARNING\] No entries were processed. Check your log file naming, field configuration, or use --dry-run for debugging.")
 
-### `webapp/parser/health/retrain_table_structure_models.py` (Low Priority)
+### `webapp\parser\health\retrain_table_structure_models.py` (Low Priority)
 
 - L178 *WARNING*: (f"\[CLEAN\] File not found: {jsonl*path}")
 - L186 *WARNING*: (f"\[CLEAN\] Could not parse line: {e}")
@@ -309,7 +309,7 @@ Total annotations: 519
 - L810 *WARNING*: (f"MISALIGNED: {text} {annots\['entities'\]}")
 - L840 *WARNING*: ("\[DB\] Base.metadata.tables is empty. No models registered? Did you import all model classes?")
 
-### `webapp/parser/health/scan_misaligned_ner.py` (Low Priority)
+### `webapp\parser\health\scan_misaligned_ner.py` (Low Priority)
 
 - L62 *WARNING*: (f"\[CORRUPT\] Could not parse line: {e}")
 - L83 *WARNING*: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned NER texts:")
@@ -323,7 +323,7 @@ Total annotations: 519
 - L120 *WARNING*: (f"\[SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
 - L122 *WARNING*: ("\[SELF-HEAL\] Max retries reached. Some misalignments may remain.")
 
-### `webapp/parser/html_election_parser.py` (Low Priority)
+### `webapp\parser\html_election_parser.py` (Low Priority)
 
 - L56 *WARNING*: ("Deleting .processed*urls cache for fresh start...")
 - L393 *WARNING*: ({
@@ -360,7 +360,7 @@ Total annotations: 519
 - L1486 *WARNING*: ({
 - L1487 *WARNING*: ",
 
-### `webapp/parser/state_router.py` (Low Priority)
+### `webapp\parser\state_router.py` (Low Priority)
 
 - L49 *WARNING*: ("\[Router\] handlers/states directory not found.")
 - L66 *WARNING*: (f"\[Router\] counties directory not found for state: {state*key}")
@@ -378,7 +378,7 @@ Total annotations: 519
 - L540 *WARNING*: ("No handler selected. Exiting.")
 - L547 *WARNING*: ("Still could not import a suitable handler.")
 
-### `webapp/parser/utils/browser_utils.py` (Low Priority)
+### `webapp\parser\utils\browser_utils.py` (Low Priority)
 
 - L89 *WARNING*: (f"\[browser*utils\] Failed to safely parse context*library value for key '{key}'")
 - L91 *WARNING*: (f"\[browser*utils\] Skipping unsafe context*library value for key '{key}'")
@@ -398,12 +398,12 @@ Total annotations: 519
 - L712 *WARNING*: ("\[SCROLL\] User aborted scrolling.")
 - L733 *WARNING*: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may not be fully loaded.")
 
-### `webapp/parser/utils/captcha_tools.py` (Low Priority)
+### `webapp\parser\utils\captcha_tools.py` (Low Priority)
 
 - L118 *WARNING*: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
 - L154 *WARNING*: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
 
-### `webapp/parser/utils/contest_selector.py` (Low Priority)
+### `webapp\parser\utils\contest_selector.py` (Low Priority)
 
 - L635 *WARNING*: ":
 - L636 *WARNING*: (entry)
@@ -412,11 +412,11 @@ Total annotations: 519
 - L1570 *WARNING*: ({"level": "WARNING", "type": "selector", "message": f"No matches for '{term}'", "session*id": session*id})
 - L1642 *WARNING*: ({"level": "WARNING", "type": "selector", "message": "No match; try again.", "session*id": session*id})
 
-### `webapp/parser/utils/dom_extractor.py` (Low Priority)
+### `webapp\parser\utils\dom_extractor.py` (Low Priority)
 
 - L153 *WARNING*: (f"\[DOM*EXTRACTOR\] failure: {e}")
 
-### `webapp/parser/utils/dynamic_table_extractor.py` (Low Priority)
+### `webapp\parser\utils\dynamic_table_extractor.py` (Low Priority)
 
 - L124 *WARNING*: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in provided table*html.", session*id)
 - L129 *WARNING*: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in table*html.", session*id)
@@ -430,15 +430,15 @@ Total annotations: 519
 - L805 *WARNING*: ", "extractor", "Unknown action.")
 - L807 *WARNING*: ", "extractor", "Invalid entry number.")
 
-### `webapp/parser/utils/embedding_cache.py` (Low Priority)
+### `webapp\parser\utils\embedding_cache.py` (Low Priority)
 
 - L178 *WARNING*: (msg)
 
-### `webapp/parser/utils/extraction_strategies.py` (Low Priority)
+### `webapp\parser\utils\extraction_strategies.py` (Low Priority)
 
 - L68 *WARNING*: (f"\[STRATEGY\] {name} failed: {e}")
 
-### `webapp/parser/utils/format_router.py` (Low Priority)
+### `webapp\parser\utils\format_router.py` (Low Priority)
 
 - L374 *WARNING*: ({
 - L375 *WARNING*: ",
@@ -455,7 +455,7 @@ Total annotations: 519
 - L950 *WARNING*: ({
 - L951 *WARNING*: ",
 
-### `webapp/parser/utils/html_scanner.py` (Low Priority)
+### `webapp\parser\utils\html_scanner.py` (Low Priority)
 
 - L163 *WARNING*: ",
 - L167 *WARNING*: (payload)
@@ -557,30 +557,30 @@ Total annotations: 519
 - L2869 *WARNING*: ({"level": "WARNING", "type": "scan*html", "message": msg})
 - L3297 *WARNING*: ({"level": "WARNING", "type": "dom*debug", "message": msg*warn})
 
-### `webapp/parser/utils/model_registry.py` (Low Priority)
+### `webapp\parser\utils\model_registry.py` (Low Priority)
 
 - L389 *WARNING*: (f"Failed loading local override for SentenceTransformer: {e}")
 - L409 *WARNING*: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set; skipping HF download. Embeddings disabled.")
 - L426 *WARNING*: for noisy environments
 - L429 *WARNING*: (f"Failed to load base SentenceTransformer (network/DNS). Running without embeddings. Error: {e}")
 
-### `webapp/parser/utils/output_utils.py` (Low Priority)
+### `webapp\parser\utils\output_utils.py` (Low Priority)
 
 - L105 *WARNING*: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using 'Unknown'.\[/yellow\]")
 - L108 *WARNING*: ("\[yellow\]\[OUTPUT\] contests could not be verified. Using 'unknown*contests'.\[/yellow\]")
 - L531 *WARNING*: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
 - L607 *WARNING*: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
 
-### `webapp/parser/utils/pattern_extractor.py` (Low Priority)
+### `webapp\parser\utils\pattern_extractor.py` (Low Priority)
 
 - L26 *WARNING*: (f"\[PATTERN\] load fail {e}")
 - L95 *WARNING*: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
 
-### `webapp/parser/utils/pivot.py` (Low Priority)
+### `webapp\parser\utils\pivot.py` (Low Priority)
 
 - L1353 *WARNING*: ("\[PIVOT\] No candidates detected – verify headers and candidate column extraction.")
 
-### `webapp/parser/utils/shared_logger.py` (Low Priority)
+### `webapp\parser\utils\shared_logger.py` (Low Priority)
 
 - L159 *WARNING*:         elif record.levelno &gt;= logging.WARNING:
 - L160 *WARNING*: (msg)
@@ -592,7 +592,7 @@ Total annotations: 519
 - L598 *WARNING*: (f"Log directory does not exist: {log*dir}")
 - L615 *WARNING*: (f"Corrupt line in {path}: {e}")
 
-### `webapp/parser/utils/shared_logic.py` (Low Priority)
+### `webapp\parser\utils\shared_logic.py` (Low Priority)
 
 - L236 *WARNING*: (f"\[safe*query\] session.query({model}) failed: {e}")
 - L259 *WARNING*: (f"\[safe*filter*by\] No mapper found for model {model}")
@@ -607,13 +607,13 @@ Total annotations: 519
 - L756 *WARNING*: (f"\[safe*extend\] Target is not a list: {type(lst)}; coercing to list.")
 - L1096 *WARNING*: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url} (type: {type(lst).**name**})")
 - L1359 *WARNING*: (f"State '{state*norm}' not found in county map")
-- L2137 *WARNING*: (f"\[inventory\] architecture.md not found at {md*file}")
-- L2143 *WARNING*: ("\[inventory\] Markers not found in architecture.md; aborting replace.")
-- L2158 *WARNING*: ("\[inventory\] generate*project*map completed with warnings; check markers and path.")
-- L2921 *WARN*: ', 'WARNING', 'NOTE'\]
-- L3011 *WARNING*: (f"\[noise\] No suggestions file found at {path}")
+- L2163 *WARNING*: (f"\[inventory\] architecture.md not found at {md*file}")
+- L2169 *WARNING*: ("\[inventory\] Markers not found in architecture.md; aborting replace.")
+- L2184 *WARNING*: ("\[inventory\] generate*project*map completed with warnings; check markers and path.")
+- L2949 *WARN*: ', 'WARNING', 'NOTE'\]
+- L3042 *WARNING*: (f"\[noise\] No suggestions file found at {path}")
 
-### `webapp/parser/utils/strategy_concurrency.py` (Low Priority)
+### `webapp\parser\utils\strategy_concurrency.py` (Low Priority)
 
 - L37 *WARNING*: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
 - L65 *WARNING*: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
@@ -621,7 +621,7 @@ Total annotations: 519
 - L102 *WARNING*: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed: {e}")
 - L120 *WARNING*: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
 
-### `webapp/parser/utils/table_builder.py` (Low Priority)
+### `webapp\parser\utils\table_builder.py` (Low Priority)
 
 - L816 *WARNING*: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor failed for panel table", session*id, error=str(e))
 - L828 *WARNING*: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor failed (no panels path)", session*id, error=str(e))
@@ -639,7 +639,7 @@ Total annotations: 519
 - L1361 *WARNING*: ", "builder", "\[TABLE*BUILDER\] Failed to persist table structure logs", session*id, error=str(e))
 - L1376 *WARNING*: ", "builder", "\[TABLE*BUILDER\] Failed to persist coordinator DB log", session*id, error=str(e))
 
-### `webapp/parser/utils/table_core.py` (Low Priority)
+### `webapp\parser\utils\table_core.py` (Low Priority)
 
 - L231 *WARNING*: (f"\[TABLE BUILDER\] Concurrent strategies execution failed: {e}")
 - L288 *WARNING*: (f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
@@ -649,7 +649,7 @@ Total annotations: 519
 - L414 *WARNING*: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies execution failed: {e}")
 - L477 *WARNING*: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed: {e}")
 
-### `webapp/parser/utils/user_prompt.py` (Low Priority)
+### `webapp\parser\utils\user_prompt.py` (Low Priority)
 
 - L312 *WARNING*: ("\[UserPrompt\] Webapp mode active but no socketio*emit*func set!")
 - L349 *WARNING*: ("\[CLI Prompt\] EOFError encountered.")
@@ -664,7 +664,7 @@ Total annotations: 519
 - L881 *WARNING*: ("\[yellow\]\[FEEDBACK\] Skipped manual correction.\[/yellow\]")
 - L913 *WARNING*: ("\[yellow\]Button confirmation cancelled by user.\[/yellow\]")
 
-### `webapp/parser/web_pipeline.py` (Low Priority)
+### `webapp\parser\web_pipeline.py` (Low Priority)
 
 - L49 *WARNING*: ({
 - L50 *WARNING*: ",
@@ -672,3 +672,20 @@ Total annotations: 519
 - L67 *WARNING*: ",
 - L83 *WARNING*: ({
 - L84 *WARNING*: ",
+
+### `webapp\tests\conftest.py` (Low Priority)
+
+- L17 *WARNING*: escalates to
+- L21 *WARNING*: category so it never escalates.
+- L23 *WARNING*: was ignored.
+
+### `webapp\tests\test_schema_validation_warnings.py` (Low Priority)
+
+- L17 *WARNING*:     # Build a table that lacks candidate/ballot/total columns, forcing a 'normalized schema weak' warning
+- L39 *WARNING*: " and msg.get("status")=="weak"
+- L44 *WARNING*: " and inner.get("status")=="weak"
+- L49 *WARNING*: in captured logs; got: {captured}"
+
+### `webapp\tests\test_webapp_app.py` (Low Priority)
+
+- L17 *WARNING*: ,ERROR")

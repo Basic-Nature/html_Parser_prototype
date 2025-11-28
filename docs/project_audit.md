@@ -3,9 +3,9 @@ layout: default
 title: "Project Audit"
 ---
 
-# Project Audit — webapp
+Audit scope: `webapp/parser/` modules.
 
-Modules scanned: 78 | ~51779 non-empty LOC
+Modules scanned: 98 | ~54042 non-empty LOC
 
 ## Pipeline map (Mermaid)
 
@@ -32,7 +32,6 @@ graph LR
   end
   subgraph Utils["Utils"]
     browser_utils["browser_utils"]
-    contest_normalization["contest_normalization"]
     contest_selector["contest_selector"]
     detect["detect"]
     dynamic_table_extractor["dynamic_table_extractor"]
@@ -46,9 +45,9 @@ graph LR
     user_prompt["user_prompt"]
   end
   subgraph Context_Integration["Context_Integration"]
+    Integrity_check["Integrity_check"]
     context_coordinator["context_coordinator"]
     librarian["librarian"]
-    Integrity_check["Integrity_check"]
     constants["constants"]
     context_organizer["context_organizer"]
   end
@@ -67,12 +66,12 @@ graph LR
   html_scanner -->|9| librarian
   user_prompt -->|9| shared_logic
   pattern_extractor -->|7| browser_utils
-  html_scanner -->|6| context_coordinator
-  detect -->|6| shared_logic
   election_data_services -->|6| models
-  contest_normalization -->|4| pivot
+  html_scanner -->|6| context_coordinator
   table_builder -->|4| pivot
   table_builder -->|4| context_coordinator
+  test_pdf_mock_pipeline -->|4| pivot
+  html_election_parser -->|3| Integrity_check
 ```
 
 ## Pipeline focus (compact)
@@ -86,10 +85,10 @@ graph LR
     state_router["state_router"]
   end
   subgraph Handlers["Handlers"]
-    pdf_handler["pdf_handler"]
-    csv_handler["csv_handler"]
     example_county["example_county"]
     example_state["example_state"]
+    pdf_handler["pdf_handler"]
+    csv_handler["csv_handler"]
     html_handler["html_handler"]
     json_handler["json_handler"]
     rockland["rockland"]
@@ -103,13 +102,13 @@ graph LR
     contest_normalization["contest_normalization"]
     contest_selector["contest_selector"]
     detect["detect"]
+    detector["detector"]
     dynamic_table_extractor["dynamic_table_extractor"]
     extraction_strategies["extraction_strategies"]
     format_router["format_router"]
     json_export_loader["json_export_loader"]
     output_utils["output_utils"]
     pattern_extractor["pattern_extractor"]
-    pdf_table_utils["pdf_table_utils"]
     pivot["pivot"]
     shared_logic["shared_logic"]
     table_builder["table_builder"]
@@ -135,15 +134,15 @@ graph LR
   pivot -->|11| json_export_loader
   user_prompt -->|9| shared_logic
   pattern_extractor -->|7| browser_utils
-  detect -->|6| shared_logic
-  contest_normalization -->|4| pivot
   table_builder -->|4| pivot
   shared_logic -->|3| format_router
-  pdf_handler -->|3| pdf_table_utils
-  table_core -->|2| output_utils
-  extraction_strategies -->|2| detect
-  browser_utils -->|2| shared_logic
   pdf_handler -->|2| contest_selector
+  example_county -->|2| example_state
+  browser_utils -->|2| shared_logic
+  detector -->|2| detect
+  extraction_strategies -->|2| detect
+  pivot -->|2| contest_normalization
+  table_core -->|2| output_utils
 ```
 
 ## Cross-module hotspots
@@ -155,12 +154,12 @@ graph LR
 - webapp.parser.utils.pivot:_safe_col_name ← 20 refs (pivot.py)
 - webapp.parser.utils.contest_selector:_norm_key ← 18 refs (contest_selector.py)
 - webapp.parser.utils.shared_logic:safe_lower ← 18 refs (shared_logic.py)
-- webapp.parser.utils.rawjson_utils:_rj_first ← 16 refs (rawjson_utils.py)
+- webapp.parser.utils.pivot:_coerce_int ← 17 refs (pivot.py)
 - webapp.parser.utils.db_utils:get_session ← 16 refs (db_utils.py)
+- webapp.parser.utils.rawjson_utils:_rj_first ← 16 refs (rawjson_utils.py)
 - webapp.parser.utils.json_export_loader:_safe_int ← 15 refs (json_export_loader.py)
 - webapp.parser.health.log_cache_cleaner_bot:safe_path ← 14 refs (log_cache_cleaner_bot.py)
 - webapp.parser.utils.html_scanner:_extract_clean_text ← 14 refs (html_scanner.py)
-- webapp.parser.utils.pivot:_coerce_int ← 13 refs (pivot.py)
 - webapp.parser.utils.pdf_table_utils:is_numeric_like ← 13 refs (pdf_table_utils.py)
 - webapp.Smart_Elections_Parser_Weba:_env_flag ← 12 refs (Smart_Elections_Parser_Webapp.py)
 
@@ -205,7 +204,6 @@ graph LR
   end
   subgraph Utils["Utils"]
     browser_utils["browser_utils"]
-    contest_normalization["contest_normalization"]
     contest_selector["contest_selector"]
     detect["detect"]
     dynamic_table_extractor["dynamic_table_extractor"]
@@ -219,9 +217,9 @@ graph LR
     user_prompt["user_prompt"]
   end
   subgraph Context_Integration["Context_Integration"]
+    Integrity_check["Integrity_check"]
     context_coordinator["context_coordinator"]
     librarian["librarian"]
-    Integrity_check["Integrity_check"]
     constants["constants"]
     context_organizer["context_organizer"]
   end
@@ -240,12 +238,12 @@ graph LR
   html_scanner -->|9| librarian
   user_prompt -->|9| shared_logic
   pattern_extractor -->|7| browser_utils
-  html_scanner -->|6| context_coordinator
-  detect -->|6| shared_logic
   election_data_services -->|6| models
-  contest_normalization -->|4| pivot
+  html_scanner -->|6| context_coordinator
   table_builder -->|4| pivot
   table_builder -->|4| context_coordinator
+  test_pdf_mock_pipeline -->|4| pivot
+  html_election_parser -->|3| Integrity_check
 ```
 
 ## Modules
@@ -758,11 +756,11 @@ graph LR
   - detect\_anomalies\_with\_ml ← Integrity_check.py:147
   - election\_integrity\_checks ← Integrity_check.py:145
   - advanced\_cross\_field\_validation ← Integrity_check.py:394
-  - summarize\_context\_entities ← manual_correction_bot.py:1016
   - summarize\_context\_entities ← Integrity_check.py:390
+  - summarize\_context\_entities ← manual_correction_bot.py:1016
   - analyze\_contests ← html_election_parser.py:512
-  - analyze\_contests ← manual_correction_bot.py:996
   - analyze\_contests ← Integrity_check.py:380
+  - analyze\_contests ← manual_correction_bot.py:996
   - auto\_tune\_contamination ← Integrity_check.py:399
   - print\_issues\_table ← Integrity_check.py:263
   - print\_issues\_table ← Integrity_check.py:395
@@ -952,18 +950,15 @@ graph LR
   - dynamic\_state\_county\_detection ← state_router.py:365
   - dynamic\_state\_county\_detection ← context_organizer.py:1596
   - dynamic\_state\_county\_detection ← shared_logic.py:1610
-  - ContextCoordinator ← state_router.py:361
   - ContextCoordinator ← html_election_parser.py:885
   - ContextCoordinator ← html_election_parser.py:1158
+  - ContextCoordinator ← state_router.py:361
+  - ContextCoordinator ← html_handler.py:103
+  - ContextCoordinator ← example_state.py:34
+  - ContextCoordinator ← example_county.py:27
+  - ContextCoordinator ← rockland.py:39
   - ContextCoordinator ← contest_selector.py:886
   - ContextCoordinator ← contest_selector.py:1026
-  - ContextCoordinator ← output_utils.py:66
-  - ContextCoordinator ← html_scanner.py:730
-  - ContextCoordinator ← html_scanner.py:1195
-  - ContextCoordinator ← html_scanner.py:2585
-  - ContextCoordinator ← html_scanner.py:2776
-  - ContextCoordinator ← html_scanner.py:2882
-  - ContextCoordinator ← html_scanner.py:3161
   - ContextCoordinator ← dynamic_table_extractor.py:284
   - ContextCoordinator ← dynamic_table_extractor.py:312
   - ContextCoordinator ← dynamic_table_extractor.py:478
@@ -974,14 +969,17 @@ graph LR
   - ContextCoordinator ← dynamic_table_extractor.py:1076
   - ContextCoordinator ← dynamic_table_extractor.py:1108
   - ContextCoordinator ← dynamic_table_extractor.py:1138
+  - ContextCoordinator ← html_scanner.py:730
+  - ContextCoordinator ← html_scanner.py:1195
+  - ContextCoordinator ← html_scanner.py:2585
+  - ContextCoordinator ← html_scanner.py:2776
+  - ContextCoordinator ← html_scanner.py:2882
+  - ContextCoordinator ← html_scanner.py:3161
+  - ContextCoordinator ← output_utils.py:66
   - ContextCoordinator ← table_builder.py:766
   - ContextCoordinator ← table_builder.py:1141
   - ContextCoordinator ← table_builder.py:1451
   - ContextCoordinator ← table_builder.py:1510
-  - ContextCoordinator ← html_handler.py:103
-  - ContextCoordinator ← rockland.py:39
-  - ContextCoordinator ← example_state.py:34
-  - ContextCoordinator ← example_county.py:27
 
 ### `webapp/parser/Context_Integration/context_organizer.py`
 
@@ -1143,13 +1141,21 @@ graph LR
 - Top-of-file comments:
 
 ```python
+
 # webapp/parser/Context\_Integration/librarian.py
+
 # -----------------------------------------------------------------------------------
+
 # This file contains functions to manage the context library for the HTML parser,
+
 # including loading, saving, and updating the context library, as well as
+
 # It also includes utilities for logging unknown HTML tags and attributes,
+
 # extending context library structures, and handling ML/LLM feedback.
+
 # -----------------------------------------------------------------------------------
+
 ```
 
 - Definitions:
@@ -1291,6 +1297,8 @@ graph LR
   - lib.update (line 297)
   - os.listdir (line 315)
 - Inbound references:
+  - atomic\_write\_json ← manual_correction_bot.py:751
+  - atomic\_write\_json ← manual_correction_bot.py:1035
   - extend\_panel\_tags ← librarian.py:274
   - extend\_panel\_tags ← librarian.py:551
   - extend\_heading\_tags ← librarian.py:276
@@ -1339,8 +1347,6 @@ graph LR
   - \_deduplicate\_jsonl\_log ← librarian.py:532
   - lookup\_state ← librarian.py:611
   - normalize\_segment\_text ← librarian.py:636
-  - normalize\_segment\_text ← librarian.py:640
-  - normalize\_segment\_text ← librarian.py:644
 
 ### `webapp/parser/config.py`
 
@@ -1686,6 +1692,11 @@ graph LR
   - result.get (line 273)
   - utils.logger\_singleton.logger.info (line 276)
 - Inbound references:
+  - \_build\_contest\_regex ← csv_handler.py:54
+  - \_build\_contest\_regex ← json_handler.py:83
+  - \_build\_contest\_regex ← pdf_handler.py:1436
+  - \_build\_contest\_regex ← txt_handler.py:51
+  - \_build\_contest\_regex ← xlsx_handler.py:54
   - parse\_csv\_election\_results ← csv_handler.py:391
 
 ### `webapp/parser/handlers/formats/html_handler.py`
@@ -1901,11 +1912,6 @@ graph LR
   - obj.keys (line 298)
   - key.lower (line 300)
 - Inbound references:
-  - \_build\_contest\_regex ← json_handler.py:83
-  - \_build\_contest\_regex ← xlsx_handler.py:54
-  - \_build\_contest\_regex ← txt_handler.py:51
-  - \_build\_contest\_regex ← csv_handler.py:54
-  - \_build\_contest\_regex ← pdf_handler.py:1436
   - \_canonical\_contest\_key ← json_handler.py:176
   - \_split\_primary\_title\_for\_grouping ← json_handler.py:247
   - \_format\_county\_preview ← json_handler.py:249
@@ -2234,12 +2240,12 @@ graph LR
   - \_evaluate\_table\_candidate\_quality ← pdf_handler.py:3983
   - \_merge\_camelot\_with\_text ← pdf_handler.py:3813
   - \_extract\_contest\_block ← pdf_handler.py:856
+  - extract\_candidate\_totals\_from\_lines ← pdf_handler.py:3719
+  - extract\_candidate\_totals\_from\_lines ← pdf_handler.py:3872
+  - extract\_candidate\_totals\_from\_lines ← pdf_handler.py:4297
   - \_is\_numeric\_like ← html_election_parser.py:643
   - \_is\_numeric\_like ← html_election_parser.py:704
   - \_reconstruct\_columnar\_block ← pdf_handler.py:890
-  - \_extract\_party\_lookup\_from\_lines ← pdf_handler.py:912
-  - \_extract\_party\_lookup\_from\_lines ← pdf_handler.py:914
-  - \_parse\_candidate\_header\_with\_party ← pdf_handler.py:923
 
 ### `webapp/parser/handlers/formats/txt_handler.py`
 
@@ -2429,11 +2435,17 @@ graph LR
 - Top-of-file comments:
 
 ```python
+
 # handlers/arizona.py
+
 # ==============================================================
+
 # Handler for Arizona election result sites with expandable cards
+
 # and toggles between 'Vote Type' and 'By County' views.
+
 # ==============================================================
+
 ```
 
 - Definitions:
@@ -3379,8 +3391,6 @@ graph LR
   - close\_cache ← manual_correction_bot.py:1201
   - write\_audit\_log ← manual_correction_bot.py:1132
   - discover\_field\_types\_from\_logs ← manual_correction_bot.py:1243
-  - atomic\_write\_json ← manual_correction_bot.py:751
-  - atomic\_write\_json ← manual_correction_bot.py:1035
   - llm\_suggest\_action ← manual_correction_bot.py:698
   - ml\_score\_entry ← manual_correction_bot.py:694
   - ml\_suggest\_field ← manual_correction_bot.py:695
@@ -3976,11 +3986,11 @@ graph LR
   - orchestrate\_url ← html_election_parser.py:1343
   - orchestrate\_url ← html_election_parser.py:1536
   - main ← html_election_parser.py:1583
-  - main ← retrain_table_structure_models.py:975
-  - main ← scan_misaligned_ner.py:165
   - main ← log_cache_cleaner_bot.py:567
   - main ← manual_correction_bot.py:1223
   - main ← manual_correction_bot.py:1379
+  - main ← retrain_table_structure_models.py:975
+  - main ← scan_misaligned_ner.py:165
   - main ← models.py:468
 
 ### `webapp/parser/services/context_service.py`
@@ -4229,13 +4239,21 @@ graph LR
 - Top-of-file comments:
 
 ```python
+
 # state\_router.py
+
 # ===============================================
+
 # Dynamically routes to the correct state or county-specific handler module
+
 # Uses importlib for auto-resolution from folder structure.
+
 # Now uses librarian.py for state/county mapping.
+
 # Also provides state/county info for format\_router and download\_utils.
+
 # ===============================================
+
 ```
 
 - Definitions:
@@ -4528,38 +4546,38 @@ graph LR
   - safe\_inner\_text ← browser_utils.py:673
   - safe\_inner\_text ← browser_utils.py:675
   - safe\_inner\_text ← browser_utils.py:744
-  - safe\_inner\_text ← pattern_extractor.py:75
   - safe\_inner\_text ← detect.py:431
   - safe\_inner\_text ← detect.py:444
+  - safe\_inner\_text ← pattern_extractor.py:75
   - safe\_locator ← browser_utils.py:671
   - safe\_locator ← browser_utils.py:703
-  - safe\_locator ← pattern_extractor.py:60
-  - safe\_locator ← pattern_extractor.py:72
   - safe\_locator ← detect.py:426
   - safe\_locator ← detect.py:428
   - safe\_locator ← detect.py:429
   - safe\_locator ← detect.py:433
   - safe\_locator ← detect.py:435
   - safe\_locator ← detect.py:438
+  - safe\_locator ← pattern_extractor.py:60
+  - safe\_locator ← pattern_extractor.py:72
   - safe\_evaluate ← browser_utils.py:650
   - safe\_evaluate ← browser_utils.py:684
   - safe\_evaluate ← browser_utils.py:699
   - safe\_wait\_for\_timeout ← browser_utils.py:651
   - safe\_wait\_for\_timeout ← browser_utils.py:700
-  - safe\_nth ← pattern_extractor.py:66
-  - safe\_nth ← pattern_extractor.py:75
   - safe\_nth ← detect.py:428
   - safe\_nth ← detect.py:431
   - safe\_nth ← detect.py:437
   - safe\_nth ← detect.py:445
-  - safe\_count ← pattern_extractor.py:61
-  - safe\_count ← pattern_extractor.py:74
+  - safe\_nth ← pattern_extractor.py:66
+  - safe\_nth ← pattern_extractor.py:75
   - safe\_count ← detect.py:427
   - safe\_count ← detect.py:430
   - safe\_count ← detect.py:434
   - safe\_count ← detect.py:436
   - safe\_count ← detect.py:439
   - safe\_count ← detect.py:442
+  - safe\_count ← pattern_extractor.py:61
+  - safe\_count ← pattern_extractor.py:74
   - safe\_launch ← browser_utils.py:588
   - async\_safe\_launch ← browser_utils.py:555
   - safe\_new\_context ← browser_utils.py:589
@@ -4720,6 +4738,12 @@ graph LR
   - question.strip (line 94)
 - Inbound references:
   - \_split\_referendum\_title ← contest_normalization.py:81
+  - \_normalize\_candidate\_label ← contest_normalization.py:83
+  - \_normalize\_candidate\_label ← contest_normalization.py:88
+  - \_normalize\_candidate\_label ← contest_normalization.py:89
+  - \_normalize\_candidate\_label ← contest_normalization.py:90
+  - \_normalize\_candidate\_label ← pivot.py:799
+  - \_normalize\_candidate\_label ← pivot.py:1106
 
 ### `webapp/parser/utils/contest_selector.py`
 
@@ -5192,6 +5216,16 @@ graph LR
   - all\_headers.update (line 288)
 - Inbound references:
   - EntityInfo ← detect.py:238
+  - \_norm ← detect.py:81
+  - \_norm ← detector.py:52
+  - \_norm ← detector.py:57
+  - normalize\_text ← detect.py:107
+  - normalize\_text ← detect.py:133
+  - normalize\_text ← detect.py:139
+  - normalize\_text ← detect.py:145
+  - normalize\_text ← detect.py:151
+  - normalize\_text ← detect.py:161
+  - normalize\_text ← shared_logic.py:1842
   - normalize\_for\_matching ← detect.py:116
   - \_is\_percent\_header ← detect.py:110
   - \_is\_percent\_header ← detect.py:139
@@ -5292,9 +5326,6 @@ graph LR
   - candidates.add (line 213)
   - shared\_logic.safe\_add (line 218)
 - Inbound references:
-  - \_norm ← detector.py:52
-  - \_norm ← detector.py:57
-  - \_norm ← detect.py:81
   - \_numeric\_like ← detector.py:181
   - \_numeric\_like ← detector.py:197
   - EntityAnnotation ← detector.py:188
@@ -6487,6 +6518,10 @@ graph LR
   - contest\_normalization.normalize\_contest\_label (line 240)
   - coverage.setdefault (line 245)
 - Inbound references:
+  - \_safe\_int ← json_export_loader.py:266
+  - \_safe\_int ← json_export_loader.py:267
+  - \_safe\_int ← json_export_loader.py:280
+  - \_safe\_int ← json_export_loader.py:316
   - \_safe\_int ← pivot.py:1972
   - \_safe\_int ← pivot.py:2003
   - \_safe\_int ← pivot.py:2007
@@ -6498,10 +6533,6 @@ graph LR
   - \_safe\_int ← pivot.py:2139
   - \_safe\_int ← pivot.py:2143
   - \_safe\_int ← pivot.py:2152
-  - \_safe\_int ← json_export_loader.py:266
-  - \_safe\_int ← json_export_loader.py:267
-  - \_safe\_int ← json_export_loader.py:280
-  - \_safe\_int ← json_export_loader.py:316
   - \_collapse\_spaces ← json_export_loader.py:58
   - \_collapse\_spaces ← json_export_loader.py:69
   - \_collapse\_spaces ← json_export_loader.py:82
@@ -7480,6 +7511,10 @@ graph LR
   - \_coerce\_int ← pivot.py:2212
   - \_coerce\_int ← pivot.py:2218
   - \_coerce\_int ← pivot.py:2221
+  - \_coerce\_int ← test_pdf_mock_pipeline.py:262
+  - \_coerce\_int ← test_pdf_mock_pipeline.py:263
+  - \_coerce\_int ← test_pdf_mock_pipeline.py:293
+  - \_coerce\_int ← test_pdf_mock_pipeline.py:294
   - \_normalized\_header\_cache ← pivot.py:921
   - \_sort\_precincts ← pivot.py:1141
   - \_sort\_precincts ← pivot.py:1208
@@ -7495,12 +7530,6 @@ graph LR
   - debug\_dump\_pivot\_state ← pivot.py:1089
   - \_strip\_party\_fragment ← pivot.py:489
   - \_strip\_party\_fragment ← pivot.py:809
-  - \_normalize\_candidate\_label ← pivot.py:799
-  - \_normalize\_candidate\_label ← pivot.py:1106
-  - \_normalize\_candidate\_label ← contest_normalization.py:83
-  - \_normalize\_candidate\_label ← contest_normalization.py:88
-  - \_normalize\_candidate\_label ← contest_normalization.py:89
-  - \_normalize\_candidate\_label ← contest_normalization.py:90
   - \_collect\_ballot\_types ← pivot.py:1122
   - \_derive\_party\_map ← pivot.py:1123
   - \_normalize\_division\_name ← pivot.py:555
@@ -7513,6 +7542,8 @@ graph LR
   - \_s ← table_builder.py:634
   - \_s ← table_builder.py:636
   - \_safe\_col\_name ← pivot.py:1195
+  - \_safe\_col\_name ← pivot.py:1197
+  - \_safe\_col\_name ← pivot.py:1198
 
 ### `webapp/parser/utils/rawjson_utils.py`
 
@@ -7916,21 +7947,22 @@ graph LR
   - function: `\_is\_ignored\_dir` (line 2063)
   - function: `generate\_project\_inventory` (line 2067)
   - function: `\_render\_inventory\_md` (line 2102)
-  - function: `update\_architecture\_md` (line 2131)
-  - function: `generate\_project\_map` (line 2154)
-  - function: `\_posix` (line 2164)
-  - function: `\_read\_file\_text` (line 2167)
-  - function: `\_extract\_top\_comment\_block` (line 2173)
-  - function: `\_harvest\_todos` (line 2203)
-  - function: `\_module\_info\_from\_ast` (line 2219)
-  - function: `\_scan\_webapp\_modules` (line 2313)
-  - function: `\_index\_defs` (line 2332)
-  - function: `\_resolve\_targets` (line 2352)
-  - function: `\_render\_audit\_md` (line 2388)
-  - function: `generate\_project\_audit` (line 2888)
-  - function: `generate\_todos\_index` (line 2908)
-  - function: `generate\_noise\_override\_suggestions` (line 2992)
-  - function: `generate\_pipeline\_map` (line 3109)
+  - function: `\_finalize\_markdown\_lines` (line 2132)
+  - function: `update\_architecture\_md` (line 2157)
+  - function: `generate\_project\_map` (line 2180)
+  - function: `\_posix` (line 2190)
+  - function: `\_read\_file\_text` (line 2193)
+  - function: `\_extract\_top\_comment\_block` (line 2199)
+  - function: `\_harvest\_todos` (line 2229)
+  - function: `\_module\_info\_from\_ast` (line 2245)
+  - function: `\_scan\_webapp\_modules` (line 2339)
+  - function: `\_index\_defs` (line 2358)
+  - function: `\_resolve\_targets` (line 2378)
+  - function: `\_render\_audit\_md` (line 2414)
+  - function: `generate\_project\_audit` (line 2916)
+  - function: `generate\_todos\_index` (line 2936)
+  - function: `generate\_noise\_override\_suggestions` (line 3023)
+  - function: `generate\_pipeline\_map` (line 3147)
 - Imports:
   - **Standard Library** (28):
     - `import copy as copy` (line 3)
@@ -7994,21 +8026,21 @@ graph LR
   - L756 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)}; coercing to list.")
   - L1096 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url} (type: {type(lst).**name**})")
   - L1359 **WARNING**: (f"State '{state*norm}' not found in county map")
-  - L2137 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
-  - L2143 **WARNING**: ("\[inventory\] Markers not found in architecture.md; aborting replace.")
-  - L2158 **WARNING**: ("\[inventory\] generate*project*map completed with warnings; check markers and path.")
-  - L2204 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned*text)."""
-  - L2206 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-  - L2836 **TODO**: /FIXME/WARN
-  - L2839 **TODO**: /FIXME/WARN:")
-  - L2909 **TODO**: /FIXME/WARN lines from webapp/ into a compact index.
-  - L2919 **FIXME**: ', 'BUG'\]
-  - L2920 **TODO**: ', 'HACK', 'XXX'\]
-  - L2921 **WARN**: ', 'WARNING', 'NOTE'\]
-  - L2960 **TODO**: /FIXME Index"')
-  - L2963 **TODO**: /FIXME index — webapp\n")
-  - L3011 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
-  - L3347 **TODO**: /FIXME/WARN ({mod*name})")
+  - L2163 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+  - L2169 **WARNING**: ("\[inventory\] Markers not found in architecture.md; aborting replace.")
+  - L2184 **WARNING**: ("\[inventory\] generate*project*map completed with warnings; check markers and path.")
+  - L2230 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned*text)."""
+  - L2232 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+  - L2864 **TODO**: /FIXME/WARN
+  - L2867 **TODO**: /FIXME/WARN:")
+  - L2937 **TODO**: /FIXME/WARN lines from webapp/ into a compact index.
+  - L2947 **FIXME**: ', 'BUG'\]
+  - L2948 **TODO**: ', 'HACK', 'XXX'\]
+  - L2949 **WARN**: ', 'WARNING', 'NOTE'\]
+  - L2988 **TODO**: /FIXME Index"')
+  - L2991 **TODO**: /FIXME annotations under ⁣`webapp/⁣`.")
+  - L3042 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
+  - L3371 **TODO**: /FIXME/WARN ({mod*name})")
 - Outgoing cross-module calls (sample):
   - Context\_Integration.Context\_Library.constants.STATE\_MODULE\_MAP.keys (line 65)
   - Context\_Integration.Context\_Library.constants.KNOWN\_STATE\_TO\_COUNTY\_MAP.keys (line 65)
@@ -8632,7 +8664,6 @@ graph LR
   - shared\_logic.safe\_get (line 342)
   - shared\_logic.safe\_get (line 347)
 - Inbound references:
-  - \_stringify\_for\_pivot ← table_core.py:293
   - \_deduplicate\_tables ← table_core.py:239
   - \_deduplicate\_tables ← table_core.py:421
   - \_log\_extraction\_summary ← table_core.py:235
@@ -8919,3 +8950,795 @@ graph LR
   - utils.logger\_singleton.logger.info (line 278)
 - Inbound references:
   - CancellationManager ← web_pipeline.py:91
+
+### `webapp/tests/benchmarks/test_pipeline_benchmark.py`
+
+- Definitions:
+  - function: `test\_pipeline\_benchmark\_and\_idempotency` (line 16)
+- Imports:
+  - **Standard Library** (4):
+    - `import os as os` (line 1)
+    - `import sys as sys` (line 2)
+    - `import time as time` (line 3)
+    - `from pathlib import Path` (line 4)
+  - **Third-party** (3):
+    - `import pytest as pytest` (line 6)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 12)
+    - `from webapp.parser.utils.detect import harmonize_headers_and_data` (line 13)
+- Outgoing cross-module calls (sample):
+  - pathlib.Path (line 8)
+  - pytest.skip (line 18)
+  - rows.append (line 24)
+  - time.perf\_counter (line 31)
+  - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 32)
+  - time.perf\_counter (line 40)
+  - webapp.parser.utils.detect.harmonize\_headers\_and\_data (line 47)
+
+### `webapp/tests/conftest.py`
+
+> Pytest configuration for Smart Elections Parser tests.
+
+- Definitions:
+  - function: `pytest\_configure` (line 12)
+- Imports:
+  - **Standard Library** (1):
+    - `import warnings as warnings` (line 7)
+  - **Third-party** (1):
+    - `import pytest as pytest` (line 9)
+- TODO/FIXME/WARN:
+  - L17 **WARNING**: escalates to
+  - L21 **WARNING**: category so it never escalates.
+  - L23 **WARNING**: was ignored.
+- Outgoing cross-module calls (sample):
+  - warnings.filterwarnings (line 26)
+
+### `webapp/tests/test_browser_launch_defaults.py`
+
+- Definitions:
+  - class: `DummySyncBrowserType` (line 11)
+  - class: `DummyAsyncBrowserType` (line 20)
+  - function: `test\_safe\_launch\_uses\_headless\_default\_when\_unspecified` (line 29)
+  - function: `test\_safe\_launch\_respects\_explicit\_override` (line 39)
+  - function: `test\_async\_safe\_launch\_uses\_headless\_default` (line 49)
+  - function: `test\_async\_safe\_launch\_respects\_override` (line 59)
+  - function: `test\_sync\_launch\_browser\_headless\_default` (line 70)
+  - function: `test\_sync\_launch\_browser\_headful\_has\_window\_args` (line 109)
+  - function: `test\_async\_launch\_browser\_headless\_default` (line 143)
+  - function: `test\_async\_launch\_browser\_headful\_has\_window\_args` (line 192)
+  - function: `test\_seleniumbase\_launch\_browser\_uses\_default` (line 235)
+  - function: `test\_seleniumbase\_launch\_browser\_override` (line 252)
+- Imports:
+  - **Standard Library** (4):
+    - `import asyncio as asyncio` (line 1)
+    - `from typing import Any` (line 3)
+    - `from typing import Dict` (line 3)
+    - `from typing import cast` (line 3)
+  - **Third-party** (3):
+    - `import pytest as pytest` (line 5)
+    - `from webapp.parser.utils import browser_utils` (line 7)
+    - `from webapp.parser.utils import seleniumbase_launcher` (line 8)
+  - **Local/Project** (1):
+    - `import types as types` (line 2)
+- Outgoing cross-module calls (sample):
+  - monkeypatch.setattr (line 31)
+  - webapp.parser.utils.browser\_utils.safe\_launch (line 32)
+  - typing.cast (line 34)
+  - monkeypatch.setattr (line 41)
+  - webapp.parser.utils.browser\_utils.safe\_launch (line 42)
+  - typing.cast (line 44)
+  - monkeypatch.setattr (line 51)
+  - asyncio.run (line 52)
+  - webapp.parser.utils.browser\_utils.async\_safe\_launch (line 52)
+  - typing.cast (line 54)
+  - monkeypatch.setattr (line 61)
+  - webapp.parser.utils.browser\_utils.async\_safe\_launch (line 62)
+  - asyncio.run (line 63)
+  - typing.cast (line 65)
+  - monkeypatch.setattr (line 72)
+  - monkeypatch.setattr (line 73)
+  - monkeypatch.setattr (line 91)
+  - monkeypatch.setattr (line 92)
+  - monkeypatch.setattr (line 93)
+  - monkeypatch.setattr (line 94)
+  - monkeypatch.setattr (line 95)
+  - types.SimpleNamespace (line 97)
+  - webapp.parser.utils.browser\_utils.sync\_launch\_browser (line 99)
+  - monkeypatch.setattr (line 111)
+  - monkeypatch.setattr (line 112)
+  - monkeypatch.setattr (line 127)
+  - monkeypatch.setattr (line 128)
+  - monkeypatch.setattr (line 129)
+  - monkeypatch.setattr (line 130)
+  - monkeypatch.setattr (line 131)
+  - types.SimpleNamespace (line 133)
+  - webapp.parser.utils.browser\_utils.sync\_launch\_browser (line 135)
+  - monkeypatch.setattr (line 145)
+  - monkeypatch.setattr (line 146)
+  - types.SimpleNamespace (line 150)
+  - monkeypatch.setattr (line 174)
+  - monkeypatch.setattr (line 175)
+  - monkeypatch.setattr (line 176)
+  - monkeypatch.setattr (line 177)
+  - monkeypatch.setattr (line 178)
+  - monkeypatch.setattr (line 179)
+  - webapp.parser.utils.browser\_utils.async\_launch\_browser (line 181)
+  - asyncio.run (line 182)
+  - monkeypatch.setattr (line 194)
+  - monkeypatch.setattr (line 195)
+  - types.SimpleNamespace (line 199)
+  - monkeypatch.setattr (line 220)
+  - monkeypatch.setattr (line 221)
+  - monkeypatch.setattr (line 222)
+  - monkeypatch.setattr (line 223)
+- Inbound references:
+  - DummySyncBrowserType ← test_browser_launch_defaults.py:30
+  - DummySyncBrowserType ← test_browser_launch_defaults.py:40
+  - DummyAsyncBrowserType ← test_browser_launch_defaults.py:50
+  - DummyAsyncBrowserType ← test_browser_launch_defaults.py:60
+
+### `webapp/tests/test_context_integration.py`
+
+- Top-of-file comments:
+
+```python
+
+# mypy: disable-error-code=unreachable
+
+```
+
+- Definitions:
+  - class: `StubElectionDataService` (line 18)
+  - function: `\_no\_context\_library\_write` (line 62)
+  - function: `test\_context\_organizer\_returns\_structured\_payload` (line 73)
+  - function: `test\_context\_coordinator\_integrates\_with\_organizer` (line 135)
+- Imports:
+  - **Standard Library** (6):
+    - `import sys as sys` (line 3)
+    - `from pathlib import Path` (line 4)
+    - `from typing import Any` (line 10)
+    - `from typing import Dict` (line 10)
+    - `from typing import List` (line 10)
+    - `from typing import cast` (line 10)
+  - **Third-party** (3):
+    - `import pytest as pytest` (line 12)
+    - `from webapp.parser.Context_Integration import context_coordinator` (line 14)
+    - `from webapp.parser.Context_Integration.context_organizer import ContextOrganizer` (line 15)
+- Outgoing cross-module calls (sample):
+  - pathlib.Path (line 6)
+  - monkeypatch.setattr (line 65)
+  - pytest.fixture (line 61)
+  - webapp.parser.Context\_Integration.context\_organizer.ContextOrganizer (line 74)
+  - typing.cast (line 81)
+  - organizer.organize\_context (line 114)
+  - typed\_result.get (line 128)
+  - pytest.fail (line 130)
+  - typed\_result.get (line 131)
+  - monkeypatch.setattr (line 152)
+  - monkeypatch.setattr (line 153)
+  - webapp.parser.Context\_Integration.context\_coordinator.ContextCoordinator (line 159)
+  - coordinator.organize\_and\_enrich (line 167)
+  - pytest.fail (line 173)
+  - coordinator.organize\_context\_advanced (line 184)
+- Inbound references:
+  - StubElectionDataService ← test_context_integration.py:81
+
+### `webapp/tests/test_csv_normalization.py`
+
+- Definitions:
+  - function: `test\_csv\_header\_normalization\_and\_deduplication` (line 7)
+- Imports:
+  - **Standard Library** (1):
+    - `import os as os` (line 1)
+  - **Third-party** (2):
+    - `import pytest as pytest` (line 2)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 4)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 17)
+  - r.get (line 33)
+  - r.get (line 34)
+  - a.get (line 35)
+  - b.get (line 36)
+
+### `webapp/tests/test_handler_parity.py`
+
+- Definitions:
+  - function: `\_simple\_tables` (line 15)
+  - function: `test\_csv\_handler\_provided\_tables\_skip\_pivot` (line 21)
+  - function: `test\_json\_handler\_provided\_tables\_skip\_pivot` (line 43)
+  - function: `test\_pdf\_handler\_missing\_optional\_deps\_with\_provided\_tables` (line 60)
+- Imports:
+  - **Standard Library** (2):
+    - `import os as os` (line 1)
+    - `import sys as sys` (line 2)
+  - **Third-party** (4):
+    - `import pytest as pytest` (line 4)
+    - `from webapp.parser.handlers.formats import csv_handler` (line 12)
+    - `from webapp.parser.handlers.formats import json_handler` (line 12)
+    - `from webapp.parser.handlers.formats import pdf_handler` (line 12)
+  - **Local/Project** (1):
+    - `import types as types` (line 3)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.handlers.formats.csv\_handler.parse (line 31)
+  - meta.get (line 40)
+  - webapp.parser.handlers.formats.json\_handler.parse (line 52)
+  - meta.get (line 57)
+  - monkeypatch.setattr (line 62)
+  - monkeypatch.setattr (line 63)
+  - monkeypatch.setattr (line 64)
+  - webapp.parser.handlers.formats.pdf\_handler.parse (line 74)
+  - meta.get (line 79)
+  - meta.get (line 81)
+  - opt.get (line 82)
+  - opt.get (line 83)
+  - opt.get (line 84)
+- Inbound references:
+  - \_simple\_tables ← test_handler_parity.py:23
+  - \_simple\_tables ← test_handler_parity.py:45
+  - \_simple\_tables ← test_handler_parity.py:67
+
+### `webapp/tests/test_header_normalization.py`
+
+- Definitions:
+  - function: `test\_ballot\_synonyms\_and\_totals` (line 6)
+  - function: `test\_detect\_normalize\_and\_dedupe` (line 23)
+  - function: `test\_collapse\_absentee\_military\_synonyms` (line 31)
+  - function: `test\_title\_noise\_regex` (line 47)
+- Imports:
+  - **Third-party** (6):
+    - `import pytest as pytest` (line 1)
+    - `from webapp.parser.utils.salvage import collapse_ballot_synonym_columns` (line 2)
+    - `from webapp.parser.utils.salvage import normalize_ballot_column_name` (line 2)
+    - `from webapp.parser.utils.detect import normalize_header` (line 3)
+    - `from webapp.parser.utils.detect import dedupe_headers_with_suffix` (line 3)
+    - `from webapp.parser.utils.camelot_utils import _TITLE_NOISE_RE` (line 4)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.salvage.collapse\_ballot\_synonym\_columns (line 12)
+  - webapp.parser.utils.salvage.normalize\_ballot\_column\_name (line 14)
+  - webapp.parser.utils.salvage.normalize\_ballot\_column\_name (line 16)
+  - alice.get (line 20)
+  - bob.get (line 21)
+  - webapp.parser.utils.detect.normalize\_header (line 25)
+  - webapp.parser.utils.detect.dedupe\_headers\_with\_suffix (line 28)
+  - x.lower (line 29)
+  - webapp.parser.utils.salvage.collapse\_ballot\_synonym\_columns (line 37)
+  - webapp.parser.utils.camelot\_utils.\_TITLE\_NOISE\_RE.search (line 49)
+
+### `webapp/tests/test_json_export_loader_utils.py`
+
+- Definitions:
+  - function: `\_load\_payload` (line 19)
+  - function: `test\_party\_normalizer\_strips\_incumbent\_tokens` (line 23)
+  - function: `test\_statewide\_totals\_match\_report` (line 30)
+  - function: `test\_candidate\_normalization\_removes\_incumbent\_suffix` (line 48)
+  - function: `test\_statewide\_coverage\_tracks\_all\_counties` (line 60)
+  - function: `test\_statewide\_rows\_include\_party\_information` (line 72)
+  - function: `test\_normalize\_party\_label\_examples` (line 95)
+  - function: `test\_total\_counties\_exposed` (line 99)
+  - function: `test\_candidate\_label\_map\_includes\_raw\_names` (line 104)
+  - function: `test\_context\_snapshot\_tracks\_ballot\_groups` (line 114)
+  - function: `test\_referendum\_titles\_are\_normalized` (line 123)
+  - function: `test\_statewide\_contest\_scope\_detection` (line 137)
+  - function: `test\_district\_contest\_scope\_detection` (line 146)
+- Imports:
+  - **Standard Library** (3):
+    - `import json as json` (line 3)
+    - `from pathlib import Path` (line 4)
+    - `import sys as sys` (line 5)
+  - **Third-party** (3):
+    - `import pytest as pytest` (line 11)
+    - `from webapp.parser.Context_Integration.Context_Library.constants import normalize_party_label` (line 13)
+    - `from webapp.parser.utils.json_export_loader import load_state_export` (line 14)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 1)
+- Outgoing cross-module calls (sample):
+  - pathlib.Path (line 7)
+  - pathlib.Path (line 16)
+  - json.loads (line 20)
+  - \_FIXTURE\_PATH.read\_text (line 20)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 24)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 24)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 25)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 26)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 27)
+  - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 31)
+  - contest.get (line 41)
+  - option.get (line 42)
+  - option.get (line 45)
+  - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 49)
+  - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 61)
+  - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 73)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 96)
+  - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 100)
+  - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 105)
+  - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 115)
+  - snapshot.get (line 120)
+  - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 124)
+  - snapshot.get (line 131)
+  - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 138)
+  - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 147)
+  - contest.get (line 151)
+- Inbound references:
+  - \_load\_payload ← test_json_export_loader_utils.py:32
+  - \_load\_payload ← test_json_export_loader_utils.py:62
+
+### `webapp/tests/test_json_handler_regression.py`
+
+- Definitions:
+  - function: `\_build\_sample\_payload` (line 15)
+  - function: `\_fake\_select\_contest` (line 81)
+  - function: `test\_json\_handler\_preserves\_precinct\_wide\_output` (line 85)
+  - function: `test\_json\_handler\_fastpath\_uses\_loader` (line 147)
+- Imports:
+  - **Standard Library** (5):
+    - `import sys as sys` (line 1)
+    - `from pathlib import Path` (line 2)
+    - `from typing import Any` (line 3)
+    - `from typing import Dict` (line 3)
+    - `from typing import List` (line 3)
+  - **Third-party** (3):
+    - `import orjson as orjson` (line 5)
+    - `import pytest as pytest` (line 6)
+    - `from webapp.parser.handlers.formats import json_handler` (line 12)
+- Outgoing cross-module calls (sample):
+  - pathlib.Path (line 8)
+  - json\_path.write\_bytes (line 88)
+  - orjson.dumps (line 88)
+  - monkeypatch.setattr (line 113)
+  - monkeypatch.setattr (line 114)
+  - webapp.parser.handlers.formats.json\_handler.parse\_json\_election\_results (line 116)
+  - json\_path.write\_bytes (line 188)
+  - orjson.dumps (line 188)
+  - kwargs.get (line 197)
+  - monkeypatch.setattr (line 209)
+  - monkeypatch.setattr (line 210)
+  - webapp.parser.handlers.formats.json\_handler.parse\_json\_election\_results (line 212)
+- Inbound references:
+  - \_build\_sample\_payload ← test_json_handler_regression.py:86
+
+### `webapp/tests/test_pdf_mock_pipeline.py`
+
+- Definitions:
+  - function: `\_fresh\_tricky\_rows` (line 75)
+  - function: `\_coerce\_int` (line 79)
+  - function: `\_run\_pdf\_parser\_with\_tricky\_fixture` (line 89)
+  - function: `test\_pdf\_mock\_list\_rows\_promote\_header\_and\_ordering` (line 209)
+  - function: `test\_pdf\_tricky\_fixture\_grand\_total\_and\_location\_priority` (line 233)
+  - function: `test\_pdf\_handler\_tricky\_fixture\_aligns\_metadata` (line 266)
+  - function: `test\_pdf\_handler\_tricky\_fixture\_schema\_snapshot` (line 297)
+  - function: `test\_columnar\_reconstruction\_series\_parses\_vertical\_pdf\_block` (line 316)
+  - function: `test\_columnar\_reconstruction\_prefers\_contest\_block` (line 366)
+  - function: `test\_extract\_contest\_block\_reaches\_deep\_pages` (line 413)
+  - function: `test\_pdf\_handler\_columnar\_fallback\_end\_to\_end` (line 432)
+- Imports:
+  - **Standard Library** (9):
+    - `import csv as csv` (line 1)
+    - `import json as json` (line 2)
+    - `import sys as sys` (line 3)
+    - `from copy import deepcopy` (line 4)
+    - `from pathlib import Path` (line 5)
+    - `from typing import Any` (line 7)
+    - `from typing import Dict` (line 7)
+    - `from typing import List` (line 7)
+    - `from typing import cast` (line 7)
+  - **Third-party** (3):
+    - `import pytest as pytest` (line 13)
+    - `from webapp.parser.handlers.formats import pdf_handler` (line 15)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 16)
+  - **Local/Project** (1):
+    - `from types import SimpleNamespace` (line 6)
+- Outgoing cross-module calls (sample):
+  - pathlib.Path (line 9)
+  - pathlib.Path (line 72)
+  - copy.deepcopy (line 76)
+  - monkeypatch.setattr (line 120)
+  - types.SimpleNamespace (line 120)
+  - monkeypatch.setattr (line 128)
+  - row.get (line 131)
+  - monkeypatch.setattr (line 142)
+  - monkeypatch.setattr (line 147)
+  - monkeypatch.setattr (line 152)
+  - csv\_path.open (line 169)
+  - csv.DictWriter (line 170)
+  - writer.writeheader (line 171)
+  - writer.writerow (line 173)
+  - row.get (line 173)
+  - row.get (line 173)
+  - metadata\_path.open (line 185)
+  - json.dump (line 186)
+  - monkeypatch.setattr (line 193)
+  - pdf\_path.write\_bytes (line 196)
+  - webapp.parser.handlers.formats.pdf\_handler.parse\_pdf\_election\_results (line 198)
+  - outputs.update (line 200)
+  - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 217)
+  - typing.cast (line 220)
+  - h.index (line 230)
+  - h.index (line 230)
+  - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 237)
+  - col.endswith (line 250)
+  - row.get (line 259)
+  - row.get (line 262)
+  - row.get (line 263)
+  - pathlib.Path (line 282)
+  - typing.cast (line 282)
+  - pathlib.Path (line 283)
+  - typing.cast (line 283)
+  - csv\_path.exists (line 284)
+  - metadata\_path.exists (line 285)
+  - csv\_path.open (line 287)
+  - csv.DictReader (line 288)
+  - col.endswith (line 292)
+  - first.get (line 293)
+  - first.get (line 294)
+  - pathlib.Path (line 300)
+  - typing.cast (line 300)
+  - pathlib.Path (line 301)
+  - typing.cast (line 301)
+  - csv\_path.open (line 303)
+  - csv.DictReader (line 304)
+  - metadata\_path.open (line 307)
+  - json.load (line 308)
+- Inbound references:
+  - \_fresh\_tricky\_rows ← test_pdf_mock_pipeline.py:131
+  - \_fresh\_tricky\_rows ← test_pdf_mock_pipeline.py:235
+  - \_run\_pdf\_parser\_with\_tricky\_fixture ← test_pdf_mock_pipeline.py:267
+  - \_run\_pdf\_parser\_with\_tricky\_fixture ← test_pdf_mock_pipeline.py:298
+
+### `webapp/tests/test_pivot_and_merge.py`
+
+- Definitions:
+  - class: `DummyCoord` (line 18)
+  - function: `test\_rawjson\_pivot\_simple` (line 26)
+  - function: `test\_rawjson\_pivot\_hierarchical\_headers` (line 73)
+  - function: `test\_combine\_panel\_tables\_by\_precinct` (line 117)
+  - function: `test\_pivot\_wide\_fastpath` (line 127)
+- Imports:
+  - **Standard Library** (6):
+    - `import os as os` (line 1)
+    - `import sys as sys` (line 2)
+    - `from typing import Any` (line 3)
+    - `from typing import Dict` (line 3)
+    - `from typing import List` (line 3)
+    - `from typing import Mapping` (line 3)
+  - **Third-party** (4):
+    - `import pytest as pytest` (line 5)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 13)
+    - `from webapp.parser.utils.salvage import combine_panel_tables_by_precinct` (line 14)
+    - `from webapp.parser.utils.pivot import pivot_to_wide` (line 15)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 56)
+  - h.endswith (line 67)
+  - h.endswith (line 68)
+  - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 101)
+  - ctx.get (line 112)
+  - webapp.parser.utils.salvage.combine\_panel\_tables\_by\_precinct (line 120)
+  - r.get (line 123)
+  - r.get (line 124)
+  - webapp.parser.utils.pivot.pivot\_to\_wide (line 147)
+- Inbound references:
+  - DummyCoord ← test_pivot_and_merge.py:60
+  - DummyCoord ← test_pivot_and_merge.py:105
+  - DummyCoord ← test_pivot_and_merge.py:147
+  - DummyCoord ← test_table_builder_e2e.py:48
+  - DummyCoord ← test_table_builder_e2e.py:120
+
+### `webapp/tests/test_rawjson_edges.py`
+
+- Definitions:
+  - function: `test\_rawjson\_missing\_fields\_and\_empty\_ballot\_options` (line 8)
+- Imports:
+  - **Standard Library** (3):
+    - `from typing import Any` (line 1)
+    - `from typing import Dict` (line 1)
+    - `from typing import List` (line 1)
+  - **Third-party** (2):
+    - `import pytest as pytest` (line 3)
+    - `from webapp.parser.utils.salvage import _salvage_rows_from_rawjson` (line 5)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.salvage.\_salvage\_rows\_from\_rawjson (line 17)
+  - row1.get (line 25)
+  - row1.get (line 26)
+  - row2.get (line 30)
+  - row2.get (line 31)
+  - row3.get (line 35)
+  - row3.get (line 36)
+  - row4.get (line 40)
+  - row4.get (line 41)
+
+### `webapp/tests/test_rawjson_salvage.py`
+
+- Definitions:
+  - function: `test\_salvage\_rows\_from\_rawjson\_inline\_flatten` (line 14)
+  - function: `test\_salvage\_rows\_from\_rawjson\_allowlist\_type\_only` (line 40)
+- Imports:
+  - **Standard Library** (2):
+    - `import os as os` (line 1)
+    - `import sys as sys` (line 2)
+  - **Third-party** (2):
+    - `import pytest as pytest` (line 3)
+    - `from webapp.parser.utils.salvage import _salvage_rows_from_rawjson` (line 11)
+- Outgoing cross-module calls (sample):
+  - orjson.dumps (line 24)
+  - webapp.parser.utils.salvage.\_salvage\_rows\_from\_rawjson (line 31)
+  - rec.get (line 34)
+  - rec.get (line 35)
+  - rec.get (line 36)
+  - rec.get (line 37)
+  - orjson.dumps (line 44)
+  - webapp.parser.utils.salvage.\_salvage\_rows\_from\_rawjson (line 53)
+
+### `webapp/tests/test_schema_validation_warnings.py`
+
+- Definitions:
+  - function: `test\_schema\_validation\_logs\_warning\_for\_weak\_wide\_schema` (line 12)
+- Imports:
+  - **Standard Library** (6):
+    - `import os as os` (line 1)
+    - `import json as json` (line 2)
+    - `import time as time` (line 3)
+    - `from typing import Any` (line 4)
+    - `from typing import Dict` (line 4)
+    - `from typing import List` (line 4)
+  - **Third-party** (3):
+    - `import pytest as pytest` (line 6)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 8)
+    - `from webapp.parser.utils.logger_singleton import logger` (line 9)
+- TODO/FIXME/WARN:
+  - L17 **WARNING**:     # Build a table that lacks candidate/ballot/total columns, forcing a 'normalized schema weak' warning
+  - L39 **WARNING**: " and msg.get("status")=="weak"
+  - L44 **WARNING**: " and inner.get("status")=="weak"
+  - L49 **WARNING**: in captured logs; got: {captured}"
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.logger\_singleton.logger.add\_test\_sink (line 15)
+  - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 24)
+  - entry.get (line 36)
+  - entry.get (line 37)
+  - msg.get (line 38)
+  - msg.get (line 39)
+  - msg.get (line 41)
+  - inner.get (line 43)
+  - inner.get (line 44)
+  - webapp.parser.utils.logger\_singleton.logger.remove\_test\_sink (line 48)
+
+### `webapp/tests/test_table_builder_e2e.py`
+
+- Definitions:
+  - class: `DummyCoord` (line 17)
+  - function: `\_to\_int` (line 25)
+  - function: `test\_table\_builder\_keeps\_only\_real\_rows` (line 35)
+  - function: `test\_table\_builder\_round\_trip\_preserves\_wide\_schema` (line 61)
+  - function: `test\_pivot\_emits\_party\_column\_even\_when\_sparse` (line 157)
+  - function: `test\_detect\_division\_type\_handles\_multi\_level\_precincts` (line 173)
+- Imports:
+  - **Standard Library** (6):
+    - `import os as os` (line 1)
+    - `import sys as sys` (line 2)
+    - `from typing import Any` (line 3)
+    - `from typing import Dict` (line 3)
+    - `from typing import List` (line 3)
+    - `from typing import Mapping` (line 3)
+  - **Third-party** (4):
+    - `import pytest as pytest` (line 5)
+    - `from webapp.parser.utils.pivot import _detect_division_type_for_precinct` (line 13)
+    - `from webapp.parser.utils.pivot import pivot_to_wide` (line 13)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 14)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 44)
+  - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 116)
+  - webapp.parser.utils.pivot.pivot\_to\_wide (line 126)
+  - info.get (line 130)
+  - col.endswith (line 140)
+  - row.get (line 144)
+  - row.get (line 147)
+  - row.get (line 148)
+  - wide\_headers.index (line 154)
+  - wide\_headers.index (line 154)
+  - webapp.parser.utils.pivot.pivot\_to\_wide (line 165)
+  - wide\_headers.index (line 169)
+  - wide\_headers.index (line 169)
+  - webapp.parser.utils.pivot.\_detect\_division\_type\_for\_precinct (line 175)
+  - webapp.parser.utils.pivot.\_detect\_division\_type\_for\_precinct (line 176)
+  - webapp.parser.utils.pivot.\_detect\_division\_type\_for\_precinct (line 177)
+  - webapp.parser.utils.pivot.\_detect\_division\_type\_for\_precinct (line 178)
+  - webapp.parser.utils.pivot.\_detect\_division\_type\_for\_precinct (line 179)
+- Inbound references:
+  - \_to\_int ← test_table_builder_e2e.py:147
+  - \_to\_int ← test_table_builder_e2e.py:148
+
+### `webapp/tests/test_table_builder_noise.py`
+
+- Definitions:
+  - function: `test\_title\_and\_pseudo\_party\_rows\_filtered\_new\_york` (line 18)
+  - function: `test\_row\_filter\_factory\_flags\_noise\_and\_pseudo` (line 33)
+  - function: `test\_compiled\_regexes\_match\_titles` (line 44)
+- Imports:
+  - **Standard Library** (2):
+    - `import os as os` (line 1)
+    - `import sys as sys` (line 2)
+  - **Third-party** (4):
+    - `import pytest as pytest` (line 3)
+    - `from webapp.parser.utils.shared_logic import build_camelot_row_filter_for_context` (line 11)
+    - `from webapp.parser.Context_Integration.Context_Library.constants import get_camelot_title_regex` (line 12)
+    - `from webapp.parser.Context_Integration.Context_Library.constants import get_camelot_row_regex` (line 12)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.shared\_logic.build\_camelot\_row\_filter\_for\_context (line 26)
+  - webapp.parser.utils.shared\_logic.build\_camelot\_row\_filter\_for\_context (line 35)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.get\_camelot\_title\_regex (line 45)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.get\_camelot\_title\_regex (line 46)
+  - ny\_title.search (line 47)
+  - fl\_title.search (line 48)
+
+### `webapp/tests/test_table_core_panels.py`
+
+- Definitions:
+  - function: `test\_pipeline\_panel\_merge\_with\_provided\_tables` (line 14)
+  - function: `test\_dedupe\_prefers\_larger\_table\_for\_same\_signature` (line 36)
+- Imports:
+  - **Standard Library** (2):
+    - `import os as os` (line 1)
+    - `import sys as sys` (line 2)
+  - **Third-party** (2):
+    - `import pytest as pytest` (line 3)
+    - `from webapp.parser.utils.table_core import robust_table_extraction` (line 11)
+- Outgoing cross-module calls (sample):
+  - webapp.parser.utils.table\_core.robust\_table\_extraction (line 25)
+  - webapp.parser.utils.table\_core.robust\_table\_extraction (line 49)
+
+### `webapp/tests/test_upload_validation.py`
+
+- Definitions:
+  - function: `test\_allowed\_file\_accepts\_supported\_extensions` (line 5)
+  - function: `test\_allowed\_file\_rejects\_unknown\_or\_invalid\_extensions` (line 14)
+- Imports:
+  - **Third-party** (2):
+    - `from webapp.Smart_Elections_Parser_Webapp import allowed_file` (line 1)
+    - `from webapp.parser.config import SUPPORTED_EXTENSION_SET` (line 2)
+- Outgoing cross-module calls (sample):
+  - ext.upper (line 9)
+  - webapp.Smart\_Elections\_Parser\_Webapp.allowed\_file (line 10)
+  - webapp.Smart\_Elections\_Parser\_Webapp.allowed\_file (line 11)
+  - webapp.Smart\_Elections\_Parser\_Webapp.allowed\_file (line 15)
+  - webapp.Smart\_Elections\_Parser\_Webapp.allowed\_file (line 16)
+  - webapp.Smart\_Elections\_Parser\_Webapp.allowed\_file (line 18)
+
+### `webapp/tests/test_webapp_app.py`
+
+- Definitions:
+  - function: `webapp\_module` (line 12)
+  - function: `reset\_webapp\_state` (line 30)
+  - function: `client` (line 45)
+  - function: `test\_eventlet\_status\_reports\_threading\_mode` (line 50)
+  - function: `test\_health\_endpoint\_ok` (line 59)
+  - function: `test\_run\_parser\_lists\_available\_files` (line 67)
+  - function: `test\_api\_fs\_list\_blocks\_escape` (line 102)
+  - function: `test\_api\_fs\_mkdir\_and\_delete` (line 107)
+  - function: `test\_socket\_run\_parser\_happy\_path` (line 129)
+  - function: `test\_emit\_contest\_options\_sends\_payload` (line 184)
+  - function: `test\_contest\_selected\_sets\_prompt\_response` (line 224)
+  - function: `test\_cancel\_parser\_sets\_flag\_and\_unlocks\_session` (line 254)
+  - function: `test\_session\_manager\_lock\_is\_native\_threading` (line 295)
+  - function: `test\_socket\_events\_are\_session\_scoped` (line 302)
+- Imports:
+  - **Standard Library** (5):
+    - `import json as json` (line 2)
+    - `import logging as logging` (line 3)
+    - `from pathlib import Path` (line 4)
+    - `import time as time` (line 5)
+    - `from typing import Dict` (line 6)
+  - **Third-party** (1):
+    - `import pytest as pytest` (line 8)
+  - **Local/Project** (1):
+    - `import importlib as importlib` (line 1)
+- TODO/FIXME/WARN:
+  - L17 **WARNING**: ,ERROR")
+- Outgoing cross-module calls (sample):
+  - pytest.MonkeyPatch (line 14)
+  - mp.setenv (line 15)
+  - mp.setenv (line 17)
+  - mp.setenv (line 18)
+  - mp.setenv (line 19)
+  - importlib.import\_module (line 21)
+  - importlib.reload (line 22)
+  - mp.undo (line 25)
+  - logging.shutdown (line 26)
+  - pytest.fixture (line 11)
+  - pytest.fixture (line 29)
+  - client.get (line 60)
+  - resp.get\_json (line 62)
+  - input\_path.write\_text (line 75)
+  - uploaded\_path.write\_text (line 76)
+  - output\_path.write\_text (line 77)
+  - client.get (line 79)
+  - client.get (line 82)
+  - client.get (line 83)
+  - client.get (line 84)
+  - payload.get\_json (line 87)
+  - path.unlink (line 97)
+  - client.get (line 103)
+  - client.post (line 114)
+  - target\_dir.exists (line 116)
+  - target\_dir.is\_dir (line 116)
+  - client.post (line 118)
+  - target\_dir.exists (line 123)
+  - target\_dir.exists (line 125)
+  - target\_dir.rmdir (line 126)
+  - session\_id.startswith (line 133)
+  - emitted.append (line 134)
+  - monkeypatch.setattr (line 153)
+  - monkeypatch.setattr (line 154)
+  - monkeypatch.setattr (line 155)
+  - events.append (line 155)
+  - sio\_client.get\_received (line 161)
+  - sio\_client.emit (line 163)
+  - sio\_client.get\_received (line 164)
+  - pkt.get (line 168)
+  - pkt.get (line 170)
+  - parser\_logs.append (line 172)
+  - entry.get (line 173)
+  - evt.get (line 177)
+  - evt.get (line 178)
+  - sio\_client.disconnect (line 181)
+  - sio\_client.get\_received (line 188)
+  - sio\_client.emit (line 190)
+  - sio\_client.get\_received (line 191)
+  - pathlib.Path (line 193)
+
+### `webapp/tests/unit/test_batch_processor.py`
+
+- Definitions:
+  - class: `DummyPrompt` (line 11)
+  - function: `\_make\_processor` (line 23)
+  - class: `SimpleHandler` (line 66)
+  - function: `test\_successful\_batch` (line 83)
+  - function: `test\_handler\_failure` (line 104)
+  - function: `test\_no\_selected\_races` (line 120)
+  - function: `does\_not\_raise` (line 133)
+  - function: `test\_initial\_result\_used` (line 137)
+  - function: `test\_queue\_prompt\_custom\_responses` (line 158)
+- Imports:
+  - **Standard Library** (5):
+    - `import contextlib as contextlib` (line 3)
+    - `from typing import Any` (line 4)
+    - `from typing import Dict` (line 4)
+    - `from typing import List` (line 4)
+    - `from typing import Tuple` (line 4)
+  - **Third-party** (2):
+    - `import pytest as pytest` (line 6)
+    - `from webapp.parser.handlers.batch_handler import BatchProcessor` (line 8)
+  - **Local/Project** (1):
+    - `from __future__ import annotations` (line 1)
+- Outgoing cross-module calls (sample):
+  - overrides.pop (line 33)
+  - overrides.pop (line 41)
+  - overrides.pop (line 42)
+  - overrides.pop (line 43)
+  - webapp.parser.handlers.batch\_handler.BatchProcessor (line 45)
+  - context.get (line 76)
+  - title.replace (line 79)
+  - monkeypatch.context (line 88)
+  - ctx.setattr (line 89)
+  - processor.run (line 90)
+  - monkeypatch.context (line 113)
+  - ctx.setattr (line 114)
+  - processor.run (line 115)
+  - monkeypatch.context (line 124)
+  - ctx.setattr (line 125)
+  - processor.run (line 126)
+  - monkeypatch.context (line 148)
+  - ctx.setattr (line 149)
+  - processor.run (line 150)
+  - monkeypatch.context (line 172)
+  - ctx.setattr (line 173)
+  - processor.run (line 174)
+- Inbound references:
+  - DummyPrompt ← test_batch_processor.py:41
+  - DummyPrompt ← test_batch_processor.py:84
+  - DummyPrompt ← test_batch_processor.py:105
+  - DummyPrompt ← test_batch_processor.py:121
+  - DummyPrompt ← test_batch_processor.py:138
+  - DummyPrompt ← test_batch_processor.py:159
+  - \_make\_processor ← test_batch_processor.py:85
+  - \_make\_processor ← test_batch_processor.py:111
+  - \_make\_processor ← test_batch_processor.py:122
+  - \_make\_processor ← test_batch_processor.py:146
+  - \_make\_processor ← test_batch_processor.py:170
+  - SimpleHandler ← test_batch_processor.py:42

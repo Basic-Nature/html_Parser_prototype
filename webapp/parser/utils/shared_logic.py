@@ -2103,7 +2103,8 @@ def _render_inventory_md(inv: Dict[str, List[Dict[str, Any]]]) -> str:
     lines: List[str] = []
     total_files = sum(len(v) for v in inv.values())
     total_loc = sum(sum(i.get("loc", 0) for i in v) for v in inv.values())
-    lines.append(f"Inventory summary: {total_files} files, ~{total_loc} non-empty LOC\n")
+    lines.append(f"Inventory summary: {total_files} files, ~{total_loc} non-empty LOC")
+    lines.append("")
     for category in sorted(inv.keys()):
         lines.append(f"### {category}")
         lines.append("")
@@ -2127,6 +2128,31 @@ def _render_inventory_md(inv: Dict[str, List[Dict[str, Any]]]) -> str:
             lines.append(bullet)
         lines.append("")
     return "\n".join(lines).strip() + "\n"
+
+def _finalize_markdown_lines(lines: list[str]) -> str:
+    """Ensure markdown headings/lists have required blank lines and collapse extras."""
+    processed: list[str] = []
+    total = len(lines)
+    for idx, line in enumerate(lines):
+        if line.startswith("#"):
+            if processed and processed[-1] != "":
+                processed.append("")
+            processed.append(line)
+            if idx + 1 < total and lines[idx + 1] != "":
+                processed.append("")
+        else:
+            processed.append(line)
+    final_lines: list[str] = []
+    prev_blank = False
+    for line in processed:
+        if line == "":
+            if not prev_blank:
+                final_lines.append("")
+            prev_blank = True
+        else:
+            final_lines.append(line)
+            prev_blank = False
+    return "\n".join(final_lines).rstrip() + "\n"
 
 def update_architecture_md(project_root: str | Path = ".", md_path: str | Path = "docs/architecture.md") -> bool:
     """Replace the AUTO-INVENTORY block in architecture.md with a fresh inventory."""
@@ -2403,8 +2429,10 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     lines.append("")
     total = len(modules)
     total_loc = sum(m.get("loc", 0) for m in modules)
-    lines.append("# Project Audit — webapp\n")
-    lines.append(f"Modules scanned: {total} | ~{total_loc} non-empty LOC\n")
+    lines.append("Audit scope: `webapp/parser/` modules.")
+    lines.append("")
+    lines.append(f"Modules scanned: {total} | ~{total_loc} non-empty LOC")
+    lines.append("")
 
     # Helper function to build cluster nodes
     def _build_cluster_nodes() -> dict[str, set[str]]:
@@ -2726,7 +2754,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     lines.append("")
 
     # Per-module detail
-    lines.append("## Modules\n")
+    lines.append("## Modules")
     for m in sorted(modules, key=lambda x: x.get("path", "")):
         path = m.get("path", "")
         if path:
@@ -2742,7 +2770,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                     path = orig_path_str  # fallback, but should not happen
             else:
                 path = Path(path).name  # this should not happen now
-        lines.append(f"### `{path}`\n")
+        lines.append(f"### `{path}`")
         if m.get("doc"):
             lines.append(f"> {m['doc'].splitlines()[0]}")
         # Top-of-file comments
@@ -2883,7 +2911,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                         pass
                 lines.append(f"  - {tgt} ← {src}:{e.get('src_line','?')}")
         lines.append("")
-    return re.sub(r'\n\n\n+', '\n\n', "\n".join(lines))
+    return _finalize_markdown_lines(lines)
 
 def generate_project_audit(project_root: str | Path = ".", out_markdown: str | Path = "docs/project_audit.md") -> bool:
     """Scan webapp/ for Python modules and produce a first-pass audit report.
@@ -2960,15 +2988,17 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
         lines.append('title: "TODO/FIXME Index"')
         lines.append("---")
         lines.append("")
-        lines.append("# TODO/FIXME index — webapp\n")
-        lines.append(f"Total annotations: {total}\n")
+        lines.append("Index scope: TODO/FIXME annotations under `webapp/`.")
+        lines.append("")
+        lines.append(f"Total annotations: {total}")
+        lines.append("")
         
         # Output by priority
         for priority, label in [('high', 'High Priority'), ('medium', 'Medium Priority'), ('low', 'Low Priority')]:
             todos = priority_todos[priority]
             if not todos:
                 continue
-            lines.append(f"## {label}\n")
+            lines.append(f"## {label}")
             # Group by file
             file_groups = {}
             for path, ln, keyword, safe_txt in todos:
@@ -2976,14 +3006,15 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
                     file_groups[path] = []
                 file_groups[path].append((ln, keyword, safe_txt))
             for path in sorted(file_groups.keys()):
-                lines.append(f"### `{path}` ({label})\n")
+                lines.append(f"### `{path}` ({label})")
                 for ln, keyword, safe_txt in file_groups[path]:
                     lines.append(f"- L{ln} *{keyword}*: {safe_txt}")
                 lines.append("")
         
+        md = _finalize_markdown_lines(lines)
         out = (root / out_markdown).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        out.write_text(md, encoding="utf-8")
         return True
     except Exception as e:
         logger.error(f"[audit] Failed to generate todos index: {e}")
@@ -3051,8 +3082,10 @@ def generate_noise_override_suggestions(
         lines.append('title: "Noise Override Suggestions"')
         lines.append("---")
         lines.append("")
-        lines.append("# Suggested Camelot noise overrides\n")
-        lines.append(f"Min count cutoff: {min_count}\n")
+        lines.append("Suggested Camelot noise overrides for Camelot parsers.")
+        lines.append("")
+        lines.append(f"Min count cutoff: {min_count}")
+        lines.append("")
         # State-level
         if state_map:
             lines.append("")
@@ -3074,7 +3107,9 @@ def generate_noise_override_suggestions(
             lines.append("")
         else:
             lines.append("")
-            lines.append("## State-level additions\nNone above threshold.\n")
+            lines.append("## State-level additions")
+            lines.append("None above threshold.")
+            lines.append("")
         # County-level
         if county_map:
             lines.append("")
@@ -3096,11 +3131,14 @@ def generate_noise_override_suggestions(
             lines.append("")
         else:
             lines.append("")
-            lines.append("## County-level additions\nNone above threshold.\n")
+            lines.append("## County-level additions")
+            lines.append("None above threshold.")
+            lines.append("")
 
+        md = _finalize_markdown_lines(lines)
         out = (root / out_markdown).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        out.write_text(md, encoding="utf-8")
         return True
     except Exception as e:
         logger.error(f"[noise] Failed to generate override suggestions: {e}")
@@ -3136,13 +3174,6 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
                 return False
             p = p.replace("\\", "/")
             return "/webapp/parser/" in p  # Broadened to all parser files
-        def get_key_funcs(modules: list[dict], path: str) -> list[str]:
-            for m in modules:
-                if m.get("path") == path:
-                    defs = m.get("defs", [])
-                    funcs = [d["name"] for d in defs if d.get("type") in ("function", "async_function")]
-                    return funcs[:5]  # Top 5 functions
-            return []
         def _cluster_for_path(p: str) -> str:
             if not p:
                 return "Other"
@@ -3207,7 +3238,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         lines.append('title: "Comprehensive Pipeline Audit & Map"')
         lines.append("---")
         lines.append("")
-        lines.append("# Comprehensive Pipeline Audit & Map")
+        lines.append("Comprehensive pipeline audit for `webapp/parser/`.")
         lines.append("")
         lines.append("## 📋 Table of Contents")
         lines.append("- [Overview](#overview)")
@@ -3241,14 +3272,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
                 continue
             lines.append(f"  subgraph {cname.replace(' ', '_')}[\"{cname}\"]")
             for n in nodes:
-                funcs = get_key_funcs(modules, f"webapp/parser/{cname.lower().replace(' ', '/')}/{n}.py")
-                if funcs:
-                    lines.append(f"    subgraph {n.replace('.', '_')}[\"{n}\"]")
-                    for f in funcs:
-                        lines.append(f"      {n.replace('.', '_')}_{f}[\"{f}\"]")
-                    lines.append("    end")
-                else:
-                    lines.append(f"    {n.replace('.', '_')}[\"{n}\"]")
+                lines.append(f"    {n.replace('.', '_')}[\"{n}\"]")
             lines.append("  end")
         # Edges
         for (src, dst), cnt in top_edges:
