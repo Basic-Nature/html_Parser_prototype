@@ -7,6 +7,8 @@ layout: default
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Web Application Architecture](#web-application-architecture)
+- [Parser Module Interconnections](#parser-module-interconnections)
 - [Interactive Pipeline Graph](#interactive-pipeline-graph)
 - [File Connection Map](#file-connection-map)
 - [Detailed Module Contexts](#detailed-module-contexts)
@@ -19,6 +21,209 @@ layout: default
 Shared Handlers, Services, Utils, Context Integration, Health
 - **Audit Scope:** All `webapp/parser/` files with full context, imports,
 dependencies, and optimization insights.
+
+## Web Application Architecture
+
+This section shows how the Azure webapp in the `webapp/` folder connects with the parser functionality.
+
+```mermaid
+graph TB
+  subgraph "Azure Web App (webapp/)"
+    A[Smart_Elections_Parser_Webapp.py] --> B[Flask App]
+    B --> C[SocketIO Server]
+    B --> D[Static Assets]
+    D --> E[CSS: run_parser.css]
+    D --> F[JS: run_parser.js]
+    D --> G[Templates: *.html]
+  end
+
+  subgraph "Parser Integration (webapp/parser/)"
+    H[web_pipeline.py] --> I[CancellationManager]
+    H --> J[Threading & Orchestration]
+    H --> K[html_election_parser.main]
+  end
+
+  subgraph "Core Parser Engine"
+    L[html_election_parser.py] --> M[state_router.py]
+    L --> N[format_router.py]
+    L --> O[Context Integration]
+    L --> P[Handler Modules]
+  end
+
+  subgraph "Data Flow"
+    Q[User Input via Web UI] --> B
+    B --> H
+    H --> L
+    L --> R[Output Generation]
+    R --> S[CSV/JSON Files]
+    R --> T[Database Storage]
+  end
+
+  A --> H
+  H --> L
+  L --> U[utils/ & services/]
+  U --> V[Context_Integration/]
+  V --> W[handlers/]
+
+  classDef azure fill:#0078d4,color:#ffffff,stroke:#005ba1
+  classDef parser fill:#45818e,color:#ffffff,stroke:#2a5a6a
+  classDef core fill:#eb4f43,color:#ffffff,stroke:#b33a2f
+  classDef data fill:#00ffe7,color:#1a232a,stroke:#00b8a0
+
+  class A,B,C,D,E,F,G azure
+  class H,I,J,K parser
+  class L,M,N,O,P core
+  class Q,R,S,T data
+```
+
+**🔗 Key Integration Points:**
+
+- **Web Pipeline Bridge:** `web_pipeline.py` acts as the bridge between Flask webapp and core parser
+- **Cancellation Management:** Thread-safe cancellation flags for long-running parser operations
+- **Real-time Updates:** SocketIO enables live progress updates and user interaction
+- **Asset Pipeline:** Static files (CSS/JS) provide the interactive UI for parser control
+
+## Parser Module Interconnections
+
+Detailed view of how all parser files interconnect within the `webapp/parser/` directory structure.
+
+```mermaid
+graph TD
+  subgraph "Entry Points"
+    html_election_parser[html_election_parser.py<br/>Main orchestrator]
+    web_pipeline[web_pipeline.py<br/>Web integration]
+  end
+
+  subgraph "Routing Layer"
+    state_router[state_router.py<br/>State/county routing]
+    format_router[format_router.py<br/>Format detection]
+  end
+
+  subgraph "Handler Ecosystem"
+    subgraph "State Handlers"
+      arizona[arizona.py]
+      pennsylvania[pennsylvania.py]
+      new_york[new_york.py]
+      rockland[rockland.py]
+    end
+
+    subgraph "Format Handlers"
+      pdf_handler[pdf_handler.py]
+      csv_handler[csv_handler.py]
+      json_handler[json_handler.py]
+      html_handler[html_handler.py]
+      xlsx_handler[xlsx_handler.py]
+      txt_handler[txt_handler.py]
+    end
+  end
+
+  subgraph "Core Services"
+    election_data_services[election_data_services.py<br/>DB operations]
+    context_service[context_service.py<br/>Context management]
+  end
+
+  subgraph "Context Integration"
+    context_coordinator[context_coordinator.py<br/>ML coordination]
+    context_organizer[context_organizer.py<br/>Data organization]
+    librarian[librarian.py<br/>Library management]
+    Integrity_check[Integrity_check.py<br/>Data validation]
+    constants[constants.py<br/>Shared constants]
+  end
+
+  subgraph "Utility Layer"
+    browser_utils[browser_utils.py<br/>Browser automation]
+    table_core[table_core.py<br/>Table extraction]
+    contest_selector[contest_selector.py<br/>Contest selection]
+    shared_logic[shared_logic.py<br/>Common utilities]
+    logger_singleton[logger_singleton.py<br/>Logging system]
+    db_utils[db_utils.py<br/>Database utilities]
+    output_utils[output_utils.py<br/>File output]
+  end
+
+  subgraph "Health & Maintenance"
+    health_router[health_router.py<br/>Health orchestration]
+    manual_correction_bot[manual_correction_bot.py<br/>Data correction]
+    retrain_table_structure_models[retrain_table_structure_models.py<br/>ML training]
+    log_cache_cleaner_bot[log_cache_cleaner_bot.py<br/>Cache management]
+  end
+
+  %% Entry connections
+  html_election_parser --> state_router
+  html_election_parser --> format_router
+  html_election_parser --> context_coordinator
+  html_election_parser --> Integrity_check
+  web_pipeline --> html_election_parser
+
+  %% Routing connections
+  state_router --> arizona
+  state_router --> pennsylvania
+  state_router --> new_york
+  format_router --> pdf_handler
+  format_router --> csv_handler
+  format_router --> json_handler
+  format_router --> html_handler
+
+  %% Handler to core connections
+  arizona --> context_organizer
+  pennsylvania --> browser_utils
+  rockland --> browser_utils
+  pdf_handler --> table_core
+  csv_handler --> contest_selector
+  json_handler --> context_coordinator
+
+  %% Service connections
+  election_data_services --> db_utils
+  context_service --> context_organizer
+
+  %% Context integration web
+  context_coordinator --> context_organizer
+  context_coordinator --> librarian
+  context_organizer --> Integrity_check
+  Integrity_check --> constants
+
+  %% Utility interconnections
+  browser_utils --> shared_logic
+  table_core --> detect
+  contest_selector --> shared_logic
+  shared_logic --> logger_singleton
+  db_utils --> models
+
+  %% Health connections
+  health_router --> manual_correction_bot
+  health_router --> retrain_table_structure_models
+  manual_correction_bot --> log_cache_cleaner_bot
+
+  %% Cross-cutting connections
+  html_election_parser -->|config| config
+  state_router -->|config| config
+  context_coordinator -->|config| config
+  browser_utils -->|config| config
+
+  classDef entry fill:#45818e,color:#ffffff,stroke:#2a5a6a
+  classDef routing fill:#00ffe7,color:#1a232a,stroke:#00b8a0
+  classDef handlers fill:#eb4f43,color:#ffffff,stroke:#b33a2f
+  classDef services fill:#0078d4,color:#ffffff,stroke:#005ba1
+  classDef context fill:#ff6b35,color:#ffffff,stroke:#cc5529
+  classDef utils fill:#9d4edd,color:#ffffff,stroke:#7c3cb8
+  classDef health fill:#06d6a0,color:#1a232a,stroke:#049974
+
+  class html_election_parser,web_pipeline entry
+  class state_router,format_router routing
+  class arizona,pennsylvania,new_york,rockland,pdf_handler,csv_handler,json_handler,html_handler,xlsx_handler,txt_handler handlers
+  class election_data_services,context_service services
+  class context_coordinator,context_organizer,librarian,Integrity_check,constants context
+  class browser_utils,table_core,contest_selector,shared_logic,logger_singleton,db_utils,output_utils utils
+  class health_router,manual_correction_bot,retrain_table_structure_models,log_cache_cleaner_bot health
+```
+
+**🔗 Key Architectural Patterns:**
+
+- **Layered Architecture:** Entry → Routing → Handlers → Services → Utils
+- **Context Integration:** ML-powered data organization and validation
+- **Handler Polymorphism:** State and format handlers extend core functionality
+- **Service Layer:** Database operations abstracted through services
+- **Utility Ecosystem:** Shared utilities support all layers
+- **Health Monitoring:** Automated maintenance and ML model retraining
 
 ## Interactive Pipeline Graph
 

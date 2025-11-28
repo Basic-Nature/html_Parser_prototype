@@ -144,15 +144,35 @@ document.addEventListener('DOMContentLoaded', function() {
   // Force re-render of all diagrams after initialization
   setTimeout(() => {
     if (typeof mermaid !== 'undefined') {
-      document.querySelectorAll('.mermaid').forEach((element, index) => {
+      // Handle both .mermaid elements and .language-mermaid code blocks
+      document.querySelectorAll('.mermaid, code.language-mermaid').forEach((element, index) => {
         const id = 'mermaid-' + index;
-        element.id = id;
+        let diagramText = '';
+
+        if (element.classList.contains('language-mermaid')) {
+          // Extract text from code block
+          diagramText = element.textContent.trim();
+          // Replace the code block with a div for rendering
+          const container = document.createElement('div');
+          container.className = 'mermaid';
+          container.id = id;
+          element.parentNode.replaceChild(container, element);
+          element = container;
+        } else {
+          diagramText = element.textContent.trim();
+          element.id = id;
+        }
+
         try {
-          mermaid.render(id, element.textContent.trim()).then((result) => {
+          mermaid.render(id, diagramText).then((result) => {
             element.innerHTML = result.svg;
+          }).catch((error) => {
+            console.log('Mermaid render failed for element:', element, error);
+            // Fallback: show the original text
+            element.innerHTML = '<pre>' + diagramText + '</pre>';
           });
         } catch (e) {
-          console.log('Mermaid render failed for element:', element);
+          console.log('Mermaid render exception for element:', element, e);
         }
       });
     }
