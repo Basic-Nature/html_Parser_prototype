@@ -5,7 +5,7 @@ title: "Project Audit"
 
 Audit scope: `webapp/parser/` modules.
 
-Modules scanned: 98 | ~54042 non-empty LOC
+Modules scanned: 98 | ~54212 non-empty LOC
 
 ## Pipeline map (Mermaid)
 
@@ -73,6 +73,37 @@ graph LR
   test_pdf_mock_pipeline -->|4| pivot
   html_election_parser -->|3| Integrity_check
 ```
+
+## Connection highlights
+
+Key module-to-module and cluster relationships to watch during refactors.
+
+### Top module edges
+
+- `table_builder` → `dynamic_table_extractor` (36 refs, Utils → Utils)
+- `detect` → `browser_utils` (18 refs, Utils → Utils)
+- `manual_correction_bot` → `log_cache_cleaner_bot` (13 refs, Health → Health)
+- `pivot` → `contest_selector` (12 refs, Utils → Utils)
+- `pivot` → `json_export_loader` (11 refs, Utils → Utils)
+- `dynamic_table_extractor` → `context_coordinator` (10 refs, Utils →
+  Context_Integration)
+- `html_scanner` → `librarian` (9 refs, Utils → Context_Integration)
+- `user_prompt` → `shared_logic` (9 refs, Utils → Utils)
+- `pattern_extractor` → `browser_utils` (7 refs, Utils → Utils)
+- `election_data_services` → `models` (6 refs, Services → Utils)
+
+### Cluster flow summary
+
+- Utils → Utils: 985 edges (intra-cluster)
+- Handlers → Handlers: 175 edges (intra-cluster)
+- Health → Health: 133 edges (intra-cluster)
+- Context_Integration → Context_Integration: 109 edges (intra-cluster)
+- Entry → Entry: 86 edges (intra-cluster)
+- Other → Other: 78 edges (intra-cluster)
+- Utils → Context_Integration: 39 edges (cross-cluster)
+- Routing → Routing: 25 edges (intra-cluster)
+- Services → Services: 17 edges (intra-cluster)
+- Services → Utils: 6 edges (cross-cluster)
 
 ## Pipeline focus (compact)
 
@@ -147,21 +178,29 @@ graph LR
 
 ## Cross-module hotspots
 
-- webapp.parser.utils.dynamic_table_extractor:_emit ← 61 refs (dynamic_table_extractor.py)
+- webapp.parser.utils.dynamic_table_extractor:_emit ← 61 refs
+  (dynamic_table_extractor.py)
 - webapp.parser.utils.table_builder:_norm_header ← 50 refs (table_builder.py)
-- webapp.parser.Context_Integration.context_coordinator:ContextCoordinator ← 30 refs (context_coordinator.py)
-- webapp.parser.utils.pdf_table_utils:_record_recon_event ← 22 refs (pdf_table_utils.py)
+- webapp.parser.Context_Integration.context_coordinator:ContextCoordinator ← 30
+  refs (context_coordinator.py)
+- webapp.parser.utils.pdf_table_utils:_record_recon_event ← 22 refs
+  (pdf_table_utils.py)
 - webapp.parser.utils.pivot:_safe_col_name ← 20 refs (pivot.py)
 - webapp.parser.utils.contest_selector:_norm_key ← 18 refs (contest_selector.py)
 - webapp.parser.utils.shared_logic:safe_lower ← 18 refs (shared_logic.py)
 - webapp.parser.utils.pivot:_coerce_int ← 17 refs (pivot.py)
 - webapp.parser.utils.db_utils:get_session ← 16 refs (db_utils.py)
 - webapp.parser.utils.rawjson_utils:_rj_first ← 16 refs (rawjson_utils.py)
-- webapp.parser.utils.json_export_loader:_safe_int ← 15 refs (json_export_loader.py)
-- webapp.parser.health.log_cache_cleaner_bot:safe_path ← 14 refs (log_cache_cleaner_bot.py)
-- webapp.parser.utils.html_scanner:_extract_clean_text ← 14 refs (html_scanner.py)
-- webapp.parser.utils.pdf_table_utils:is_numeric_like ← 13 refs (pdf_table_utils.py)
-- webapp.Smart_Elections_Parser_Weba:_env_flag ← 12 refs (Smart_Elections_Parser_Webapp.py)
+- webapp.parser.utils.json_export_loader:_safe_int ← 15 refs
+  (json_export_loader.py)
+- webapp.parser.health.log_cache_cleaner_bot:safe_path ← 14 refs
+  (log_cache_cleaner_bot.py)
+- webapp.parser.utils.html_scanner:_extract_clean_text ← 14 refs
+  (html_scanner.py)
+- webapp.parser.utils.pdf_table_utils:is_numeric_like ← 13 refs
+  (pdf_table_utils.py)
+- webapp.Smart_Elections_Parser_Weba:_env_flag ← 12 refs
+  (Smart_Elections_Parser_Webapp.py)
 
 ## Leaf modules (candidates for review)
 
@@ -248,7 +287,7 @@ graph LR
 
 ## Modules
 
-### `webapp/Smart_Elections_Parser_Webapp.py`
+### webapp/Smart\_Elections\_Parser\_Webapp.py {#webapp-smart-elections-parser-webapp-py}
 
 - Definitions:
   - function: `\_env\_flag` (line 6)
@@ -372,13 +411,16 @@ graph LR
     - `from webapp.parser.config import SUPPORTED_EXTENSION_SET` (line 120)
     - `from webapp.parser.config import UPLOADS_DIR` (line 120)
     - `from webapp.parser.config import URL_LIST_FILE` (line 120)
-    - `from webapp.parser.health.session_manager import SessionManager` (line 135)
+    - `from webapp.parser.health.session_manager import SessionManager` (line
+      135)
     - `from webapp.parser.utils.logger_singleton import logger` (line 136)
     - `from webapp.parser.utils.logger_singleton import prompt` (line 136)
-    - `from webapp.parser.utils.session_state import DEFAULT_PHASE_BY_STATE` (line 149)
+    - `from webapp.parser.utils.session_state import DEFAULT_PHASE_BY_STATE`
+      (line 149)
     - `from webapp.parser.utils.session_state import PipelinePhase` (line 149)
     - `from webapp.parser.utils.session_state import SessionState` (line 149)
-    - `from webapp.parser.utils.session_state import export_session_enums` (line 149)
+    - `from webapp.parser.utils.session_state import export_session_enums` (line
+      149)
     - `from webapp.parser.utils.shared_logic import safe_get` (line 155)
     - `from webapp.parser.utils.shared_logic import safe_is_set` (line 155)
     - `from webapp.parser.utils.shared_logic import safe_lower` (line 155)
@@ -401,8 +443,10 @@ graph LR
   - L480 **WARNING**: , ERROR, CRITICAL, TRACE
   - L519 **WARNING**: ", "ERROR", "CRITICAL", "TRACE"}
   - L555 **WARNING**: " in mlow:
-  - L954 **WARNING**:         # For websocket handshake only: add Cache-Control so webhint stops warning
-  - L1229 **WARNING**: ({"type": "sec", "message": "Favicon path escape blocked", "requested": ico*path})
+  - L954 **WARNING**:         # For websocket handshake only: add Cache-Control
+    so webhint stops warning
+  - L1229 **WARNING**: ({"type": "sec", "message": "Favicon path escape
+    blocked", "requested": ico*path})
   - L1331 **WARNING**: ({
   - L1332 **WARNING**: ",
   - L1641 **WARNING**: ",
@@ -527,7 +571,7 @@ graph LR
   - normalize\_log\_obj ← Smart_Elections_Parser_Webapp.py:1661
   - normalize\_log\_obj ← Smart_Elections_Parser_Webapp.py:2253
 
-### `webapp/parser/Context_Integration/Context_Library/constants.py`
+### Context\_Integration/Context\_Library/constants.py {#webapp-parser-context-integration-context-library-constants-py}
 
 - Definitions:
   - function: `build\_state\_to\_division\_type\_map` (line 691)
@@ -562,7 +606,8 @@ graph LR
 - TODO/FIXME/WARN:
   - L1831 **NOTE**: .*$",                     # Note
   - L2020 **WARNING**: ",
-  - L2111 **WARNING**: ", "info*box", "navigation", "pagination", "tab", "modal", "tooltip", "ignore", "unknown"
+  - L2111 **WARNING**: ", "info*box", "navigation", "pagination", "tab",
+    "modal", "tooltip", "ignore", "unknown"
   - L2144 **NOTE**: ", "comment",
   - L2220 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
   - L2236 **NOTE**: ", "Comment", "Feedback", "Suggestion",
@@ -639,7 +684,7 @@ graph LR
   - get\_camelot\_title\_regex ← constants.py:2825
   - get\_camelot\_row\_regex ← constants.py:2826
 
-### `webapp/parser/Context_Integration/Integrity_check.py`
+### Context\_Integration/Integrity\_check.py {#webapp-parser-context-integration-integrity-check-py}
 
 - Definitions:
   - function: `\_ensure\_alerts\_table` (line 39)
@@ -772,7 +817,7 @@ graph LR
   - print\_integrity\_summary ← html_election_parser.py:544
   - print\_integrity\_summary ← html_election_parser.py:591
 
-### `webapp/parser/Context_Integration/context_coordinator.py`
+### Context\_Integration/context\_coordinator.py {#webapp-parser-context-integration-context-coordinator-py}
 
 > context_coordinator.py
 
@@ -811,7 +856,8 @@ graph LR
     - `from config import LOG_DIR` (line 28)
     - `from config import PROJECT_ROOT` (line 28)
     - `from handlers.batch_handler import BatchProcessor` (line 29)
-    - `from services.election_data_services import ElectionDataService` (line 30)
+    - `from services.election_data_services import ElectionDataService` (line
+      30)
     - `from utils.browser_utils import safe_click` (line 31)
     - `from utils.browser_utils import safe_count` (line 31)
     - `from utils.browser_utils import safe_evaluate` (line 31)
@@ -854,16 +900,25 @@ graph LR
   - L788 **WARNING**: ("\[ALERT MONITOR\] Thread did not stop cleanly.")
   - L876 **WARNING**: ({
   - L877 **WARNING**: ",
-  - L995 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\] {issues\['integrity*issues'\]}")
-  - L1234 **WARNING**: (f"\[ContextCoordinator\] No table structure found for contest: {contest}")
-  - L1403 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line: {e}")
-  - L1515 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts. (Further warnings suppressed)")
-  - L1517 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts. (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
+  - L995 **WARNING**: (f"\[yellow\]Integrity issues:\[/yellow\]
+    {issues\['integrity*issues'\]}")
+  - L1234 **WARNING**: (f"\[ContextCoordinator\] No table structure found for
+    contest: {contest}")
+  - L1403 **WARNING**: (f"\[get*feedback*pattern*kb\] Skipping corrupt line:
+    {e}")
+  - L1515 **WARNING**: ("\[group*dom*nodes*by*label\] No organized DOM parts.
+    (Further warnings suppressed)")
+  - L1517 **WARNING**: (f"\[group*dom*nodes*by*label\] No organized DOM parts.
+    (Occurred {ContextCoordinator.*dom*parts*warning*count} times)")
   - L1522 **WARNING**: ("\[group*dom*nodes*by*label\] No DOM nodes found.")
-  - L1540 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no submit*user*feedback method.")
-  - L1568 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id} missing type/election*types after sync.")
-  - L1592 **WARNING**: ("\[print*contest*summary\] No organized contests to summarize.")
-  - L1605 **WARNING**: ("\[plot*contest*distribution\] No organized contests to plot.")
+  - L1540 **WARNING**: ("\[submit*user*feedback\] ContextOrganizer has no
+    submit*user*feedback method.")
+  - L1568 **WARNING**: (f"\[correct*and*update*contest\] Contest {contest*id}
+    missing type/election*types after sync.")
+  - L1592 **WARNING**: ("\[print*contest*summary\] No organized contests to
+    summarize.")
+  - L1605 **WARNING**: ("\[plot*contest*distribution\] No organized contests to
+    plot.")
   - L1656 **WARNING**: ("No organized DOM parts.")
   - L1659 **WARNING**: ("No organized DOM parts. (Further warnings suppressed)")
   - L1670 **WARNING**: ("\[get*contest*groups\] No contest groups found.")
@@ -871,19 +926,30 @@ graph LR
   - L1688 **WARNING**: ("\[get*button*groups\] No button groups found.")
   - L1697 **WARNING**: ("\[get*table*groups\] No table groups found.")
   - L1706 **WARNING**: ("\[get*relationships\] No organized context.")
-  - L1814 **WARNING**: (f"\[fuzzy*score\] One or both inputs are empty: a='{a*str}', b='{b*str}'")
-  - L1820 **WARNING**: (f"\[fuzzy*score\] One or both inputs are too short: a='{a*str}', b='{b*str}'")
+  - L1814 **WARNING**: (f"\[fuzzy*score\] One or both inputs are empty:
+    a='{a*str}', b='{b*str}'")
+  - L1820 **WARNING**: (f"\[fuzzy*score\] One or both inputs are too short:
+    a='{a*str}', b='{b*str}'")
   - L2266 **WARNING**: (f"\[extract*field\] Unknown field*type: {field*type}")
-  - L2524 **WARNING**: (f"\[get*full*contest\] Contest {contest*id} missing type/election*types after sync.")
-  - L2609 **WARNING**: (f"\[list*tables\] Table '{tbl}' missing metadata or columns.")
-  - L2641 **WARNING**: (f"\[get*table*metadata\] Table '{table*name}' missing columns.")
+  - L2524 **WARNING**: (f"\[get*full*contest\] Contest {contest*id} missing
+    type/election*types after sync.")
+  - L2609 **WARNING**: (f"\[list*tables\] Table '{tbl}' missing metadata or
+    columns.")
+  - L2641 **WARNING**: (f"\[get*table*metadata\] Table '{table*name}' missing
+    columns.")
   - L2659 **WARNING**: (f"\[check*missing*tables\] Missing tables: {missing}")
-  - L2720 **WARNING**: (f"\[save*table*structure\] Failed to save structure for contest: {contest}")
-  - L2897 **WARNING**: (f"\[get*best*button*advanced\] Contest argument was not a dict. Converted to: {contest}")
-  - L2901 **WARNING**: (f"\[get*best*button*advanced\] Keywords argument was not a list. Converted to: {keywords}")
-  - L2905 **WARNING**: (f"\[get*best*button*advanced\] Context argument was not a dict. Converted to: {context}")
-  - L2912 **WARNING**: ("\[get*best*button*advanced\]*semantic*model is not set or is not an object. Using None.")
-  - L3057 **WARNING**: (f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}' rejected, retrying...\[/yellow\]")
+  - L2720 **WARNING**: (f"\[save*table*structure\] Failed to save structure for
+    contest: {contest}")
+  - L2897 **WARNING**: (f"\[get*best*button*advanced\] Contest argument was not
+    a dict. Converted to: {contest}")
+  - L2901 **WARNING**: (f"\[get*best*button*advanced\] Keywords argument was not
+    a list. Converted to: {keywords}")
+  - L2905 **WARNING**: (f"\[get*best*button*advanced\] Context argument was not
+    a dict. Converted to: {context}")
+  - L2912 **WARNING**: ("\[get*best*button*advanced\]*semantic*model is not set
+    or is not an object. Using None.")
+  - L3057 **WARNING**: (f"\[yellow\]\[Coordinator\] Button '{cand.get('label')}'
+    rejected, retrying...\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - utils.logger\_singleton.logger.error (line 105)
   - utils.logger\_singleton.logger.error (line 109)
@@ -949,7 +1015,7 @@ graph LR
   - merge\_and\_rank\_candidates ← context_coordinator.py:3023
   - dynamic\_state\_county\_detection ← state_router.py:365
   - dynamic\_state\_county\_detection ← context_organizer.py:1596
-  - dynamic\_state\_county\_detection ← shared_logic.py:1610
+  - dynamic\_state\_county\_detection ← shared_logic.py:1611
   - ContextCoordinator ← html_election_parser.py:885
   - ContextCoordinator ← html_election_parser.py:1158
   - ContextCoordinator ← state_router.py:361
@@ -981,7 +1047,7 @@ graph LR
   - ContextCoordinator ← table_builder.py:1451
   - ContextCoordinator ← table_builder.py:1510
 
-### `webapp/parser/Context_Integration/context_organizer.py`
+### Context\_Integration/context\_organizer.py {#webapp-parser-context-integration-context-organizer-py}
 
 > context_organizer.py
 
@@ -1017,7 +1083,8 @@ graph LR
     - `from config import CONTEXT_DB_PATH` (line 26)
     - `from config import CONTEXT_LIBRARY_PATH` (line 26)
     - `from config import LOG_DIR` (line 26)
-    - `from services.election_data_services import ElectionDataService` (line 27)
+    - `from services.election_data_services import ElectionDataService` (line
+      27)
     - `from utils.html_scanner import load_context_cache_from_disk` (line 28)
     - `from utils.logger_singleton import console` (line 29)
     - `from utils.logger_singleton import logger` (line 29)
@@ -1052,17 +1119,26 @@ graph LR
     - `from librarian import update_context_library` (line 57)
 - TODO/FIXME/WARN:
   - L282 **WARNING**: (
-  - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or missing title: {str(title)\[:100\]}...")
-  - L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered*out)} contests due to missing required fields.")
+  - L407 **WARNING**: (f"\[CONTEST\] Skipping contest with suspiciously large or
+    missing title: {str(title)\[:100\]}...")
+  - L495 **WARNING**: (f"\[CONTEST\] Filtered out {len(filtered*out)} contests
+    due to missing required fields.")
   - L497 **WARNING**: (f"  \[Filtered\] {reason}: {str(c)\[:100\]}...")
-  - L500 **WARNING**: ("\[CONTEST\] No contests with required fields for downstream output.")
-  - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests list of length {len(contests)}")
+  - L500 **WARNING**: ("\[CONTEST\] No contests with required fields for
+    downstream output.")
+  - L816 **WARNING**: (f"\[ML\] Anomaly index {idx} out of range for contests
+    list of length {len(contests)}")
   - L1500 **WARNING**: (f"  \[yellow\]{title}\[/yellow\]: {fixes}")
-  - L1505 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate contest detected.\n  \[dim\]Context:\[/dim\] {contest}")
-  - L1507 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest missing location info.\n  \[dim\]Context:\[/dim\] {contest}")
-  - L1509 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest missing year.\n  \[dim\]Context:\[/dim\] {contest}")
-  - L1972 **WARNING**: (f"\[ContextOrganizer\] Could not update context library with feedback: {e}")
-  - L2049 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for contest: {contest}")
+  - L1505 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Duplicate
+    contest detected.\n  \[dim\]Context:\[/dim\] {contest}")
+  - L1507 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+    missing location info.\n  \[dim\]Context:\[/dim\] {contest}")
+  - L1509 **WARNING**: (f"\[bold yellow\]\[INTEGRITY\]\[/bold yellow\] Contest
+    missing year.\n  \[dim\]Context:\[/dim\] {contest}")
+  - L1972 **WARNING**: (f"\[ContextOrganizer\] Could not update context library
+    with feedback: {e}")
+  - L2049 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
+    contest: {contest}")
 - Outgoing cross-module calls (sample):
   - utils.misc\_utils.load\_processed\_urls (line 59)
   - utils.misc\_utils.load\_output\_cache (line 60)
@@ -1136,7 +1212,7 @@ graph LR
   - ContextOrganizer ← html_scanner.py:1556
   - ContextOrganizer ← html_scanner.py:3222
 
-### `webapp/parser/Context_Integration/librarian.py`
+### Context\_Integration/librarian.py {#webapp-parser-context-integration-librarian-py}
 
 - Top-of-file comments:
 
@@ -1237,14 +1313,17 @@ graph LR
     - `from Context_Library.constants import CUSTOM_ATTR_PATTERNS` (line 37)
     - `from Context_Library.constants import HEADING_TAGS` (line 37)
     - `from Context_Library.constants import HTML_TAGS` (line 37)
-    - `from Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP` (line 37)
+    - `from Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP` (line
+      37)
     - `from Context_Library.constants import LOCATION_KEYWORDS` (line 37)
     - `from Context_Library.constants import PANEL_TAGS` (line 37)
     - `from Context_Library.constants import STATE_ABBR` (line 37)
 - TODO/FIXME/WARN:
   - L652 **WARNING**: (f"\n\[LIBRARIAN SELF-HEAL\] Attempt {attempt}...")
-  - L658 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching manual*correction...")
-  - L661 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
+  - L658 **WARNING**: ("\[LIBRARIAN SELF-HEAL\] Misalignments found. Launching
+    manual*correction...")
+  - L661 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
+    rescanning...")
 - Outgoing cross-module calls (sample):
   - threading.Lock (line 51)
   - os.makedirs (line 73)
@@ -1348,7 +1427,7 @@ graph LR
   - lookup\_state ← librarian.py:611
   - normalize\_segment\_text ← librarian.py:636
 
-### `webapp/parser/config.py`
+### config.py {#webapp-parser-config-py}
 
 > Central configuration module for the Smart Elections Parser Webapp.
 
@@ -1414,7 +1493,7 @@ graph LR
 - Inbound references:
   - get\_supported\_formats ← config.py:281
 
-### `webapp/parser/data_manager.py`
+### data\_manager.py {#webapp-parser-data-manager-py}
 
 - Definitions:
   - function: `\_ensure\_parent` (line 9)
@@ -1517,7 +1596,7 @@ graph LR
   - copy\_file\_to\_folder ← data_manager.py:190
   - run\_manager ← data_manager.py:199
 
-### `webapp/parser/handlers/batch_handler.py`
+### handlers/batch\_handler.py {#webapp-parser-handlers-batch-handler-py}
 
 - Definitions:
   - function: `\_normalize\_label` (line 14)
@@ -1605,7 +1684,7 @@ graph LR
   - \_normalize\_label ← batch_handler.py:188
   - \_normalize\_label ← batch_handler.py:193
 
-### `webapp/parser/handlers/formats/csv_handler.py`
+### handlers/formats/csv\_handler.py {#webapp-parser-handlers-formats-csv-handler-py}
 
 - Definitions:
   - function: `\_build\_contest\_regex` (line 37)
@@ -1624,12 +1703,15 @@ graph LR
     - `from typing import cast` (line 6)
   - **Local/Project** (17):
     - `from __future__ import annotations` (line 1)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 8)
-    - `from Context_Integration.Context_Library.constants import CONTEST_TITLE_SKIP_PHRASES` (line 8)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 8)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_TITLE_SKIP_PHRASES` (line 8)
     - `from utils.contest_selector import select_contest_auto_first` (line 12)
     - `from utils.location_helpers import attach_precinct_column` (line 15)
     - `from utils.location_helpers import collect_location_headers` (line 15)
-    - `from Context_Integration.librarian import parse_filename_for_location` (line 19)
+    - `from Context_Integration.librarian import parse_filename_for_location`
+      (line 19)
     - `from utils.logger_singleton import logger` (line 20)
     - `from utils.output_utils import finalize_election_output` (line 21)
     - `from utils.pivot import expand_single_rawjson_row` (line 22)
@@ -1699,7 +1781,7 @@ graph LR
   - \_build\_contest\_regex ← xlsx_handler.py:54
   - parse\_csv\_election\_results ← csv_handler.py:391
 
-### `webapp/parser/handlers/formats/html_handler.py`
+### handlers/formats/html\_handler.py {#webapp-parser-handlers-formats-html-handler-py}
 
 - Definitions:
   - function: `\_attempt\_generic\_fallback` (line 19)
@@ -1718,7 +1800,8 @@ graph LR
   - **Local/Project** (13):
     - `from __future__ import annotations` (line 1)
     - `import importlib as importlib` (line 3)
-    - `from Context_Integration.Context_Library.constants import KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 9)
+    - `from Context_Integration.Context_Library.constants import
+      KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 9)
     - `from state_router import fuzzy_match_handler` (line 10)
     - `from state_router import get_handler` (line 10)
     - `from state_router import list_available_handlers` (line 10)
@@ -1730,10 +1813,14 @@ graph LR
     - `from utils.shared_logic import safe_get` (line 16)
     - `from utils.shared_logic import safe_parse` (line 16)
 - TODO/FIXME/WARN:
-  - L216 **WARNING**: (f"\[HTML Handler\] County '{county}' not found. Closest matches: {matches}")
-  - L220 **WARNING**: (f"\[HTML Handler\] Detected county '{county}' is not in known counties for state '{suggested*state or state}'.")
-  - L241 **WARNING**: (f"\[HTML Handler\] State '{user*state}' not found. Closest matches: {matches}")
-  - L285 **WARNING**: (f"\[HTML Handler\] County '{user*county}' not found. Closest matches: {matches}")
+  - L216 **WARNING**: (f"\[HTML Handler\] County '{county}' not found. Closest
+    matches: {matches}")
+  - L220 **WARNING**: (f"\[HTML Handler\] Detected county '{county}' is not in
+    known counties for state '{suggested*state or state}'.")
+  - L241 **WARNING**: (f"\[HTML Handler\] State '{user*state}' not found.
+    Closest matches: {matches}")
+  - L285 **WARNING**: (f"\[HTML Handler\] County '{user*county}' not found.
+    Closest matches: {matches}")
 - Outgoing cross-module calls (sample):
   - fallback\_ctx.setdefault (line 42)
   - fallback\_ctx.setdefault (line 44)
@@ -1788,7 +1875,7 @@ graph LR
 - Inbound references:
   - \_attempt\_generic\_fallback ← html_handler.py:139
 
-### `webapp/parser/handlers/formats/json_handler.py`
+### handlers/formats/json\_handler.py {#webapp-parser-handlers-formats-json-handler-py}
 
 - Definitions:
   - function: `\_build\_contest\_regex` (line 53)
@@ -1826,24 +1913,36 @@ graph LR
     - `import orjson as orjson` (line 9)
   - **Local/Project** (30):
     - `from __future__ import annotations` (line 1)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES` (line 11)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES_SORT_ORDER` (line 11)
-    - `from Context_Integration.Context_Library.constants import CANDIDATE_KEYWORDS` (line 11)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 11)
-    - `from Context_Integration.Context_Library.constants import CONTEST_TITLE_SKIP_PHRASES` (line 11)
-    - `from Context_Integration.Context_Library.constants import DEFAULT_TOTAL_RESULT_DISPLAY` (line 11)
-    - `from Context_Integration.Context_Library.constants import GROUP_RENAME_MAP` (line 11)
-    - `from Context_Integration.Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP` (line 11)
-    - `from Context_Integration.Context_Library.constants import LOCATION_KEYWORDS` (line 11)
-    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS` (line 11)
-    - `from Context_Integration.Context_Library.constants import canonical_ballot_group` (line 11)
+    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES`
+      (line 11)
+    - `from Context_Integration.Context_Library.constants import
+      BALLOT_TYPES_SORT_ORDER` (line 11)
+    - `from Context_Integration.Context_Library.constants import
+      CANDIDATE_KEYWORDS` (line 11)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 11)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_TITLE_SKIP_PHRASES` (line 11)
+    - `from Context_Integration.Context_Library.constants import
+      DEFAULT_TOTAL_RESULT_DISPLAY` (line 11)
+    - `from Context_Integration.Context_Library.constants import
+      GROUP_RENAME_MAP` (line 11)
+    - `from Context_Integration.Context_Library.constants import
+      KNOWN_STATE_TO_COUNTY_MAP` (line 11)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_KEYWORDS` (line 11)
+    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS`
+      (line 11)
+    - `from Context_Integration.Context_Library.constants import
+      canonical_ballot_group` (line 11)
     - `from utils.salvage import normalize_ballot_column_name` (line 24)
     - `from utils.contest_selector import select_contest_auto_first` (line 25)
     - `from utils.json_export_loader import _ALL_COUNTIES_LABEL` (line 28)
     - `from utils.json_export_loader import load_json_export` (line 28)
     - `from utils.location_helpers import attach_precinct_column` (line 29)
     - `from utils.location_helpers import collect_location_headers` (line 29)
-    - `from Context_Integration.librarian import parse_filename_for_location` (line 33)
+    - `from Context_Integration.librarian import parse_filename_for_location`
+      (line 33)
     - `from utils.logger_singleton import logger` (line 34)
     - `from utils.output_utils import finalize_election_output` (line 35)
     - `from utils.pivot import expand_single_rawjson_row` (line 36)
@@ -1943,7 +2042,7 @@ graph LR
   - \_fastpath\_county\_results ← json_handler.py:963
   - parse\_json\_election\_results ← json_handler.py:1402
 
-### `webapp/parser/handlers/formats/pdf_handler.py`
+### handlers/formats/pdf\_handler.py {#webapp-parser-handlers-formats-pdf-handler-py}
 
 - Definitions:
   - function: `\_sanitize\_cache\_get` (line 142)
@@ -2066,45 +2165,82 @@ graph LR
     - `from config import OUTPUT_DIR` (line 17)
     - `from utils.camelot_utils import attempt_camelot_extraction` (line 49)
     - `from utils.camelot_utils import hybrid_fill_camelot` (line 49)
-    - `from utils.pdf_table_utils import best_title_match_idx as utils_best_title_match_idx` (line 53)
-    - `from utils.pdf_table_utils import coerce_vote_value_for_reconstruction as utils_coerce_vote_value_for_reconstruction` (line 53)
-    - `from utils.pdf_table_utils import compute_header_richness as utils_compute_header_richness` (line 53)
-    - `from utils.pdf_table_utils import compute_numeric_fill as utils_compute_numeric_fill` (line 53)
-    - `from utils.pdf_table_utils import evaluate_table_candidate_quality as utils_evaluate_table_candidate_quality` (line 53)
-    - `from utils.pdf_table_utils import extract_candidate_totals_from_lines as utils_extract_candidate_totals_from_lines` (line 53)
-    - `from utils.pdf_table_utils import extract_contest_block as utils_extract_contest_block` (line 53)
-    - `from utils.pdf_table_utils import extract_party_lookup_from_lines as utils_extract_party_lookup_from_lines` (line 53)
-    - `from utils.pdf_table_utils import extract_table_by_whitespace as utils_extract_table_by_whitespace` (line 53)
-    - `from utils.pdf_table_utils import find_best_header_match as utils_find_best_header_match` (line 53)
-    - `from utils.pdf_table_utils import find_header_line as utils_find_header_line` (line 53)
-    - `from utils.pdf_table_utils import detect_district_heading as utils_detect_district_heading` (line 53)
-    - `from utils.pdf_table_utils import header_signature as utils_header_signature` (line 53)
-    - `from utils.pdf_table_utils import is_bad_header_line as utils_is_bad_header_line` (line 53)
-    - `from utils.pdf_table_utils import is_numeric_like as utils_is_numeric_like` (line 53)
-    - `from utils.pdf_table_utils import looks_like_candidate_header as utils_looks_like_candidate_header` (line 53)
-    - `from utils.pdf_table_utils import matches_anchor_header as utils_matches_anchor_header` (line 53)
-    - `from utils.pdf_table_utils import merge_camelot_with_text as utils_merge_camelot_with_text` (line 53)
-    - `from utils.pdf_table_utils import normalize_anchor_value as utils_normalize_anchor_value` (line 53)
-    - `from utils.pdf_table_utils import normalize_numeric_token as utils_normalize_numeric_token` (line 53)
-    - `from utils.pdf_table_utils import normalize_text_token as utils_normalize_text_token` (line 53)
-    - `from utils.pdf_table_utils import parse_candidate_header_with_party as utils_parse_candidate_header_with_party` (line 53)
-    - `from utils.pdf_table_utils import parse_candidate_line as utils_parse_candidate_line` (line 53)
-    - `from utils.pdf_table_utils import reconstruct_columnar_block as utils_reconstruct_columnar_block` (line 53)
-    - `from utils.pdf_table_utils import consume_reconstruction_debug_events as utils_consume_reconstruction_debug_events` (line 53)
-    - `from utils.pdf_table_utils import split_ws_blocks as utils_split_ws_blocks` (line 53)
-    - `from utils.pdf_table_utils import table_looks_bad as utils_table_looks_bad` (line 53)
+    - `from utils.pdf_table_utils import best_title_match_idx as
+      utils_best_title_match_idx` (line 53)
+    - `from utils.pdf_table_utils import coerce_vote_value_for_reconstruction as
+      utils_coerce_vote_value_for_reconstruction` (line 53)
+    - `from utils.pdf_table_utils import compute_header_richness as
+      utils_compute_header_richness` (line 53)
+    - `from utils.pdf_table_utils import compute_numeric_fill as
+      utils_compute_numeric_fill` (line 53)
+    - `from utils.pdf_table_utils import evaluate_table_candidate_quality as
+      utils_evaluate_table_candidate_quality` (line 53)
+    - `from utils.pdf_table_utils import extract_candidate_totals_from_lines as
+      utils_extract_candidate_totals_from_lines` (line 53)
+    - `from utils.pdf_table_utils import extract_contest_block as
+      utils_extract_contest_block` (line 53)
+    - `from utils.pdf_table_utils import extract_party_lookup_from_lines as
+      utils_extract_party_lookup_from_lines` (line 53)
+    - `from utils.pdf_table_utils import extract_table_by_whitespace as
+      utils_extract_table_by_whitespace` (line 53)
+    - `from utils.pdf_table_utils import find_best_header_match as
+      utils_find_best_header_match` (line 53)
+    - `from utils.pdf_table_utils import find_header_line as
+      utils_find_header_line` (line 53)
+    - `from utils.pdf_table_utils import detect_district_heading as
+      utils_detect_district_heading` (line 53)
+    - `from utils.pdf_table_utils import header_signature as
+      utils_header_signature` (line 53)
+    - `from utils.pdf_table_utils import is_bad_header_line as
+      utils_is_bad_header_line` (line 53)
+    - `from utils.pdf_table_utils import is_numeric_like as
+      utils_is_numeric_like` (line 53)
+    - `from utils.pdf_table_utils import looks_like_candidate_header as
+      utils_looks_like_candidate_header` (line 53)
+    - `from utils.pdf_table_utils import matches_anchor_header as
+      utils_matches_anchor_header` (line 53)
+    - `from utils.pdf_table_utils import merge_camelot_with_text as
+      utils_merge_camelot_with_text` (line 53)
+    - `from utils.pdf_table_utils import normalize_anchor_value as
+      utils_normalize_anchor_value` (line 53)
+    - `from utils.pdf_table_utils import normalize_numeric_token as
+      utils_normalize_numeric_token` (line 53)
+    - `from utils.pdf_table_utils import normalize_text_token as
+      utils_normalize_text_token` (line 53)
+    - `from utils.pdf_table_utils import parse_candidate_header_with_party as
+      utils_parse_candidate_header_with_party` (line 53)
+    - `from utils.pdf_table_utils import parse_candidate_line as
+      utils_parse_candidate_line` (line 53)
+    - `from utils.pdf_table_utils import reconstruct_columnar_block as
+      utils_reconstruct_columnar_block` (line 53)
+    - `from utils.pdf_table_utils import consume_reconstruction_debug_events as
+      utils_consume_reconstruction_debug_events` (line 53)
+    - `from utils.pdf_table_utils import split_ws_blocks as
+      utils_split_ws_blocks` (line 53)
+    - `from utils.pdf_table_utils import table_looks_bad as
+      utils_table_looks_bad` (line 53)
     - `from utils.pdf_table_utils import token_set as utils_token_set` (line 53)
     - `from utils.logger_singleton import logger` (line 83)
-    - `from Context_Integration.Context_Library.constants import LOCATION_KEYWORDS` (line 84)
-    - `from Context_Integration.Context_Library.constants import CANDIDATE_KEYWORDS` (line 84)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES` (line 84)
-    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS` (line 84)
-    - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS` (line 84)
-    - `from Context_Integration.Context_Library.constants import MISC_FOOTER_KEYWORDS` (line 84)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 84)
-    - `from Context_Integration.Context_Library.constants import CONTEST_TITLE_SKIP_PHRASES` (line 84)
-    - `from Context_Integration.Context_Library.constants import CONTEST_HEADER_KEYWORDS` (line 84)
-    - `from Context_Integration.Context_Library.constants import CONTEST_HEADER_PREFERENCE` (line 84)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_KEYWORDS` (line 84)
+    - `from Context_Integration.Context_Library.constants import
+      CANDIDATE_KEYWORDS` (line 84)
+    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES`
+      (line 84)
+    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS`
+      (line 84)
+    - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS`
+      (line 84)
+    - `from Context_Integration.Context_Library.constants import
+      MISC_FOOTER_KEYWORDS` (line 84)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 84)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_TITLE_SKIP_PHRASES` (line 84)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_HEADER_KEYWORDS` (line 84)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_HEADER_PREFERENCE` (line 84)
     - `from utils.table_core import harmonize_headers_and_data` (line 96)
     - `from utils.table_core import robust_table_extraction` (line 96)
     - `from utils.location_helpers import attach_precinct_column` (line 97)
@@ -2112,10 +2248,12 @@ graph LR
 - TODO/FIXME/WARN:
   - L421 **WARNING**: ({
   - L422 **WARNING**: ",
-  - L425 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid parser instability."
+  - L425 **WARN**: \] Detected PyMuPDF %s. Upgrade to %s or newer to avoid
+    parser instability."
   - L1787 **WARNING**: ({
   - L1788 **WARNING**: ",
-  - L1790 **WARN**: \] Poppler binaries not detected; skipping pdf2image and using PyMuPDF fallback.",
+  - L1790 **WARN**: \] Poppler binaries not detected; skipping pdf2image and
+    using PyMuPDF fallback.",
   - L1808 **WARNING**: ({
   - L1809 **WARNING**: ",
   - L1812 **WARN**: \] pdf2image conversion failed; "
@@ -2127,19 +2265,23 @@ graph LR
   - L3286 **WARN**: \] fitz text extraction failed: {e}",
   - L3315 **WARNING**: ({
   - L3316 **WARNING**: ",
-  - L3318 **WARN**: \] ENABLE*OCR*FORCE is set but Tesseract is unavailable; skipping OCR fallback.",
+  - L3318 **WARN**: \] ENABLE*OCR*FORCE is set but Tesseract is unavailable;
+    skipping OCR fallback.",
   - L3366 **WARNING**: ({
   - L3367 **WARNING**: ",
-  - L3369 **WARN**: \] Low-signal text detected but OCR is unavailable or disabled.",
+  - L3369 **WARN**: \] Low-signal text detected but OCR is unavailable or
+    disabled.",
   - L3586 **WARNING**: ({
   - L3587 **WARNING**: ",
   - L3589 **WARN**: \] No contest selected. Using filename fallback.",
   - L4034 **WARNING**: ({
   - L4035 **WARNING**: ",
-  - L4037 **WARN**: \] Selected contest '{contest}' not found in column '{contest*column}'. Skipping row filter.",
+  - L4037 **WARN**: \] Selected contest '{contest}' not found in column
+    '{contest*column}'. Skipping row filter.",
   - L4136 **WARNING**: ({
   - L4137 **WARNING**: ",
-  - L4139 **WARN**: \] No structured rows matched the inferred column count of {len(headers)}. Total lines scanned: {unmatched*count}",
+  - L4139 **WARN**: \] No structured rows matched the inferred column count of
+    {len(headers)}. Total lines scanned: {unmatched*count}",
   - L4178 **WARNING**: ({
   - L4179 **WARNING**: ",
   - L4367 **WARNING**: ({
@@ -2247,7 +2389,7 @@ graph LR
   - \_is\_numeric\_like ← html_election_parser.py:704
   - \_reconstruct\_columnar\_block ← pdf_handler.py:890
 
-### `webapp/parser/handlers/formats/txt_handler.py`
+### handlers/formats/txt\_handler.py {#webapp-parser-handlers-formats-txt-handler-py}
 
 - Definitions:
   - function: `\_build\_contest\_regex` (line 34)
@@ -2267,8 +2409,10 @@ graph LR
     - `from typing import cast` (line 6)
   - **Local/Project** (15):
     - `from __future__ import annotations` (line 1)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 8)
-    - `from Context_Integration.Context_Library.constants import CONTEST_TITLE_SKIP_PHRASES` (line 8)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 8)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_TITLE_SKIP_PHRASES` (line 8)
     - `from utils.contest_selector import select_contest_auto_first` (line 12)
     - `from utils.location_helpers import attach_precinct_column` (line 13)
     - `from utils.location_helpers import collect_location_headers` (line 13)
@@ -2336,7 +2480,7 @@ graph LR
   - \_read\_delimited\_file ← txt_handler.py:92
   - parse\_txt\_election\_results ← txt_handler.py:390
 
-### `webapp/parser/handlers/formats/xlsx_handler.py`
+### handlers/formats/xlsx\_handler.py {#webapp-parser-handlers-formats-xlsx-handler-py}
 
 - Definitions:
   - function: `\_build\_contest\_regex` (line 38)
@@ -2355,8 +2499,10 @@ graph LR
     - `from typing import cast` (line 5)
   - **Local/Project** (15):
     - `from __future__ import annotations` (line 1)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 7)
-    - `from Context_Integration.Context_Library.constants import CONTEST_TITLE_SKIP_PHRASES` (line 7)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 7)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_TITLE_SKIP_PHRASES` (line 7)
     - `from utils.contest_selector import select_contest_auto_first` (line 11)
     - `from utils.location_helpers import attach_precinct_column` (line 12)
     - `from utils.location_helpers import collect_location_headers` (line 12)
@@ -2424,13 +2570,13 @@ graph LR
   - \_dataframe\_to\_records ← xlsx_handler.py:118
   - parse\_xlsx\_election\_results ← xlsx_handler.py:419
 
-### `webapp/parser/handlers/states/arizona/__init__.py`
+### handlers/states/arizona/\_\_init\_\_.py {#webapp-parser-handlers-states-arizona-init-py}
 
 - Imports:
   - **Local/Project** (1):
     - `from arizona import parse as parse` (line 1)
 
-### `webapp/parser/handlers/states/arizona/arizona.py`
+### handlers/states/arizona/arizona.py {#webapp-parser-handlers-states-arizona-arizona-py}
 
 - Top-of-file comments:
 
@@ -2457,16 +2603,20 @@ graph LR
     - `import orjson as orjson` (line 8)
   - **Local/Project** (4):
     - `from config import CONTEXT_LIBRARY_PATH` (line 10)
-    - `from Context_Integration.context_organizer import ContextOrganizer` (line 11)
+    - `from Context_Integration.context_organizer import ContextOrganizer` (line
+      11)
     - `from utils.logger_singleton import logger` (line 12)
     - `from utils.output_utils import finalize_election_output` (line 13)
 - TODO/FIXME/WARN:
-  - L25 **WARNING**: ("\[WARN\] context*library.json not found. Using fallback config for Arizona handler.")
+  - L25 **WARNING**: ("\[WARN\] context*library.json not found. Using fallback
+    config for Arizona handler.")
   - L51 **WARNING**: (f"\[WARN\] Could not expand card {i+1}: {e}")
   - L64 **WARNING**: (f"\[WARN\] Vote Type toggle failed: {e}")
   - L77 **WARNING**: (f"\[WARN\] County toggle failed: {e}")
-  - L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results are published yet or the structure has changed.")
-  - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted election data.")
+  - L164 **WARNING**: ("\[FALLBACK\] No tables were parsed. Either no results
+    are published yet or the structure has changed.")
+  - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
+    election data.")
 - Outgoing cross-module calls (sample):
   - orjson.loads (line 21)
   - f.read (line 21)
@@ -2519,7 +2669,7 @@ graph LR
   - row\_blocks.append (line 121)
   - precinct\_data.append (line 135)
 
-### `webapp/parser/handlers/states/example state/example_county/example_county.py`
+### handlers/states/example state/example\_county/example\_county.py {#webapp-parser-handlers-states-example-state-example-county-example-county-py}
 
 - Definitions:
   - function: `parse` (line 16)
@@ -2537,7 +2687,8 @@ graph LR
     - `from utils.table_builder import build_dynamic_table` (line 9)
     - `from utils.table_core import robust_table_extraction` (line 10)
 - TODO/FIXME/WARN:
-  - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div selectors. Trying table-based extraction...\[/yellow\]")
+  - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+    selectors. Trying table-based extraction...\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - utils.logger\_singleton.logger.info (line 28)
   - utils.html\_scanner.scan\_html\_for\_context (line 31)
@@ -2577,7 +2728,7 @@ graph LR
   - utils.output\_utils.finalize\_election\_output (line 145)
   - metadata.update (line 151)
 
-### `webapp/parser/handlers/states/example state/example_state.py`
+### handlers/states/example state/example\_state.py {#webapp-parser-handlers-states-example-state-example-state-py}
 
 - Definitions:
   - function: `parse` (line 24)
@@ -2600,8 +2751,10 @@ graph LR
     - `from utils.table_builder import build_dynamic_table` (line 16)
     - `from utils.table_core import robust_table_extraction` (line 17)
 - TODO/FIXME/WARN:
-  - L51 **WARNING**: (f"\[Example Handler\] No specific parser implemented for county: '{county}'. Continuing with state-level logic.")
-  - L152 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div selectors. Trying table-based extraction...\[/yellow\]")
+  - L51 **WARNING**: (f"\[Example Handler\] No specific parser implemented for
+    county: '{county}'. Continuing with state-level logic.")
+  - L152 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
+    selectors. Trying table-based extraction...\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - utils.shared\_logic.safe\_get (line 36)
   - utils.shared\_logic.safe\_lower (line 37)
@@ -2654,7 +2807,7 @@ graph LR
   - parse\_single\_contest\_dynamic ← example_county.py:67
   - parse\_single\_contest\_dynamic ← example_county.py:73
 
-### `webapp/parser/handlers/states/new_york/county/rockland.py`
+### handlers/states/new\_york/county/rockland.py {#webapp-parser-handlers-states-new-york-county-rockland-py}
 
 - Definitions:
   - function: `parse` (line 27)
@@ -2678,10 +2831,15 @@ graph LR
     - `from utils.table_builder import build_dynamic_table` (line 17)
     - `from utils.table_core import harmonize_headers_and_data` (line 18)
 - TODO/FIXME/WARN:
-  - L72 **WARNING**: ("\[WARNING\] dom*parts missing after organize*and*enrich.")
+  - L72 **WARNING**: ("\[WARNING\] dom*parts missing after
+    organize*and*enrich.")
   - L95 **WARNING**: ("\[red\]No contest selected. Skipping.\[/red\]")
-  - L139 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}' is not clickable (visible={safe*is*visible(element, logger)}, enabled={safe*is*enabled(element, logger)})\[/yellow\]")
-  - L176 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}' is not clickable (visible={safe*is*visible(element, logger)}, enabled={safe*is*enabled(element, logger)})\[/yellow\]")
+  - L139 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn1.get('label', '')}'
+    is not clickable (visible={safe*is*visible(element, logger)},
+    enabled={safe*is*enabled(element, logger)})\[/yellow\]")
+  - L176 **WARNING**: (f"\[yellow\]\[WARNING\] Button '{btn2.get('label', '')}'
+    is not clickable (visible={safe*is*visible(element, logger)},
+    enabled={safe*is*enabled(element, logger)})\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - utils.logger\_singleton.logger.info (line 40)
   - utils.html\_scanner.scan\_html\_for\_context (line 43)
@@ -2734,7 +2892,7 @@ graph LR
   - utils.browser\_utils.safe\_is\_enabled (line 166)
   - utils.logger\_singleton.logger.debug (line 168)
 
-### `webapp/parser/handlers/states/new_york/new_york.py`
+### handlers/states/new\_york/new\_york.py {#webapp-parser-handlers-states-new-york-new-york-py}
 
 - Definitions:
   - function: `parse` (line 15)
@@ -2754,7 +2912,8 @@ graph LR
     - `from utils.shared_logic import safe_strip` (line 7)
 - TODO/FIXME/WARN:
   - L27 **WARNING**: ("\[NY Handler\] No county specified in html*context.")
-  - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for county: '{county}'. Please add it under {module*path}.py")
+  - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
+    county: '{county}'. Please add it under {module*path}.py")
 - Outgoing cross-module calls (sample):
   - utils.shared\_logic.safe\_get (line 24)
   - utils.shared\_logic.safe\_lower (line 25)
@@ -2766,13 +2925,13 @@ graph LR
   - utils.logger\_singleton.logger.warning (line 43)
   - utils.logger\_singleton.logger.error (line 46)
 
-### `webapp/parser/handlers/states/pennsylvania/__init__.py`
+### handlers/states/pennsylvania/\_\_init\_\_.py {#webapp-parser-handlers-states-pennsylvania-init-py}
 
 - Imports:
   - **Local/Project** (1):
     - `from pennsylvania import parse as parse` (line 1)
 
-### `webapp/parser/handlers/states/pennsylvania/pennsylvania.py`
+### handlers/states/pennsylvania/pennsylvania.py {#webapp-parser-handlers-states-pennsylvania-pennsylvania-py}
 
 - Definitions:
   - function: `apply\_navigation\_steps` (line 25)
@@ -2797,13 +2956,16 @@ graph LR
     - `from utils.shared_logic import safe_strip` (line 14)
 - TODO/FIXME/WARN:
   - L44 **WARNING**: (f"\[NAV\] Step failed: {step} — {e}")
-  - L55 **WARNING**: (f"\[bold yellow\]Detected election:\[/bold yellow\] {header*text}")
+  - L55 **WARNING**: (f"\[bold yellow\]Detected election:\[/bold yellow\]
+    {header*text}")
   - L76 **WARNING**: ("\[PA\] Invalid index input for election selection.")
   - L78 **WARNING**: ("\[PA\] Elections dropdown not found.")
-  - L80 **WARNING**: (f"\[PA\] Failed to expand Elections menu or load selection: {e}")
+  - L80 **WARNING**: (f"\[PA\] Failed to expand Elections menu or load
+    selection: {e}")
   - L96 **WARNING**: ("\[PA\] County Breakdown link not found.")
   - L98 **WARNING**: (f"\[PA\] Failed to click County Breakdown link: {e}")
-  - L113 **WARNING**: ("\[yellow\]Multiple CSV files found in input. Please select one:\[/yellow\]")
+  - L113 **WARNING**: ("\[yellow\]Multiple CSV files found in input. Please
+    select one:\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - pathlib.Path (line 22)
   - pathlib.Path (line 23)
@@ -2859,7 +3021,7 @@ graph LR
   - apply\_navigation\_steps ← pennsylvania.py:52
   - apply\_navigation\_steps ← pennsylvania.py:83
 
-### `webapp/parser/health/context_migration.py`
+### health/context\_migration.py {#webapp-parser-health-context-migration-py}
 
 - Definitions:
   - function: `table\_structure\_exists` (line 30)
@@ -2975,7 +3137,7 @@ graph LR
   - migrate\_all ← context_migration.py:420
   - migrate\_context\_cache\_to\_db ← context_migration.py:292
 
-### `webapp/parser/health/health_router.py`
+### health/health\_router.py {#webapp-parser-health-health-router-py}
 
 - Definitions:
   - function: `register\_orchestration\_plugin` (line 57)
@@ -3032,13 +3194,19 @@ graph LR
     - `from utils.logger_singleton import logger` (line 47)
     - `from utils.models import Base` (line 48)
 - TODO/FIXME/WARN:
-  - L252 **WARNING**: (f"\[health*router\] manual*correction failed (attempt {attempt}): {result.stderr}")
-  - L336 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching manual*correction...")
-  - L338 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
-  - L340 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments may remain.")
+  - L252 **WARNING**: (f"\[health*router\] manual*correction failed (attempt
+    {attempt}): {result.stderr}")
+  - L336 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+    manual*correction...")
+  - L338 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+    rescanning...")
+  - L340 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+    may remain.")
   - L375 **WARNING**: (f"\[PIPELINE\] Could not fix corrupted JSON files: {e}")
-  - L380 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal loop will be handled by scan*misaligned*ner.")
-  - L382 **WARNING**: ("\[PIPELINE\] scan*misaligned*ner failed or file missing. Proceeding with caution.")
+  - L380 **WARNING**: ("\[PIPELINE\] Misaligned NER examples found. Self-heal
+    loop will be handled by scan*misaligned*ner.")
+  - L382 **WARNING**: ("\[PIPELINE\] scan*misaligned*ner failed or file missing.
+    Proceeding with caution.")
   - L414 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
 - Outgoing cross-module calls (sample):
   - ORCHESTRATION\_PLUGINS.append (line 58)
@@ -3096,7 +3264,7 @@ graph LR
   - preclean\_json\_logs ← health_router.py:356
   - BotPipeline ← health_router.py:565
 
-### `webapp/parser/health/log_cache_cleaner_bot.py`
+### health/log\_cache\_cleaner\_bot.py {#webapp-parser-health-log-cache-cleaner-bot-py}
 
 > log_cache_cleaner_bot.py
 
@@ -3134,10 +3302,14 @@ graph LR
     - `from utils.logger_singleton import logger` (line 36)
     - `from context_migration import migrate_all` (line 37)
 - TODO/FIXME/WARN:
-  - L151 **WARNING**: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl: {entry}")
-  - L460 **WARNING**: ("\[DB\]\[WARNING\] No user tables found in schema 'public'.")
-  - L503 **WARNING**: ("\[CLEAN\]\[WARNING\] The following files are still too large after cleaning:")
-  - L507 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding these from your training data:")
+  - L151 **WARNING**: (f"Skipping non-dict entry in spacy*ner*train*data.jsonl:
+    {entry}")
+  - L460 **WARNING**: ("\[DB\]\[WARNING\] No user tables found in schema
+    'public'.")
+  - L503 **WARNING**: ("\[CLEAN\]\[WARNING\] The following files are still too
+    large after cleaning:")
+  - L507 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+    these from your training data:")
 - Outgoing cross-module calls (sample):
   - fname.endswith (line 45)
   - fname.endswith (line 48)
@@ -3221,7 +3393,7 @@ graph LR
   - run\_log\_cache\_cleaner ← log_cache_cleaner_bot.py:557
   - schedule\_log\_cache\_cleaner ← log_cache_cleaner_bot.py:542
 
-### `webapp/parser/health/manual_correction_bot.py`
+### health/manual\_correction\_bot.py {#webapp-parser-health-manual-correction-bot-py}
 
 > manual_correction.py
 
@@ -3294,14 +3466,16 @@ graph LR
     - `from config import LOG_DIR` (line 30)
     - `from config import PROJECT_ROOT` (line 30)
     - `from config import USER_NAME` (line 30)
-    - `from Context_Integration.context_coordinator import ContextCoordinator` (line 43)
+    - `from Context_Integration.context_coordinator import ContextCoordinator`
+      (line 43)
     - `from Context_Integration.librarian import DEFAULT_STRUCTURE` (line 44)
     - `from Context_Integration.librarian import SCHEMA_VERSION` (line 44)
     - `from Context_Integration.librarian import get_state_abbr` (line 44)
     - `from Context_Integration.librarian import load_context_library` (line 44)
     - `from Context_Integration.librarian import lookup_county` (line 44)
     - `from Context_Integration.librarian import lookup_state` (line 44)
-    - `from Context_Integration.librarian import update_context_library` (line 44)
+    - `from Context_Integration.librarian import update_context_library` (line
+      44)
     - `from utils.logger_singleton import logger` (line 53)
     - `from utils.misc_utils import file_hash` (line 54)
     - `from utils.model_registry import ModelRegistry` (line 55)
@@ -3312,14 +3486,19 @@ graph LR
   - L364 **WARNING**: (f"\[CORRUPT\] {path} line {i}: {e}")
   - L396 **WARNING**: (f"\[SKIP\] File not found: {file}")
   - L400 **WARNING**: (f"\[SKIP\] File too large: {file}")
-  - L422 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}... ({e})")
-  - L434 **WARNING**: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to {corrupt*path}")
-  - L439 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl file: {file}")
+  - L422 **WARNING**: (f"\[CORRUPT-LINE\] {file} line {i+1}: {line\[:80\]}...
+    ({e})")
+  - L434 **WARNING**: (f"\[CORRUPT\] {len(corrupt*items)} lines saved to
+    {corrupt*path}")
+  - L439 **WARNING**: (f"\[FIXED\] All lines invalid, recreated empty .jsonl
+    file: {file}")
   - L453 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
   - L465 **WARNING**: (f"\[CORRUPT\] Corrupt JSON saved to {corrupt*path}")
-  - L471 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid JSON in {file}")
+  - L471 **WARNING**: (f"\[FIXED\] All content invalid, recreated minimal valid
+    JSON in {file}")
   - L476 **WARNING**: (f"\[CORRUPT\] {file}: {e}")
-  - L485 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {quarantine*dir / file.name}")
+  - L485 **WARNING**: (f"\[QUARANTINED\] {file} -&gt; {quarantine*dir /
+    file.name}")
   - L489 **WARNING**: (f"\[DELETED\] {file}")
   - L492 **WARNING**: (f"\[SKIP-DELETE\] File already missing: {file}")
   - L537 **WARNING**: (f"\[FIND-LOGS\] Skipped {d}: {e}")
@@ -3328,12 +3507,16 @@ graph LR
   - L750 **TODO**: Add JSON schema validation here if desired
   - L989 **WARNING**: (
   - L1079 **WARN**: if schema version mismatches.
-  - L1098 **WARNING**: (f"Schema version mismatch: found {context*lib.get('schema*version')}, expected {SCHEMA*VERSION}. Consider migrating.")
+  - L1098 **WARNING**: (f"Schema version mismatch: found
+    {context*lib.get('schema*version')}, expected {SCHEMA*VERSION}. Consider
+    migrating.")
   - L1141 **WARNING**: (f"\[AUTO\] Could not delete log file {log*file}: {e}")
   - L1257 **WARNING**: (f"\[SKIP\] Could not load {log*file}: {e}")
-  - L1273 **WARNING**: ("No log files matched any of the specified fields. Will attempt to process all log files for all fields.")
+  - L1273 **WARNING**: ("No log files matched any of the specified fields. Will
+    attempt to process all log files for all fields.")
   - L1356 **WARNING**: (f"Could not delete log file {log*file}: {e}")
-  - L1376 **WARNING**: ("\[WARNING\] No entries were processed. Check your log file naming, field configuration, or use --dry-run for debugging.")
+  - L1376 **WARNING**: ("\[WARNING\] No entries were processed. Check your log
+    file naming, field configuration, or use --dry-run for debugging.")
 - Outgoing cross-module calls (sample):
   - pathlib.Path (line 58)
   - pathlib.Path (line 59)
@@ -3433,7 +3616,7 @@ graph LR
   - ensure\_context\_library ← manual_correction_bot.py:1231
   - process\_auto\_mode ← manual_correction_bot.py:1306
 
-### `webapp/parser/health/retrain_table_structure_models.py`
+### health/retrain\_table\_structure\_models.py {#webapp-parser-health-retrain-table-structure-models-py}
 
 - Definitions:
   - class: `NERPipeProtocol` (line 86)
@@ -3515,10 +3698,14 @@ graph LR
     - `from config import SPACY_NER_PATIENCE` (line 29)
     - `from config import get_sqlalchemy_engine` (line 29)
     - `from config import get_subprocess_env` (line 29)
-    - `from Context_Integration.Context_Library.constants import ELECTION_ENTITY_LABELS` (line 44)
-    - `from Context_Integration.Context_Library.constants import ENTITY_PATTERNS` (line 44)
-    - `from Context_Integration.Context_Library.constants import MISALIGNED_PATTERNS` (line 44)
-    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS` (line 44)
+    - `from Context_Integration.Context_Library.constants import
+      ELECTION_ENTITY_LABELS` (line 44)
+    - `from Context_Integration.Context_Library.constants import
+      ENTITY_PATTERNS` (line 44)
+    - `from Context_Integration.Context_Library.constants import
+      MISALIGNED_PATTERNS` (line 44)
+    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS`
+      (line 44)
     - `from Context_Integration.librarian import load_context_library` (line 50)
     - `from utils.db_utils import get_session` (line 51)
     - `from utils.logger_singleton import console` (line 52)
@@ -3547,24 +3734,34 @@ graph LR
 - TODO/FIXME/WARN:
   - L178 **WARNING**: (f"\[CLEAN\] File not found: {jsonl*path}")
   - L186 **WARNING**: (f"\[CLEAN\] Could not parse line: {e}")
-  - L201 **WARNING**: (f"\[CLEAN\] Alignment check failed for text: {text\[:50\]}... ({e})")
+  - L201 **WARNING**: (f"\[CLEAN\] Alignment check failed for text:
+    {text\[:50\]}... ({e})")
   - L274 **WARNING**: (f"Failed to load {path}: {e}")
   - L403 **WARNING**: (f"Skipping misaligned entity in: {text}")
   - L408 **WARNING**: (f"Error validating entity alignment: {e}")
   - L434 **WARNING**: (f"\[spaCy\] Could not check GPU availability: {e}")
-  - L450 **WARNING**: (f"\[spaCy\] Could not load lexeme normalization table. You may ignore this for English. Error: {e}")
-  - L536 **WARNING**: (f"\[NER\] Skipped {misaligned*count} misaligned examples. Saved to {misaligned*path}")
-  - L550 **WARNING**: ("No NER training examples found. Skipping spaCy NER retraining.")
-  - L619 **WARNING**: ("\[SUGGESTION\] Consider lowering min*delta or increasing patience if you want longer training.")
-  - L621 **WARNING**: ("\[SUGGESTION\] Model improved until the last epoch. Consider increasing epochs for further improvement.")
-  - L622 **WARNING**: (f"\[SUGGESTION\] Next run: patience={patience}, min*delta={min*delta:.2f}, epochs={epochs}")
+  - L450 **WARNING**: (f"\[spaCy\] Could not load lexeme normalization table.
+    You may ignore this for English. Error: {e}")
+  - L536 **WARNING**: (f"\[NER\] Skipped {misaligned*count} misaligned examples.
+    Saved to {misaligned*path}")
+  - L550 **WARNING**: ("No NER training examples found. Skipping spaCy NER
+    retraining.")
+  - L619 **WARNING**: ("\[SUGGESTION\] Consider lowering min*delta or increasing
+    patience if you want longer training.")
+  - L621 **WARNING**: ("\[SUGGESTION\] Model improved until the last epoch.
+    Consider increasing epochs for further improvement.")
+  - L622 **WARNING**: (f"\[SUGGESTION\] Next run: patience={patience},
+    min*delta={min*delta:.2f}, epochs={epochs}")
   - L708 **WARNING**: ("No training examples found. Aborting retraining.")
-  - L727 **WARNING**: (f"\[WARN\] Could not delete old model directory {oldest*path}: {e}")
+  - L727 **WARNING**: (f"\[WARN\] Could not delete old model directory
+    {oldest*path}: {e}")
   - L739 **WARNING**: (f"\[WARN\] Failed to load existing model: {e}")
   - L742 **WARNING**: ("Falling back to base model (all-MiniLM-L6-v2).")
-  - L782 **WARNING**: (f"\[WARN\] Could not update canonical model directory: {e}")
+  - L782 **WARNING**: (f"\[WARN\] Could not update canonical model directory:
+    {e}")
   - L810 **WARNING**: (f"MISALIGNED: {text} {annots\['entities'\]}")
-  - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models registered? Did you import all model classes?")
+  - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models
+    registered? Did you import all model classes?")
 - Outgoing cross-module calls (sample):
   - value.strip (line 101)
   - utils.misc\_utils.safe\_db\_path (line 115)
@@ -3597,7 +3794,8 @@ graph LR
   - utils.logger\_singleton.console.log (line 149)
   - re.match (line 154)
   - spacy.blank (line 164)
-  - Context\_Integration.Context\_Library.constants.MISALIGNED\_PATTERNS.copy (line 165)
+  - Context\_Integration.Context\_Library.constants.MISALIGNED\_PATTERNS.copy
+    (line 165)
   - patterns.extend (line 167)
   - re.match (line 171)
   - utils.logger\_singleton.logger.warning (line 178)
@@ -3654,7 +3852,7 @@ graph LR
   - scan\_in\_memory\_ner\_examples ← retrain_table_structure_models.py:936
   - ensure\_table\_structures\_exists ← retrain_table_structure_models.py:851
 
-### `webapp/parser/health/scan_misaligned_ner.py`
+### health/scan\_misaligned\_ner.py {#webapp-parser-health-scan-misaligned-ner-py}
 
 - Definitions:
   - function: `resolve\_jsonl\_path` (line 15)
@@ -3678,16 +3876,24 @@ graph LR
     - `from utils.logger_singleton import logger` (line 12)
 - TODO/FIXME/WARN:
   - L62 **WARNING**: (f"\[CORRUPT\] Could not parse line: {e}")
-  - L83 **WARNING**: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned NER texts:")
+  - L83 **WARNING**: (f"\n\[MISALIGNED\] Top {top*n} most frequent misaligned
+    NER texts:")
   - L85 **WARNING**: (f"  {repr(text)}: {count} times")
-  - L86 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding these from your training data.")
-  - L87 **WARNING**: ("Run the manual*correction to review and clean these examples before retraining.")
-  - L88 **WARNING**: ("If you see spaCy entity alignment warnings, consider cleaning your training data or using the provided validation function.")
+  - L86 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
+    these from your training data.")
+  - L87 **WARNING**: ("Run the manual*correction to review and clean these
+    examples before retraining.")
+  - L88 **WARNING**: ("If you see spaCy entity alignment warnings, consider
+    cleaning your training data or using the provided validation function.")
   - L98 **WARNING**: (f"\[WARN\] Could not remove old misaligned file: {e}")
-  - L112 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching manual*correction for spacy*ner*misaligned...")
-  - L119 **WARNING**: (f"\[SELF-HEAL\] manual*correction exited with code {result.returncode}")
-  - L120 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before rescanning...")
-  - L122 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments may remain.")
+  - L112 **WARNING**: ("\[SELF-HEAL\] Misalignments found. Launching
+    manual*correction for spacy*ner*misaligned...")
+  - L119 **WARNING**: (f"\[SELF-HEAL\] manual*correction exited with code
+    {result.returncode}")
+  - L120 **WARNING**: (f"\[SELF-HEAL\] Sleeping {cooldown}s before
+    rescanning...")
+  - L122 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
+    may remain.")
 - Outgoing cross-module calls (sample):
   - pathlib.Path (line 17)
   - p.is\_absolute (line 18)
@@ -3746,7 +3952,7 @@ graph LR
   - scan\_misaligned ← scan_misaligned_ner.py:149
   - self\_heal\_loop ← scan_misaligned_ner.py:147
 
-### `webapp/parser/health/session_manager.py`
+### health/session\_manager.py {#webapp-parser-health-session-manager-py}
 
 - Definitions:
   - class: `SessionManager` (line 15)
@@ -3764,7 +3970,8 @@ graph LR
     - `from typing import Dict` (line 8)
     - `from typing import Optional` (line 8)
   - **Third-party** (3):
-    - `from webapp.parser.utils.session_state import DEFAULT_PHASE_BY_STATE` (line 10)
+    - `from webapp.parser.utils.session_state import DEFAULT_PHASE_BY_STATE`
+      (line 10)
     - `from webapp.parser.utils.session_state import PipelinePhase` (line 10)
     - `from webapp.parser.utils.session_state import SessionState` (line 10)
   - **Local/Project** (1):
@@ -3809,7 +4016,7 @@ graph LR
   - expired.append (line 462)
   - self.\_delete\_session\_locked (line 463)
 
-### `webapp/parser/html_election_parser.py`
+### html\_election\_parser.py {#webapp-parser-html-election-parser-py}
 
 - Definitions:
   - function: `load\_urls` (line 59)
@@ -3863,7 +4070,8 @@ graph LR
     - `from utils.browser_utils import sync_safe_browser_close` (line 34)
     - `from utils.download_utils import ensure_input_directory` (line 40)
     - `from utils.download_utils import ensure_output_directory` (line 40)
-    - `from utils.dynamic_table_extractor import dynamic_table_extractor` (line 41)
+    - `from utils.dynamic_table_extractor import dynamic_table_extractor` (line
+      41)
     - `from utils.format_router import prompt_and_handle_download` (line 42)
     - `from utils.format_router import route_format_handler` (line 42)
     - `from utils.logger_singleton import logger` (line 43)
@@ -3902,7 +4110,8 @@ graph LR
   - L1272 **WARNING**: (payload)
   - L1283 **WARNING**: ",
   - L1288 **WARNING**: (payload)
-  - L1290 **WARN**: \] No output file path returned from parser and no output files found."
+  - L1290 **WARN**: \] No output file path returned from parser and no output
+    files found."
   - L1292 **WARNING**: ",
   - L1297 **WARNING**: (payload)
   - L1302 **WARNING**: ",
@@ -3993,7 +4202,7 @@ graph LR
   - main ← scan_misaligned_ner.py:165
   - main ← models.py:468
 
-### `webapp/parser/services/context_service.py`
+### services/context\_service.py {#webapp-parser-services-context-service-py}
 
 - Definitions:
   - class: `ContextBasedPredictor` (line 35)
@@ -4011,15 +4220,23 @@ graph LR
     - `from typing import List` (line 6)
     - `from typing import Optional` (line 6)
   - **Local/Project** (20):
-    - `from Context_Integration.Context_Library.constants import CANDIDATE_KEYWORDS` (line 8)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 8)
-    - `from Context_Integration.Context_Library.constants import ELECTION_TYPES` (line 8)
-    - `from Context_Integration.Context_Library.constants import KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 8)
-    - `from Context_Integration.Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP` (line 8)
-    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS` (line 8)
-    - `from Context_Integration.Context_Library.constants import STATE_ABBR` (line 8)
+    - `from Context_Integration.Context_Library.constants import
+      CANDIDATE_KEYWORDS` (line 8)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 8)
+    - `from Context_Integration.Context_Library.constants import ELECTION_TYPES`
+      (line 8)
+    - `from Context_Integration.Context_Library.constants import
+      KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 8)
+    - `from Context_Integration.Context_Library.constants import
+      KNOWN_STATE_TO_COUNTY_MAP` (line 8)
+    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS`
+      (line 8)
+    - `from Context_Integration.Context_Library.constants import STATE_ABBR`
+      (line 8)
     - `from Context_Integration.librarian import load_context_library` (line 17)
-    - `from services.election_data_services import ElectionDataService` (line 21)
+    - `from services.election_data_services import ElectionDataService` (line
+      21)
     - `from utils.logger_singleton import logger` (line 22)
     - `from utils.logger_singleton import prompt` (line 22)
     - `from utils.shared_logic import PredictionResult` (line 23)
@@ -4043,7 +4260,8 @@ graph LR
   - utils.shared\_logic.resolve\_county\_alias (line 65)
   - utils.shared\_logic.normalize\_county\_name (line 67)
   - difflib.get\_close\_matches (line 73)
-  - Context\_Integration.Context\_Library.constants.KNOWN\_COUNTY\_TO\_PRECINCTS\_MAP.get (line 80)
+  - Context\_Integration.Context\_Library.constants.KNOWN\_COUNTY\_TO\_PRECINCTS\_MAP.get
+    (line 80)
   - re.search (line 88)
   - year\_match.group (line 90)
   - re.match (line 92)
@@ -4086,7 +4304,7 @@ graph LR
   - ContextService ← context_service.py:37
   - ContextService ← context_service.py:431
 
-### `webapp/parser/services/election_data_services.py`
+### services/election\_data\_services.py {#webapp-parser-services-election-data-services-py}
 
 > ElectionDataService: Service layer for all election DB operations.
 
@@ -4234,7 +4452,7 @@ graph LR
   - get\_metadata\_tables ← election_data_services.py:874
   - get\_metadata\_tables ← election_data_services.py:886
 
-### `webapp/parser/state_router.py`
+### state\_router.py {#webapp-parser-state-router-py}
 
 - Top-of-file comments:
 
@@ -4284,8 +4502,10 @@ graph LR
     - `import difflib as difflib` (line 8)
     - `import importlib as importlib` (line 9)
     - `from config import BASE_DIR` (line 17)
-    - `from Context_Integration.Context_Library.constants import KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 18)
-    - `from Context_Integration.Context_Library.constants import STATE_MODULE_MAP` (line 18)
+    - `from Context_Integration.Context_Library.constants import
+      KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 18)
+    - `from Context_Integration.Context_Library.constants import
+      STATE_MODULE_MAP` (line 18)
     - `from utils.logger_singleton import console` (line 22)
     - `from utils.logger_singleton import logger` (line 22)
     - `from utils.logger_singleton import prompt` (line 22)
@@ -4297,16 +4517,23 @@ graph LR
     - `from utils.user_prompt import PromptCancelled` (line 30)
 - TODO/FIXME/WARN:
   - L49 **WARNING**: ("\[Router\] handlers/states directory not found.")
-  - L66 **WARNING**: (f"\[Router\] counties directory not found for state: {state*key}")
-  - L137 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] No handler states available for manual selection.")
+  - L66 **WARNING**: (f"\[Router\] counties directory not found for state:
+    {state*key}")
+  - L137 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] No handler states
+    available for manual selection.")
   - L154 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
   - L157 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
-  - L160 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] State '{state}' not found. Please try again.")
+  - L160 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] State '{state}'
+    not found. Please try again.")
   - L179 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Aborted by user.")
-  - L182 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] County '{county}' not found for state '{state}'. Please try again.")
-  - L189 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Too many failed attempts. Exiting fallback.")
-  - L205 **WARNING**: (f"\[Router\] Requested state '{state*name}' not found on disk. Skipping restrict filter.")
-  - L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for fuzzy matching.")
+  - L182 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] County '{county}'
+    not found for state '{state}'. Please try again.")
+  - L189 **WARNING**: (f"\[Fallback\]\[Session:{session*id}\] Too many failed
+    attempts. Exiting fallback.")
+  - L205 **WARNING**: (f"\[Router\] Requested state '{state*name}' not found on
+    disk. Skipping restrict filter.")
+  - L512 **WARNING**: (f"No counties found for state '{state}'. Try --fuzzy for
+    fuzzy matching.")
   - L523 **WARNING**: (f"Failed to load context from file: {e}")
   - L533 **WARNING**: ("No suitable handler found.")
   - L540 **WARNING**: ("No handler selected. Exiting.")
@@ -4389,7 +4616,7 @@ graph LR
   - list\_available\_handlers ← state_router.py:506
   - get\_handler ← state_router.py:527
 
-### `webapp/parser/utils/browser_utils.py`
+### utils/browser\_utils.py {#webapp-parser-utils-browser-utils-py}
 
 - Definitions:
   - class: `Closable` (line 101)
@@ -4447,16 +4674,21 @@ graph LR
     - `from typing import Union` (line 16)
   - **Third-party** (14):
     - `from playwright.async_api import Browser as AsyncBrowser` (line 18)
-    - `from playwright.async_api import BrowserContext as AsyncBrowserContext` (line 19)
-    - `from playwright.async_api import BrowserType as AsyncBrowserType` (line 20)
-    - `from playwright.async_api import ElementHandle as AsyncElementHandle` (line 21)
+    - `from playwright.async_api import BrowserContext as AsyncBrowserContext`
+      (line 19)
+    - `from playwright.async_api import BrowserType as AsyncBrowserType` (line
+      20)
+    - `from playwright.async_api import ElementHandle as AsyncElementHandle`
+      (line 21)
     - `from playwright.async_api import Locator as AsyncLocator` (line 22)
     - `from playwright.async_api import Page as AsyncPage` (line 23)
     - `from playwright.async_api import async_playwright` (line 24)
     - `from playwright.sync_api import Browser as SyncBrowser` (line 25)
-    - `from playwright.sync_api import BrowserContext as SyncBrowserContext` (line 26)
+    - `from playwright.sync_api import BrowserContext as SyncBrowserContext`
+      (line 26)
     - `from playwright.sync_api import BrowserType as SyncBrowserType` (line 27)
-    - `from playwright.sync_api import ElementHandle as SyncElementHandle` (line 28)
+    - `from playwright.sync_api import ElementHandle as SyncElementHandle` (line
+      28)
     - `from playwright.sync_api import Locator as SyncLocator` (line 29)
     - `from playwright.sync_api import Page as SyncPage` (line 30)
     - `from playwright.sync_api import sync_playwright` (line 31)
@@ -4471,23 +4703,34 @@ graph LR
     - `from shared_logic import safe_get_first` (line 47)
     - `from shared_logic import safe_lower` (line 47)
 - TODO/FIXME/WARN:
-  - L89 **WARNING**: (f"\[browser*utils\] Failed to safely parse context*library value for key '{key}'")
-  - L91 **WARNING**: (f"\[browser*utils\] Skipping unsafe context*library value for key '{key}'")
-  - L295 **WARNING**: (f"\[safe*attributes\] Playwright JS extraction failed: {e}")
-  - L309 **WARNING**: (f"\[safe*attributes\] Playwright fallback extraction failed: {e}")
+  - L89 **WARNING**: (f"\[browser*utils\] Failed to safely parse context*library
+    value for key '{key}'")
+  - L91 **WARNING**: (f"\[browser*utils\] Skipping unsafe context*library value
+    for key '{key}'")
+  - L295 **WARNING**: (f"\[safe*attributes\] Playwright JS extraction failed:
+    {e}")
+  - L309 **WARNING**: (f"\[safe*attributes\] Playwright fallback extraction
+    failed: {e}")
   - L395 **WARNING**: (f"\[safe*count\] Object is not countable: {type(obj)}")
-  - L441 **WARNING**: (f"\[safe*launch\] browser*type is not a SyncBrowserType: {type(browser*type)}")
-  - L461 **WARNING**: (f"\[async*safe*launch\] browser*type is not an AsyncBrowserType: {type(browser*type)}")
+  - L441 **WARNING**: (f"\[safe*launch\] browser*type is not a SyncBrowserType:
+    {type(browser*type)}")
+  - L461 **WARNING**: (f"\[async*safe*launch\] browser*type is not an
+    AsyncBrowserType: {type(browser*type)}")
   - L540 **WARNING**: ({
   - L541 **WARNING**: ",
-  - L569 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
-  - L578 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual intervention not implemented. (Session: {session*id})")
-  - L602 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator: '{indicator}'")
+  - L569 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+    '{indicator}'")
+  - L578 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in async mode. Manual
+    intervention not implemented. (Session: {session*id})")
+  - L602 **WARNING**: (f"\[CAPTCHA\] Detected Cloudflare CAPTCHA indicator:
+    '{indicator}'")
   - L611 **WARNING**: ({
   - L612 **WARNING**: ",
-  - L623 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual intervention not implemented. (Session: {session*id})")
+  - L623 **WARNING**: (f"\[CAPTCHA\] CAPTCHA detected in sync mode. Manual
+    intervention not implemented. (Session: {session*id})")
   - L712 **WARNING**: ("\[SCROLL\] User aborted scrolling.")
-  - L733 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may not be fully loaded.")
+  - L733 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
+    not be fully loaded.")
 - Outgoing cross-module calls (sample):
   - typing.TypeVar (line 57)
   - orjson.loads (line 71)
@@ -4591,7 +4834,7 @@ graph LR
   - sync\_launch\_browser ← browser_utils.py:619
   - sync\_detect\_cloudflare\_captcha ← browser_utils.py:620
 
-### `webapp/parser/utils/camelot_utils.py`
+### utils/camelot\_utils.py {#webapp-parser-utils-camelot-utils-py}
 
 - Definitions:
   - function: `\_normalize\_headers` (line 22)
@@ -4609,12 +4852,16 @@ graph LR
     - `from typing import Tuple` (line 4)
   - **Local/Project** (4):
     - `from __future__ import annotations` (line 1)
-    - `from Context_Integration.Context_Library.constants import build_camelot_row_filter` (line 12)
-    - `from Context_Integration.Context_Library.constants import get_camelot_title_regex` (line 12)
+    - `from Context_Integration.Context_Library.constants import
+      build_camelot_row_filter` (line 12)
+    - `from Context_Integration.Context_Library.constants import
+      get_camelot_title_regex` (line 12)
     - `from salvage import normalize_ballot_column_name` (line 16)
 - Outgoing cross-module calls (sample):
-  - Context\_Integration.Context\_Library.constants.get\_camelot\_title\_regex (line 19)
-  - Context\_Integration.Context\_Library.constants.build\_camelot\_row\_filter (line 20)
+  - Context\_Integration.Context\_Library.constants.get\_camelot\_title\_regex
+    (line 19)
+  - Context\_Integration.Context\_Library.constants.build\_camelot\_row\_filter
+    (line 20)
   - re.sub (line 29)
   - salvage.normalize\_ballot\_column\_name (line 30)
   - hs.lower (line 33)
@@ -4638,7 +4885,7 @@ graph LR
   - \_table\_to\_rows ← camelot_utils.py:100
   - \_score\_table ← camelot_utils.py:103
 
-### `webapp/parser/utils/captcha_tools.py`
+### utils/captcha\_tools.py {#webapp-parser-utils-captcha-tools-py}
 
 - Definitions:
   - class: `HasContent` (line 22)
@@ -4706,7 +4953,7 @@ graph LR
   - bring\_to\_front ← captcha_tools.py:146
   - is\_cloudflare\_captcha\_present ← captcha_tools.py:141
 
-### `webapp/parser/utils/contest_normalization.py`
+### utils/contest\_normalization.py {#webapp-parser-utils-contest-normalization-py}
 
 > Utilities for normalizing contest titles (referenda, propositions, etc.).
 
@@ -4745,7 +4992,7 @@ graph LR
   - \_normalize\_candidate\_label ← pivot.py:799
   - \_normalize\_candidate\_label ← pivot.py:1106
 
-### `webapp/parser/utils/contest_selector.py`
+### utils/contest\_selector.py {#webapp-parser-utils-contest-selector-py}
 
 - Definitions:
   - class: `ContestRecord` (line 64)
@@ -4808,11 +5055,16 @@ graph LR
   - **Local/Project** (17):
     - `from __future__ import annotations` (line 1)
     - `from difflib import get_close_matches` (line 10)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 15)
-    - `from Context_Integration.Context_Library.constants import CONTEST_TITLE_KEYWORDS` (line 15)
-    - `from Context_Integration.Context_Library.constants import ELECTION_TYPE_REGEX_MAP` (line 15)
-    - `from Context_Integration.Context_Library.constants import ELECTION_TYPES` (line 15)
-    - `from Context_Integration.Context_Library.constants import OFFICE_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_TITLE_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      ELECTION_TYPE_REGEX_MAP` (line 15)
+    - `from Context_Integration.Context_Library.constants import ELECTION_TYPES`
+      (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      OFFICE_KEYWORDS` (line 15)
     - `from logger_singleton import logger` (line 22)
     - `from logger_singleton import prompt` (line 22)
     - `from shared_logic import normalize_county_name` (line 23)
@@ -4826,10 +5078,14 @@ graph LR
 - TODO/FIXME/WARN:
   - L635 **WARNING**: ":
   - L636 **WARNING**: (entry)
-  - L1029 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying contests", session*id=session*id,
-  - L1565 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "Empty search term", "session*id": session*id})
-  - L1570 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No matches for '{term}'", "session*id": session*id})
-  - L1642 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No match; try again.", "session*id": session*id})
+  - L1029 **WARNING**: ", "selector", f"Feedback loop {loop+1}: verifying
+    contests", session*id=session*id,
+  - L1565 **WARNING**: ({"level": "WARNING", "type": "selector", "message":
+    "Empty search term", "session*id": session*id})
+  - L1570 **WARNING**: ({"level": "WARNING", "type": "selector", "message": f"No
+    matches for '{term}'", "session*id": session*id})
+  - L1642 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
+    match; try again.", "session*id": session*id})
 - Outgoing cross-module calls (sample):
   - stopwords.words (line 46)
   - nltk.download (line 48)
@@ -4933,7 +5189,7 @@ graph LR
   - \_norm\_key ← pivot.py:1884
   - \_norm\_key ← pivot.py:1885
 
-### `webapp/parser/utils/coordinator_protocol.py`
+### utils/coordinator\_protocol.py {#webapp-parser-utils-coordinator-protocol-py}
 
 - Definitions:
   - class: `CoordinatorProtocol` (line 7)
@@ -4947,7 +5203,7 @@ graph LR
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 
-### `webapp/parser/utils/date_utils.py`
+### utils/date\_utils.py {#webapp-parser-utils-date-utils-py}
 
 > date_utils.py
 
@@ -4967,7 +5223,7 @@ graph LR
   - \_DATE\_RE\_MDY.search (line 17)
   - \_DATE\_RE\_ISO.search (line 17)
 
-### `webapp/parser/utils/db_utils.py`
+### utils/db\_utils.py {#webapp-parser-utils-db-utils-py}
 
 - Definitions:
   - function: `robust\_orjson\_loads` (line 35)
@@ -5105,7 +5361,7 @@ graph LR
   - get\_or\_create\_state ← db_utils.py:311
   - get\_or\_create\_county ← db_utils.py:312
 
-### `webapp/parser/utils/detect.py`
+### utils/detect.py {#webapp-parser-utils-detect-py}
 
 > detect.py
 
@@ -5147,13 +5403,20 @@ graph LR
     - `from __future__ import annotations` (line 6)
     - `import difflib as difflib` (line 8)
     - `import unicodedata as unicodedata` (line 10)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES` (line 15)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES_SORT_ORDER` (line 15)
-    - `from Context_Integration.Context_Library.constants import CANDIDATE_KEYWORDS` (line 15)
-    - `from Context_Integration.Context_Library.constants import LOCATION_ABBREVIATIONS` (line 15)
-    - `from Context_Integration.Context_Library.constants import LOCATION_KEYWORDS` (line 15)
-    - `from Context_Integration.Context_Library.constants import PERCENT_KEYWORDS` (line 15)
-    - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES`
+      (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      BALLOT_TYPES_SORT_ORDER` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      CANDIDATE_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_ABBREVIATIONS` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      PERCENT_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS`
+      (line 15)
     - `from logger_singleton import logger` (line 24)
     - `from shared_logic import safe_add` (line 25)
     - `from shared_logic import safe_append` (line 25)
@@ -5225,7 +5488,7 @@ graph LR
   - normalize\_text ← detect.py:145
   - normalize\_text ← detect.py:151
   - normalize\_text ← detect.py:161
-  - normalize\_text ← shared_logic.py:1842
+  - normalize\_text ← shared_logic.py:1843
   - normalize\_for\_matching ← detect.py:116
   - \_is\_percent\_header ← detect.py:110
   - \_is\_percent\_header ← detect.py:139
@@ -5245,7 +5508,7 @@ graph LR
   - normalize\_header ← detect.py:189
   - normalize\_header ← detect.py:490
 
-### `webapp/parser/utils/detector.py`
+### utils/detector.py {#webapp-parser-utils-detector-py}
 
 > detector.py
 
@@ -5268,11 +5531,16 @@ graph LR
     - `from __future__ import annotations` (line 6)
     - `import difflib as difflib` (line 8)
     - `import unicodedata as unicodedata` (line 10)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES` (line 15)
-    - `from Context_Integration.Context_Library.constants import CANDIDATE_KEYWORDS` (line 15)
-    - `from Context_Integration.Context_Library.constants import LOCATION_ABBREVIATIONS` (line 15)
-    - `from Context_Integration.Context_Library.constants import LOCATION_KEYWORDS` (line 15)
-    - `from Context_Integration.Context_Library.constants import PERCENT_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES`
+      (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      CANDIDATE_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_ABBREVIATIONS` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      PERCENT_KEYWORDS` (line 15)
     - `from shared_logic import safe_add` (line 22)
 - Outgoing cross-module calls (sample):
   - re.compile (line 24)
@@ -5330,7 +5598,7 @@ graph LR
   - \_numeric\_like ← detector.py:197
   - EntityAnnotation ← detector.py:188
 
-### `webapp/parser/utils/dom_extractor.py`
+### utils/dom\_extractor.py {#webapp-parser-utils-dom-extractor-py}
 
 > dom_extractor.py
 
@@ -5402,7 +5670,7 @@ graph LR
   - \_extract\_row\_cells ← dom_extractor.py:157
   - \_pick\_header ← dom_extractor.py:112
 
-### `webapp/parser/utils/download_utils.py`
+### utils/download\_utils.py {#webapp-parser-utils-download-utils-py}
 
 - Definitions:
   - function: `ensure\_input\_directory` (line 21)
@@ -5428,7 +5696,8 @@ graph LR
     - `from config import DOWNLOAD_MANIFEST` (line 14)
     - `from config import INPUT_DIR` (line 14)
     - `from config import OUTPUT_DIR` (line 14)
-    - `from Context_Integration.context_organizer import ContextOrganizer` (line 15)
+    - `from Context_Integration.context_organizer import ContextOrganizer` (line
+      15)
     - `from utils.logger_singleton import logger` (line 16)
     - `from utils.misc_utils import file_hash` (line 17)
     - `from utils.shared_logic import safe_get` (line 18)
@@ -5487,7 +5756,7 @@ graph LR
   - download\_file ← download_utils.py:138
   - summarize\_downloads ← format_router.py:769
 
-### `webapp/parser/utils/dynamic_table_extractor.py`
+### utils/dynamic\_table\_extractor.py {#webapp-parser-utils-dynamic-table-extractor-py}
 
 - Definitions:
   - function: `\_emit` (line 85)
@@ -5533,21 +5802,36 @@ graph LR
     - `import difflib as difflib` (line 18)
     - `import dateutil.parser as dateutil` (line 23)
     - `from selectolax.parser import HTMLParser` (line 26)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES` (line 28)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES_SORT_ORDER` (line 28)
-    - `from Context_Integration.Context_Library.constants import CANDIDATE_KEYWORDS` (line 28)
-    - `from Context_Integration.Context_Library.constants import CONTAINER_EXTRA_KEYWORDS` (line 28)
-    - `from Context_Integration.Context_Library.constants import CONTAINER_FALLBACK_SELECTORS` (line 28)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 28)
-    - `from Context_Integration.Context_Library.constants import EXTRA_HEADING_TAGS` (line 28)
-    - `from Context_Integration.Context_Library.constants import HEADING_TAGS` (line 28)
-    - `from Context_Integration.Context_Library.constants import LOCATION_ABBREVIATIONS` (line 28)
-    - `from Context_Integration.Context_Library.constants import LOCATION_KEYWORDS` (line 28)
-    - `from Context_Integration.Context_Library.constants import MISC_FOOTER_KEYWORDS` (line 28)
-    - `from Context_Integration.Context_Library.constants import NLP_SKIP_PHRASES` (line 28)
-    - `from Context_Integration.Context_Library.constants import PANEL_TAGS` (line 28)
-    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS` (line 28)
-    - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS` (line 28)
+    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES`
+      (line 28)
+    - `from Context_Integration.Context_Library.constants import
+      BALLOT_TYPES_SORT_ORDER` (line 28)
+    - `from Context_Integration.Context_Library.constants import
+      CANDIDATE_KEYWORDS` (line 28)
+    - `from Context_Integration.Context_Library.constants import
+      CONTAINER_EXTRA_KEYWORDS` (line 28)
+    - `from Context_Integration.Context_Library.constants import
+      CONTAINER_FALLBACK_SELECTORS` (line 28)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 28)
+    - `from Context_Integration.Context_Library.constants import
+      EXTRA_HEADING_TAGS` (line 28)
+    - `from Context_Integration.Context_Library.constants import HEADING_TAGS`
+      (line 28)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_ABBREVIATIONS` (line 28)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_KEYWORDS` (line 28)
+    - `from Context_Integration.Context_Library.constants import
+      MISC_FOOTER_KEYWORDS` (line 28)
+    - `from Context_Integration.Context_Library.constants import
+      NLP_SKIP_PHRASES` (line 28)
+    - `from Context_Integration.Context_Library.constants import PANEL_TAGS`
+      (line 28)
+    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS`
+      (line 28)
+    - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS`
+      (line 28)
     - `from Context_Integration.librarian import extend_heading_tags` (line 45)
     - `from Context_Integration.librarian import extend_panel_tags` (line 45)
     - `from Context_Integration.librarian import get_safe_log_path` (line 45)
@@ -5578,13 +5862,20 @@ graph LR
     - `from shared_logic import safe_values` (line 64)
     - `from table_core import robust_table_extraction` (line 74)
 - TODO/FIXME/WARN:
-  - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in provided table*html.", session*id)
-  - L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in table*html.", session*id)
-  - L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step failed", session*id, error=str(e))
-  - L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table candidates found.", session*id)
-  - L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning &lt;table&gt; elements", session*id, error=str(e))
-  - L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed", session*id, error=str(e))
-  - L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed", session*id, error=str(e))
+  - L124 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;table&gt; found in
+    provided table*html.", session*id)
+  - L129 **WARNING**: ", "extractor", "\[EXTRACTOR\] No &lt;tr&gt; rows found in
+    table*html.", session*id)
+  - L171 **WARNING**: ", "extractor", "\[EXTRACTOR\] Candidate NLP/score step
+    failed", session*id, error=str(e))
+  - L187 **WARNING**: ", "extractor", "\[EXTRACTOR\] No suitable table
+    candidates found.", session*id)
+  - L217 **WARNING**: ", "extractor", "\[EXTRACTOR\] Error while scanning
+    &lt;table&gt; elements", session*id, error=str(e))
+  - L229 **WARNING**: ", "extractor", "\[EXTRACTOR\] DOM extraction failed",
+    session*id, error=str(e))
+  - L272 **WARNING**: ", "extractor", "\[EXTRACTOR\] Pattern extraction failed",
+    session*id, error=str(e))
   - L776 **WARNING**: ", "extractor", "No learned DOM patterns found.")
   - L800 **WARNING**: ", "extractor", "Entry deleted.")
   - L805 **WARNING**: ", "extractor", "Unknown action.")
@@ -5692,7 +5983,7 @@ graph LR
   - \_emit ← table_builder.py:1242
   - \_emit ← table_builder.py:1265
 
-### `webapp/parser/utils/embedding_cache.py`
+### utils/embedding\_cache.py {#webapp-parser-utils-embedding-cache-py}
 
 - Definitions:
   - function: `ensure\_embedding\_cache\_table` (line 92)
@@ -5793,7 +6084,7 @@ graph LR
   - load\_embedding ← embedding_cache.py:317
   - fix\_missing\_embeddings ← embedding_cache.py:337
 
-### `webapp/parser/utils/extraction_strategies.py`
+### utils/extraction\_strategies.py {#webapp-parser-utils-extraction-strategies-py}
 
 > extraction_strategies.py
 
@@ -5821,8 +6112,10 @@ graph LR
   - **Local/Project** (17):
     - `from __future__ import annotations` (line 7)
     - `from selectolax.parser import HTMLParser` (line 13)
-    - `from Context_Integration.Context_Library.constants import LOCATION_KEYWORDS` (line 15)
-    - `from Context_Integration.Context_Library.constants import NLP_SKIP_PHRASES` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_KEYWORDS` (line 15)
+    - `from Context_Integration.Context_Library.constants import
+      NLP_SKIP_PHRASES` (line 15)
     - `from browser_utils import safe_content` (line 19)
     - `from browser_utils import safe_count` (line 19)
     - `from browser_utils import safe_inner_text` (line 19)
@@ -5900,7 +6193,7 @@ graph LR
   - \_normalized\_header\_tuple ← extraction_strategies.py:249
   - \_merge\_similar\_tables ← extraction_strategies.py:73
 
-### `webapp/parser/utils/format_router.py`
+### utils/format\_router.py {#webapp-parser-utils-format-router-py}
 
 - Definitions:
   - function: `\_normalize\_text` (line 57)
@@ -5941,7 +6234,8 @@ graph LR
     - `from difflib import get_close_matches` (line 5)
     - `from config import DISABLE_HTML_FALLBACK` (line 11)
     - `from config import SUPPORTED_FORMATS` (line 11)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 12)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 12)
     - `from handlers.formats import csv_handler` (line 13)
     - `from handlers.formats import json_handler` (line 13)
     - `from handlers.formats import pdf_handler` (line 13)
@@ -6033,9 +6327,9 @@ graph LR
 - Inbound references:
   - \_normalize\_text ← format_router.py:62
   - \_normalize\_text ← format_router.py:73
-  - \_normalize\_text ← shared_logic.py:1033
-  - \_normalize\_text ← shared_logic.py:1039
-  - \_normalize\_text ← shared_logic.py:1047
+  - \_normalize\_text ← shared_logic.py:1034
+  - \_normalize\_text ← shared_logic.py:1040
+  - \_normalize\_text ← shared_logic.py:1048
   - \_infer\_format\_from\_text ← format_router.py:77
   - \_infer\_format\_from\_text ← format_router.py:79
   - \_infer\_format\_from\_text ← format_router.py:187
@@ -6065,7 +6359,7 @@ graph LR
   - route\_format\_handler ← format_router.py:920
   - extract\_download\_links\_from\_html ← format_router.py:662
 
-### `webapp/parser/utils/header_utils.py`
+### utils/header\_utils.py {#webapp-parser-utils-header-utils-py}
 
 - Definitions:
   - function: `build\_candidate\_group\_hierarchical` (line 10)
@@ -6157,7 +6451,7 @@ graph LR
   - \_register\_header\_mapping ← header_utils.py:200
   - normalize\_table\_headers ← html_election_parser.py:942
 
-### `webapp/parser/utils/html_scanner.py`
+### utils/html\_scanner.py {#webapp-parser-utils-html-scanner-py}
 
 - Definitions:
   - function: `robust\_orjson\_loads` (line 126)
@@ -6234,47 +6528,88 @@ graph LR
     - `from config import CONTEXT_LIBRARY_PATH` (line 25)
     - `from config import ENABLE_SEGMENT_LABEL_PROMPT` (line 25)
     - `from config import LOG_DIR` (line 25)
-    - `from Context_Integration.Context_Library.constants import ALLOWED_LABELS` (line 32)
-    - `from Context_Integration.Context_Library.constants import ALWAYS_IGNORE_CLASSES` (line 32)
-    - `from Context_Integration.Context_Library.constants import ALWAYS_IGNORE_IDS` (line 32)
-    - `from Context_Integration.Context_Library.constants import ALWAYS_IGNORE_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES` (line 32)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES_SORT_ORDER` (line 32)
-    - `from Context_Integration.Context_Library.constants import BUTTON_CLASSES` (line 32)
-    - `from Context_Integration.Context_Library.constants import BUTTON_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import CANDIDATE_KEYWORDS` (line 32)
-    - `from Context_Integration.Context_Library.constants import CANONICAL_SEGMENT_LABELS` (line 32)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 32)
-    - `from Context_Integration.Context_Library.constants import CONTEST_PANEL_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import CUSTOM_ATTR_PATTERNS` (line 32)
-    - `from Context_Integration.Context_Library.constants import DISTRICT_REGEX` (line 32)
-    - `from Context_Integration.Context_Library.constants import ELECTION_TYPES` (line 32)
-    - `from Context_Integration.Context_Library.constants import EXTRA_HEADING_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import HEADING_CLASSES` (line 32)
-    - `from Context_Integration.Context_Library.constants import HEADING_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import HTML_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import ICON_CLASSES` (line 32)
-    - `from Context_Integration.Context_Library.constants import ICON_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 32)
-    - `from Context_Integration.Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP` (line 32)
-    - `from Context_Integration.Context_Library.constants import LOCATION_ABBREVIATIONS` (line 32)
-    - `from Context_Integration.Context_Library.constants import LOCATION_KEYWORDS` (line 32)
-    - `from Context_Integration.Context_Library.constants import MISC_FOOTER_KEYWORDS` (line 32)
-    - `from Context_Integration.Context_Library.constants import NOISY_LABEL_PATTERNS` (line 32)
-    - `from Context_Integration.Context_Library.constants import OFFICE_KEYWORDS` (line 32)
-    - `from Context_Integration.Context_Library.constants import PANEL_CLASSES` (line 32)
-    - `from Context_Integration.Context_Library.constants import PANEL_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS` (line 32)
-    - `from Context_Integration.Context_Library.constants import PERCENT_KEYWORDS` (line 32)
-    - `from Context_Integration.Context_Library.constants import PRECINCT_HEADER_PATTERNS` (line 32)
-    - `from Context_Integration.Context_Library.constants import ROOT_CONTAINER_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import SELECTORS` (line 32)
-    - `from Context_Integration.Context_Library.constants import STATE_ABBR` (line 32)
-    - `from Context_Integration.Context_Library.constants import STATE_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import STRUCTURAL_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import TABLE_TAGS` (line 32)
-    - `from Context_Integration.Context_Library.constants import TIMESTAMP_ATTRS` (line 32)
-    - `from Context_Integration.Context_Library.constants import TIMESTAMP_CLASSES` (line 32)
+    - `from Context_Integration.Context_Library.constants import ALLOWED_LABELS`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      ALWAYS_IGNORE_CLASSES` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      ALWAYS_IGNORE_IDS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      ALWAYS_IGNORE_TAGS` (line 32)
+    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      BALLOT_TYPES_SORT_ORDER` (line 32)
+    - `from Context_Integration.Context_Library.constants import BUTTON_CLASSES`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import BUTTON_TAGS`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      CANDIDATE_KEYWORDS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      CANONICAL_SEGMENT_LABELS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_PANEL_TAGS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      CUSTOM_ATTR_PATTERNS` (line 32)
+    - `from Context_Integration.Context_Library.constants import DISTRICT_REGEX`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import ELECTION_TYPES`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      EXTRA_HEADING_TAGS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      HEADING_CLASSES` (line 32)
+    - `from Context_Integration.Context_Library.constants import HEADING_TAGS`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import HTML_TAGS`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import ICON_CLASSES`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import ICON_TAGS`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      KNOWN_STATE_TO_COUNTY_MAP` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_ABBREVIATIONS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_KEYWORDS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      MISC_FOOTER_KEYWORDS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      NOISY_LABEL_PATTERNS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      OFFICE_KEYWORDS` (line 32)
+    - `from Context_Integration.Context_Library.constants import PANEL_CLASSES`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import PANEL_TAGS`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      PERCENT_KEYWORDS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      PRECINCT_HEADER_PATTERNS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      ROOT_CONTAINER_TAGS` (line 32)
+    - `from Context_Integration.Context_Library.constants import SELECTORS`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import STATE_ABBR`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import STATE_TAGS`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      STRUCTURAL_TAGS` (line 32)
+    - `from Context_Integration.Context_Library.constants import TABLE_TAGS`
+      (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      TIMESTAMP_ATTRS` (line 32)
+    - `from Context_Integration.Context_Library.constants import
+      TIMESTAMP_CLASSES` (line 32)
 - TODO/FIXME/WARN:
   - L163 **WARNING**: ",
   - L167 **WARNING**: (payload)
@@ -6290,8 +6625,10 @@ graph LR
   - L384 **WARNING**: (payload)
   - L579 **WARNING**: ",
   - L583 **WARNING**: (payload)
-  - L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment: {safe*get(segment, 'segment*hash', None)}")
-  - L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment: {safe*get(segment, 'segment*hash', None)}")
+  - L784 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+    {safe*get(segment, 'segment*hash', None)}")
+  - L807 **WARNING**: (f"\[ML SIMILARITY\] No embedding computed for segment:
+    {safe*get(segment, 'segment*hash', None)}")
   - L1034 **WARNING**: ",
   - L1038 **WARNING**: (payload)
   - L1045 **WARNING**: ",
@@ -6300,13 +6637,18 @@ graph LR
   - L1380 **WARNING**: (payload)
   - L1438 **WARNING**: ",
   - L1442 **WARNING**: (payload)
-  - L1691 **WARNING**: ({"level": "WARNING", "type": "dom*segments", "message": msg*warn})
-  - L1747 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message": msg})
-  - L1754 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message": msg})
-  - L1766 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message": msg})
+  - L1691 **WARNING**: ({"level": "WARNING", "type": "dom*segments", "message":
+    msg*warn})
+  - L1747 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+    msg})
+  - L1754 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+    msg})
+  - L1766 **WARNING**: ({"level": "WARNING", "type": "page*hash", "message":
+    msg})
   - L1789 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
   - L1824 **WARNING**: ({"level": "WARNING", "type": "cache", "message": msg})
-  - L2003 **WARNING**: ({"level": "WARNING", "type": "segment*review", "message": msg})
+  - L2003 **WARNING**: ({"level": "WARNING", "type": "segment*review",
+    "message": msg})
   - L2012 **WARNING**: ({
   - L2013 **WARNING**: ",
   - L2129 **WARNING**: ",
@@ -6429,7 +6771,7 @@ graph LR
   - \_extract\_segments\_by\_label ← html_scanner.py:3021
   - \_extract\_segments\_by\_label ← html_scanner.py:3034
 
-### `webapp/parser/utils/json_export_loader.py`
+### utils/json\_export\_loader.py {#webapp-parser-utils-json-export-loader-py}
 
 - Definitions:
   - function: `\_safe\_int` (line 34)
@@ -6460,15 +6802,20 @@ graph LR
     - `from typing import Tuple` (line 8)
   - **Local/Project** (7):
     - `from __future__ import annotations` (line 1)
-    - `from Context_Integration.Context_Library.constants import DEFAULT_TOTAL_RESULT_DISPLAY` (line 10)
-    - `from Context_Integration.Context_Library.constants import PARTY_CODE_MAP` (line 10)
-    - `from Context_Integration.Context_Library.constants import normalize_party_label` (line 10)
-    - `from Context_Integration.Context_Library.constants import normalize_result_group_label` (line 10)
+    - `from Context_Integration.Context_Library.constants import
+      DEFAULT_TOTAL_RESULT_DISPLAY` (line 10)
+    - `from Context_Integration.Context_Library.constants import PARTY_CODE_MAP`
+      (line 10)
+    - `from Context_Integration.Context_Library.constants import
+      normalize_party_label` (line 10)
+    - `from Context_Integration.Context_Library.constants import
+      normalize_result_group_label` (line 10)
     - `from Context_Integration.librarian import clean_for_json` (line 16)
     - `from contest_normalization import normalize_contest_label` (line 17)
 - Outgoing cross-module calls (sample):
   - code.upper (line 29)
-  - Context\_Integration.Context\_Library.constants.PARTY\_CODE\_MAP.keys (line 29)
+  - Context\_Integration.Context\_Library.constants.PARTY\_CODE\_MAP.keys (line
+    29)
   - re.compile (line 30)
   - re.compile (line 31)
   - re.compile (line 32)
@@ -6483,7 +6830,8 @@ graph LR
   - option.get (line 74)
   - option.get (line 76)
   - option.get (line 78)
-  - Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 80)
+  - Context\_Integration.Context\_Library.constants.normalize\_party\_label
+    (line 80)
   - dataclasses.dataclass (line 86)
   - dataclasses.field (line 112)
   - dataclasses.field (line 113)
@@ -6492,7 +6840,8 @@ graph LR
   - payload.get (line 133)
   - county.get (line 134)
   - county.get (line 135)
-  - Context\_Integration.Context\_Library.constants.normalize\_result\_group\_label (line 140)
+  - Context\_Integration.Context\_Library.constants.normalize\_result\_group\_label
+    (line 140)
   - statewide\_contest.get (line 146)
   - name.lower (line 147)
   - statewide\_contest.get (line 160)
@@ -6550,7 +6899,7 @@ graph LR
   - \_build\_context\_snapshot ← json_export_loader.py:390
   - load\_state\_export ← json_export_loader.py:407
 
-### `webapp/parser/utils/location_helpers.py`
+### utils/location\_helpers.py {#webapp-parser-utils-location-helpers-py}
 
 - Definitions:
   - function: `\_normalize\_location\_text` (line 75)
@@ -6570,12 +6919,16 @@ graph LR
     - `from typing import Tuple` (line 5)
   - **Local/Project** (5):
     - `from __future__ import annotations` (line 1)
-    - `from Context_Integration.Context_Library.constants import LOCATION_ABBREVIATIONS` (line 7)
-    - `from Context_Integration.Context_Library.constants import LOCATION_KEYWORDS` (line 7)
-    - `from Context_Integration.Context_Library.constants import LOCATION_SYNONYM_MAP` (line 7)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_ABBREVIATIONS` (line 7)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_KEYWORDS` (line 7)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_SYNONYM_MAP` (line 7)
     - `from detect import is_location_header` (line 12)
 - Outgoing cross-module calls (sample):
-  - Context\_Integration.Context\_Library.constants.LOCATION\_ABBREVIATIONS.keys (line 69)
+  - Context\_Integration.Context\_Library.constants.LOCATION\_ABBREVIATIONS.keys
+    (line 69)
   - re.sub (line 70)
   - abbr.lower (line 70)
   - \_SHORT\_LOCATION\_TOKENS.add (line 72)
@@ -6583,7 +6936,8 @@ graph LR
   - re.sub (line 79)
   - re.sub (line 80)
   - phrases.add (line 89)
-  - Context\_Integration.Context\_Library.constants.LOCATION\_SYNONYM\_MAP.items (line 90)
+  - Context\_Integration.Context\_Library.constants.LOCATION\_SYNONYM\_MAP.items
+    (line 90)
   - phrases.add (line 93)
   - phrases.add (line 96)
   - phrases.update (line 97)
@@ -6610,7 +6964,7 @@ graph LR
   - \_location\_phrases ← location_helpers.py:140
   - is\_strict\_location\_header ← location_helpers.py:182
 
-### `webapp/parser/utils/logger_singleton.py`
+### utils/logger\_singleton.py {#webapp-parser-utils-logger-singleton-py}
 
 - Definitions:
   - function: `set\_log\_level` (line 20)
@@ -6627,7 +6981,7 @@ graph LR
   - shared\_logger.RichConsoleProxy (line 17)
   - logger.set\_level (line 21)
 
-### `webapp/parser/utils/merge_utils.py`
+### utils/merge\_utils.py {#webapp-parser-utils-merge-utils-py}
 
 > merge_utils.py
 
@@ -6649,7 +7003,7 @@ graph LR
   - rows\_out.append (line 42)
   - salvage.collapse\_ballot\_synonym\_columns (line 45)
 
-### `webapp/parser/utils/misc_utils.py`
+### utils/misc\_utils.py {#webapp-parser-utils-misc-utils-py}
 
 - Definitions:
   - function: `load\_processed\_urls` (line 20)
@@ -6697,7 +7051,7 @@ graph LR
 - Inbound references:
   - safe\_db\_path ← misc_utils.py:45
 
-### `webapp/parser/utils/ml_table_detector.py`
+### utils/ml\_table\_detector.py {#webapp-parser-utils-ml-table-detector-py}
 
 - Definitions:
   - function: `\_llm\_detect\_tables` (line 53)
@@ -6796,7 +7150,7 @@ graph LR
   - \_regex\_table\_detection ← ml_table_detector.py:176
   - \_normalize\_header ← ml_table_detector.py:185
 
-### `webapp/parser/utils/model_registry.py`
+### utils/model\_registry.py {#webapp-parser-utils-model-registry-py}
 
 - Definitions:
   - function: `\_hf\_offline` (line 41)
@@ -6832,10 +7186,13 @@ graph LR
     - `from Context_Integration.librarian import load_context_library` (line 26)
     - `from logger_singleton import logger` (line 27)
 - TODO/FIXME/WARN:
-  - L389 **WARNING**: (f"Failed loading local override for SentenceTransformer: {e}")
-  - L409 **WARNING**: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set; skipping HF download. Embeddings disabled.")
+  - L389 **WARNING**: (f"Failed loading local override for SentenceTransformer:
+    {e}")
+  - L409 **WARNING**: ("TRANSFORMERS*OFFLINE/HUGGINGFACE*HUB*OFFLINE set;
+    skipping HF download. Embeddings disabled.")
   - L426 **WARNING**: for noisy environments
-  - L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS). Running without embeddings. Error: {e}")
+  - L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS).
+    Running without embeddings. Error: {e}")
 - Outgoing cross-module calls (sample):
   - threading.Lock (line 39)
   - os.getenv (line 43)
@@ -6900,7 +7257,7 @@ graph LR
   - build\_reverse\_vocab ← model_registry.py:88
   - advanced\_tokenizer ← model_registry.py:149
 
-### `webapp/parser/utils/models.py`
+### utils/models.py {#webapp-parser-utils-models-py}
 
 - Definitions:
   - class: `MetaDataProtocol` (line 35)
@@ -7024,7 +7381,7 @@ graph LR
   - EmbeddingCache ← election_data_services.py:730
   - Alert ← election_data_services.py:711
 
-### `webapp/parser/utils/output_utils.py`
+### utils/output\_utils.py {#webapp-parser-utils-output-utils-py}
 
 - Definitions:
   - function: `coerce\_percent\_strings` (line 32)
@@ -7067,7 +7424,8 @@ graph LR
     - `from config import OUTPUT_DIR` (line 19)
     - `from logger_singleton import logger` (line 20)
     - `from rawjson_utils import extract_rawjson_enrichment_from_rows` (line 21)
-    - `from rawjson_utils import offload_rawjson_to_ndjson as _shared_offload_rawjson_to_ndjson` (line 24)
+    - `from rawjson_utils import offload_rawjson_to_ndjson as
+      _shared_offload_rawjson_to_ndjson` (line 24)
     - `from pivot import transform_wide_to_smart_standard` (line 27)
     - `from shared_logic import safe_filename` (line 28)
     - `from shared_logic import safe_get` (line 28)
@@ -7075,8 +7433,10 @@ graph LR
     - `from shared_logic import safe_items` (line 28)
     - `from shared_logic import safe_lower` (line 28)
 - TODO/FIXME/WARN:
-  - L105 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using 'Unknown'.\[/yellow\]")
-  - L108 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified. Using 'unknown*contests'.\[/yellow\]")
+  - L105 **WARNING**: ("\[yellow\]\[OUTPUT\] Year could not be verified. Using
+    'Unknown'.\[/yellow\]")
+  - L108 **WARNING**: ("\[yellow\]\[OUTPUT\] contests could not be verified.
+    Using 'unknown*contests'.\[/yellow\]")
   - L531 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
   - L607 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
 - Outgoing cross-module calls (sample):
@@ -7151,7 +7511,7 @@ graph LR
   - finalize\_election\_output ← table_core.py:347
   - finalize\_election\_output ← table_core.py:475
 
-### `webapp/parser/utils/pattern_extractor.py`
+### utils/pattern\_extractor.py {#webapp-parser-utils-pattern-extractor-py}
 
 > pattern_extractor.py
 
@@ -7195,7 +7555,7 @@ graph LR
 - Inbound references:
   - load\_dom\_patterns ← pattern_extractor.py:47
 
-### `webapp/parser/utils/pdf_table_utils.py`
+### utils/pdf\_table\_utils.py {#webapp-parser-utils-pdf-table-utils-py}
 
 - Definitions:
   - function: `\_recon\_debug\_enabled` (line 28)
@@ -7246,10 +7606,14 @@ graph LR
     - `from typing import Sequence` (line 14)
   - **Local/Project** (6):
     - `from __future__ import annotations` (line 1)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES` (line 16)
-    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS` (line 16)
-    - `from Context_Integration.Context_Library.constants import CONTEST_KEYWORDS` (line 16)
-    - `from Context_Integration.Context_Library.constants import normalize_party_label` (line 16)
+    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES`
+      (line 16)
+    - `from Context_Integration.Context_Library.constants import PARTY_KEYWORDS`
+      (line 16)
+    - `from Context_Integration.Context_Library.constants import
+      CONTEST_KEYWORDS` (line 16)
+    - `from Context_Integration.Context_Library.constants import
+      normalize_party_label` (line 16)
     - `from header_utils import collapse_multiline_header` (line 22)
 - Outgoing cross-module calls (sample):
   - flag.strip (line 32)
@@ -7354,7 +7718,7 @@ graph LR
   - is\_numeric\_like ← pdf_table_utils.py:1291
   - is\_numeric\_like ← pdf_table_utils.py:1322
 
-### `webapp/parser/utils/pivot.py`
+### utils/pivot.py {#webapp-parser-utils-pivot-py}
 
 > pivot.py
 
@@ -7418,20 +7782,34 @@ graph LR
     - `import orjson as orjson` (line 32)
   - **Local/Project** (23):
     - `from __future__ import annotations` (line 23)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES` (line 34)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES_SORT_ORDER` (line 34)
-    - `from Context_Integration.Context_Library.constants import CANDIDATE_BALLOT_SPLIT_PATTERN` (line 34)
-    - `from Context_Integration.Context_Library.constants import DIVISION_HEURISTIC_TERMS` (line 34)
-    - `from Context_Integration.Context_Library.constants import DIVISION_SUFFIXES` (line 34)
-    - `from Context_Integration.Context_Library.constants import LOCATION_ABBREVIATIONS` (line 34)
-    - `from Context_Integration.Context_Library.constants import LOCATION_KEYWORDS` (line 34)
-    - `from Context_Integration.Context_Library.constants import LOCATION_SYNONYM_MAP` (line 34)
-    - `from Context_Integration.Context_Library.constants import PARTY_NORMALIZATION_MAP` (line 34)
-    - `from Context_Integration.Context_Library.constants import STATE_TO_DIVISION_TYPE_MAP` (line 34)
-    - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS` (line 34)
-    - `from Context_Integration.Context_Library.constants import canonical_ballot_group` (line 34)
-    - `from Context_Integration.Context_Library.constants import normalize_party_code` (line 34)
-    - `from Context_Integration.Context_Library.constants import normalize_party_label` (line 34)
+    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES`
+      (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      BALLOT_TYPES_SORT_ORDER` (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      CANDIDATE_BALLOT_SPLIT_PATTERN` (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      DIVISION_HEURISTIC_TERMS` (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      DIVISION_SUFFIXES` (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_ABBREVIATIONS` (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_KEYWORDS` (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_SYNONYM_MAP` (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      PARTY_NORMALIZATION_MAP` (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      STATE_TO_DIVISION_TYPE_MAP` (line 34)
+    - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS`
+      (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      canonical_ballot_group` (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      normalize_party_code` (line 34)
+    - `from Context_Integration.Context_Library.constants import
+      normalize_party_label` (line 34)
     - `from detect import dynamic_detect_location_header` (line 50)
     - `from detect import normalize_header` (line 50)
     - `from detect import parse_numeric` (line 50)
@@ -7441,7 +7819,8 @@ graph LR
     - `from shared_logic import safe_get` (line 52)
     - `from shared_logic import safe_strip` (line 52)
 - TODO/FIXME/WARN:
-  - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and candidate column extraction.")
+  - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and
+    candidate column extraction.")
 - Outgoing cross-module calls (sample):
   - re.compile (line 59)
   - detect.normalize\_header (line 60)
@@ -7449,7 +7828,8 @@ graph LR
   - detect.normalize\_header (line 62)
   - detect.normalize\_header (line 64)
   - detect.normalize\_header (line 65)
-  - Context\_Integration.Context\_Library.constants.PARTY\_NORMALIZATION\_MAP.values (line 70)
+  - Context\_Integration.Context\_Library.constants.PARTY\_NORMALIZATION\_MAP.values
+    (line 70)
   - val.strip (line 71)
   - re.compile (line 107)
   - re.compile (line 110)
@@ -7460,10 +7840,12 @@ graph LR
   - dtype.lower (line 158)
   - base\_types.update (line 159)
   - kw.strip (line 175)
-  - Context\_Integration.Context\_Library.constants.LOCATION\_SYNONYM\_MAP.items (line 179)
+  - Context\_Integration.Context\_Library.constants.LOCATION\_SYNONYM\_MAP.items
+    (line 179)
   - canonical.strip (line 180)
   - alias.strip (line 181)
-  - Context\_Integration.Context\_Library.constants.LOCATION\_ABBREVIATIONS.items (line 185)
+  - Context\_Integration.Context\_Library.constants.LOCATION\_ABBREVIATIONS.items
+    (line 185)
   - abbr.strip (line 186)
   - expansion.strip (line 188)
   - token\_map.items (line 194)
@@ -7545,7 +7927,7 @@ graph LR
   - \_safe\_col\_name ← pivot.py:1197
   - \_safe\_col\_name ← pivot.py:1198
 
-### `webapp/parser/utils/rawjson_utils.py`
+### utils/rawjson\_utils.py {#webapp-parser-utils-rawjson-utils-py}
 
 - Definitions:
   - function: `\_rj\_first` (line 17)
@@ -7604,7 +7986,7 @@ graph LR
   - \_rj\_as\_dict ← rawjson_utils.py:212
   - \_infer\_party\_from\_name ← rawjson_utils.py:100
 
-### `webapp/parser/utils/salvage.py`
+### utils/salvage.py {#webapp-parser-utils-salvage-py}
 
 > salvage.py
 
@@ -7686,7 +8068,7 @@ graph LR
   - normalize\_ballot\_column\_name ← salvage.py:108
   - normalize\_ballot\_column\_name ← salvage.py:150
 
-### `webapp/parser/utils/seleniumbase_launcher.py`
+### utils/seleniumbase\_launcher.py {#webapp-parser-utils-seleniumbase-launcher-py}
 
 - Definitions:
   - class: `\_MissingDriver` (line 20)
@@ -7714,7 +8096,7 @@ graph LR
   - driver.get (line 109)
   - driver.quit (line 117)
 
-### `webapp/parser/utils/session_state.py`
+### utils/session\_state.py {#webapp-parser-utils-session-state-py}
 
 - Definitions:
   - class: `SessionState` (line 7)
@@ -7730,7 +8112,7 @@ graph LR
   - SessionState.as\_dict (line 47)
   - PipelinePhase.ordered (line 49)
 
-### `webapp/parser/utils/shared_logger.py`
+### utils/shared\_logger.py {#webapp-parser-utils-shared-logger-py}
 
 - Definitions:
   - function: `safe\_getvalue` (line 38)
@@ -7838,131 +8220,131 @@ graph LR
   - safe\_getvalue ← shared_logger.py:97
   - SharedLogger ← shared_logger.py:56
 
-### `webapp/parser/utils/shared_logic.py`
+### utils/shared\_logic.py {#webapp-parser-utils-shared-logic-py}
 
 - Definitions:
-  - class: `ExtractPlugin` (line 68)
-  - class: `Saveable` (line 71)
-  - class: `GCModule` (line 74)
-  - class: `ShutilModule` (line 77)
-  - class: `TimeModule` (line 81)
-  - class: `HasItem` (line 85)
-  - class: `HasAllMethod` (line 90)
-  - class: `PredictionResult` (line 97)
-  - class: `EventLike` (line 119)
-  - class: `Predictable` (line 128)
-  - function: `safe\_filename` (line 154)
-  - function: `safe\_slug` (line 212)
-  - function: `safe\_query` (line 228)
-  - function: `safe\_key` (line 239)
-  - function: `\_filter\_valid\_kwargs` (line 250)
-  - function: `safe\_filter\_by` (line 268)
-  - function: `safe\_first` (line 282)
-  - function: `get\_or\_create` (line 295)
-  - function: `safe\_translate` (line 318)
-  - function: `safe\_scheme` (line 330)
-  - function: `safe\_netloc` (line 338)
-  - function: `safe\_geturl` (line 346)
-  - function: `safe\_extract` (line 354)
-  - function: `safe\_isalpha` (line 368)
-  - function: `safe\_pop` (line 378)
-  - function: `safe\_merge\_defaults` (line 386)
-  - function: `safe\_strip` (line 402)
-  - function: `safe\_setdefault` (line 408)
-  - function: `safe\_tolist` (line 419)
-  - function: `safe\_execute` (line 441)
-  - function: `safe\_commit` (line 453)
-  - function: `safe\_scalar\_one\_or\_none` (line 462)
-  - function: `safe\_model\_save` (line 473)
-  - function: `safe\_all` (line 518)
-  - function: `safe\_copy` (line 530)
-  - function: `safe\_isalnum` (line 553)
-  - function: `safe\_keys` (line 563)
-  - function: `safe\_attr\_keys` (line 576)
-  - function: `safe\_replace` (line 590)
-  - function: `safe\_isdigit` (line 603)
-  - function: `safe\_get` (line 610)
-  - function: `safe\_values` (line 619)
-  - function: `safe\_is\_set` (line 631)
-  - function: `safe\_set` (line 643)
-  - function: `safe\_clear` (line 653)
-  - function: `safe\_append\_cached\_segment` (line 663)
-  - function: `safe\_db\_call` (line 681)
-  - function: `safe\_append` (line 702)
-  - function: `safe\_update` (line 723)
-  - function: `safe\_extend` (line 748)
-  - function: `convert\_ndarrays` (line 769)
-  - function: `normalize\_html\_for\_hash` (line 779)
-  - function: `clean\_cache\_inplace` (line 787)
-  - function: `\_to\_json\_safe` (line 799)
-  - function: `sync\_type\_and\_election\_types` (line 808)
-  - function: `keyword\_in\_text` (line 834)
-  - function: `safe\_lower` (line 842)
-  - function: `safe\_encode` (line 848)
-  - function: `safe\_startswith` (line 856)
-  - function: `safe\_add` (line 871)
-  - function: `safe\_predict` (line 887)
-  - function: `safe\_split` (line 898)
-  - function: `safe\_capitalize` (line 918)
-  - function: `safe\_item` (line 922)
-  - function: `safe\_items` (line 936)
-  - function: `safe\_similarity` (line 955)
-  - function: `safe\_model\_encode` (line 981)
-  - function: `safe\_get\_first` (line 1075)
-  - function: `safe\_parse` (line 1101)
-  - function: `safe\_endswith` (line 1147)
-  - function: `safe\_isupper` (line 1158)
-  - function: `resolve\_county\_alias` (line 1169)
-  - function: `safe\_sid` (line 1198)
-  - function: `safe\_rsplit` (line 1220)
-  - function: `normalize\_county\_name` (line 1234)
-  - function: `flatten\_raw\_field` (line 1256)
-  - function: `normalize\_state\_name` (line 1271)
-  - function: `infer\_state\_county\_from\_url` (line 1307)
-  - function: `resolve\_state\_county\_from\_context` (line 1390)
-  - function: `format\_state\_label` (line 1416)
-  - function: `canonicalize\_county\_label` (line 1431)
-  - function: `format\_county\_label` (line 1443)
-  - function: `\_table\_sample\_text` (line 1473)
-  - function: `derive\_state\_county\_from\_table` (line 1504)
-  - function: `derive\_candidate\_party\_metadata` (line 1630)
-  - function: `build\_camelot\_row\_filter\_for\_context` (line 1738)
-  - function: `record\_noise\_suggestion` (line 1746)
-  - function: `get\_county\_precincts` (line 1777)
-  - function: `normalize\_county\_key` (line 1782)
-  - function: `lookup\_precinct\_aliases\_for\_county` (line 1794)
-  - function: `get\_state\_counties` (line 1804)
-  - function: `scan\_environment` (line 1808)
-  - function: `get\_title\_embedding\_features` (line 1816)
-  - function: `show\_progress\_bar` (line 1825)
-  - function: `coordinator\_feedback` (line 1835)
-  - function: `normalize\_text` (line 1838)
-  - function: `match\_any` (line 1841)
-  - function: `build\_csv\_headers` (line 1845)
-  - function: `keyphrase\_match` (line 1852)
-  - function: `normalize\_label` (line 1873)
-  - function: `infer\_contest\_fields` (line 1878)
-  - function: `\_infer\_category` (line 2015)
-  - function: `\_read\_module\_summary` (line 2040)
-  - function: `\_is\_ignored\_dir` (line 2063)
-  - function: `generate\_project\_inventory` (line 2067)
-  - function: `\_render\_inventory\_md` (line 2102)
-  - function: `\_finalize\_markdown\_lines` (line 2132)
-  - function: `update\_architecture\_md` (line 2157)
-  - function: `generate\_project\_map` (line 2180)
-  - function: `\_posix` (line 2190)
-  - function: `\_read\_file\_text` (line 2193)
-  - function: `\_extract\_top\_comment\_block` (line 2199)
-  - function: `\_harvest\_todos` (line 2229)
-  - function: `\_module\_info\_from\_ast` (line 2245)
-  - function: `\_scan\_webapp\_modules` (line 2339)
-  - function: `\_index\_defs` (line 2358)
-  - function: `\_resolve\_targets` (line 2378)
-  - function: `\_render\_audit\_md` (line 2414)
-  - function: `generate\_project\_audit` (line 2916)
-  - function: `generate\_todos\_index` (line 2936)
-  - function: `generate\_noise\_override\_suggestions` (line 3023)
-  - function: `generate\_pipeline\_map` (line 3147)
+  - class: `ExtractPlugin` (line 69)
+  - class: `Saveable` (line 72)
+  - class: `GCModule` (line 75)
+  - class: `ShutilModule` (line 78)
+  - class: `TimeModule` (line 82)
+  - class: `HasItem` (line 86)
+  - class: `HasAllMethod` (line 91)
+  - class: `PredictionResult` (line 98)
+  - class: `EventLike` (line 120)
+  - class: `Predictable` (line 129)
+  - function: `safe\_filename` (line 155)
+  - function: `safe\_slug` (line 213)
+  - function: `safe\_query` (line 229)
+  - function: `safe\_key` (line 240)
+  - function: `\_filter\_valid\_kwargs` (line 251)
+  - function: `safe\_filter\_by` (line 269)
+  - function: `safe\_first` (line 283)
+  - function: `get\_or\_create` (line 296)
+  - function: `safe\_translate` (line 319)
+  - function: `safe\_scheme` (line 331)
+  - function: `safe\_netloc` (line 339)
+  - function: `safe\_geturl` (line 347)
+  - function: `safe\_extract` (line 355)
+  - function: `safe\_isalpha` (line 369)
+  - function: `safe\_pop` (line 379)
+  - function: `safe\_merge\_defaults` (line 387)
+  - function: `safe\_strip` (line 403)
+  - function: `safe\_setdefault` (line 409)
+  - function: `safe\_tolist` (line 420)
+  - function: `safe\_execute` (line 442)
+  - function: `safe\_commit` (line 454)
+  - function: `safe\_scalar\_one\_or\_none` (line 463)
+  - function: `safe\_model\_save` (line 474)
+  - function: `safe\_all` (line 519)
+  - function: `safe\_copy` (line 531)
+  - function: `safe\_isalnum` (line 554)
+  - function: `safe\_keys` (line 564)
+  - function: `safe\_attr\_keys` (line 577)
+  - function: `safe\_replace` (line 591)
+  - function: `safe\_isdigit` (line 604)
+  - function: `safe\_get` (line 611)
+  - function: `safe\_values` (line 620)
+  - function: `safe\_is\_set` (line 632)
+  - function: `safe\_set` (line 644)
+  - function: `safe\_clear` (line 654)
+  - function: `safe\_append\_cached\_segment` (line 664)
+  - function: `safe\_db\_call` (line 682)
+  - function: `safe\_append` (line 703)
+  - function: `safe\_update` (line 724)
+  - function: `safe\_extend` (line 749)
+  - function: `convert\_ndarrays` (line 770)
+  - function: `normalize\_html\_for\_hash` (line 780)
+  - function: `clean\_cache\_inplace` (line 788)
+  - function: `\_to\_json\_safe` (line 800)
+  - function: `sync\_type\_and\_election\_types` (line 809)
+  - function: `keyword\_in\_text` (line 835)
+  - function: `safe\_lower` (line 843)
+  - function: `safe\_encode` (line 849)
+  - function: `safe\_startswith` (line 857)
+  - function: `safe\_add` (line 872)
+  - function: `safe\_predict` (line 888)
+  - function: `safe\_split` (line 899)
+  - function: `safe\_capitalize` (line 919)
+  - function: `safe\_item` (line 923)
+  - function: `safe\_items` (line 937)
+  - function: `safe\_similarity` (line 956)
+  - function: `safe\_model\_encode` (line 982)
+  - function: `safe\_get\_first` (line 1076)
+  - function: `safe\_parse` (line 1102)
+  - function: `safe\_endswith` (line 1148)
+  - function: `safe\_isupper` (line 1159)
+  - function: `resolve\_county\_alias` (line 1170)
+  - function: `safe\_sid` (line 1199)
+  - function: `safe\_rsplit` (line 1221)
+  - function: `normalize\_county\_name` (line 1235)
+  - function: `flatten\_raw\_field` (line 1257)
+  - function: `normalize\_state\_name` (line 1272)
+  - function: `infer\_state\_county\_from\_url` (line 1308)
+  - function: `resolve\_state\_county\_from\_context` (line 1391)
+  - function: `format\_state\_label` (line 1417)
+  - function: `canonicalize\_county\_label` (line 1432)
+  - function: `format\_county\_label` (line 1444)
+  - function: `\_table\_sample\_text` (line 1474)
+  - function: `derive\_state\_county\_from\_table` (line 1505)
+  - function: `derive\_candidate\_party\_metadata` (line 1631)
+  - function: `build\_camelot\_row\_filter\_for\_context` (line 1739)
+  - function: `record\_noise\_suggestion` (line 1747)
+  - function: `get\_county\_precincts` (line 1778)
+  - function: `normalize\_county\_key` (line 1783)
+  - function: `lookup\_precinct\_aliases\_for\_county` (line 1795)
+  - function: `get\_state\_counties` (line 1805)
+  - function: `scan\_environment` (line 1809)
+  - function: `get\_title\_embedding\_features` (line 1817)
+  - function: `show\_progress\_bar` (line 1826)
+  - function: `coordinator\_feedback` (line 1836)
+  - function: `normalize\_text` (line 1839)
+  - function: `match\_any` (line 1842)
+  - function: `build\_csv\_headers` (line 1846)
+  - function: `keyphrase\_match` (line 1853)
+  - function: `normalize\_label` (line 1874)
+  - function: `infer\_contest\_fields` (line 1879)
+  - function: `\_infer\_category` (line 2016)
+  - function: `\_read\_module\_summary` (line 2041)
+  - function: `\_is\_ignored\_dir` (line 2064)
+  - function: `generate\_project\_inventory` (line 2068)
+  - function: `\_render\_inventory\_md` (line 2103)
+  - function: `\_finalize\_markdown\_lines` (line 2133)
+  - function: `update\_architecture\_md` (line 2218)
+  - function: `generate\_project\_map` (line 2241)
+  - function: `\_posix` (line 2251)
+  - function: `\_read\_file\_text` (line 2254)
+  - function: `\_extract\_top\_comment\_block` (line 2260)
+  - function: `\_harvest\_todos` (line 2290)
+  - function: `\_module\_info\_from\_ast` (line 2306)
+  - function: `\_scan\_webapp\_modules` (line 2400)
+  - function: `\_index\_defs` (line 2419)
+  - function: `\_resolve\_targets` (line 2439)
+  - function: `\_render\_audit\_md` (line 2475)
+  - function: `generate\_project\_audit` (line 3017)
+  - function: `generate\_todos\_index` (line 3037)
+  - function: `generate\_noise\_override\_suggestions` (line 3154)
+  - function: `generate\_pipeline\_map` (line 3278)
 - Imports:
   - **Standard Library** (28):
     - `import copy as copy` (line 3)
@@ -7971,180 +8353,199 @@ graph LR
     - `import platform as platform` (line 13)
     - `import re as re` (line 14)
     - `import shutil as shutil` (line 15)
-    - `import time as time` (line 16)
-    - `from pathlib import Path` (line 17)
-    - `from typing import TYPE_CHECKING` (line 18)
-    - `from typing import Any` (line 18)
-    - `from typing import Awaitable` (line 18)
-    - `from typing import Callable` (line 18)
-    - `from typing import Dict` (line 18)
-    - `from typing import Generator` (line 18)
-    - `from typing import Iterable` (line 18)
-    - `from typing import List` (line 18)
-    - `from typing import Mapping` (line 18)
-    - `from typing import Optional` (line 18)
-    - `from typing import Protocol` (line 18)
-    - `from typing import Sequence` (line 18)
-    - `from typing import Set` (line 18)
-    - `from typing import Type` (line 18)
-    - `from typing import TypedDict` (line 18)
-    - `from typing import TypeVar` (line 18)
-    - `from typing import Union` (line 18)
-    - `from typing import runtime_checkable` (line 18)
-    - `from urllib.parse import ParseResult` (line 38)
-    - `from urllib.parse import SplitResult` (line 38)
+    - `import time as time` (line 17)
+    - `from pathlib import Path` (line 18)
+    - `from typing import TYPE_CHECKING` (line 19)
+    - `from typing import Any` (line 19)
+    - `from typing import Awaitable` (line 19)
+    - `from typing import Callable` (line 19)
+    - `from typing import Dict` (line 19)
+    - `from typing import Generator` (line 19)
+    - `from typing import Iterable` (line 19)
+    - `from typing import List` (line 19)
+    - `from typing import Mapping` (line 19)
+    - `from typing import Optional` (line 19)
+    - `from typing import Protocol` (line 19)
+    - `from typing import Sequence` (line 19)
+    - `from typing import Set` (line 19)
+    - `from typing import Type` (line 19)
+    - `from typing import TypedDict` (line 19)
+    - `from typing import TypeVar` (line 19)
+    - `from typing import Union` (line 19)
+    - `from typing import runtime_checkable` (line 19)
+    - `from urllib.parse import ParseResult` (line 39)
+    - `from urllib.parse import SplitResult` (line 39)
   - **Third-party** (7):
-    - `import numpy as np` (line 40)
-    - `import orjson as orjson` (line 41)
-    - `from flask import request` (line 42)
-    - `from flask import session` (line 42)
-    - `from sqlalchemy.engine import ScalarResult` (line 49)
-    - `from sqlalchemy.orm import Query` (line 50)
-    - `from sqlalchemy.orm import Session` (line 50)
-  - **Local/Project** (10):
+    - `import numpy as np` (line 41)
+    - `import orjson as orjson` (line 42)
+    - `from flask import request` (line 43)
+    - `from flask import session` (line 43)
+    - `from sqlalchemy.engine import ScalarResult` (line 50)
+    - `from sqlalchemy.orm import Query` (line 51)
+    - `from sqlalchemy.orm import Session` (line 51)
+  - **Local/Project** (11):
     - `from __future__ import annotations` (line 1)
     - `import difflib as difflib` (line 9)
     - `import gc as gc` (line 10)
-    - `from Context_Integration.Context_Library.constants import KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 52)
-    - `from Context_Integration.Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP` (line 52)
-    - `from Context_Integration.Context_Library.constants import STATE_ABBR` (line 52)
-    - `from Context_Integration.Context_Library.constants import STATE_MODULE_MAP` (line 52)
-    - `from Context_Integration.Context_Library.constants import build_camelot_row_filter` (line 52)
-    - `from Context_Integration.Context_Library.constants import normalize_party_label` (line 52)
-    - `from utils.logger_singleton import logger` (line 60)
+    - `import textwrap as textwrap` (line 16)
+    - `from Context_Integration.Context_Library.constants import
+      KNOWN_COUNTY_TO_PRECINCTS_MAP` (line 53)
+    - `from Context_Integration.Context_Library.constants import
+      KNOWN_STATE_TO_COUNTY_MAP` (line 53)
+    - `from Context_Integration.Context_Library.constants import STATE_ABBR`
+      (line 53)
+    - `from Context_Integration.Context_Library.constants import
+      STATE_MODULE_MAP` (line 53)
+    - `from Context_Integration.Context_Library.constants import
+      build_camelot_row_filter` (line 53)
+    - `from Context_Integration.Context_Library.constants import
+      normalize_party_label` (line 53)
+    - `from utils.logger_singleton import logger` (line 61)
 - TODO/FIXME/WARN:
-  - L236 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
-  - L259 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
-  - L265 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}: {e}")
-  - L279 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
-  - L292 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
-  - L362 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable 'extract' method.")
-  - L496 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
-  - L710 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)}; coercing to list.")
-  - L732 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
-  - L736 **WARNING**: (f"\[safe*update\] Updates is not a dict: {type(updates)}")
-  - L756 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)}; coercing to list.")
-  - L1096 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url} (type: {type(lst).**name**})")
-  - L1359 **WARNING**: (f"State '{state*norm}' not found in county map")
-  - L2163 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
-  - L2169 **WARNING**: ("\[inventory\] Markers not found in architecture.md; aborting replace.")
-  - L2184 **WARNING**: ("\[inventory\] generate*project*map completed with warnings; check markers and path.")
-  - L2230 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns list of (lineno, keyword, cleaned*text)."""
-  - L2232 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-  - L2864 **TODO**: /FIXME/WARN
-  - L2867 **TODO**: /FIXME/WARN:")
-  - L2937 **TODO**: /FIXME/WARN lines from webapp/ into a compact index.
-  - L2947 **FIXME**: ', 'BUG'\]
-  - L2948 **TODO**: ', 'HACK', 'XXX'\]
-  - L2949 **WARN**: ', 'WARNING', 'NOTE'\]
-  - L2988 **TODO**: /FIXME Index"')
-  - L2991 **TODO**: /FIXME annotations under ⁣`webapp/⁣`.")
-  - L3042 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
-  - L3371 **TODO**: /FIXME/WARN ({mod*name})")
+  - L237 **WARNING**: (f"\[safe*query\] session.query({model}) failed: {e}")
+  - L260 **WARNING**: (f"\[safe*filter*by\] No mapper found for model {model}")
+  - L266 **WARNING**: (f"\[safe*filter*by\] Could not inspect model {model}:
+    {e}")
+  - L280 **WARNING**: (f"\[safe*filter*by\] filter*by failed: {e}")
+  - L293 **WARNING**: (f"\[safe*first\] query.first() failed: {e}")
+  - L363 **WARNING**: (f"\[PLUGIN EXTRACTION\] Plugin {plugin} has no callable
+    'extract' method.")
+  - L497 **WARNING**: (f"\[WARN\] Model save failed (attempt {attempt}): {e}")
+  - L711 **WARNING**: (f"\[safe*append\] Target is not a list: {type(lst)};
+    coercing to list.")
+  - L733 **WARNING**: (f"\[safe*update\] Target is not a dict: {type(dct)}")
+  - L737 **WARNING**: (f"\[safe*update\] Updates is not a dict:
+    {type(updates)}")
+  - L757 **WARNING**: (f"\[safe*extend\] Target is not a list: {type(lst)};
+    coercing to list.")
+  - L1097 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
+    (type: {type(lst).**name**})")
+  - L1360 **WARNING**: (f"State '{state*norm}' not found in county map")
+  - L2224 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+  - L2230 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+    aborting replace.")
+  - L2245 **WARNING**: ("\[inventory\] generate*project*map completed with
+    warnings; check markers and path.")
+  - L2291 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
+    list of (lineno, keyword, cleaned*text)."""
+  - L2293 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+  - L2965 **TODO**: /FIXME/WARN
+  - L2968 **TODO**: /FIXME/WARN:")
+  - L3038 **TODO**: /FIXME/WARN lines from webapp/ into a compact index.
+  - L3048 **FIXME**: ', 'BUG'\]
+  - L3049 **TODO**: ', 'HACK', 'XXX'\]
+  - L3050 **WARN**: ', 'WARNING', 'NOTE'\]
+  - L3089 **TODO**: /FIXME Index"')
+  - L3092 **TODO**: /FIXME annotations under ⁣`webapp/⁣`.")
+  - L3134 **TODO**: {priority}-{abs(hash(path))}"
+  - L3173 **WARNING**: (f"\[noise\] No suggestions file found at {path}")
+  - L3544 **TODO**: /FIXME/WARN ({mod*name})")
 - Outgoing cross-module calls (sample):
-  - Context\_Integration.Context\_Library.constants.STATE\_MODULE\_MAP.keys (line 65)
-  - Context\_Integration.Context\_Library.constants.KNOWN\_STATE\_TO\_COUNTY\_MAP.keys (line 65)
-  - name.strip (line 173)
-  - name.encode (line 177)
-  - re.sub (line 180)
-  - re.sub (line 183)
-  - name.strip (line 186)
-  - name.upper (line 194)
-  - pathlib.Path (line 203)
-  - typing.TypeVar (line 210)
-  - c.isalnum (line 222)
-  - re.sub (line 223)
-  - s.replace (line 224)
-  - re.sub (line 225)
-  - flask.session.query (line 234)
-  - utils.logger\_singleton.logger.warning (line 236)
-  - utils.logger\_singleton.logger.warning (line 259)
-  - kwargs.items (line 263)
-  - utils.logger\_singleton.logger.warning (line 265)
-  - query.filter\_by (line 277)
-  - utils.logger\_singleton.logger.warning (line 279)
-  - query.first (line 290)
-  - utils.logger\_singleton.logger.warning (line 292)
-  - params.update (line 312)
-  - val.translate (line 325)
-  - parsed.geturl (line 349)
-  - plugin.extract (line 360)
-  - utils.logger\_singleton.logger.warning (line 362)
-  - utils.logger\_singleton.logger.error (line 365)
-  - val.isalpha (line 374)
-  - dct.pop (line 381)
-  - defaults.items (line 393)
-  - val.strip (line 404)
-  - val.tolist (line 432)
-  - flask.session.execute (line 448)
-  - flask.session.commit (line 455)
-  - utils.logger\_singleton.logger.error (line 458)
-  - flask.session.rollback (line 459)
-  - result.scalar\_one\_or\_none (line 468)
-  - utils.logger\_singleton.logger.error (line 470)
-  - gc\_module.collect (line 489)
-  - model.save (line 490)
-  - utils.logger\_singleton.logger.info (line 492)
-  - utils.logger\_singleton.logger.warning (line 496)
-  - time\_module.sleep (line 498)
-  - gc\_module.collect (line 500)
-  - gc\_module.collect (line 505)
-  - model.save (line 506)
-  - shutil\_module.rmtree (line 508)
-  - shutil\_module.move (line 509)
+  - Context\_Integration.Context\_Library.constants.STATE\_MODULE\_MAP.keys
+    (line 66)
+  - Context\_Integration.Context\_Library.constants.KNOWN\_STATE\_TO\_COUNTY\_MAP.keys
+    (line 66)
+  - name.strip (line 174)
+  - name.encode (line 178)
+  - re.sub (line 181)
+  - re.sub (line 184)
+  - name.strip (line 187)
+  - name.upper (line 195)
+  - pathlib.Path (line 204)
+  - typing.TypeVar (line 211)
+  - c.isalnum (line 223)
+  - re.sub (line 224)
+  - s.replace (line 225)
+  - re.sub (line 226)
+  - flask.session.query (line 235)
+  - utils.logger\_singleton.logger.warning (line 237)
+  - utils.logger\_singleton.logger.warning (line 260)
+  - kwargs.items (line 264)
+  - utils.logger\_singleton.logger.warning (line 266)
+  - query.filter\_by (line 278)
+  - utils.logger\_singleton.logger.warning (line 280)
+  - query.first (line 291)
+  - utils.logger\_singleton.logger.warning (line 293)
+  - params.update (line 313)
+  - val.translate (line 326)
+  - parsed.geturl (line 350)
+  - plugin.extract (line 361)
+  - utils.logger\_singleton.logger.warning (line 363)
+  - utils.logger\_singleton.logger.error (line 366)
+  - val.isalpha (line 375)
+  - dct.pop (line 382)
+  - defaults.items (line 394)
+  - val.strip (line 405)
+  - val.tolist (line 433)
+  - flask.session.execute (line 449)
+  - flask.session.commit (line 456)
+  - utils.logger\_singleton.logger.error (line 459)
+  - flask.session.rollback (line 460)
+  - result.scalar\_one\_or\_none (line 469)
+  - utils.logger\_singleton.logger.error (line 471)
+  - gc\_module.collect (line 490)
+  - model.save (line 491)
+  - utils.logger\_singleton.logger.info (line 493)
+  - utils.logger\_singleton.logger.warning (line 497)
+  - time\_module.sleep (line 499)
+  - gc\_module.collect (line 501)
+  - gc\_module.collect (line 506)
+  - model.save (line 507)
+  - shutil\_module.rmtree (line 509)
+  - shutil\_module.move (line 510)
 - Inbound references:
-  - safe\_slug ← shared_logic.py:1724
-  - safe\_query ← shared_logic.py:306
-  - safe\_key ← shared_logic.py:262
-  - \_filter\_valid\_kwargs ← shared_logic.py:275
-  - \_filter\_valid\_kwargs ← shared_logic.py:311
-  - safe\_filter\_by ← shared_logic.py:307
-  - safe\_first ← shared_logic.py:308
-  - safe\_merge\_defaults ← shared_logic.py:398
-  - safe\_strip ← shared_logic.py:1177
-  - safe\_strip ← shared_logic.py:1242
-  - safe\_strip ← shared_logic.py:1279
-  - safe\_strip ← shared_logic.py:1839
-  - safe\_strip ← shared_logic.py:1857
+  - safe\_slug ← shared_logic.py:1725
+  - safe\_query ← shared_logic.py:307
+  - safe\_key ← shared_logic.py:263
+  - \_filter\_valid\_kwargs ← shared_logic.py:276
+  - \_filter\_valid\_kwargs ← shared_logic.py:312
+  - safe\_filter\_by ← shared_logic.py:308
+  - safe\_first ← shared_logic.py:309
+  - safe\_merge\_defaults ← shared_logic.py:399
+  - safe\_strip ← shared_logic.py:1178
+  - safe\_strip ← shared_logic.py:1243
+  - safe\_strip ← shared_logic.py:1280
+  - safe\_strip ← shared_logic.py:1840
   - safe\_strip ← shared_logic.py:1858
+  - safe\_strip ← shared_logic.py:1859
   - safe\_strip ← user_prompt.py:573
   - safe\_strip ← user_prompt.py:643
   - safe\_strip ← user_prompt.py:679
   - safe\_strip ← user_prompt.py:681
-  - safe\_commit ← shared_logic.py:315
-  - safe\_replace ← shared_logic.py:1177
-  - safe\_replace ← shared_logic.py:1243
+  - safe\_commit ← shared_logic.py:316
+  - safe\_replace ← shared_logic.py:1178
   - safe\_replace ← shared_logic.py:1244
-  - safe\_replace ← shared_logic.py:1279
-  - safe\_replace ← shared_logic.py:1313
-  - safe\_replace ← shared_logic.py:1313
-  - safe\_get ← shared_logic.py:394
-  - safe\_get ← shared_logic.py:413
-  - safe\_append ← shared_logic.py:1955
-  - safe\_append ← shared_logic.py:1981
-  - safe\_append ← shared_logic.py:1996
-  - safe\_append ← shared_logic.py:2000
-  - safe\_update ← shared_logic.py:741
-  - convert\_ndarrays ← shared_logic.py:771
-  - convert\_ndarrays ← shared_logic.py:773
-  - \_to\_json\_safe ← shared_logic.py:803
-  - \_to\_json\_safe ← shared_logic.py:805
-  - sync\_type\_and\_election\_types ← shared_logic.py:2007
+  - safe\_replace ← shared_logic.py:1245
+  - safe\_replace ← shared_logic.py:1280
+  - safe\_replace ← shared_logic.py:1314
+  - safe\_replace ← shared_logic.py:1314
+  - safe\_get ← shared_logic.py:395
+  - safe\_get ← shared_logic.py:414
+  - safe\_append ← shared_logic.py:1956
+  - safe\_append ← shared_logic.py:1982
+  - safe\_append ← shared_logic.py:1997
+  - safe\_append ← shared_logic.py:2001
+  - safe\_update ← shared_logic.py:742
+  - convert\_ndarrays ← shared_logic.py:772
+  - convert\_ndarrays ← shared_logic.py:774
+  - \_to\_json\_safe ← shared_logic.py:804
+  - \_to\_json\_safe ← shared_logic.py:806
+  - sync\_type\_and\_election\_types ← shared_logic.py:2008
   - safe\_lower ← shared_logger.py:431
-  - safe\_lower ← shared_logic.py:584
-  - safe\_lower ← shared_logic.py:586
-  - safe\_lower ← shared_logic.py:836
-  - safe\_lower ← shared_logic.py:838
-  - safe\_lower ← shared_logic.py:1177
-  - safe\_lower ← shared_logic.py:1242
-  - safe\_lower ← shared_logic.py:1279
-  - safe\_lower ← shared_logic.py:1312
-  - safe\_lower ← shared_logic.py:1839
-  - safe\_lower ← shared_logic.py:1843
-  - safe\_lower ← shared_logic.py:1857
+  - safe\_lower ← shared_logic.py:585
+  - safe\_lower ← shared_logic.py:587
+  - safe\_lower ← shared_logic.py:837
+  - safe\_lower ← shared_logic.py:839
+  - safe\_lower ← shared_logic.py:1178
+  - safe\_lower ← shared_logic.py:1243
+  - safe\_lower ← shared_logic.py:1280
+  - safe\_lower ← shared_logic.py:1313
+  - safe\_lower ← shared_logic.py:1840
+  - safe\_lower ← shared_logic.py:1844
   - safe\_lower ← shared_logic.py:1858
+  - safe\_lower ← shared_logic.py:1859
 
-### `webapp/parser/utils/spacy_utils.py`
+### utils/spacy\_utils.py {#webapp-parser-utils-spacy-utils-py}
 
 - Definitions:
   - function: `extract\_entities` (line 34)
@@ -8189,7 +8590,8 @@ graph LR
     - `import spacy as spacy` (line 19)
   - **Local/Project** (5):
     - `from __future__ import annotations` (line 1)
-    - `from Context_Integration.Context_Library.constants import KNOWN_STATE_TO_COUNTY_MAP` (line 21)
+    - `from Context_Integration.Context_Library.constants import
+      KNOWN_STATE_TO_COUNTY_MAP` (line 21)
     - `from logger_singleton import logger` (line 22)
     - `from shared_logic import safe_get` (line 23)
     - `from shared_logic import safe_lower` (line 23)
@@ -8210,8 +8612,10 @@ graph LR
   - doc1.similarity (line 101)
   - re.findall (line 117)
   - re.findall (line 121)
-  - Context\_Integration.Context\_Library.constants.KNOWN\_STATE\_TO\_COUNTY\_MAP.keys (line 130)
-  - Context\_Integration.Context\_Library.constants.KNOWN\_STATE\_TO\_COUNTY\_MAP.values (line 132)
+  - Context\_Integration.Context\_Library.constants.KNOWN\_STATE\_TO\_COUNTY\_MAP.keys
+    (line 130)
+  - Context\_Integration.Context\_Library.constants.KNOWN\_STATE\_TO\_COUNTY\_MAP.values
+    (line 132)
   - counties.update (line 133)
   - c.lower (line 133)
   - s.lower (line 134)
@@ -8274,7 +8678,7 @@ graph LR
   - validate\_contest ← spacy_utils.py:267
   - demo\_analysis ← spacy_utils.py:273
 
-### `webapp/parser/utils/strategy_concurrency.py`
+### utils/strategy\_concurrency.py {#webapp-parser-utils-strategy-concurrency-py}
 
 > strategy_concurrency.py
 
@@ -8300,8 +8704,10 @@ graph LR
 - TODO/FIXME/WARN:
   - L37 **WARNING**: (f"\[CONCURRENCY\] DOM strategy {name} failed: {e}")
   - L65 **WARNING**: (f"\[CONCURRENCY\] Strategy {name} error: {e}")
-  - L73 **WARNING**: (f"\[CONCURRENCY\] {*safe*run*strategy.**name**} {name} failed: {e}")
-  - L102 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed: {e}")
+  - L73 **WARNING**: (f"\[CONCURRENCY\] {*safe*run*strategy.**name**} {name}
+    failed: {e}")
+  - L102 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] DOM strategy {name} failed:
+    {e}")
   - L120 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
 - Outgoing cross-module calls (sample):
   - results.append (line 35)
@@ -8327,7 +8733,7 @@ graph LR
   - asyncio.as\_completed (line 124)
   - results.append (line 128)
 
-### `webapp/parser/utils/structure_cache.py`
+### utils/structure\_cache.py {#webapp-parser-utils-structure-cache-py}
 
 > structure_cache.py
 
@@ -8351,7 +8757,7 @@ graph LR
   - \_STRUCTURE\_CACHE.setdefault (line 22)
   - \_STRUCTURE\_CACHE.get (line 26)
 
-### `webapp/parser/utils/table_builder.py`
+### utils/table\_builder.py {#webapp-parser-utils-table-builder-py}
 
 - Definitions:
   - function: `\_normalize\_header\_cached` (line 71)
@@ -8403,16 +8809,26 @@ graph LR
     - `from __future__ import annotations` (line 1)
     - `from rich.table import Table` (line 17)
     - `from config import CACHE_DIR` (line 19)
-    - `from Context_Integration.Context_Library.constants import BALLOT_TYPES_SORT_ORDER` (line 20)
-    - `from Context_Integration.Context_Library.constants import LOCATION_KEYWORDS` (line 20)
-    - `from Context_Integration.Context_Library.constants import PERCENT_KEYWORDS` (line 20)
-    - `from Context_Integration.Context_Library.constants import TABLE_BUILDER_CANDIDATE_SUFFIXES` (line 20)
-    - `from Context_Integration.Context_Library.constants import TABLE_BUILDER_LOCATION_PRIORITY` (line 20)
-    - `from Context_Integration.Context_Library.constants import TABLE_BUILDER_LOCATION_TOKENS` (line 20)
-    - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS` (line 20)
-    - `from Context_Integration.Context_Library.constants import get_camelot_row_regex` (line 20)
-    - `from Context_Integration.Context_Library.constants import get_camelot_title_regex` (line 20)
-    - `from Context_Integration.Context_Library.constants import is_pseudo_result_party` (line 20)
+    - `from Context_Integration.Context_Library.constants import
+      BALLOT_TYPES_SORT_ORDER` (line 20)
+    - `from Context_Integration.Context_Library.constants import
+      LOCATION_KEYWORDS` (line 20)
+    - `from Context_Integration.Context_Library.constants import
+      PERCENT_KEYWORDS` (line 20)
+    - `from Context_Integration.Context_Library.constants import
+      TABLE_BUILDER_CANDIDATE_SUFFIXES` (line 20)
+    - `from Context_Integration.Context_Library.constants import
+      TABLE_BUILDER_LOCATION_PRIORITY` (line 20)
+    - `from Context_Integration.Context_Library.constants import
+      TABLE_BUILDER_LOCATION_TOKENS` (line 20)
+    - `from Context_Integration.Context_Library.constants import TOTAL_KEYWORDS`
+      (line 20)
+    - `from Context_Integration.Context_Library.constants import
+      get_camelot_row_regex` (line 20)
+    - `from Context_Integration.Context_Library.constants import
+      get_camelot_title_regex` (line 20)
+    - `from Context_Integration.Context_Library.constants import
+      is_pseudo_result_party` (line 20)
     - `from coordinator_protocol import CoordinatorProtocol` (line 32)
     - `from detect import emit_metric` (line 33)
     - `from detect import harmonize_headers_and_data` (line 33)
@@ -8437,21 +8853,36 @@ graph LR
     - `from structure_cache import cache_table_structure` (line 57)
     - `from structure_cache import table_signature` (line 57)
 - TODO/FIXME/WARN:
-  - L816 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor failed for panel table", session*id, error=str(e))
-  - L828 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor failed (no panels path)", session*id, error=str(e))
-  - L836 **WARNING**: ", "builder", "\[TABLE*BUILDER\] all*panel*tables was not a list; coercing to empty list", session*id, got*type=str(type(all*panel*tables)))
-  - L845 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Dropping invalid table entry", session*id, entry*type=str(type(item)))
-  - L862 **WARNING**: ", "builder", "\[TABLE*BUILDER\] sanitize failed", session*id, error=str(e))
-  - L867 **WARNING**: ", "builder", "\[TABLE*BUILDER\] harmonize failed", session*id, error=str(e))
-  - L873 **WARNING**: ", "builder", "\[TABLE*BUILDER\] collapse*ballot*synonym*columns failed", session*id, error=str(e))
+  - L816 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+    failed for panel table", session*id, error=str(e))
+  - L828 **WARNING**: ", "builder", "\[TABLE*BUILDER\] dynamic*table*extractor
+    failed (no panels path)", session*id, error=str(e))
+  - L836 **WARNING**: ", "builder", "\[TABLE*BUILDER\] all*panel*tables was not
+    a list; coercing to empty list", session*id,
+    got*type=str(type(all*panel*tables)))
+  - L845 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Dropping invalid table
+    entry", session*id, entry*type=str(type(item)))
+  - L862 **WARNING**: ", "builder", "\[TABLE*BUILDER\] sanitize failed",
+    session*id, error=str(e))
+  - L867 **WARNING**: ", "builder", "\[TABLE*BUILDER\] harmonize failed",
+    session*id, error=str(e))
+  - L873 **WARNING**: ", "builder", "\[TABLE*BUILDER\]
+    collapse*ballot*synonym*columns failed", session*id, error=str(e))
   - L925 **WARNING**: ",
-  - L950 **WARNING**: ", "builder", "\[TABLE*BUILDER\] entity annotate failed", session*id, error=str(e))
-  - L955 **WARNING**: ", "builder", "\[TABLE*BUILDER\] stringify entity*info failed", session*id, error=str(e))
-  - L975 **WARNING**: ", "builder", "\[TABLE*BUILDER\] pivot*to*wide failed", session*id, error=str(e))
-  - L995 **WARNING**: ", "builder", "\[TABLE*BUILDER\] ensure division totals failed", session*id, error=str(e))
-  - L1288 **WARNING**: ", "builder", f"\[TABLE*BUILDER\] Column marked incorrect: {col*name}", session*id, contest=contest)
-  - L1361 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist table structure logs", session*id, error=str(e))
-  - L1376 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist coordinator DB log", session*id, error=str(e))
+  - L950 **WARNING**: ", "builder", "\[TABLE*BUILDER\] entity annotate failed",
+    session*id, error=str(e))
+  - L955 **WARNING**: ", "builder", "\[TABLE*BUILDER\] stringify entity*info
+    failed", session*id, error=str(e))
+  - L975 **WARNING**: ", "builder", "\[TABLE*BUILDER\] pivot*to*wide failed",
+    session*id, error=str(e))
+  - L995 **WARNING**: ", "builder", "\[TABLE*BUILDER\] ensure division totals
+    failed", session*id, error=str(e))
+  - L1288 **WARNING**: ", "builder", f"\[TABLE*BUILDER\] Column marked
+    incorrect: {col*name}", session*id, contest=contest)
+  - L1361 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist table
+    structure logs", session*id, error=str(e))
+  - L1376 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist
+    coordinator DB log", session*id, error=str(e))
 - Outgoing cross-module calls (sample):
   - detect.normalize\_header (line 73)
   - functools.lru\_cache (line 70)
@@ -8555,7 +8986,7 @@ graph LR
   - \_norm\_header ← table_builder.py:941
   - \_norm\_header ← table_builder.py:943
 
-### `webapp/parser/utils/table_core.py`
+### utils/table\_core.py {#webapp-parser-utils-table-core-py}
 
 > table_core.py (refactored orchestrator)
 
@@ -8603,15 +9034,20 @@ graph LR
     - `from salvage import remove_outlier_and_empty_rows` (line 69)
     - `from shared_logic import safe_get` (line 76)
     - `from strategy_concurrency import run_strategies_concurrently` (line 79)
-    - `from strategy_concurrency import run_strategies_concurrently_async` (line 79)
+    - `from strategy_concurrency import run_strategies_concurrently_async` (line
+      79)
 - TODO/FIXME/WARN:
-  - L231 **WARNING**: (f"\[TABLE BUILDER\] Concurrent strategies execution failed: {e}")
+  - L231 **WARNING**: (f"\[TABLE BUILDER\] Concurrent strategies execution
+    failed: {e}")
   - L288 **WARNING**: (f"\[TABLE BUILDER\] RawJSON pivot failed: {e}")
-  - L296 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide signature mismatch (skipped): {e}")
+  - L296 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide signature mismatch
+    (skipped): {e}")
   - L298 **WARNING**: (f"\[TABLE BUILDER\] pivot*to*wide failed (skipped): {e}")
   - L349 **WARNING**: (f"\[TABLE BUILDER\] finalize output failed: {e}")
-  - L414 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies execution failed: {e}")
-  - L477 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed: {e}")
+  - L414 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] Concurrent strategies
+    execution failed: {e}")
+  - L477 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed:
+    {e}")
 - Outgoing cross-module calls (sample):
   - r.items (line 88)
   - out.append (line 97)
@@ -8681,7 +9117,7 @@ graph LR
   - robust\_table\_extraction\_async ← table_core.py:468
   - robust\_table\_extraction\_async ← table_core.py:486
 
-### `webapp/parser/utils/user_prompt.py`
+### utils/user\_prompt.py {#webapp-parser-utils-user-prompt-py}
 
 - Definitions:
   - function: `safe\_lower` (line 32)
@@ -8718,7 +9154,8 @@ graph LR
     - `from rich.progress import TimeElapsedColumn` (line 22)
     - `from rich.progress import TimeRemainingColumn` (line 22)
 - TODO/FIXME/WARN:
-  - L312 **WARNING**: ("\[UserPrompt\] Webapp mode active but no socketio*emit*func set!")
+  - L312 **WARNING**: ("\[UserPrompt\] Webapp mode active but no
+    socketio*emit*func set!")
   - L349 **WARNING**: ("\[CLI Prompt\] EOFError encountered.")
   - L370 **WARNING**: ("\[Webapp Prompt\] socketio*emit*func not set.")
   - L428 **WARNING**: ": 30,
@@ -8726,10 +9163,13 @@ graph LR
   - L558 **WARNING**: ("\n\[Prompt\] No input available (EOF). Exiting prompt.")
   - L592 **WARNING**: ("Invalid input. Please try again.")
   - L594 **WARNING**: ("\[Prompt\] Too many invalid attempts.")
-  - L659 **WARNING**: ("\[Prompt Queue\] Invalid queued yes/no response; falling back to interactive prompt.")
+  - L659 **WARNING**: ("\[Prompt Queue\] Invalid queued yes/no response; falling
+    back to interactive prompt.")
   - L674 **WARNING**: ("\n\[Prompt\] Timed out.")
-  - L881 **WARNING**: ("\[yellow\]\[FEEDBACK\] Skipped manual correction.\[/yellow\]")
-  - L913 **WARNING**: ("\[yellow\]Button confirmation cancelled by user.\[/yellow\]")
+  - L881 **WARNING**: ("\[yellow\]\[FEEDBACK\] Skipped manual
+    correction.\[/yellow\]")
+  - L913 **WARNING**: ("\[yellow\]Button confirmation cancelled by
+    user.\[/yellow\]")
 - Outgoing cross-module calls (sample):
   - val.lower (line 34)
   - val.strip (line 40)
@@ -8790,7 +9230,7 @@ graph LR
   - PromptSession ← user_prompt.py:251
   - UserPrompt ← logger_singleton.py:29
 
-### `webapp/parser/utils/xlsx_exporter.py`
+### utils/xlsx\_exporter.py {#webapp-parser-utils-xlsx-exporter-py}
 
 - Definitions:
   - function: `\_auto\_width` (line 13)
@@ -8869,7 +9309,7 @@ graph LR
   - \_apply\_styles ← xlsx_exporter.py:214
   - export\_candidate\_group\_pivot\_xlsx ← output_utils.py:590
 
-### `webapp/parser/web_pipeline.py`
+### web\_pipeline.py {#webapp-parser-web-pipeline-py}
 
 - Definitions:
   - class: `CancellationManager` (line 18)
@@ -8951,7 +9391,7 @@ graph LR
 - Inbound references:
   - CancellationManager ← web_pipeline.py:91
 
-### `webapp/tests/benchmarks/test_pipeline_benchmark.py`
+### webapp/tests/benchmarks/test\_pipeline\_benchmark.py {#webapp-tests-benchmarks-test-pipeline-benchmark-py}
 
 - Definitions:
   - function: `test\_pipeline\_benchmark\_and\_idempotency` (line 16)
@@ -8963,8 +9403,10 @@ graph LR
     - `from pathlib import Path` (line 4)
   - **Third-party** (3):
     - `import pytest as pytest` (line 6)
-    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 12)
-    - `from webapp.parser.utils.detect import harmonize_headers_and_data` (line 13)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive`
+      (line 12)
+    - `from webapp.parser.utils.detect import harmonize_headers_and_data` (line
+      13)
 - Outgoing cross-module calls (sample):
   - pathlib.Path (line 8)
   - pytest.skip (line 18)
@@ -8974,7 +9416,7 @@ graph LR
   - time.perf\_counter (line 40)
   - webapp.parser.utils.detect.harmonize\_headers\_and\_data (line 47)
 
-### `webapp/tests/conftest.py`
+### webapp/tests/conftest.py {#webapp-tests-conftest-py}
 
 > Pytest configuration for Smart Elections Parser tests.
 
@@ -8992,19 +9434,22 @@ graph LR
 - Outgoing cross-module calls (sample):
   - warnings.filterwarnings (line 26)
 
-### `webapp/tests/test_browser_launch_defaults.py`
+### webapp/tests/test\_browser\_launch\_defaults.py {#webapp-tests-test-browser-launch-defaults-py}
 
 - Definitions:
   - class: `DummySyncBrowserType` (line 11)
   - class: `DummyAsyncBrowserType` (line 20)
-  - function: `test\_safe\_launch\_uses\_headless\_default\_when\_unspecified` (line 29)
+  - function: `test\_safe\_launch\_uses\_headless\_default\_when\_unspecified`
+    (line 29)
   - function: `test\_safe\_launch\_respects\_explicit\_override` (line 39)
   - function: `test\_async\_safe\_launch\_uses\_headless\_default` (line 49)
   - function: `test\_async\_safe\_launch\_respects\_override` (line 59)
   - function: `test\_sync\_launch\_browser\_headless\_default` (line 70)
-  - function: `test\_sync\_launch\_browser\_headful\_has\_window\_args` (line 109)
+  - function: `test\_sync\_launch\_browser\_headful\_has\_window\_args` (line
+    109)
   - function: `test\_async\_launch\_browser\_headless\_default` (line 143)
-  - function: `test\_async\_launch\_browser\_headful\_has\_window\_args` (line 192)
+  - function: `test\_async\_launch\_browser\_headful\_has\_window\_args` (line
+    192)
   - function: `test\_seleniumbase\_launch\_browser\_uses\_default` (line 235)
   - function: `test\_seleniumbase\_launch\_browser\_override` (line 252)
 - Imports:
@@ -9076,7 +9521,7 @@ graph LR
   - DummyAsyncBrowserType ← test_browser_launch_defaults.py:50
   - DummyAsyncBrowserType ← test_browser_launch_defaults.py:60
 
-### `webapp/tests/test_context_integration.py`
+### webapp/tests/test\_context\_integration.py {#webapp-tests-test-context-integration-py}
 
 - Top-of-file comments:
 
@@ -9090,7 +9535,8 @@ graph LR
   - class: `StubElectionDataService` (line 18)
   - function: `\_no\_context\_library\_write` (line 62)
   - function: `test\_context\_organizer\_returns\_structured\_payload` (line 73)
-  - function: `test\_context\_coordinator\_integrates\_with\_organizer` (line 135)
+  - function: `test\_context\_coordinator\_integrates\_with\_organizer` (line
+    135)
 - Imports:
   - **Standard Library** (6):
     - `import sys as sys` (line 3)
@@ -9101,13 +9547,16 @@ graph LR
     - `from typing import cast` (line 10)
   - **Third-party** (3):
     - `import pytest as pytest` (line 12)
-    - `from webapp.parser.Context_Integration import context_coordinator` (line 14)
-    - `from webapp.parser.Context_Integration.context_organizer import ContextOrganizer` (line 15)
+    - `from webapp.parser.Context_Integration import context_coordinator` (line
+      14)
+    - `from webapp.parser.Context_Integration.context_organizer import
+      ContextOrganizer` (line 15)
 - Outgoing cross-module calls (sample):
   - pathlib.Path (line 6)
   - monkeypatch.setattr (line 65)
   - pytest.fixture (line 61)
-  - webapp.parser.Context\_Integration.context\_organizer.ContextOrganizer (line 74)
+  - webapp.parser.Context\_Integration.context\_organizer.ContextOrganizer (line
+    74)
   - typing.cast (line 81)
   - organizer.organize\_context (line 114)
   - typed\_result.get (line 128)
@@ -9115,14 +9564,15 @@ graph LR
   - typed\_result.get (line 131)
   - monkeypatch.setattr (line 152)
   - monkeypatch.setattr (line 153)
-  - webapp.parser.Context\_Integration.context\_coordinator.ContextCoordinator (line 159)
+  - webapp.parser.Context\_Integration.context\_coordinator.ContextCoordinator
+    (line 159)
   - coordinator.organize\_and\_enrich (line 167)
   - pytest.fail (line 173)
   - coordinator.organize\_context\_advanced (line 184)
 - Inbound references:
   - StubElectionDataService ← test_context_integration.py:81
 
-### `webapp/tests/test_csv_normalization.py`
+### webapp/tests/test\_csv\_normalization.py {#webapp-tests-test-csv-normalization-py}
 
 - Definitions:
   - function: `test\_csv\_header\_normalization\_and\_deduplication` (line 7)
@@ -9131,7 +9581,8 @@ graph LR
     - `import os as os` (line 1)
   - **Third-party** (2):
     - `import pytest as pytest` (line 2)
-    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 4)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive`
+      (line 4)
 - Outgoing cross-module calls (sample):
   - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 17)
   - r.get (line 33)
@@ -9139,13 +9590,15 @@ graph LR
   - a.get (line 35)
   - b.get (line 36)
 
-### `webapp/tests/test_handler_parity.py`
+### webapp/tests/test\_handler\_parity.py {#webapp-tests-test-handler-parity-py}
 
 - Definitions:
   - function: `\_simple\_tables` (line 15)
   - function: `test\_csv\_handler\_provided\_tables\_skip\_pivot` (line 21)
   - function: `test\_json\_handler\_provided\_tables\_skip\_pivot` (line 43)
-  - function: `test\_pdf\_handler\_missing\_optional\_deps\_with\_provided\_tables` (line 60)
+  - function:
+    `test\_pdf\_handler\_missing\_optional\_deps\_with\_provided\_tables` (line
+    60)
 - Imports:
   - **Standard Library** (2):
     - `import os as os` (line 1)
@@ -9176,7 +9629,7 @@ graph LR
   - \_simple\_tables ← test_handler_parity.py:45
   - \_simple\_tables ← test_handler_parity.py:67
 
-### `webapp/tests/test_header_normalization.py`
+### webapp/tests/test\_header\_normalization.py {#webapp-tests-test-header-normalization-py}
 
 - Definitions:
   - function: `test\_ballot\_synonyms\_and\_totals` (line 6)
@@ -9186,10 +9639,13 @@ graph LR
 - Imports:
   - **Third-party** (6):
     - `import pytest as pytest` (line 1)
-    - `from webapp.parser.utils.salvage import collapse_ballot_synonym_columns` (line 2)
-    - `from webapp.parser.utils.salvage import normalize_ballot_column_name` (line 2)
+    - `from webapp.parser.utils.salvage import collapse_ballot_synonym_columns`
+      (line 2)
+    - `from webapp.parser.utils.salvage import normalize_ballot_column_name`
+      (line 2)
     - `from webapp.parser.utils.detect import normalize_header` (line 3)
-    - `from webapp.parser.utils.detect import dedupe_headers_with_suffix` (line 3)
+    - `from webapp.parser.utils.detect import dedupe_headers_with_suffix` (line
+      3)
     - `from webapp.parser.utils.camelot_utils import _TITLE_NOISE_RE` (line 4)
 - Outgoing cross-module calls (sample):
   - webapp.parser.utils.salvage.collapse\_ballot\_synonym\_columns (line 12)
@@ -9203,13 +9659,14 @@ graph LR
   - webapp.parser.utils.salvage.collapse\_ballot\_synonym\_columns (line 37)
   - webapp.parser.utils.camelot\_utils.\_TITLE\_NOISE\_RE.search (line 49)
 
-### `webapp/tests/test_json_export_loader_utils.py`
+### webapp/tests/test\_json\_export\_loader\_utils.py {#webapp-tests-test-json-export-loader-utils-py}
 
 - Definitions:
   - function: `\_load\_payload` (line 19)
   - function: `test\_party\_normalizer\_strips\_incumbent\_tokens` (line 23)
   - function: `test\_statewide\_totals\_match\_report` (line 30)
-  - function: `test\_candidate\_normalization\_removes\_incumbent\_suffix` (line 48)
+  - function: `test\_candidate\_normalization\_removes\_incumbent\_suffix` (line
+    48)
   - function: `test\_statewide\_coverage\_tracks\_all\_counties` (line 60)
   - function: `test\_statewide\_rows\_include\_party\_information` (line 72)
   - function: `test\_normalize\_party\_label\_examples` (line 95)
@@ -9226,8 +9683,10 @@ graph LR
     - `import sys as sys` (line 5)
   - **Third-party** (3):
     - `import pytest as pytest` (line 11)
-    - `from webapp.parser.Context_Integration.Context_Library.constants import normalize_party_label` (line 13)
-    - `from webapp.parser.utils.json_export_loader import load_state_export` (line 14)
+    - `from webapp.parser.Context_Integration.Context_Library.constants import
+      normalize_party_label` (line 13)
+    - `from webapp.parser.utils.json_export_loader import load_state_export`
+      (line 14)
   - **Local/Project** (1):
     - `from __future__ import annotations` (line 1)
 - Outgoing cross-module calls (sample):
@@ -9235,11 +9694,16 @@ graph LR
   - pathlib.Path (line 16)
   - json.loads (line 20)
   - \_FIXTURE\_PATH.read\_text (line 20)
-  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 24)
-  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 24)
-  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 25)
-  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 26)
-  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 27)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label
+    (line 24)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label
+    (line 24)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label
+    (line 25)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label
+    (line 26)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label
+    (line 27)
   - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 31)
   - contest.get (line 41)
   - option.get (line 42)
@@ -9247,7 +9711,8 @@ graph LR
   - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 49)
   - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 61)
   - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 73)
-  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label (line 96)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.normalize\_party\_label
+    (line 96)
   - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 100)
   - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 105)
   - webapp.parser.utils.json\_export\_loader.load\_state\_export (line 115)
@@ -9261,7 +9726,7 @@ graph LR
   - \_load\_payload ← test_json_export_loader_utils.py:32
   - \_load\_payload ← test_json_export_loader_utils.py:62
 
-### `webapp/tests/test_json_handler_regression.py`
+### webapp/tests/test\_json\_handler\_regression.py {#webapp-tests-test-json-handler-regression-py}
 
 - Definitions:
   - function: `\_build\_sample\_payload` (line 15)
@@ -9285,28 +9750,36 @@ graph LR
   - orjson.dumps (line 88)
   - monkeypatch.setattr (line 113)
   - monkeypatch.setattr (line 114)
-  - webapp.parser.handlers.formats.json\_handler.parse\_json\_election\_results (line 116)
+  - webapp.parser.handlers.formats.json\_handler.parse\_json\_election\_results
+    (line 116)
   - json\_path.write\_bytes (line 188)
   - orjson.dumps (line 188)
   - kwargs.get (line 197)
   - monkeypatch.setattr (line 209)
   - monkeypatch.setattr (line 210)
-  - webapp.parser.handlers.formats.json\_handler.parse\_json\_election\_results (line 212)
+  - webapp.parser.handlers.formats.json\_handler.parse\_json\_election\_results
+    (line 212)
 - Inbound references:
   - \_build\_sample\_payload ← test_json_handler_regression.py:86
 
-### `webapp/tests/test_pdf_mock_pipeline.py`
+### webapp/tests/test\_pdf\_mock\_pipeline.py {#webapp-tests-test-pdf-mock-pipeline-py}
 
 - Definitions:
   - function: `\_fresh\_tricky\_rows` (line 75)
   - function: `\_coerce\_int` (line 79)
   - function: `\_run\_pdf\_parser\_with\_tricky\_fixture` (line 89)
-  - function: `test\_pdf\_mock\_list\_rows\_promote\_header\_and\_ordering` (line 209)
-  - function: `test\_pdf\_tricky\_fixture\_grand\_total\_and\_location\_priority` (line 233)
+  - function: `test\_pdf\_mock\_list\_rows\_promote\_header\_and\_ordering`
+    (line 209)
+  - function:
+    `test\_pdf\_tricky\_fixture\_grand\_total\_and\_location\_priority` (line
+    233)
   - function: `test\_pdf\_handler\_tricky\_fixture\_aligns\_metadata` (line 266)
   - function: `test\_pdf\_handler\_tricky\_fixture\_schema\_snapshot` (line 297)
-  - function: `test\_columnar\_reconstruction\_series\_parses\_vertical\_pdf\_block` (line 316)
-  - function: `test\_columnar\_reconstruction\_prefers\_contest\_block` (line 366)
+  - function:
+    `test\_columnar\_reconstruction\_series\_parses\_vertical\_pdf\_block` (line
+    316)
+  - function: `test\_columnar\_reconstruction\_prefers\_contest\_block` (line
+    366)
   - function: `test\_extract\_contest\_block\_reaches\_deep\_pages` (line 413)
   - function: `test\_pdf\_handler\_columnar\_fallback\_end\_to\_end` (line 432)
 - Imports:
@@ -9323,7 +9796,8 @@ graph LR
   - **Third-party** (3):
     - `import pytest as pytest` (line 13)
     - `from webapp.parser.handlers.formats import pdf_handler` (line 15)
-    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 16)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive`
+      (line 16)
   - **Local/Project** (1):
     - `from types import SimpleNamespace` (line 6)
 - Outgoing cross-module calls (sample):
@@ -9347,7 +9821,8 @@ graph LR
   - json.dump (line 186)
   - monkeypatch.setattr (line 193)
   - pdf\_path.write\_bytes (line 196)
-  - webapp.parser.handlers.formats.pdf\_handler.parse\_pdf\_election\_results (line 198)
+  - webapp.parser.handlers.formats.pdf\_handler.parse\_pdf\_election\_results
+    (line 198)
   - outputs.update (line 200)
   - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 217)
   - typing.cast (line 220)
@@ -9383,7 +9858,7 @@ graph LR
   - \_run\_pdf\_parser\_with\_tricky\_fixture ← test_pdf_mock_pipeline.py:267
   - \_run\_pdf\_parser\_with\_tricky\_fixture ← test_pdf_mock_pipeline.py:298
 
-### `webapp/tests/test_pivot_and_merge.py`
+### webapp/tests/test\_pivot\_and\_merge.py {#webapp-tests-test-pivot-and-merge-py}
 
 - Definitions:
   - class: `DummyCoord` (line 18)
@@ -9401,8 +9876,10 @@ graph LR
     - `from typing import Mapping` (line 3)
   - **Third-party** (4):
     - `import pytest as pytest` (line 5)
-    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 13)
-    - `from webapp.parser.utils.salvage import combine_panel_tables_by_precinct` (line 14)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive`
+      (line 13)
+    - `from webapp.parser.utils.salvage import combine_panel_tables_by_precinct`
+      (line 14)
     - `from webapp.parser.utils.pivot import pivot_to_wide` (line 15)
 - Outgoing cross-module calls (sample):
   - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 56)
@@ -9421,10 +9898,11 @@ graph LR
   - DummyCoord ← test_table_builder_e2e.py:48
   - DummyCoord ← test_table_builder_e2e.py:120
 
-### `webapp/tests/test_rawjson_edges.py`
+### webapp/tests/test\_rawjson\_edges.py {#webapp-tests-test-rawjson-edges-py}
 
 - Definitions:
-  - function: `test\_rawjson\_missing\_fields\_and\_empty\_ballot\_options` (line 8)
+  - function: `test\_rawjson\_missing\_fields\_and\_empty\_ballot\_options`
+    (line 8)
 - Imports:
   - **Standard Library** (3):
     - `from typing import Any` (line 1)
@@ -9432,7 +9910,8 @@ graph LR
     - `from typing import List` (line 1)
   - **Third-party** (2):
     - `import pytest as pytest` (line 3)
-    - `from webapp.parser.utils.salvage import _salvage_rows_from_rawjson` (line 5)
+    - `from webapp.parser.utils.salvage import _salvage_rows_from_rawjson` (line
+      5)
 - Outgoing cross-module calls (sample):
   - webapp.parser.utils.salvage.\_salvage\_rows\_from\_rawjson (line 17)
   - row1.get (line 25)
@@ -9444,18 +9923,20 @@ graph LR
   - row4.get (line 40)
   - row4.get (line 41)
 
-### `webapp/tests/test_rawjson_salvage.py`
+### webapp/tests/test\_rawjson\_salvage.py {#webapp-tests-test-rawjson-salvage-py}
 
 - Definitions:
   - function: `test\_salvage\_rows\_from\_rawjson\_inline\_flatten` (line 14)
-  - function: `test\_salvage\_rows\_from\_rawjson\_allowlist\_type\_only` (line 40)
+  - function: `test\_salvage\_rows\_from\_rawjson\_allowlist\_type\_only` (line
+    40)
 - Imports:
   - **Standard Library** (2):
     - `import os as os` (line 1)
     - `import sys as sys` (line 2)
   - **Third-party** (2):
     - `import pytest as pytest` (line 3)
-    - `from webapp.parser.utils.salvage import _salvage_rows_from_rawjson` (line 11)
+    - `from webapp.parser.utils.salvage import _salvage_rows_from_rawjson` (line
+      11)
 - Outgoing cross-module calls (sample):
   - orjson.dumps (line 24)
   - webapp.parser.utils.salvage.\_salvage\_rows\_from\_rawjson (line 31)
@@ -9466,10 +9947,11 @@ graph LR
   - orjson.dumps (line 44)
   - webapp.parser.utils.salvage.\_salvage\_rows\_from\_rawjson (line 53)
 
-### `webapp/tests/test_schema_validation_warnings.py`
+### webapp/tests/test\_schema\_validation\_warnings.py {#webapp-tests-test-schema-validation-warnings-py}
 
 - Definitions:
-  - function: `test\_schema\_validation\_logs\_warning\_for\_weak\_wide\_schema` (line 12)
+  - function: `test\_schema\_validation\_logs\_warning\_for\_weak\_wide\_schema`
+    (line 12)
 - Imports:
   - **Standard Library** (6):
     - `import os as os` (line 1)
@@ -9480,10 +9962,12 @@ graph LR
     - `from typing import List` (line 4)
   - **Third-party** (3):
     - `import pytest as pytest` (line 6)
-    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 8)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive`
+      (line 8)
     - `from webapp.parser.utils.logger_singleton import logger` (line 9)
 - TODO/FIXME/WARN:
-  - L17 **WARNING**:     # Build a table that lacks candidate/ballot/total columns, forcing a 'normalized schema weak' warning
+  - L17 **WARNING**:     # Build a table that lacks candidate/ballot/total
+    columns, forcing a 'normalized schema weak' warning
   - L39 **WARNING**: " and msg.get("status")=="weak"
   - L44 **WARNING**: " and inner.get("status")=="weak"
   - L49 **WARNING**: in captured logs; got: {captured}"
@@ -9499,15 +9983,17 @@ graph LR
   - inner.get (line 44)
   - webapp.parser.utils.logger\_singleton.logger.remove\_test\_sink (line 48)
 
-### `webapp/tests/test_table_builder_e2e.py`
+### webapp/tests/test\_table\_builder\_e2e.py {#webapp-tests-test-table-builder-e2e-py}
 
 - Definitions:
   - class: `DummyCoord` (line 17)
   - function: `\_to\_int` (line 25)
   - function: `test\_table\_builder\_keeps\_only\_real\_rows` (line 35)
-  - function: `test\_table\_builder\_round\_trip\_preserves\_wide\_schema` (line 61)
+  - function: `test\_table\_builder\_round\_trip\_preserves\_wide\_schema` (line
+    61)
   - function: `test\_pivot\_emits\_party\_column\_even\_when\_sparse` (line 157)
-  - function: `test\_detect\_division\_type\_handles\_multi\_level\_precincts` (line 173)
+  - function: `test\_detect\_division\_type\_handles\_multi\_level\_precincts`
+    (line 173)
 - Imports:
   - **Standard Library** (6):
     - `import os as os` (line 1)
@@ -9518,9 +10004,11 @@ graph LR
     - `from typing import Mapping` (line 3)
   - **Third-party** (4):
     - `import pytest as pytest` (line 5)
-    - `from webapp.parser.utils.pivot import _detect_division_type_for_precinct` (line 13)
+    - `from webapp.parser.utils.pivot import _detect_division_type_for_precinct`
+      (line 13)
     - `from webapp.parser.utils.pivot import pivot_to_wide` (line 13)
-    - `from webapp.parser.utils.table_builder import build_table_noninteractive` (line 14)
+    - `from webapp.parser.utils.table_builder import build_table_noninteractive`
+      (line 14)
 - Outgoing cross-module calls (sample):
   - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 44)
   - webapp.parser.utils.table\_builder.build\_table\_noninteractive (line 116)
@@ -9544,10 +10032,11 @@ graph LR
   - \_to\_int ← test_table_builder_e2e.py:147
   - \_to\_int ← test_table_builder_e2e.py:148
 
-### `webapp/tests/test_table_builder_noise.py`
+### webapp/tests/test\_table\_builder\_noise.py {#webapp-tests-test-table-builder-noise-py}
 
 - Definitions:
-  - function: `test\_title\_and\_pseudo\_party\_rows\_filtered\_new\_york` (line 18)
+  - function: `test\_title\_and\_pseudo\_party\_rows\_filtered\_new\_york` (line
+    18)
   - function: `test\_row\_filter\_factory\_flags\_noise\_and\_pseudo` (line 33)
   - function: `test\_compiled\_regexes\_match\_titles` (line 44)
 - Imports:
@@ -9556,38 +10045,48 @@ graph LR
     - `import sys as sys` (line 2)
   - **Third-party** (4):
     - `import pytest as pytest` (line 3)
-    - `from webapp.parser.utils.shared_logic import build_camelot_row_filter_for_context` (line 11)
-    - `from webapp.parser.Context_Integration.Context_Library.constants import get_camelot_title_regex` (line 12)
-    - `from webapp.parser.Context_Integration.Context_Library.constants import get_camelot_row_regex` (line 12)
+    - `from webapp.parser.utils.shared_logic import
+      build_camelot_row_filter_for_context` (line 11)
+    - `from webapp.parser.Context_Integration.Context_Library.constants import
+      get_camelot_title_regex` (line 12)
+    - `from webapp.parser.Context_Integration.Context_Library.constants import
+      get_camelot_row_regex` (line 12)
 - Outgoing cross-module calls (sample):
-  - webapp.parser.utils.shared\_logic.build\_camelot\_row\_filter\_for\_context (line 26)
-  - webapp.parser.utils.shared\_logic.build\_camelot\_row\_filter\_for\_context (line 35)
-  - webapp.parser.Context\_Integration.Context\_Library.constants.get\_camelot\_title\_regex (line 45)
-  - webapp.parser.Context\_Integration.Context\_Library.constants.get\_camelot\_title\_regex (line 46)
+  - webapp.parser.utils.shared\_logic.build\_camelot\_row\_filter\_for\_context
+    (line 26)
+  - webapp.parser.utils.shared\_logic.build\_camelot\_row\_filter\_for\_context
+    (line 35)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.get\_camelot\_title\_regex
+    (line 45)
+  - webapp.parser.Context\_Integration.Context\_Library.constants.get\_camelot\_title\_regex
+    (line 46)
   - ny\_title.search (line 47)
   - fl\_title.search (line 48)
 
-### `webapp/tests/test_table_core_panels.py`
+### webapp/tests/test\_table\_core\_panels.py {#webapp-tests-test-table-core-panels-py}
 
 - Definitions:
   - function: `test\_pipeline\_panel\_merge\_with\_provided\_tables` (line 14)
-  - function: `test\_dedupe\_prefers\_larger\_table\_for\_same\_signature` (line 36)
+  - function: `test\_dedupe\_prefers\_larger\_table\_for\_same\_signature` (line
+    36)
 - Imports:
   - **Standard Library** (2):
     - `import os as os` (line 1)
     - `import sys as sys` (line 2)
   - **Third-party** (2):
     - `import pytest as pytest` (line 3)
-    - `from webapp.parser.utils.table_core import robust_table_extraction` (line 11)
+    - `from webapp.parser.utils.table_core import robust_table_extraction` (line
+      11)
 - Outgoing cross-module calls (sample):
   - webapp.parser.utils.table\_core.robust\_table\_extraction (line 25)
   - webapp.parser.utils.table\_core.robust\_table\_extraction (line 49)
 
-### `webapp/tests/test_upload_validation.py`
+### webapp/tests/test\_upload\_validation.py {#webapp-tests-test-upload-validation-py}
 
 - Definitions:
   - function: `test\_allowed\_file\_accepts\_supported\_extensions` (line 5)
-  - function: `test\_allowed\_file\_rejects\_unknown\_or\_invalid\_extensions` (line 14)
+  - function: `test\_allowed\_file\_rejects\_unknown\_or\_invalid\_extensions`
+    (line 14)
 - Imports:
   - **Third-party** (2):
     - `from webapp.Smart_Elections_Parser_Webapp import allowed_file` (line 1)
@@ -9600,7 +10099,7 @@ graph LR
   - webapp.Smart\_Elections\_Parser\_Webapp.allowed\_file (line 16)
   - webapp.Smart\_Elections\_Parser\_Webapp.allowed\_file (line 18)
 
-### `webapp/tests/test_webapp_app.py`
+### webapp/tests/test\_webapp\_app.py {#webapp-tests-test-webapp-app-py}
 
 - Definitions:
   - function: `webapp\_module` (line 12)
@@ -9614,7 +10113,8 @@ graph LR
   - function: `test\_socket\_run\_parser\_happy\_path` (line 129)
   - function: `test\_emit\_contest\_options\_sends\_payload` (line 184)
   - function: `test\_contest\_selected\_sets\_prompt\_response` (line 224)
-  - function: `test\_cancel\_parser\_sets\_flag\_and\_unlocks\_session` (line 254)
+  - function: `test\_cancel\_parser\_sets\_flag\_and\_unlocks\_session` (line
+    254)
   - function: `test\_session\_manager\_lock\_is\_native\_threading` (line 295)
   - function: `test\_socket\_events\_are\_session\_scoped` (line 302)
 - Imports:
@@ -9682,7 +10182,7 @@ graph LR
   - sio\_client.get\_received (line 191)
   - pathlib.Path (line 193)
 
-### `webapp/tests/unit/test_batch_processor.py`
+### webapp/tests/unit/test\_batch\_processor.py {#webapp-tests-unit-test-batch-processor-py}
 
 - Definitions:
   - class: `DummyPrompt` (line 11)

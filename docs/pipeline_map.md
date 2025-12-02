@@ -101,6 +101,49 @@ graph TD
 **✨ Legend:** Colors indicate module categories with metallic accents. Click
 nodes for details below.
 
+## Connection Highlights
+
+Key integration points across major parser aspects to simplify tracking
+relevance.
+
+### Top Module Links
+
+- `table_builder` → `dynamic_table_extractor` (36 refs, Utils → Utils) —
+review `dynamic_table_extractor` whenever `table_builder` changes.
+- `detect` → `browser_utils` (18 refs, Utils → Utils) — review `browser_utils`
+whenever `detect` changes.
+- `manual_correction_bot` → `log_cache_cleaner_bot` (13 refs, Health → Health)
+— review `log_cache_cleaner_bot` whenever `manual_correction_bot` changes.
+- `pivot` → `contest_selector` (12 refs, Utils → Utils) — review
+`contest_selector` whenever `pivot` changes.
+- `pivot` → `json_export_loader` (11 refs, Utils → Utils) — review
+`json_export_loader` whenever `pivot` changes.
+- `dynamic_table_extractor` → `context_coordinator` (10 refs, Utils → Context
+Integration) — review `context_coordinator` whenever `dynamic_table_extractor`
+changes.
+- `html_scanner` → `librarian` (9 refs, Utils → Context Integration) — review
+`librarian` whenever `html_scanner` changes.
+- `user_prompt` → `shared_logic` (9 refs, Utils → Utils) — review
+`shared_logic` whenever `user_prompt` changes.
+- `pattern_extractor` → `browser_utils` (7 refs, Utils → Utils) — review
+`browser_utils` whenever `pattern_extractor` changes.
+- `election_data_services` → `models` (6 refs, Services → Utils) — review
+`models` whenever `election_data_services` changes.
+
+### Cluster Flow Summary
+
+- Utils → Utils: 120 edges (intra-cluster flow to monitor.)
+- Utils → Context Integration: 39 edges (cross-cluster flow to monitor.)
+- Health → Health: 13 edges (intra-cluster flow to monitor.)
+- Services → Utils: 6 edges (cross-cluster flow to monitor.)
+- Entry → Context Integration: 5 edges (cross-cluster flow to monitor.)
+- Health → Entry: 5 edges (cross-cluster flow to monitor.)
+- Context Integration → Utils: 4 edges (cross-cluster flow to monitor.)
+- Format Handlers → Format Handlers: 4 edges (intra-cluster flow to monitor.)
+- Health → Context Integration: 4 edges (cross-cluster flow to monitor.)
+- State Handlers → Context Integration: 3 edges (cross-cluster flow to
+monitor.)
+
 ## File Connection Map
 
 Detailed import/export relationships and dependencies.
@@ -109,7 +152,7 @@ Detailed import/export relationships and dependencies.
 
 Click to expand each module for full audit details.
 
-### webapp/parser/Context\_Integration/Context\_Library/constants.py
+### Context\_Integration/Context\_Library/constants.py {#webapp-parser-context-integration-context-library-constants-py}
 
 #### 🔧 Key Functions & Classes (Context_Integration_Context_Library_constants)
 
@@ -154,7 +197,7 @@ Click to expand each module for full audit details.
 - L2220 **NOTE**: ", "Comment", "Feedback", "Suggestion", "Recommendation",
 - L2236 **NOTE**: ", "Comment", "Feedback", "Suggestion",
 
-### webapp/parser/Context\_Integration/Integrity\_check.py
+### Context\_Integration/Integrity\_check.py {#webapp-parser-context-integration-integrity-check-py}
 
 #### 🔧 Key Functions & Classes (Context_Integration_Integrity_check)
 
@@ -200,7 +243,7 @@ Click to expand each module for full audit details.
 - `sqlalchemy`
 - `config`
 
-### webapp/parser/Context\_Integration/context\_coordinator.py
+### Context\_Integration/context\_coordinator.py {#webapp-parser-context-integration-context-coordinator-py}
 
 > context*coordinator.py
 
@@ -266,7 +309,7 @@ plot.")
 - L1697 **WARNING**: ("\[get*table*groups\] No table groups found.")
 - L1706 **WARNING**: ("\[get*relationships\] No organized context.")
 
-### webapp/parser/Context\_Integration/context\_organizer.py
+### Context\_Integration/context\_organizer.py {#webapp-parser-context-integration-context-organizer-py}
 
 > context*organizer.py
 
@@ -327,7 +370,7 @@ with feedback: {e}")
 - L2049 **WARNING**: (f"\[CONTEXT ORGANIZER\] No table structure found for
 contest: {contest}")
 
-### webapp/parser/Context\_Integration/librarian.py
+### Context\_Integration/librarian.py {#webapp-parser-context-integration-librarian-py}
 
 #### 🔧 Key Functions & Classes (Context_Integration_librarian)
 
@@ -408,7 +451,7 @@ manual*correction...")
 - L661 **WARNING**: (f"\[LIBRARIAN SELF-HEAL\] Sleeping {cooldown}s before
 rescanning...")
 
-### webapp/parser/config.py
+### config.py {#webapp-parser-config-py}
 
 > Central configuration module for the Smart Elections Parser Webapp.
 
@@ -434,7 +477,7 @@ rescanning...")
 
 - L328 **WARNING**: ("\[DB\]\[AAD\] Falling back to password auth.")
 
-### webapp/parser/data\_manager.py
+### data\_manager.py {#webapp-parser-data-manager-py}
 
 #### 🔧 Key Functions & Classes (data_manager)
 
@@ -467,7 +510,7 @@ rescanning...")
 - L90 **WARNING**: (f"\[REMOVED\] {index*or*value}")
 - L129 **WARNING**: (f"\[DELETED\] {files\[idx\]}")
 
-### webapp/parser/handlers/batch\_handler.py
+### handlers/batch\_handler.py {#webapp-parser-handlers-batch-handler-py}
 
 #### 🔧 Key Functions & Classes (handlers_batch_handler)
 
@@ -504,7 +547,7 @@ rescanning...")
 - L426 **WARNING**: ({
 - L427 **WARNING**: ",
 
-### webapp/parser/handlers/formats/csv\_handler.py
+### handlers/formats/csv\_handler.py {#webapp-parser-handlers-formats-csv-handler-py}
 
 #### 🔧 Key Functions & Classes (handlers_formats_csv_handler)
 
@@ -535,7 +578,7 @@ rescanning...")
 - `utils.pivot`
 - `utils.shared_logic`
 
-### webapp/parser/handlers/formats/html\_handler.py
+### handlers/formats/html\_handler.py {#webapp-parser-handlers-formats-html-handler-py}
 
 #### 🔧 Key Functions & Classes (handlers_formats_html_handler)
 
@@ -576,7 +619,7 @@ Closest matches: {matches}")
 - L285 **WARNING**: (f"\[HTML Handler\] County '{user*county}' not found.
 Closest matches: {matches}")
 
-### webapp/parser/handlers/formats/json\_handler.py
+### handlers/formats/json\_handler.py {#webapp-parser-handlers-formats-json-handler-py}
 
 #### 🔧 Key Functions & Classes (handlers_formats_json_handler)
 
@@ -625,7 +668,7 @@ Closest matches: {matches}")
 - L489 **WARNING**: ({
 - L490 **WARNING**: ",
 
-### webapp/parser/handlers/formats/pdf\_handler.py
+### handlers/formats/pdf\_handler.py {#webapp-parser-handlers-formats-pdf-handler-py}
 
 #### 🔧 Key Functions & Classes (handlers_formats_pdf_handler)
 
@@ -704,7 +747,7 @@ skipping OCR fallback.",
 - L3366 **WARNING**: ({
 - L3367 **WARNING**: ",
 
-### webapp/parser/handlers/formats/txt\_handler.py
+### handlers/formats/txt\_handler.py {#webapp-parser-handlers-formats-txt-handler-py}
 
 #### 🔧 Key Functions & Classes (handlers_formats_txt_handler)
 
@@ -736,7 +779,7 @@ skipping OCR fallback.",
 - `utils.shared_logic`
 - `utils.shared_logic`
 
-### webapp/parser/handlers/formats/xlsx\_handler.py
+### handlers/formats/xlsx\_handler.py {#webapp-parser-handlers-formats-xlsx-handler-py}
 
 #### 🔧 Key Functions & Classes (handlers_formats_xlsx_handler)
 
@@ -768,13 +811,13 @@ skipping OCR fallback.",
 - `utils.shared_logic`
 - `utils.shared_logic`
 
-### webapp/parser/handlers/states/arizona/\_\_init\_\_.py
+### handlers/states/arizona/\_\_init\_\_.py {#webapp-parser-handlers-states-arizona-init-py}
 
 #### 📦 Key Imports (handlers_states_arizona___init__)
 
 - `arizona`
 
-### webapp/parser/handlers/states/arizona/arizona.py
+### handlers/states/arizona/arizona.py {#webapp-parser-handlers-states-arizona-arizona-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_arizona_arizona)
 
@@ -817,7 +860,7 @@ are published yet or the structure has changed.")
 - L165 **WARNING**: ("\[FALLBACK\] Please verify that the site has posted
 election data.")
 
-### webapp/parser/handlers/states/example state/example\_county/example\_county.py
+### handlers/states/example state/example\_county/example\_county.py {#webapp-parser-handlers-states-example-state-example-county-example-county-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_example state_example_county_example_county)
 
@@ -840,7 +883,7 @@ election data.")
 - L123 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
 selectors. Trying table-based extraction...\[/yellow\]")
 
-### webapp/parser/handlers/states/example state/example\_state.py
+### handlers/states/example state/example\_state.py {#webapp-parser-handlers-states-example-state-example-state-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_example state_example_state)
 
@@ -870,7 +913,7 @@ county: '{county}'. Continuing with state-level logic.")
 - L152 **WARNING**: ("\[yellow\]\[WARNING\] No ballot items found by div
 selectors. Trying table-based extraction...\[/yellow\]")
 
-### webapp/parser/handlers/states/new\_york/county/rockland.py
+### handlers/states/new\_york/county/rockland.py {#webapp-parser-handlers-states-new-york-county-rockland-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_new_york_county_rockland)
 
@@ -906,7 +949,7 @@ enabled={safe*is*enabled(element, logger)})\[/yellow\]")
 is not clickable (visible={safe*is*visible(element, logger)},
 enabled={safe*is*enabled(element, logger)})\[/yellow\]")
 
-### webapp/parser/handlers/states/new\_york/new\_york.py
+### handlers/states/new\_york/new\_york.py {#webapp-parser-handlers-states-new-york-new-york-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_new_york_new_york)
 
@@ -931,13 +974,13 @@ enabled={safe*is*enabled(element, logger)})\[/yellow\]")
 - L43 **WARNING**: (f"\[NY Handler\] No specific parser implemented for
 county: '{county}'. Please add it under {module*path}.py")
 
-### webapp/parser/handlers/states/pennsylvania/\_\_init\_\_.py
+### handlers/states/pennsylvania/\_\_init\_\_.py {#webapp-parser-handlers-states-pennsylvania-init-py}
 
 #### 📦 Key Imports (handlers_states_pennsylvania___init__)
 
 - `pennsylvania`
 
-### webapp/parser/handlers/states/pennsylvania/pennsylvania.py
+### handlers/states/pennsylvania/pennsylvania.py {#webapp-parser-handlers-states-pennsylvania-pennsylvania-py}
 
 #### 🔧 Key Functions & Classes (handlers_states_pennsylvania_pennsylvania)
 
@@ -976,7 +1019,7 @@ selection: {e}")
 - L113 **WARNING**: ("\[yellow\]Multiple CSV files found in input. Please
 select one:\[/yellow\]")
 
-### webapp/parser/health/context\_migration.py
+### health/context\_migration.py {#webapp-parser-health-context-migration-py}
 
 #### 🔧 Key Functions & Classes (health_context_migration)
 
@@ -1016,7 +1059,7 @@ select one:\[/yellow\]")
 - `utils.models`
 - `utils.models`
 
-### webapp/parser/health/health\_router.py
+### health/health\_router.py {#webapp-parser-health-health-router-py}
 
 #### 🔧 Key Functions & Classes (health_health_router)
 
@@ -1065,7 +1108,7 @@ loop will be handled by scan*misaligned*ner.")
 Proceeding with caution.")
 - L414 **WARNING**: ("\[PIPELINE\] Model retraining failed.")
 
-### webapp/parser/health/log\_cache\_cleaner\_bot.py
+### health/log\_cache\_cleaner\_bot.py {#webapp-parser-health-log-cache-cleaner-bot-py}
 
 > log*cache*cleaner*bot.py
 
@@ -1114,7 +1157,7 @@ large after cleaning:")
 - L507 **WARNING**: ("\[MISALIGNED\] Consider cleaning or pattern-excluding
 these from your training data:")
 
-### webapp/parser/health/manual\_correction\_bot.py
+### health/manual\_correction\_bot.py {#webapp-parser-health-manual-correction-bot-py}
 
 > manual*correction.py
 
@@ -1197,7 +1240,7 @@ file.name}")
 - L717 **WARNING**: (f"Invalid JSON, skipping edit: {e}")
 - L750 **TODO**: Add JSON schema validation here if desired
 
-### webapp/parser/health/retrain\_table\_structure\_models.py
+### health/retrain\_table\_structure\_models.py {#webapp-parser-health-retrain-table-structure-models-py}
 
 #### 🔧 Key Functions & Classes (health_retrain_table_structure_models)
 
@@ -1283,7 +1326,7 @@ min*delta={min*delta:.2f}, epochs={epochs}")
 - L840 **WARNING**: ("\[DB\] Base.metadata.tables is empty. No models
 registered? Did you import all model classes?")
 
-### webapp/parser/health/scan\_misaligned\_ner.py
+### health/scan\_misaligned\_ner.py {#webapp-parser-health-scan-misaligned-ner-py}
 
 #### 🔧 Key Functions & Classes (health_scan_misaligned_ner)
 
@@ -1328,7 +1371,7 @@ rescanning...")
 - L122 **WARNING**: ("\[SELF-HEAL\] Max retries reached. Some misalignments
 may remain.")
 
-### webapp/parser/health/session\_manager.py
+### health/session\_manager.py {#webapp-parser-health-session-manager-py}
 
 #### 🔧 Key Functions & Classes (health_session_manager)
 
@@ -1352,7 +1395,7 @@ may remain.")
 - `webapp.parser.utils.session_state`
 - `webapp.parser.utils.session_state`
 
-### webapp/parser/html\_election\_parser.py
+### html\_election\_parser.py {#webapp-parser-html-election-parser-py}
 
 #### 🔧 Key Functions & Classes (html_election_parser)
 
@@ -1415,7 +1458,7 @@ may remain.")
 - L1171 **WARNING**: (payload)
 - L1249 **WARNING**: ({
 
-### webapp/parser/services/context\_service.py
+### services/context\_service.py {#webapp-parser-services-context-service-py}
 
 #### 🔧 Key Functions & Classes (services_context_service)
 
@@ -1445,7 +1488,7 @@ may remain.")
 - `services.election_data_services`
 - `utils.logger_singleton`
 
-### webapp/parser/services/election\_data\_services.py
+### services/election\_data\_services.py {#webapp-parser-services-election-data-services-py}
 
 > ElectionDataService: Service layer for all election DB operations.
 
@@ -1487,7 +1530,7 @@ may remain.")
 - `utils.db_utils`
 - `utils.db_utils`
 
-### webapp/parser/state\_router.py
+### state\_router.py {#webapp-parser-state-router-py}
 
 #### 🔧 Key Functions & Classes (state_router)
 
@@ -1571,7 +1614,7 @@ fuzzy matching.")
 - L540 **WARNING**: ("No handler selected. Exiting.")
 - L547 **WARNING**: ("Still could not import a suitable handler.")
 
-### webapp/parser/utils/browser\_utils.py
+### utils/browser\_utils.py {#webapp-parser-utils-browser-utils-py}
 
 #### 🔧 Key Functions & Classes (utils_browser_utils)
 
@@ -1655,7 +1698,7 @@ intervention not implemented. (Session: {session*id})")
 - L733 **WARNING**: ("\[SCROLL\] Max scroll time/attempts exceeded. Page may
 not be fully loaded.")
 
-### webapp/parser/utils/camelot\_utils.py
+### utils/camelot\_utils.py {#webapp-parser-utils-camelot-utils-py}
 
 #### 🔧 Key Functions & Classes (utils_camelot_utils)
 
@@ -1678,7 +1721,7 @@ not be fully loaded.")
 - `Context_Integration.Context_Library.constants`
 - `salvage`
 
-### webapp/parser/utils/captcha\_tools.py
+### utils/captcha\_tools.py {#webapp-parser-utils-captcha-tools-py}
 
 #### 🔧 Key Functions & Classes (utils_captcha_tools)
 
@@ -1714,7 +1757,7 @@ not be fully loaded.")
 - L118 **WARNING**: (f"\[CAPTCHA\] Foreground window fallback failed: {e}")
 - L154 **WARNING**: ("\[CAPTCHA\] CAPTCHA not resolved within timeout.")
 
-### webapp/parser/utils/contest\_normalization.py
+### utils/contest\_normalization.py {#webapp-parser-utils-contest-normalization-py}
 
 > Utilities for normalizing contest titles (referenda, propositions, etc.).
 
@@ -1731,7 +1774,7 @@ not be fully loaded.")
 - `typing`
 - `typing`
 
-### webapp/parser/utils/contest\_selector.py
+### utils/contest\_selector.py {#webapp-parser-utils-contest-selector-py}
 
 #### 🔧 Key Functions & Classes (utils_contest_selector)
 
@@ -1797,7 +1840,7 @@ matches for '{term}'", "session*id": session*id})
 - L1642 **WARNING**: ({"level": "WARNING", "type": "selector", "message": "No
 match; try again.", "session*id": session*id})
 
-### webapp/parser/utils/coordinator\_protocol.py
+### utils/coordinator\_protocol.py {#webapp-parser-utils-coordinator-protocol-py}
 
 #### 🔧 Key Functions & Classes (utils_coordinator_protocol)
 
@@ -1812,7 +1855,7 @@ match; try again.", "session*id": session*id})
 - `typing`
 - `typing`
 
-### webapp/parser/utils/date\_utils.py
+### utils/date\_utils.py {#webapp-parser-utils-date-utils-py}
 
 > date*utils.py
 
@@ -1825,7 +1868,7 @@ match; try again.", "session*id": session*id})
 - `__future__`
 - `re`
 
-### webapp/parser/utils/db\_utils.py
+### utils/db\_utils.py {#webapp-parser-utils-db-utils-py}
 
 #### 🔧 Key Functions & Classes (utils_db_utils)
 
@@ -1878,7 +1921,7 @@ match; try again.", "session*id": session*id})
 - `logger_singleton`
 - `models`
 
-### webapp/parser/utils/detect.py
+### utils/detect.py {#webapp-parser-utils-detect-py}
 
 > detect.py
 
@@ -1930,7 +1973,7 @@ match; try again.", "session*id": session*id})
 - `Context_Integration.Context_Library.constants`
 - `logger_singleton`
 
-### webapp/parser/utils/detector.py
+### utils/detector.py {#webapp-parser-utils-detector-py}
 
 > detector.py
 
@@ -1961,7 +2004,7 @@ match; try again.", "session*id": session*id})
 - `Context_Integration.Context_Library.constants`
 - `shared_logic`
 
-### webapp/parser/utils/dom\_extractor.py
+### utils/dom\_extractor.py {#webapp-parser-utils-dom-extractor-py}
 
 > dom*extractor.py
 
@@ -1993,7 +2036,7 @@ match; try again.", "session*id": session*id})
 
 - L153 **WARNING**: (f"\[DOM*EXTRACTOR\] failure: {e}")
 
-### webapp/parser/utils/download\_utils.py
+### utils/download\_utils.py {#webapp-parser-utils-download-utils-py}
 
 #### 🔧 Key Functions & Classes (utils_download_utils)
 
@@ -2024,7 +2067,7 @@ match; try again.", "session*id": session*id})
 - `utils.misc_utils`
 - `utils.shared_logic`
 
-### webapp/parser/utils/dynamic\_table\_extractor.py
+### utils/dynamic\_table\_extractor.py {#webapp-parser-utils-dynamic-table-extractor-py}
 
 #### 🔧 Key Functions & Classes (utils_dynamic_table_extractor)
 
@@ -2098,7 +2141,7 @@ session*id, error=str(e))
 - L805 **WARNING**: ", "extractor", "Unknown action.")
 - L807 **WARNING**: ", "extractor", "Invalid entry number.")
 
-### webapp/parser/utils/embedding\_cache.py
+### utils/embedding\_cache.py {#webapp-parser-utils-embedding-cache-py}
 
 #### 🔧 Key Functions & Classes (utils_embedding_cache)
 
@@ -2138,7 +2181,7 @@ session*id, error=str(e))
 
 - L178 **WARNING**: (msg)
 
-### webapp/parser/utils/extraction\_strategies.py
+### utils/extraction\_strategies.py {#webapp-parser-utils-extraction-strategies-py}
 
 > extraction*strategies.py
 
@@ -2183,7 +2226,7 @@ session*id, error=str(e))
 
 - L68 **WARNING**: (f"\[STRATEGY\] {name} failed: {e}")
 
-### webapp/parser/utils/format\_router.py
+### utils/format\_router.py {#webapp-parser-utils-format-router-py}
 
 #### 🔧 Key Functions & Classes (utils_format_router)
 
@@ -2247,7 +2290,7 @@ session*id, error=str(e))
 - L950 **WARNING**: ({
 - L951 **WARNING**: ",
 
-### webapp/parser/utils/header\_utils.py
+### utils/header\_utils.py {#webapp-parser-utils-header-utils-py}
 
 #### 🔧 Key Functions & Classes (utils_header_utils)
 
@@ -2273,7 +2316,7 @@ session*id, error=str(e))
 - `detect`
 - `salvage`
 
-### webapp/parser/utils/html\_scanner.py
+### utils/html\_scanner.py {#webapp-parser-utils-html-scanner-py}
 
 #### 🔧 Key Functions & Classes (utils_html_scanner)
 
@@ -2351,7 +2394,7 @@ session*id, error=str(e))
 - L1045 **WARNING**: ",
 - L1049 **WARNING**: (payload)
 
-### webapp/parser/utils/json\_export\_loader.py
+### utils/json\_export\_loader.py {#webapp-parser-utils-json-export-loader-py}
 
 #### 🔧 Key Functions & Classes (utils_json_export_loader)
 
@@ -2390,7 +2433,7 @@ session*id, error=str(e))
 - `Context_Integration.librarian`
 - `contest_normalization`
 
-### webapp/parser/utils/location\_helpers.py
+### utils/location\_helpers.py {#webapp-parser-utils-location-helpers-py}
 
 #### 🔧 Key Functions & Classes (utils_location_helpers)
 
@@ -2416,7 +2459,7 @@ session*id, error=str(e))
 - `Context_Integration.Context_Library.constants`
 - `detect`
 
-### webapp/parser/utils/logger\_singleton.py
+### utils/logger\_singleton.py {#webapp-parser-utils-logger-singleton-py}
 
 #### 🔧 Key Functions & Classes (utils_logger_singleton)
 
@@ -2430,7 +2473,7 @@ session*id, error=str(e))
 - `shared_logger`
 - `shared_logger`
 
-### webapp/parser/utils/merge\_utils.py
+### utils/merge\_utils.py {#webapp-parser-utils-merge-utils-py}
 
 > merge*utils.py
 
@@ -2447,7 +2490,7 @@ session*id, error=str(e))
 - `typing`
 - `salvage`
 
-### webapp/parser/utils/misc\_utils.py
+### utils/misc\_utils.py {#webapp-parser-utils-misc-utils-py}
 
 #### 🔧 Key Functions & Classes (utils_misc_utils)
 
@@ -2473,7 +2516,7 @@ session*id, error=str(e))
 - `logger_singleton`
 - `shared_logic`
 
-### webapp/parser/utils/ml\_table\_detector.py
+### utils/ml\_table\_detector.py {#webapp-parser-utils-ml-table-detector-py}
 
 #### 🔧 Key Functions & Classes (utils_ml_table_detector)
 
@@ -2512,7 +2555,7 @@ session*id, error=str(e))
 - `logger_singleton`
 - `model_registry`
 
-### webapp/parser/utils/model\_registry.py
+### utils/model\_registry.py {#webapp-parser-utils-model-registry-py}
 
 #### 🔧 Key Functions & Classes (utils_model_registry)
 
@@ -2558,7 +2601,7 @@ skipping HF download. Embeddings disabled.")
 - L429 **WARNING**: (f"Failed to load base SentenceTransformer (network/DNS).
 Running without embeddings. Error: {e}")
 
-### webapp/parser/utils/models.py
+### utils/models.py {#webapp-parser-utils-models-py}
 
 #### 🔧 Key Functions & Classes (utils_models)
 
@@ -2611,7 +2654,7 @@ Running without embeddings. Error: {e}")
 - `sqlalchemy`
 - `sqlalchemy`
 
-### webapp/parser/utils/output\_utils.py
+### utils/output\_utils.py {#webapp-parser-utils-output-utils-py}
 
 #### 🔧 Key Functions & Classes (utils_output_utils)
 
@@ -2666,7 +2709,7 @@ Using 'unknown*contests'.\[/yellow\]")
 - L531 **WARNING**: (f"\[OUTPUT*UTILS\] Enrichment build failed: {e}")
 - L607 **WARNING**: (f"\[OUTPUT*UTILS\] XLSX export failed: {e}")
 
-### webapp/parser/utils/pattern\_extractor.py
+### utils/pattern\_extractor.py {#webapp-parser-utils-pattern-extractor-py}
 
 > pattern*extractor.py
 
@@ -2693,7 +2736,7 @@ Using 'unknown*contests'.\[/yellow\]")
 - L26 **WARNING**: (f"\[PATTERN\] load fail {e}")
 - L95 **WARNING**: (f"\[PATTERN\] pattern error {pat.get('name')}: {e}")
 
-### webapp/parser/utils/pdf\_table\_utils.py
+### utils/pdf\_table\_utils.py {#webapp-parser-utils-pdf-table-utils-py}
 
 #### 🔧 Key Functions & Classes (utils_pdf_table_utils)
 
@@ -2738,7 +2781,7 @@ Using 'unknown*contests'.\[/yellow\]")
 - `Context_Integration.Context_Library.constants`
 - `header_utils`
 
-### webapp/parser/utils/pivot.py
+### utils/pivot.py {#webapp-parser-utils-pivot-py}
 
 > pivot.py
 
@@ -2798,7 +2841,7 @@ Using 'unknown*contests'.\[/yellow\]")
 - L1353 **WARNING**: ("\[PIVOT\] No candidates detected – verify headers and
 candidate column extraction.")
 
-### webapp/parser/utils/rawjson\_utils.py
+### utils/rawjson\_utils.py {#webapp-parser-utils-rawjson-utils-py}
 
 #### 🔧 Key Functions & Classes (utils_rawjson_utils)
 
@@ -2816,7 +2859,7 @@ candidate column extraction.")
 - `typing`
 - `orjson`
 
-### webapp/parser/utils/salvage.py
+### utils/salvage.py {#webapp-parser-utils-salvage-py}
 
 > salvage.py
 
@@ -2841,7 +2884,7 @@ candidate column extraction.")
 - `typing`
 - `detect`
 
-### webapp/parser/utils/seleniumbase\_launcher.py
+### utils/seleniumbase\_launcher.py {#webapp-parser-utils-seleniumbase-launcher-py}
 
 #### 🔧 Key Functions & Classes (utils_seleniumbase_launcher)
 
@@ -2859,7 +2902,7 @@ candidate column extraction.")
 - `config`
 - `logger_singleton`
 
-### webapp/parser/utils/session\_state.py
+### utils/session\_state.py {#webapp-parser-utils-session-state-py}
 
 #### 🔧 Key Functions & Classes (utils_session_state)
 
@@ -2873,7 +2916,7 @@ candidate column extraction.")
 - `enum`
 - `typing`
 
-### webapp/parser/utils/shared\_logger.py
+### utils/shared\_logger.py {#webapp-parser-utils-shared-logger-py}
 
 #### 🔧 Key Functions & Classes (utils_shared_logger)
 
@@ -2917,7 +2960,7 @@ candidate column extraction.")
 - L598 **WARNING**: (f"Log directory does not exist: {log*dir}")
 - L615 **WARNING**: (f"Corrupt line in {path}: {e}")
 
-### webapp/parser/utils/shared\_logic.py
+### utils/shared\_logic.py {#webapp-parser-utils-shared-logic-py}
 
 #### 🔧 Key Functions & Classes (utils_shared_logic)
 
@@ -2991,18 +3034,18 @@ coercing to list.")
 - L1096 **WARNING**: (f"\[DOM*PARTS\] '{label}' is not a list for URL: {url}
 (type: {type(lst).**name**})")
 - L1359 **WARNING**: (f"State '{state*norm}' not found in county map")
-- L2138 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
-- L2144 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
+- L2163 **WARNING**: (f"\[inventory\] architecture.md not found at {md*file}")
+- L2169 **WARNING**: ("\[inventory\] Markers not found in architecture.md;
 aborting replace.")
-- L2159 **WARNING**: ("\[inventory\] generate*project*map completed with
+- L2184 **WARNING**: ("\[inventory\] generate*project*map completed with
 warnings; check markers and path.")
-- L2205 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
+- L2230 **TODO**: /FIXME/WARN and similar keywords (case-insensitive). Returns
 list of (lineno, keyword, cleaned*text)."""
-- L2207 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
-- L2839 **TODO**: /FIXME/WARN
-- L2842 **TODO**: /FIXME/WARN:")
+- L2232 **TODO**: |FIXME|WARN|WARNING|NOTE|HACK|XXX|BUG)\b", re.IGNORECASE)
+- L2864 **TODO**: /FIXME/WARN
+- L2867 **TODO**: /FIXME/WARN:")
 
-### webapp/parser/utils/spacy\_utils.py
+### utils/spacy\_utils.py {#webapp-parser-utils-spacy-utils-py}
 
 #### 🔧 Key Functions & Classes (utils_spacy_utils)
 
@@ -3051,7 +3094,7 @@ list of (lineno, keyword, cleaned*text)."""
 - `shared_logic`
 - `shared_logic`
 
-### webapp/parser/utils/strategy\_concurrency.py
+### utils/strategy\_concurrency.py {#webapp-parser-utils-strategy-concurrency-py}
 
 > strategy*concurrency.py
 
@@ -3086,7 +3129,7 @@ failed: {e}")
 {e}")
 - L120 **WARNING**: (f"\[CONCURRENCY\]\[ASYNC\] Strategy {name} error: {e}")
 
-### webapp/parser/utils/structure\_cache.py
+### utils/structure\_cache.py {#webapp-parser-utils-structure-cache-py}
 
 > structure*cache.py
 
@@ -3105,7 +3148,7 @@ failed: {e}")
 - `typing`
 - `detect`
 
-### webapp/parser/utils/table\_builder.py
+### utils/table\_builder.py {#webapp-parser-utils-table-builder-py}
 
 #### 🔧 Key Functions & Classes (utils_table_builder)
 
@@ -3191,7 +3234,7 @@ structure logs", session*id, error=str(e))
 - L1376 **WARNING**: ", "builder", "\[TABLE*BUILDER\] Failed to persist
 coordinator DB log", session*id, error=str(e))
 
-### webapp/parser/utils/table\_core.py
+### utils/table\_core.py {#webapp-parser-utils-table-core-py}
 
 > table*core.py (refactored orchestrator)
 
@@ -3245,7 +3288,7 @@ execution failed: {e}")
 - L477 **WARNING**: (f"\[TABLE BUILDER\]\[ASYNC\] finalize output failed:
 {e}")
 
-### webapp/parser/utils/user\_prompt.py
+### utils/user\_prompt.py {#webapp-parser-utils-user-prompt-py}
 
 #### 🔧 Key Functions & Classes (utils_user_prompt)
 
@@ -3297,7 +3340,7 @@ correction.\[/yellow\]")
 - L913 **WARNING**: ("\[yellow\]Button confirmation cancelled by
 user.\[/yellow\]")
 
-### webapp/parser/utils/xlsx\_exporter.py
+### utils/xlsx\_exporter.py {#webapp-parser-utils-xlsx-exporter-py}
 
 #### 🔧 Key Functions & Classes (utils_xlsx_exporter)
 
@@ -3322,7 +3365,7 @@ user.\[/yellow\]")
 - `openpyxl.styles`
 - `openpyxl.utils`
 
-### webapp/parser/web\_pipeline.py
+### web\_pipeline.py {#webapp-parser-web-pipeline-py}
 
 #### 🔧 Key Functions & Classes (web_pipeline)
 

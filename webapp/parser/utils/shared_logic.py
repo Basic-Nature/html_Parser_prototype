@@ -13,6 +13,7 @@ import os
 import platform
 import re
 import shutil
+import textwrap
 import time
 from pathlib import Path
 from typing import (
@@ -2130,7 +2131,7 @@ def _render_inventory_md(inv: Dict[str, List[Dict[str, Any]]]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 def _finalize_markdown_lines(lines: list[str]) -> str:
-    """Ensure markdown headings/lists have required blank lines and collapse extras."""
+    """Ensure markdown headings/lists have required blank lines, wrap long lines, and collapse extras."""
     processed: list[str] = []
     total = len(lines)
     for idx, line in enumerate(lines):
@@ -2142,17 +2143,77 @@ def _finalize_markdown_lines(lines: list[str]) -> str:
                 processed.append("")
         else:
             processed.append(line)
-    final_lines: list[str] = []
+    deduped: list[str] = []
     prev_blank = False
     for line in processed:
         if line == "":
             if not prev_blank:
-                final_lines.append("")
+                deduped.append("")
             prev_blank = True
         else:
-            final_lines.append(line)
+            deduped.append(line)
             prev_blank = False
-    return "\n".join(final_lines).rstrip() + "\n"
+
+    wrapped: list[str] = []
+    in_fence = False
+    fence_delim = ""
+    fence_pattern = re.compile(r"^(```|~~~)")
+    bullet_pattern = re.compile(r"^(\s*(?:[-*]|\d+\.)\s+)(.+)$")
+    for line in deduped:
+        stripped = line.strip()
+        if line.startswith("#"):
+            wrapped.append(line)
+            continue
+        fence_match = fence_pattern.match(stripped)
+        if fence_match:
+            delim = fence_match.group(1)
+            if not in_fence:
+                in_fence = True
+                fence_delim = delim
+            elif delim == fence_delim:
+                in_fence = False
+                fence_delim = ""
+            wrapped.append(line)
+            continue
+        if in_fence or not stripped:
+            wrapped.append(line)
+            continue
+        if stripped.startswith(">") or stripped.startswith("|"):
+            wrapped.append(line)
+            continue
+        if stripped.startswith("{:"):
+            wrapped.append(line)
+            continue
+        bullet_match = bullet_pattern.match(line)
+        if line.startswith("    ") and not bullet_match:
+            wrapped.append(line)
+            continue
+        if bullet_match:
+            prefix, content = bullet_match.groups()
+            wrapped.extend(
+                textwrap.wrap(
+                    content.strip(),
+                    width=80,
+                    initial_indent=prefix,
+                    subsequent_indent=" " * len(prefix),
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                or [line]
+            )
+            continue
+        wrapped.extend(
+            textwrap.wrap(
+                line.strip(),
+                width=80,
+                initial_indent="",
+                subsequent_indent="",
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+            or [line]
+        )
+    return "\n".join(wrapped).rstrip() + "\n"
 
 def update_architecture_md(project_root: str | Path = ".", md_path: str | Path = "docs/architecture.md") -> bool:
     """Replace the AUTO-INVENTORY block in architecture.md with a fresh inventory."""
@@ -2509,6 +2570,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
     
     # Build node-to-cluster mapping from edges to ensure all edge nodes are included
     node_to_cluster: dict[str, str] = {}
+    cluster_pair_counts: dict[tuple[str, str], int] = {}
     for e in edges:
         sp = e.get("src_path")
         dp = e.get("resolved_path")
@@ -2520,6 +2582,10 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             dm = _to_mod(dp)
             if dm != "unknown":
                 node_to_cluster[dm] = _cluster_for_path(dp)
+        if sp and dp:
+            sc = _cluster_for_path(sp)
+            dc = _cluster_for_path(dp)
+            cluster_pair_counts[(sc, dc)] = cluster_pair_counts.get((sc, dc), 0) + 1
     
     # Collect all edge nodes
     edge_nodes: set[str] = set()
@@ -2553,6 +2619,33 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         lines.append("  A[no data] --> B[no data]")
     lines.append("```")
     lines.append("")
+
+    # Connection summary to emphasize critical paths
+    lines.append("## Connection highlights")
+    lines.append("")
+    lines.append("Key module-to-module and cluster relationships to watch during refactors.")
+    lines.append("")
+    if top_edges:
+        lines.append("### Top module edges")
+        lines.append("")
+        for (src, dst), cnt in top_edges[:10]:
+            sc = node_to_cluster.get(src, "Other")
+            dc = node_to_cluster.get(dst, "Other")
+            lines.append(f"- `{src}` → `{dst}` ({cnt} refs, {sc} → {dc})")
+        lines.append("")
+    else:
+        lines.append("- No module-level edges detected.")
+        lines.append("")
+    if cluster_pair_counts:
+        lines.append("### Cluster flow summary")
+        lines.append("")
+        for (sc, dc), cnt in sorted(cluster_pair_counts.items(), key=lambda kv: -kv[1])[:10]:
+            relation = "intra-cluster" if sc == dc else "cross-cluster"
+            lines.append(f"- {sc} → {dc}: {cnt} edges ({relation})")
+        lines.append("")
+    else:
+        lines.append("- Not enough cluster links to summarize.")
+        lines.append("")
 
     # Compact pipeline focus (entry → pipeline → routing → handlers → utils)
     lines.append("## Pipeline focus (compact)")
@@ -2770,7 +2863,15 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
                     path = orig_path_str  # fallback, but should not happen
             else:
                 path = Path(path).name  # this should not happen now
-        lines.append(f"### `{path}`")
+        display_path = path.replace("webapp/parser/", "", 1) if path else "unknown"
+        heading_label = display_path or path or "unknown"
+        md_heading = heading_label.replace('_', r'\_')
+        raw_ref = path or heading_label
+        raw_id = re.sub(r'[^a-zA-Z0-9]+', '-', raw_ref).strip('-').lower()
+        if not raw_id:
+            raw_id = f"module-{abs(hash(raw_ref))}"
+        lines.append(f"### {md_heading} {{#{raw_id}}}")
+        lines.append("")
         if m.get("doc"):
             lines.append(f"> {m['doc'].splitlines()[0]}")
         # Top-of-file comments
@@ -2992,6 +3093,23 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
         lines.append("")
         lines.append(f"Total annotations: {total}")
         lines.append("")
+
+        # Priority snapshot to emphasize hotspots
+        lines.append("## Priority highlights")
+        lines.append("")
+        for priority, label in [('high', 'High Priority'), ('medium', 'Medium Priority'), ('low', 'Low Priority')]:
+            todos = priority_todos[priority]
+            if not todos:
+                lines.append(f"- **{label}:** None outstanding.")
+                continue
+            file_counts: dict[str, int] = {}
+            for path, *_ in todos:
+                file_counts[path] = file_counts.get(path, 0) + 1
+            top_files = ", ".join(
+                f"{(p or 'unknown').replace('webapp/', '', 1)} ({cnt})" for p, cnt in sorted(file_counts.items(), key=lambda kv: -kv[1])[:3]
+            )
+            lines.append(f"- **{label}:** {len(todos)} items across {len(file_counts)} files. Focus: {top_files}.")
+        lines.append("")
         
         # Output by priority
         for priority, label in [('high', 'High Priority'), ('medium', 'Medium Priority'), ('low', 'Low Priority')]:
@@ -3006,7 +3124,24 @@ def generate_todos_index(project_root: str | Path = ".", out_markdown: str | Pat
                     file_groups[path] = []
                 file_groups[path].append((ln, keyword, safe_txt))
             for path in sorted(file_groups.keys()):
-                lines.append(f"### `{path}` ({label})")
+                display_path = (path or "unknown")
+                display_path = display_path.replace("\\", "/")
+                if display_path.startswith("webapp/"):
+                    display_path = display_path[len("webapp/"):]
+                if len(display_path) > 60:
+                    parts = display_path.split("/")
+                    tail = "/".join(parts[-4:]) if len(parts) >= 4 else display_path
+                    display_path = f".../{tail}" if tail != display_path else tail
+                heading = display_path.replace('_', r'\_')
+                raw_id = re.sub(r'[^a-zA-Z0-9]+', '-', f"{path}-{priority}").strip('-').lower()
+                if not raw_id:
+                    raw_id = f"todo-{priority}-{abs(hash(path))}"
+                elif len(raw_id) > 60:
+                    suffix = abs(hash(path)) % 100000
+                    raw_id = f"{raw_id[:50].rstrip('-')}-{suffix}"
+                lines.append(f"### {heading} ({label})")
+                lines.append(f"{{: #{raw_id} }}")
+                lines.append("")
                 for ln, keyword, safe_txt in file_groups[path]:
                     lines.append(f"- L{ln} *{keyword}*: {safe_txt}")
                 lines.append("")
@@ -3202,6 +3337,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         # Build nodes and edges with clusters
         cluster_nodes: dict[str, set[str]] = {c: set() for c in ["Entry", "Pipeline", "Routing", "State Handlers", "Format Handlers", "Shared Handlers", "Services", "Utils", "Context Integration", "Health", "Other"]}
         cluster_edges: dict[tuple[str, str], int] = {}
+        cluster_pair_counts: dict[tuple[str, str], int] = {}
         node_to_cluster: dict[str, str] = {}
         for e in edges:
             sp = e.get("src_path")
@@ -3222,6 +3358,7 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             node_to_cluster[src] = sc
             node_to_cluster[dst] = dc
             cluster_edges[(src, dst)] = cluster_edges.get((src, dst), 0) + 1
+            cluster_pair_counts[(sc, dc)] = cluster_pair_counts.get((sc, dc), 0) + 1
         # Top edges (limited for readability)
         top_edges = sorted(cluster_edges.items(), key=lambda kv: -kv[1])[:MAX_DIAGRAM_EDGES]
         
@@ -3283,6 +3420,34 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
         lines.append("")
         lines.append("**✨ Legend:** Colors indicate module categories with metallic accents. Click nodes for details below.")
         lines.append("")
+        # Highlight major connections to emphasize cross-cutting concerns
+        lines.append("## Connection Highlights")
+        lines.append("Key integration points across major parser aspects to simplify tracking relevance.")
+        lines.append("")
+        lines.append("### Top Module Links")
+        lines.append("")
+        if top_edges:
+            for (src, dst), cnt in top_edges[:10]:
+                sc = node_to_cluster.get(src, "Other")
+                dc = node_to_cluster.get(dst, "Other")
+                lines.append(
+                    f"- `{src}` → `{dst}` ({cnt} refs, {sc} → {dc}) — review `{dst}` whenever `{src}` changes."
+                )
+        else:
+            lines.append("- No module-level connections detected.")
+        lines.append("")
+        if cluster_pair_counts:
+            lines.append("### Cluster Flow Summary")
+            lines.append("")
+            for (sc, dc), cnt in sorted(cluster_pair_counts.items(), key=lambda kv: -kv[1])[:10]:
+                relation = "intra-cluster" if sc == dc else "cross-cluster"
+                lines.append(f"- {sc} → {dc}: {cnt} edges ({relation} flow to monitor.)")
+            lines.append("")
+        else:
+            lines.append("### Cluster Flow Summary")
+            lines.append("")
+            lines.append("- Not enough cluster cross-links to summarize.")
+            lines.append("")
         # File Connection Map
         lines.append("## File Connection Map")
         lines.append("Detailed import/export relationships and dependencies.")
@@ -3324,8 +3489,20 @@ def generate_pipeline_map(project_root: str | Path = ".", out_markdown: str | Pa
             else:
                 path_str = "unknown"
                 link = "#"
-            mod_name = path_str.replace("webapp/parser/", "").replace("/", "_").replace(".py", "")
-            lines.append(f"### {path_str.replace('_', r'\_')}")
+            display_path = path_str.replace("webapp/parser/", "") or path_str
+            mod_name = display_path.replace("/", "_").replace(".py", "")
+            # Emit a normal Markdown heading (avoid inline HTML to satisfy
+            # markdownlint MD033). Rely on the rendered heading id that
+            # Jekyll/kramdown will generate for linking.
+            md_heading = display_path.replace('_', r'\_')
+            # Create a stable id from the module path: lowercase, replace
+            # non-alphanum with hyphens. Use kramdown-style header id
+            # attribute (e.g. "### Title {#my-id}") which is markdown,
+            # not inline HTML (avoids MD033).
+            raw_id = re.sub(r'[^a-zA-Z0-9]+', '-', path_str).strip('-').lower()
+            if not raw_id:
+                raw_id = f"module-{abs(hash(path_str))}"
+            lines.append(f"### {md_heading} {{#{raw_id}}}")
             lines.append("")
             if m.get("doc"):
                 safe_doc = m['doc'].splitlines()[0].replace('_', '*')
