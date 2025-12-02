@@ -286,6 +286,13 @@ class SessionManager:
         with self._lock:
             return self._ip_ua_to_session.get(fingerprint)
 
+    def unbind_fingerprints_for_session(self, session_id: str) -> None:
+        """Remove any cached fingerprint bindings that still point at session_id."""
+        with self._lock:
+            stale = [fp for fp, sid in self._ip_ua_to_session.items() if sid == session_id]
+            for fp in stale:
+                self._ip_ua_to_session.pop(fp, None)
+
     def bind_thread_id(self, thread_id: int, session_id: str) -> None:
         with self._lock:
             self._thread_session_map[thread_id] = session_id

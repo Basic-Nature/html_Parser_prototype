@@ -235,4 +235,102 @@ def format_location_fragment(header: str, value: Any) -> str:
     return f"{prefix} {text}".strip()
 
 
+def attach_precinct_column(
+    headers: Sequence[str] | None,
+    rows: Sequence[Dict[str, Any]] | None,
+    *,
+    location_headers: Sequence[str] | None = None,
+    column_name: str = "Precinct",
+) -> Tuple[List[str], List[Dict[str, Any]], bool]:
+    """Ensure a canonical precinct column exists and is populated when possible."""
+
+    def _normalize_header(token: str | None) -> str:
+        return (token or "").strip().lower()
+
+    def _has_value(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        return bool(str(value).strip())
+
+    def _dedupe_fragments(parts: List[str]) -> List[str]:
+        ordered: List[str] = []
+        seen = set()
+        for part in parts:
+            key = part.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(part)
+        return ordered
+
+    working_headers = list(headers or [])
+    working_rows = [dict(row or {}) for row in (rows or [])]
+
+    canonical_label = (column_name or "Precinct").strip() or "Precinct"
+    canonical_key = canonical_label.lower()
+
+    existing_idx = next(
+        (idx for idx, header in enumerate(working_headers)
+         if isinstance(header, str) and header.strip().lower() == canonical_key),
+        None,
+    )
+
+    column_added = False
+    if existing_idx is None:
+        working_headers.insert(0, canonical_label)
+        target_header = canonical_label
+        column_added = True
+    else:
+        target_header = working_headers[existing_idx]
+
+    sanitized_locations = [
+        header.strip()
+        for header in (location_headers or [])
+        if isinstance(header, str) and header.strip()
+    ]
+    if not sanitized_locations:
+        sanitized_locations = collect_location_headers(working_headers, ensure_precinct=True)
+
+    normalized_seen = set()
+    ordered_locations: List[str] = []
+    for header in sanitized_locations:
+        norm = _normalize_header(header)
+        if not header or norm in normalized_seen:
+            continue
+        normalized_seen.add(norm)
+        ordered_locations.append(header)
+
+    source_headers = [
+        header for header in ordered_locations
+        if _normalize_header(header) != canonical_key
+    ]
+
+    attached = column_added
+    if not working_rows:
+        return working_headers, working_rows, attached
+
+    for row in working_rows:
+        if _has_value(row.get(target_header)):
+            continue
+
+        fragments: List[str] = []
+        for header in source_headers:
+            if header not in row:
+                continue
+            fragment = format_location_fragment(header, row.get(header))
+            if fragment:
+                fragments.append(fragment)
+        fragments = _dedupe_fragments(fragments)
+
+        if fragments:
+            row[target_header] = " / ".join(fragments)
+            attached = True
+        else:
+            row.setdefault(target_header, "")
+
+    return working_headers, working_rows, attached
+
+
 

@@ -196,6 +196,7 @@ jobs:
               DATA_API_URL="/api/ballotlens-database" \
               CSP_MODE="STRICT" \
               HEADLESS_DEFAULT="True" \
+              ENABLE_FINGERPRINT_SESSION_RECOVERY="0" \
               DISABLE_HTML_FALLBACK="1" \
               SENTENCE_TRANSFORMER_LOCAL_PATH="/models/sentence/all-MiniLM-L6-v2" \
               TRANSFORMERS_OFFLINE="1" \

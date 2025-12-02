@@ -235,6 +235,11 @@ app.wsgi_app = EnsureWsSecurityHeaders(app.wsgi_app)
 # 3. Session & State Management
 session_manager = SessionManager()
 
+ENABLE_FINGERPRINT_SESSION_RECOVERY = os.environ.get(
+    "ENABLE_FINGERPRINT_SESSION_RECOVERY",
+    "true",
+).lower() in {"1", "true", "yes"}
+
 LOG_DEDUPE_WINDOW = float(os.environ.get("LOG_DEDUPE_WINDOW_SEC", "2.0"))
 MAX_CACHE_PER_SESSION = 120
 
@@ -272,6 +277,7 @@ def cleanup_sessions():
         except Exception:
             pass
         last_contest_options.pop(sid, None)
+        session_manager.unbind_fingerprints_for_session(sid)
     if expired:
         emit('session_expired', {'expired_sessions': expired}, broadcast=True)
         broadcast_sessions()
@@ -368,18 +374,20 @@ def resolve_session_id(data=None, create_if_missing=True):
         session_manager.bind_socket(socket_sid, cookie_sid)
         return cookie_sid
 
-    fp = client_fingerprint()
-    fp_sid = session_manager.resolve_fingerprint(fp)
-    if isinstance(fp_sid, str) and fp_sid:
-        session_manager.bind_socket(socket_sid, fp_sid)
-        session['logical_session_id'] = fp_sid
-        return fp_sid
+    fingerprint = client_fingerprint() if ENABLE_FINGERPRINT_SESSION_RECOVERY else None
+    if ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
+        fp_sid = session_manager.resolve_fingerprint(fingerprint)
+        if isinstance(fp_sid, str) and fp_sid:
+            session_manager.bind_socket(socket_sid, fp_sid)
+            session['logical_session_id'] = fp_sid
+            return fp_sid
 
     if not create_if_missing:
         return None
 
     new_sid = 'sess_' + os.urandom(6).hex()
-    session_manager.bind_fingerprint(fp, new_sid)
+    if ENABLE_FINGERPRINT_SESSION_RECOVERY and fingerprint:
+        session_manager.bind_fingerprint(fingerprint, new_sid)
     session_manager.bind_socket(socket_sid, new_sid)
     session['logical_session_id'] = new_sid
     session_manager.ensure_session(new_sid)
