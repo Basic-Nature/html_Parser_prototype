@@ -207,6 +207,13 @@ This project uses a modular, auditable pipeline for election data parsing, conte
   - Organize parsed data, deduplicate, and run integrity checks.
   - May update the context library with new findings.
 
+  **Enrichment Coordinator Handle**
+  - Treat `context_coordinator.py` as the enrichment coordinator that stages work before `ContextOrganizer.organize_context` fires. Instead of flooding the organizer with every detected asset, the coordinator should batch entities by category (contests, locations, vote methods, etc.), attach provenance tags, and only submit the bundles that pass lightweight heuristics.
+  - Each invocation of `organize_context` should emit a compact training snapshot: the categorized entities, the applied fixes, and the anomaly verdicts. Store these snapshots under `log/context_enrichment/*.jsonl` or directly in PostgreSQL so retraining jobs can ingest well-scoped examples rather than noisy global dumps.
+  - When wiring new handlers (HTML or PDF), call into the coordinator’s enrichment handle first; let it decide whether to spawn DOM scans, NLP passes, or ML anomaly checks. This throttles unrelated tasks and keeps training data aligned with best practices (one category per pass, provenance recorded, audit-ready metadata attached).
+  - The coordinator now builds an `enrichment_plan` (routes such as `dom`, `tables`, `ml`, `integrity`) and passes it to `ContextOrganizer`. The organizer honors that plan by skipping gated routes and records the resolved plan/decisions into `metadata.route_summary`. Every plan execution is appended to `log/context_enrichment/plan_snapshots.jsonl` for downstream training and auditing.
+  - Format-aware routing: HTML/DOM runs keep panel/button scans, PDFs prioritize reconstruction, OCR/image inputs request DOM + ML cleanup, CSV/JSON/API/XML feeds bypass DOM entirely and focus on structured table + integrity routes. Each detected path is logged via `plan.dynamic_paths` so future training jobs understand why a subset of routes ran.
+
 #### **Step 3: Logging & Feedback**
 
 - **All field extractions, corrections, and feedback** are logged as `.jsonl` files.
@@ -306,18 +313,28 @@ Contributions welcome! See `CONTRIBUTING.md` to get started.
 
 1. **User chooses URL** from `urls.txt` (prompted via `prompt_user_input`).
 2. **Browser is launched** via `browser_utils` (Playwright-first; Selenium fallback only if optional dependency is installed).
+
+   - Before any handler or download prompt runs, the `NavigationInstructionRunner` loads context-aware recipes from `webapp/parser/navigator/navigation_recipes.orjson`.  These recipes describe DOM markers, selectors, and optional parallel action groups that toggle hidden views, fire menus, or kick off context scans.  The runner merges any projected data (e.g., contests, inferred years) back into the orchestration context so downstream handlers inherit the dynamically detected state/county metadata.
+
 3. **CAPTCHA page is detected**, `captcha_tools` attempts resolution.
+
 4. HTML is scanned by `html_scanner` to gather:
    - Election year (e.g. 2022)
    - Race categories (e.g. Governor, Senate, Proposition)
    - County names (if present)
+
 5. **Routing**:
    - If `state_router` detects a handler → delegate to `handlers/<state>.py`
    - Otherwise → delegate to `format_router`
+   - Downloaded files selected via `format_router` stay in the same pipeline; their parsed results now continue through the HTML parser's integrity/AI/export stages instead of short-circuiting after the download completes.
 6. The **handler parses and returns**: headers, data, contest, metadata.
+
 7. **Table extraction** is performed using `table_core.py` and `dynamic_table_extractor.py`, with ML/NLP scoring and patching.
+
 8. **Election integrity checks** are run via `Context_Integration/Integrity_check.py`.
+
 9. **CSV and metadata are saved** in `output/<state>/<county>/<race>/`.
+
 10. **Logs and audit trails** are written for transparency and reproducibility.
 
 ---
@@ -333,6 +350,17 @@ The `input/` folder is used for:
 Files are placed here by `download_utils.py` or manually.  
 Manual parsing is supported if you use the correct naming convention and trigger via override.
 
+### 🧭 Dynamic Navigation Recipes
+
+- File: `webapp/parser/navigator/navigation_recipes.orjson`
+- Loader: `NavigationRecipeStore`
+- Executor: `NavigationInstructionRunner`
+
+Each recipe defines matching constraints (`state`, `county`, URL fragments, DOM markers) and a list of steps.  Supported actions include waiting for selectors, clicking buttons, running JavaScript, automatic scrolling, projecting results from `scan_html_for_context`, and spawning **parallel** sub-steps to emulate multi-threaded navigation.  Recipes can project values (e.g., contests, inferred years) directly into the parser context so routing, contest selection, and ML scoring all share the same dynamically detected signals.  The shared runner executes before format detection, which means traditional handlers and download-based flows both inherit the navigation side effects (toggled panes, expanded menus, etc.).
+
+- Every execution streams structured telemetry (per-step status, selectors, scroll metadata) into `log/navigation_learning_log.jsonl` through `ContextCoordinator.record_navigation_feedback()`.  Use `webapp/parser/navigator/training_data.py` to pull that log into an orjson dataset for ML retraining or to bootstrap new recipes programmatically.
+- `webapp/parser/health/navigation_feedback_ingest.py` tails the same navigation log and converts fresh entries into `navigation_feedback_selection_log.jsonl`, so the existing manual correction bot can review wins/losses, auto-accept high-signal patterns, or trigger retraining without any extra tooling.
+
 ---
 
 ## 🛠️ Extensibility Guidelines
@@ -345,6 +373,8 @@ Manual parsing is supported if you use the correct naming convention and trigger
   Pass `noisy_labels` and `noisy_label_patterns` to `select_contest()` in your handler.
 - **Bot tasks:**  
   Add to `health/health_router.py` and enable with `ENABLE_BOT_TASKS=true` in `.env`.
+- **Azure Health Control Center:**  
+  The `/azure_health` route in `Smart_Elections_Parser_Webapp.py` exposes a control panel where high-impact scripts (manual correction modes, log/cache cleanup, full `BotPipeline.run`, retraining, Integrity_check summaries, dataset promotion, etc.) can be launched from the browser.  Each task streams stdout back into the UI so operators on Azure (or localhost) can supervise long-running health work without shell access.
 - **Context and correction:**  
   Add new context patterns or feedback to `context_library.json` or extend `context_organizer.py`.
 - **User prompts:**  

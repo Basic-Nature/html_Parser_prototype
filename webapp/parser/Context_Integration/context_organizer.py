@@ -1392,6 +1392,7 @@ class ContextOrganizer(object):
         plot_clusters_flag=True,
         debug=None,
         fuzzy_cutoff=None,
+        enrichment_plan=None,
         suppress_dom_errors=False,
     ) -> dict:
         """
@@ -1401,6 +1402,74 @@ class ContextOrganizer(object):
         Handles edge cases to avoid list index out of range errors.
         """
         
+        enrichment_plan = enrichment_plan if isinstance(enrichment_plan, dict) else {}
+        default_routes = {
+            "dom",
+            "sections",
+            "contests",
+            "panels",
+            "buttons",
+            "tables",
+            "candidate_panels",
+            "location_panels",
+            "headings",
+            "ballot_types",
+            "results_timestamps",
+            "party_labels",
+            "vote_methods",
+            "ml",
+            "integrity",
+        }
+        plan_routes_raw = enrichment_plan.get("routes") if enrichment_plan else None
+        if isinstance(plan_routes_raw, (list, tuple, set)):
+            requested_routes = [str(route) for route in plan_routes_raw if route]
+        else:
+            requested_routes = []
+        allowed_routes = set(requested_routes) if requested_routes else set(default_routes)
+        dependent_routes = {
+            "panels",
+            "buttons",
+            "tables",
+            "candidate_panels",
+            "location_panels",
+            "headings",
+            "ballot_types",
+            "results_timestamps",
+            "party_labels",
+            "vote_methods",
+        }
+        needs_sections = bool(allowed_routes & dependent_routes)
+        sections_enabled = "sections" in allowed_routes
+        sections_forced = False
+        if not sections_enabled and needs_sections:
+            allowed_routes.add("sections")
+            sections_enabled = True
+            sections_forced = True
+        dom_enabled = "dom" in allowed_routes
+
+        def route_enabled(name: str) -> bool:
+            return name in allowed_routes
+
+        plan_payload = dict(enrichment_plan) if enrichment_plan else {}
+        if not plan_payload.get("routes"):
+            plan_payload["routes"] = sorted(allowed_routes)
+        plan_payload.setdefault("source", "auto")
+
+        route_decisions = {
+            "requested_routes": requested_routes or ["*"],
+            "allowed_routes": sorted(allowed_routes),
+            "sections_enabled": sections_enabled,
+            "sections_forced": sections_forced,
+            "dom_enabled": dom_enabled,
+        }
+        route_log_messages = []
+        if enrichment_plan:
+            route_log_messages.append(
+                f"[ROUTES] Plan requested routes={requested_routes or ['*']} for source={enrichment_plan.get('source', 'auto')}"
+            )
+        if sections_forced:
+            route_log_messages.append("[ROUTES] Forced 'sections' route to satisfy dependent artifacts.")
+
         # Defensive logging of raw_context keys
         if isinstance(raw_context, dict):
             logger.debug("DEBUG: raw_context keys: %s", list(raw_context.keys()))
@@ -1411,6 +1480,7 @@ class ContextOrganizer(object):
         embedding_model = embedding_model if embedding_model is not None else self.embedding_model_obj
         plot_anomalies = plot_anomalies if plot_anomalies is not None else self.plot_anomalies
         log = []
+        log.extend(route_log_messages)
         summary = {"attempts": [], "final": None, "error": None}
 
         logger.info(
@@ -1451,7 +1521,11 @@ class ContextOrganizer(object):
                 cache_size = len(cache) if hasattr(cache, "__len__") else 0
                 log.append(f"[CACHE] Using provided cache with {cache_size} entries.")
 
-            context, dom_tree, dom_parts = self._prepare_dom_context(raw_context, suppress_dom_errors, log, summary)
+            if dom_enabled:
+                context, dom_tree, dom_parts = self._prepare_dom_context(raw_context, suppress_dom_errors, log, summary)
+            else:
+                context, dom_tree, dom_parts = {}, {}, {}
+                log.append("[ROUTES] DOM preparation skipped by plan.")
 
             assets = self._collect_structured_context(
                 raw_context,
@@ -1463,34 +1537,62 @@ class ContextOrganizer(object):
             )
             contests = assets.get("contests", [])
 
-            grouped = self._group_keyword_sections(
-                assets,
-                log,
-                fuzzy_cutoff=fuzzy_cutoff if fuzzy_cutoff is not None else 0.85,
-            )
-            panels = grouped["panels"]
-            buttons = grouped["buttons"]
-            tables = grouped["tables"]
-            candidate_panels = grouped["candidate_panels"]
-            location_panels = grouped["location_panels"]
-            headings = grouped["headings"]
-            ballot_types = grouped["ballot_types"]
-            results_timestamps = grouped["results_timestamps"]
-            party_labels = grouped["party_labels"]
-            vote_methods = grouped["vote_methods"]
+            section_keys = [
+                "panels",
+                "buttons",
+                "tables",
+                "candidate_panels",
+                "location_panels",
+                "headings",
+                "ballot_types",
+                "results_timestamps",
+                "party_labels",
+                "vote_methods",
+            ]
+            if sections_enabled:
+                grouped = self._group_keyword_sections(
+                    assets,
+                    log,
+                    fuzzy_cutoff=fuzzy_cutoff if fuzzy_cutoff is not None else 0.85,
+                )
+            else:
+                grouped = {key: {} for key in section_keys}
+                log.append("[ROUTES] Keyword grouping skipped (sections route disabled).")
 
-            contests, anomalies, clusters, fix_log, best_type, best_election_types, plot_clusters_flag = self._apply_ml_pipeline(
-                contests,
-                context_library,
-                enable_ml,
-                embedding_model,
-                contamination,
-                n_estimators,
-                random_state,
-                plot_clusters_flag,
-                log,
-                plot_anomalies,
-            )
+            panels = grouped.get("panels", {}) if route_enabled("panels") else {}
+            buttons = grouped.get("buttons", {}) if route_enabled("buttons") else {}
+            tables = grouped.get("tables", {}) if route_enabled("tables") else {}
+            candidate_panels = grouped.get("candidate_panels", {}) if route_enabled("candidate_panels") else {}
+            location_panels = grouped.get("location_panels", {}) if route_enabled("location_panels") else {}
+            headings = grouped.get("headings", {}) if route_enabled("headings") else {}
+            ballot_types = grouped.get("ballot_types", {}) if route_enabled("ballot_types") else {}
+            results_timestamps = grouped.get("results_timestamps", {}) if route_enabled("results_timestamps") else {}
+            party_labels = grouped.get("party_labels", {}) if route_enabled("party_labels") else {}
+            vote_methods = grouped.get("vote_methods", {}) if route_enabled("vote_methods") else {}
+
+            if route_enabled("ml"):
+                contests, anomalies, clusters, fix_log, best_type, best_election_types, plot_clusters_flag = self._apply_ml_pipeline(
+                    contests,
+                    context_library,
+                    enable_ml,
+                    embedding_model,
+                    contamination,
+                    n_estimators,
+                    random_state,
+                    plot_clusters_flag,
+                    log,
+                    plot_anomalies,
+                )
+            else:
+                anomalies, clusters, fix_log = [], [], []
+                best_type = raw_context.get("type") if isinstance(raw_context, dict) else None
+                best_election_types = raw_context.get("election_types") if isinstance(raw_context, dict) else []
+                if best_election_types is None:
+                    best_election_types = []
+                if not isinstance(best_election_types, list):
+                    best_election_types = [best_election_types]
+                plot_clusters_flag = False
+                log.append("[ROUTES] ML pipeline skipped (route disabled).")
 
             if fix_log:
                 logger.info("[bold green]Auto-fixes applied:[/bold green]")
@@ -1499,14 +1601,18 @@ class ContextOrganizer(object):
                     fixes = ", ".join(entry.get("fixes", []))
                     logger.warning(f"  [yellow]{title}[/yellow]: {fixes}")
 
-            integrity_issues = election_integrity_checks(contests)
-            for issue, contest in integrity_issues:
-                if issue == "duplicate":
-                    logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Duplicate contest detected.\n  [dim]Context:[/dim] {contest}")
-                elif issue == "missing_location":
-                    logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing location info.\n  [dim]Context:[/dim] {contest}")
-                elif issue == "missing_year":
-                    logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing year.\n  [dim]Context:[/dim] {contest}")
+            if route_enabled("integrity"):
+                integrity_issues = election_integrity_checks(contests)
+                for issue, contest in integrity_issues:
+                    if issue == "duplicate":
+                        logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Duplicate contest detected.\n  [dim]Context:[/dim] {contest}")
+                    elif issue == "missing_location":
+                        logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing location info.\n  [dim]Context:[/dim] {contest}")
+                    elif issue == "missing_year":
+                        logger.warning(f"[bold yellow][INTEGRITY][/bold yellow] Contest missing year.\n  [dim]Context:[/dim] {contest}")
+            else:
+                integrity_issues = []
+                log.append("[ROUTES] Integrity checks skipped (route disabled).")
 
             if len(contests) > 50:
                 logger.error(
@@ -1547,9 +1653,12 @@ class ContextOrganizer(object):
                 "anomalies": [contests[i] for i in anomalies if isinstance(i, int) and 0 <= i < len(contests)] if anomalies else [],
                 "clusters": clusters.tolist() if hasattr(clusters, "tolist") else clusters,
                 "integrity_issues": integrity_issues,
+                "route_summary": route_decisions,
             }
 
             metadata = organized["metadata"]
+            metadata["enrichment_plan"] = plan_payload
+            metadata["route_summary"] = route_decisions
             sync_type_and_election_types(organized, fallback_types=best_election_types, fallback_type=best_type)
             sync_type_and_election_types(metadata, fallback_types=best_election_types, fallback_type=best_type)
             valid_years = [
@@ -1637,6 +1746,7 @@ class ContextOrganizer(object):
                 summary["final"].update({k: v for k, v in final_snapshot.items() if v is not None})
             else:
                 summary["final"] = final_snapshot
+            summary["route_summary"] = route_decisions
             summary["error"] = None
 
             return {

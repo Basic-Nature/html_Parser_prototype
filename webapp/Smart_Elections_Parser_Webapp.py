@@ -86,10 +86,32 @@ EVENTLET_STATUS = {
     "notes": list(_EVENTLET_BOOT_NOTES),
 }
 
+_SOCKETIO_ENGINE_OPTIONS = {
+    "ping_interval": 10,
+    "ping_timeout": 60,
+}
+if _SOCKETIO_ASYNC_MODE == "threading":
+    _SOCKETIO_ENGINE_OPTIONS.update({
+        "allow_upgrades": False,
+        "transports": ["polling"],
+    })
+    _SOCKETIO_CLIENT_TRANSPORTS = ["polling"]
+else:
+    _SOCKETIO_CLIENT_TRANSPORTS = ["websocket", "polling"]
+
+SOCKETIO_CLIENT_CONFIG = {
+    "transports": _SOCKETIO_CLIENT_TRANSPORTS,
+    "pollingOnly": _SOCKETIO_ASYNC_MODE == "threading",
+    "pingInterval": int(_SOCKETIO_ENGINE_OPTIONS["ping_interval"] * 1000),
+    "pingTimeout": int(_SOCKETIO_ENGINE_OPTIONS["ping_timeout"] * 1000),
+}
+
 import gzip
 import re
 import secrets
 import shutil
+import subprocess
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -119,14 +141,17 @@ from werkzeug.exceptions import NotFound
 
 from webapp.parser.config import (
     DATA_API_URL,
+    DEPLOY_ENV,
     INPUT_DIR,
     LOG_DIR,
     OUTPUT_DIR,
+    POSTGRES_AUTH,
     POSTGRES_DB,
     POSTGRES_HOST,
     POSTGRES_PASSWORD_RAW,
     POSTGRES_PORT,
     POSTGRES_USER_RAW,
+    PROJECT_ROOT,
     RUN_HISTORY_FILE,
     SUPPORTED_EXTENSION_SET,
     UPLOADS_DIR,
@@ -144,6 +169,8 @@ logger.info({
         "eventlet_patched": EVENTLET_STATUS["patched"],
         "patched_modules": EVENTLET_STATUS["patched_modules"],
         "skip_reason": EVENTLET_STATUS["skip_reason"],
+        "socket_transports": _SOCKETIO_CLIENT_TRANSPORTS,
+        "polling_only": SOCKETIO_CLIENT_CONFIG["pollingOnly"],
     }
 })
 from webapp.parser.utils.session_state import (
@@ -185,9 +212,199 @@ socketio = SocketIO(
     app,
     async_mode=_SOCKETIO_ASYNC_MODE,
     cors_allowed_origins="*",
-    ping_interval=10,   # 10s -> matches client pingInterval (10000 ms)
-    ping_timeout=60,    # 60s -> matches client pingTimeout (60000 ms)
+    **_SOCKETIO_ENGINE_OPTIONS,
 )
+
+# --- Health task orchestration (Azure control center) ---
+HEALTH_TASK_DEFINITIONS: dict[str, dict] = {
+    "health_router_full": {
+        "label": "Full Health Router",
+        "description": "Run the entire BotPipeline: clean logs, migrate context, manual correction, and retraining.",
+        "command": ["-m", "webapp.parser.health.health_router"],
+        "danger": True,
+    },
+    "manual_correction_auto": {
+        "label": "Manual Correction (Auto)",
+        "description": "Auto-accept new context entries without prompts using manual_correction_bot --auto.",
+        "command": ["-m", "webapp.parser.health.manual_correction_bot", "--auto"],
+        "danger": True,
+    },
+    "manual_correction_enhanced": {
+        "label": "Manual Correction (Enhanced)",
+        "description": "Launch manual_correction_bot with enhanced review (interactive, slower but precise).",
+        "command": ["-m", "webapp.parser.health.manual_correction_bot", "--enhanced"],
+        "danger": True,
+    },
+    "retrain_table_models": {
+        "label": "Retrain Table Models",
+        "description": "Trigger retrain_table_structure_models to refresh structure detection weights.",
+        "command": ["-m", "webapp.parser.health.retrain_table_structure_models"],
+    },
+    "scan_misaligned": {
+        "label": "Scan Misaligned NER",
+        "description": "Run scan_misaligned_ner to flag mismatched training samples before retraining.",
+        "command": ["-m", "webapp.parser.health.scan_misaligned_ner"],
+    },
+    "log_cache_cleaner": {
+        "label": "Log & Cache Cleaner",
+        "description": "Execute log_cache_cleaner_bot to dedupe/cap JSONL files and watch sizes.",
+        "command": ["-m", "webapp.parser.health.log_cache_cleaner_bot"],
+    },
+    "context_migration": {
+        "label": "Context Migration",
+        "description": "Run context_migration to sync historical context formats with the latest schema.",
+        "command": ["-m", "webapp.parser.health.context_migration"],
+    },
+    "integrity_check_summary": {
+        "label": "Integrity Check Summary",
+        "description": "Stream Integrity_check findings for the current context library.",
+        "command": ["-m", "webapp.parser.health.integrity_check_runner"],
+    },
+    "dataset_promotion_latest": {
+        "label": "Dataset Promotion (Latest)",
+        "description": "Promote the newest output folder into warehouse_election_results with guarded batching.",
+        "command": ["-m", "webapp.parser.health.dataset_promotion"],
+        "danger": True,
+    },
+}
+
+_HEALTH_TASK_LOCK = threading.Lock()
+_HEALTH_TASK_RUNS: dict[str, dict] = {}
+_HEALTH_TASK_HISTORY_LIMIT = 20
+_HEALTH_TASK_LOG_LIMIT = 20000
+
+
+def _public_health_task_definitions() -> list[dict]:
+    entries = []
+    for key, meta in HEALTH_TASK_DEFINITIONS.items():
+        entries.append({
+            "key": key,
+            "label": meta["label"],
+            "description": meta["description"],
+            "danger": bool(meta.get("danger")),
+        })
+    return entries
+
+
+def _get_health_tasks() -> list[dict]:
+    with _HEALTH_TASK_LOCK:
+        records = [dict(task) for task in _HEALTH_TASK_RUNS.values()]
+    records.sort(key=lambda item: item.get("started_at"), reverse=True)
+    return records
+
+
+def _get_health_task(task_id: str) -> dict | None:
+    with _HEALTH_TASK_LOCK:
+        task = _HEALTH_TASK_RUNS.get(task_id)
+        return dict(task) if task else None
+
+
+def _append_health_task_log(task_id: str, chunk: str) -> None:
+    if not chunk:
+        return
+    if not chunk.endswith("\n"):
+        chunk += "\n"
+    with _HEALTH_TASK_LOCK:
+        record = _HEALTH_TASK_RUNS.get(task_id)
+        if not record:
+            return
+        log = record.get("log", "") + chunk
+        if len(log) > _HEALTH_TASK_LOG_LIMIT:
+            log = log[-_HEALTH_TASK_LOG_LIMIT:]
+        record["log"] = log
+        record["last_update"] = datetime.now(timezone.utc).isoformat()
+
+
+def _trim_health_task_history() -> None:
+    if len(_HEALTH_TASK_RUNS) <= _HEALTH_TASK_HISTORY_LIMIT:
+        return
+    removable = sorted(
+        (task for task in _HEALTH_TASK_RUNS.values() if task.get("status") in {"completed", "failed"}),
+        key=lambda item: item.get("started_at") or "",
+    )
+    while len(_HEALTH_TASK_RUNS) > _HEALTH_TASK_HISTORY_LIMIT and removable:
+        oldest = removable.pop(0)
+        _HEALTH_TASK_RUNS.pop(oldest["id"], None)
+
+
+def _finalize_health_task(task_id: str, status: str) -> None:
+    with _HEALTH_TASK_LOCK:
+        record = _HEALTH_TASK_RUNS.get(task_id)
+        if not record:
+            return
+        record["status"] = status
+        finished = datetime.now(timezone.utc).isoformat()
+        record["ended_at"] = finished
+        record["last_update"] = finished
+
+
+def _launch_health_task(task_key: str) -> dict:
+    definition = HEALTH_TASK_DEFINITIONS[task_key]
+    task_id = secrets.token_hex(8)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    record = {
+        "id": task_id,
+        "task": task_key,
+        "label": definition["label"],
+        "description": definition["description"],
+        "status": "running",
+        "log": "",
+        "started_at": now_iso,
+        "ended_at": None,
+        "last_update": now_iso,
+        "danger": bool(definition.get("danger")),
+    }
+    with _HEALTH_TASK_LOCK:
+        _HEALTH_TASK_RUNS[task_id] = record
+        _trim_health_task_history()
+    worker = Thread(target=_run_health_task, args=(task_id,), daemon=True)
+    worker.start()
+    return dict(record)
+
+
+def _run_health_task(task_id: str) -> None:
+    with _HEALTH_TASK_LOCK:
+        record = _HEALTH_TASK_RUNS.get(task_id)
+    if not record:
+        return
+    definition = HEALTH_TASK_DEFINITIONS.get(record["task"])
+    if not definition:
+        _append_health_task_log(task_id, f"[ERROR] Unknown task '{record['task']}'.")
+        _finalize_health_task(task_id, "failed")
+        return
+
+    success = False
+    try:
+        callable_runner = definition.get("callable")
+        if callable_runner:
+            callable_runner(lambda chunk: _append_health_task_log(task_id, chunk))
+            success = True
+        else:
+            command = [sys.executable, *definition["command"]]
+            _append_health_task_log(task_id, f"[CMD] {' '.join(command)}")
+            proc = subprocess.Popen(
+                command,
+                cwd=str(PROJECT_ROOT),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            try:
+                if proc.stdout:
+                    for line in proc.stdout:
+                        _append_health_task_log(task_id, line.rstrip("\n"))
+            finally:
+                if proc.stdout:
+                    proc.stdout.close()
+            returncode = proc.wait()
+            success = returncode == 0
+            if not success:
+                _append_health_task_log(task_id, f"[ERROR] Command exited with {returncode}.")
+    except Exception as exc:
+        _append_health_task_log(task_id, f"[ERROR] {exc}")
+    finally:
+        _finalize_health_task(task_id, "completed" if success else "failed")
 
 # Central textual MIME set (used by header utilities)
 TEXTUAL_MIME_TYPES = {
@@ -1089,6 +1306,49 @@ def api_urls():
 def data_framework():
     return render_template("data_framework.html", data_api_url=DATA_API_URL)
 
+
+@app.route("/azure_health", methods=["GET"])
+def azure_health_page():
+    runtime_hints = {
+        "async_mode": _SOCKETIO_ASYNC_MODE,
+        "eventlet_patched": EVENTLET_STATUS["patched"],
+        "patched_modules": EVENTLET_STATUS["patched_modules"],
+        "transports": _SOCKETIO_CLIENT_TRANSPORTS,
+        "deploy_env": DEPLOY_ENV or "local",
+    }
+    return render_template(
+        "azure_health.html",
+        task_definitions=_public_health_task_definitions(),
+        runtime_hints=runtime_hints,
+        socketio_client_config=SOCKETIO_CLIENT_CONFIG,
+        initial_tasks=_get_health_tasks(),
+    )
+
+
+@app.route("/api/health_tasks", methods=["GET"])
+def api_list_health_tasks():
+    return jsonify({"tasks": _get_health_tasks()})
+
+
+@app.route("/api/health_tasks", methods=["POST"])
+def api_start_health_task():
+    data = request.get_json(silent=True) or {}
+    task_key = str(data.get("task") or "").strip()
+    if not task_key:
+        return jsonify({"error": "Task key required."}), 400
+    if task_key not in HEALTH_TASK_DEFINITIONS:
+        return jsonify({"error": "Unknown task."}), 404
+    record = _launch_health_task(task_key)
+    return jsonify({"task": record})
+
+
+@app.route("/api/health_tasks/<task_id>", methods=["GET"])
+def api_health_task_detail(task_id: str):
+    record = _get_health_task(task_id)
+    if not record:
+        return jsonify({"error": "Task not found."}), 404
+    return jsonify({"task": record})
+
 @app.route("/api/fs/list", methods=["GET"])
 def api_fs_list():
     root = (request.args.get("root") or "").lower().strip()
@@ -1446,7 +1706,8 @@ def run_parser():
             uploaded_files=file_lists["uploaded_files"],
             manual_source=session.get('manual_source_pref', 'input'),
             allow_style_attr=os.environ.get("ALLOW_STYLE_ATTR", "0").lower() in ("1","true","yes"),
-            static_version=os.environ.get("STATIC_VERSION", "v1")
+            static_version=os.environ.get("STATIC_VERSION", "v1"),
+            socketio_client_config=SOCKETIO_CLIENT_CONFIG,
         )
     except Exception:
         import traceback

@@ -21,6 +21,12 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
   - Table structure learning, harmonization, and feedback are now fully centralized
   - ML/NER-powered entity annotation and structure verification
   - Dynamic scoring and patching: extraction methods are scored and can "fill in the blanks" using information from other strategies
+- **Navigation Feedback Loop → Manual Correction**
+  - Every navigation run logs per-step telemetry to `log/navigation_learning_log.jsonl` via `ContextCoordinator.record_navigation_feedback()`.
+  - `webapp/parser/health/navigation_feedback_ingest.py` converts the log into `navigation_feedback_selection_log.jsonl`, so the manual correction bot can auto-review successes/failures, feed ML retraining, or fast-track new recipes without extra tooling.
+- **Azure Health Control Center**
+  - `/azure_health` now surfaces a “Election Pulse” operations console: launch manual correction, log/cache cleanup, misalignment scans, retraining, or the entire health router directly from the web UI.
+  - Each job streams stdout to the browser so you can supervise Azure deployments even when shell access is limited.
 
 - **Context-Aware Orchestration**
   - `context_coordinator.py` and `context_organizer.py` orchestrate advanced context analysis, NLP, and ML integrity checks
@@ -31,6 +37,7 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
   - Flask-based web interface for managing URLs, running the parser, and reviewing output
   - Real-time log streaming via SocketIO
   - Data management dashboard for uploads, downloads, and URL hint management
+  - Azure Health console for launching health scripts with live log streaming
 
 - **Handler Architecture**
   - Modular state/county/format handlers in `handlers/`
@@ -103,6 +110,7 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
      - **Change History:** View and restore previous configurations for transparency and auditability.
      - **Run Parser:** Trigger the parser from the browser and view real-time output in a styled terminal-like area.
      - **Live Feedback:** See parser logs as they happen (via WebSockets).
+     - **Azure Health Control Center:** Queue manual correction, retraining, and log-cleanup scripts with live stdout streaming.
      - **Accessible:** Designed for both technical and non-technical users, making it ideal for teams, researchers, and those learning to code.
    - **How to Use the Web UI:**
      1. Install requirements:  

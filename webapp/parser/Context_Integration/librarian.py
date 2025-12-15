@@ -699,6 +699,15 @@ def parse_filename_for_location(filename: str) -> dict:
         if len(part) == 2 and part.isalpha():
             state = part.upper()
 
+    # Fallback: detect trailing state abbreviation even without separators
+    if state == "Unknown":
+        tail_match = re.search(r"([a-z]{2})$", fname)
+        if tail_match:
+            abbr = tail_match.group(1).upper()
+            abbr_key = abbr if abbr in STATE_ABBR else abbr.lower()
+            if abbr_key in STATE_ABBR:
+                state = abbr
+
     # Parse location and contest from remaining parts
     if len(parts) >= 2:
         # Find parts that look like locations

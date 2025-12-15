@@ -412,8 +412,11 @@
             </div>
         </div>
     </div>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io-4.7.5.min.js') }}"></script>
+        <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/bootstrap-5.3.0.bundle.min.js') }}"></script>
+        <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io-4.7.5.min.js') }}"></script>
+        <script nonce="{{ g.csp_nonce }}">
+            window.__SOCKETIO_CONFIG__ = {{ socketio_client_config | tojson }};
+        </script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/nav_guard.js') }}?v={{ static_version }}" defer></script>
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/run_parser.js') }}?v={{ static_version }}" defer></script>
 

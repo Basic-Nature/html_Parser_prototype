@@ -18,6 +18,14 @@
   const SHOW_BROWSE_TOOLBAR = false;
   // Respect OS "reduced motion" setting (used by particle effects)
   const PREFERS_REDUCED_MOTION = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const SOCKET_CFG = (typeof window !== 'undefined' && window.__SOCKETIO_CONFIG__) || {};
+  const SOCKET_TRANSPORTS = Array.isArray(SOCKET_CFG.transports) && SOCKET_CFG.transports.length
+    ? SOCKET_CFG.transports
+    : ['websocket'];
+  const SOCKET_FORCE_POLLING = !!SOCKET_CFG.pollingOnly;
+  const SOCKET_PING_INTERVAL = Number.isFinite(SOCKET_CFG.pingInterval) ? SOCKET_CFG.pingInterval : 10000;
+  const SOCKET_PING_TIMEOUT = Number.isFinite(SOCKET_CFG.pingTimeout) ? SOCKET_CFG.pingTimeout : 60000;
+  const SOCKET_UPGRADE = SOCKET_FORCE_POLLING ? false : true;
 
   // -------- Utilities --------
   const $  = sel => document.querySelector(sel);
@@ -223,6 +231,8 @@
     if (!el || !el.pipelineHint) return;
     const source = currentFileSource();
     const origin = activeManualSourceOrigin || 'default';
+    const hasManualSelection = manualUploadSelectionReady();
+    const waitingForManualSelection = source === 'uploads' && origin !== 'server' && !hasManualSelection;
     let message = '';
     let level = 'info';
     if (extraMessage) {
@@ -239,6 +249,9 @@
             if (uploadsHasFiles === false) {
               message = 'Uploads folder is empty. Use the Uploads section or tap "Show Instructions" for guidance.';
               level = 'warn';
+            } else if (waitingForManualSelection) {
+              message = 'Pick a file from Uploads so the parser knows what to run next.';
+              level = 'action';
             } else if (origin !== 'default') {
               message = 'Manual uploads already selected. Step "Choose Source" is checked - press Run when ready.';
             } else {
@@ -254,14 +267,15 @@
             if (uploadsHasFiles === false) {
               message = 'No files detected in Uploads. Add a file first or switch back to Input Folder.';
               level = 'warn';
-            } else if (origin !== 'default') {
-              message = origin === 'server'
-                ? 'Manual uploads pre-selected. Review the file, then continue to Run.'
-                : 'Manual uploads selected. Review the file list or press Run when ready.';
+            } else if (waitingForManualSelection) {
+              message = 'Select the file you want to parse from Uploads before running the parser.';
+              level = 'action';
+            } else if (origin === 'server') {
+              message = 'Manual uploads pre-selected. Review the file, then continue to Run.';
               level = 'info';
             } else {
-              message = 'Select the file you want to parse from the Uploads panel before running.';
-              level = 'action';
+              message = 'Manual uploads ready. Review the file list or press Run when ready.';
+              level = 'info';
             }
           } else {
             message = 'Parser will pull from the Input folder. Press Run when you are ready.';
@@ -317,12 +331,29 @@
     updatePipelineHintForPhase();
   }
 
+  function manualUploadSelectionReady() {
+    if (manualUploadSelection && manualUploadSelection.relPath) return true;
+    if (!activeSessionId && pendingManualUploadSelection && pendingManualUploadSelection.relPath) return true;
+    if (activeSessionId) {
+      const stored = manualUploadSelectionBySession.get(activeSessionId);
+      if (stored && stored.relPath) return true;
+    }
+    return false;
+  }
+
+  function manualSourceReady() {
+    if (activeManualSource !== 'uploads') return false;
+    if (activeManualSourceOrigin === 'server') return true;
+    return manualUploadSelectionReady();
+  }
+
   function updatePipelineMetadataForActive() {
     if (!pipelineControl || typeof pipelineControl.setStepState !== 'function') return;
-    if (activeManualSource === 'uploads' && activeManualSourceOrigin !== 'default') {
-      pipelineControl.setStepState('source', 'done');
-    } else {
-      pipelineControl.setStepState('source', null);
+    const ready = manualSourceReady();
+    pipelineControl.setStepState('source', ready ? 'done' : null);
+    if (typeof pipelineControl.attentionOnly === 'function') {
+      const needsAttention = activeManualSource === 'uploads' && !ready;
+      pipelineControl.attentionOnly('source', needsAttention);
     }
   }
   // Contest options store (per session) + helpers
@@ -665,6 +696,8 @@
       syncManualUploadControls();
       el.manualUploadSummary?.classList.remove('text-warning');
       noteUploadsPresence(manualUploadsInventory.length > 0);
+      updatePipelineMetadataForActive();
+      updatePipelineHintForPhase();
       return;
     }
     const cleanRel = selection.relPath.replace(/\\/g, '/').replace(/^\//, '');
@@ -679,6 +712,7 @@
     if (updateSource !== false) {
       updateSessionSourceMeta(activeSessionId, 'uploads', 'user');
       emitManualFileSource();
+    } else {
       updatePipelineMetadataForActive();
       updatePipelineHintForPhase();
     }
@@ -5474,9 +5508,10 @@
       reconnectionAttempts: Infinity,
       reconnectionDelay: 2000,
       reconnectionDelayMax: 10000,
-      transports: ['websocket'],
-      pingInterval: 10000,
-      pingTimeout: 60000
+      transports: SOCKET_TRANSPORTS,
+      upgrade: SOCKET_UPGRADE,
+      pingInterval: SOCKET_PING_INTERVAL,
+      pingTimeout: SOCKET_PING_TIMEOUT
     });
 
     socket.on('connect', handleConnect);
@@ -6038,7 +6073,6 @@
       const src = el.fileSourceSelect.value === 'uploads' ? 'uploads' : 'input';
       updateSessionSourceMeta(activeSessionId, src, 'user');
       emitManualFileSource();
-      pipelineControl?.setPhase('source');
     });
   }
   function initOutputBypass() {

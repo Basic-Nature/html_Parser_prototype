@@ -439,7 +439,9 @@ def prompt_and_handle_download(
     rejected_downloads: Optional[set] = None,
     session_id: Optional[str] = None,
     manual_upload_mode: bool = False,
-    uploads_dir: Optional[str] = None
+    uploads_dir: Optional[str] = None,
+    cancel_flag=None,
+    **handler_kwargs,
 ) -> Tuple[Optional[tuple], bool]:
     """
     Extracts download links (from context library, DOM, and HTML), prompts user for format,
@@ -528,13 +530,16 @@ def prompt_and_handle_download(
             "session_id": session_id,
             "file_path": full_path
         })
+        handler_kwargs.pop("cancel_flag", None)
         result = safe_parse(
             handler,
             page=None,
             manual_file=full_path,
             source_url=target_url,
             logger=logger,
-            session_id=session_id
+            session_id=session_id,
+            cancel_flag=cancel_flag,
+            **handler_kwargs,
         )
         valid = isinstance(result, tuple) and len(result) == 4
         if not valid:
@@ -933,7 +938,9 @@ def prompt_and_handle_download(
             manual_file=local_file_path,
             source_url=file_url,
             logger=logger,
-            session_id=session_id
+            session_id=session_id,
+            cancel_flag=cancel_flag,
+            **handler_kwargs,
         )
         valid = isinstance(result, tuple) and len(result) == 4
         if not valid:

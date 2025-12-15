@@ -146,10 +146,10 @@ AUX_FIELDS = [
     # Cache/auxiliary logs
     "context_cache", "removed_columns", "segment_label_cache",
     # Other possible logs
-    "download_links", "anomaly", "dom_pattern_kb"
+    "download_links", "anomaly", "dom_pattern_kb", "navigation_feedback"
 ]
 ALL_FIELDS = MAIN_FIELDS + AUX_FIELDS
-SUCCESS_RESULTS = {"pass", "fuzzy_pass", "manual_correction", "user_corrected"}
+SUCCESS_RESULTS = {"pass", "fuzzy_pass", "manual_correction", "user_corrected", "nav_success", "nav_failure"}
 
 def discover_field_types_from_logs(log_files, all_fields=None, max_lines=100):
     """

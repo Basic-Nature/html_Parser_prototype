@@ -12,6 +12,12 @@ Last updated: 2025-11-07
 - [ ] Harden contest-selection flow across JSON, PDF-OCR, and future formats; remove lingering format-specific forks.
 - [ ] Draft roadmap-aligned test plan covering multi-contest PDFs, fast-path JSON cases, and ward/precinct edge scenarios.
 - [ ] Publish a CI status badge in `readme.md` once the workflow is stable.
+- [ ] Re-run `uploads/2016generalelectionsMN.pdf` end-to-end:
+
+ 1. Enable OCR (`ENABLE_OCR=true`, `ENABLE_OCR_FORCE=false`) and confirm `POPPLER_PATH`/`TESSERACT_CMD` env vars resolve locally and on Azure.
+ 2. Launch `python -m webapp.parser.html_election_parser --source uploads --filename uploads/2016generalelectionsMN.pdf` (or trigger via web UI) and capture `table_core` debug logs to ensure row detection.
+ 3. Validate that the output CSV + metadata land under `output/Minnesota/...`, highlight any schema warnings, and snapshot the resulting table for docs.
+ 4. If extraction still fails, document the blockers (fonts, vector tables, etc.) and queue a follow-up handler or OCR tuning task.
 
 ## Backlog
 

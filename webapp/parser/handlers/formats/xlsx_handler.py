@@ -5,8 +5,12 @@ import re
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from ...Context_Integration.Context_Library.constants import (
-    CONTEST_KEYWORDS,
     CONTEST_TITLE_SKIP_PHRASES,
+)
+from ...utils.contest_detection import (
+    CONTEST_PATTERN as _CONTEST_RX,
+    detect_contest_titles_from_text,
+    gather_lines_for_contest_detection,
 )
 from ...utils.contest_selector import select_contest_auto_first
 from ...utils.location_helpers import (
@@ -24,6 +28,7 @@ from ...utils.shared_logic import (
 )
 from ...utils.table_builder import build_table_noninteractive
 from ...utils.table_core import robust_table_extraction
+from ...config import ENABLE_PARALLEL
 
 _HANDLER_NAME = "xlsx_handler"
 
@@ -35,23 +40,7 @@ except ImportError:  # pragma: no cover - handled at runtime during parsing
 pd = cast(Any, _pd_module)
 
 
-def _build_contest_regex(keywords: List[str] | set[str] | tuple[str, ...] | None) -> re.Pattern[str]:
-    parts: List[str] = []
-    for phrase in (keywords or []):
-        if not isinstance(phrase, str) or not phrase.strip():
-            continue
-        tokens = re.split(r"\s+", phrase.strip().lower())
-        normalized: List[str] = []
-        for tok in tokens:
-            esc = re.escape(tok)
-            esc = esc.replace(r"\.", r"\.?")
-            esc = esc.replace(r"\-", r"[-\s]?")
-            normalized.append(esc)
-        parts.append(r"(?:[\s\-_\/]*?)".join(normalized))
-    return re.compile("|".join(parts), re.I) if parts else re.compile(r"(?!x)x", re.I)
-
-
-_CONTEST_RX = _build_contest_regex(CONTEST_KEYWORDS)
+# Shared contest regex + detection helpers
 
 
 def _dataframe_to_records(df: Any) -> Tuple[List[str], List[Dict[str, Any]]]:
@@ -122,10 +111,33 @@ def parse_xlsx_election_results(
         possible_contest_cols.sort(key=lambda c: len(c or ""), reverse=True)
         contest_column = possible_contest_cols[0]
 
+    contest_detection_diag: Dict[str, Any] = {}
+    detection_lines = gather_lines_for_contest_detection(headers, data)
+    detected_by_text = detect_contest_titles_from_text(
+        detection_lines,
+        xlsx_path,
+        diagnostics=contest_detection_diag,
+    )
+    detected_by_text = list(dict.fromkeys(detected_by_text))
+    if contest_detection_diag.get("raw_candidates"):
+        logger.info({
+            "level": "INFO",
+            "type": "handler",
+            "message": f"[{_HANDLER_NAME}] Contest detection diagnostics available.",
+            "session_id": session_id,
+            "contest_detection": contest_detection_diag,
+        })
+
     contest_names: List[str] = []
     if contest_column:
         contest_names = sorted({(row.get(contest_column, "") or "").strip() for row in data if row.get(contest_column)})
         contest_names = [c for c in contest_names if c]
+    if not contest_names and detected_by_text:
+        contest_names = detected_by_text
+    elif (contest_column is None) and detected_by_text:
+        for title in detected_by_text:
+            if title not in contest_names:
+                contest_names.append(title)
     if not contest_names:
         contest_names = [os.path.basename(xlsx_path).replace(".xlsx", "").replace(".xls", "")]
 
@@ -137,8 +149,15 @@ def parse_xlsx_election_results(
             "noisy_patterns": [s.lower() for s in (CONTEST_TITLE_SKIP_PHRASES or set())],
         },
         "input_file": os.path.basename(xlsx_path),
+        "handler": _HANDLER_NAME,
     }
-    if len(contest_names) == 1:
+    if contest_detection_diag:
+        selection_context["contest_detection"] = contest_detection_diag
+    force_contest_prompt = bool(os.environ.get("SMART_ELECTIONS_FORCE_CONTEST_PROMPT"))
+    allow_parallel_auto = ENABLE_PARALLEL and not force_contest_prompt
+    single_contest_detected = len(contest_names) == 1
+    contest_selection_mode = "single_detected"
+    if single_contest_detected and not force_contest_prompt:
         contest = contest_names[0]
     else:
         auto_pick = select_contest_auto_first(
@@ -146,8 +165,9 @@ def parse_xlsx_election_results(
             context=selection_context,
             session_id=session_id,
             allow_multiple=False,
-            force_interactive=False,
+            force_interactive=(not allow_parallel_auto) or force_contest_prompt,
         )
+        contest_selection_mode = "auto" if (allow_parallel_auto and auto_pick) else "prompt"
         if not auto_pick:
             logger.error({
                 "level": "ERROR",
@@ -157,6 +177,8 @@ def parse_xlsx_election_results(
             })
             return [], [], "", {"error": "No contest selected"}
         contest = safe_get(auto_pick[0], "title") or contest_names[0]
+    if single_contest_detected and force_contest_prompt:
+        contest_selection_mode = "prompt"
 
     if contest_column:
         data = [row for row in data if (row.get(contest_column, "") or "").strip() == contest]
@@ -222,7 +244,10 @@ def parse_xlsx_election_results(
         "state_normalized": state_normalized,
         "county_normalized": county_normalized,
         "state_county_detection": state_county_diag,
+        "contest_selection_mode": contest_selection_mode,
     }
+    if contest_detection_diag:
+        context["contest_detection"] = contest_detection_diag
     if candidate_label_map:
         context["candidate_label_map"] = candidate_label_map
     if candidate_metadata:
@@ -241,6 +266,26 @@ def parse_xlsx_election_results(
         debug=False,
     )
 
+    finalize_context = {
+        "handler": _HANDLER_NAME,
+        "input_file": os.path.basename(xlsx_path),
+        "session_id": session_id,
+        "race": contest,
+        "sheet_name": sheet_name,
+        "location_headers": location_headers,
+        "precinct_attached": precinct_attached,
+        "location_diagnostics": location_diagnostics,
+        "state": state,
+        "county": county,
+        "state_normalized": state_normalized,
+        "county_normalized": county_normalized,
+        "state_county_detection": state_county_diag,
+        "candidate_party_detection": party_diag,
+        "contest_selection_mode": contest_selection_mode,
+    }
+    if contest_detection_diag:
+        finalize_context["contest_detection"] = contest_detection_diag
+
     result = finalize_election_output(
         headers=headers_final,
         data=data_final,
@@ -248,22 +293,7 @@ def parse_xlsx_election_results(
         contest=contest,
         state=state,
         county=county,
-        context={
-            "handler": _HANDLER_NAME,
-            "input_file": os.path.basename(xlsx_path),
-            "session_id": session_id,
-            "race": contest,
-            "sheet_name": sheet_name,
-            "location_headers": location_headers,
-            "precinct_attached": precinct_attached,
-            "location_diagnostics": location_diagnostics,
-            "state": state,
-            "county": county,
-            "state_normalized": state_normalized,
-            "county_normalized": county_normalized,
-            "state_county_detection": state_county_diag,
-            "candidate_party_detection": party_diag,
-        },
+        context=finalize_context,
         enable_user_feedback=False,
         session_id=session_id,
     )
@@ -290,7 +320,10 @@ def parse_xlsx_election_results(
         "candidate_label_map": candidate_label_map,
         "candidate_metadata": candidate_metadata,
         "candidate_party_detection": party_diag,
+        "contest_selection_mode": contest_selection_mode,
     }
+    if contest_detection_diag:
+        metadata["contest_detection"] = contest_detection_diag
 
     logger.info({
         "level": "INFO",
