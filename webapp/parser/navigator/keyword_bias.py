@@ -45,12 +45,7 @@ def load_keyword_bias() -> List[Dict]:
                 continue
             normalized_phrases = []
             for p in phrases:
-                if isinstance(p, bytes):
-                    try:
-                        normalized_phrases.append(p.decode("utf-8", "ignore").lower())
-                    except Exception:
-                        continue
-                elif isinstance(p, str):
+                if isinstance(p, str):
                     normalized_phrases.append(p.lower())
             entries.append(
                 {

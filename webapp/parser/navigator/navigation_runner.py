@@ -158,7 +158,12 @@ class NavigationInstructionRunner:
                         session_id=session_id,
                         metrics=metrics,
                     )
-                self._record_trace(trace, action, "ok", max_time_ms=max_time, **(metrics or {}))
+                allowed_keys = {
+                    k: v
+                    for k, v in (metrics or {}).items()
+                    if k in {"scroll_attempts", "tables_seen", "elapsed_ms", "selector_hits", "no_new_tables_iters", "stable_frames", "scroll_depth"}
+                }
+                self._record_trace(trace, action, "ok", max_time_ms=max_time, **allowed_keys)
             elif action == "scan_context":
                 scan_kwargs = step.get("kwargs") or {}
                 with self._page_lock:

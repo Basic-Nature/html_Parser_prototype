@@ -792,26 +792,36 @@ def autoscroll_until_stable(
 
     if stable >= max_stable_frames:
         logger and logger.info("[SCROLL] Completed scrolling until page height/content stabilized.")
+        logger.info(
+            {
+                "level": "INFO",
+                "type": "scroll",
+                "message": "[SCROLL] Metrics",
+                "session_id": session_id,
+                "scroll_attempts": scroll_attempts,
+                "tables_seen": max_tables_seen,
+                "elapsed_ms": elapsed_ms,
+            }
+        )
         if coordinator_feedback:
-            coordinator_feedback(
-                domain,
-                scroll_attempts,
-                step,
-                tables_seen=max_tables_seen,
-                elapsed_ms=elapsed_ms,
-            )
+            coordinator_feedback(domain, scroll_attempts, step)
         return True
     else:
         logger and logger.warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
+        logger.info(
+            {
+                "level": "INFO",
+                "type": "scroll",
+                "message": "[SCROLL] Metrics",
+                "session_id": session_id,
+                "scroll_attempts": scroll_attempts,
+                "tables_seen": max_tables_seen,
+                "elapsed_ms": elapsed_ms,
+                "incomplete": True,
+            }
+        )
         if coordinator_feedback:
-            coordinator_feedback(
-                domain,
-                scroll_attempts,
-                step,
-                incomplete=True,
-                tables_seen=max_tables_seen,
-                elapsed_ms=elapsed_ms,
-            )
+            coordinator_feedback(domain, scroll_attempts, step, incomplete=True)
         return False
 
 def scan_buttons_with_progress(buttons, scan_callback=None) -> None:

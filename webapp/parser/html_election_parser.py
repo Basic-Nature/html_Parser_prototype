@@ -3,6 +3,7 @@ from __future__ import annotations
 # ==============================================================
 # 🗳️ Smart Elections: HTML Election Results Parser
 # ==============================================================
+import json
 import os
 import re
 import sys
@@ -65,17 +66,16 @@ NAVIGATION_RUNNER = NavigationInstructionRunner(_navigation_store)
 def _count_dom_table_rows(page) -> int:
     if page is None:
         return 0
-    selector_js = TABLE_DISCOVERY_SELECTOR.replace("'", "\\'")
+    selector_js = json.dumps(TABLE_DISCOVERY_SELECTOR)
     try:
         return int(
             page.evaluate(
-                """() => {
-                    const nodes = document.querySelectorAll('%s');
+                f"""() => {{
+                    const nodes = document.querySelectorAll({selector_js});
                     let total = 0;
-                    nodes.forEach((tbl) => { total += tbl.querySelectorAll("tr").length; });
+                    nodes.forEach((tbl) => {{ total += tbl.querySelectorAll("tr").length; }});
                     return total;
-                }"""
-                % selector_js
+                }}"""
             )
         )
     except Exception:
