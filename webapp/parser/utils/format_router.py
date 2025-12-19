@@ -627,25 +627,33 @@ def prompt_and_handle_download(
                 raw_value = safe_get_attribute(element, attr, logger) or ""
                 if not raw_value:
                     continue
+                label_fmt = _infer_format_from_text(label_text)
                 for candidate in _extract_candidate_urls(attr, raw_value):
                     resolved = _build_download_url(base_url, candidate)
                     if not resolved or resolved in {"#", "javascript:void(0)", "about:blank"}:
                         continue
-                    fmt = _infer_format_from_url(resolved)
-                    fmt = fmt or _infer_format_from_attr_value(attr, raw_value)
-                    fmt = fmt or _infer_format_from_text(label_text)
+                    url_inferred_fmt = _infer_format_from_url(resolved)
+                    fmt = url_inferred_fmt or _infer_format_from_attr_value(attr, raw_value)
+                    fmt = fmt or label_fmt
                     if not fmt:
                         for hint_attr, hint_val in hint_values.items():
                             fmt = fmt or _infer_format_from_attr_value(hint_attr, hint_val)
                             if fmt:
                                 break
+                    text_based_fmt = fmt
+                    remote_fmt = None
                     remote_filename = None
-                    if not fmt:
-                        fmt, remote_filename = probe_format_for_url(resolved)
+                    cached_probe = probe_cache.get(resolved)
+                    if cached_probe:
+                        remote_fmt, remote_filename = cached_probe
                     else:
-                        cached = probe_cache.get(resolved)
-                        if cached and cached[1]:
-                            remote_filename = cached[1]
+                        remote_fmt, remote_filename = probe_format_for_url(resolved)
+                        probe_cache[resolved] = (remote_fmt, remote_filename)
+                    if remote_fmt:
+                        fmt = remote_fmt
+                    if not (url_inferred_fmt or remote_fmt) and fmt == label_fmt:
+                        # Heuristic-only inference from visible text without remote confirmation; skip to allow HTML parsing
+                        continue
                     if not fmt:
                         continue
                     dom_links.append({
