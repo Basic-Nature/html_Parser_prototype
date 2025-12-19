@@ -150,4 +150,103 @@
       "navigation_profile": "generic_download_panel"
     }
   }
+  ,
+  {
+    "id": "precinct_tabset_prefetch",
+    "description": "Open precinct-oriented tabs before scanning tables",
+    "match": {
+      "url_contains": [
+        "results",
+        "election"
+      ],
+      "dom_markers": [
+        "precinct",
+        "by precinct"
+      ]
+    },
+    "steps": [
+      {
+        "action": "wait_for_selector",
+        "selector": "button:has-text('Precinct'), [role='tab']:has-text('Precinct')",
+        "timeout_ms": 8000
+      },
+      {
+        "action": "click",
+        "selector": "button:has-text('Precinct'), [role='tab']:has-text('Precinct')",
+        "wait_after_ms": 650
+      },
+      {
+        "action": "parallel",
+        "steps": [
+          {"action": "wait", "timeout_ms": 600},
+          {"action": "autoscroll", "max_time_ms": 7000}
+        ]
+      },
+      {
+        "action": "scan_context",
+        "store_key": "precinct_panel_scan",
+        "project": {
+          "contests": "contests",
+          "panels": "panels",
+          "state": "state",
+          "county": "county"
+        }
+      }
+    ],
+    "post_context": {
+      "navigation_profile": "precinct_tabset_prefetch"
+    }
+  }
+  ,
+  {
+    "id": "county_precinct_toggle",
+    "description": "Toggle county then precinct tabs for multi-district pages",
+    "match": {
+      "url_contains": [
+        "results",
+        "election"
+      ],
+      "dom_markers": [
+        "county",
+        "precinct"
+      ]
+    },
+    "steps": [
+      {
+        "action": "wait_for_selector",
+        "selector": "button:has-text('County'), [role='tab']:has-text('County')",
+        "timeout_ms": 8000
+      },
+      {
+        "action": "click",
+        "selector": "button:has-text('County'), [role='tab']:has-text('County')",
+        "wait_after_ms": 500
+      },
+      {
+        "action": "click",
+        "selector": "button:has-text('Precinct'), [role='tab']:has-text('Precinct')",
+        "wait_after_ms": 650
+      },
+      {
+        "action": "parallel",
+        "steps": [
+          {"action": "wait", "timeout_ms": 700},
+          {"action": "autoscroll", "max_time_ms": 8000}
+        ]
+      },
+      {
+        "action": "scan_context",
+        "store_key": "county_precinct_scan",
+        "project": {
+          "contests": "contests",
+          "state": "state",
+          "county": "county",
+          "panels": "panels"
+        }
+      }
+    ],
+    "post_context": {
+      "navigation_profile": "county_precinct_toggle"
+    }
+  }
 ]
