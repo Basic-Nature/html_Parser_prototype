@@ -56,6 +56,7 @@ def load_keyword_bias() -> List[Dict]:
                     "autoscroll_ms": obj.get("autoscroll_ms"),
                 }
             )
-        _cache[:] = entries
+        _cache.clear()
+        _cache.extend(entries)
         _loaded = True
         return list(_cache)

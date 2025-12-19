@@ -66,6 +66,16 @@ ElementLike = Union[
 ]
 
 TABLE_DISCOVERY_SELECTOR = "table, [role='table'], .table, .datatable, .table-responsive table"
+TABLE_DISCOVERY_SELECTOR_JS = json.dumps(TABLE_DISCOVERY_SELECTOR)
+SCROLL_METRIC_KEYS = {
+    "scroll_attempts",
+    "tables_seen",
+    "elapsed_ms",
+    "selector_hits",
+    "no_new_tables_iters",
+    "stable_frames",
+    "scroll_depth",
+}
 
 # Load user agents and captcha indicators from context library
 if os.path.exists(CONTEXT_LIBRARY_PATH):
@@ -673,7 +683,19 @@ def autoscroll_until_stable(
     max_tables_seen = 0
     no_new_tables_iters = 0
     selector_hits = 0
-    table_selector_js = json.dumps(TABLE_DISCOVERY_SELECTOR)
+    def _log_scroll_metrics(incomplete: bool = False) -> None:
+        logger.info(
+            {
+                "level": "INFO",
+                "type": "scroll",
+                "message": "[SCROLL] Metrics",
+                "session_id": session_id,
+                "scroll_attempts": scroll_attempts,
+                "tables_seen": max_tables_seen,
+                "elapsed_ms": elapsed_ms,
+                "incomplete": incomplete or None,
+            }
+        )
     url_str = safe_url(page)
     domain = domain or (
         safe_get_first(url_str.split("/"), "domain_split", None, logger, default="")
@@ -723,7 +745,7 @@ def autoscroll_until_stable(
             try:
                 current_table_count = safe_evaluate(
                     page,
-                    f"document.querySelectorAll({table_selector_js}).length",
+                    f"document.querySelectorAll({TABLE_DISCOVERY_SELECTOR_JS}).length",
                     logger
                 ) or 0
             except Exception:
@@ -800,34 +822,13 @@ def autoscroll_until_stable(
 
     if stable >= max_stable_frames:
         logger and logger.info("[SCROLL] Completed scrolling until page height/content stabilized.")
-        logger.info(
-            {
-                "level": "INFO",
-                "type": "scroll",
-                "message": "[SCROLL] Metrics",
-                "session_id": session_id,
-                "scroll_attempts": scroll_attempts,
-                "tables_seen": max_tables_seen,
-                "elapsed_ms": elapsed_ms,
-            }
-        )
+        _log_scroll_metrics()
         if coordinator_feedback:
             coordinator_feedback(domain, scroll_attempts, step)
         return True
     else:
         logger and logger.warning("[SCROLL] Max scroll time/attempts exceeded. Page may not be fully loaded.")
-        logger.info(
-            {
-                "level": "INFO",
-                "type": "scroll",
-                "message": "[SCROLL] Metrics",
-                "session_id": session_id,
-                "scroll_attempts": scroll_attempts,
-                "tables_seen": max_tables_seen,
-                "elapsed_ms": elapsed_ms,
-                "incomplete": True,
-            }
-        )
+        _log_scroll_metrics(incomplete=True)
         if coordinator_feedback:
             coordinator_feedback(domain, scroll_attempts, step, incomplete=True)
         return False

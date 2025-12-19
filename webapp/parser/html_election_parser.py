@@ -39,6 +39,8 @@ from .utils.browser_utils import (
     sync_browser_pipeline,
     sync_safe_browser_close,
     TABLE_DISCOVERY_SELECTOR,
+    TABLE_DISCOVERY_SELECTOR_JS,
+    SCROLL_METRIC_KEYS,
 )
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.dynamic_table_extractor import dynamic_table_extractor
@@ -66,12 +68,11 @@ NAVIGATION_RUNNER = NavigationInstructionRunner(_navigation_store)
 def _count_dom_table_rows(page) -> int:
     if page is None:
         return 0
-    selector_js = json.dumps(TABLE_DISCOVERY_SELECTOR)
     try:
         return int(
             page.evaluate(
                 f"""() => {{
-                    const nodes = document.querySelectorAll({selector_js});
+                    const nodes = document.querySelectorAll({TABLE_DISCOVERY_SELECTOR_JS});
                     let total = 0;
                     nodes.forEach((tbl) => {{ total += tbl.querySelectorAll("tr").length; }});
                     return total;
@@ -1195,7 +1196,7 @@ def orchestrate_url(
                         "type": "telemetry",
                         "message": "[Telemetry] Autoscroll metrics collected.",
                         "session_id": session_id,
-                        **{k: v for k, v in scroll_metrics.items() if k in {"scroll_attempts", "tables_seen", "elapsed_ms", "selector_hits", "no_new_tables_iters"}},
+                        **{k: v for k, v in scroll_metrics.items() if k in SCROLL_METRIC_KEYS},
                     }
                 )
 

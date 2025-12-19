@@ -6,7 +6,7 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from ..utils.logger_singleton import logger
-from ..utils.browser_utils import autoscroll_until_stable
+from ..utils.browser_utils import autoscroll_until_stable, SCROLL_METRIC_KEYS
 from ..utils.html_scanner import scan_html_for_context
 from .keyword_bias import load_keyword_bias
 from .navigation_recipes import NavigationRecipeStore, DEFAULT_RECIPE_PATH
@@ -164,7 +164,7 @@ class NavigationInstructionRunner:
                 allowed_keys = {
                     k: v
                     for k, v in (metrics or {}).items()
-                    if k in {"scroll_attempts", "tables_seen", "elapsed_ms", "selector_hits", "no_new_tables_iters", "stable_frames", "scroll_depth"}
+                    if k in SCROLL_METRIC_KEYS
                 }
                 self._record_trace(trace, action, "ok", max_time_ms=max_time, **allowed_keys)
             elif action == "scan_context":
