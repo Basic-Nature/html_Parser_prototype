@@ -9,6 +9,7 @@ import inspect
 # user-agent rotation, and CAPTCHA handling. Supports both interactive (async)
 # and batch (subprocess) use cases.
 # ---------------------------------------------------------------
+import json
 import os
 import random
 import re
@@ -652,6 +653,13 @@ def autoscroll_until_stable(
     session_id: Optional[str] = None,
     metrics: Optional[Dict[str, Any]] = None,
 ) -> bool:
+    """
+    Scroll until the page height/text stabilizes or limits are hit.
+
+    max_scroll_depth: optional maximum pixels to scroll before stopping.
+    max_no_new_table_iters: stop after this many iterations with no new tables detected.
+    min_scrolls_before_no_new: minimum scroll iterations before applying the no-new-tables exit.
+    """
     start_time = time.time()
     safe_evaluate(page, "window.scrollTo(0, 0)", logger)
     safe_wait_for_timeout(page, delay_ms, logger)
@@ -665,7 +673,7 @@ def autoscroll_until_stable(
     max_tables_seen = 0
     no_new_tables_iters = 0
     selector_hits = 0
-    table_selector_js = TABLE_DISCOVERY_SELECTOR.replace("'", "\\'")
+    table_selector_js = json.dumps(TABLE_DISCOVERY_SELECTOR)
     url_str = safe_url(page)
     domain = domain or (
         safe_get_first(url_str.split("/"), "domain_split", None, logger, default="")
@@ -715,7 +723,7 @@ def autoscroll_until_stable(
             try:
                 current_table_count = safe_evaluate(
                     page,
-                    f"document.querySelectorAll('{table_selector_js}').length",
+                    f"document.querySelectorAll({table_selector_js}).length",
                     logger
                 ) or 0
             except Exception:

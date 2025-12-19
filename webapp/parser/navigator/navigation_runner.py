@@ -12,6 +12,9 @@ from .keyword_bias import load_keyword_bias
 from .navigation_recipes import NavigationRecipeStore, DEFAULT_RECIPE_PATH
 
 
+DEFAULT_BIAS_CUTOFF = 0.55
+
+
 @dataclass
 class NavigationResult:
     executed: bool
@@ -268,7 +271,7 @@ class NavigationInstructionRunner:
         bias_entries = load_keyword_bias()
         if not bias_entries:
             return
-        bias_cutoff = float(context.get("navigation_bias_threshold", 0.55) or 0.55)
+        bias_cutoff = float(context.get("navigation_bias_threshold", DEFAULT_BIAS_CUTOFF) or DEFAULT_BIAS_CUTOFF)
         try:
             html_lower = (page.content() or "").lower()
         except Exception:
