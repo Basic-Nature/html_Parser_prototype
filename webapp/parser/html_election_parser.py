@@ -37,6 +37,7 @@ from .utils.browser_utils import (
     safe_content,
     sync_browser_pipeline,
     sync_safe_browser_close,
+    TABLE_DISCOVERY_SELECTOR,
 )
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.dynamic_table_extractor import dynamic_table_extractor
@@ -64,16 +65,17 @@ NAVIGATION_RUNNER = NavigationInstructionRunner(_navigation_store)
 def _count_dom_table_rows(page) -> int:
     if page is None:
         return 0
+    selector_js = TABLE_DISCOVERY_SELECTOR.replace("'", "\\'")
     try:
         return int(
             page.evaluate(
                 """() => {
-                    const selectors = ["table", "[role='table']", ".table", ".datatable", ".table-responsive table"];
-                    const nodes = document.querySelectorAll(selectors.join(","));
+                    const nodes = document.querySelectorAll('%s');
                     let total = 0;
                     nodes.forEach((tbl) => { total += tbl.querySelectorAll("tr").length; });
                     return total;
                 }"""
+                % selector_js
             )
         )
     except Exception:

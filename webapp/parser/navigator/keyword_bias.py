@@ -43,10 +43,19 @@ def load_keyword_bias() -> List[Dict]:
             phrases = obj.get("phrases") or []
             if not selector or not isinstance(phrases, list):
                 continue
+            normalized_phrases = []
+            for p in phrases:
+                if isinstance(p, bytes):
+                    try:
+                        normalized_phrases.append(p.decode("utf-8", "ignore").lower())
+                    except Exception:
+                        continue
+                elif isinstance(p, str):
+                    normalized_phrases.append(p.lower())
             entries.append(
                 {
                     "selector": str(selector),
-                    "phrases": [str(p).lower() for p in phrases if isinstance(p, (str, bytes))],
+                    "phrases": normalized_phrases,
                     "confidence": float(obj.get("confidence", 0.0) or 0.0),
                     "max_wait_ms": obj.get("max_wait_ms"),
                     "autoscroll_ms": obj.get("autoscroll_ms"),
@@ -55,4 +64,3 @@ def load_keyword_bias() -> List[Dict]:
         _cache[:] = entries
         _loaded = True
         return list(_cache)
-

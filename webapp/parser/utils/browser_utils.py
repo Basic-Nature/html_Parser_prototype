@@ -64,6 +64,8 @@ ElementLike = Union[
     object  # fallback for custom nodes
 ]
 
+TABLE_DISCOVERY_SELECTOR = "table, [role='table'], .table, .datatable, .table-responsive table"
+
 # Load user agents and captcha indicators from context library
 if os.path.exists(CONTEXT_LIBRARY_PATH):
     import orjson
@@ -663,8 +665,7 @@ def autoscroll_until_stable(
     max_tables_seen = 0
     no_new_tables_iters = 0
     selector_hits = 0
-    table_selector = "table, [role='table'], .table, .datatable, .table-responsive table"
-    table_selector_js = table_selector.replace("'", "\\'")
+    table_selector_js = TABLE_DISCOVERY_SELECTOR.replace("'", "\\'")
     url_str = safe_url(page)
     domain = domain or (
         safe_get_first(url_str.split("/"), "domain_split", None, logger, default="")

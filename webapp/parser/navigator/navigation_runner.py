@@ -286,7 +286,9 @@ class NavigationInstructionRunner:
                 with self._page_lock:
                     handle = page.query_selector(selector)
                     if handle:
-                        handle.click(timeout=max_wait_ms)
+                        handle.click()
+                        if max_wait_ms:
+                            page.wait_for_timeout(max_wait_ms)
                         if autoscroll_ms:
                             self.autoscroll_fn(
                                 page,
