@@ -10,10 +10,10 @@ Smart Elections Parser is a robust, modular, and integrity-focused precinct-leve
 
 ### Major Additions
 
-- **Important Change**
-
-- Must download postgresql from website directly
-- <https://www.postgresql.org/download/windows/>
+- **Adaptive Navigation for Election Pages**
+  - Autoscroll now tracks tables seen and stops when no new tables load, logging telemetry to tune timeouts.
+  - Navigator consumes `navigation_keyword_bias.jsonl` plus new precinct/county recipes to open election tabs before scrolling.
+  - HTML fallback prefers in-DOM table extraction before prompting for downloads when both are present.
 
 - **Dynamic Table Extraction & Structure Learning**
   - Centralized in `table_core.py` and `dynamic_table_extractor.py`

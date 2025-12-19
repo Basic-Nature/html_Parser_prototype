@@ -6,9 +6,13 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from ..utils.logger_singleton import logger
-from ..utils.browser_utils import autoscroll_until_stable
+from ..utils.browser_utils import autoscroll_until_stable, SCROLL_METRIC_KEYS
 from ..utils.html_scanner import scan_html_for_context
+from .keyword_bias import load_keyword_bias
 from .navigation_recipes import NavigationRecipeStore, DEFAULT_RECIPE_PATH
+
+
+DEFAULT_BIAS_CUTOFF = 0.55
 
 
 @dataclass
@@ -53,6 +57,8 @@ class NavigationInstructionRunner:
         trace: List[Dict[str, Any]] = []
         if not candidates:
             return NavigationResult(False, context_updates={}, telemetry=trace)
+
+        self._apply_keyword_bias(page, context, session_id, trace)
 
         for script in candidates:
             if not self._script_matches(script, page, target_url):
@@ -147,9 +153,20 @@ class NavigationInstructionRunner:
                     self._record_trace(trace, action, "ok", expression=expression)
             elif action == "autoscroll":
                 max_time = step.get("max_time_ms")
+                metrics: Dict[str, Any] = {}
                 with self._page_lock:
-                    self.autoscroll_fn(page, max_total_time=max_time, session_id=session_id)
-                self._record_trace(trace, action, "ok", max_time_ms=max_time)
+                    self.autoscroll_fn(
+                        page,
+                        max_total_time=max_time,
+                        session_id=session_id,
+                        metrics=metrics,
+                    )
+                allowed_keys = {
+                    k: v
+                    for k, v in (metrics or {}).items()
+                    if k in SCROLL_METRIC_KEYS
+                }
+                self._record_trace(trace, action, "ok", max_time_ms=max_time, **allowed_keys)
             elif action == "scan_context":
                 scan_kwargs = step.get("kwargs") or {}
                 with self._page_lock:
@@ -249,6 +266,67 @@ class NavigationInstructionRunner:
             entry["details"] = details
         with self._trace_lock:
             trace.append(entry)
+
+    def _apply_keyword_bias(self, page, context, session_id, trace) -> None:
+        bias_entries = load_keyword_bias()
+        if not bias_entries:
+            return
+        bias_cutoff = float(context.get("navigation_bias_threshold", DEFAULT_BIAS_CUTOFF))
+        try:
+            html_lower = (page.content() or "").lower()
+        except Exception:
+            return
+        seen_selectors = set()
+        for entry in bias_entries:
+            selector = entry.get("selector")
+            phrases = entry.get("phrases") or []
+            confidence = float(entry.get("confidence", 0.0))
+            max_wait_ms = entry.get("max_wait_ms")
+            autoscroll_ms = entry.get("autoscroll_ms")
+            if not selector or selector in seen_selectors:
+                continue
+            if confidence < bias_cutoff:
+                continue
+            if not any(p in html_lower for p in phrases):
+                continue
+            seen_selectors.add(selector)
+            try:
+                with self._page_lock:
+                    handle = page.query_selector(selector)
+                    if handle:
+                        handle.click()
+                        if max_wait_ms:
+                            page.wait_for_timeout(max_wait_ms)
+                        if autoscroll_ms:
+                            self.autoscroll_fn(
+                                page,
+                                max_total_time=autoscroll_ms,
+                                session_id=session_id,
+                            )
+                        self._record_trace(
+                            trace,
+                            "keyword_bias",
+                            "ok",
+                            selector=selector,
+                            phrases=phrases,
+                            confidence=confidence,
+                        )
+                    else:
+                        self._record_trace(
+                            trace,
+                            "keyword_bias",
+                            "skipped",
+                            selector=selector,
+                            reason="selector_not_found",
+                        )
+            except Exception as exc:
+                self._record_trace(
+                    trace,
+                    "keyword_bias",
+                    "error",
+                    selector=selector,
+                    error=str(exc),
+                )
 
 
 __all__ = ["NavigationInstructionRunner", "NavigationResult"]

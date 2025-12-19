@@ -3,6 +3,7 @@ from __future__ import annotations
 # ==============================================================
 # 🗳️ Smart Elections: HTML Election Results Parser
 # ==============================================================
+import json
 import os
 import re
 import sys
@@ -37,6 +38,9 @@ from .utils.browser_utils import (
     safe_content,
     sync_browser_pipeline,
     sync_safe_browser_close,
+    TABLE_DISCOVERY_SELECTOR,
+    TABLE_DISCOVERY_SELECTOR_JS,
+    SCROLL_METRIC_KEYS,
 )
 from .utils.download_utils import ensure_input_directory, ensure_output_directory
 from .utils.dynamic_table_extractor import dynamic_table_extractor
@@ -59,6 +63,25 @@ if CACHE_RESET and PROCESSED_URLS_FILE.exists():
 
 _navigation_store = NavigationRecipeStore()
 NAVIGATION_RUNNER = NavigationInstructionRunner(_navigation_store)
+
+
+def _count_dom_table_rows(page) -> int:
+    if page is None:
+        return 0
+    try:
+        return int(
+            page.evaluate(
+                f"""() => {{
+                    const nodes = document.querySelectorAll({TABLE_DISCOVERY_SELECTOR_JS});
+                    let total = 0;
+                    nodes.forEach((tbl) => {{ total += tbl.querySelectorAll("tr").length; }});
+                    return total;
+                }}"""
+            )
+        )
+    except Exception:
+        return 0
+
 
 def load_urls() -> List[str]:
     if not URL_LIST_FILE.exists():
@@ -1154,6 +1177,7 @@ def orchestrate_url(
                         telemetry=nav_output.telemetry,
                         metadata=nav_output.metadata,
                     )
+            scroll_metrics: Dict[str, Any] = {}
             try:
                 autoscroll_until_stable(
                     page,
@@ -1161,18 +1185,43 @@ def orchestrate_url(
                     max_total_time=20000,
                     delay_ms=250,
                     session_id=session_id,
+                    metrics=scroll_metrics,
                 )
             except Exception:
                 pass
+            if scroll_metrics:
+                logger.info(
+                    {
+                        "level": "INFO",
+                        "type": "telemetry",
+                        "message": "[Telemetry] Autoscroll metrics collected.",
+                        "session_id": session_id,
+                        **{k: v for k, v in scroll_metrics.items() if k in SCROLL_METRIC_KEYS},
+                    }
+                )
 
-            download_parse_tuple, handled = prompt_and_handle_download(
-                page,
-                target_url,
-                rejected_downloads,
-                session_id=session_id,
-                cancel_flag=cancel_flag,
-                **kwargs,
-            )
+            dom_table_rows = _count_dom_table_rows(page)
+            download_parse_tuple = None
+            handled = False
+            if dom_table_rows <= 0:
+                download_parse_tuple, handled = prompt_and_handle_download(
+                    page,
+                    target_url,
+                    rejected_downloads,
+                    session_id=session_id,
+                    cancel_flag=cancel_flag,
+                    **kwargs,
+                )
+            else:
+                logger.info(
+                    {
+                        "level": "INFO",
+                        "type": "download",
+                        "message": "[format_router] DOM tables detected; deferring downloads to keep HTML parsing priority.",
+                        "session_id": session_id,
+                        "dom_table_rows": dom_table_rows,
+                    }
+                )
             if handled:
                 if isinstance(download_parse_tuple, tuple) and len(download_parse_tuple) == 4:
                     result = download_parse_tuple
