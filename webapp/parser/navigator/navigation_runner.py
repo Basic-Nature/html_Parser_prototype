@@ -271,7 +271,7 @@ class NavigationInstructionRunner:
         bias_entries = load_keyword_bias()
         if not bias_entries:
             return
-        bias_cutoff = float(context.get("navigation_bias_threshold", DEFAULT_BIAS_CUTOFF) or DEFAULT_BIAS_CUTOFF)
+        bias_cutoff = float(context.get("navigation_bias_threshold", DEFAULT_BIAS_CUTOFF))
         try:
             html_lower = (page.content() or "").lower()
         except Exception:
@@ -280,7 +280,7 @@ class NavigationInstructionRunner:
         for entry in bias_entries:
             selector = entry.get("selector")
             phrases = entry.get("phrases") or []
-            confidence = entry.get("confidence", 0.0) or 0.0
+            confidence = float(entry.get("confidence", 0.0))
             max_wait_ms = entry.get("max_wait_ms")
             autoscroll_ms = entry.get("autoscroll_ms")
             if not selector or selector in seen_selectors:

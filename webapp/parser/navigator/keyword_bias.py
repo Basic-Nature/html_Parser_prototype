@@ -51,7 +51,7 @@ def load_keyword_bias() -> List[Dict]:
                 {
                     "selector": str(selector),
                     "phrases": normalized_phrases,
-                    "confidence": float(obj.get("confidence", 0.0) or 0.0),
+                    "confidence": float(obj.get("confidence", 0.0)),
                     "max_wait_ms": obj.get("max_wait_ms"),
                     "autoscroll_ms": obj.get("autoscroll_ms"),
                 }

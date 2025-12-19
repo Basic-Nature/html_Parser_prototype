@@ -693,7 +693,7 @@ def autoscroll_until_stable(
                 "scroll_attempts": scroll_attempts,
                 "tables_seen": max_tables_seen,
                 "elapsed_ms": elapsed_ms,
-                "incomplete": incomplete or None,
+                "incomplete": bool(incomplete),
             }
         )
     url_str = safe_url(page)
