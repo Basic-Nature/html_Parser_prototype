@@ -142,3 +142,5 @@ tests/
 # USER_AGENT_ROTATION=true
 # OUTPUT_DIR=output
 # Example final output path: ${OUTPUT_DIR}/${STATE}/${COUNTY}/${RACE}/results.csv
+scripts/install_poppler_ubuntu.sh
+scripts/install_poppler_ubuntu.sh
