@@ -1,12 +1,20 @@
 import importlib
+import os
 import sys
 from pathlib import Path
+
+try:
+    import dotenv
+
+    dotenv.load_dotenv()
+except ImportError:
+    pass
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
-
-PDF_PATH = Path("c:/Users/edu-loaner/html_Parser_prototype/uploads/2016 General Election Official Results.PDF")
+DEFAULT_PDF = BASE_DIR / "uploads" / "2016 General Election Official Results.PDF"
+PDF_PATH = Path(os.environ.get("PDF_PATH", DEFAULT_PDF)).expanduser()
 
 
 def run_for(contest_title: str, session_id: str) -> None:
