@@ -186,6 +186,8 @@ def format_markdown(entries: Iterable[TodoEntry], project_root: Path, roots: Seq
         "title: \"TODO/FIXME Index\"",
         "---",
         "",
+        "<!-- markdownlint-disable-file MD001 MD004 MD011 MD022 MD024 MD025 MD033 MD034 MD037 MD050 MD052 -->",
+        "",
         f"Index scope: TODO/FIXME/HACK/XXX/WARNING/NOTE annotations under `{roots_text}`.",
         f"Generated: {timestamp}",
         f"Total annotations: {total}",

@@ -4,3 +4,4 @@ pre-commit==3.8.0
 mypy==1.11.2
 types-requests==2.32.0.20241016
 python-dotenv>=1.2.1
+# JS/Markdown tooling lives in package.json; install Node/npm and run `npm install` separately.
