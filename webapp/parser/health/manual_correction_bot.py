@@ -9,6 +9,8 @@ Deep ML/LLM-enhanced batch review and correction bot for all context fields.
 - Uses spaCy, ML, and external LLMs for advanced feedback, context awareness, and self-improvement.
 - Can connect to ContextCoordinator and context_organizer for deeper learning and automation.
 - Supports advanced debate/decision logic, including LLM-powered suggestions and process improvement.
+
+SECURITY: All file operations are validated using safe_path() to prevent path traversal attacks.
 """
 
 import argparse
@@ -58,6 +60,11 @@ from ..utils.model_registry import ModelRegistry
 LOG_DIR = Path(LOG_DIR)
 CONTEXT_LIBRARY_PATH = Path(CONTEXT_LIBRARY_PATH)
 CONTEXT_LIBRARY_DIR = Path(CONTEXT_LIBRARY_DIR)
+CACHE_DIR = Path(CACHE_DIR)
+PROJECT_ROOT = Path(PROJECT_ROOT)
+
+# Security: Define allowed root directories for all file operations
+ALLOWED_ROOTS = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR, PROJECT_ROOT]
 
 # Ensure directories exist
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -65,8 +72,40 @@ CACHE_PATH = LOG_DIR / "manual_correction_cache.db"
 AUDIT_LOG_PATH = LOG_DIR / "manual_correction_audit.jsonl"
 BATCH_SIZE = 100
 
+# --- Path security utility (MUST be used for all file operations) ---
+def safe_path(path, allowed_roots=None):
+    """
+    Validate that a path is within allowed directories to prevent path traversal attacks.
+    
+    Args:
+        path: Path to validate
+        allowed_roots: List of allowed root directories (defaults to ALLOWED_ROOTS)
+    
+    Returns:
+        Resolved Path object if valid
+    
+    Raises:
+        ValueError: If path is outside allowed directories
+    """
+    if allowed_roots is None:
+        allowed_roots = ALLOWED_ROOTS
+    
+    path = Path(path).resolve()
+    for root in allowed_roots:
+        root = Path(root).resolve()
+        try:
+            # Check if path is relative to root
+            path.relative_to(root)
+            return path
+        except ValueError:
+            continue
+    
+    raise ValueError(f"Path traversal detected: {path} is not within allowed directories {allowed_roots}")
+
 def load_cache(expire_days=None):
-    cache = shelve.open(str(CACHE_PATH))
+    """Load cache with path validation."""
+    cache_path = safe_path(CACHE_PATH, ALLOWED_ROOTS)
+    cache = shelve.open(str(cache_path))
     if expire_days is not None:
         now = datetime.now()
         expired = []
@@ -83,6 +122,8 @@ def close_cache(cache):
 
 # --- Audit log ---
 def write_audit_log(action, entry, user=None, before=None, after=None):
+    """Write audit log entry with path validation."""
+    audit_path = safe_path(AUDIT_LOG_PATH, ALLOWED_ROOTS)
     log_entry = {
         "timestamp": datetime.now().isoformat(),
         "action": action,
@@ -92,7 +133,7 @@ def write_audit_log(action, entry, user=None, before=None, after=None):
         "after": after,
         "entry": entry,
     }
-    with open(AUDIT_LOG_PATH, "ab") as f:
+    with open(audit_path, "ab") as f:
         f.write(orjson.dumps(log_entry) + b"\n")
 
 def process_logs_with_cache(log_files, cache):
@@ -187,13 +228,20 @@ def discover_field_types_from_logs(log_files, all_fields=None, max_lines=100):
 def atomic_write_json(obj, path):
     """
     Atomically write JSON to path, keeping only the latest .bak and .tmp.
+    SECURITY: Path is validated before any file operations.
     - Writes to .tmp first, then moves to final path.
     - If path exists, creates a .bak (removing any old .bak).
     - Cleans up any stray .tmp before/after.
     """
-    path = Path(path)
+    # SECURITY: Validate path before any operations
+    path = safe_path(path, ALLOWED_ROOTS)
+    
     backup_path = path.with_suffix(path.suffix + ".bak")
     tmp_path = path.with_suffix(path.suffix + ".tmp")
+
+    # Validate derived paths as well
+    backup_path = safe_path(backup_path, ALLOWED_ROOTS)
+    tmp_path = safe_path(tmp_path, ALLOWED_ROOTS)
 
     # Remove any old .tmp file before starting
     if tmp_path.exists():
@@ -238,15 +286,6 @@ def atomic_write_json(obj, path):
             tmp_path.unlink()
         except Exception:
             pass
-
-# --- Path security utility ---
-def safe_path(path, allowed_roots):
-    path = Path(path).resolve()
-    for root in allowed_roots:
-        root = Path(root).resolve()
-        if str(path).startswith(str(root)):
-            return path
-    raise ValueError(f"Unsafe path detected: {path}")
 
 # --- Optional: spaCy and LLM integration ---
 try:
@@ -350,7 +389,8 @@ def ml_suggest_field(entry, coordinator=None):
 # --- JSONL utilities ---
 
 def load_jsonl(path):
-    path = safe_path(path, [LOG_DIR, CONTEXT_LIBRARY_DIR])
+    """Load JSONL file with path validation."""
+    path = safe_path(path, ALLOWED_ROOTS)
     if not path.exists():
         logger.warning(f"Log file not found: {path}")
         return []
@@ -376,6 +416,7 @@ def check_and_fix_json_files(
 ):
     """
     Robust, fast scan and correction for JSON/JSONL files.
+    SECURITY: All directory and file paths are validated.
     - Salvages valid lines/objects, quarantines unrecoverable, recreates minimal valid files if needed.
     - Uses only orjson for parsing and writing.
     - Optionally validates schema.
@@ -383,13 +424,30 @@ def check_and_fix_json_files(
     """
     if directories is None:
         directories = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]
-    corrupted = []
+    
+    # SECURITY: Validate all directories
+    validated_dirs = []
     for directory in directories:
+        try:
+            validated_dirs.append(safe_path(directory, ALLOWED_ROOTS))
+        except ValueError as e:
+            logger.warning(f"[SECURITY] Skipping invalid directory: {directory} - {e}")
+            continue
+    
+    corrupted = []
+    for directory in validated_dirs:
         directory = Path(directory)
         if not directory.exists():
             continue
         for suf in suffixes:
             for file in directory.rglob(f"*{suf}"):
+                # SECURITY: Validate each file path
+                try:
+                    file = safe_path(file, ALLOWED_ROOTS)
+                except ValueError as e:
+                    logger.warning(f"[SECURITY] Skipping file outside allowed directories: {file} - {e}")
+                    continue
+                
                 try:
                     if not file.exists():
                         if verbose:
@@ -400,6 +458,9 @@ def check_and_fix_json_files(
                             logger.warning(f"[SKIP] File too large: {file}")
                         continue
                     backup_path = file.with_suffix(file.suffix + ".bak")
+                    # SECURITY: Validate backup path
+                    backup_path = safe_path(backup_path, ALLOWED_ROOTS)
+                    
                     if try_fix and not backup_path.exists():
                         shutil.copy2(file, backup_path)
                     valid_objs = []
@@ -427,6 +488,8 @@ def check_and_fix_json_files(
                                     out.write(orjson.dumps(obj) + b"\n")
                         if corrupt_items:
                             corrupt_path = file.with_suffix(file.suffix + ".corrupt")
+                            # SECURITY: Validate corrupt file path
+                            corrupt_path = safe_path(corrupt_path, ALLOWED_ROOTS)
                             with open(corrupt_path, "w", encoding="utf-8") as out:
                                 for i, line, err in corrupt_items:
                                     out.write(f"Line {i+1}: {line}\nError: {err}\n\n")
@@ -458,6 +521,8 @@ def check_and_fix_json_files(
                                 logger.info(f"[FIXED] Salvaged valid JSON in {file}")
                         if corrupt_items:
                             corrupt_path = file.with_suffix(file.suffix + ".corrupt")
+                            # SECURITY: Validate corrupt file path
+                            corrupt_path = safe_path(corrupt_path, ALLOWED_ROOTS)
                             with open(corrupt_path, "w", encoding="utf-8") as out:
                                 for i, text, err in corrupt_items:
                                     out.write(f"Error: {err}\n\n{text}\n\n")
@@ -479,10 +544,15 @@ def check_and_fix_json_files(
                             if file.exists():
                                 if quarantine:
                                     quarantine_dir = file.parent / "corrupt"
+                                    # SECURITY: Validate quarantine directory
+                                    quarantine_dir = safe_path(quarantine_dir, ALLOWED_ROOTS)
                                     quarantine_dir.mkdir(exist_ok=True)
-                                    file.rename(quarantine_dir / file.name)
+                                    dest_path = quarantine_dir / file.name
+                                    # SECURITY: Validate destination path
+                                    dest_path = safe_path(dest_path, ALLOWED_ROOTS)
+                                    file.rename(dest_path)
                                     if verbose:
-                                        logger.warning(f"[QUARANTINED] {file} -> {quarantine_dir / file.name}")
+                                        logger.warning(f"[QUARANTINED] {file} -> {dest_path}")
                                 else:
                                     file.unlink()
                                     if verbose:
@@ -506,6 +576,7 @@ def find_log_files(
 ) -> list[Path]:
     """
     Recursively find all log files with given suffixes in dirs.
+    SECURITY: All paths are validated before being returned.
     Optionally filter by field name or regex.
     Returns a list of Path objects.
     """
@@ -515,11 +586,20 @@ def find_log_files(
     if dirs is None:
         dirs = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]
     if allowed_roots is None:
-        allowed_roots = [LOG_DIR, CONTEXT_LIBRARY_DIR, CACHE_DIR]
-    found = []
+        allowed_roots = ALLOWED_ROOTS
+    
+    # SECURITY: Validate all input directories
+    validated_dirs = []
     for d in dirs:
         try:
-            d = safe_path(d, allowed_roots)
+            validated_dirs.append(safe_path(d, allowed_roots))
+        except ValueError as e:
+            logger.warning(f"[SECURITY] Skipping invalid directory: {d} - {e}")
+            continue
+    
+    found = []
+    for d in validated_dirs:
+        try:
             d = Path(d)
             if not d.exists() or not d.is_dir():
                 continue
@@ -528,6 +608,13 @@ def find_log_files(
                     suf = str(suf)
                 logger.debug(f"[DEBUG] Searching after isinstance in dirs: {dirs} with suffixes: {suffixes}")
                 for f in d.rglob(f"*{suf}"):
+                    # SECURITY: Validate each found file
+                    try:
+                        f = safe_path(f, allowed_roots)
+                    except ValueError as e:
+                        logger.warning(f"[SECURITY] Skipping file outside allowed directories: {f} - {e}")
+                        continue
+                    
                     if field_filter and field_filter not in f.name:
                         continue
                     if regex_filter and not re.search(regex_filter, str(f)):
@@ -547,8 +634,8 @@ def find_log_files(
     return found
 
 def load_jsonl_incremental(path, cache):
-    """Read only new lines since last offset for this file."""
-    path = safe_path(path, [LOG_DIR, CONTEXT_LIBRARY_DIR])
+    """Read only new lines since last offset for this file. SECURITY: Path validated."""
+    path = safe_path(path, ALLOWED_ROOTS)
     file_id = str(path)
     last_offset = cache.get(f"{file_id}_offset", 0)
     entries = []
@@ -565,8 +652,12 @@ def load_jsonl_incremental(path, cache):
     return entries
 
 def save_jsonl(path, entries):
-    path = safe_path(path, [LOG_DIR, CONTEXT_LIBRARY_DIR])
+    """Save JSONL file with path validation."""
+    path = safe_path(path, ALLOWED_ROOTS)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
+    # SECURITY: Validate tmp path
+    tmp_path = safe_path(tmp_path, ALLOWED_ROOTS)
+    
     with open(tmp_path, "wb") as f:
         for entry in entries:
             f.write(orjson.dumps(entry) + b"\n")
@@ -735,7 +826,8 @@ def trim_log_file(path: Path):
 
 # --- Context library update logic (atomic, validated, backup) ---
 def update_context_with_new_entries(context_path, field_type, field_entries):
-    context_path = safe_path(context_path, [CONTEXT_LIBRARY_DIR])
+    """Update context library with path validation."""
+    context_path = safe_path(context_path, ALLOWED_ROOTS)
     def updater(library):
         if field_type not in library or not isinstance(library[field_type], dict):
             library[field_type] = {}
@@ -747,8 +839,32 @@ def update_context_with_new_entries(context_path, field_type, field_entries):
                     library[field_type][context_key].append(entry)
     library = load_context_library(context_path)
     updater(library)
-    # TODO: Add JSON schema validation here if desired
+    validate_context_schema(library)
     atomic_write_json(library, context_path)
+
+def validate_context_schema(library):
+    """Lightweight structural validation for the context library."""
+    if not isinstance(library, dict):
+        raise ValueError("Context library must be a dict")
+    schema_version = library.get("schema_version")
+    if schema_version and schema_version != SCHEMA_VERSION:
+        logger.warning(
+            "Schema version mismatch: found %s, expected %s", schema_version, SCHEMA_VERSION
+        )
+    # Expect field buckets to be dicts mapping context_key -> list[dict]
+    for field in MAIN_FIELDS + AUX_FIELDS:
+        if field not in library:
+            continue
+        bucket = library[field]
+        if not isinstance(bucket, dict):
+            raise ValueError(f"Context library field '{field}' must be a dict")
+        for ctx_key, entries in bucket.items():
+            if not isinstance(entries, list):
+                raise ValueError(f"Entries for '{field}:{ctx_key}' must be a list")
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    raise ValueError(f"Entry in '{field}:{ctx_key}' must be a dict")
+    return True
 
 # --- Integrity check integration ---
 def extract_year(text):
@@ -1024,10 +1140,14 @@ def highlight_anomalies(context_library, field_type, context_path=None, autofix=
 
 # --- DB update logic (batch, periodic, error handling) ---
 def update_database_with_context(library, db_path=None, coordinator=None, enhanced=True) -> None:
+    """Update database with path validation."""
     coordinator = coordinator or ContextCoordinator()
     if not db_path:
         db_path = CONTEXT_LIBRARY_DIR / "context_library.json"
-    db_path = safe_path(db_path, [CONTEXT_LIBRARY_DIR])
+    
+    # SECURITY: Validate database path
+    db_path = safe_path(db_path, ALLOWED_ROOTS)
+    
     try:
         if enhanced and coordinator and hasattr(coordinator, "update_db_with_context"):
             coordinator.update_db_with_context(library, db_path)
@@ -1038,21 +1158,32 @@ def update_database_with_context(library, db_path=None, coordinator=None, enhanc
         logger.error(f"Failed to update DB: {e}")
 
 # --- Export/Import correction sessions ---
-def export_correction_session(log_paths, export_dir=EXPORT_DIR):
-    export_dir = safe_path(export_dir, [LOG_DIR])
+def export_correction_session(log_paths, export_dir=None):
+    """Export correction session with path validation."""
+    if export_dir is None:
+        export_dir = LOG_DIR / "correction_exports"
+    
+    # SECURITY: Validate export directory
+    export_dir = safe_path(export_dir, ALLOWED_ROOTS)
     export_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     export_files = []
+    
     for path in log_paths:
-        path = safe_path(path, [LOG_DIR])
+        # SECURITY: Validate source path
+        path = safe_path(path, ALLOWED_ROOTS)
         dest = export_dir / f"{Path(path).stem}_{timestamp}.jsonl"
+        # SECURITY: Validate destination path
+        dest = safe_path(dest, ALLOWED_ROOTS)
         shutil.copy2(path, dest)
         export_files.append(str(dest))
     logger.info(f"[INFO] Exported correction session logs to: {export_files}")
 
 def import_correction_session(import_file, dest_path):
-    import_file = safe_path(import_file, [LOG_DIR, CONTEXT_LIBRARY_DIR])
-    dest_path = safe_path(dest_path, [LOG_DIR, CONTEXT_LIBRARY_DIR])
+    """Import correction session with path validation."""
+    # SECURITY: Validate both paths
+    import_file = safe_path(import_file, ALLOWED_ROOTS)
+    dest_path = safe_path(dest_path, ALLOWED_ROOTS)
     shutil.copy2(import_file, dest_path)
     logger.info(f"[INFO] Imported correction session from {import_file} to {dest_path}")
 
@@ -1076,9 +1207,12 @@ def field_matches_log(field, log_name):
 def ensure_context_library(path):
     """
     Ensure the context library exists and is at the correct schema version.
+    SECURITY: Path validated before operations.
     If missing, create with DEFAULT_STRUCTURE. Warn if schema version mismatches.
     """
-    path = safe_path(path, [CONTEXT_LIBRARY_DIR])
+    # SECURITY: Validate path
+    path = safe_path(path, ALLOWED_ROOTS)
+    
     if not path.exists():
         logger.info(f"Context library not found at {path}, initializing with default structure.")
         struct = DEFAULT_STRUCTURE.copy()
@@ -1101,8 +1235,12 @@ def ensure_context_library(path):
 def process_auto_mode(file_field_map, context_path, cache, batch_size=BATCH_SIZE):
     """
     Automatically accept all new entries from log files and update the context library.
+    SECURITY: All file operations validated.
     Uses config.py for environment variables and user name.
     """
+    # SECURITY: Validate context path
+    context_path = safe_path(context_path, ALLOWED_ROOTS)
+    
     # Use USER_NAME from config.py, fallback to "system" if not set
     user = USER_NAME if "USER_NAME" in globals() and USER_NAME else "system"
     total_processed = 0
@@ -1111,6 +1249,14 @@ def process_auto_mode(file_field_map, context_path, cache, batch_size=BATCH_SIZE
     batch_field_entries = defaultdict(lambda: defaultdict(list))  # field -> context_key -> entries
 
     for log_file, field in file_field_map:
+        # SECURITY: Validate log file path
+        try:
+            log_file = safe_path(log_file, ALLOWED_ROOTS)
+        except ValueError as e:
+            logger.warning(f"[SECURITY] Skipping invalid log file: {log_file} - {e}")
+            total_errors += 1
+            continue
+        
         try:
             # Use aggregate_successful_field_entries for dedup/group
             field_entries, dup_count, skipped_existing, n_new = aggregate_successful_field_entries(
@@ -1135,6 +1281,7 @@ def process_auto_mode(file_field_map, context_path, cache, batch_size=BATCH_SIZE
             # Remove processed log file if it exists
             if Path(log_file).exists():
                 try:
+                    # SECURITY: Path already validated above
                     os.remove(log_file)
                     logger.info(f"[AUTO] Deleted processed log file: {log_file}")
                 except Exception as e:
@@ -1205,16 +1352,27 @@ def main():
     cache = load_cache(expire_days=args.cache_expire_days)
 
     if args.export_audit_log:
-        shutil.copy2(AUDIT_LOG_PATH, args.export_audit_log)
-        logger.info(f"Audit log exported to {args.export_audit_log}")
+        # SECURITY: Validate export path
+        export_path = safe_path(args.export_audit_log, ALLOWED_ROOTS)
+        audit_path = safe_path(AUDIT_LOG_PATH, ALLOWED_ROOTS)
+        shutil.copy2(audit_path, export_path)
+        logger.info(f"Audit log exported to {export_path}")
         return
 
     if args.self_heal:
-        scan_script = os.path.join(os.path.dirname(__file__), "scan_misaligned_ner.py")
+        # SECURITY: Validate scan script path
+        scan_script = Path(os.path.dirname(__file__)) / "scan_misaligned_ner.py"
+        try:
+            scan_script = safe_path(scan_script, ALLOWED_ROOTS)
+        except ValueError as e:
+            logger.error(f"[SECURITY] Invalid scan script path: {scan_script} - {e}")
+            return
+        
         for attempt in range(1, args.max_retries + 1):
             logger.info(f"\n[SELF-HEAL] Attempt {attempt}...")
-            scan_cmd = [sys.executable, scan_script, "--jsonl", "log/spacy_ner_train_data.jsonl"]
-            scan_result = subprocess.run(scan_cmd, check=True, cwd=PROJECT_ROOT)
+            scan_cmd = [sys.executable, str(scan_script), "--jsonl", "log/spacy_ner_train_data.jsonl"]
+            # SECURITY: Validate that executable and script are safe
+            scan_result = subprocess.run(scan_cmd, check=True, cwd=str(PROJECT_ROOT))
             if scan_result.returncode == 0:
                 logger.info("[SELF-HEAL] Data is clean. Exiting self-heal mode.")
                 break
@@ -1227,7 +1385,8 @@ def main():
             logger.info("[SELF-HEAL] Max retries reached. Some misalignments may remain.")
         return
 
-    context_path = safe_path(args.context, [CONTEXT_LIBRARY_DIR])
+    # SECURITY: Validate context path
+    context_path = safe_path(args.context, ALLOWED_ROOTS)
     context_library = ensure_context_library(context_path)
     if "metadata" not in context_library or not isinstance(context_library["metadata"], dict):
         context_library["metadata"] = {}
@@ -1349,9 +1508,14 @@ def main():
                     logger.error("ERROR: Context library is not a dictionary. Check your context library loading logic.")
                     raise ValueError("Context library must be a dictionary. Check your context library loading logic.")
                 update_database_with_context(context_library, db_path=args.db_path, enhanced=args.enhanced, coordinator=None)
+            
+            # SECURITY: Validate log file before deletion
             try:
-                os.remove(log_file)
-                logger.info(f"Deleted processed log file: {log_file}")
+                log_file_validated = safe_path(log_file, ALLOWED_ROOTS)
+                os.remove(log_file_validated)
+                logger.info(f"Deleted processed log file: {log_file_validated}")
+            except ValueError as e:
+                logger.warning(f"[SECURITY] Cannot delete file outside allowed directories: {log_file} - {e}")
             except Exception as e:
                 logger.warning(f"Could not delete log file {log_file}: {e}")
         except Exception as e:

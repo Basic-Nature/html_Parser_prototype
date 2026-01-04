@@ -14,6 +14,7 @@ venv/
 env/
 .python-version
 .env
+*.vs/
 
 # VCS/CI
 .git
@@ -144,3 +145,6 @@ tests/
 # Example final output path: ${OUTPUT_DIR}/${STATE}/${COUNTY}/${RACE}/results.csv
 scripts/install_poppler_ubuntu.sh
 scripts/install_poppler_ubuntu.sh
+
+# Windows temp
+%TEMP%/

@@ -157,7 +157,8 @@ def safe_filename(
     max_length: int = 255,
     allow_unicode: bool = False,
     reserved_names: set = None,
-    default: str = "file"
+    default: str = "file",
+    strict_mode: bool = False,
 ) -> str:
     """
     Robustly sanitize a string for use as a safe filename.
@@ -166,6 +167,7 @@ def safe_filename(
     - Handles reserved device names (Windows).
     - Trims to max_length.
     - Returns a default if the result is empty.
+    - strict_mode: tighten allowed chars (no spaces, no path separators or traversal tokens).
     """
     if not isinstance(name, str):
         name = str(name) if name is not None else default
@@ -177,8 +179,20 @@ def safe_filename(
     if not allow_unicode:
         name = name.encode("ascii", "ignore").decode("ascii")
 
+    # Replace path separators and traversal patterns
+    name = name.replace("\\", "_").replace("/", "_")
+    name = name.replace("..", "_")
+
     # Replace unsafe characters
-    name = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
+    name = re.sub(r'[^a-zA-Z0-9_\-. ]', '_', name)
+
+    # Strict mode: no spaces, no dots except extension separator
+    if strict_mode:
+        name = name.replace(" ", "_")
+        # Collapse multiple dots/underscores
+        name = re.sub(r'[_.]{2,}', '_', name)
+        # Prevent leading/trailing dots/underscores
+        name = name.strip("._")
 
     # Remove repeated underscores or dots
     name = re.sub(r'[_\.]{2,}', '_', name)
@@ -207,6 +221,57 @@ def safe_filename(
         name = base + ext
 
     return name
+
+def is_path_safe(path: Union[str, Path], allowed_bases: Union[str, Path, List[Union[str, Path]]] | None = None) -> bool:
+    """Return True if resolved path is within any allowed base directories."""
+    try:
+        target = Path(path).resolve()
+    except Exception:
+        return False
+    bases: List[Path] = []
+    if allowed_bases is None:
+        return True
+    if isinstance(allowed_bases, (str, Path)):
+        bases = [Path(allowed_bases)]
+    else:
+        try:
+            bases = [Path(b) for b in allowed_bases]
+        except Exception:
+            return False
+    for base in bases:
+        try:
+            if target.is_relative_to(base.resolve()):
+                return True
+        except AttributeError:
+            # Python <3.9 fallback
+            base_res = base.resolve()
+            try:
+                if os.path.commonpath([str(base_res)]) == os.path.commonpath([str(base_res), str(target)]):
+                    return True
+            except Exception:
+                continue
+        except Exception:
+            continue
+    return False
+
+
+def safe_resolve_path(path: Union[str, Path], base: Union[str, Path, None] = None, create: bool = False) -> Path:
+    """Resolve a path and optionally enforce it resides under a base directory."""
+    resolved = Path(path).expanduser().resolve()
+    if base is not None and not is_path_safe(resolved, [base]):
+        raise ValueError(f"Unsafe path detected: {resolved}")
+    if create:
+        resolved.mkdir(parents=True, exist_ok=True)
+    return resolved
+
+
+def safe_join_path(base: Union[str, Path], *paths: str) -> Path:
+    """Join paths under a base directory with traversal protection."""
+    base_path = Path(base).expanduser().resolve()
+    candidate = base_path.joinpath(*[str(p) for p in paths]).resolve()
+    if not is_path_safe(candidate, [base_path]):
+        raise ValueError(f"Path traversal detected: {candidate}")
+    return candidate
 
 T = TypeVar("T")
 
@@ -2148,7 +2213,7 @@ def _finalize_markdown_lines(lines: list[str]) -> str:
     for line in processed:
         if line == "":
             if not prev_blank:
-                deduped.append("")
+                deduped.append(line)
             prev_blank = True
         else:
             deduped.append(line)
@@ -2501,7 +2566,7 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
         for e in edges:
             sp = e.get("src_path")
             dp = e.get("resolved_path")
-            # Only include edges where both src and dst are resolved module paths
+            # Only include edges where both src and dst resolve to actual modules
             if not sp or not dp:
                 continue
             sm = _to_mod(sp)
@@ -2537,14 +2602,18 @@ def _render_audit_md(modules: list[dict], def_index: dict, edges: list[dict], in
             return "Pipeline"
         if "/webapp/parser/state_router.py" in p:
             return "Routing"
-        if "/webapp/parser/handlers/" in p:
-            return "Handlers"
+        if "/webapp/parser/handlers/states/" in p:
+            return "State Handlers"
+        if "/webapp/parser/handlers/formats/" in p:
+            return "Format Handlers"
+        if "/webapp/parser/handlers/shared/" in p:
+            return "Shared Handlers"
         if "/webapp/parser/services/" in p:
             return "Services"
         if "/webapp/parser/utils/" in p:
             return "Utils"
         if "/webapp/parser/Context_Integration/" in p:
-            return "Context_Integration"
+            return "Context Integration"
         if "/webapp/parser/health/" in p:
             return "Health"
         return "Other"

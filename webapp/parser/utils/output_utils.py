@@ -25,7 +25,7 @@ from .rawjson_utils import (
     offload_rawjson_to_ndjson as _shared_offload_rawjson_to_ndjson,
 )
 from .pivot import transform_wide_to_smart_standard
-from .shared_logic import safe_filename, safe_get, safe_get_first, safe_items, safe_lower
+from .shared_logic import safe_filename, safe_get, safe_get_first, safe_items, safe_lower, safe_resolve_path, safe_join_path, is_path_safe
 
 PERCENT_COL_REGEX = re.compile(r"(% Vote|Cumulative %|Percent Reported| - %)$", re.I)
 
@@ -42,25 +42,48 @@ def get_project_root() -> str:
     return os.path.dirname(BASE_DIR)
 
 def get_output_root() -> str:
-    # Output folder at the project root
-    return os.path.join(get_project_root(), "output")
+    # Output folder at the project root (validated)
+    project_root = get_project_root()
+    output_path = os.path.join(project_root, "output")
+    
+    # Validate and create if needed
+    try:
+        return str(safe_resolve_path(output_path, project_root))
+    except ValueError:
+        # Fallback to OUTPUT_DIR from config
+        return OUTPUT_DIR
 
 def safe_join(base: str, *paths: str) -> str:
     """
     Safely join paths and ensure the result is inside base.
     Prevents path traversal and path-injection.
+    
+    Args:
+        base: Base directory path
+        *paths: Path components to join
+        
+    Returns:
+        Safe joined path
+        
+    Raises:
+        ValueError: If resulting path escapes base directory
     """
-    base = os.path.abspath(base)
-    path = os.path.abspath(os.path.join(base, *paths))
-    if not path.startswith(base):
-        raise ValueError("Unsafe path detected.")
-    return path
+    try:
+        # Use the new safe_join_path utility
+        result = safe_join_path(base, *paths)
+        return str(result)
+    except Exception as e:
+        logger.error(f"[SECURITY] Path join validation failed: {e}")
+        raise ValueError(f"Unsafe path detected during join: {e}")
 
 def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_context=None) -> str:
     """
-    Build output path using organized context metadata.
+    Build output path using organized context metadata with strict path validation.
     If any key info is missing, use feedback loop (ML/NER/user prompt) to resolve.
     Safeguards all string operations and path parts.
+    
+    Raises:
+        ValueError: If path validation fails or path traversal is detected
     """
     from ..Context_Integration.context_coordinator import ContextCoordinator
     coordinator = ContextCoordinator()
@@ -77,7 +100,7 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
     contests = safe_get(metadata, "contests", "")
     election_types = safe_get(metadata, "election_types", "")
 
-    # Feedback loop for missing/unknown info
+    # Feedback loop for missing/unknown info (existing logic continues...)
     max_loops = 3
     for _ in range(max_loops):
         if not year or not str(year).isdigit() or len(str(year)) != 4:
@@ -108,37 +131,52 @@ def get_output_path(metadata, subfolder="parsed", coordinator=None, feedback_con
         logger.warning("[yellow][OUTPUT] contests could not be verified. Using 'unknown_contests'.[/yellow]")
         contests = "unknown_contests"
 
-    # Centralized filtering/slugging (maintain ordering: contests -> state -> county)
+    # Centralized filtering/slugging with STRICT sanitization
     s_slug, c_slug, ct_slug = build_filename_triplet(state, county, contests)
+    
+    # SECURITY: Sanitize all path components with strict mode
+    safe_components = []
     if ct_slug:
-        parts.append(safe_lower(ct_slug))
+        safe_components.append(safe_filename(safe_lower(ct_slug), strict_mode=True))
     if s_slug:
-        parts.append(safe_lower(s_slug))
+        safe_components.append(safe_filename(safe_lower(s_slug), strict_mode=True))
     if c_slug:
-        parts.append(safe_lower(c_slug))
+        safe_components.append(safe_filename(safe_lower(c_slug), strict_mode=True))
     if year and str(year).isdigit() and len(str(year)) == 4:
-        parts.append(str(year))
+        safe_components.append(safe_filename(str(year), strict_mode=True))
     else:
-        parts.append("Unknown")
+        safe_components.append("Unknown")
     if election_types:
-        parts.append(safe_lower(safe_filename(election_types)))
+        safe_components.append(safe_filename(safe_lower(safe_filename(election_types)), strict_mode=True))
     if contests:
-        safe_contests = "".join([c if c.isalnum() or c in " _-" else "_" for c in str(contests)])
-        parts.append(safe_contests.replace(" ", "_"))
+        # Extra sanitization for contests
+        safe_contests = safe_filename(str(contests), strict_mode=True)
+        safe_components.append(safe_contests)
     else:
-        parts.append("unknown_contests")
+        safe_components.append("unknown_contests")
     if subfolder:
-        parts.append(str(subfolder))
+        safe_components.append(safe_filename(str(subfolder), strict_mode=True))
 
-    # Always use output folder at project root
+    # Always use output folder at project root with validation
     output_root = get_output_root()
+    
     try:
-        path = safe_join(output_root, *parts)
-        os.makedirs(path, exist_ok=True)
+        # Use safe_join_path to build the final path
+        path = safe_join_path(output_root, *safe_components)
+        
+        # Validate it's within output_root
+        if not is_path_safe(path, [output_root]):
+            raise ValueError("Output path escapes output root directory")
+        
+        # Create directory
+        path.mkdir(parents=True, exist_ok=True)
+        
+        return str(path)
+        
     except Exception as e:
-        logger.error(f"[OUTPUT_UTILS] Failed to create output path: {e}")
-        path = output_root
-    return path
+        logger.error(f"[SECURITY] Output path validation failed: {e}")
+        # Safe fallback: return just the output root
+        return output_root
 
 def format_timestamp(fmt="%Y%m%d_%H%M%S") -> str:
     return datetime.now().strftime(fmt)
